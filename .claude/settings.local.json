@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "Bash(npx next *)",
+      "Bash(xargs ls *)",
+      "Bash(npx tsc *)",
+      "Bash(dir app\\\\admin\\\\orders /s /b)"
+    ]
+  }
+}

@@ -1,0 +1,138 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentProvider {
+  MANUAL
+  MIDTRANS
+  XENDIT
+}
+
+enum PaymentStatus {
+  UNPAID
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
+  REFUNDED
+}
+
+model User {
+  id           String          @id @default(cuid())
+  name         String
+  phone        String?         @unique
+  email        String?         @unique
+  passwordHash String?
+  role         String          @default("CUSTOMER")
+  orders       Order[]
+  points       CustomerPoint[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+}
+
+model Category {
+  id        String    @id @default(cuid())
+  name      String
+  slug      String    @unique
+  products  Product[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Product {
+  id          String      @id @default(cuid())
+  name        String
+  slug        String      @unique
+  description String
+  price       Int
+  memberPrice Int?
+  stock       Int         @default(0)
+  weightGram  Int         @default(500)
+  imageUrl    String?
+  isActive    Boolean     @default(true)
+  categoryId  String?
+  category    Category?   @relation(fields: [categoryId], references: [id])
+  orderItems  OrderItem[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Order {
+  id                  String          @id @default(cuid())
+  orderNumber          String          @unique
+  userId               String?
+  user                 User?           @relation(fields: [userId], references: [id])
+  customerName         String
+  customerPhone        String
+  customerEmail        String?
+  shippingAddress      String
+  shippingCity         String?
+  shippingPostalCode   String?
+  courierCode          String?
+  courierService       String?
+  trackingNumber       String?
+  subtotal             Int
+  shippingCost         Int             @default(0)
+  discount             Int             @default(0)
+  total                Int
+  status               OrderStatus     @default(PENDING)
+  paymentProvider      PaymentProvider @default(MANUAL)
+  paymentStatus        PaymentStatus   @default(UNPAID)
+  paymentReference     String?
+  paymentUrl           String?
+  voucherCode          String?
+  notes                String?
+  items                OrderItem[]
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  name      String
+  price     Int
+  quantity  Int
+  weightGram Int    @default(500)
+}
+
+model Voucher {
+  id             String   @id @default(cuid())
+  code           String   @unique
+  description    String?
+  discountPercent Int?
+  discountAmount  Int?
+  minimumOrder    Int     @default(0)
+  startsAt        DateTime @default(now())
+  expiresAt       DateTime?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model CustomerPoint {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  points    Int
+  source    String
+  createdAt DateTime @default(now())
+}

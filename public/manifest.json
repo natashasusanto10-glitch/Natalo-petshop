@@ -1,0 +1,36 @@
+{
+  "name": "Natalo Petshop & Aquarium",
+  "short_name": "Natalo",
+  "description": "Toko hewan peliharaan terpercaya. Pakan, aksesoris, dan kebutuhan hewan peliharaan kamu.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#F97316",
+  "categories": ["shopping", "lifestyle"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Produk",
+      "url": "/products",
+      "description": "Lihat semua produk"
+    },
+    {
+      "name": "Keranjang",
+      "url": "/cart",
+      "description": "Lihat keranjang belanja"
+    },
+    {
+      "name": "Cek Order",
+      "url": "/order-status",
+      "description": "Cek status pesanan"
+    }
+  ]
+}

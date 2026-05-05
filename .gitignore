@@ -1,0 +1,10 @@
+node_modules
+.next
+.env
+.env*.local
+coverage
+.DS_Store
+
+# user uploads (jangan masuk repo)
+public/uploads/*
+!public/uploads/.gitkeep

@@ -1,0 +1,25 @@
+import { z } from "zod";
+
+export const cartItemSchema = z.object({
+  productId: z.string(),
+  name: z.string(),
+  price: z.number().int().nonnegative(),
+  quantity: z.number().int().positive(),
+  weightGram: z.number().int().positive().default(500),
+});
+
+export const createOrderSchema = z.object({
+  customerName: z.string().min(2),
+  customerPhone: z.string().min(8),
+  customerEmail: z.string().email().optional().or(z.literal("")),
+  shippingAddress: z.string().min(10),
+  shippingCity: z.string().optional(),
+  shippingPostalCode: z.string().optional(),
+  courierCode: z.string().optional(),
+  courierService: z.string().optional(),
+  shippingCost: z.number().int().nonnegative().default(0),
+  voucherCode: z.string().optional(),
+  notes: z.string().optional(),
+  paymentProvider: z.enum(["MANUAL", "MIDTRANS", "XENDIT"]).default("MANUAL"),
+  items: z.array(cartItemSchema).min(1),
+});
