@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatRupiah } from "@/lib/format";
 import type { StoreVariantAttribute, StoreProductVariant } from "@/lib/products";
 
@@ -95,6 +95,25 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
   const maxQty = currentVariant ? currentVariant.stock : 0;
   const outOfStock = currentVariant ? currentVariant.stock === 0 : false;
 
+  // Broadcast state ke StickyAddToCartBar
+  const minPrice = useMemo(() => {
+    const active = variants.filter((v) => v.isActive && !v.deletedAt).map((v) => v.price);
+    return active.length ? Math.min(...active) : 0;
+  }, [variants]);
+
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("pdp-state", {
+        detail: {
+          hasVariants: true,
+          canAdd: !!currentVariant && !outOfStock,
+          outOfStock: !!currentVariant && outOfStock,
+          price: currentVariant?.price ?? minPrice,
+        },
+      }),
+    );
+  }, [currentVariant, outOfStock, minPrice]);
+
   // ── Disabled check untuk tombol opsi ─────────────────────────
   const isOptionDisabled = useCallback(
     (attrIdx: number, optionId: string): boolean => {
@@ -138,6 +157,16 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
     });
     setQty(1);
   }
+
+  // Listen trigger dari StickyAddToCartBar
+  useEffect(() => {
+    function onTrigger() {
+      addToCart(false);
+    }
+    window.addEventListener("pdp-add-to-cart", onTrigger);
+    return () => window.removeEventListener("pdp-add-to-cart", onTrigger);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentVariant, allSelected, qty, outOfStock]);
 
   // ── Add to cart ───────────────────────────────────────────────
   function addToCart(redirectToCheckout = false) {

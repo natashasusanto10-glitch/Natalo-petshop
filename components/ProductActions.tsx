@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { StoreProduct } from "@/lib/products";
 
@@ -41,6 +41,16 @@ export function ProductActions({ product }: { product: StoreProduct }) {
       ? product.discountPrice
       : product.price;
   const outOfStock = product.stock === 0;
+
+  // Listen trigger dari StickyAddToCartBar
+  useEffect(() => {
+    function onTrigger() {
+      addToCart();
+    }
+    window.addEventListener("pdp-add-to-cart", onTrigger);
+    return () => window.removeEventListener("pdp-add-to-cart", onTrigger);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qty, outOfStock]);
 
   function addToCart() {
     if (outOfStock) return;

@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { ProductCard } from "@/components/ProductCard";
 import { ProductActions } from "@/components/ProductActions";
 import { VariantSelector } from "@/components/VariantSelector";
+import { StickyAddToCartBar } from "@/components/products/StickyAddToCartBar";
 import { FavoriteButton } from "@/components/FavoriteButton";
 import { ReviewSection } from "@/components/ReviewSection";
 import { formatRupiah } from "@/lib/format";
@@ -305,31 +306,16 @@ export default async function ProductDetailPage({
         )}
       </div>
 
-      {/* Mobile sticky bottom CTA */}
-      <a
-        href="#beli"
-        className="fixed inset-x-0 bottom-[70px] z-40 flex items-center gap-3 border-t border-gray-100 bg-white px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] md:hidden [padding-bottom:calc(12px+env(safe-area-inset-bottom))]"
-      >
-        <div className="min-w-0 flex-1">
-          <p className="text-xs text-gray-500">
-            {outOfStock ? "Status" : product.hasVariants ? "Mulai dari" : "Harga"}
-          </p>
-          <p className="truncate text-base font-black text-orange-600">
-            {outOfStock ? "Stok habis" : formatRupiah(price)}
-          </p>
-        </div>
-        <span
-          className={`flex h-12 shrink-0 items-center justify-center rounded-full px-6 text-sm font-bold text-white ${
-            outOfStock ? "bg-gray-300" : "bg-orange-500 active:opacity-90"
-          }`}
-        >
-          {outOfStock
-            ? "Habis"
-            : product.hasVariants
-              ? "Pilih Varian"
-              : "Tambah ke Keranjang"}
-        </span>
-      </a>
+      {/* Mobile sticky bottom CTA — state-aware (scroll ke variant kalau belum dipilih) */}
+      <StickyAddToCartBar
+        initialState={{
+          hasVariants: product.hasVariants,
+          // Untuk simple product canAdd langsung true. Untuk variant, false sampai user pilih.
+          canAdd: !product.hasVariants && !outOfStock,
+          outOfStock,
+          price,
+        }}
+      />
     </div>
   );
 }
