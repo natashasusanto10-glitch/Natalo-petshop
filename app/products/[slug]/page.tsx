@@ -17,6 +17,8 @@ import { ReviewList } from "@/components/ReviewList";
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 const brand = process.env.NEXT_PUBLIC_BRAND_NAME || "Natalo Petshop";
 
+export const revalidate = 60;
+
 export async function generateMetadata({
   params,
 }: {
@@ -60,10 +62,10 @@ export default async function ProductDetailPage({
 
   const session = await getSession("CUSTOMER");
 
-  // Ambil kategori dan produk terkait
+  // Ambil kategori dan produk terkait (limit 12 biar fast — di-slice ke 4 di bawah)
   const [productWithCategory, allProducts, favoriteIds] = await Promise.all([
     prisma.product.findUnique({ where: { slug }, include: { category: true } }).catch(() => null),
-    getProducts(),
+    getProducts({ category: product.categorySlug ?? undefined, take: 12 }),
     session
       ? prisma.favorite
           .findMany({ where: { userId: session.sub }, select: { productId: true } })

@@ -61,8 +61,10 @@ const variantInclude = {
 export async function getProducts(opts?: {
   category?: string;
   search?: string;
+  take?: number;
+  skip?: number;
 }): Promise<StoreProduct[]> {
-  const { category, search } = opts ?? {};
+  const { category, search, take, skip } = opts ?? {};
   try {
     const products = await prisma.product.findMany({
       where: {
@@ -71,6 +73,8 @@ export async function getProducts(opts?: {
         ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
       },
       orderBy: { createdAt: "desc" },
+      take,
+      skip,
       include: {
         category: { select: { slug: true } },
         variants: {
@@ -126,6 +130,24 @@ export async function getProducts(opts?: {
   } catch {
     if (category || search) return [];
     return sampleProducts;
+  }
+}
+
+export async function getProductsCount(opts?: {
+  category?: string;
+  search?: string;
+}): Promise<number> {
+  const { category, search } = opts ?? {};
+  try {
+    return await prisma.product.count({
+      where: {
+        isActive: true,
+        ...(category ? { category: { slug: category } } : {}),
+        ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
+      },
+    });
+  } catch {
+    return 0;
   }
 }
 

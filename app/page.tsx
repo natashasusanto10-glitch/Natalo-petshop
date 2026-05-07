@@ -13,6 +13,8 @@ import { HomeSearchBar } from "@/components/home/HomeSearchBar";
 const brand = process.env.NEXT_PUBLIC_BRAND_NAME || "Natalo Petshop";
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
+export const revalidate = 60;
+
 export const metadata: Metadata = {
   title: `${brand} | Toko Hewan Peliharaan & Aquarium`,
   description:
@@ -147,7 +149,7 @@ export default async function HomePage() {
   const waUrl = `https://wa.me/${wa.replace("+", "")}?text=${encodeURIComponent("Halo Natalo Petshop, saya mau tanya...")}`;
 
   const [products, popularCategories, mostSearchedCategories] = await Promise.all([
-    getProducts(),
+    getProducts({ take: 24 }),
     prisma.category
       .findMany({
         take: 6,
