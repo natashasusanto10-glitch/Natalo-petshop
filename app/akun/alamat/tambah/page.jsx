@@ -4,7 +4,7 @@ import { getSession } from "@/lib/auth";
 import FormAlamat from "@/components/FormAlamat";
 
 export default async function AddAddressPage() {
-  const session = await getSession();
+  const session = await getSession("CUSTOMER");
   if (!session || session.role !== "CUSTOMER") redirect("/member/login");
 
   return (

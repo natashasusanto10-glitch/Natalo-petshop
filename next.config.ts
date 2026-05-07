@@ -9,6 +9,9 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "**.supabase.in" },
       { protocol: "https", hostname: "lh3.googleusercontent.com" },
       { protocol: "https", hostname: "cdn.jsdelivr.net" },
+      // UploadThing CDN
+      { protocol: "https", hostname: "utfs.io" },
+      { protocol: "https", hostname: "**.ufs.sh" },
       // Allow localhost upload previews
       { protocol: "http", hostname: "localhost" },
       // QR code generation service

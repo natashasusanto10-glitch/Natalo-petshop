@@ -6,7 +6,7 @@ export default async function ProtectedAdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await getSession();
+  const session = await getSession("ADMIN");
 
   if (!session) redirect("/admin/login");
   if (session.role === "CUSTOMER") redirect("/member/dashboard");

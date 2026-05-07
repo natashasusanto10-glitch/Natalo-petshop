@@ -1,8 +1,7 @@
-const CACHE = "natalo-v5";
+const CACHE = "natalo-v6";
 
 const PRECACHE = [
   "/",
-  "/products",
   "/cart",
   "/order-status",
   "/offline",
@@ -74,6 +73,17 @@ self.addEventListener("fetch", (e) => {
 
   if (request.method !== "GET" || url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/")) return;
+
+  if (
+    url.searchParams.has("_rsc") ||
+    request.headers.get("RSC") === "1" ||
+    request.headers.get("Next-Router-Prefetch") === "1" ||
+    request.headers.get("Accept")?.includes("text/x-component")
+  ) {
+    e.respondWith(fetch(request));
+    return;
+  }
+
   if (url.pathname.startsWith("/admin")) {
     e.respondWith(fetch(request).catch(() => caches.match("/offline")));
     return;

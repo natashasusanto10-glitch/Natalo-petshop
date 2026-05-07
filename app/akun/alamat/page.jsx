@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import DeleteAlamatButton from "@/components/DeleteAlamatButton";
 
 export default async function AddressListPage() {
-  const session = await getSession();
+  const session = await getSession("CUSTOMER");
   if (!session || session.role !== "CUSTOMER") redirect("/member/login");
 
   const addresses = await prisma.address.findMany({
@@ -55,10 +55,6 @@ export default async function AddressListPage() {
 }
 
 function AddressCard({ address }) {
-  const region = [address.village, address.district, address.city, address.province]
-    .filter(Boolean)
-    .join(", ");
-
   return (
     <section className="rounded-3xl border border-zinc-100 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -72,13 +68,16 @@ function AddressCard({ address }) {
             )}
           </div>
           <p className="mt-2 text-sm font-bold text-zinc-800">
-            {address.recipientName} · {address.phone}
+            {address.recipient} · {address.phone}
           </p>
           <p className="mt-1 text-sm leading-6 text-zinc-600">{address.address}</p>
           <p className="mt-1 text-sm text-zinc-500">
-            {region}
+            {[address.city].filter(Boolean).join(", ")}
             {address.postalCode ? ` ${address.postalCode}` : ""}
           </p>
+          {address.pinpointAddress && (
+            <p className="mt-1 text-xs text-zinc-400">📍 {address.pinpointAddress}</p>
+          )}
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
           <Link

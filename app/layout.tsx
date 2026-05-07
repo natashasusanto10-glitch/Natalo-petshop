@@ -6,6 +6,9 @@ import { Footer } from "@/components/Footer";
 import { PWARegister } from "@/components/PWARegister";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import { StoreOnly } from "@/components/StoreOnly";
+import { BottomNavigation } from "@/components/BottomNavigation";
+import { WhatsAppFloat } from "@/components/WhatsAppFloat";
+import { ChatWidget } from "@/components/ChatWidget";
 
 const brand = process.env.NEXT_PUBLIC_BRAND_NAME || "Natalo Petshop";
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -96,9 +99,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <StoreOnly>
           <Header />
         </StoreOnly>
-        <main>{children}</main>
+        <main className="pb-[70px] md:pb-0">{children}</main>
         <StoreOnly>
           <Footer />
+          <WhatsAppFloat />
+          <ChatWidget />
+          <BottomNavigation />
           <InstallPrompt />
         </StoreOnly>
       </body>

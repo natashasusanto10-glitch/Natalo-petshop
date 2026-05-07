@@ -1,18 +1,18 @@
 @import "tailwindcss";
 
-/* ── Natalo brand palette — derived dari logo color #468284 ── */
+/* ── Natalo brand palette — unified to Tailwind orange for site-wide consistency ── */
 @theme {
-  --color-natalo-50: #f0f8f8;
-  --color-natalo-100: #dceced;
-  --color-natalo-200: #c1dcde;
-  --color-natalo-300: #99c4c8;
-  --color-natalo-400: #71acaf;
-  --color-natalo-500: #5a9498;
-  --color-natalo-600: #468284;
-  --color-natalo-700: #386669;
-  --color-natalo-800: #2a4d4f;
-  --color-natalo-900: #1f393b;
-  --color-natalo-950: #122224;
+  --color-natalo-50: #fff7ed;
+  --color-natalo-100: #ffedd5;
+  --color-natalo-200: #fed7aa;
+  --color-natalo-300: #fdba74;
+  --color-natalo-400: #fb923c;
+  --color-natalo-500: #f97316;
+  --color-natalo-600: #ea580c;
+  --color-natalo-700: #c2410c;
+  --color-natalo-800: #9a3412;
+  --color-natalo-900: #7c2d12;
+  --color-natalo-950: #431407;
 }
 
 :root {

@@ -27,7 +27,7 @@ function calcDiscount(
 }
 
 export async function GET(request: NextRequest) {
-  const session = await getSession();
+  const session = await getSession("CUSTOMER");
   if (!session)
     return NextResponse.json({ error: "Login dulu" }, { status: 401 });
 

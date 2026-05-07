@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { formatRupiah } from "@/lib/format";
+import { formatRupiah, jakartaTodayRange } from "@/lib/format";
 import { getSession } from "@/lib/auth";
 import { LogoutButton } from "@/components/LogoutButton";
 import { AdminInstallPrompt } from "@/components/AdminInstallPrompt";
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: "Order Baru",
+  PAID: "Sudah Dibayar",
   PROCESSING: "Diproses",
   SHIPPED: "Dikirim",
   DELIVERED: "Selesai",
@@ -25,18 +26,6 @@ const PAY_LABELS: Record<string, string> = {
 
 const LOW_STOCK_LIMIT = 5;
 
-function startOfToday() {
-  const date = new Date();
-  date.setHours(0, 0, 0, 0);
-  return date;
-}
-
-function endOfToday() {
-  const date = new Date();
-  date.setHours(23, 59, 59, 999);
-  return date;
-}
-
 function formatDateTime(date: Date) {
   return new Intl.DateTimeFormat("id-ID", {
     day: "2-digit",
@@ -48,25 +37,44 @@ function formatDateTime(date: Date) {
 }
 
 export default async function AdminDashboardPage() {
-  const session = await getSession();
-  const todayStart = startOfToday();
-  const todayEnd = endOfToday();
+  const session = await getSession("ADMIN");
+  const { start: todayStart, end: todayEnd } = jakartaTodayRange();
+
+  const now = new Date();
+  const expiringSoonCutoff = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const usableVoucherWhere = {
+    isActive: true,
+    startsAt: { lte: now },
+    OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    AND: [
+      {
+        OR: [
+          { maxUsage: null },
+          { usedCount: { lt: prisma.voucher.fields.maxUsage } },
+        ],
+      },
+    ],
+  };
 
   const [
     orderStatusCounts,
     waitingPaymentCount,
-    newOrdersTodayCount,
     todaySales,
+    paidUnshippedCount,
     actionOrders,
+    lowStockCount,
+    outOfStockCount,
     lowStockProducts,
     outOfStockProducts,
+    outOfStockVariantCount,
+    outOfStockVariants,
+    voucherActiveCount,
+    voucherExpiringCount,
+    expiringVouchers,
   ] = await Promise.all([
     prisma.order.groupBy({ by: ["status"], _count: true }),
     prisma.order.count({
       where: { paymentStatus: { in: ["UNPAID", "PENDING"] }, status: { notIn: ["CANCELLED", "REFUNDED"] } },
-    }),
-    prisma.order.count({
-      where: { createdAt: { gte: todayStart, lte: todayEnd } },
     }),
     prisma.order.aggregate({
       where: {
@@ -76,10 +84,17 @@ export default async function AdminDashboardPage() {
       },
       _sum: { total: true },
     }),
+    prisma.order.count({
+      where: {
+        paymentStatus: "PAID",
+        status: { in: ["PENDING", "PAID", "PROCESSING"] },
+      },
+    }),
     prisma.order.findMany({
       where: {
         OR: [
           { status: "PENDING" },
+          { status: "PAID" },
           { status: "PROCESSING" },
           { status: "SHIPPED" },
           { paymentStatus: { in: ["UNPAID", "PENDING"] }, status: { notIn: ["CANCELLED", "DELIVERED", "REFUNDED"] } },
@@ -89,6 +104,8 @@ export default async function AdminDashboardPage() {
       take: 8,
       include: { items: { select: { quantity: true } } },
     }),
+    prisma.product.count({ where: { isActive: true, stock: { gt: 0, lte: LOW_STOCK_LIMIT } } }),
+    prisma.product.count({ where: { isActive: true, stock: 0 } }),
     prisma.product.findMany({
       where: { isActive: true, stock: { gt: 0, lte: LOW_STOCK_LIMIT } },
       orderBy: { stock: "asc" },
@@ -101,6 +118,48 @@ export default async function AdminDashboardPage() {
       take: 8,
       select: { id: true, name: true, stock: true, price: true },
     }),
+    prisma.productVariant.count({
+      where: {
+        isActive: true,
+        deletedAt: null,
+        stock: 0,
+        product: { isActive: true },
+      },
+    }),
+    prisma.productVariant.findMany({
+      where: {
+        isActive: true,
+        deletedAt: null,
+        stock: 0,
+        product: { isActive: true },
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 8,
+      select: {
+        id: true,
+        sku: true,
+        product: { select: { id: true, name: true } },
+        options: { select: { option: { select: { value: true } } } },
+      },
+    }),
+    prisma.voucher.count({
+      where: usableVoucherWhere,
+    }),
+    prisma.voucher.count({
+      where: {
+        ...usableVoucherWhere,
+        expiresAt: { gt: now, lte: expiringSoonCutoff },
+      },
+    }),
+    prisma.voucher.findMany({
+      where: {
+        ...usableVoucherWhere,
+        expiresAt: { gt: now, lte: expiringSoonCutoff },
+      },
+      orderBy: { expiresAt: "asc" },
+      take: 5,
+      select: { id: true, code: true, expiresAt: true, usedCount: true, maxUsage: true },
+    }),
   ]);
 
   const countMap: Record<string, number> = {};
@@ -109,15 +168,21 @@ export default async function AdminDashboardPage() {
   const stats = [
     {
       label: "Order Baru",
-      value: newOrdersTodayCount,
-      helper: "Masuk hari ini",
-      href: "/admin/orders",
+      value: countMap.PENDING ?? 0,
+      helper: "Belum diproses",
+      href: "/admin/orders?status=PENDING",
     },
     {
       label: "Menunggu Pembayaran",
       value: waitingPaymentCount,
       helper: "Belum lunas / verifikasi",
-      href: "/admin/orders?pay=PENDING",
+      href: "/admin/orders?pay=WAITING",
+    },
+    {
+      label: "Sudah Dibayar",
+      value: countMap.PAID ?? 0,
+      helper: "Siap mulai packing",
+      href: "/admin/orders?status=PAID",
     },
     {
       label: "Diproses",
@@ -145,15 +210,33 @@ export default async function AdminDashboardPage() {
     },
     {
       label: "Produk Stok Menipis",
-      value: lowStockProducts.length,
+      value: lowStockCount,
       helper: `Stok 1-${LOW_STOCK_LIMIT}`,
       href: "/admin/products",
     },
     {
       label: "Produk Habis",
-      value: outOfStockProducts.length,
+      value: outOfStockCount,
       helper: "Stok 0",
       href: "/admin/products",
+    },
+    {
+      label: "Varian Habis",
+      value: outOfStockVariantCount,
+      helper: "Varian aktif stok 0",
+      href: "/admin/stock",
+    },
+    {
+      label: "Voucher Aktif",
+      value: voucherActiveCount,
+      helper: "Berlaku saat ini",
+      href: "/admin/vouchers",
+    },
+    {
+      label: "Voucher Expiring",
+      value: voucherExpiringCount,
+      helper: "Habis dalam 7 hari",
+      href: "/admin/vouchers",
     },
   ];
 
@@ -177,6 +260,24 @@ export default async function AdminDashboardPage() {
           <LogoutButton redirectTo="/admin/login" />
         </div>
       </div>
+
+      {paidUnshippedCount > 0 && (
+        <Link
+          href="/admin/orders?status=NEED_PACKING"
+          className="mt-6 flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4 transition hover:border-emerald-400"
+        >
+          <span className="mt-0.5 text-xl">📦</span>
+          <div className="flex-1">
+            <p className="text-sm font-black text-emerald-900">
+              {paidUnshippedCount} order lunas siap dipacking
+            </p>
+            <p className="mt-0.5 text-xs font-medium text-emerald-700">
+              Pembayaran sudah masuk tetapi belum dikirim. Klik untuk buka daftar.
+            </p>
+          </div>
+          <span className="text-xs font-bold text-emerald-700">Lihat &rarr;</span>
+        </Link>
+      )}
 
       <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (
@@ -258,6 +359,10 @@ export default async function AdminDashboardPage() {
             products={outOfStockProducts}
             danger
           />
+
+          <VariantStockPanel variants={outOfStockVariants} />
+
+          <ExpiringVoucherPanel vouchers={expiringVouchers} now={now} />
         </aside>
       </div>
     </div>
@@ -334,6 +439,117 @@ function StockPanel({
           ))
         ) : (
           <p className="rounded-lg bg-zinc-50 p-4 text-sm text-zinc-500">{emptyText}</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function VariantStockPanel({
+  variants,
+}: {
+  variants: Array<{
+    id: string;
+    sku: string | null;
+    product: { id: string; name: string };
+    options: Array<{ option: { value: string } }>;
+  }>;
+}) {
+  return (
+    <section className="rounded-lg border border-zinc-200 bg-white p-5">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-black text-zinc-950">Varian Habis</h2>
+        <Link href="/admin/stock" className="text-xs font-bold text-zinc-500 hover:text-zinc-950">
+          Kelola
+        </Link>
+      </div>
+
+      <div className="mt-4 space-y-3">
+        {variants.length > 0 ? (
+          variants.map((variant) => {
+            const optionLabel = variant.options.map((o) => o.option.value).join(" / ");
+            return (
+              <Link
+                key={variant.id}
+                href={`/admin/products/${variant.product.id}/edit`}
+                className="flex justify-between gap-4 rounded-lg bg-zinc-50 p-3 text-sm transition hover:bg-zinc-100"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-bold text-zinc-950">{variant.product.name}</p>
+                  <p className="mt-1 truncate text-xs text-zinc-500">
+                    {optionLabel || variant.sku || "Varian"}
+                  </p>
+                </div>
+                <span className="h-fit rounded-full bg-red-100 px-3 py-1 text-xs font-black text-red-700">
+                  Stok 0
+                </span>
+              </Link>
+            );
+          })
+        ) : (
+          <p className="rounded-lg bg-zinc-50 p-4 text-sm text-zinc-500">
+            Tidak ada varian yang habis.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ExpiringVoucherPanel({
+  vouchers,
+  now,
+}: {
+  vouchers: Array<{
+    id: string;
+    code: string;
+    expiresAt: Date | null;
+    usedCount: number;
+    maxUsage: number | null;
+  }>;
+  now: Date;
+}) {
+  return (
+    <section className="rounded-lg border border-zinc-200 bg-white p-5">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-black text-zinc-950">Voucher Expiring</h2>
+        <Link href="/admin/vouchers" className="text-xs font-bold text-zinc-500 hover:text-zinc-950">
+          Kelola
+        </Link>
+      </div>
+
+      <div className="mt-4 space-y-3">
+        {vouchers.length > 0 ? (
+          vouchers.map((voucher) => {
+            const daysLeft = voucher.expiresAt
+              ? Math.max(
+                  0,
+                  Math.ceil((voucher.expiresAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)),
+                )
+              : null;
+            const usageLabel =
+              voucher.maxUsage != null
+                ? `${voucher.usedCount}/${voucher.maxUsage} dipakai`
+                : `${voucher.usedCount} dipakai`;
+            return (
+              <div
+                key={voucher.id}
+                className="flex justify-between gap-4 rounded-lg bg-zinc-50 p-3 text-sm"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-bold text-zinc-950">{voucher.code}</p>
+                  <p className="mt-1 truncate text-xs text-zinc-500">{usageLabel}</p>
+                </div>
+                <span className="h-fit rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-700">
+                  {daysLeft != null ? `${daysLeft} hari` : "—"}
+                </span>
+              </div>
+            );
+          })
+        ) : (
+          <p className="rounded-lg bg-zinc-50 p-4 text-sm text-zinc-500">
+            Tidak ada voucher yang akan expired.
+          </p>
         )}
       </div>
     </section>

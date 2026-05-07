@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSessionToken, SESSION_COOKIE_OPTIONS } from "@/lib/auth";
+import { ADMIN_SESSION_COOKIE, createSessionToken, getSessionCookieOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { createHash, timingSafeEqual } from "crypto";
 
@@ -96,6 +96,6 @@ export async function POST(request: NextRequest) {
   buckets.delete(rateLimitKey);
 
   const response = NextResponse.json({ ok: true });
-  response.cookies.set("session", token, SESSION_COOKIE_OPTIONS);
+  response.cookies.set(ADMIN_SESSION_COOKIE, token, getSessionCookieOptions(request));
   return response;
 }

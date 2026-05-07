@@ -7,7 +7,7 @@ import { ReviewableItemCard } from "@/components/ReviewableItemCard";
 import Link from "next/link";
 
 export default async function MemberReviewsPage() {
-  const session = await getSession();
+  const session = await getSession("CUSTOMER");
   if (!session) {
     return (
       <div className="p-8 text-center">

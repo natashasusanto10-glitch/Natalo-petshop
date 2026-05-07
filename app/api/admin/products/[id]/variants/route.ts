@@ -17,7 +17,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getSession();
+    const session = await getSession("ADMIN");
     if (!session || session.role !== "ADMIN")
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -76,7 +76,7 @@ export async function PUT(
       if (variantsWithOrders.size > 0) {
         await tx.productVariant.updateMany({
           where: { id: { in: [...variantsWithOrders] } },
-          data: { deletedAt: new Date(), isActive: false },
+          data: { deletedAt: new Date(), isActive: false, sku: null },
         });
       }
 
@@ -124,7 +124,7 @@ export async function PUT(
         // Validasi SKU unik (kalau ada)
         if (v.sku) {
           const existingSku = await tx.productVariant.findFirst({
-            where: { sku: v.sku, deletedAt: null },
+            where: { sku: v.sku },
           });
           if (existingSku) {
             throw new Error(`SKU "${v.sku}" sudah digunakan oleh varian lain.`);
@@ -193,7 +193,7 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getSession();
+  const session = await getSession("ADMIN");
   if (!session || session.role !== "ADMIN")
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

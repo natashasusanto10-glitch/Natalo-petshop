@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import FormAlamat from "@/components/FormAlamat";
 
 export default async function EditAddressPage({ params }) {
-  const session = await getSession();
+  const session = await getSession("CUSTOMER");
   if (!session || session.role !== "CUSTOMER") redirect("/member/login");
 
   const { id } = await params;

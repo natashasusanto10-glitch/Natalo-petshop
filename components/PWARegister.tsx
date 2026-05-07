@@ -6,6 +6,24 @@ export function PWARegister() {
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
 
+    if (process.env.NODE_ENV !== "production") {
+      const reloadKey = "pwa-dev-sw-cleaned";
+      navigator.serviceWorker
+        .getRegistrations()
+        .then(async (registrations) => {
+          const keys = await caches.keys();
+          await Promise.all(registrations.map((registration) => registration.unregister()));
+          await Promise.all(keys.filter((key) => key.startsWith("natalo-")).map((key) => caches.delete(key)));
+
+          if ((registrations.length > 0 || keys.some((key) => key.startsWith("natalo-"))) && !sessionStorage.getItem(reloadKey)) {
+            sessionStorage.setItem(reloadKey, "1");
+            window.location.reload();
+          }
+        })
+        .catch(() => {});
+      return;
+    }
+
     navigator.serviceWorker
       .register("/sw.js")
       .then((registration) => {

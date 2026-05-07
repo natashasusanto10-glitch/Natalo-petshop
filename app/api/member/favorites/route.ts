@@ -4,7 +4,7 @@ import { getSession } from "@/lib/auth";
 
 // GET  — list productId yang difavoritkan
 export async function GET() {
-  const session = await getSession();
+  const session = await getSession("CUSTOMER");
   if (!session || session.role !== "CUSTOMER") {
     return NextResponse.json([]);
   }
@@ -19,7 +19,7 @@ export async function GET() {
 
 // POST — tambah favorit { productId }
 export async function POST(request: NextRequest) {
-  const session = await getSession();
+  const session = await getSession("CUSTOMER");
   if (!session || session.role !== "CUSTOMER") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

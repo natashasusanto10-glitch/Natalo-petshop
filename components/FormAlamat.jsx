@@ -4,53 +4,33 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AddressPinpointPicker } from "@/components/AddressPinpointPicker";
 
-// Proxy ke wilayah.id via /api/wilayah agar tidak kena CORS error.
-// Implementasi proxy: app/api/wilayah/[...path]/route.ts
-const API_BASE = "/api/wilayah";
 const LABELS = ["Rumah", "Kantor", "Lainnya"];
 
-function getItems(payload) {
-  return Array.isArray(payload?.data) ? payload.data : [];
+function getRegionCode(item) {
+  return String(item?.code ?? item?.id ?? item?.kode ?? "").trim();
 }
 
-function getCode(item) {
-  return String(item?.code ?? item?.id ?? "");
-}
-
-function getName(item) {
-  return String(item?.name ?? item?.nama ?? "");
+function getRegionName(item) {
+  return String(item?.name ?? item?.nama ?? "").trim();
 }
 
 function getPostalCode(item) {
-  return String(item?.postal_code ?? item?.postalCode ?? item?.kode_pos ?? item?.kodePos ?? "");
+  return String(
+    item?.postal_code ?? item?.postalCode ?? item?.kode_pos ?? item?.zip_code ?? ""
+  ).trim();
 }
 
-function regionValue(item) {
-  return JSON.stringify({
-    code: getCode(item),
-    name: getName(item),
-    postalCode: getPostalCode(item),
-  });
+function getData(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  return [];
 }
 
-function parseRegion(value) {
-  if (!value) return { code: "", name: "", postalCode: "" };
-  try {
-    const parsed = JSON.parse(value);
-    return {
-      code: String(parsed.code ?? ""),
-      name: String(parsed.name ?? ""),
-      postalCode: String(parsed.postalCode ?? ""),
-    };
-  } catch {
-    return { code: value, name: "", postalCode: "" };
-  }
-}
-
-function Spinner() {
-  return (
-    <span className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-natalo-200 border-t-natalo-600 animate-spin" />
-  );
+async function fetchWilayah(path) {
+  const response = await fetch(`/api/wilayah/${path}`, { cache: "force-cache" });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error ?? "Gagal mengambil data wilayah.");
+  return getData(payload);
 }
 
 function Field({ label, name, value, onChange, type = "text", required = true, children, ...props }) {
@@ -75,58 +55,43 @@ function Field({ label, name, value, onChange, type = "text", required = true, c
   );
 }
 
-function RegionSelect({
+function SelectField({
   label,
   value,
   onChange,
-  items,
+  options,
+  placeholder,
   disabled,
   loading,
-  placeholder,
-  search,
-  onSearch,
+  required = true,
 }) {
-  const filtered = useMemo(() => {
-    const term = (search ?? "").trim().toLowerCase();
-    if (!term) return items;
-    return items.filter((item) => getName(item).toLowerCase().includes(term));
-  }, [items, search]);
-
   return (
     <div>
       <label className="block text-sm font-bold text-zinc-800">
         {label}
-        <span className="ml-1 text-natalo-600">*</span>
+        {required && <span className="ml-1 text-natalo-600">*</span>}
       </label>
-      {onSearch && (
-        <input
-          type="search"
-          value={search}
-          onChange={(event) => onSearch(event.target.value)}
-          placeholder={`Cari ${label.toLowerCase()}...`}
-          disabled={disabled}
-          className="mt-2 block w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-natalo-400 focus:ring-4 focus:ring-natalo-100 disabled:bg-zinc-50"
-        />
-      )}
       <div className="relative mt-2">
         <select
-          required
+          required={required}
           value={value}
-          onChange={onChange}
+          onChange={(event) => onChange(event.target.value)}
           disabled={disabled || loading}
-          className="block w-full appearance-none rounded-xl border border-zinc-200 bg-white px-4 py-3 pr-11 text-sm outline-none transition focus:border-natalo-400 focus:ring-4 focus:ring-natalo-100 disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400"
+          className="block w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 pr-10 text-sm outline-none transition focus:border-natalo-400 focus:ring-4 focus:ring-natalo-100 disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400"
         >
           <option value="">{loading ? "Memuat data..." : placeholder}</option>
-          {filtered.map((item) => (
-            <option key={getCode(item)} value={regionValue(item)}>
-              {getName(item)}
-            </option>
-          ))}
+          {options.map((option) => {
+            const code = getRegionCode(option);
+            const name = getRegionName(option);
+            return (
+              <option key={code || name} value={code}>
+                {name}
+              </option>
+            );
+          })}
         </select>
-        {loading ? (
-          <Spinner />
-        ) : (
-          <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400">⌄</span>
+        {loading && (
+          <span className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin rounded-full border-2 border-zinc-200 border-t-natalo-600" />
         )}
       </div>
     </div>
@@ -138,168 +103,192 @@ export default function FormAlamat({ mode = "create", initialAddress = null }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
+  const [form, setForm] = useState({
+    recipient: initialAddress?.recipient ?? "",
+    phone: initialAddress?.phone ?? "",
+    address: initialAddress?.address ?? "",
+    city: initialAddress?.city ?? "",
+    postalCode: initialAddress?.postalCode ?? "",
+    label: initialAddress?.label ?? "Rumah",
+    isMain: Boolean(initialAddress?.isMain),
+  });
+
   const [provinsi, setProvinsi] = useState([]);
   const [kota, setKota] = useState([]);
   const [kecamatan, setKecamatan] = useState([]);
   const [kelurahan, setKelurahan] = useState([]);
 
-  const [loadingProvinsi, setLoadingProvinsi] = useState(false);
-  const [loadingKota, setLoadingKota] = useState(false);
-  const [loadingKecamatan, setLoadingKecamatan] = useState(false);
-  const [loadingKelurahan, setLoadingKelurahan] = useState(false);
-
   const [selectedProvinsi, setSelectedProvinsi] = useState("");
   const [selectedKota, setSelectedKota] = useState("");
   const [selectedKecamatan, setSelectedKecamatan] = useState("");
   const [selectedKelurahan, setSelectedKelurahan] = useState("");
-  const [kodePos, setKodePos] = useState(initialAddress?.postalCode ?? "");
 
-  const [searchKota, setSearchKota] = useState("");
-  const [searchKecamatan, setSearchKecamatan] = useState("");
+  const [loadingProvinsi, setLoadingProvinsi] = useState(true);
+  const [loadingKota, setLoadingKota] = useState(false);
+  const [loadingKecamatan, setLoadingKecamatan] = useState(false);
+  const [loadingKelurahan, setLoadingKelurahan] = useState(false);
 
-  const [form, setForm] = useState({
-    recipientName: initialAddress?.recipientName ?? "",
-    phone: initialAddress?.phone ?? "",
-    address: initialAddress?.address ?? "",
-    label: initialAddress?.label ?? "Rumah",
-    isMain: Boolean(initialAddress?.isMain),
-  });
-
-  useEffect(() => {
-    setLoadingProvinsi(true);
-    fetch(`${API_BASE}/provinces.json`)
-      .then((response) => response.json())
-      .then((data) => setProvinsi(getItems(data)))
-      .catch(() => setError("Gagal memuat data provinsi. Coba muat ulang halaman."))
-      .finally(() => setLoadingProvinsi(false));
-  }, []);
-
-  useEffect(() => {
-    if (!initialAddress || provinsi.length === 0 || selectedProvinsi) return;
-    const found = provinsi.find((item) => {
-      return getCode(item) === initialAddress.provinceCode || getName(item) === initialAddress.province;
-    });
-    if (found) setSelectedProvinsi(regionValue(found));
-  }, [initialAddress, provinsi, selectedProvinsi]);
-
-  useEffect(() => {
-    const selected = parseRegion(selectedProvinsi);
-    setKota([]);
-    setKecamatan([]);
-    setKelurahan([]);
-    setSelectedKota("");
-    setSelectedKecamatan("");
-    setSelectedKelurahan("");
-    setSearchKota("");
-    setSearchKecamatan("");
-    if (!selected.code) return;
-    setLoadingKota(true);
-    fetch(`${API_BASE}/regencies/${selected.code}.json`)
-      .then((response) => response.json())
-      .then((data) => setKota(getItems(data)))
-      .catch(() => setError("Gagal memuat kota/kabupaten."))
-      .finally(() => setLoadingKota(false));
-  }, [selectedProvinsi]);
-
-  useEffect(() => {
-    if (!initialAddress || kota.length === 0 || selectedKota) return;
-    const found = kota.find((item) => {
-      return getCode(item) === initialAddress.cityCode || getName(item) === initialAddress.city;
-    });
-    if (found) setSelectedKota(regionValue(found));
-  }, [initialAddress, kota, selectedKota]);
-
-  useEffect(() => {
-    const selected = parseRegion(selectedKota);
-    setKecamatan([]);
-    setKelurahan([]);
-    setSelectedKecamatan("");
-    setSelectedKelurahan("");
-    setSearchKecamatan("");
-    if (!selected.code) return;
-    setLoadingKecamatan(true);
-    fetch(`${API_BASE}/districts/${selected.code}.json`)
-      .then((response) => response.json())
-      .then((data) => setKecamatan(getItems(data)))
-      .catch(() => setError("Gagal memuat kecamatan."))
-      .finally(() => setLoadingKecamatan(false));
-  }, [selectedKota]);
-
-  useEffect(() => {
-    if (!initialAddress || kecamatan.length === 0 || selectedKecamatan) return;
-    const found = kecamatan.find((item) => {
-      return getCode(item) === initialAddress.districtCode || getName(item) === initialAddress.district;
-    });
-    if (found) setSelectedKecamatan(regionValue(found));
-  }, [initialAddress, kecamatan, selectedKecamatan]);
-
-  useEffect(() => {
-    const selected = parseRegion(selectedKecamatan);
-    setKelurahan([]);
-    setSelectedKelurahan("");
-    if (!selected.code) return;
-    setLoadingKelurahan(true);
-    fetch(`${API_BASE}/villages/${selected.code}.json`)
-      .then((response) => response.json())
-      .then((data) => setKelurahan(getItems(data)))
-      .catch(() => setError("Gagal memuat kelurahan."))
-      .finally(() => setLoadingKelurahan(false));
-  }, [selectedKecamatan]);
-
-  useEffect(() => {
-    if (!initialAddress || kelurahan.length === 0 || selectedKelurahan) return;
-    const found = kelurahan.find((item) => {
-      return getCode(item) === initialAddress.villageCode || getName(item) === initialAddress.village;
-    });
-    if (found) setSelectedKelurahan(regionValue(found));
-  }, [initialAddress, kelurahan, selectedKelurahan]);
+  const [kotaSearch, setKotaSearch] = useState("");
+  const [kecamatanSearch, setKecamatanSearch] = useState("");
 
   function updateForm(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  function handleKelurahanChange(event) {
-    const value = event.target.value;
-    setSelectedKelurahan(value);
-    const selected = parseRegion(value);
-    if (selected.postalCode) setKodePos(selected.postalCode);
-  }
+  useEffect(() => {
+    let active = true;
+    setLoadingProvinsi(true);
+    fetchWilayah("provinces.json")
+      .then((items) => {
+        if (active) setProvinsi(items);
+      })
+      .catch((err) => {
+        if (active) setError(err instanceof Error ? err.message : "Gagal memuat provinsi.");
+      })
+      .finally(() => {
+        if (active) setLoadingProvinsi(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    setSelectedKota("");
+    setSelectedKecamatan("");
+    setSelectedKelurahan("");
+    setKota([]);
+    setKecamatan([]);
+    setKelurahan([]);
+    setKotaSearch("");
+    setKecamatanSearch("");
+
+    if (!selectedProvinsi) return;
+
+    let active = true;
+    setLoadingKota(true);
+    fetchWilayah(`regencies/${selectedProvinsi}.json`)
+      .then((items) => {
+        if (active) setKota(items);
+      })
+      .catch((err) => {
+        if (active) setError(err instanceof Error ? err.message : "Gagal memuat kota/kabupaten.");
+      })
+      .finally(() => {
+        if (active) setLoadingKota(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedProvinsi]);
+
+  useEffect(() => {
+    setSelectedKecamatan("");
+    setSelectedKelurahan("");
+    setKecamatan([]);
+    setKelurahan([]);
+    setKecamatanSearch("");
+
+    if (!selectedKota) return;
+
+    let active = true;
+    setLoadingKecamatan(true);
+    fetchWilayah(`districts/${selectedKota}.json`)
+      .then((items) => {
+        if (active) setKecamatan(items);
+      })
+      .catch((err) => {
+        if (active) setError(err instanceof Error ? err.message : "Gagal memuat kecamatan.");
+      })
+      .finally(() => {
+        if (active) setLoadingKecamatan(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedKota]);
+
+  useEffect(() => {
+    setSelectedKelurahan("");
+    setKelurahan([]);
+
+    if (!selectedKecamatan) return;
+
+    let active = true;
+    setLoadingKelurahan(true);
+    fetchWilayah(`villages/${selectedKecamatan}.json`)
+      .then((items) => {
+        if (active) setKelurahan(items);
+      })
+      .catch((err) => {
+        if (active) setError(err instanceof Error ? err.message : "Gagal memuat kelurahan.");
+      })
+      .finally(() => {
+        if (active) setLoadingKelurahan(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedKecamatan]);
+
+  const selectedNames = useMemo(() => {
+    const province = provinsi.find((item) => getRegionCode(item) === selectedProvinsi);
+    const regency = kota.find((item) => getRegionCode(item) === selectedKota);
+    const district = kecamatan.find((item) => getRegionCode(item) === selectedKecamatan);
+    const village = kelurahan.find((item) => getRegionCode(item) === selectedKelurahan);
+    return {
+      province: getRegionName(province),
+      regency: getRegionName(regency),
+      district: getRegionName(district),
+      village: getRegionName(village),
+      postalCode: getPostalCode(village),
+    };
+  }, [provinsi, kota, kecamatan, kelurahan, selectedProvinsi, selectedKota, selectedKecamatan, selectedKelurahan]);
+
+  useEffect(() => {
+    if (!selectedKelurahan) return;
+    const parts = [
+      selectedNames.village,
+      selectedNames.district,
+      selectedNames.regency,
+      selectedNames.province,
+    ].filter(Boolean);
+
+    setForm((current) => ({
+      ...current,
+      city: parts.join(", "),
+      postalCode: selectedNames.postalCode || current.postalCode,
+    }));
+  }, [selectedKelurahan, selectedNames]);
+
+  const filteredKota = useMemo(() => {
+    const q = kotaSearch.trim().toLowerCase();
+    if (!q) return kota;
+    return kota.filter((item) => getRegionName(item).toLowerCase().includes(q));
+  }, [kota, kotaSearch]);
+
+  const filteredKecamatan = useMemo(() => {
+    const q = kecamatanSearch.trim().toLowerCase();
+    if (!q) return kecamatan;
+    return kecamatan.filter((item) => getRegionName(item).toLowerCase().includes(q));
+  }, [kecamatan, kecamatanSearch]);
 
   async function handleSubmit(event) {
     event.preventDefault();
     setError("");
+    setSubmitting(true);
 
-    // Ambil koordinat dari hidden input AddressPinpointPicker
     const formData = new FormData(event.currentTarget);
     const latitudeRaw = String(formData.get("latitude") || "").trim();
     const longitudeRaw = String(formData.get("longitude") || "").trim();
     const pinpointAddress = String(formData.get("pinpointAddress") || "").trim() || null;
     const streetName = String(formData.get("streetName") || "").trim() || null;
 
-    // Pinpoint GPS WAJIB untuk alamat baru. Untuk edit, opsional
-    // (alamat lama mungkin belum punya pinpoint — tidak boleh di-block).
-    if (mode !== "edit" && (!latitudeRaw || !longitudeRaw)) {
-      setError("Pinpoint titik GPS wajib diisi. Klik tombol \"Tambah Pinpoint\" untuk menentukan lokasi.");
-      return;
-    }
-
-    setSubmitting(true);
-
-    const province = parseRegion(selectedProvinsi);
-    const city = parseRegion(selectedKota);
-    const district = parseRegion(selectedKecamatan);
-    const village = parseRegion(selectedKelurahan);
-
     const latitude = latitudeRaw ? Number(latitudeRaw) : null;
     const longitude = longitudeRaw ? Number(longitudeRaw) : null;
 
     const payload = {
       ...form,
-      province,
-      city,
-      district,
-      village,
-      postalCode: kodePos.trim(),
       latitude: Number.isFinite(latitude) ? latitude : null,
       longitude: Number.isFinite(longitude) ? longitude : null,
       pinpointAddress,
@@ -337,9 +326,9 @@ export default function FormAlamat({ mode = "create", initialAddress = null }) {
       <div className="grid gap-4 sm:grid-cols-2">
         <Field
           label="Nama Penerima"
-          name="recipientName"
-          value={form.recipientName}
-          onChange={(event) => updateForm("recipientName", event.target.value)}
+          name="recipient"
+          value={form.recipient}
+          onChange={(event) => updateForm("recipient", event.target.value)}
           placeholder="Nama penerima paket"
         />
         <Field
@@ -352,7 +341,7 @@ export default function FormAlamat({ mode = "create", initialAddress = null }) {
         />
       </div>
 
-      <Field label="Alamat Lengkap" name="address" required={true}>
+      <Field label="Alamat Lengkap" name="address">
         <textarea
           name="address"
           required
@@ -364,86 +353,107 @@ export default function FormAlamat({ mode = "create", initialAddress = null }) {
         />
       </Field>
 
+      {initialAddress?.city && mode === "edit" && (
+        <div className="rounded-2xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+          Wilayah tersimpan: <span className="font-semibold">{initialAddress.city}</span>
+        </div>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2">
-        <RegionSelect
+        <SelectField
           label="Provinsi"
           value={selectedProvinsi}
-          onChange={(event) => setSelectedProvinsi(event.target.value)}
-          items={provinsi}
-          loading={loadingProvinsi}
-          disabled={false}
+          onChange={setSelectedProvinsi}
+          options={provinsi}
           placeholder="Pilih provinsi"
+          loading={loadingProvinsi}
+          required={mode !== "edit"}
         />
-        <RegionSelect
-          label="Kota / Kabupaten"
-          value={selectedKota}
-          onChange={(event) => setSelectedKota(event.target.value)}
-          items={kota}
-          loading={loadingKota}
-          disabled={!selectedProvinsi}
-          placeholder={!selectedProvinsi ? "Pilih provinsi dulu" : "Pilih kota/kabupaten"}
-          search={searchKota}
-          onSearch={setSearchKota}
-        />
-      </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <RegionSelect
-          label="Kecamatan"
-          value={selectedKecamatan}
-          onChange={(event) => setSelectedKecamatan(event.target.value)}
-          items={kecamatan}
-          loading={loadingKecamatan}
-          disabled={!selectedKota}
-          placeholder={!selectedKota ? "Pilih kota dulu" : "Pilih kecamatan"}
-          search={searchKecamatan}
-          onSearch={setSearchKecamatan}
-        />
-        <RegionSelect
+        <div>
+          <input
+            type="search"
+            value={kotaSearch}
+            onChange={(event) => setKotaSearch(event.target.value)}
+            disabled={!selectedProvinsi || loadingKota}
+            placeholder="Cari kota/kabupaten"
+            className="mb-2 block w-full rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm outline-none transition focus:border-natalo-400 focus:ring-4 focus:ring-natalo-100 disabled:bg-zinc-50"
+          />
+          <SelectField
+            label="Kota / Kabupaten"
+            value={selectedKota}
+            onChange={setSelectedKota}
+            options={filteredKota}
+            placeholder="Pilih kota/kabupaten"
+            disabled={!selectedProvinsi}
+            loading={loadingKota}
+            required={mode !== "edit"}
+          />
+        </div>
+
+        <div>
+          <input
+            type="search"
+            value={kecamatanSearch}
+            onChange={(event) => setKecamatanSearch(event.target.value)}
+            disabled={!selectedKota || loadingKecamatan}
+            placeholder="Cari kecamatan"
+            className="mb-2 block w-full rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm outline-none transition focus:border-natalo-400 focus:ring-4 focus:ring-natalo-100 disabled:bg-zinc-50"
+          />
+          <SelectField
+            label="Kecamatan"
+            value={selectedKecamatan}
+            onChange={setSelectedKecamatan}
+            options={filteredKecamatan}
+            placeholder="Pilih kecamatan"
+            disabled={!selectedKota}
+            loading={loadingKecamatan}
+            required={mode !== "edit"}
+          />
+        </div>
+
+        <SelectField
           label="Kelurahan"
           value={selectedKelurahan}
-          onChange={handleKelurahanChange}
-          items={kelurahan}
-          loading={loadingKelurahan}
+          onChange={setSelectedKelurahan}
+          options={kelurahan}
+          placeholder="Pilih kelurahan"
           disabled={!selectedKecamatan}
-          placeholder={!selectedKecamatan ? "Pilih kecamatan dulu" : "Pilih kelurahan"}
+          loading={loadingKelurahan}
+          required={mode !== "edit"}
         />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field
-          label="Kode Pos"
-          name="postalCode"
-          value={kodePos}
-          onChange={(event) => setKodePos(event.target.value)}
-          placeholder="Otomatis dari kelurahan"
-          inputMode="numeric"
-        />
-        <Field label="Label Alamat" name="label" required={false}>
-          <select
-            name="label"
-            value={form.label}
-            onChange={(event) => updateForm("label", event.target.value)}
-            className="mt-2 block w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-natalo-400 focus:ring-4 focus:ring-natalo-100"
-          >
-            {LABELS.map((label) => (
-              <option key={label} value={label}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </Field>
-      </div>
+      <Field
+        label="Kode Pos"
+        name="postalCode"
+        value={form.postalCode}
+        onChange={(event) => updateForm("postalCode", event.target.value)}
+        placeholder="Otomatis setelah pilih kelurahan, bisa diedit"
+        inputMode="numeric"
+      />
+
+      <input type="hidden" name="city" value={form.city} />
+
+      <Field label="Label Alamat" name="label" required={false}>
+        <select
+          name="label"
+          value={form.label}
+          onChange={(event) => updateForm("label", event.target.value)}
+          className="mt-2 block w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-natalo-400 focus:ring-4 focus:ring-natalo-100"
+        >
+          {LABELS.map((label) => (
+            <option key={label} value={label}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </Field>
 
       <div>
-        <p className="text-sm font-bold text-zinc-800">
-          Pinpoint Lokasi GPS
-          {mode !== "edit" && <span className="ml-1 text-natalo-600">*</span>}
-        </p>
+        <p className="text-sm font-bold text-zinc-800">Pinpoint Lokasi GPS</p>
         <p className="mt-1 text-xs text-zinc-500">
-          {mode !== "edit"
-            ? "Wajib diisi. Pin titik tepat agar kurir mudah menemukan alamatmu."
-            : "Pin titik tepat agar kurir mudah menemukan alamatmu."}
+          Opsional. Pin titik tepat agar kurir lebih mudah menemukan alamatmu.
         </p>
         <div className="mt-2">
           <AddressPinpointPicker

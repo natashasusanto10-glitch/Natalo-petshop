@@ -3,7 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
 
 const STATUS_LABELS: Record<string, string> = {
-  PENDING: "Menunggu",
+  NEED_PACKING: "Siap packing",
+  PENDING: "Order Baru",
+  PAID: "Sudah Dibayar",
   PROCESSING: "Diproses",
   SHIPPED: "Dikirim",
   DELIVERED: "Selesai",
@@ -12,7 +14,9 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
+  NEED_PACKING: "bg-emerald-100 text-emerald-700",
   PENDING: "bg-amber-100 text-amber-700",
+  PAID: "bg-emerald-100 text-emerald-700",
   PROCESSING: "bg-natalo-100 text-natalo-700",
   SHIPPED: "bg-indigo-100 text-indigo-700",
   DELIVERED: "bg-emerald-100 text-emerald-700",
@@ -21,6 +25,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const PAY_LABELS: Record<string, string> = {
+  WAITING: "Menunggu bayar",
   UNPAID: "Belum bayar",
   PENDING: "Menunggu",
   PAID: "Lunas",
@@ -30,6 +35,7 @@ const PAY_LABELS: Record<string, string> = {
 };
 
 const PAY_COLORS: Record<string, string> = {
+  WAITING: "bg-amber-100 text-amber-700",
   UNPAID: "bg-red-100 text-red-700",
   PENDING: "bg-amber-100 text-amber-700",
   PAID: "bg-green-100 text-green-700",
@@ -49,10 +55,22 @@ export default async function AdminOrdersPage({
   const page = Math.max(1, parseInt(pageStr || "1", 10));
 
   const where: Record<string, unknown> = {};
-  if (status && status !== "ALL") where.status = status;
-  if (pay && pay !== "ALL") where.paymentStatus = pay;
+  if (status === "NEED_PACKING") {
+    where.status = { in: ["PENDING", "PAID", "PROCESSING"] };
+    where.paymentStatus = "PAID";
+  } else if (status && status !== "ALL") {
+    where.status = status;
+  }
 
-  const [orders, total, statusCounts] = await Promise.all([
+  if (status === "NEED_PACKING") {
+    // Filter khusus ini sudah mendefinisikan status dan pembayaran.
+  } else if (pay === "WAITING") {
+    where.paymentStatus = { in: ["UNPAID", "PENDING"] };
+  } else if (pay && pay !== "ALL") {
+    where.paymentStatus = pay;
+  }
+
+  const [orders, total, statusCounts, needPackingCount] = await Promise.all([
     prisma.order.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -62,6 +80,9 @@ export default async function AdminOrdersPage({
     }),
     prisma.order.count({ where }),
     prisma.order.groupBy({ by: ["status"], _count: true }),
+    prisma.order.count({
+      where: { paymentStatus: "PAID", status: { in: ["PENDING", "PAID", "PROCESSING"] } },
+    }),
   ]);
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
@@ -86,7 +107,9 @@ export default async function AdminOrdersPage({
 
   const tabs = [
     { key: "ALL", label: "Semua", count: totalCount },
-    { key: "PENDING", label: "Menunggu", count: countMap["PENDING"] ?? 0 },
+    { key: "NEED_PACKING", label: "Siap packing", count: needPackingCount },
+    { key: "PENDING", label: "Order Baru", count: countMap["PENDING"] ?? 0 },
+    { key: "PAID", label: "Sudah Dibayar", count: countMap["PAID"] ?? 0 },
     { key: "PROCESSING", label: "Diproses", count: countMap["PROCESSING"] ?? 0 },
     { key: "SHIPPED", label: "Dikirim", count: countMap["SHIPPED"] ?? 0 },
     { key: "DELIVERED", label: "Selesai", count: countMap["DELIVERED"] ?? 0 },
@@ -137,7 +160,7 @@ export default async function AdminOrdersPage({
       {/* Payment filter */}
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <span className="text-xs font-semibold text-zinc-500">Pembayaran:</span>
-        {(["ALL", "UNPAID", "PENDING", "PAID", "FAILED", "EXPIRED"] as const).map((p) => (
+        {(["ALL", "WAITING", "UNPAID", "PENDING", "PAID", "FAILED", "EXPIRED"] as const).map((p) => (
           <Link
             key={p}
             href={buildUrl({ pay: p })}

@@ -7,7 +7,7 @@ import { LogoutButton } from "./LogoutButton";
 
 const NAV_ITEMS = [
   {
-    href: "/admin",
+    href: "/admin/dashboard",
     label: "Dashboard",
     exact: true,
     icon: (
@@ -78,6 +78,15 @@ const NAV_ITEMS = [
         <circle cx="9" cy="7" r="4" />
         <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
         <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+      </svg>
+    ),
+  },
+  {
+    href: "/admin/chat",
+    label: "Chat",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5">
+        <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
       </svg>
     ),
   },
@@ -197,18 +206,6 @@ export function AdminNav({ children }: { children: React.ReactNode }) {
           <NavLinks />
         </div>
         <div className="p-4 border-t border-zinc-100">
-          <Link
-            href="/products"
-            target="_blank"
-            className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 transition-colors mb-1"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4">
-              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-              <polyline points="15 3 21 3 21 9" />
-              <line x1="10" y1="14" x2="21" y2="3" />
-            </svg>
-            Lihat Toko
-          </Link>
           <LogoutButton
             redirectTo="/admin/login"
             className="w-full justify-center"
@@ -248,19 +245,6 @@ export function AdminNav({ children }: { children: React.ReactNode }) {
           <NavLinks onNavigate={() => setOpen(false)} />
         </div>
         <div className="p-4 border-t border-zinc-100 space-y-2">
-          <Link
-            href="/products"
-            target="_blank"
-            onClick={() => setOpen(false)}
-            className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 transition-colors"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4">
-              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-              <polyline points="15 3 21 3 21 9" />
-              <line x1="10" y1="14" x2="21" y2="3" />
-            </svg>
-            Lihat Toko
-          </Link>
           <LogoutButton redirectTo="/admin/login" className="w-full justify-center" />
         </div>
       </aside>

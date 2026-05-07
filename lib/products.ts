@@ -33,6 +33,7 @@ export type StoreProduct = {
   description: string;
   price: number;
   discountPrice: number | null;
+  memberPrice?: number | null;
   stock: number;
   weightGram: number;
   imageUrl: string | null;
@@ -45,7 +46,22 @@ export type StoreProduct = {
   variants?: StoreProductVariant[];
 };
 
-export async function getProducts(opts?: { category?: string; search?: string }): Promise<StoreProduct[]> {
+const variantInclude = {
+  variantAttrs: {
+    orderBy: { position: "asc" as const },
+    include: { options: { orderBy: { position: "asc" as const } } },
+  },
+  variants: {
+    where: { deletedAt: null },
+    include: { options: { select: { optionId: true } } },
+    orderBy: { createdAt: "asc" as const },
+  },
+};
+
+export async function getProducts(opts?: {
+  category?: string;
+  search?: string;
+}): Promise<StoreProduct[]> {
   const { category, search } = opts ?? {};
   try {
     const products = await prisma.product.findMany({
@@ -64,7 +80,10 @@ export async function getProducts(opts?: { category?: string; search?: string })
       },
     });
 
-    if (!products.length) return sampleProducts;
+    if (!products.length) {
+      if (category || search) return [];
+      return sampleProducts;
+    }
 
     return products.map((p) => {
       if (p.hasVariants && p.variants.length > 0) {
@@ -77,6 +96,7 @@ export async function getProducts(opts?: { category?: string; search?: string })
           description: p.description,
           price: Math.min(...prices),
           discountPrice: null,
+          memberPrice: p.memberPrice,
           stock: totalStock,
           weightGram: p.weightGram,
           imageUrl: p.imageUrl,
@@ -93,6 +113,7 @@ export async function getProducts(opts?: { category?: string; search?: string })
         description: p.description,
         price: p.price,
         discountPrice: p.discountPrice,
+        memberPrice: p.memberPrice,
         stock: p.stock,
         weightGram: p.weightGram,
         imageUrl: p.imageUrl,
@@ -102,9 +123,6 @@ export async function getProducts(opts?: { category?: string; search?: string })
         categorySlug: p.category?.slug ?? null,
       };
     });
-    if (products.length) return products;
-    if (category || search) return [];
-    return sampleProducts;
   } catch {
     if (category || search) return [];
     return sampleProducts;
@@ -120,8 +138,9 @@ export async function getProductBySlug(slug: string): Promise<StoreProduct | nul
     if (!p) return sampleProducts.find((item) => item.slug === slug) ?? null;
 
     if (p.hasVariants && p.variants.length > 0) {
-      const prices = p.variants.filter((v) => v.isActive).map((v) => v.price);
-      const totalStock = p.variants.filter((v) => v.isActive).reduce((s, v) => s + v.stock, 0);
+      const activeVariants = p.variants.filter((v) => v.isActive);
+      const prices = activeVariants.map((v) => v.price);
+      const totalStock = activeVariants.reduce((s, v) => s + v.stock, 0);
       return {
         id: p.id,
         name: p.name,
@@ -129,6 +148,7 @@ export async function getProductBySlug(slug: string): Promise<StoreProduct | nul
         description: p.description,
         price: prices.length ? Math.min(...prices) : p.price,
         discountPrice: null,
+        memberPrice: p.memberPrice,
         stock: totalStock,
         weightGram: p.weightGram,
         imageUrl: p.imageUrl,
@@ -136,8 +156,8 @@ export async function getProductBySlug(slug: string): Promise<StoreProduct | nul
         avgRating: p.avgRating,
         reviewCount: p.reviewCount,
         categorySlug: p.category?.slug ?? null,
-        variantAttrs: p.variantAttrs,
-        variants: p.variants as StoreProductVariant[],
+        variantAttrs: p.variantAttrs as unknown as StoreVariantAttribute[],
+        variants: p.variants as unknown as StoreProductVariant[],
       };
     }
 
@@ -148,6 +168,7 @@ export async function getProductBySlug(slug: string): Promise<StoreProduct | nul
       description: p.description,
       price: p.price,
       discountPrice: p.discountPrice,
+      memberPrice: p.memberPrice,
       stock: p.stock,
       weightGram: p.weightGram,
       imageUrl: p.imageUrl,

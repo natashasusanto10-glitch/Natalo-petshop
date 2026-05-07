@@ -41,25 +41,26 @@ export function WhatsAppFloat() {
     sessionStorage.setItem("wa-tooltip-dismissed", "1");
   }
 
-  // Hide di route tertentu
+  // Hide di route tertentu (cart & PDP punya CTA bottom-bar yang akan overlap)
   const hideOn = [
     "/admin",
     "/checkout",
+    "/cart",
     "/member/login",
     "/member/register",
     "/member/forgot-password",
     "/member/reset-password",
   ];
-  const shouldHide = hideOn.some(
-    (p) => pathname === p || pathname.startsWith(`${p}/`)
-  );
+  const shouldHide =
+    hideOn.some((p) => pathname === p || pathname.startsWith(`${p}/`)) ||
+    pathname.startsWith("/products/"); // PDP punya WA button + sticky CTA
 
   if (shouldHide || !PHONE) return null;
 
   const href = `https://wa.me/${PHONE.replace(/^\+/, "")}?text=${encodeURIComponent(DEFAULT_MESSAGE)}`;
 
   return (
-    <div className="fixed bottom-5 right-5 z-40 flex flex-col items-end gap-2 sm:bottom-6 sm:right-6">
+    <div className="fixed bottom-[86px] right-4 z-40 flex flex-col items-end gap-2 md:bottom-6 md:right-6">
       {/* Tooltip popup */}
       {showTooltip && !tooltipDismissed && (
         <div className="relative max-w-[260px] rounded-2xl bg-white px-4 py-3 shadow-xl ring-1 ring-zinc-200 animate-in slide-in-from-bottom-2 fade-in duration-300">

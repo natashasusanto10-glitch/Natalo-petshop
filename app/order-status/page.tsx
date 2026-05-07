@@ -1,9 +1,35 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { formatRupiah } from "@/lib/format";
 import { PaymentProofUpload } from "@/components/PaymentProofUpload";
 import { PushSubscribe } from "@/components/PushSubscribe";
+
+function useCopyToast() {
+  const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => {
+    if (!msg) return;
+    const id = setTimeout(() => setMsg(null), 2000);
+    return () => clearTimeout(id);
+  }, [msg]);
+  function copy(value: string, label: string) {
+    navigator.clipboard.writeText(value).then(() => setMsg(label)).catch(() => {});
+  }
+  return { msg, copy };
+}
+
+const BANK_ACCOUNTS: Record<string, { bankName: string; accountNumber: string; accountName: string }> = {
+  BCA_NATASHA: {
+    bankName: "BCA",
+    accountNumber: "1234567890",
+    accountName: "Natasha Lim",
+  },
+  BCA_NL_PET: {
+    bankName: "BCA",
+    accountNumber: "0987654321",
+    accountName: "NL Pet Shop",
+  },
+};
 
 type OrderItem = { name: string; quantity: number; price: number };
 
@@ -81,9 +107,9 @@ export default function OrderStatusPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-10">
-      <h1 className="text-3xl font-black tracking-tight text-zinc-950">Cek Status Pesanan</h1>
-      <p className="mt-2 text-zinc-600">Masukkan nomor order dan email untuk melihat status pesanan kamu.</p>
+    <div className="mx-auto max-w-3xl px-4 py-4 md:py-10">
+      <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">Cek Status Pesanan</h1>
+      <p className="mt-2 text-sm text-zinc-600 md:text-base">Masukkan nomor order dan email untuk melihat status pesanan kamu.</p>
 
       <form onSubmit={handleSearch} className="mt-8 space-y-3">
         <input
@@ -152,6 +178,7 @@ function CourierTrackingLink({ courierCode, trackingNumber }: { courierCode: str
 }
 
 function OrderDetail({ order }: { order: Order }) {
+  const { msg: copyMsg, copy } = useCopyToast();
   // Prioritas WA: NEXT_PUBLIC_WA_NUMBER baru → fallback ke WHATSAPP_NUMBER lama
   const waNumber =
     process.env.NEXT_PUBLIC_WA_NUMBER ??
@@ -172,7 +199,7 @@ function OrderDetail({ order }: { order: Order }) {
 🧾 No. Pesanan : ${order.orderNumber}
 👤 Nama        : ${order.customerName}
 💰 Total TF    : Rp${totalTransfer.toLocaleString("id-ID")}
-🏦 Bank        : ${bank.bank} ${bank.number}
+🏦 Bank        : ${bank.bankName} ${bank.accountNumber}
 📅 Tanggal     : ${tanggal}
 Mohon dikonfirmasi. Terima kasih!`
       : `Halo Natalo Petshop, saya ingin konfirmasi pembayaran order ${order.orderNumber}.`
@@ -180,6 +207,11 @@ Mohon dikonfirmasi. Terima kasih!`
 
   return (
     <div className="mt-8 space-y-5">
+      {copyMsg && (
+        <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-full bg-zinc-900 px-4 py-2 text-xs font-bold text-white shadow-lg md:bottom-6">
+          ✓ {copyMsg}
+        </div>
+      )}
       <PushSubscribe />
 
       <div className="rounded-3xl border border-zinc-200 p-5">
@@ -217,7 +249,7 @@ Mohon dikonfirmasi. Terima kasih!`
         <p className="font-bold text-zinc-950">Produk</p>
         <div className="mt-4 space-y-2">
           {order.items.map((item, i) => (
-            <div key={i} className="flex justify-between text-sm">
+            <div key={`${item.name}-${i}`} className="flex justify-between text-sm">
               <span>{item.name} × {item.quantity}</span>
               <span>{formatRupiah(item.price * item.quantity)}</span>
             </div>
@@ -256,24 +288,21 @@ Mohon dikonfirmasi. Terima kasih!`
             <div className="mt-3 rounded-xl bg-white p-4">
               <p className="text-xs text-zinc-500">Bank Tujuan</p>
               <p className="mt-1 text-lg font-black text-zinc-950">
-                Bank {bank.bank}
+                Bank {bank.bankName}
               </p>
               <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-zinc-50 px-3 py-2">
                 <p className="font-mono text-base font-bold tracking-wide text-zinc-950">
-                  {bank.number}
+                  {bank.accountNumber}
                 </p>
                 <button
                   type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(bank.number);
-                    alert("No rekening tersalin!");
-                  }}
+                  onClick={() => copy(bank.accountNumber, "No rekening tersalin")}
                   className="text-xs font-bold text-natalo-700 hover:underline"
                 >
                   📋 Salin
                 </button>
               </div>
-              <p className="mt-1 text-xs text-zinc-500">a/n {bank.name}</p>
+              <p className="mt-1 text-xs text-zinc-500">a/n {bank.accountName}</p>
             </div>
 
             {/* Total dengan kode unik */}
@@ -285,10 +314,7 @@ Mohon dikonfirmasi. Terima kasih!`
                 </p>
                 <button
                   type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(String(totalTransfer));
-                    alert("Total tersalin!");
-                  }}
+                  onClick={() => copy(String(totalTransfer), "Total tersalin")}
                   className="text-xs font-bold text-natalo-700 hover:underline"
                 >
                   📋 Salin

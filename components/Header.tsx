@@ -9,13 +9,38 @@ import { WishlistCount } from "./WishlistButton";
 const NAV_LINKS = [
   { href: "/", label: "Beranda" },
   { href: "/products", label: "Produk" },
+  { href: "/tentang-kami", label: "Tentang Kami" },
   { href: "/member", label: "Member" },
 ];
+
+type MemberProfile = {
+  name?: string;
+  email?: string | null;
+  phone?: string | null;
+};
 
 export function Header() {
   const brand = process.env.NEXT_PUBLIC_BRAND_NAME || "Pet Shop";
   const [open, setOpen] = useState(false);
+  const [member, setMember] = useState<MemberProfile | null>(null);
   const pathname = usePathname();
+
+  useEffect(() => {
+    let active = true;
+
+    fetch("/api/auth/me", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data: MemberProfile) => {
+        if (active) setMember(data.name ? data : null);
+      })
+      .catch(() => {
+        if (active) setMember(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Close on route change
   useEffect(() => {
@@ -30,16 +55,12 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-50 bg-white shadow-sm">
-      <div className="mx-auto max-w-6xl px-3 py-3 sm:px-4 sm:py-4">
-        {/* Top row: logo + nav + actions */}
-        <div className="flex items-center justify-between gap-3">
-          {/* Logo */}
-          <Link href="/" className="flex min-w-0 items-center gap-2">
-            <span className="text-2xl">🐾</span>
-            <span className="truncate text-sm font-bold text-gray-900 sm:text-base">
-              {brand}
-            </span>
-          </Link>
+      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
+        {/* Logo */}
+        <Link href="/" className="flex items-center gap-2">
+          <span className="text-2xl">🐾</span>
+          <span className="font-bold text-gray-900">{brand}</span>
+        </Link>
 
         {/* Desktop nav */}
         <nav className="hidden items-center gap-8 text-sm font-medium text-gray-700 md:flex">
@@ -49,7 +70,7 @@ export function Header() {
               href={link.href}
               className={`transition hover:text-orange-500 ${pathname === link.href ? "text-orange-500 font-semibold" : ""}`}
             >
-              {link.label}
+              {link.href === "/member" && member?.name ? member.name : link.label}
             </Link>
           ))}
         </nav>
@@ -63,12 +84,33 @@ export function Header() {
             <WishlistCount />
           </Link>
           <CartCount />
-          <Link
-            href="/member"
-            className="hidden rounded-full bg-orange-500 px-5 py-2 text-sm font-semibold text-white transition hover:bg-orange-600 md:inline-flex"
-          >
-            Masuk
-          </Link>
+          {member?.name ? (
+            <Link
+              href="/member"
+              aria-label={`Akun ${member.name}`}
+              title={member.name}
+              className="hidden h-10 w-10 items-center justify-center rounded-full border border-orange-100 bg-orange-50 text-orange-600 transition hover:border-orange-200 hover:bg-orange-100 md:inline-flex"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.8}
+                className="h-5 w-5"
+                aria-hidden="true"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M20 21a8 8 0 0 0-16 0" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+            </Link>
+          ) : (
+            <Link
+              href="/member"
+              className="hidden rounded-full bg-orange-500 px-5 py-2 text-sm font-semibold text-white transition hover:bg-orange-600 md:inline-flex"
+            >
+              Masuk
+            </Link>
+          )}
           {/* Mobile hamburger */}
           <button
             onClick={() => setOpen((v) => !v)}
@@ -105,15 +147,17 @@ export function Header() {
                     : "text-gray-700 hover:bg-gray-50"
                 }`}
               >
-                {link.label}
+                {link.href === "/member" && member?.name ? member.name : link.label}
               </Link>
             ))}
-            <Link
-              href="/member"
-              className="flex w-full items-center justify-center rounded-full bg-orange-500 py-3 text-sm font-bold text-white transition hover:bg-orange-600 mt-2"
-            >
-              Masuk / Daftar Member
-            </Link>
+            {!member?.name && (
+              <Link
+                href="/member"
+                className="mt-2 flex w-full items-center justify-center rounded-full bg-orange-500 py-3 text-sm font-bold text-white transition hover:bg-orange-600"
+              >
+                Masuk / Daftar Member
+              </Link>
+            )}
           </nav>
         </div>
       )}

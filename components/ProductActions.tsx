@@ -11,6 +11,7 @@ type CartItem = {
   quantity: number;
   weightGram: number;
   imageUrl?: string | null;
+  stock?: number;
 };
 
 function getCart(): CartItem[] {
@@ -57,6 +58,7 @@ export function ProductActions({ product }: { product: StoreProduct }) {
         quantity: qty,
         weightGram: product.weightGram,
         imageUrl: product.imageUrl,
+        stock: product.stock,
       });
     }
     saveCart(cart);

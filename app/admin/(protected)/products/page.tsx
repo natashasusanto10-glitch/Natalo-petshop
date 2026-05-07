@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
 import { InlineEditCell } from "@/components/admin/InlineEditCell";
+import { VariantInlineEditCell } from "@/components/admin/VariantInlineEditCell";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 
 const PAGE_SIZE = 50;
@@ -426,13 +427,20 @@ export default async function AdminProductsPage({
                 </div>
 
                 <div className="pt-1">
-                  <InlineEditCell
-                    productId={product.id}
-                    field="price"
-                    initialValue={product.price}
-                    readOnly={product.hasVariants}
-                    readOnlyHint="Harga produk dengan varian dihitung dari varian termurah. Edit di halaman varian."
-                  />
+                  {product.hasVariants ? (
+                    <VariantInlineEditCell
+                      productId={product.id}
+                      productName={product.name}
+                      field="price"
+                      initialValue={product.price}
+                    />
+                  ) : (
+                    <InlineEditCell
+                      productId={product.id}
+                      field="price"
+                      initialValue={product.price}
+                    />
+                  )}
                   {hasDiscount && !product.hasVariants && (
                     <p className="mt-1 px-2 text-xs text-natalo-700">
                       Diskon: {formatRupiah(product.discountPrice!)}
@@ -441,13 +449,20 @@ export default async function AdminProductsPage({
                 </div>
 
                 <div className="pt-1">
-                  <InlineEditCell
-                    productId={product.id}
-                    field="stock"
-                    initialValue={product.stock}
-                    readOnly={product.hasVariants}
-                    readOnlyHint="Stok produk dengan varian = total stok semua varian. Edit di halaman varian."
-                  />
+                  {product.hasVariants ? (
+                    <VariantInlineEditCell
+                      productId={product.id}
+                      productName={product.name}
+                      field="stock"
+                      initialValue={product.stock}
+                    />
+                  ) : (
+                    <InlineEditCell
+                      productId={product.id}
+                      field="stock"
+                      initialValue={product.stock}
+                    />
+                  )}
                 </div>
 
                 <div className="flex flex-col items-stretch gap-2">

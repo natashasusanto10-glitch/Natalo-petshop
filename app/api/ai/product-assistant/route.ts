@@ -8,7 +8,7 @@ const MAX_PRODUCTS_CONTEXT = 30;
 
 export async function POST(request: NextRequest) {
   // Wajib login
-  const session = await getSession();
+  const session = await getSession("CUSTOMER");
   if (!session) {
     return NextResponse.json({ error: "Login diperlukan" }, { status: 401 });
   }

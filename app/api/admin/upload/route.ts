@@ -1,22 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { mkdir, writeFile } from "fs/promises";
-import path from "path";
-import { randomBytes } from "crypto";
 import { getSession } from "@/lib/auth";
 import { validateImageMagicBytes } from "@/lib/upload/validate-image-bytes";
+import { uploadToUT } from "@/lib/uploadthing";
 
-const ALLOWED_TYPES: Record<string, string> = {
-  "image/jpeg": "jpg",
-  "image/png": "png",
-  "image/webp": "webp",
-  "image/gif": "gif",
-};
-const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
-const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
+const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const MAX_SIZE = 5 * 1024 * 1024;
 
 export async function POST(request: NextRequest) {
-  // Hanya admin yang boleh upload
-  const session = await getSession();
+  const session = await getSession("ADMIN");
   if (!session || session.role !== "ADMIN") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -28,8 +19,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "File tidak ditemukan" }, { status: 400 });
   }
 
-  const ext = ALLOWED_TYPES[file.type];
-  if (!ext) {
+  if (!ALLOWED_TYPES.has(file.type)) {
     return NextResponse.json(
       { error: "Format harus JPG, PNG, WEBP, atau GIF" },
       { status: 400 }
@@ -37,16 +27,8 @@ export async function POST(request: NextRequest) {
   }
 
   if (file.size > MAX_SIZE) {
-    return NextResponse.json(
-      { error: "Ukuran file maksimal 5 MB" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Ukuran file maksimal 5 MB" }, { status: 400 });
   }
-
-  await mkdir(UPLOAD_DIR, { recursive: true });
-
-  const filename = `${Date.now()}-${randomBytes(6).toString("hex")}.${ext}`;
-  const filepath = path.join(UPLOAD_DIR, filename);
 
   const buffer = Buffer.from(await file.arrayBuffer());
   if (!validateImageMagicBytes(buffer, file.type)) {
@@ -56,7 +38,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  await writeFile(filepath, buffer);
-
-  return NextResponse.json({ url: `/uploads/${filename}` });
+  try {
+    const { url } = await uploadToUT(file, "product");
+    return NextResponse.json({ url });
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Upload gagal" },
+      { status: 500 }
+    );
+  }
 }

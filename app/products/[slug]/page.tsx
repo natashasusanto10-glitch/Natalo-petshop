@@ -58,14 +58,17 @@ export default async function ProductDetailPage({
   const product = await getProductBySlug(slug);
   if (!product) return notFound();
 
+  const session = await getSession("CUSTOMER");
+
   // Ambil kategori dan produk terkait
-  const [productWithCategory, allProducts] = await Promise.all([
+  const [productWithCategory, allProducts, favoriteIds] = await Promise.all([
     prisma.product.findUnique({ where: { slug }, include: { category: true } }).catch(() => null),
     getProducts(),
     session
       ? prisma.favorite
           .findMany({ where: { userId: session.sub }, select: { productId: true } })
           .then((f) => f.map((x) => x.productId))
+          .catch(() => [] as string[])
       : Promise.resolve([] as string[]),
   ]);
 
@@ -140,8 +143,8 @@ export default async function ProductDetailPage({
       </div>
 
       {/* Main */}
-      <div className="mx-auto max-w-6xl px-4 py-10">
-        <div className="grid gap-10 lg:grid-cols-2">
+      <div className="mx-auto max-w-6xl px-4 py-4 pb-24 md:py-10 md:pb-10">
+        <div className="grid gap-6 lg:grid-cols-2 lg:gap-10">
           {/* Image */}
           <div className="relative aspect-square overflow-hidden rounded-3xl bg-gray-100">
             {product.imageUrl ? (
@@ -182,7 +185,7 @@ export default async function ProductDetailPage({
 
             {/* Name + Favorite */}
             <div className="mt-4 flex items-start justify-between gap-3">
-              <h1 className="text-3xl font-black leading-tight tracking-tight text-gray-900">
+              <h1 className="text-xl font-black leading-tight tracking-tight text-gray-900 md:text-3xl">
                 {product.name}
               </h1>
               <FavoriteButton
@@ -195,7 +198,7 @@ export default async function ProductDetailPage({
             {/* Price + Actions: variant vs simple */}
             {product.hasVariants && product.variantAttrs && product.variants ? (
               /* ── Produk dengan varian ─────────────────────────── */
-              <div className="mt-5">
+              <div id="beli" className="mt-5 scroll-mt-20">
                 <VariantSelector
                   product={{ id: product.id, name: product.name, imageUrl: product.imageUrl }}
                   attrs={product.variantAttrs}
@@ -205,8 +208,8 @@ export default async function ProductDetailPage({
             ) : (
               /* ── Produk sederhana (tanpa varian) ─────────────── */
               <>
-                <div className="mt-5 rounded-2xl bg-gray-50 p-5">
-                  <p className="text-3xl font-black text-natalo-600">{formatRupiah(price)}</p>
+                <div id="beli" className="mt-5 scroll-mt-20 rounded-2xl bg-gray-50 p-5">
+                  <p className="text-3xl font-black text-orange-600">{formatRupiah(price)}</p>
                   {hasDiscount && (
                     <div className="mt-2 flex flex-wrap items-center gap-3">
                       <p className="text-sm text-gray-400 line-through">
@@ -273,9 +276,9 @@ export default async function ProductDetailPage({
         </div>
 
         {/* Reviews */}
-        <section className="mt-16">
-          <h2 className="text-xl font-black text-gray-900">Ulasan Produk</h2>
-          <div className="mt-6 grid gap-8 lg:grid-cols-2">
+        <section className="mt-8 md:mt-16">
+          <h2 className="text-lg font-black text-gray-900 md:text-xl">Ulasan Produk</h2>
+          <div className="mt-4 grid gap-6 md:mt-6 md:gap-8 lg:grid-cols-2">
             <div>
               <ReviewList productId={product.id} />
             </div>
@@ -291,16 +294,47 @@ export default async function ProductDetailPage({
 
         {/* Related products */}
         {related.length > 0 && (
-          <section className="mt-16">
-            <h2 className="text-xl font-black text-gray-900">Produk lainnya</h2>
-            <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          <section className="mt-8 md:mt-16">
+            <h2 className="text-lg font-black text-gray-900 md:text-xl">Produk lainnya</h2>
+            <div className="mt-4 grid grid-cols-2 gap-3 md:mt-6 md:gap-5 lg:grid-cols-4">
               {related.map((p) => (
-                <ProductCard key={p.id} product={p} isFavorited={favoriteIds.includes(p.id)} />
+                <ProductCard
+                  key={p.id}
+                  product={p}
+                  isFavorited={favoriteIds.includes(p.id)}
+                  variant="compact"
+                />
               ))}
             </div>
           </section>
         )}
       </div>
+
+      {/* Mobile sticky bottom CTA */}
+      <a
+        href="#beli"
+        className="fixed inset-x-0 bottom-[70px] z-40 flex items-center gap-3 border-t border-gray-100 bg-white px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] md:hidden [padding-bottom:calc(12px+env(safe-area-inset-bottom))]"
+      >
+        <div className="min-w-0 flex-1">
+          <p className="text-xs text-gray-500">
+            {outOfStock ? "Status" : product.hasVariants ? "Mulai dari" : "Harga"}
+          </p>
+          <p className="truncate text-base font-black text-orange-600">
+            {outOfStock ? "Stok habis" : formatRupiah(price)}
+          </p>
+        </div>
+        <span
+          className={`flex h-12 shrink-0 items-center justify-center rounded-full px-6 text-sm font-bold text-white ${
+            outOfStock ? "bg-gray-300" : "bg-orange-500 active:opacity-90"
+          }`}
+        >
+          {outOfStock
+            ? "Habis"
+            : product.hasVariants
+              ? "Pilih Varian"
+              : "Tambah ke Keranjang"}
+        </span>
+      </a>
     </div>
   );
 }

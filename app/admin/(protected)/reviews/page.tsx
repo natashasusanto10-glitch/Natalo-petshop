@@ -14,7 +14,7 @@ export default async function AdminReviewsPage({
 }: {
   searchParams: Promise<{ status?: string; page?: string }>;
 }) {
-  const session = await getSession();
+  const session = await getSession("ADMIN");
   if (!session || session.role !== "ADMIN") redirect("/admin/login");
 
   const { status, page: pageStr } = await searchParams;
@@ -70,7 +70,7 @@ export default async function AdminReviewsPage({
     "use server";
     const id = String(formData.get("reviewId"));
     const content = String(formData.get("content") ?? "");
-    const sess = await getSession();
+    const sess = await getSession("ADMIN");
     if (!sess || sess.role !== "ADMIN") return;
     await upsertAdminReply(id, sess.sub, content);
     revalidatePath("/admin/reviews");

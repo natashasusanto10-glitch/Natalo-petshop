@@ -1,15 +1,22 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
 import { ProductCard } from "@/components/ProductCard";
-import { WhatsAppButton } from "@/components/WhatsAppButton";
 import { getProducts } from "@/lib/products";
+import { prisma } from "@/lib/prisma";
+import { formatRupiah } from "@/lib/format";
+import { BannerCarousel, type HomeBanner } from "@/components/home/BannerCarousel";
+import { TestimonialSlider, type HomeTestimonial } from "@/components/home/TestimonialSlider";
+import { FlashSaleCountdown } from "@/components/home/FlashSaleCountdown";
+import { HomeSearchBar } from "@/components/home/HomeSearchBar";
 
 const brand = process.env.NEXT_PUBLIC_BRAND_NAME || "Natalo Petshop";
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
 export const metadata: Metadata = {
   title: `${brand} | Toko Hewan Peliharaan & Aquarium`,
-  description: "Toko hewan peliharaan terpercaya di Indonesia. Pakan ikan, aksesoris kucing, anjing, burung, dan kebutuhan aquarium — lengkap, original, dikirim cepat.",
+  description:
+    "Toko hewan peliharaan terpercaya di Medan. Pakan ikan, aksesoris kucing, anjing, burung, dan kebutuhan aquarium — lengkap, original, dikirim cepat.",
   openGraph: {
     title: `${brand} | Toko Hewan Peliharaan & Aquarium`,
     description: "Pakan, aksesoris, dan kebutuhan hewan peliharaan kamu — lengkap, berkualitas, dikirim cepat.",
@@ -18,280 +25,497 @@ export const metadata: Metadata = {
   },
 };
 
+const HOME_BANNERS: HomeBanner[] = [
+  {
+    id: "b1",
+    title: "Diskon Besar Pakan Premium",
+    subtitle: "Promo Spesial",
+    emoji: "🐱",
+    bgFrom: "#f97316",
+    bgTo: "#fb923c",
+    href: "/products",
+  },
+  {
+    id: "b2",
+    title: "Member Baru Hemat Rp50.000",
+    subtitle: "Member Benefit",
+    emoji: "🎁",
+    bgFrom: "#10b981",
+    bgTo: "#34d399",
+    href: "/member/register",
+  },
+  {
+    id: "b3",
+    title: "Aquarium Set Lengkap Mulai 199K",
+    subtitle: "Aquarium",
+    emoji: "🐠",
+    bgFrom: "#3b82f6",
+    bgTo: "#60a5fa",
+    href: "/products?kategori=ikan",
+  },
+  {
+    id: "b4",
+    title: "Konsultasi Hewan Gratis 24 Jam",
+    subtitle: "Konsultasi",
+    emoji: "💬",
+    bgFrom: "#8b5cf6",
+    bgTo: "#a78bfa",
+    href: "/tentang-kami",
+  },
+];
+
+const SHORTCUT_ITEMS = [
+  { emoji: "🆕", label: "Produk Baru", href: "/products?sort=newest", bg: "bg-orange-50" },
+  { emoji: "🔥", label: "Sedang Laris", href: "/products?sort=popular", bg: "bg-red-50" },
+  { emoji: "🎁", label: "Voucher", href: "/member", bg: "bg-pink-50" },
+  { emoji: "💰", label: "Promo Hemat", href: "/products?promo=1", bg: "bg-yellow-50" },
+  { emoji: "🏥", label: "Klinik", href: "/tentang-kami", bg: "bg-emerald-50" },
+  { emoji: "✂️", label: "Grooming", href: "/tentang-kami", bg: "bg-blue-50" },
+  { emoji: "🚚", label: "Cek Ongkir", href: "/checkout", bg: "bg-indigo-50" },
+  { emoji: "🐾", label: "Konsultasi", href: "/tentang-kami", bg: "bg-purple-50" },
+];
+
 const PET_CATEGORIES = [
-  { label: "Ikan", emoji: "🐟", color: "bg-natalo-50" },
-  { label: "Kucing", emoji: "🐱", color: "bg-natalo-50" },
+  { label: "Ikan", emoji: "🐟", color: "bg-orange-50" },
+  { label: "Kucing", emoji: "🐱", color: "bg-orange-50" },
   { label: "Anjing", emoji: "🐶", color: "bg-yellow-50" },
   { label: "Burung", emoji: "🦜", color: "bg-green-50" },
   { label: "Kelinci", emoji: "🐰", color: "bg-pink-50" },
   { label: "Reptil", emoji: "🦎", color: "bg-emerald-50" },
 ];
 
-const INFO_ITEMS = [
+const TESTIMONIALS: HomeTestimonial[] = [
   {
-    icon: "✅",
-    title: "Produk Original & Berkualitas",
-    desc: "Semua produk kami original langsung dari distributor resmi. Kualitas terjamin.",
+    id: "t1",
+    name: "Sarah W.",
+    pet: "Kucing Persia, Mochi",
+    petEmoji: "🐱",
+    avatarEmoji: "👩",
+    quote:
+      "Pengiriman super cepat, pakannya original. Sudah langganan 6 bulan dan Mochi makin sehat.",
+    rating: 5,
   },
   {
-    icon: "🚀",
-    title: "Pengiriman Cepat",
-    desc: "Order diproses same day. Tersedia berbagai kurir untuk seluruh Indonesia.",
+    id: "t2",
+    name: "Budi P.",
+    pet: "Anjing Golden, Rocky",
+    petEmoji: "🐶",
+    avatarEmoji: "👨",
+    quote: "Harga bersaing, admin responsif via WA. Konsultasi soal vitamin Rocky dibantu detail.",
+    rating: 5,
   },
   {
-    icon: "💬",
-    title: "Konsultasi Gratis via WhatsApp",
-    desc: "Bingung pilih produk? Tim kami siap bantu rekomendasikan yang terbaik.",
+    id: "t3",
+    name: "Linda T.",
+    pet: "Ikan Cupang, 12 ekor",
+    petEmoji: "🐠",
+    avatarEmoji: "👩‍🦰",
+    quote: "Aquarium lengkap, packing aman. Cupangku selamat semua sampai rumah, mantap!",
+    rating: 4,
   },
   {
-    icon: "🏆",
-    title: "Dipercaya Ribuan Pelanggan",
-    desc: "Sudah melayani ribuan pelanggan setia dengan rating kepuasan tinggi.",
+    id: "t4",
+    name: "Andi K.",
+    pet: "Burung Murai",
+    petEmoji: "🦜",
+    avatarEmoji: "🧑",
+    quote: "Bayar via QRIS gampang banget. Voucher member bikin belanja lebih hemat.",
+    rating: 5,
   },
 ];
 
-const PARTNER_BRANDS = ["Hikari", "Sera", "Jebo", "Atman", "API", "Tetra", "Boyu", "Eheim"];
-
-const BLOG_POSTS = [
-  {
-    emoji: "🐠",
-    tag: "Aquarium",
-    title: "Tips Merawat Ikan Hias agar Tetap Sehat dan Warna Tetap Cerah",
-    date: "1 Mei 2026",
-    slug: "/blog/tips-merawat-ikan-hias",
-  },
-  {
-    emoji: "🐱",
-    tag: "Kucing",
-    title: "Panduan Memilih Pakan Kucing Sesuai Usia dan Kondisi Kesehatan",
-    date: "28 Apr 2026",
-    slug: "/blog/panduan-pakan-kucing",
-  },
-  {
-    emoji: "🐶",
-    tag: "Anjing",
-    title: "5 Aksesoris Wajib untuk Anjing Peliharaan yang Aktif",
-    date: "22 Apr 2026",
-    slug: "/blog/aksesoris-anjing-aktif",
-  },
-];
+function getJakartaMidnight() {
+  const now = new Date();
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const parts = fmt.formatToParts(now);
+  const y = parts.find((p) => p.type === "year")!.value;
+  const m = parts.find((p) => p.type === "month")!.value;
+  const d = parts.find((p) => p.type === "day")!.value;
+  return new Date(`${y}-${m}-${d}T23:59:59+07:00`).getTime();
+}
 
 export default async function HomePage() {
   const wa =
     process.env.NEXT_PUBLIC_WA_NUMBER ||
     process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ||
     "";
-  const products = await getProducts();
-  const featured = products.slice(0, 3);
-  const bestSelling = products.slice(0, 6);
+  const waUrl = `https://wa.me/${wa.replace("+", "")}?text=${encodeURIComponent("Halo Natalo Petshop, saya mau tanya...")}`;
+
+  const [products, popularCategories, mostSearchedCategories] = await Promise.all([
+    getProducts(),
+    prisma.category
+      .findMany({
+        take: 6,
+        orderBy: { products: { _count: "desc" } },
+        select: {
+          name: true,
+          slug: true,
+          products: {
+            where: { isActive: true },
+            take: 1,
+            select: { imageUrl: true },
+          },
+          _count: { select: { products: { where: { isActive: true } } } },
+        },
+      })
+      .catch(() => []),
+    prisma.category
+      .findMany({
+        take: 6,
+        orderBy: { products: { _count: "desc" } },
+        select: {
+          name: true,
+          slug: true,
+          products: {
+            where: { isActive: true },
+            take: 1,
+            select: { imageUrl: true },
+          },
+          _count: { select: { products: { where: { isActive: true } } } },
+        },
+      })
+      .catch(() => []),
+  ]);
+
+  const flashSaleProducts = products
+    .filter((p) => p.discountPrice !== null && p.discountPrice < p.price)
+    .slice(0, 6);
+  const newArrivals = products.slice(0, 6);
+  const bestSellers = [...products]
+    .sort((a, b) => b.reviewCount - a.reviewCount || b.avgRating - a.avgRating)
+    .slice(0, 6);
+
+  const flashSaleEnd = getJakartaMidnight();
 
   return (
-    <div>
-      {/* ── 1. HERO ── */}
-      <section className="overflow-hidden bg-white">
-        <div className="mx-auto grid max-w-6xl items-center gap-8 px-4 py-16 md:grid-cols-2 md:py-24">
-          <div>
-            <span className="inline-block rounded-full bg-natalo-100 px-4 py-1.5 text-sm font-semibold text-natalo-600">
-              {brand}
-            </span>
-            <h1 className="mt-5 text-4xl font-black leading-tight tracking-tight text-gray-900 md:text-5xl">
-              Toko hewan peliharaan yang{" "}
-              <span className="text-natalo-600">terpercaya</span>
-            </h1>
-            <p className="mt-5 max-w-md text-gray-500">
-              Pakan, aksesoris, dan kebutuhan hewan peliharaan kamu — lengkap, berkualitas, dikirim cepat ke seluruh Indonesia.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Link
-                href="/products"
-                className="rounded-full bg-natalo-600 px-7 py-3 text-sm font-bold text-white transition hover:bg-natalo-700"
-              >
-                Belanja Sekarang
-              </Link>
-              <WhatsAppButton />
-            </div>
-          </div>
+    <div className="bg-[#FAFAFA] pb-8">
+      {/* ── 1. SEARCH BAR + CS ICON (mobile sticky) ── */}
+      <HomeSearchBar waUrl={waUrl} />
 
-          <div className="relative flex items-center justify-center">
-            <div className="relative flex h-80 w-80 items-center justify-center rounded-full bg-natalo-600 md:h-96 md:w-96">
-              <div className="absolute inset-8 rounded-full bg-natalo-400/30" />
-              <span className="absolute right-8 top-10 text-3xl opacity-25">🐾</span>
-              <span className="absolute bottom-12 left-10 text-xl opacity-20">🐾</span>
-              <span className="relative z-10 text-8xl drop-shadow-lg">🐠</span>
-            </div>
-            <div className="absolute -bottom-4 -left-4 h-20 w-20 rounded-full bg-natalo-300 opacity-50" />
-            <div className="absolute -right-6 top-10 h-12 w-12 rounded-full bg-natalo-400 opacity-40" />
-          </div>
-        </div>
+      {/* ── 2. BANNER CAROUSEL UTAMA ── */}
+      <section className="pt-3">
+        <BannerCarousel banners={HOME_BANNERS} />
       </section>
 
-      {/* ── 2. CATEGORIES ── */}
-      <section className="bg-gray-50 py-14">
-        <div className="mx-auto max-w-6xl px-4">
-          <h2 className="text-2xl font-black text-gray-900">Kategori hewan</h2>
-          <div className="mt-8 grid grid-cols-3 gap-4 sm:grid-cols-6">
-            {PET_CATEGORIES.map((pet) => (
-              <Link
-                key={pet.label}
-                href={`/products?kategori=${pet.label.toLowerCase()}`}
-                className="group flex flex-col items-center gap-3"
-              >
-                <div className={`flex h-20 w-20 items-center justify-center rounded-full ${pet.color} shadow-sm transition group-hover:shadow-md group-hover:ring-2 group-hover:ring-natalo-400`}>
-                  <span className="text-4xl">{pet.emoji}</span>
-                </div>
-                <span className="text-sm font-semibold text-gray-700">{pet.label}</span>
-              </Link>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── 3. FEATURED PRODUCTS ── */}
-      <section className="py-14">
-        <div className="mx-auto max-w-6xl px-4">
-          <div className="flex items-end justify-between gap-4">
+      {/* ── 3. 2 BANNER KECIL SIDE BY SIDE ── */}
+      <section className="mt-6 px-4">
+        <div className="grid grid-cols-2 gap-3">
+          <Link
+            href="/tentang-kami"
+            className="relative flex h-[160px] flex-col justify-between overflow-hidden rounded-xl p-4 text-white shadow-sm active:opacity-90"
+            style={{ background: "linear-gradient(135deg, #ec4899, #f472b6)" }}
+          >
             <div>
-              <h2 className="text-2xl font-black text-gray-900">Produk unggulan</h2>
-              <p className="mt-1 text-sm text-gray-500">Pilihan produk premium dari toko kami</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider opacity-90">Promo</p>
+              <p className="mt-1 text-base font-black leading-tight">Grooming Hemat 30%</p>
             </div>
-            <Link href="/products" className="text-sm font-semibold text-natalo-600 hover:underline">
-              Lihat semua →
-            </Link>
-          </div>
-          <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {featured.map((p, index) => (
-              <ProductCard key={p.id} product={p} priority={index === 0} />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── 4. INFO BLOCK ── */}
-      <section className="bg-natalo-600 py-14">
-        <div className="mx-auto max-w-6xl px-4">
-          <div className="mb-10 text-center text-white">
-            <h2 className="text-2xl font-black">Kenapa belanja di {brand}?</h2>
-            <p className="mt-2 text-sm text-natalo-100">
-              Kami hadir untuk memastikan hewan peliharaan kamu mendapatkan yang terbaik.
-            </p>
-          </div>
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {INFO_ITEMS.map((item) => (
-              <div key={item.title} className="rounded-2xl bg-white/10 p-6 text-white backdrop-blur-sm">
-                <span className="text-3xl">{item.icon}</span>
-                <h3 className="mt-3 font-bold leading-snug">{item.title}</h3>
-                <p className="mt-2 text-sm text-natalo-100">{item.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── 5. LOGOS ── */}
-      <section className="border-y border-gray-100 bg-white py-10">
-        <div className="mx-auto max-w-6xl px-4">
-          <p className="mb-8 text-center text-sm font-semibold uppercase tracking-widest text-gray-400">
-            Brand yang kami jual
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-5">
-            {PARTNER_BRANDS.map((brand) => (
-              <span
-                key={brand}
-                className="text-lg font-black tracking-tight text-gray-300 transition hover:text-natalo-400"
-              >
-                {brand}
-              </span>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── 6. BEST SELLING PRODUCTS ── */}
-      <section className="bg-gray-50 py-14">
-        <div className="mx-auto max-w-6xl px-4">
-          <div className="flex items-end justify-between gap-4">
+            <span className="text-3xl">✂️</span>
+          </Link>
+          <Link
+            href="/tentang-kami"
+            className="relative flex h-[160px] flex-col justify-between overflow-hidden rounded-xl p-4 text-white shadow-sm active:opacity-90"
+            style={{ background: "linear-gradient(135deg, #14b8a6, #2dd4bf)" }}
+          >
             <div>
-              <h2 className="text-2xl font-black text-gray-900">Produk terlaris</h2>
-              <p className="mt-1 text-sm text-gray-500">Favorit pelanggan setia kami</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider opacity-90">Paket</p>
+              <p className="mt-1 text-base font-black leading-tight">Vaksin Hemat Mulai 75K</p>
             </div>
-            <Link href="/products" className="text-sm font-semibold text-natalo-600 hover:underline">
-              Lihat semua →
-            </Link>
-          </div>
-          <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {bestSelling.map((p) => <ProductCard key={p.id} product={p} />)}
-          </div>
+            <span className="text-3xl">🏥</span>
+          </Link>
         </div>
       </section>
 
-      {/* ── 7. SHOP BY PET ── */}
-      <section className="py-14">
-        <div className="mx-auto max-w-6xl px-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-black text-gray-900">Belanja by hewan</h2>
-            <Link href="/products" className="text-sm font-semibold text-natalo-600 hover:underline">
-              Lihat semua →
-            </Link>
-          </div>
-          <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-            {PET_CATEGORIES.map((pet) => (
-              <Link
-                key={pet.label}
-                href={`/products?kategori=${pet.label.toLowerCase()}`}
-                className="group flex flex-col items-center gap-3 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition hover:border-natalo-300 hover:shadow-md"
-              >
-                <span className="text-5xl">{pet.emoji}</span>
-                <span className="text-sm font-semibold text-gray-700">{pet.label}</span>
-              </Link>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── 8. NEWS & BLOG ── */}
-      <section className="bg-gray-50 py-14">
-        <div className="mx-auto max-w-6xl px-4">
-          <div className="flex items-end justify-between gap-4">
-            <div>
-              <h2 className="text-2xl font-black text-gray-900">Tips & Artikel</h2>
-              <p className="mt-1 text-sm text-gray-500">Info perawatan hewan peliharaan untuk kamu</p>
-            </div>
-          </div>
-          <div className="mt-8 grid gap-6 sm:grid-cols-3">
-            {BLOG_POSTS.map((post) => (
-              <Link
-                key={post.title}
-                href={post.slug}
-                className="group overflow-hidden rounded-2xl bg-white shadow-sm transition hover:shadow-md"
-              >
-                <div className="flex h-44 items-center justify-center bg-natalo-50 text-7xl">
-                  {post.emoji}
-                </div>
-                <div className="p-5">
-                  <span className="rounded-full bg-natalo-100 px-3 py-1 text-xs font-semibold text-natalo-600">
-                    {post.tag}
-                  </span>
-                  <h3 className="mt-3 font-bold leading-snug text-gray-900 group-hover:text-natalo-600">
-                    {post.title}
-                  </h3>
-                  <p className="mt-2 text-xs text-gray-400">{post.date}</p>
-                </div>
-              </Link>
-            ))}
-          </div>
-
-          <div className="mt-10 rounded-2xl bg-white p-8 text-center shadow-sm">
-            <p className="text-sm text-gray-500">Butuh saran produk yang tepat untuk hewan kamu?</p>
-            <a
-              href={`https://wa.me/${wa.replace("+", "")}?text=${encodeURIComponent("Halo, saya mau konsultasi produk untuk hewan peliharaan saya.")}`}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-4 inline-flex items-center gap-2 rounded-full bg-natalo-600 px-7 py-3 text-sm font-bold text-white transition hover:bg-natalo-700"
+      {/* ── 4. HASHTAG CAMPAIGN + SHORTCUT GRID ── */}
+      <section className="mt-6 px-4">
+        <p className="text-center text-sm font-black text-orange-600">#PetshopMedanTerpercaya</p>
+        <div className="mt-4 grid grid-cols-4 gap-2">
+          {SHORTCUT_ITEMS.map((s) => (
+            <Link
+              key={s.label}
+              href={s.href}
+              className="flex flex-col items-center gap-1.5 rounded-xl p-2 transition active:opacity-90"
             >
-              💬 Konsultasi via WhatsApp
-            </a>
-          </div>
+              <div
+                className={`flex h-14 w-14 items-center justify-center rounded-full ${s.bg} text-2xl shadow-sm`}
+              >
+                {s.emoji}
+              </div>
+              <span className="text-[11px] font-medium leading-tight text-zinc-700 text-center">
+                {s.label}
+              </span>
+            </Link>
+          ))}
         </div>
+      </section>
+
+      {/* ── 5. FLASH SALE ── */}
+      {flashSaleProducts.length > 0 && (
+        <section className="mt-6">
+          <div className="flex items-center justify-between gap-2 px-4">
+            <div>
+              <h2 className="text-lg font-black text-zinc-900">⚡ Flash Sale</h2>
+              <p className="mt-0.5 text-xs text-zinc-500">Diskon spesial sampai tengah malam</p>
+            </div>
+            <FlashSaleCountdown endsAt={flashSaleEnd} />
+          </div>
+          <div className="mt-3 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {flashSaleProducts.map((p) => {
+              const finalPrice = p.discountPrice ?? p.price;
+              const off = Math.max(1, Math.round(((p.price - finalPrice) / p.price) * 100));
+              return (
+                <Link
+                  key={p.id}
+                  href={`/products/${p.slug}`}
+                  className="w-[140px] shrink-0 snap-start overflow-hidden rounded-xl border border-[#f5f5f5] bg-white shadow-sm active:opacity-90"
+                >
+                  <div className="relative aspect-square w-full bg-zinc-50">
+                    {p.imageUrl ? (
+                      <Image
+                        src={p.imageUrl}
+                        alt={p.name}
+                        fill
+                        loading="lazy"
+                        sizes="140px"
+                        className="object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-3xl">🐾</div>
+                    )}
+                    <span className="absolute left-1.5 top-1.5 rounded bg-red-500 px-1.5 py-0.5 text-[10px] font-black text-white">
+                      -{off}%
+                    </span>
+                  </div>
+                  <div className="p-2">
+                    <p className="line-clamp-2 text-[11px] font-bold text-zinc-700">{p.name}</p>
+                    <p className="mt-1 text-sm font-black text-[#E8711F]">
+                      {formatRupiah(finalPrice)}
+                    </p>
+                    <p className="text-[10px] text-zinc-400 line-through">
+                      {formatRupiah(p.price)}
+                    </p>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* ── 6. KATEGORI POPULER ── */}
+      {popularCategories.length > 0 && (
+        <section className="mt-6">
+          <h2 className="px-4 text-lg font-black text-zinc-900">📈 Kategori Populer</h2>
+          <div className="mt-3 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {popularCategories.map((cat) => (
+              <Link
+                key={cat.slug}
+                href={`/products?kategori=${cat.slug}`}
+                className="w-[140px] shrink-0 snap-start overflow-hidden rounded-2xl border border-[#f5f5f5] bg-white shadow-sm active:opacity-90"
+              >
+                <div className="relative aspect-square w-full bg-zinc-50">
+                  {cat.products[0]?.imageUrl ? (
+                    <Image
+                      src={cat.products[0].imageUrl}
+                      alt={cat.name}
+                      fill
+                      loading="lazy"
+                      sizes="140px"
+                      className="object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-4xl">🐾</div>
+                  )}
+                </div>
+                <div className="p-3">
+                  <p className="text-sm font-black text-zinc-900">{cat.name}</p>
+                  <p className="mt-0.5 text-[11px] text-zinc-500">
+                    {cat._count.products} produk
+                  </p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── 7. PRODUK BARU MASUK ── */}
+      <section className="mt-6 px-4">
+        <div className="flex items-end justify-between">
+          <h2 className="text-lg font-black text-zinc-900">🆕 Produk Baru Masuk</h2>
+          <Link href="/products?sort=newest" className="text-xs font-bold text-orange-600">
+            Lihat semua
+          </Link>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          {newArrivals.map((p, i) => (
+            <ProductCard key={p.id} product={p} variant="compact" priority={i < 2} />
+          ))}
+        </div>
+      </section>
+
+      {/* ── 8. TESTIMONI PELANGGAN ── */}
+      <section className="mt-6 px-4">
+        <h2 className="text-lg font-black text-zinc-900">💛 Cerita Pelanggan</h2>
+        <p className="mt-0.5 text-xs text-zinc-500">Apa kata mereka tentang Natalo</p>
+        <div className="mt-3">
+          <TestimonialSlider testimonials={TESTIMONIALS} />
+        </div>
+      </section>
+
+      {/* ── 9. PROMO BUNDLE (3 BANNER STACK) ── */}
+      <section className="mt-6 px-4">
+        <div className="space-y-3">
+          <Link
+            href="/checkout"
+            className="flex items-center justify-between gap-3 rounded-xl p-5 text-white shadow-sm active:opacity-90"
+            style={{ background: "linear-gradient(135deg, #16a34a, #4ade80)" }}
+          >
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider opacity-90">Gratis</p>
+              <p className="mt-1 text-base font-black">Gratis Ongkir Min. 100K</p>
+              <p className="mt-0.5 text-xs opacity-90">Khusus area Medan</p>
+            </div>
+            <span className="text-4xl">🚚</span>
+          </Link>
+          <Link
+            href="/products"
+            className="flex items-center justify-between gap-3 rounded-xl p-5 text-white shadow-sm active:opacity-90"
+            style={{ background: "linear-gradient(135deg, #f97316, #fb923c)" }}
+          >
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider opacity-90">Bundle</p>
+              <p className="mt-1 text-base font-black">Beli 2 Hemat 15%</p>
+              <p className="mt-0.5 text-xs opacity-90">Kombinasi pakan + aksesoris</p>
+            </div>
+            <span className="text-4xl">📦</span>
+          </Link>
+          <Link
+            href="/member/register"
+            className="flex items-center justify-between gap-3 rounded-xl p-5 text-white shadow-sm active:opacity-90"
+            style={{ background: "linear-gradient(135deg, #7c3aed, #a78bfa)" }}
+          >
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider opacity-90">Member</p>
+              <p className="mt-1 text-base font-black">Harga Member Lebih Hemat</p>
+              <p className="mt-0.5 text-xs opacity-90">Daftar gratis 2 menit</p>
+            </div>
+            <span className="text-4xl">🎁</span>
+          </Link>
+        </div>
+      </section>
+
+      {/* ── 10. KATEGORI HEWAN ── */}
+      <section className="mt-6 px-4">
+        <h2 className="text-lg font-black text-zinc-900">🐾 Belanja by Hewan</h2>
+        <div className="mt-3 grid grid-cols-3 gap-3">
+          {PET_CATEGORIES.map((pet) => (
+            <Link
+              key={pet.label}
+              href={`/products?kategori=${pet.label.toLowerCase()}`}
+              className="flex flex-col items-center gap-2 rounded-2xl border border-[#f5f5f5] bg-white p-4 shadow-sm active:opacity-90"
+            >
+              <div
+                className={`flex h-14 w-14 items-center justify-center rounded-full ${pet.color} text-3xl`}
+              >
+                {pet.emoji}
+              </div>
+              <span className="text-xs font-bold text-zinc-700">{pet.label}</span>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      {/* ── 11. PRODUK TERLARIS ── */}
+      <section className="mt-6 px-4">
+        <div className="flex items-end justify-between">
+          <h2 className="text-lg font-black text-zinc-900">🏆 Produk Terlaris</h2>
+          <Link href="/products?sort=popular" className="text-xs font-bold text-orange-600">
+            Lihat semua
+          </Link>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          {bestSellers.map((p, i) => (
+            <div key={p.id} className="relative">
+              {i < 3 && (
+                <span
+                  className={`absolute left-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-full text-sm shadow ${
+                    i === 0
+                      ? "bg-amber-400 text-white"
+                      : i === 1
+                        ? "bg-zinc-300 text-zinc-700"
+                        : "bg-orange-300 text-white"
+                  }`}
+                  aria-label={`Peringkat ${i + 1}`}
+                >
+                  {i === 0 ? "🥇" : i === 1 ? "🥈" : "🥉"}
+                </span>
+              )}
+              <ProductCard product={p} variant="compact" />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── 12. LAGI BANYAK DICARI ── */}
+      {mostSearchedCategories.length > 0 && (
+        <section className="mt-6 px-4">
+          <h2 className="text-lg font-black text-zinc-900">🔍 Lagi Banyak Dicari</h2>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            {mostSearchedCategories.map((cat) => (
+              <Link
+                key={cat.slug}
+                href={`/products?kategori=${cat.slug}`}
+                className="flex items-center gap-3 overflow-hidden rounded-xl border border-[#f5f5f5] bg-white p-2 shadow-sm active:opacity-90"
+              >
+                <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-zinc-50">
+                  {cat.products[0]?.imageUrl ? (
+                    <Image
+                      src={cat.products[0].imageUrl}
+                      alt={cat.name}
+                      fill
+                      loading="lazy"
+                      sizes="56px"
+                      className="object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-2xl">🐾</div>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold text-zinc-900">{cat.name}</p>
+                  <p className="mt-0.5 text-[11px] text-zinc-500">
+                    {cat._count.products} Produk
+                  </p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── 13. CTA KONSULTASI WA ── */}
+      <section className="mt-6 px-4">
+        <a
+          href={waUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center justify-between gap-3 rounded-2xl p-5 text-white shadow-sm active:opacity-90"
+          style={{ background: "linear-gradient(135deg, #16a34a, #22c55e)" }}
+        >
+          <div>
+            <p className="text-base font-black leading-tight">Bingung pilih produk?</p>
+            <p className="mt-1 text-xs opacity-90">Konsultasi gratis dengan tim Natalo via WhatsApp.</p>
+            <span className="mt-3 inline-block rounded-full bg-white/20 px-4 py-1.5 text-xs font-bold backdrop-blur-sm">
+              💬 Chat Sekarang
+            </span>
+          </div>
+          <span className="text-5xl drop-shadow-lg">🐾</span>
+        </a>
       </section>
     </div>
   );

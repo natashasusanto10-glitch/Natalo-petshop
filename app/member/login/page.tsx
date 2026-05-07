@@ -1,11 +1,9 @@
-import { MemberLoginForm } from "@/components/MemberLoginForm";
+"use client";
 
-export default async function MemberLoginPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ registered?: string }>;
-}) {
-  const { registered } = await searchParams;
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { PasswordInput } from "@/components/PasswordInput";
 
 export default function MemberLoginPage() {
   const router = useRouter();
@@ -61,8 +59,7 @@ export default function MemberLoginPage() {
 
           <div>
             <label className="block text-sm font-medium text-gray-700">Password</label>
-            <input
-              type="password"
+            <PasswordInput
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -90,16 +87,10 @@ export default function MemberLoginPage() {
             Daftar gratis
           </Link>
         </p>
-        <p className="mt-3 text-center text-sm text-gray-400">
-          Lupa password?{" "}
-          <a
-            href={`https://wa.me/${(process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ?? "").replace("+", "")}?text=${encodeURIComponent("Halo, saya lupa password akun member saya. Mohon bantuan reset password.")}`}
-            target="_blank"
-            rel="noreferrer"
-            className="font-semibold text-gray-500 hover:text-orange-500 hover:underline"
-          >
-            Hubungi kami via WhatsApp
-          </a>
+        <p className="mt-3 text-center text-sm text-gray-500">
+          <Link href="/member/forgot-password" className="font-semibold text-orange-500 hover:underline">
+            Lupa password?
+          </Link>
         </p>
       </div>
     </div>

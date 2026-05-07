@@ -8,6 +8,10 @@ export type SessionPayload = {
   name: string;
 };
 
+export const LEGACY_SESSION_COOKIE = "session";
+export const ADMIN_SESSION_COOKIE = "admin_session";
+export const MEMBER_SESSION_COOKIE = "member_session";
+
 function getSecret() {
   const s = process.env.SESSION_SECRET;
   if (!s || s.length < 32) {
@@ -36,11 +40,28 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
   }
 }
 
-export async function getSession(): Promise<SessionPayload | null> {
+function cookieNameForRole(role: SessionPayload["role"]) {
+  return role === "ADMIN" ? ADMIN_SESSION_COOKIE : MEMBER_SESSION_COOKIE;
+}
+
+export async function getSession(
+  expectedRole?: SessionPayload["role"]
+): Promise<SessionPayload | null> {
   const cookieStore = await cookies();
-  const token = cookieStore.get("session")?.value;
-  if (!token) return null;
-  return verifySessionToken(token);
+
+  const cookieNames = expectedRole
+    ? [cookieNameForRole(expectedRole), LEGACY_SESSION_COOKIE]
+    : [MEMBER_SESSION_COOKIE, ADMIN_SESSION_COOKIE, LEGACY_SESSION_COOKIE];
+
+  for (const cookieName of cookieNames) {
+    const token = cookieStore.get(cookieName)?.value;
+    if (!token) continue;
+    const session = await verifySessionToken(token);
+    if (!session) continue;
+    if (!expectedRole || session.role === expectedRole) return session;
+  }
+
+  return null;
 }
 
 export const SESSION_COOKIE_OPTIONS = {

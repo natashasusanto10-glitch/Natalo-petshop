@@ -55,22 +55,22 @@ const contacts = [
 export default function TentangKamiPage() {
   return (
     <div className="bg-white">
-      <section className="bg-[#FAECE7] px-6 py-16 text-center">
+      <section className="bg-[#FAECE7] px-4 py-8 text-center md:px-6 md:py-16">
         <div className="mx-auto max-w-2xl">
-          <div className="mb-3 text-5xl" aria-hidden="true">
+          <div className="mb-3 text-4xl md:text-5xl" aria-hidden="true">
             🐾
           </div>
-          <h1 className="text-3xl font-medium text-zinc-950">
+          <h1 className="text-2xl font-bold text-zinc-950 md:text-3xl md:font-medium">
             Natalo Petshop & Aquarium
           </h1>
-          <p className="mt-3 text-sm font-medium text-[#712B13] sm:text-base">
+          <p className="mt-2 text-sm font-medium text-[#712B13] sm:text-base">
             Toko hewan peliharaan terpercaya di Medan
           </p>
         </div>
       </section>
 
-      <div className="mx-auto max-w-4xl px-6 py-12 sm:py-16">
-        <section className="mb-12">
+      <div className="mx-auto max-w-4xl px-4 py-6 md:px-6 md:py-12 lg:py-16">
+        <section className="mb-8 md:mb-12">
           <h2 className="mb-4 text-xl font-medium text-zinc-950">Cerita kami</h2>
           <div className="space-y-4 text-sm leading-7 text-zinc-700">
             <p>
@@ -91,7 +91,7 @@ export default function TentangKamiPage() {
           </div>
         </section>
 
-        <section className="mb-12 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <section className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4 md:mb-12">
           {stats.map((stat) => (
             <div
               className="rounded-xl bg-[#f9f9f7] px-4 py-5 text-center"

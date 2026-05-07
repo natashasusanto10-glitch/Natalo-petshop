@@ -22,14 +22,16 @@ export default async function ProductsPage({
   searchParams: Promise<{ kategori?: string; q?: string }>;
 }) {
   const { kategori, q } = await searchParams;
+  const session = await getSession("CUSTOMER");
 
-  const [products, categories] = await Promise.all([
+  const [products, categories, favoriteIds] = await Promise.all([
     getProducts({ category: kategori, search: q }),
     prisma.category.findMany({ orderBy: { name: "asc" } }).catch(() => []),
     session
       ? prisma.favorite
           .findMany({ where: { userId: session.sub }, select: { productId: true } })
           .then((f) => f.map((x) => x.productId))
+          .catch(() => [] as string[])
       : Promise.resolve([] as string[]),
   ]);
   const filteredProducts = kategori
@@ -38,10 +40,10 @@ export default async function ProductsPage({
   const activeCategory = categories.find((cat) => cat.slug === kategori);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10">
+    <div className="mx-auto max-w-6xl px-4 py-4 md:py-10">
       {/* Page header */}
-      <div className="mb-6">
-        <h1 className="text-3xl font-black text-gray-900">Katalog Produk</h1>
+      <div className="mb-4 md:mb-6">
+        <h1 className="text-2xl font-black text-gray-900 md:text-3xl">Katalog Produk</h1>
         <p className="mt-1 text-sm text-gray-500">
           {activeCategory
             ? "Format ringkas agar produk lebih mudah discan."
@@ -56,15 +58,15 @@ export default async function ProductsPage({
         </Suspense>
       </div>
 
-      {/* Category filter pills */}
+      {/* Category filter pills — horizontal scroll on mobile */}
       {categories.length > 0 && (
-        <div className="mb-8 flex flex-wrap gap-2">
+        <div className="-mx-4 mb-6 flex gap-2 overflow-x-auto px-4 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:mb-8 md:flex-wrap md:px-0 md:pb-0">
           <Link
             href="/products"
-            className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+            className={`shrink-0 rounded-full border px-4 py-2 text-sm font-medium transition ${
               !kategori
-                ? "border-natalo-600 bg-natalo-600 text-white"
-                : "border-gray-200 bg-white text-gray-600 hover:border-natalo-400 hover:text-natalo-600"
+                ? "border-orange-500 bg-orange-500 text-white"
+                : "border-gray-200 bg-white text-gray-600 hover:border-orange-400 hover:text-orange-600"
             }`}
           >
             Semua
@@ -73,10 +75,10 @@ export default async function ProductsPage({
             <Link
               key={cat.id}
               href={`/products?kategori=${cat.slug}`}
-              className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+              className={`shrink-0 rounded-full border px-4 py-2 text-sm font-medium transition ${
                 kategori === cat.slug
-                  ? "border-natalo-600 bg-natalo-600 text-white"
-                  : "border-gray-200 bg-white text-gray-600 hover:border-natalo-400 hover:text-natalo-600"
+                  ? "border-orange-500 bg-orange-500 text-white"
+                  : "border-gray-200 bg-white text-gray-600 hover:border-orange-400 hover:text-orange-600"
               }`}
             >
               {cat.name}
@@ -87,7 +89,7 @@ export default async function ProductsPage({
 
       {/* Products grid */}
       {filteredProducts.length > 0 ? (
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4">
           {filteredProducts.map((product, index) => (
             <ProductCard
               key={product.id}

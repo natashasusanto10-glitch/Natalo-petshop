@@ -19,7 +19,7 @@ export default function MemberRegisterPage() {
     setError("");
 
     if (password !== confirmPassword) {
-      setError("Password dan konfirmasi password tidak cocok.");
+      setError("Konfirmasi password tidak sama.");
       return;
     }
 
@@ -59,7 +59,7 @@ export default function MemberRegisterPage() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
-              className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-natalo-400 focus:ring-2 focus:ring-natalo-100"
+              className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
               placeholder="Contoh: Andi Setiawan"
             />
           </div>
@@ -71,7 +71,7 @@ export default function MemberRegisterPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-natalo-400 focus:ring-2 focus:ring-natalo-100"
+              className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
               placeholder="Contoh: nama@email.com"
             />
           </div>
@@ -83,7 +83,7 @@ export default function MemberRegisterPage() {
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               required
-              className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-natalo-400 focus:ring-2 focus:ring-natalo-100"
+              className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
               placeholder="Contoh: 08123456789"
             />
           </div>
@@ -95,8 +95,8 @@ export default function MemberRegisterPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={8}
-              className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-natalo-400 focus:ring-2 focus:ring-natalo-100"
-              placeholder="Masukkan password Anda (min. 8 karakter)"
+              className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+              placeholder="Masukkan password (min. 8 karakter)"
             />
           </div>
 
@@ -107,25 +107,12 @@ export default function MemberRegisterPage() {
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
               minLength={8}
-              className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-natalo-400 focus:ring-2 focus:ring-natalo-100"
-              placeholder="Ulangi password yang sama"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Konfirmasi Password</label>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              required
-              minLength={8}
               className={`mt-1 block w-full rounded-xl border px-4 py-3 text-sm outline-none transition focus:ring-2 ${
                 confirmPassword && confirmPassword !== password
                   ? "border-red-300 focus:border-red-400 focus:ring-red-100"
                   : "border-gray-200 focus:border-orange-400 focus:ring-orange-100"
               }`}
-              placeholder="Ulangi password"
+              placeholder="Ulangi password yang sama"
             />
             {confirmPassword && confirmPassword !== password && (
               <p className="mt-1 text-xs text-red-500">Password tidak cocok</p>
@@ -157,7 +144,7 @@ export default function MemberRegisterPage() {
 
         <p className="mt-6 text-center text-sm text-gray-500">
           Sudah punya akun?{" "}
-          <Link href="/member/login" className="font-semibold text-natalo-600 hover:underline">
+          <Link href="/member/login" className="font-semibold text-orange-600 hover:underline">
             Masuk
           </Link>
         </p>

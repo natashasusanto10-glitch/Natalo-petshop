@@ -1,72 +1,81 @@
+import type { Metadata } from "next";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { redirect } from "next/navigation";
 import Link from "next/link";
+import { EditProfileForm } from "@/components/EditProfileForm";
+
+export const metadata: Metadata = { title: "Profil Saya" };
 
 export default async function MemberProfilePage() {
-  const session = await getSession();
+  const session = await getSession("CUSTOMER");
+  if (!session) redirect("/member/login");
 
-  const user = session
-    ? await prisma.user.findUnique({
-        where: { id: session.sub },
-        select: { id: true, name: true, email: true, phone: true, createdAt: true },
-      })
+  const user = await prisma.user.findUnique({
+    where: { id: session.sub },
+    select: { id: true, name: true, email: true, phone: true, birthDate: true, createdAt: true },
+  });
+
+  if (!user) redirect("/member/login");
+
+  const birthDateStr = user.birthDate
+    ? user.birthDate.toISOString().split("T")[0]
     : null;
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10">
+    <div className="mx-auto max-w-2xl px-4 py-4 md:py-10">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-black text-gray-900">Profil Saya</h1>
+        <h1 className="text-xl font-black text-gray-900 md:text-2xl">Profil Saya</h1>
         <Link href="/member" className="text-sm font-semibold text-orange-500 hover:underline">
           ← Kembali
         </Link>
       </div>
 
-      {user ? (
-        <div className="mt-6 space-y-4">
-          {/* Avatar & greeting */}
-          <div className="flex items-center gap-4 rounded-2xl bg-orange-50 p-5">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-orange-500 text-3xl text-white">
-              {user.name.charAt(0).toUpperCase()}
-            </div>
-            <div>
-              <p className="font-black text-gray-900 text-lg">{user.name}</p>
-              <p className="text-sm text-gray-500">
-                Member sejak{" "}
-                {new Date(user.createdAt).toLocaleDateString("id-ID", {
-                  month: "long",
-                  year: "numeric",
-                })}
-              </p>
-            </div>
-          </div>
-
-          {/* Info */}
-          <div className="rounded-2xl border border-gray-100 bg-white p-5 space-y-4">
-            <h2 className="font-bold text-gray-900">Informasi Akun</h2>
-
-            <div>
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Nama</p>
-              <p className="mt-1 font-semibold text-gray-800">{user.name}</p>
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Email</p>
-              <p className="mt-1 font-semibold text-gray-800">{user.email ?? "—"}</p>
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">No. WhatsApp</p>
-              <p className="mt-1 font-semibold text-gray-800">{user.phone ?? "—"}</p>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-dashed border-gray-200 p-5 text-center text-sm text-gray-400">
-            Fitur edit profil akan segera hadir.
-          </div>
+      {/* Avatar */}
+      <div className="mt-4 flex items-center gap-3 rounded-2xl bg-orange-500 p-4 text-white md:mt-6 md:gap-4 md:p-6">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-2xl font-black md:h-16 md:w-16 md:text-3xl">
+          {user.name.charAt(0).toUpperCase()}
         </div>
-      ) : (
-        <div className="mt-8 rounded-2xl bg-gray-50 p-10 text-center">
-          <p className="text-gray-500">Gagal memuat profil.</p>
+        <div>
+          <p className="text-lg font-black">{user.name}</p>
+          <p className="text-sm text-orange-100">
+            Member sejak{" "}
+            {new Date(user.createdAt).toLocaleDateString("id-ID", {
+              month: "long",
+              year: "numeric",
+            })}
+          </p>
         </div>
-      )}
+      </div>
+
+      {/* Edit form */}
+      <div className="mt-6 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+        <h2 className="font-bold text-gray-900">Edit Informasi Akun</h2>
+        <EditProfileForm
+          initialName={user.name}
+          initialPhone={user.phone ?? null}
+          initialBirthDate={birthDateStr}
+          email={user.email ?? null}
+        />
+      </div>
+
+      {/* Alamat section */}
+      <div className="mt-4 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-bold text-gray-900">Alamat Pengiriman</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Kelola alamat dan titik GPS untuk pengiriman.
+            </p>
+          </div>
+          <Link
+            href="/akun/alamat"
+            className="rounded-full bg-orange-500 px-4 py-2 text-sm font-bold text-white transition hover:bg-orange-600"
+          >
+            Kelola →
+          </Link>
+        </div>
+      </div>
     </div>
   );
 }

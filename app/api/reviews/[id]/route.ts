@@ -11,7 +11,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getSession();
+    const session = await getSession("CUSTOMER");
     if (!session) return NextResponse.json({ error: "Login dulu" }, { status: 401 });
 
     const { id } = await params;
@@ -40,7 +40,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getSession();
+    const session = await getSession("CUSTOMER");
     if (!session) return NextResponse.json({ error: "Login dulu" }, { status: 401 });
 
     const { id } = await params;

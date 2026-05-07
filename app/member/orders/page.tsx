@@ -25,7 +25,7 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export default async function MemberOrdersPage() {
-  const session = await getSession();
+  const session = await getSession("CUSTOMER");
 
   const orders = session
     ? await prisma.order.findMany({
@@ -36,9 +36,9 @@ export default async function MemberOrdersPage() {
     : [];
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-10">
+    <div className="mx-auto max-w-4xl px-4 py-4 md:py-10">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-black text-gray-900">Riwayat Pesanan</h1>
+        <h1 className="text-xl font-black text-gray-900 md:text-2xl">Riwayat Pesanan</h1>
         <Link href="/member" className="text-sm font-semibold text-orange-500 hover:underline">
           ← Kembali
         </Link>
@@ -66,7 +66,10 @@ export default async function MemberOrdersPage() {
 
               <div className="mt-3 space-y-1.5">
                 {order.items.map((item, i) => (
-                  <div key={i} className="flex justify-between text-sm text-gray-600">
+                  <div
+                    key={`${order.id}-${item.productId}-${i}`}
+                    className="flex justify-between text-sm text-gray-600"
+                  >
                     <span>{item.name} × {item.quantity}</span>
                     <span>{formatRupiah(item.price * item.quantity)}</span>
                   </div>

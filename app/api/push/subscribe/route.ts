@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid subscription" }, { status: 400 });
   }
 
-  const session = await getSession();
+  const session = await getSession("CUSTOMER");
 
   await prisma.pushSubscription.upsert({
     where: { endpoint: body.endpoint },

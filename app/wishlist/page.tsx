@@ -11,8 +11,9 @@ type WishlistItem = {
   name: string;
   slug: string;
   price: number;
-  memberPrice: number | null;
+  memberPrice?: number | null;
   imageUrl: string | null;
+  weightGram?: number;
 };
 
 function addToCart(item: WishlistItem) {
@@ -24,7 +25,14 @@ function addToCart(item: WishlistItem) {
     if (existing) {
       existing.quantity += 1;
     } else {
-      cart.push({ productId: item.id, name: item.name, price, quantity: 1, weightGram: 500, imageUrl: item.imageUrl });
+      cart.push({
+        productId: item.id,
+        name: item.name,
+        price,
+        quantity: 1,
+        weightGram: item.weightGram ?? 500,
+        imageUrl: item.imageUrl,
+      });
     }
     localStorage.setItem("cart", JSON.stringify(cart));
     window.dispatchEvent(new Event("cart-updated"));
@@ -51,8 +59,8 @@ export default function WishlistPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-10">
-      <h1 className="text-3xl font-black text-gray-900">Wishlist</h1>
+    <div className="mx-auto max-w-4xl px-4 py-4 md:py-10">
+      <h1 className="text-2xl font-black text-gray-900 md:text-3xl">Wishlist</h1>
       <p className="mt-1 text-sm text-gray-500">{items.length} produk disimpan</p>
 
       {items.length === 0 ? (
@@ -68,7 +76,7 @@ export default function WishlistPage() {
         </div>
       ) : (
         <>
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
             {items.map((item) => (
               <div key={item.id} className="group relative flex flex-col rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
                 <Link href={`/products/${item.slug}`}>

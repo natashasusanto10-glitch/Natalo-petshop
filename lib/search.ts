@@ -246,6 +246,147 @@ const SORT_MAP: Record<SearchSort, string[] | undefined> = {
   rating_desc: ["avg_rating:desc", "review_count:desc"],
 };
 
+type ProductForSearchDoc = NonNullable<Awaited<ReturnType<typeof prisma.product.findFirst>>> & {
+  category: { id: string; name: string; slug: string } | null;
+  brand: { id: string; name: string; slug: string } | null;
+  variants: Array<{
+    sku: string | null;
+    price: number;
+    stock: number;
+    options: Array<{ option: { value: string } | null }>;
+  }>;
+};
+
+function productToSearchDoc(p: ProductForSearchDoc): ProductSearchDoc {
+  let priceMin = p.price;
+  let priceMax = p.price;
+  let totalStock = p.stock;
+
+  if (p.hasVariants && p.variants.length > 0) {
+    const prices = p.variants.map((v) => v.price);
+    priceMin = Math.min(...prices);
+    priceMax = Math.max(...prices);
+    totalStock = p.variants.reduce((sum, v) => sum + v.stock, 0);
+  }
+
+  return {
+    id: p.id,
+    slug: p.slug,
+    name: p.name,
+    description: p.description ?? "",
+    category_id: p.categoryId,
+    category_slug: p.category?.slug ?? null,
+    category_name: p.category?.name ?? null,
+    brand_id: p.brandId,
+    brand_slug: p.brand?.slug ?? null,
+    brand_name: p.brand?.name ?? null,
+    variant_names: Array.from(
+      new Set(
+        p.variants
+          .flatMap((variant) => variant.options.map((vo) => vo.option?.value))
+          .filter((value): value is string => Boolean(value))
+      )
+    ),
+    sku_codes: p.variants.map((variant) => variant.sku).filter((sku): sku is string => Boolean(sku)),
+    price_min: priceMin,
+    price_max: priceMax,
+    total_stock: totalStock,
+    weight_grams: p.weightGram,
+    avg_rating: p.avgRating,
+    review_count: p.reviewCount,
+    created_at: Math.floor(p.createdAt.getTime() / 1000),
+    image_url: p.imageUrl,
+    is_active: p.isActive,
+  };
+}
+
+async function searchProductsFromDb(opts: Required<Pick<SearchOptions, "q" | "categorySlug" | "brandSlug" | "sort" | "page" | "perPage">> &
+  Pick<SearchOptions, "minPrice" | "maxPrice" | "inStock" | "minRating">) {
+  const start = Date.now();
+  const q = opts.q.trim();
+  const qLower = q.toLowerCase();
+  const products = await prisma.product.findMany({
+    where: {
+      isActive: true,
+      ...(opts.categorySlug.length > 0 ? { category: { slug: { in: opts.categorySlug } } } : {}),
+      ...(opts.brandSlug.length > 0 ? { brand: { slug: { in: opts.brandSlug } } } : {}),
+      ...(q
+        ? {
+            OR: [
+              { name: { contains: q, mode: "insensitive" } },
+              { description: { contains: q, mode: "insensitive" } },
+              { category: { name: { contains: q, mode: "insensitive" } } },
+              { brand: { name: { contains: q, mode: "insensitive" } } },
+              { variants: { some: { sku: { contains: q, mode: "insensitive" } } } },
+            ],
+          }
+        : {}),
+    },
+    include: {
+      category: { select: { id: true, name: true, slug: true } },
+      brand: { select: { id: true, name: true, slug: true } },
+      variants: {
+        where: { deletedAt: null, isActive: true },
+        include: {
+          options: {
+            include: { option: { select: { value: true } } },
+          },
+        },
+      },
+    },
+  });
+
+  let items = products.map((product) => productToSearchDoc(product as ProductForSearchDoc));
+
+  if (qLower) {
+    items = items.filter((item) =>
+      [
+        item.name,
+        item.description,
+        item.category_name,
+        item.brand_name,
+        ...item.variant_names,
+        ...item.sku_codes,
+      ]
+        .filter(Boolean)
+        .some((value) => value!.toLowerCase().includes(qLower))
+    );
+  }
+  if (opts.minPrice !== undefined && Number.isFinite(opts.minPrice)) {
+    items = items.filter((item) => item.price_min >= Math.max(0, opts.minPrice!));
+  }
+  if (opts.maxPrice !== undefined && Number.isFinite(opts.maxPrice)) {
+    items = items.filter((item) => item.price_min <= Math.max(0, opts.maxPrice!));
+  }
+  if (opts.inStock) {
+    items = items.filter((item) => item.total_stock > 0);
+  }
+  if (opts.minRating !== undefined && Number.isFinite(opts.minRating)) {
+    items = items.filter((item) => item.avg_rating >= opts.minRating!);
+  }
+
+  items.sort((a, b) => {
+    if (opts.sort === "price_asc") return a.price_min - b.price_min;
+    if (opts.sort === "price_desc") return b.price_min - a.price_min;
+    if (opts.sort === "newest") return b.created_at - a.created_at;
+    if (opts.sort === "rating_desc") return b.avg_rating - a.avg_rating || b.review_count - a.review_count;
+    return 0;
+  });
+
+  const limit = Math.max(1, Math.min(60, opts.perPage));
+  const offset = Math.max(0, (opts.page - 1) * limit);
+  const paged = items.slice(offset, offset + limit);
+
+  return {
+    items: paged,
+    total: items.length,
+    page: opts.page,
+    per_page: limit,
+    took_ms: Date.now() - start,
+    degraded: true,
+  };
+}
+
 /**
  * Eksekusi search dengan filter + sort + paginasi.
  * Return shape mirip API response.
@@ -291,18 +432,34 @@ export async function searchProducts(opts: SearchOptions) {
   const offset = Math.max(0, (page - 1) * limit);
 
   const start = Date.now();
-  const result = await productIndex.search<ProductSearchDoc>(q, {
-    filter: filters.join(" AND "),
-    sort: SORT_MAP[sort],
-    limit,
-    offset,
-  });
+  try {
+    const result = await productIndex.search<ProductSearchDoc>(q, {
+      filter: filters.join(" AND "),
+      sort: SORT_MAP[sort],
+      limit,
+      offset,
+    });
 
-  return {
-    items: result.hits,
-    total: result.estimatedTotalHits ?? result.hits.length,
-    page,
-    per_page: limit,
-    took_ms: Date.now() - start,
-  };
+    return {
+      items: result.hits,
+      total: result.estimatedTotalHits ?? result.hits.length,
+      page,
+      per_page: limit,
+      took_ms: Date.now() - start,
+    };
+  } catch (error) {
+    console.warn("[searchProducts] Meilisearch unavailable, falling back to database:", error);
+    return searchProductsFromDb({
+      q,
+      categorySlug,
+      brandSlug,
+      minPrice,
+      maxPrice,
+      inStock,
+      minRating,
+      sort,
+      page,
+      perPage: limit,
+    });
+  }
 }

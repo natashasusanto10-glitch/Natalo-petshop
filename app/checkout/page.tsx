@@ -289,6 +289,11 @@ export default function CheckoutPage() {
       return;
     }
 
+    if (!payment) {
+      setError("Pilih metode pembayaran terlebih dahulu.");
+      return;
+    }
+
     setOrderLoading(true);
     const res = await fetch("/api/orders", {
       method: "POST",
@@ -389,7 +394,7 @@ export default function CheckoutPage() {
         />
       )}
 
-      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-6 lg:grid-cols-[1fr_360px] lg:py-10">
+      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-4 pb-32 lg:grid-cols-[1fr_360px] lg:py-10 lg:pb-10">
         <div>
           <h1 className="text-2xl font-black tracking-tight text-zinc-950 lg:text-3xl">Checkout</h1>
 
@@ -456,7 +461,7 @@ export default function CheckoutPage() {
             )}
 
             {field("Nama lengkap", "customerName", { required: true, placeholder: "Nama penerima" })}
-            {field("Nomor WhatsApp", "customerPhone", { required: true, placeholder: "08123..." })}
+            {field("Nomor WhatsApp", "customerPhone", { required: true, type: "tel", placeholder: "08123..." })}
             {field("Email", "customerEmail", { type: "email", placeholder: "Opsional" })}
             {field("Alamat lengkap", "shippingAddress", {
               required: true,
@@ -466,7 +471,7 @@ export default function CheckoutPage() {
 
             <div className="grid gap-4 sm:grid-cols-2">
               {field("Kota / Kecamatan", "shippingCity", { placeholder: "Contoh: Jakarta Selatan" })}
-              {field("Kode pos", "shippingPostalCode", { placeholder: "12345" })}
+              {field("Kode pos", "shippingPostalCode", { type: "tel", placeholder: "12345" })}
             </div>
 
             {/* Pengiriman: tombol → bottom sheet */}
@@ -644,7 +649,7 @@ export default function CheckoutPage() {
               <div className="mt-2 space-y-2">
                 <button
                   type="button"
-                  onClick={() => setPaymentMethod("MANUAL")}
+                  onClick={() => setPayment({ provider: "MANUAL", bank: "BCA_NATASHA" })}
                   className={`w-full rounded-2xl border p-4 text-left text-sm transition ${
                     paymentMethod === "MANUAL" ? "border-zinc-950 bg-zinc-50" : "border-zinc-200"
                   }`}
@@ -656,7 +661,7 @@ export default function CheckoutPage() {
                 {isMidtransEnabled && (
                   <button
                     type="button"
-                    onClick={() => setPaymentMethod("MIDTRANS")}
+                    onClick={() => setPayment({ provider: "MIDTRANS" })}
                     className={`w-full rounded-2xl border p-4 text-left text-sm transition ${
                       paymentMethod === "MIDTRANS" ? "border-zinc-950 bg-zinc-50" : "border-zinc-200"
                     }`}
@@ -761,6 +766,34 @@ export default function CheckoutPage() {
         selected={selectedRate}
         onSelect={(r) => setSelectedRate(r as RateOption)}
       />
+
+      {/* Mobile sticky bottom CTA */}
+      {items.length > 0 && (
+        <div className="fixed inset-x-0 bottom-[70px] z-40 border-t border-zinc-200 bg-white px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] md:hidden [padding-bottom:calc(12px+env(safe-area-inset-bottom))]">
+          <div className="flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-zinc-500">
+                {selectedRate ? "Total" : "Subtotal"}
+              </p>
+              <p className="truncate text-base font-black text-zinc-950">
+                {selectedRate ? formatRupiah(total) : `${formatRupiah(subtotal)} + ongkir`}
+              </p>
+            </div>
+            <button
+              type="submit"
+              form="checkout-form"
+              disabled={orderLoading || items.length === 0}
+              className="flex h-12 shrink-0 items-center justify-center rounded-full bg-zinc-950 px-6 text-sm font-bold text-white disabled:opacity-50"
+            >
+              {orderLoading
+                ? "Memproses..."
+                : paymentMethod === "MIDTRANS"
+                  ? "Bayar"
+                  : "Buat Order"}
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }

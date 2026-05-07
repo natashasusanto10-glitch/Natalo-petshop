@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { createSessionToken, getSessionCookieOptions } from "@/lib/auth";
+import { createSessionToken, getSessionCookieOptions, MEMBER_SESSION_COOKIE } from "@/lib/auth";
 import { normalizeIndonesianPhone } from "@/lib/phone";
 import bcrypt from "bcryptjs";
 import type { User } from "@prisma/client";
@@ -114,6 +114,6 @@ export async function POST(request: NextRequest) {
   });
 
   const response = NextResponse.json({ ok: true, role: "CUSTOMER" });
-  response.cookies.set("session", token, getSessionCookieOptions(request));
+  response.cookies.set(MEMBER_SESSION_COOKIE, token, getSessionCookieOptions(request));
   return response;
 }

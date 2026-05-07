@@ -9,7 +9,7 @@ import { EmptyWishlist } from "@/components/LoadingEmptyStates";
 import Link from "next/link";
 
 export default async function MemberFavoritesPage() {
-  const session = await getSession();
+  const session = await getSession("CUSTOMER");
 
   const favorites = session
     ? await prisma.favorite.findMany({
@@ -26,16 +26,16 @@ export default async function MemberFavoritesPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-natalo-600 px-4 pb-0 pt-8">
+      <div className="bg-orange-500 px-4 pb-0 pt-4 md:pt-8">
         <div className="mx-auto max-w-4xl">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/20 text-2xl">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/20 text-xl md:h-12 md:w-12 md:text-2xl">
                 🐾
               </div>
               <div>
-                <p className="text-xs text-natalo-100">Member resmi</p>
-                <p className="text-lg font-black text-white">Halo, {session?.name}!</p>
+                <p className="text-xs text-orange-100">Member resmi</p>
+                <p className="text-base font-black text-white md:text-lg">Halo, {session?.name}!</p>
               </div>
             </div>
             <LogoutButton redirectTo="/member/login" className="border-white/30 text-white hover:border-white/60" />

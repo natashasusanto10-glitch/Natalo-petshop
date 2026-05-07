@@ -15,7 +15,7 @@ export async function POST(
   { params }: { params: Promise<{ orderNumber: string }> }
 ) {
   try {
-    const session = await getSession();
+    const session = await getSession("CUSTOMER");
     if (!session) {
       return NextResponse.json(
         { error: "Silakan login terlebih dahulu." },

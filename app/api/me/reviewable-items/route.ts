@@ -7,7 +7,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
-  const session = await getSession();
+  const session = await getSession("CUSTOMER");
   if (!session) return NextResponse.json({ error: "Login dulu" }, { status: 401 });
 
   const items = await prisma.orderItem.findMany({

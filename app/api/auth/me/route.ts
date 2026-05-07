@@ -3,7 +3,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
-  const session = await getSession();
+  const session = await getSession("CUSTOMER");
 
   if (!session || session.role !== "CUSTOMER") {
     return NextResponse.json({});

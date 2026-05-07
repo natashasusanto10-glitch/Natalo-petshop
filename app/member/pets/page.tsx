@@ -47,7 +47,7 @@ export default async function MemberPetsPage({
 }: {
   searchParams: Promise<{ added?: string }>;
 }) {
-  const session = await getSession();
+  const session = await getSession("CUSTOMER");
   const { added } = await searchParams;
 
   const pets = session
@@ -79,7 +79,7 @@ export default async function MemberPetsPage({
 
   async function addPet(formData: FormData) {
     "use server";
-    const sess = await getSession();
+    const sess = await getSession("CUSTOMER");
     if (!sess) return;
 
     const name = String(formData.get("name") || "").trim();
@@ -112,7 +112,7 @@ export default async function MemberPetsPage({
 
   async function updatePet(formData: FormData) {
     "use server";
-    const sess = await getSession();
+    const sess = await getSession("CUSTOMER");
     if (!sess) return;
 
     const petId = String(formData.get("petId"));
@@ -138,7 +138,7 @@ export default async function MemberPetsPage({
 
   async function deletePet(formData: FormData) {
     "use server";
-    const sess = await getSession();
+    const sess = await getSession("CUSTOMER");
     if (!sess) return;
 
     const petId = String(formData.get("petId"));

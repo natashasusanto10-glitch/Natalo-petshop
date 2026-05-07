@@ -15,6 +15,7 @@ function revalidateOrderAdmin(orderId: string) {
   revalidatePath(`/admin/orders/${orderId}`);
   revalidatePath("/admin/orders");
   revalidatePath("/admin");
+  revalidatePath("/admin/dashboard");
 }
 
 export async function getEmailContext(orderId: string) {
@@ -62,7 +63,9 @@ export async function markAsPaid(orderId: string) {
       status: { notIn: ["CANCELLED", "REFUNDED"] },
       paymentStatus: { notIn: ["PAID", "REFUNDED"] },
     },
-    data: { paymentStatus: "PAID" },
+    data: current.status === "PENDING"
+      ? { paymentStatus: "PAID", status: "PAID" }
+      : { paymentStatus: "PAID" },
   });
   if (result.count === 0) {
     throw new Error("Order sudah berubah, refresh halaman dulu.");

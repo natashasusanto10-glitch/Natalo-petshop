@@ -4,9 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && prisma migrate deploy && next build",
     "start": "next start",
     "lint": "next lint",
+    "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts"
@@ -22,6 +23,8 @@
     "openai": "latest",
     "react": "latest",
     "react-dom": "latest",
+    "resend": "^6.12.3",
+    "uploadthing": "^7.7.4",
     "web-push": "^3.6.7",
     "zod": "latest"
   },

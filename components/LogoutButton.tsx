@@ -13,7 +13,13 @@ export function LogoutButton({ redirectTo, className = "" }: LogoutButtonProps) 
 
   async function handleLogout() {
     clearCart();
-    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        scope: redirectTo.startsWith("/admin") ? "ADMIN" : "CUSTOMER",
+      }),
+    }).catch(() => {});
     clearCart();
     window.location.replace(redirectTo);
   }

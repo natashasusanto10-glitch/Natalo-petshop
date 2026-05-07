@@ -3,10 +3,17 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
-import { sendOrderStatusPush } from "@/lib/push";
+import {
+  markAsCancelled,
+  markAsDelivered,
+  markAsPaid,
+  markAsProcessing,
+  markAsShipped,
+} from "./actions";
 
 const STATUS_LABELS: Record<string, string> = {
-  PENDING: "Menunggu",
+  PENDING: "Order Baru",
+  PAID: "Sudah Dibayar",
   PROCESSING: "Diproses",
   SHIPPED: "Dikirim",
   DELIVERED: "Selesai",
@@ -16,6 +23,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING: "bg-amber-100 text-amber-700",
+  PAID: "bg-emerald-100 text-emerald-700",
   PROCESSING: "bg-natalo-100 text-natalo-700",
   SHIPPED: "bg-indigo-100 text-indigo-700",
   DELIVERED: "bg-emerald-100 text-emerald-700",
@@ -47,68 +55,11 @@ export default async function AdminOrderDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-
-  // ── Server Actions ──────────────────────────────────────────
-  async function markAsPaid() {
-    "use server";
-    const updated = await prisma.order.update({
-      where: { id },
-      data: { paymentStatus: "PAID" },
-    });
-    await sendOrderStatusPush(id, updated.orderNumber, "PAID").catch(() => {});
-    revalidatePath(`/admin/orders/${id}`);
-    revalidatePath("/admin/orders");
-    revalidatePath("/admin");
-  }
-
-  async function markAsProcessing() {
-    "use server";
-    const updated = await prisma.order.update({
-      where: { id },
-      data: { status: "PROCESSING" },
-    });
-    await sendOrderStatusPush(id, updated.orderNumber, "PROCESSING").catch(() => {});
-    revalidatePath(`/admin/orders/${id}`);
-    revalidatePath("/admin/orders");
-    revalidatePath("/admin");
-  }
-
-  async function markAsShipped(formData: FormData) {
-    "use server";
-    const trackingNumber = String(formData.get("trackingNumber") || "").trim();
-    const updated = await prisma.order.update({
-      where: { id },
-      data: { status: "SHIPPED", trackingNumber: trackingNumber || null },
-    });
-    await sendOrderStatusPush(id, updated.orderNumber, "SHIPPED").catch(() => {});
-    revalidatePath(`/admin/orders/${id}`);
-    revalidatePath("/admin/orders");
-    revalidatePath("/admin");
-  }
-
-  async function markAsDelivered() {
-    "use server";
-    const updated = await prisma.order.update({
-      where: { id },
-      data: { status: "DELIVERED" },
-    });
-    await sendOrderStatusPush(id, updated.orderNumber, "DELIVERED").catch(() => {});
-    revalidatePath(`/admin/orders/${id}`);
-    revalidatePath("/admin/orders");
-    revalidatePath("/admin");
-  }
-
-  async function markAsCancelled() {
-    "use server";
-    const updated = await prisma.order.update({
-      where: { id },
-      data: { status: "CANCELLED" },
-    });
-    await sendOrderStatusPush(id, updated.orderNumber, "CANCELLED").catch(() => {});
-    revalidatePath(`/admin/orders/${id}`);
-    revalidatePath("/admin/orders");
-    revalidatePath("/admin");
-  }
+  const markAsPaidAction = markAsPaid.bind(null, id);
+  const markAsProcessingAction = markAsProcessing.bind(null, id);
+  const markAsShippedAction = markAsShipped.bind(null, id);
+  const markAsDeliveredAction = markAsDelivered.bind(null, id);
+  const markAsCancelledAction = markAsCancelled.bind(null, id);
 
   // ── Data Fetch ──────────────────────────────────────────────
   const order = await prisma.order.findUnique({
@@ -336,31 +287,26 @@ export default async function AdminOrderDetailPage({
               <div className="mt-5 space-y-3">
                 {/* 1. Konfirmasi pembayaran */}
                 {order.paymentStatus !== "PAID" && (
-                  <ConfirmButton
-                    action={markAsPaidAction}
-                    variant="primary"
-                    confirmTitle="Konfirmasi pembayaran"
-                    confirmMessage={`Pastikan pembayaran sebesar ${formatRupiah(
-                      order.total
-                    )} sudah masuk. Customer akan menerima email konfirmasi.`}
-                    confirmLabel="Ya, sudah lunas"
-                  >
-                    ✅ Konfirmasi pembayaran
-                  </ConfirmButton>
+                  <form action={markAsPaidAction}>
+                    <button
+                      type="submit"
+                      className="w-full rounded-full bg-emerald-600 px-5 py-3 text-sm font-bold text-white hover:bg-emerald-700"
+                    >
+                      ✅ Konfirmasi pembayaran ({formatRupiah(order.total)})
+                    </button>
+                  </form>
                 )}
 
-                {/* 2. Proses packing (setelah bayar, masih PENDING) */}
-                {order.paymentStatus === "PAID" && order.status === "PENDING" && (
-                  <ConfirmButton
-                    action={markAsProcessingAction}
-                    variant="primary"
-                    className="!bg-natalo-600 hover:!bg-natalo-700"
-                    confirmTitle="Mulai packing"
-                    confirmMessage="Order akan ditandai sedang diproses. Lanjutkan?"
-                    confirmLabel="Ya, mulai packing"
-                  >
-                    📦 Mulai packing
-                  </ConfirmButton>
+                {/* 2. Proses packing (setelah bayar) */}
+                {order.paymentStatus === "PAID" && (order.status === "PENDING" || order.status === "PAID") && (
+                  <form action={markAsProcessingAction}>
+                    <button
+                      type="submit"
+                      className="w-full rounded-full bg-natalo-600 px-5 py-3 text-sm font-bold text-white hover:bg-natalo-700"
+                    >
+                      📦 Mulai packing
+                    </button>
+                  </form>
                 )}
 
                 {/* 3. Tandai sudah dikirim (PROCESSING → SHIPPED) */}
@@ -398,31 +344,25 @@ export default async function AdminOrderDetailPage({
 
                 {/* 5. Tandai selesai (SHIPPED) */}
                 {order.status === "SHIPPED" && (
-                  <ConfirmButton
-                    action={markAsDeliveredAction}
-                    variant="success"
-                    confirmTitle="Tandai order selesai"
-                    confirmMessage="Pastikan paket sudah benar-benar diterima customer. Setelah selesai, status tidak bisa diubah lagi."
-                    confirmLabel="Ya, selesai"
-                  >
-                    ✅ Tandai selesai
-                  </ConfirmButton>
+                  <form action={markAsDeliveredAction}>
+                    <button
+                      type="submit"
+                      className="w-full rounded-full bg-emerald-600 px-5 py-3 text-sm font-bold text-white hover:bg-emerald-700"
+                    >
+                      ✅ Tandai selesai
+                    </button>
+                  </form>
                 )}
 
-                {/* Batalkan - paling perlu confirm */}
-                <ConfirmButton
-                  action={markAsCancelledAction}
-                  variant="danger"
-                  confirmTitle="Batalkan order ini?"
-                  confirmMessage={
-                    order.status === "SHIPPED" || order.status === "DELIVERED"
-                      ? "Paket sudah dikirim/diterima - stock TIDAK akan otomatis dikembalikan. Anda harus manual handle return/refund. Lanjutkan?"
-                      : "Stock akan dikembalikan dan customer akan menerima email pembatalan. Aksi ini tidak bisa di-undo."
-                  }
-                  confirmLabel="Ya, batalkan"
-                >
-                  Batalkan order
-                </ConfirmButton>
+                {/* Batalkan */}
+                <form action={markAsCancelledAction}>
+                  <button
+                    type="submit"
+                    className="w-full rounded-full border border-red-300 bg-red-50 px-5 py-3 text-sm font-bold text-red-700 hover:bg-red-100"
+                  >
+                    Batalkan order
+                  </button>
+                </form>
               </div>
             </section>
           )}
