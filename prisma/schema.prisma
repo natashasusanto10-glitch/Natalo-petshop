@@ -33,65 +33,17 @@ enum PaymentStatus {
 }
 
 model User {
-  id                  String          @id @default(cuid())
-  name                String
-  phone               String?         @unique
-  email               String?         @unique
-  passwordHash        String?
-  role                String          @default("CUSTOMER")
-  birthDate           DateTime?
-  birthdayVoucherYear Int? // Tahun terakhir voucher ultah dikeluarkan (anti double-claim)
-  orders              Order[]
-  points              CustomerPoint[]
-  addresses           Address[]
-  pets                Pet[]
-  favorites           Favorite[]
-  reviews             Review[]
-  reviewVotes         ReviewVote[]    @relation("ReviewVotes")
-  reviewReplies       ReviewReply[]   @relation("AdminReplies")
-  createdAt           DateTime        @default(now())
-  updatedAt           DateTime        @updatedAt
-}
-
-model Address {
-  id              String   @id @default(cuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  label           String   @default("Rumah")
-  recipientName   String
-  phone           String
-  address         String
-  latitude        Float?
-  longitude       Float?
-  pinpointAddress String?  @map("pinpoint_address")
-  streetName      String?  @map("street_name")
-  province        String?
-  provinceCode    String?  @map("province_code")
-  city            String
-  cityCode        String?  @map("city_code")
-  district        String?
-  districtCode    String?  @map("district_code")
-  village         String?
-  villageCode     String?  @map("village_code")
-  postalCode      String
-  isMain          Boolean  @default(false)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-}
-
-model Pet {
-  id                 String    @id @default(cuid())
-  userId             String
-  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name               String
-  type               String // Kucing, Anjing, Ikan, Burung, Reptil, Lainnya
-  breed              String?
-  birthDate          DateTime?
-  vaccineReminderAt  DateTime?
-  groomingReminderAt DateTime?
-  notes              String?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id           String          @id @default(cuid())
+  name         String
+  phone        String?         @unique
+  email        String?         @unique
+  passwordHash String?
+  role         String          @default("CUSTOMER")
+  orders       Order[]
+  points       CustomerPoint[]
+  reviews      Review[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
 }
 
 model Category {
@@ -114,125 +66,55 @@ model Brand {
 }
 
 model Product {
-  id              String             @id @default(cuid())
-  name            String
-  slug            String             @unique
-  description     String
-  price           Int
-  memberPrice     Int?
-  discountPrice   Int?
-  stock           Int                @default(0)
-  weightGram      Int                @default(500)
-  imageUrl        String?
-  isActive        Boolean            @default(true)
-  hasVariants     Boolean            @default(false)
-  // Cache aggregate untuk Review (di-update dalam transaksi yg sama saat review berubah)
-  avgRating       Float              @default(0) // 0.0 – 5.0 (1 desimal)
-  reviewCount     Int                @default(0) // jumlah review VISIBLE
-  ratingBreakdown Json               @default("{\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0}")
-  categoryId      String?
-  category        Category?          @relation(fields: [categoryId], references: [id])
-  brandId         String?
-  brand           Brand?             @relation(fields: [brandId], references: [id])
-  // Hybrid extraction: TRUE = brand ditebak otomatis dari nama, perlu review admin
-  brandAutoAssigned Boolean          @default(false)
-  orderItems      OrderItem[]
-  favorites       Favorite[]
-  variantAttrs    VariantAttribute[]
-  variants        ProductVariant[]
-  reviews         Review[]
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-}
-
-model VariantAttribute {
-  id        String          @id @default(cuid())
-  productId String
-  product   Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
-  name      String // "Berat", "Rasa", "Warna", dst
-  position  Int             @default(0)
-  options   VariantOption[]
-  createdAt DateTime        @default(now())
-}
-
-model VariantOption {
-  id          String                   @id @default(cuid())
-  attributeId String
-  attribute   VariantAttribute         @relation(fields: [attributeId], references: [id], onDelete: Cascade)
-  value       String // "800GR", "4KG", "Merah"
-  position    Int                      @default(0)
-  variants    VariantOptionOnVariant[]
-  createdAt   DateTime                 @default(now())
-}
-
-model ProductVariant {
-  id         String                   @id @default(cuid())
-  productId  String
-  product    Product                  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  sku        String?                  @unique
-  price      Int
-  stock      Int                      @default(0)
-  weightGram Int                      @default(500)
-  imageUrl   String?
-  isActive   Boolean                  @default(true)
-  deletedAt  DateTime? // soft delete — jika sudah pernah di-order
-  options    VariantOptionOnVariant[]
-  orderItems OrderItem[]
-  createdAt  DateTime                 @default(now())
-  updatedAt  DateTime                 @updatedAt
-}
-
-model VariantOptionOnVariant {
-  variantId String
-  optionId  String
-  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
-  option    VariantOption  @relation(fields: [optionId], references: [id], onDelete: Cascade)
-
-  @@id([variantId, optionId])
-}
-
-model Favorite {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  productId String
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-
-  @@unique([userId, productId])
+  id          String      @id @default(cuid())
+  name        String
+  slug        String      @unique
+  description String
+  price       Int
+  memberPrice Int?
+  stock       Int         @default(0)
+  weightGram  Int         @default(500)
+  imageUrl    String?
+  isActive    Boolean     @default(true)
+  categoryId  String?
+  category    Category?   @relation(fields: [categoryId], references: [id])
+  brandId     String?
+  brand       Brand?      @relation(fields: [brandId], references: [id])
+  orderItems  OrderItem[]
+  reviews     Review[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 }
 
 model Order {
-  id                 String          @id @default(cuid())
-  orderNumber        String          @unique
-  userId             String?
-  user               User?           @relation(fields: [userId], references: [id])
-  customerName       String
-  customerPhone      String
-  customerEmail      String?
-  shippingAddress    String
-  shippingCity       String?
-  shippingPostalCode String?
-  courierCode        String?
-  courierService     String?
-  trackingNumber     String?
-  subtotal           Int
-  shippingCost       Int             @default(0)
-  discount           Int             @default(0)
-  total              Int
-  status             OrderStatus     @default(PENDING)
-  paymentProvider    PaymentProvider @default(MANUAL)
-  paymentStatus      PaymentStatus   @default(UNPAID)
-  paymentReference   String?
-  paymentUrl         String?
-  voucherCode        String?
-  // Pembayaran TT manual: bank tujuan + kode unik 3-digit
-  manualBank         String?         // "BCA_NATASHA" | "BCA_NL_PET"
-  uniqueCode         Int?            // 100-999, ditambahkan ke total agar admin gampang identifikasi
-  notes              String?
-  items              OrderItem[]
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
+  id                  String          @id @default(cuid())
+  orderNumber          String          @unique
+  userId               String?
+  user                 User?           @relation(fields: [userId], references: [id])
+  customerName         String
+  customerPhone        String
+  customerEmail        String?
+  shippingAddress      String
+  shippingCity         String?
+  shippingPostalCode   String?
+  courierCode          String?
+  courierService       String?
+  trackingNumber       String?
+  subtotal             Int
+  shippingCost         Int             @default(0)
+  discount             Int             @default(0)
+  total                Int
+  status               OrderStatus     @default(PENDING)
+  paymentProvider      PaymentProvider @default(MANUAL)
+  paymentStatus        PaymentStatus   @default(UNPAID)
+  paymentReference     String?
+  paymentUrl           String?
+  paymentProofUrl      String?
+  voucherCode          String?
+  notes                String?
+  items                OrderItem[]
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
 }
 
 model OrderItem {
@@ -269,6 +151,28 @@ model Voucher {
   updatedAt       DateTime  @updatedAt
 
   @@index([userId])
+}
+
+model Review {
+  id         String   @id @default(cuid())
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  name       String
+  rating     Int
+  comment    String
+  isApproved Boolean  @default(false)
+  createdAt  DateTime @default(now())
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userId    String?
+  createdAt DateTime @default(now())
 }
 
 model CustomerPoint {

@@ -37,6 +37,37 @@ self.addEventListener("activate", (e) => {
   );
 });
 
+// Push notification handler
+self.addEventListener("push", (e) => {
+  if (!e.data) return;
+  let payload = { title: "Natalo Petshop", body: "Ada update pesanan kamu!", url: "/order-status" };
+  try { payload = { ...payload, ...e.data.json() }; } catch {}
+  e.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: "/icon.svg",
+      badge: "/icon.svg",
+      data: { url: payload.url },
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const url = e.notification.data?.url || "/";
+  e.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      const existing = clients.find((c) => c.url.includes(url));
+      if (existing) return existing.focus();
+      return self.clients.openWindow(url);
+    })
+  );
+});
+
+// Fetch strategy:
+// - API & auth → network only
+// - Static assets → cache first
+// - Pages → network first, fallback cache then /offline
 self.addEventListener("fetch", (e) => {
   const { request } = e;
   const url = new URL(request.url);

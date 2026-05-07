@@ -29,43 +29,33 @@ input, textarea, select, button {
   font: inherit;
 }
 
-/* ── Placeholder styling: konsisten di Chrome, Safari iOS, Samsung Browser ── */
-input::placeholder,
-textarea::placeholder {
-  color: #aaa;
-  font-size: 13px;
-  font-style: normal;
-  opacity: 1; /* Firefox default <1 */
-}
-input::-webkit-input-placeholder,
-textarea::-webkit-input-placeholder {
-  color: #aaa;
-  font-size: 13px;
-  font-style: normal;
-}
-input::-moz-placeholder,
-textarea::-moz-placeholder {
-  color: #aaa;
-  font-size: 13px;
-  font-style: normal;
-  opacity: 1;
-}
-input:-ms-input-placeholder,
-textarea:-ms-input-placeholder {
-  color: #aaa;
-  font-size: 13px;
-  font-style: normal;
-}
+/* ── Print label 100×150mm ─────────────────────────────── */
+@media print {
+  /* Hide everything except the label */
+  body > * { display: none !important; }
+  #print-label-root { display: block !important; }
 
-/* ── Password input: nonaktifkan tombol reveal bawaan Edge/IE ── */
-.password-input-no-native-reveal::-ms-reveal,
-.password-input-no-native-reveal::-ms-clear {
-  display: none !important;
-}
-/* iOS Safari & Chrome: Strong Password / Passwords / Contacts buttons */
-.password-input-no-native-reveal::-webkit-credentials-auto-fill-button,
-.password-input-no-native-reveal::-webkit-strong-password-auto-fill-button,
-.password-input-no-native-reveal::-webkit-contacts-auto-fill-button {
-  visibility: hidden;
-  pointer-events: none;
+  /* Reset page margins for clean label */
+  @page {
+    size: 100mm 150mm;
+    margin: 0;
+  }
+
+  body {
+    background: white !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .shipping-label {
+    width: 100mm !important;
+    height: 150mm !important;
+    overflow: hidden !important;
+    box-shadow: none !important;
+    page-break-after: always;
+  }
+
+  .print-hidden {
+    display: none !important;
+  }
 }

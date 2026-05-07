@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { formatRupiah } from "@/lib/format";
+import { PaymentProofUpload } from "@/components/PaymentProofUpload";
+import { PushSubscribe } from "@/components/PushSubscribe";
 
 type OrderItem = { name: string; quantity: number; price: number };
 
@@ -117,18 +119,37 @@ export default function OrderStatusPage() {
   );
 }
 
-const BANK_ACCOUNTS: Record<string, { bank: string; name: string; number: string }> = {
-  BCA_NATASHA: {
-    bank: "BCA",
-    name: "Natasha",
-    number: "8280277046",
-  },
-  BCA_NL_PET: {
-    bank: "BCA",
-    name: "NL Pet Indonesia CV",
-    number: "8372422288",
-  },
+const COURIER_TRACKING: Record<string, string> = {
+  jne: "https://www.jne.co.id/id/tracking/trace",
+  jnt: "https://www.jet.co.id/track",
+  "j&t": "https://www.jet.co.id/track",
+  sicepat: "https://www.sicepat.com/checkAwb",
+  anteraja: "https://anteraja.id/tracking",
+  pos: "https://www.posindonesia.co.id/id/tracking",
+  tiki: "https://www.tiki.id/id/tracking",
+  ninja: "https://www.ninjaxpress.co/id-id/tracking",
+  gojek: "https://gojek.com",
+  grab: "https://grab.com",
 };
+
+function CourierTrackingLink({ courierCode, trackingNumber }: { courierCode: string; trackingNumber: string }) {
+  const url = COURIER_TRACKING[courierCode.toLowerCase()];
+  return (
+    <div className="mt-3 rounded-xl bg-blue-50 p-3">
+      <p className="text-xs font-semibold text-blue-700">Nomor Resi: <span className="font-black">{trackingNumber}</span></p>
+      {url && (
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:underline"
+        >
+          Lacak di situs {courierCode.toUpperCase()} →
+        </a>
+      )}
+    </div>
+  );
+}
 
 function OrderDetail({ order }: { order: Order }) {
   // Prioritas WA: NEXT_PUBLIC_WA_NUMBER baru → fallback ke WHATSAPP_NUMBER lama
@@ -159,6 +180,8 @@ Mohon dikonfirmasi. Terima kasih!`
 
   return (
     <div className="mt-8 space-y-5">
+      <PushSubscribe />
+
       <div className="rounded-3xl border border-zinc-200 p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -178,7 +201,10 @@ Mohon dikonfirmasi. Terima kasih!`
           {order.courierCode && (
             <p><span className="font-semibold">Kurir:</span> {order.courierCode.toUpperCase()} {order.courierService ?? ""}</p>
           )}
-          {order.trackingNumber && (
+          {order.trackingNumber && order.courierCode && (
+            <CourierTrackingLink courierCode={order.courierCode} trackingNumber={order.trackingNumber} />
+          )}
+          {order.trackingNumber && !order.courierCode && (
             <p><span className="font-semibold">Resi:</span> {order.trackingNumber}</p>
           )}
           {order.notes && (
@@ -286,13 +312,16 @@ Mohon dikonfirmasi. Terima kasih!`
               ⏱️ Batas waktu transfer: 24 jam dari order dibuat.
             </p>
 
+            <PaymentProofUpload orderNumber={order.orderNumber} />
+
+            <p className="mt-3 text-center text-xs text-zinc-400">atau konfirmasi via</p>
             <a
               href={`https://wa.me/${waNumber.replace("+", "")}?text=${waText}`}
               target="_blank"
               rel="noreferrer"
-              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-green-500 px-5 py-3 text-sm font-bold text-white hover:bg-green-600"
+              className="mt-2 inline-flex w-full justify-center rounded-full border border-zinc-200 px-5 py-3 text-sm font-bold text-zinc-700 hover:bg-zinc-100"
             >
-              💬 Konfirmasi via WhatsApp
+              WhatsApp
             </a>
           </div>
         )}

@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { formatRupiah } from "@/lib/format";
 import { EmptyCart } from "@/components/LoadingEmptyStates";
@@ -14,7 +15,6 @@ type CartItem = {
   price: number;
   quantity: number;
   weightGram: number;
-  stock?: number;
   imageUrl?: string | null;
 };
 
@@ -74,69 +74,57 @@ export default function CartPage() {
         </div>
       ) : (
         <div className="mt-8 space-y-4">
-          {items.map((item) => {
-            const itemKey = `${item.productId}:${item.variantId ?? ""}`;
-            return (
-              <div
-                key={itemKey}
-                className="flex items-center justify-between gap-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gray-100 text-2xl">
-                    {item.imageUrl ? (
-                      <Image
-                        src={item.imageUrl}
-                        alt={item.name}
-                        fill
-                        sizes="56px"
-                        className="object-cover"
-                      />
-                    ) : (
-                      <span>🐾</span>
-                    )}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-gray-900">{item.name}</p>
-                    {item.variantLabel && (
-                      <p className="mt-0.5 text-xs font-medium text-natalo-600">{item.variantLabel}</p>
-                    )}
-                    <p className="mt-0.5 text-sm text-gray-400">{formatRupiah(item.price)} / item</p>
-                    {item.stock !== undefined && (
-                      <p className="mt-0.5 text-xs text-gray-400">Stok: {item.stock}</p>
-                    )}
-                  </div>
+          {items.map((item) => (
+            <div
+              key={item.productId}
+              className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm"
+            >
+              <div className="flex gap-3">
+                <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-gray-100">
+                  {item.imageUrl ? (
+                    <Image src={item.imageUrl} alt={item.name} fill className="object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-2xl">🐾</div>
+                  )}
                 </div>
-
-                <div className="flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-gray-900 leading-snug">{item.name}</p>
+                  <p className="mt-0.5 text-sm text-gray-400">{formatRupiah(item.price)} / item</p>
+                </div>
+                <p className="shrink-0 font-bold text-gray-900">{formatRupiah(item.price * item.quantity)}</p>
+              </div>
+              <div className="mt-3 flex items-center justify-between">
+                <div className="flex items-center gap-1">
                   <button
-                    onClick={() => updateQty(itemKey, item.quantity - 1)}
-                    disabled={item.quantity <= 1}
-                    className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 text-gray-600 transition hover:border-natalo-400 hover:text-natalo-600 disabled:cursor-not-allowed disabled:opacity-40"
+                    onClick={() => updateQty(item.productId, item.quantity - 1)}
+                    className="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 text-lg text-gray-600 transition hover:border-orange-400 hover:text-orange-500"
+                    aria-label="Kurangi"
                   >
                     −
                   </button>
-                  <span className="w-6 text-center font-bold text-gray-900">{item.quantity}</span>
+                  <span className="w-9 text-center font-bold text-gray-900">{item.quantity}</span>
                   <button
-                    onClick={() => updateQty(itemKey, item.quantity + 1)}
-                    disabled={item.stock !== undefined && item.quantity >= item.stock}
-                    className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 text-gray-600 transition hover:border-natalo-400 hover:text-natalo-600 disabled:opacity-40"
+                    onClick={() => updateQty(item.productId, item.quantity + 1)}
+                    className="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 text-lg text-gray-600 transition hover:border-orange-400 hover:text-orange-500"
+                    aria-label="Tambah"
                   >
                     +
                   </button>
-                  <button
-                    onClick={() => updateQty(itemKey, 0)}
-                    className="ml-1 text-xs text-gray-300 transition hover:text-red-400"
-                  >
-                    Hapus
-                  </button>
                 </div>
-
-                <p className="min-w-[80px] text-right font-bold text-gray-900">
-                  {formatRupiah(item.price * item.quantity)}
-                </p>
+                <button
+                  onClick={() => updateQty(item.productId, 0)}
+                  className="flex h-11 items-center gap-1.5 rounded-full px-3 text-sm text-gray-400 transition hover:text-red-500"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                    <path d="M10 11v6M14 11v6" />
+                  </svg>
+                  Hapus
+                </button>
               </div>
-            );
-          })}
+            </div>
+          ))}
 
           <div className="rounded-2xl bg-gray-50 p-5">
             <div className="flex items-center justify-between">

@@ -17,7 +17,6 @@ type CartItem = {
   price: number;
   quantity: number;
   weightGram: number;
-  stock?: number;
   imageUrl?: string | null;
 };
 
@@ -285,14 +284,8 @@ export default function CheckoutPage() {
       return;
     }
 
-    const overstockItem = items.find((item) => item.stock !== undefined && item.quantity > item.stock);
-    if (overstockItem) {
-      setError(`${overstockItem.name} melebihi stok tersedia (${overstockItem.stock}).`);
-      return;
-    }
-
-    if (!payment) {
-      setError("Pilih metode pembayaran dulu.");
+    if (!selectedRate) {
+      setError("Pilih kurir pengiriman terlebih dahulu. Klik \"Cek Ongkir\" dan pilih salah satu layanan.");
       return;
     }
 
@@ -396,9 +389,21 @@ export default function CheckoutPage() {
         />
       )}
 
-      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 lg:grid-cols-[1fr_360px]">
+      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-6 lg:grid-cols-[1fr_360px] lg:py-10">
         <div>
-          <h1 className="text-3xl font-black tracking-tight text-zinc-950">Checkout</h1>
+          <h1 className="text-2xl font-black tracking-tight text-zinc-950 lg:text-3xl">Checkout</h1>
+
+          {/* Mobile-only: ringkasan mini di atas form */}
+          {items.length > 0 && (
+            <div className="mt-4 rounded-2xl bg-zinc-50 px-4 py-3 lg:hidden">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-zinc-500">{items.reduce((s, i) => s + i.quantity, 0)} item</span>
+                <span className="font-black text-zinc-950">
+                  {selectedRate ? `Total: Rp ${(total).toLocaleString("id-ID")}` : `Subtotal: Rp ${subtotal.toLocaleString("id-ID")}`}
+                </span>
+              </div>
+            </div>
+          )}
 
           <form id="checkout-form" onSubmit={handleOrder} className="mt-8 space-y-4">
             {/* Pilih alamat tersimpan */}
@@ -635,12 +640,32 @@ export default function CheckoutPage() {
 
             {/* Metode pembayaran */}
             <div>
-              <p className="mb-3 text-sm font-medium text-zinc-700">Metode pembayaran *</p>
-              <MetodePembayaran
-                value={payment}
-                onChange={setPayment}
-                midtransAvailable={isMidtransEnabled}
-              />
+              <p className="text-sm font-medium text-zinc-700">Metode pembayaran</p>
+              <div className="mt-2 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod("MANUAL")}
+                  className={`w-full rounded-2xl border p-4 text-left text-sm transition ${
+                    paymentMethod === "MANUAL" ? "border-zinc-950 bg-zinc-50" : "border-zinc-200"
+                  }`}
+                >
+                  <p className="font-semibold">Transfer Manual</p>
+                  <p className="text-zinc-500">BCA · No. rek & instruksi tampil setelah order dibuat</p>
+                </button>
+
+                {isMidtransEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod("MIDTRANS")}
+                    className={`w-full rounded-2xl border p-4 text-left text-sm transition ${
+                      paymentMethod === "MIDTRANS" ? "border-zinc-950 bg-zinc-50" : "border-zinc-200"
+                    }`}
+                  >
+                    <p className="font-semibold">Midtrans</p>
+                    <p className="text-zinc-500">Transfer bank, QRIS, GoPay, OVO, dan lainnya</p>
+                  </button>
+                )}
+              </div>
             </div>
           </form>
         </div>
@@ -683,7 +708,11 @@ export default function CheckoutPage() {
             </div>
             <div className="flex justify-between text-zinc-600">
               <span>Ongkir</span>
-              <span>{selectedRate ? formatRupiah(shippingCost) : "—"}</span>
+              {selectedRate ? (
+                <span>{formatRupiah(shippingCost)}</span>
+              ) : (
+                <span className="italic text-zinc-400">Belum dipilih</span>
+              )}
             </div>
             {voucherApplied && (
               <div className="flex justify-between font-semibold text-green-600">
@@ -693,7 +722,7 @@ export default function CheckoutPage() {
             )}
             <div className="flex justify-between text-lg font-black text-zinc-950">
               <span>Total</span>
-              <span>{formatRupiah(total)}</span>
+              <span>{selectedRate ? formatRupiah(total) : formatRupiah(subtotal) + " + ongkir"}</span>
             </div>
           </div>
 

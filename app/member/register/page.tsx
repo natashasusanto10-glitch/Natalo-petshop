@@ -17,6 +17,12 @@ export default function MemberRegisterPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+
+    if (password !== confirmPassword) {
+      setError("Password dan konfirmasi password tidak cocok.");
+      return;
+    }
+
     setLoading(true);
 
     const res = await fetch("/api/auth/member-register", {
@@ -106,14 +112,34 @@ export default function MemberRegisterPage() {
             />
           </div>
 
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Konfirmasi Password</label>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              minLength={8}
+              className={`mt-1 block w-full rounded-xl border px-4 py-3 text-sm outline-none transition focus:ring-2 ${
+                confirmPassword && confirmPassword !== password
+                  ? "border-red-300 focus:border-red-400 focus:ring-red-100"
+                  : "border-gray-200 focus:border-orange-400 focus:ring-orange-100"
+              }`}
+              placeholder="Ulangi password"
+            />
+            {confirmPassword && confirmPassword !== password && (
+              <p className="mt-1 text-xs text-red-500">Password tidak cocok</p>
+            )}
+          </div>
+
           {error && (
             <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>
           )}
 
           <button
             type="submit"
-            disabled={loading}
-            className="w-full rounded-full bg-natalo-600 py-3 text-sm font-bold text-white transition hover:bg-natalo-700 disabled:opacity-50"
+            disabled={loading || (!!confirmPassword && confirmPassword !== password)}
+            className="w-full rounded-full bg-orange-500 py-3 text-sm font-bold text-white transition hover:bg-orange-600 disabled:opacity-50"
           >
             {loading ? "Mendaftar..." : "Daftar Gratis"}
           </button>

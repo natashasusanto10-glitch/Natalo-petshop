@@ -4,9 +4,8 @@ import "./globals.css";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { PWARegister } from "@/components/PWARegister";
-import { WhatsAppFloat } from "@/components/WhatsAppFloat";
-import { PublicChrome } from "@/components/PublicChrome";
-import { GoogleAnalytics } from "@/components/GoogleAnalytics";
+import { InstallPrompt } from "@/components/InstallPrompt";
+import { StoreOnly } from "@/components/StoreOnly";
 
 const brand = process.env.NEXT_PUBLIC_BRAND_NAME || "Natalo Petshop";
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -93,18 +92,15 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <meta httpEquiv="Content-Type" content="text/html; charset=utf-8" />
       </head>
       <body>
-        <Suspense fallback={null}>
-          <GoogleAnalytics />
-        </Suspense>
-        <PublicChrome>
-          <PWARegister />
+        <PWARegister />
+        <StoreOnly>
           <Header />
-        </PublicChrome>
+        </StoreOnly>
         <main>{children}</main>
-        <PublicChrome>
+        <StoreOnly>
           <Footer />
-          <WhatsAppFloat />
-        </PublicChrome>
+          <InstallPrompt />
+        </StoreOnly>
       </body>
     </html>
   );

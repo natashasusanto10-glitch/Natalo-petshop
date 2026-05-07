@@ -45,27 +45,15 @@ export type StoreProduct = {
   variants?: StoreProductVariant[];
 };
 
-// Include fragment for variant data in product detail
-const variantInclude = {
-  variantAttrs: {
-    orderBy: { position: "asc" as const },
-    include: {
-      options: { orderBy: { position: "asc" as const } },
-    },
-  },
-  variants: {
-    where: { deletedAt: null },
-    include: {
-      options: { select: { optionId: true } },
-    },
-    orderBy: { createdAt: "asc" as const },
-  },
-} as const;
-
-export async function getProducts(): Promise<StoreProduct[]> {
+export async function getProducts(opts?: { category?: string; search?: string }): Promise<StoreProduct[]> {
+  const { category, search } = opts ?? {};
   try {
     const products = await prisma.product.findMany({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+        ...(category ? { category: { slug: category } } : {}),
+        ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
+      },
       orderBy: { createdAt: "desc" },
       include: {
         category: { select: { slug: true } },
@@ -114,7 +102,11 @@ export async function getProducts(): Promise<StoreProduct[]> {
         categorySlug: p.category?.slug ?? null,
       };
     });
+    if (products.length) return products;
+    if (category || search) return [];
+    return sampleProducts;
   } catch {
+    if (category || search) return [];
     return sampleProducts;
   }
 }

@@ -11,45 +11,29 @@ export default function ErrorPage({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error("[RuntimeError]", error);
+    console.error(error);
   }, [error]);
 
   return (
-    <div className="flex min-h-[70vh] items-center justify-center bg-[#f9f9f7] px-6 py-16">
-      <div className="w-full max-w-[420px] text-center">
-        <div className="mb-3 text-5xl" aria-hidden="true">
-          😿
-        </div>
-        <h1 className="mb-2 text-6xl font-medium leading-none text-[#D85A30]">
-          Oops!
-        </h1>
-        <h2 className="mb-3 text-xl font-medium text-zinc-950">
-          Ada yang tidak beres
-        </h2>
-        <p className="mb-6 text-sm leading-6 text-zinc-500">
-          Terjadi kesalahan di halaman ini. Coba muat ulang halaman atau
-          kembali ke beranda.
-        </p>
-        <div className="flex flex-wrap justify-center gap-3">
-          <button
-            onClick={() => reset()}
-            className="rounded-lg border-0 bg-[#D85A30] px-6 py-3 text-sm font-medium text-white transition hover:bg-[#c64d27]"
-            type="button"
-          >
-            Coba Lagi
-          </button>
-          <Link
-            href="/"
-            className="rounded-lg border border-zinc-200 bg-white px-6 py-3 text-sm text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50"
-          >
-            Kembali ke Beranda
-          </Link>
-        </div>
-        {error.digest && (
-          <p className="mt-6 font-mono text-xs text-zinc-400">
-            Error ID: {error.digest}
-          </p>
-        )}
+    <div className="flex min-h-[60vh] flex-col items-center justify-center px-4 text-center">
+      <span className="text-6xl">😿</span>
+      <h1 className="mt-4 text-2xl font-black text-gray-900">Terjadi Kesalahan</h1>
+      <p className="mt-2 max-w-sm text-sm text-gray-500">
+        Ada sesuatu yang tidak beres. Coba muat ulang halaman atau kembali ke beranda.
+      </p>
+      <div className="mt-6 flex flex-wrap justify-center gap-3">
+        <button
+          onClick={reset}
+          className="rounded-full bg-orange-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-orange-600"
+        >
+          Coba Lagi
+        </button>
+        <Link
+          href="/"
+          className="rounded-full border border-gray-200 px-6 py-3 text-sm font-bold text-gray-700 transition hover:border-orange-300 hover:text-orange-500"
+        >
+          Kembali ke Beranda
+        </Link>
       </div>
     </div>
   );
