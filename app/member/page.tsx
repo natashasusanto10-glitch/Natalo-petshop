@@ -137,20 +137,32 @@ export default async function MemberPage() {
       )}
 
       <div className="mt-6 rounded-2xl border border-orange-100 bg-orange-50 p-5">
-        <p className="text-sm font-semibold text-orange-700">Loyalty Poin</p>
-        <p className="mt-2 text-3xl font-black text-gray-900">{points}</p>
-        <p className="mt-1 text-sm text-gray-500">
-          1 poin setiap Rp20.000 belanja.
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-orange-700">⭐ Loyalty Poin</p>
+            <p className="mt-2 text-3xl font-black text-gray-900">
+              {points.toLocaleString("id-ID")}
+            </p>
+            <p className="mt-1 text-sm text-gray-500">
+              1 poin setiap Rp20.000 belanja.
+            </p>
+          </div>
+          <Link
+            href="/member/points"
+            className="shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-orange-600 ring-1 ring-orange-200 transition hover:ring-orange-300"
+          >
+            History →
+          </Link>
+        </div>
         <ClaimVoucherButton totalPoints={points} />
       </div>
 
       <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { href: "/member/orders", icon: "P", label: "Pesanan Saya" },
-          { href: "/member/profile", icon: "A", label: "Profil" },
-          { href: "/wishlist", icon: "W", label: "Wishlist" },
-          { href: "/order-status", icon: "C", label: "Cek Status" },
+          { href: "/member/orders", icon: "📦", label: "Pesanan Saya" },
+          { href: "/member/points", icon: "⭐", label: "Loyalty Poin" },
+          { href: "/member/profile", icon: "👤", label: "Profil" },
+          { href: "/wishlist", icon: "❤️", label: "Wishlist" },
         ].map((item) => (
           <Link
             key={item.href}

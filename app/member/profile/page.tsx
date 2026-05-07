@@ -11,13 +11,20 @@ export default async function MemberProfilePage() {
   const session = await getSession("CUSTOMER");
   if (!session) redirect("/member/login");
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.sub },
-    select: { id: true, name: true, email: true, phone: true, birthDate: true, createdAt: true },
-  });
+  const [user, totalPoints] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: session.sub },
+      select: { id: true, name: true, email: true, phone: true, birthDate: true, createdAt: true },
+    }),
+    prisma.customerPoint.aggregate({
+      where: { userId: session.sub },
+      _sum: { points: true },
+    }),
+  ]);
 
   if (!user) redirect("/member/login");
 
+  const points = totalPoints?._sum.points ?? 0;
   const birthDateStr = user.birthDate
     ? user.birthDate.toISOString().split("T")[0]
     : null;
@@ -31,21 +38,36 @@ export default async function MemberProfilePage() {
         </Link>
       </div>
 
-      {/* Avatar */}
-      <div className="mt-4 flex items-center gap-3 rounded-2xl bg-orange-500 p-4 text-white md:mt-6 md:gap-4 md:p-6">
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-2xl font-black md:h-16 md:w-16 md:text-3xl">
-          {user.name.charAt(0).toUpperCase()}
+      {/* Avatar + Loyalty Points */}
+      <div className="mt-4 overflow-hidden rounded-2xl bg-orange-500 text-white md:mt-6">
+        <div className="flex items-center gap-3 p-4 md:gap-4 md:p-6">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-2xl font-black md:h-16 md:w-16 md:text-3xl">
+            {user.name.charAt(0).toUpperCase()}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-lg font-black">{user.name}</p>
+            <p className="text-sm text-orange-100">
+              Member sejak{" "}
+              {new Date(user.createdAt).toLocaleDateString("id-ID", {
+                month: "long",
+                year: "numeric",
+              })}
+            </p>
+          </div>
         </div>
-        <div>
-          <p className="text-lg font-black">{user.name}</p>
-          <p className="text-sm text-orange-100">
-            Member sejak{" "}
-            {new Date(user.createdAt).toLocaleDateString("id-ID", {
-              month: "long",
-              year: "numeric",
-            })}
-          </p>
-        </div>
+        <Link
+          href="/member/points"
+          className="flex items-center justify-between gap-3 border-t border-white/20 bg-white/10 px-4 py-3 text-sm transition hover:bg-white/20 md:px-6"
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-xl">⭐</span>
+            <div>
+              <p className="text-xs text-orange-100">Loyalty Poin</p>
+              <p className="text-base font-black">{points.toLocaleString("id-ID")} poin</p>
+            </div>
+          </div>
+          <span className="text-xs font-bold text-white/90">Lihat history →</span>
+        </Link>
       </div>
 
       {/* Edit form */}
