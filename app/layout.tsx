@@ -4,6 +4,7 @@ import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { PWARegister } from "@/components/PWARegister";
 import { InstallPrompt } from "@/components/InstallPrompt";
+import { StoreOnly } from "@/components/StoreOnly";
 
 const brand = process.env.NEXT_PUBLIC_BRAND_NAME || "Natalo Petshop";
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -44,10 +45,14 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="id">
       <body>
         <PWARegister />
-        <Header />
+        <StoreOnly>
+          <Header />
+        </StoreOnly>
         <main>{children}</main>
-        <Footer />
-        <InstallPrompt />
+        <StoreOnly>
+          <Footer />
+          <InstallPrompt />
+        </StoreOnly>
       </body>
     </html>
   );

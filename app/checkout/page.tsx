@@ -207,9 +207,21 @@ export default function CheckoutPage() {
         />
       )}
 
-      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 lg:grid-cols-[1fr_360px]">
+      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-6 lg:grid-cols-[1fr_360px] lg:py-10">
         <div>
-          <h1 className="text-3xl font-black tracking-tight text-zinc-950">Checkout</h1>
+          <h1 className="text-2xl font-black tracking-tight text-zinc-950 lg:text-3xl">Checkout</h1>
+
+          {/* Mobile-only: ringkasan mini di atas form */}
+          {items.length > 0 && (
+            <div className="mt-4 rounded-2xl bg-zinc-50 px-4 py-3 lg:hidden">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-zinc-500">{items.reduce((s, i) => s + i.quantity, 0)} item</span>
+                <span className="font-black text-zinc-950">
+                  {selectedRate ? `Total: Rp ${(total).toLocaleString("id-ID")}` : `Subtotal: Rp ${subtotal.toLocaleString("id-ID")}`}
+                </span>
+              </div>
+            </div>
+          )}
 
           <form id="checkout-form" onSubmit={handleOrder} className="mt-8 space-y-4">
             {field("Nama lengkap", "customerName", { required: true, placeholder: "Nama penerima" })}

@@ -41,6 +41,7 @@ model User {
   role         String          @default("CUSTOMER")
   orders       Order[]
   points       CustomerPoint[]
+  reviews      Review[]
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
 }
@@ -49,6 +50,16 @@ model Category {
   id        String    @id @default(cuid())
   name      String
   slug      String    @unique
+  products  Product[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Brand {
+  id        String    @id @default(cuid())
+  name      String
+  slug      String    @unique
+  logoUrl   String?
   products  Product[]
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -67,7 +78,10 @@ model Product {
   isActive    Boolean     @default(true)
   categoryId  String?
   category    Category?   @relation(fields: [categoryId], references: [id])
+  brandId     String?
+  brand       Brand?      @relation(fields: [brandId], references: [id])
   orderItems  OrderItem[]
+  reviews     Review[]
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 }
@@ -95,6 +109,7 @@ model Order {
   paymentStatus        PaymentStatus   @default(UNPAID)
   paymentReference     String?
   paymentUrl           String?
+  paymentProofUrl      String?
   voucherCode          String?
   notes                String?
   items                OrderItem[]
@@ -126,6 +141,28 @@ model Voucher {
   isActive        Boolean  @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
+
+model Review {
+  id         String   @id @default(cuid())
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  name       String
+  rating     Int
+  comment    String
+  isApproved Boolean  @default(false)
+  createdAt  DateTime @default(now())
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userId    String?
+  createdAt DateTime @default(now())
 }
 
 model CustomerPoint {

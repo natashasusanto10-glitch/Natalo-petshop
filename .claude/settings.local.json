@@ -6,7 +6,17 @@
       "Bash(npx next *)",
       "Bash(xargs ls *)",
       "Bash(npx tsc *)",
-      "Bash(dir app\\\\admin\\\\orders /s /b)"
+      "Bash(dir app\\\\admin\\\\orders /s /b)",
+      "Bash(Start-Process -NoNewWindow -FilePath \"npm\" -ArgumentList \"run\",\"dev\",\"--\",\"--port\",\"3001\")",
+      "Bash(Start-Sleep -Seconds 8)",
+      "Bash(Invoke-WebRequest -Uri \"http://localhost:3001\" -UseBasicParsing -TimeoutSec 5)",
+      "Bash(Select-Object -ExpandProperty StatusCode)",
+      "PowerShell(Start-Sleep -Seconds 5; try { $r = Invoke-WebRequest -Uri \"http://localhost:3001\" -UseBasicParsing -TimeoutSec 5; $r.StatusCode } catch { \"not ready: $_\" })",
+      "Bash(npm run *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3001)",
+      "Bash(npx prisma *)",
+      "Bash(mkdir -p \"C:\\\\Users\\\\USER\\\\Desktop\\\\toko-pwa-starter\\\\.claude\\\\worktrees\\\\stoic-nobel-6e7c30\\\\app\\\\admin\\\\brands\\\\[id]\\\\edit\")",
+      "Bash(git add *)"
     ]
   }
 }

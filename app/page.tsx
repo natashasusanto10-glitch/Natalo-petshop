@@ -58,21 +58,21 @@ const BLOG_POSTS = [
     tag: "Aquarium",
     title: "Tips Merawat Ikan Hias agar Tetap Sehat dan Warna Tetap Cerah",
     date: "1 Mei 2026",
-    slug: "#",
+    slug: "/blog/tips-merawat-ikan-hias",
   },
   {
     emoji: "🐱",
     tag: "Kucing",
     title: "Panduan Memilih Pakan Kucing Sesuai Usia dan Kondisi Kesehatan",
     date: "28 Apr 2026",
-    slug: "#",
+    slug: "/blog/panduan-pakan-kucing",
   },
   {
     emoji: "🐶",
     tag: "Anjing",
     title: "5 Aksesoris Wajib untuk Anjing Peliharaan yang Aktif",
     date: "22 Apr 2026",
-    slug: "#",
+    slug: "/blog/aksesoris-anjing-aktif",
   },
 ];
 

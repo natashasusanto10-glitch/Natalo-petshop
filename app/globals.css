@@ -13,3 +13,34 @@ body {
 input, textarea, select, button {
   font: inherit;
 }
+
+/* ── Print label 100×150mm ─────────────────────────────── */
+@media print {
+  /* Hide everything except the label */
+  body > * { display: none !important; }
+  #print-label-root { display: block !important; }
+
+  /* Reset page margins for clean label */
+  @page {
+    size: 100mm 150mm;
+    margin: 0;
+  }
+
+  body {
+    background: white !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .shipping-label {
+    width: 100mm !important;
+    height: 150mm !important;
+    overflow: hidden !important;
+    box-shadow: none !important;
+    page-break-after: always;
+  }
+
+  .print-hidden {
+    display: none !important;
+  }
+}

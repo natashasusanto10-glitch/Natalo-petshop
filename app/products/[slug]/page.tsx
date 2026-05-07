@@ -8,6 +8,8 @@ import { WhatsAppButton } from "@/components/WhatsAppButton";
 import { formatRupiah } from "@/lib/format";
 import { getProductBySlug, getProducts } from "@/lib/products";
 import { prisma } from "@/lib/prisma";
+import { ReviewForm } from "@/components/ReviewForm";
+import { ReviewList } from "@/components/ReviewList";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 const brand = process.env.NEXT_PUBLIC_BRAND_NAME || "Natalo Petshop";
@@ -48,18 +50,22 @@ export default async function ProductDetailPage({
   if (!product) return notFound();
 
   // Ambil kategori dan produk terkait
-  const [categoryData, allProducts] = await Promise.all([
-    product
-      ? prisma.product
-          .findUnique({ where: { slug }, include: { category: true } })
-          .catch(() => null)
-      : null,
+  const [productWithCategory, allProducts] = await Promise.all([
+    prisma.product.findUnique({ where: { slug }, include: { category: true } }).catch(() => null),
     getProducts(),
   ]);
 
-  const category = categoryData?.category ?? null;
+  const category = productWithCategory?.category ?? null;
   const related = allProducts
-    .filter((p) => p.id !== product.id)
+    .filter((p) => p.id !== product.id && (category ? true : true))
+    .sort((a, b) => {
+      // Prioritize same-category products
+      const aMatch = productWithCategory?.categoryId && (a as unknown as { categoryId?: string }).categoryId === productWithCategory.categoryId;
+      const bMatch = productWithCategory?.categoryId && (b as unknown as { categoryId?: string }).categoryId === productWithCategory.categoryId;
+      if (aMatch && !bMatch) return -1;
+      if (!aMatch && bMatch) return 1;
+      return 0;
+    })
     .slice(0, 4);
 
   const price = product.memberPrice ?? product.price;
@@ -77,7 +83,7 @@ export default async function ProductDetailPage({
     brand: { "@type": "Brand", name: brand },
     offers: {
       "@type": "Offer",
-      price: price / 100,
+      price: price,
       priceCurrency: "IDR",
       availability: outOfStock
         ? "https://schema.org/OutOfStock"
@@ -219,6 +225,23 @@ export default async function ProductDetailPage({
             </p>
           </div>
         </div>
+
+        {/* Reviews */}
+        <section className="mt-16">
+          <h2 className="text-xl font-black text-gray-900">Ulasan Produk</h2>
+          <div className="mt-6 grid gap-8 lg:grid-cols-2">
+            <div>
+              <ReviewList productId={product.id} />
+            </div>
+            <div className="rounded-3xl border border-gray-100 bg-white p-6">
+              <h3 className="font-bold text-gray-900">Tulis Ulasan</h3>
+              <p className="mt-1 text-sm text-gray-500">Bagikan pengalamanmu dengan produk ini.</p>
+              <div className="mt-5">
+                <ReviewForm productId={product.id} />
+              </div>
+            </div>
+          </div>
+        </section>
 
         {/* Related products */}
         {related.length > 0 && (

@@ -13,14 +13,22 @@ export type StoreProduct = {
   imageUrl: string | null;
 };
 
-export async function getProducts(): Promise<StoreProduct[]> {
+export async function getProducts(opts?: { category?: string; search?: string }): Promise<StoreProduct[]> {
+  const { category, search } = opts ?? {};
   try {
     const products = await prisma.product.findMany({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+        ...(category ? { category: { slug: category } } : {}),
+        ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
+      },
       orderBy: { createdAt: "desc" },
     });
-    return products.length ? products : sampleProducts;
+    if (products.length) return products;
+    if (category || search) return [];
+    return sampleProducts;
   } catch {
+    if (category || search) return [];
     return sampleProducts;
   }
 }

@@ -1,8 +1,10 @@
 import Link from "next/link";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
+import { sendOrderStatusPush } from "@/lib/push";
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: "Menunggu",
@@ -50,10 +52,11 @@ export default async function AdminOrderDetailPage({
   // ── Server Actions ──────────────────────────────────────────
   async function markAsPaid() {
     "use server";
-    await prisma.order.update({
+    const updated = await prisma.order.update({
       where: { id },
       data: { paymentStatus: "PAID" },
     });
+    await sendOrderStatusPush(id, updated.orderNumber, "PAID").catch(() => {});
     revalidatePath(`/admin/orders/${id}`);
     revalidatePath("/admin/orders");
     revalidatePath("/admin");
@@ -61,10 +64,11 @@ export default async function AdminOrderDetailPage({
 
   async function markAsProcessing() {
     "use server";
-    await prisma.order.update({
+    const updated = await prisma.order.update({
       where: { id },
       data: { status: "PROCESSING" },
     });
+    await sendOrderStatusPush(id, updated.orderNumber, "PROCESSING").catch(() => {});
     revalidatePath(`/admin/orders/${id}`);
     revalidatePath("/admin/orders");
     revalidatePath("/admin");
@@ -73,10 +77,11 @@ export default async function AdminOrderDetailPage({
   async function markAsShipped(formData: FormData) {
     "use server";
     const trackingNumber = String(formData.get("trackingNumber") || "").trim();
-    await prisma.order.update({
+    const updated = await prisma.order.update({
       where: { id },
       data: { status: "SHIPPED", trackingNumber: trackingNumber || null },
     });
+    await sendOrderStatusPush(id, updated.orderNumber, "SHIPPED").catch(() => {});
     revalidatePath(`/admin/orders/${id}`);
     revalidatePath("/admin/orders");
     revalidatePath("/admin");
@@ -84,10 +89,11 @@ export default async function AdminOrderDetailPage({
 
   async function markAsDelivered() {
     "use server";
-    await prisma.order.update({
+    const updated = await prisma.order.update({
       where: { id },
       data: { status: "DELIVERED" },
     });
+    await sendOrderStatusPush(id, updated.orderNumber, "DELIVERED").catch(() => {});
     revalidatePath(`/admin/orders/${id}`);
     revalidatePath("/admin/orders");
     revalidatePath("/admin");
@@ -95,10 +101,11 @@ export default async function AdminOrderDetailPage({
 
   async function markAsCancelled() {
     "use server";
-    await prisma.order.update({
+    const updated = await prisma.order.update({
       where: { id },
       data: { status: "CANCELLED" },
     });
+    await sendOrderStatusPush(id, updated.orderNumber, "CANCELLED").catch(() => {});
     revalidatePath(`/admin/orders/${id}`);
     revalidatePath("/admin/orders");
     revalidatePath("/admin");
@@ -137,7 +144,7 @@ export default async function AdminOrderDetailPage({
           <h1 className="text-3xl font-black tracking-tight text-zinc-950">Detail Order</h1>
           <p className="mt-1 text-zinc-500">{order.orderNumber}</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <span
             className={`rounded-full px-4 py-2 text-sm font-bold ${
               PAY_COLORS[order.paymentStatus] ?? "bg-zinc-100 text-zinc-600"
@@ -152,6 +159,18 @@ export default async function AdminOrderDetailPage({
           >
             {STATUS_LABELS[order.status] ?? order.status}
           </span>
+          <Link
+            href={`/admin/orders/${id}/print`}
+            target="_blank"
+            className="flex items-center gap-2 rounded-full border border-zinc-200 px-4 py-2 text-sm font-bold text-zinc-700 transition hover:border-zinc-400 hover:text-zinc-950"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4">
+              <path d="M6 9V2h12v7" />
+              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+              <rect x="6" y="14" width="12" height="8" />
+            </svg>
+            Cetak Label
+          </Link>
         </div>
       </div>
 
@@ -262,6 +281,30 @@ export default async function AdminOrderDetailPage({
               </p>
             </div>
           </section>
+
+          {/* Bukti transfer */}
+          {order.paymentProofUrl && (
+            <section className="rounded-3xl border border-zinc-200 p-5">
+              <h2 className="font-bold text-zinc-950">Bukti Transfer</h2>
+              <div className="mt-3 overflow-hidden rounded-2xl border border-zinc-100">
+                <Image
+                  src={order.paymentProofUrl}
+                  alt="Bukti transfer"
+                  width={600}
+                  height={400}
+                  className="w-full object-contain"
+                />
+              </div>
+              <a
+                href={order.paymentProofUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 inline-flex w-full justify-center rounded-full border border-zinc-200 px-4 py-2 text-xs font-semibold text-zinc-700 hover:bg-zinc-50"
+              >
+                Lihat fullscreen →
+              </a>
+            </section>
+          )}
 
           {/* Info tambahan */}
           {(order.paymentProvider || order.voucherCode || order.notes) && (

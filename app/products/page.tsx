@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { ProductCard } from "@/components/ProductCard";
+import { ProductSearchInput } from "@/components/ProductSearchInput";
 
 export const metadata: Metadata = {
   title: "Katalog Produk",
@@ -16,23 +18,30 @@ import Link from "next/link";
 export default async function ProductsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ kategori?: string }>;
+  searchParams: Promise<{ kategori?: string; q?: string }>;
 }) {
-  const { kategori } = await searchParams;
+  const { kategori, q } = await searchParams;
 
   const [products, categories] = await Promise.all([
-    getProducts(),
+    getProducts({ category: kategori, search: q }),
     prisma.category.findMany({ orderBy: { name: "asc" } }).catch(() => []),
   ]);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
       {/* Page header */}
-      <div className="mb-8">
+      <div className="mb-6">
         <h1 className="text-3xl font-black text-gray-900">Katalog Produk</h1>
         <p className="mt-1 text-sm text-gray-500">
           Semua kebutuhan hewan peliharaan kamu tersedia di sini.
         </p>
+      </div>
+
+      {/* Search bar */}
+      <div className="mb-6">
+        <Suspense fallback={<div className="h-12 w-full animate-pulse rounded-2xl bg-gray-100" />}>
+          <ProductSearchInput defaultValue={q} />
+        </Suspense>
       </div>
 
       {/* Category filter pills */}
