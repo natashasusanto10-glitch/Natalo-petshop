@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* ── Custom breakpoint untuk HP kecil (iPhone SE 375px, dll) ── */
+@theme {
+  --breakpoint-xs: 380px;
+}
+
 /* ── Natalo brand palette — unified to Tailwind orange for site-wide consistency ── */
 @theme {
   --color-natalo-50: #fff7ed;
