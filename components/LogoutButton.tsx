@@ -1,19 +1,21 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-
 interface LogoutButtonProps {
   redirectTo: string;
   className?: string;
 }
 
 export function LogoutButton({ redirectTo, className = "" }: LogoutButtonProps) {
-  const router = useRouter();
+  function clearCart() {
+    localStorage.removeItem("cart");
+    window.dispatchEvent(new Event("cart-updated"));
+  }
 
   async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.push(redirectTo);
-    router.refresh();
+    clearCart();
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    clearCart();
+    window.location.replace(redirectTo);
   }
 
   return (

@@ -4,9 +4,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ProductCard } from "@/components/ProductCard";
 import { ProductActions } from "@/components/ProductActions";
-import { WhatsAppButton } from "@/components/WhatsAppButton";
+import { VariantSelector } from "@/components/VariantSelector";
+import { FavoriteButton } from "@/components/FavoriteButton";
+import { ReviewSection } from "@/components/ReviewSection";
 import { formatRupiah } from "@/lib/format";
 import { getProductBySlug, getProducts } from "@/lib/products";
+import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -21,11 +24,17 @@ export async function generateMetadata({
   const product = await getProductBySlug(slug);
   if (!product) return { title: "Produk tidak ditemukan" };
 
-  const price = product.memberPrice ?? product.price;
+  const metadataPrice =
+    product.discountPrice !== null && product.discountPrice < product.price
+      ? product.discountPrice
+      : product.price;
 
   return {
     title: product.name,
-    description: `${product.description.slice(0, 150)}... Harga ${formatRupiah(price)} di ${brand}.`,
+    description: `${product.description.slice(0, 150)}... Harga ${formatRupiah(metadataPrice)} di ${brand}.`,
+    alternates: {
+      canonical: `${siteUrl}/products/${slug}`,
+    },
     openGraph: {
       title: `${product.name} | ${brand}`,
       description: product.description.slice(0, 150),
@@ -47,14 +56,21 @@ export default async function ProductDetailPage({
   const product = await getProductBySlug(slug);
   if (!product) return notFound();
 
-  // Ambil kategori dan produk terkait
-  const [categoryData, allProducts] = await Promise.all([
+  const session = await getSession();
+
+  // Ambil kategori, produk terkait, dan status favorit
+  const [categoryData, allProducts, favoriteIds] = await Promise.all([
     product
       ? prisma.product
           .findUnique({ where: { slug }, include: { category: true } })
           .catch(() => null)
       : null,
     getProducts(),
+    session
+      ? prisma.favorite
+          .findMany({ where: { userId: session.sub }, select: { productId: true } })
+          .then((f) => f.map((x) => x.productId))
+      : Promise.resolve([] as string[]),
   ]);
 
   const category = categoryData?.category ?? null;
@@ -62,10 +78,14 @@ export default async function ProductDetailPage({
     .filter((p) => p.id !== product.id)
     .slice(0, 4);
 
-  const price = product.memberPrice ?? product.price;
-  const savings = product.memberPrice ? product.price - product.memberPrice : 0;
+  const hasDiscount = product.discountPrice !== null && product.discountPrice < product.price;
+  const price = hasDiscount ? product.discountPrice! : product.price;
   const outOfStock = product.stock === 0;
-  const waPhone = (process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ?? "").replace("+", "");
+  const waPhone = (
+    process.env.NEXT_PUBLIC_WA_NUMBER ??
+    process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ??
+    ""
+  ).replace("+", "");
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -84,6 +104,16 @@ export default async function ProductDetailPage({
         : "https://schema.org/InStock",
       seller: { "@type": "Organization", name: brand },
     },
+    ...(product.avgRating > 0 &&
+      product.reviewCount > 0 && {
+        aggregateRating: {
+          "@type": "AggregateRating",
+          ratingValue: product.avgRating.toFixed(1),
+          reviewCount: product.reviewCount,
+          bestRating: 5,
+          worstRating: 1,
+        },
+      }),
   };
 
   return (
@@ -96,9 +126,9 @@ export default async function ProductDetailPage({
       <div className="border-b border-gray-100 bg-white">
         <div className="mx-auto max-w-6xl px-4 py-3">
           <nav className="flex items-center gap-2 text-sm text-gray-400">
-            <Link href="/" className="transition hover:text-orange-500">Beranda</Link>
+            <Link href="/" className="transition hover:text-natalo-600">Beranda</Link>
             <span>/</span>
-            <Link href="/products" className="transition hover:text-orange-500">Produk</Link>
+            <Link href="/products" className="transition hover:text-natalo-600">Produk</Link>
             <span>/</span>
             <span className="text-gray-700">{product.name}</span>
           </nav>
@@ -115,6 +145,7 @@ export default async function ProductDetailPage({
                 src={product.imageUrl}
                 alt={product.name}
                 fill
+                sizes="(min-width: 1024px) 50vw, 100vw"
                 className="object-cover"
                 priority
               />
@@ -123,11 +154,6 @@ export default async function ProductDetailPage({
                 <span className="text-9xl text-gray-200">🐾</span>
               </div>
             )}
-            {product.memberPrice && (
-              <span className="absolute left-4 top-4 rounded-full bg-orange-500 px-3 py-1 text-xs font-bold text-white shadow">
-                Harga Member
-              </span>
-            )}
           </div>
 
           {/* Info */}
@@ -135,7 +161,7 @@ export default async function ProductDetailPage({
             {/* Category & stock */}
             <div className="flex flex-wrap items-center gap-2">
               {category && (
-                <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold text-orange-500">
+                <span className="rounded-full bg-natalo-100 px-3 py-1 text-xs font-semibold text-natalo-600">
                   {category.name}
                 </span>
               )}
@@ -150,75 +176,100 @@ export default async function ProductDetailPage({
               </span>
             </div>
 
-            {/* Name */}
-            <h1 className="mt-4 text-3xl font-black leading-tight tracking-tight text-gray-900">
-              {product.name}
-            </h1>
+            {/* Name + Favorite */}
+            <div className="mt-4 flex items-start justify-between gap-3">
+              <h1 className="text-3xl font-black leading-tight tracking-tight text-gray-900">
+                {product.name}
+              </h1>
+              <FavoriteButton
+                productId={product.id}
+                initialFavorited={favoriteIds.includes(product.id)}
+                size="md"
+              />
+            </div>
 
-            {/* Price */}
-            <div className="mt-5 rounded-2xl bg-gray-50 p-5">
-              <p className="text-3xl font-black text-orange-500">{formatRupiah(price)}</p>
-              {product.memberPrice && (
-                <div className="mt-1 flex flex-wrap items-center gap-3">
-                  <p className="text-sm text-gray-400 line-through">
-                    {formatRupiah(product.price)}
-                  </p>
-                  <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-bold text-orange-500">
-                    Hemat {formatRupiah(savings)}
-                  </span>
+            {/* Price + Actions: variant vs simple */}
+            {product.hasVariants && product.variantAttrs && product.variants ? (
+              /* ── Produk dengan varian ─────────────────────────── */
+              <div className="mt-5">
+                <VariantSelector
+                  product={{ id: product.id, name: product.name, imageUrl: product.imageUrl }}
+                  attrs={product.variantAttrs}
+                  variants={product.variants}
+                />
+              </div>
+            ) : (
+              /* ── Produk sederhana (tanpa varian) ─────────────── */
+              <>
+                <div className="mt-5 rounded-2xl bg-gray-50 p-5">
+                  <p className="text-3xl font-black text-natalo-600">{formatRupiah(price)}</p>
+                  {hasDiscount && (
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                      <p className="text-sm text-gray-400 line-through">
+                        {formatRupiah(product.price)}
+                      </p>
+                      <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-500">
+                        Harga Diskon
+                      </span>
+                    </div>
+                  )}
                 </div>
-              )}
-              {!product.memberPrice && (
-                <p className="mt-1 text-xs text-gray-400">
-                  Daftar member untuk harga lebih murah.{" "}
-                  <Link href="/member/register" className="font-semibold text-orange-500 hover:underline">
-                    Daftar gratis →
-                  </Link>
+
+                <p className="mt-5 leading-7 text-gray-600 whitespace-pre-line">
+                  {product.description}
                 </p>
-              )}
-            </div>
 
-            {/* Description */}
-            <p className="mt-5 leading-7 text-gray-600 whitespace-pre-line">
-              {product.description}
-            </p>
+                <div className="mt-5 grid grid-cols-2 gap-3">
+                  <div className="rounded-xl bg-gray-50 p-3 text-sm">
+                    <p className="text-gray-400">Berat</p>
+                    <p className="font-semibold text-gray-800">{product.weightGram} gram</p>
+                  </div>
+                  <div className="rounded-xl bg-gray-50 p-3 text-sm">
+                    <p className="text-gray-400">Stok</p>
+                    <p className="font-semibold text-gray-800">
+                      {outOfStock ? "Habis" : `${product.stock} tersedia`}
+                    </p>
+                  </div>
+                </div>
 
-            {/* Specs */}
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <div className="rounded-xl bg-gray-50 p-3 text-sm">
-                <p className="text-gray-400">Berat</p>
-                <p className="font-semibold text-gray-800">{product.weightGram} gram</p>
-              </div>
-              <div className="rounded-xl bg-gray-50 p-3 text-sm">
-                <p className="text-gray-400">Stok</p>
-                <p className="font-semibold text-gray-800">
-                  {outOfStock ? "Habis" : `${product.stock} tersedia`}
-                </p>
-              </div>
-            </div>
+                <div className="mt-6 space-y-3">
+                  <ProductActions product={product} />
+                  <a
+                    href={`https://wa.me/${waPhone}?text=${encodeURIComponent(`Halo, saya mau tanya tentang ${product.name}.`)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex w-full items-center justify-center gap-2 rounded-full border border-gray-200 py-3 text-sm font-semibold text-gray-700 transition hover:border-green-400 hover:text-green-600"
+                  >
+                    <span>💬</span> Tanya via WhatsApp
+                  </a>
+                </div>
+              </>
+            )}
 
-            {/* Actions */}
-            <div className="mt-6 space-y-3">
-              <ProductActions product={product} />
+            {/* WhatsApp — selalu tampil untuk produk varian */}
+            {product.hasVariants && (
               <a
                 href={`https://wa.me/${waPhone}?text=${encodeURIComponent(`Halo, saya mau tanya tentang ${product.name}.`)}`}
                 target="_blank"
                 rel="noreferrer"
-                className="flex w-full items-center justify-center gap-2 rounded-full border border-gray-200 py-3 text-sm font-semibold text-gray-700 transition hover:border-green-400 hover:text-green-600"
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-full border border-gray-200 py-3 text-sm font-semibold text-gray-700 transition hover:border-green-400 hover:text-green-600"
               >
                 <span>💬</span> Tanya via WhatsApp
               </a>
-            </div>
+            )}
 
             {/* Link ke keranjang setelah tambah */}
             <p className="mt-4 text-center text-xs text-gray-400">
               Sudah di keranjang?{" "}
-              <Link href="/cart" className="font-semibold text-orange-500 hover:underline">
+              <Link href="/cart" className="font-semibold text-natalo-600 hover:underline">
                 Lihat keranjang →
               </Link>
             </p>
           </div>
         </div>
+
+        {/* Review section */}
+        <ReviewSection productSlug={slug} />
 
         {/* Related products */}
         {related.length > 0 && (
@@ -226,7 +277,7 @@ export default async function ProductDetailPage({
             <h2 className="text-xl font-black text-gray-900">Produk lainnya</h2>
             <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
               {related.map((p) => (
-                <ProductCard key={p.id} product={p} />
+                <ProductCard key={p.id} product={p} isFavorited={favoriteIds.includes(p.id)} />
               ))}
             </div>
           </section>

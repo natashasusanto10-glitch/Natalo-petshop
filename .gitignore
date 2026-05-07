@@ -8,3 +8,7 @@ coverage
 # user uploads (jangan masuk repo)
 public/uploads/*
 !public/uploads/.gitkeep
+
+# Meilisearch local
+meilisearch.exe
+data.ms/

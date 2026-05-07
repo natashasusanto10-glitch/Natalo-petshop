@@ -1,0 +1,52 @@
+Title Merge Report — 2026-05-07 08:29:34
+============================================================
+Total produk         : 34
+Berhasil di-replace  : 34
+  - Lebih pendek     : 34
+Pakai nama original  : 0
+
+Rata-rata panjang SEBELUM : 76 karakter
+Rata-rata panjang SESUDAH : 38 karakter
+Pengurangan rata-rata     : 37 karakter (49.4%)
+
+TOP 10 PERUBAHAN TERBESAR:
+----------------------------------------
+  [Kucing] -81 char
+    LAMA: Royal Canin Care Hair & Skin 2KG - Makanan Kucing untuk Kulit dan Bulu Super Pre
+    BARU: Royal Canin Care Hair & Skin 2kg
+
+  [Kucing] -80 char
+    LAMA: Friskies Party Mix 60GR Cat Treats - Snack Kucing Kering /Jajanan enak / Cemilan
+    BARU: Friskies Party Mix 60g Cat Treats
+
+  [Kucing] -66 char
+    LAMA: Royal Canin Kitten Persian 2KG - Makanan Anak Kucing Ras Persia /Bulu Panjang Su
+    BARU: Royal Canin Kitten Persian 2kg
+
+  [Kucing] -60 char
+    LAMA: Royal Canin Kitten Cat Food 2KG - Makanan Anak Kucing Super Premium Freshpack 2 
+    BARU: Royal Canin Kitten 2kg
+
+  [Anjing] -58 char
+    LAMA: Royal Canin Chihuahua Adult 3KG / Chi hua hua Dog Food / Makanan Anjing Ras Keci
+    BARU: Royal Canin Chihuahua Adult 3kg
+
+  [Anjing] -56 char
+    LAMA: Royal Canin Mini Indoor Puppy Dog Food 1.5KG - Makanan Anak Anjing Kecil dalam R
+    BARU: Royal Canin Mini Indoor Puppy 1.5kg
+
+  [Anjing] -52 char
+    LAMA: Royal Canin Shih Tzu Adult 1.5KG Dog Food - Makanan Anjing Dewasa Ras Shihtzu 1.
+    BARU: Royal Canin Shih Tzu Adult 1.5kg
+
+  [Anjing] -52 char
+    LAMA: Royal Canin Poodle Adult Dog Food 1.5KG - Makanan Dewasa Anjing Ras Poodle Fresh
+    BARU: Royal Canin Poodle Adult Dog Food 1.5kg
+
+  [Anjing] -51 char
+    LAMA: Underpad / Alas Pipis PER LEMBAR / Perlak 45x60cm /Kucing/Anjing/Kelinci/Hewan
+    BARU: Underpad Alas Pipis 45x60cm
+
+  [Kucing] -50 char
+    LAMA: Royal Canin Persian Adult 2KG - Makanan Kucing Persia Dewasa Super Premium 2 KG
+    BARU: Royal Canin Persian Adult 2kg

@@ -2,62 +2,124 @@ import Image from "next/image";
 import Link from "next/link";
 import { StoreProduct } from "@/lib/products";
 import { formatRupiah } from "@/lib/format";
+import { FavoriteButton } from "@/components/FavoriteButton";
+import { QuickAddToCart } from "@/components/QuickAddToCart";
+import { Stars } from "@/components/StarRating";
 
-export function ProductCard({ product }: { product: StoreProduct }) {
+export function ProductCard({
+  product,
+  priority = false,
+  isFavorited = false,
+}: {
+  product: StoreProduct;
+  priority?: boolean;
+  isFavorited?: boolean;
+}) {
+  const hasDiscount =
+    product.discountPrice !== null && product.discountPrice < product.price;
+  const displayPrice = hasDiscount ? product.discountPrice! : product.price;
+  const outOfStock = product.stock <= 0;
+
   return (
-    <Link
-      href={`/products/${product.slug}`}
-      className="group flex flex-col overflow-hidden rounded-2xl bg-gray-50 transition hover:shadow-md"
-    >
-      {/* Image area */}
+    <article className="group flex h-full flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition hover:shadow-md">
       <div className="relative aspect-square bg-gray-100">
-        {product.imageUrl ? (
-          <Image
-            src={product.imageUrl}
-            alt={product.name}
-            fill
-            className="object-cover transition group-hover:scale-105"
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center text-5xl text-gray-300">🐾</div>
-        )}
-        {product.memberPrice && (
-          <span className="absolute left-3 top-3 rounded-full bg-orange-500 px-2 py-0.5 text-xs font-bold text-white">
-            Member
+        <Link
+          href={`/products/${product.slug}`}
+          aria-label={product.name}
+          className="block h-full"
+        >
+          {product.imageUrl ? (
+            <Image
+              src={product.imageUrl}
+              alt={product.name}
+              fill
+              sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+              priority={priority}
+              className="object-cover transition group-hover:scale-105"
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center text-5xl text-gray-300">
+              🐾
+            </div>
+          )}
+        </Link>
+
+        {hasDiscount && (
+          <span className="absolute left-3 top-3 rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white">
+            Diskon
           </span>
         )}
-      </div>
 
-      {/* Info */}
-      <div className="flex flex-1 flex-col p-4">
-        <h3 className="font-semibold text-gray-900 leading-snug">{product.name}</h3>
-        <p className="mt-1 line-clamp-2 text-xs text-gray-500">{product.description}</p>
+        <span
+          className={`absolute bottom-3 left-3 rounded-full px-2 py-0.5 text-xs font-bold ${
+            outOfStock
+              ? "bg-zinc-700 text-white"
+              : "bg-emerald-100 text-emerald-700"
+          }`}
+        >
+          {outOfStock ? "Stok Habis" : "Tersedia"}
+        </span>
 
-        <div className="mt-3 flex items-center justify-between gap-2">
-          <div>
-            <p className="font-bold text-gray-900">
-              {formatRupiah(product.memberPrice ?? product.price)}
-            </p>
-            {product.memberPrice && (
-              <p className="text-xs text-gray-400 line-through">{formatRupiah(product.price)}</p>
-            )}
-          </div>
-          {/* Heart icon */}
-          <svg
-            className="h-5 w-5 text-orange-400 transition group-hover:text-orange-500"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={1.8}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z"
-            />
-          </svg>
+        <div className="absolute right-2 top-2">
+          <FavoriteButton productId={product.id} initialFavorited={isFavorited} />
         </div>
       </div>
-    </Link>
+
+      <div className="flex flex-1 flex-col p-4">
+        <Link href={`/products/${product.slug}`} className="block">
+          <h3 className="min-h-[2.75rem] overflow-hidden font-semibold leading-snug text-gray-900 transition [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] group-hover:text-natalo-700">
+            {product.name}
+          </h3>
+        </Link>
+
+        <div className="mt-3 min-h-[2.25rem]">
+          <p className="font-bold text-natalo-700">
+            {formatRupiah(displayPrice)}
+          </p>
+          {hasDiscount && (
+            <p className="text-xs text-gray-400 line-through">
+              {formatRupiah(product.price)}
+            </p>
+          )}
+        </div>
+
+        {product.reviewCount > 0 ? (
+          <div className="mt-2">
+            <Stars
+              rating={product.avgRating}
+              size="xs"
+              showValue
+              count={product.reviewCount}
+            />
+          </div>
+        ) : (
+          <p className="mt-2 text-[11px] text-gray-300">Belum ada review</p>
+        )}
+
+        <div className="mt-auto grid grid-cols-[1fr_1.15fr] gap-2 pt-4">
+          <Link
+            href={`/products/${product.slug}`}
+            className="flex items-center justify-center rounded-full border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 transition hover:border-natalo-300 hover:text-natalo-700"
+          >
+            Detail
+          </Link>
+          <QuickAddToCart
+            product={{
+              id: product.id,
+              slug: product.slug,
+              name: product.name,
+              price: product.price,
+              discountPrice: product.discountPrice,
+              stock: product.stock,
+              weightGram: product.weightGram,
+              imageUrl: product.imageUrl,
+              isActive: true,
+              hasVariants: product.hasVariants,
+            }}
+            className="py-2"
+          />
+        </div>
+      </div>
+    </article>
   );
 }

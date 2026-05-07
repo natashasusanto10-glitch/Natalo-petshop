@@ -13,13 +13,16 @@
   },
   "dependencies": {
     "@prisma/client": "6.19.0",
+    "@react-google-maps/api": "^2.20.8",
     "@types/bcryptjs": "^2.4.6",
     "bcryptjs": "^3.0.3",
     "jose": "^6.2.3",
+    "meilisearch": "^0.58.0",
     "next": "latest",
     "openai": "latest",
     "react": "latest",
     "react-dom": "latest",
+    "resend": "^6.12.2",
     "zod": "latest"
   },
   "devDependencies": {
@@ -27,6 +30,7 @@
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "dotenv": "^17.4.2",
     "prisma": "6.19.0",
     "tailwindcss": "latest",
     "tsx": "latest",

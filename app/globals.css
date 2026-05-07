@@ -1,5 +1,20 @@
 @import "tailwindcss";
 
+/* ── Natalo brand palette — derived dari logo color #468284 ── */
+@theme {
+  --color-natalo-50: #f0f8f8;
+  --color-natalo-100: #dceced;
+  --color-natalo-200: #c1dcde;
+  --color-natalo-300: #99c4c8;
+  --color-natalo-400: #71acaf;
+  --color-natalo-500: #5a9498;
+  --color-natalo-600: #468284;
+  --color-natalo-700: #386669;
+  --color-natalo-800: #2a4d4f;
+  --color-natalo-900: #1f393b;
+  --color-natalo-950: #122224;
+}
+
 :root {
   --background: #ffffff;
   --foreground: #111111;
@@ -12,4 +27,45 @@ body {
 
 input, textarea, select, button {
   font: inherit;
+}
+
+/* ── Placeholder styling: konsisten di Chrome, Safari iOS, Samsung Browser ── */
+input::placeholder,
+textarea::placeholder {
+  color: #aaa;
+  font-size: 13px;
+  font-style: normal;
+  opacity: 1; /* Firefox default <1 */
+}
+input::-webkit-input-placeholder,
+textarea::-webkit-input-placeholder {
+  color: #aaa;
+  font-size: 13px;
+  font-style: normal;
+}
+input::-moz-placeholder,
+textarea::-moz-placeholder {
+  color: #aaa;
+  font-size: 13px;
+  font-style: normal;
+  opacity: 1;
+}
+input:-ms-input-placeholder,
+textarea:-ms-input-placeholder {
+  color: #aaa;
+  font-size: 13px;
+  font-style: normal;
+}
+
+/* ── Password input: nonaktifkan tombol reveal bawaan Edge/IE ── */
+.password-input-no-native-reveal::-ms-reveal,
+.password-input-no-native-reveal::-ms-clear {
+  display: none !important;
+}
+/* iOS Safari & Chrome: Strong Password / Passwords / Contacts buttons */
+.password-input-no-native-reveal::-webkit-credentials-auto-fill-button,
+.password-input-no-native-reveal::-webkit-strong-password-auto-fill-button,
+.password-input-no-native-reveal::-webkit-contacts-auto-fill-button {
+  visibility: hidden;
+  pointer-events: none;
 }

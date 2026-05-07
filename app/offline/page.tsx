@@ -8,7 +8,7 @@ export default function OfflinePage() {
       </p>
       <a
         href="/"
-        className="mt-8 rounded-full bg-orange-500 px-7 py-3 text-sm font-bold text-white transition hover:bg-orange-600"
+        className="mt-8 rounded-full bg-natalo-600 px-7 py-3 text-sm font-bold text-white transition hover:bg-natalo-700"
       >
         Coba lagi
       </a>

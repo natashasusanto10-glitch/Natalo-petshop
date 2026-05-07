@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import type { NextRequest } from "next/server";
 
 export type SessionPayload = {
   sub: string;
@@ -9,7 +10,9 @@ export type SessionPayload = {
 
 function getSecret() {
   const s = process.env.SESSION_SECRET;
-  if (!s) throw new Error("SESSION_SECRET belum diset di .env");
+  if (!s || s.length < 32) {
+    throw new Error("SESSION_SECRET wajib di-set (min 32 char). Tidak ada fallback.");
+  }
   return new TextEncoder().encode(s);
 }
 
@@ -22,8 +25,11 @@ export async function createSessionToken(payload: SessionPayload) {
 }
 
 export async function verifySessionToken(token: string): Promise<SessionPayload | null> {
+  const s = process.env.SESSION_SECRET;
+  if (!s || s.length < 32) return null;
+
   try {
-    const { payload } = await jwtVerify(token, getSecret());
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(s));
     return payload as unknown as SessionPayload;
   } catch {
     return null;
@@ -44,3 +50,13 @@ export const SESSION_COOKIE_OPTIONS = {
   path: "/",
   maxAge: 60 * 60 * 24 * 7,
 };
+
+export function getSessionCookieOptions(request?: NextRequest) {
+  const forwardedProto = request?.headers.get("x-forwarded-proto");
+  const isHttps = request?.nextUrl.protocol === "https:" || forwardedProto === "https";
+
+  return {
+    ...SESSION_COOKIE_OPTIONS,
+    secure: isHttps || SESSION_COOKIE_OPTIONS.secure,
+  };
+}

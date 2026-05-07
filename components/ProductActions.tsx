@@ -9,12 +9,21 @@ type CartItem = {
   price: number;
   quantity: number;
   weightGram: number;
+  stock?: number;
+  imageUrl?: string | null;
 };
 
 function getCart(): CartItem[] {
   if (typeof window === "undefined") return [];
   const raw = localStorage.getItem("cart");
-  return raw ? JSON.parse(raw) : [];
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    localStorage.removeItem("cart");
+    return [];
+  }
 }
 
 function saveCart(items: CartItem[]) {
@@ -26,7 +35,10 @@ export function ProductActions({ product }: { product: StoreProduct }) {
   const [qty, setQty] = useState(1);
   const [added, setAdded] = useState(false);
 
-  const price = product.memberPrice ?? product.price;
+  const price =
+    product.discountPrice !== null && product.discountPrice < product.price
+      ? product.discountPrice
+      : product.price;
   const outOfStock = product.stock === 0;
 
   function addToCart() {
@@ -34,9 +46,19 @@ export function ProductActions({ product }: { product: StoreProduct }) {
     const cart = getCart();
     const existing = cart.find((i) => i.productId === product.id);
     if (existing) {
-      existing.quantity += qty;
+      existing.quantity = Math.min(product.stock, existing.quantity + qty);
+      existing.stock = product.stock;
+      existing.imageUrl = product.imageUrl;
     } else {
-      cart.push({ productId: product.id, name: product.name, price, quantity: qty, weightGram: product.weightGram });
+      cart.push({
+        productId: product.id,
+        name: product.name,
+        price,
+        quantity: qty,
+        weightGram: product.weightGram,
+        stock: product.stock,
+        imageUrl: product.imageUrl,
+      });
     }
     saveCart(cart);
     setAdded(true);
@@ -51,7 +73,7 @@ export function ProductActions({ product }: { product: StoreProduct }) {
         <div className="flex items-center gap-3">
           <button
             onClick={() => setQty((q) => Math.max(1, q - 1))}
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-lg font-bold text-gray-700 transition hover:border-orange-400 hover:text-orange-500 disabled:opacity-40"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-lg font-bold text-gray-700 transition hover:border-natalo-400 hover:text-natalo-600 disabled:opacity-40"
             disabled={qty <= 1}
           >
             −
@@ -59,7 +81,7 @@ export function ProductActions({ product }: { product: StoreProduct }) {
           <span className="w-8 text-center text-lg font-bold text-gray-900">{qty}</span>
           <button
             onClick={() => setQty((q) => Math.min(product.stock || 99, q + 1))}
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-lg font-bold text-gray-700 transition hover:border-orange-400 hover:text-orange-500 disabled:opacity-40"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-lg font-bold text-gray-700 transition hover:border-natalo-400 hover:text-natalo-600 disabled:opacity-40"
             disabled={outOfStock || qty >= product.stock}
           >
             +
@@ -79,10 +101,10 @@ export function ProductActions({ product }: { product: StoreProduct }) {
             ? "bg-green-500"
             : outOfStock
             ? "cursor-not-allowed bg-gray-300"
-            : "bg-orange-500 hover:bg-orange-600"
+            : "bg-natalo-600 hover:bg-natalo-700"
         }`}
       >
-        {outOfStock ? "Stok Habis" : added ? "✓ Ditambahkan ke Keranjang" : "Tambah ke Keranjang"}
+        {outOfStock ? "Stok Habis" : added ? "✓ Ditambahkan ke Keranjang" : "+ Keranjang"}
       </button>
     </div>
   );

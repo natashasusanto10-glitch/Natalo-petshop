@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+
+Disallow: /admin/
+Disallow: /member/
+Disallow: /checkout
+Disallow: /cart
+Disallow: /order-status
+Disallow: /api/
+
+Sitemap: https://natalopetshop.com/sitemap.xml

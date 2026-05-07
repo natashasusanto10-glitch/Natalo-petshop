@@ -18,9 +18,12 @@ Kandungan Nutrisi:
 - Taurin
 - Inulin`,
   price: 1000,
-  memberPrice: 900,
+  discountPrice: null,
   stock: 1000,
   weightGram: 20,
+  hasVariants: false,
+  avgRating: 0,
+  reviewCount: 0,
   imageUrl: "/products/angels-creamy-tuna.jpg",
 },
   {
@@ -43,10 +46,13 @@ Kandungan Nutrisi:
 - Inulin`,
 
     price: 1000,
-    memberPrice: 900,
+  discountPrice: null,
     stock: 1000,
     weightGram: 20,
-    imageUrl: "/products/angels-creamy-salmon.jpg",
+    hasVariants: false,
+    avgRating: 0,
+    reviewCount: 0,
+  imageUrl: "/products/angels-creamy-salmon.jpg",
   },
   {
     id: "produk-3",
@@ -68,9 +74,12 @@ Kandungan Nutrisi:
 - Inulin`,
 
     price: 1000,
-    memberPrice: 900,
+  discountPrice: null,
     stock: 1000,
     weightGram: 20,
-    imageUrl: "/products/angels-creamy-chicken.png",
+    hasVariants: false,
+    avgRating: 0,
+    reviewCount: 0,
+  imageUrl: "/products/angels-creamy-chicken.png",
   },
 ];

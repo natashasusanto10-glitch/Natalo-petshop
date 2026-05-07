@@ -19,8 +19,8 @@ export const metadata: Metadata = {
 };
 
 const PET_CATEGORIES = [
-  { label: "Ikan", emoji: "🐟", color: "bg-blue-50" },
-  { label: "Kucing", emoji: "🐱", color: "bg-orange-50" },
+  { label: "Ikan", emoji: "🐟", color: "bg-natalo-50" },
+  { label: "Kucing", emoji: "🐱", color: "bg-natalo-50" },
   { label: "Anjing", emoji: "🐶", color: "bg-yellow-50" },
   { label: "Burung", emoji: "🦜", color: "bg-green-50" },
   { label: "Kelinci", emoji: "🐰", color: "bg-pink-50" },
@@ -77,7 +77,10 @@ const BLOG_POSTS = [
 ];
 
 export default async function HomePage() {
-  const wa = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || "";
+  const wa =
+    process.env.NEXT_PUBLIC_WA_NUMBER ||
+    process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ||
+    "";
   const products = await getProducts();
   const featured = products.slice(0, 3);
   const bestSelling = products.slice(0, 6);
@@ -88,12 +91,12 @@ export default async function HomePage() {
       <section className="overflow-hidden bg-white">
         <div className="mx-auto grid max-w-6xl items-center gap-8 px-4 py-16 md:grid-cols-2 md:py-24">
           <div>
-            <span className="inline-block rounded-full bg-orange-100 px-4 py-1.5 text-sm font-semibold text-orange-500">
+            <span className="inline-block rounded-full bg-natalo-100 px-4 py-1.5 text-sm font-semibold text-natalo-600">
               {brand}
             </span>
             <h1 className="mt-5 text-4xl font-black leading-tight tracking-tight text-gray-900 md:text-5xl">
               Toko hewan peliharaan yang{" "}
-              <span className="text-orange-500">terpercaya</span>
+              <span className="text-natalo-600">terpercaya</span>
             </h1>
             <p className="mt-5 max-w-md text-gray-500">
               Pakan, aksesoris, dan kebutuhan hewan peliharaan kamu — lengkap, berkualitas, dikirim cepat ke seluruh Indonesia.
@@ -101,7 +104,7 @@ export default async function HomePage() {
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
                 href="/products"
-                className="rounded-full bg-orange-500 px-7 py-3 text-sm font-bold text-white transition hover:bg-orange-600"
+                className="rounded-full bg-natalo-600 px-7 py-3 text-sm font-bold text-white transition hover:bg-natalo-700"
               >
                 Belanja Sekarang
               </Link>
@@ -110,14 +113,14 @@ export default async function HomePage() {
           </div>
 
           <div className="relative flex items-center justify-center">
-            <div className="relative flex h-80 w-80 items-center justify-center rounded-full bg-orange-500 md:h-96 md:w-96">
-              <div className="absolute inset-8 rounded-full bg-orange-400/30" />
+            <div className="relative flex h-80 w-80 items-center justify-center rounded-full bg-natalo-600 md:h-96 md:w-96">
+              <div className="absolute inset-8 rounded-full bg-natalo-400/30" />
               <span className="absolute right-8 top-10 text-3xl opacity-25">🐾</span>
               <span className="absolute bottom-12 left-10 text-xl opacity-20">🐾</span>
               <span className="relative z-10 text-8xl drop-shadow-lg">🐠</span>
             </div>
-            <div className="absolute -bottom-4 -left-4 h-20 w-20 rounded-full bg-orange-300 opacity-50" />
-            <div className="absolute -right-6 top-10 h-12 w-12 rounded-full bg-orange-400 opacity-40" />
+            <div className="absolute -bottom-4 -left-4 h-20 w-20 rounded-full bg-natalo-300 opacity-50" />
+            <div className="absolute -right-6 top-10 h-12 w-12 rounded-full bg-natalo-400 opacity-40" />
           </div>
         </div>
       </section>
@@ -133,7 +136,7 @@ export default async function HomePage() {
                 href={`/products?kategori=${pet.label.toLowerCase()}`}
                 className="group flex flex-col items-center gap-3"
               >
-                <div className={`flex h-20 w-20 items-center justify-center rounded-full ${pet.color} shadow-sm transition group-hover:shadow-md group-hover:ring-2 group-hover:ring-orange-400`}>
+                <div className={`flex h-20 w-20 items-center justify-center rounded-full ${pet.color} shadow-sm transition group-hover:shadow-md group-hover:ring-2 group-hover:ring-natalo-400`}>
                   <span className="text-4xl">{pet.emoji}</span>
                 </div>
                 <span className="text-sm font-semibold text-gray-700">{pet.label}</span>
@@ -151,22 +154,24 @@ export default async function HomePage() {
               <h2 className="text-2xl font-black text-gray-900">Produk unggulan</h2>
               <p className="mt-1 text-sm text-gray-500">Pilihan produk premium dari toko kami</p>
             </div>
-            <Link href="/products" className="text-sm font-semibold text-orange-500 hover:underline">
+            <Link href="/products" className="text-sm font-semibold text-natalo-600 hover:underline">
               Lihat semua →
             </Link>
           </div>
           <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {featured.map((p) => <ProductCard key={p.id} product={p} />)}
+            {featured.map((p, index) => (
+              <ProductCard key={p.id} product={p} priority={index === 0} />
+            ))}
           </div>
         </div>
       </section>
 
       {/* ── 4. INFO BLOCK ── */}
-      <section className="bg-orange-500 py-14">
+      <section className="bg-natalo-600 py-14">
         <div className="mx-auto max-w-6xl px-4">
           <div className="mb-10 text-center text-white">
             <h2 className="text-2xl font-black">Kenapa belanja di {brand}?</h2>
-            <p className="mt-2 text-sm text-orange-100">
+            <p className="mt-2 text-sm text-natalo-100">
               Kami hadir untuk memastikan hewan peliharaan kamu mendapatkan yang terbaik.
             </p>
           </div>
@@ -175,7 +180,7 @@ export default async function HomePage() {
               <div key={item.title} className="rounded-2xl bg-white/10 p-6 text-white backdrop-blur-sm">
                 <span className="text-3xl">{item.icon}</span>
                 <h3 className="mt-3 font-bold leading-snug">{item.title}</h3>
-                <p className="mt-2 text-sm text-orange-100">{item.desc}</p>
+                <p className="mt-2 text-sm text-natalo-100">{item.desc}</p>
               </div>
             ))}
           </div>
@@ -192,7 +197,7 @@ export default async function HomePage() {
             {PARTNER_BRANDS.map((brand) => (
               <span
                 key={brand}
-                className="text-lg font-black tracking-tight text-gray-300 transition hover:text-orange-400"
+                className="text-lg font-black tracking-tight text-gray-300 transition hover:text-natalo-400"
               >
                 {brand}
               </span>
@@ -209,7 +214,7 @@ export default async function HomePage() {
               <h2 className="text-2xl font-black text-gray-900">Produk terlaris</h2>
               <p className="mt-1 text-sm text-gray-500">Favorit pelanggan setia kami</p>
             </div>
-            <Link href="/products" className="text-sm font-semibold text-orange-500 hover:underline">
+            <Link href="/products" className="text-sm font-semibold text-natalo-600 hover:underline">
               Lihat semua →
             </Link>
           </div>
@@ -224,7 +229,7 @@ export default async function HomePage() {
         <div className="mx-auto max-w-6xl px-4">
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-black text-gray-900">Belanja by hewan</h2>
-            <Link href="/products" className="text-sm font-semibold text-orange-500 hover:underline">
+            <Link href="/products" className="text-sm font-semibold text-natalo-600 hover:underline">
               Lihat semua →
             </Link>
           </div>
@@ -233,7 +238,7 @@ export default async function HomePage() {
               <Link
                 key={pet.label}
                 href={`/products?kategori=${pet.label.toLowerCase()}`}
-                className="group flex flex-col items-center gap-3 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition hover:border-orange-300 hover:shadow-md"
+                className="group flex flex-col items-center gap-3 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition hover:border-natalo-300 hover:shadow-md"
               >
                 <span className="text-5xl">{pet.emoji}</span>
                 <span className="text-sm font-semibold text-gray-700">{pet.label}</span>
@@ -259,14 +264,14 @@ export default async function HomePage() {
                 href={post.slug}
                 className="group overflow-hidden rounded-2xl bg-white shadow-sm transition hover:shadow-md"
               >
-                <div className="flex h-44 items-center justify-center bg-orange-50 text-7xl">
+                <div className="flex h-44 items-center justify-center bg-natalo-50 text-7xl">
                   {post.emoji}
                 </div>
                 <div className="p-5">
-                  <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold text-orange-500">
+                  <span className="rounded-full bg-natalo-100 px-3 py-1 text-xs font-semibold text-natalo-600">
                     {post.tag}
                   </span>
-                  <h3 className="mt-3 font-bold leading-snug text-gray-900 group-hover:text-orange-500">
+                  <h3 className="mt-3 font-bold leading-snug text-gray-900 group-hover:text-natalo-600">
                     {post.title}
                   </h3>
                   <p className="mt-2 text-xs text-gray-400">{post.date}</p>
@@ -281,7 +286,7 @@ export default async function HomePage() {
               href={`https://wa.me/${wa.replace("+", "")}?text=${encodeURIComponent("Halo, saya mau konsultasi produk untuk hewan peliharaan saya.")}`}
               target="_blank"
               rel="noreferrer"
-              className="mt-4 inline-flex items-center gap-2 rounded-full bg-orange-500 px-7 py-3 text-sm font-bold text-white transition hover:bg-orange-600"
+              className="mt-4 inline-flex items-center gap-2 rounded-full bg-natalo-600 px-7 py-3 text-sm font-bold text-white transition hover:bg-natalo-700"
             >
               💬 Konsultasi via WhatsApp
             </a>

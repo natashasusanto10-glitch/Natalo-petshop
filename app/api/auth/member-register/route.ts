@@ -1,48 +1,60 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { createSessionToken, SESSION_COOKIE_OPTIONS } from "@/lib/auth";
+import { normalizeIndonesianPhone } from "@/lib/phone";
 import bcrypt from "bcryptjs";
 
 export async function POST(request: NextRequest) {
-  const { name, identifier, password } = await request.json();
+  const body = await request.json();
+  const name = String(body.name || "").trim();
+  const email = String(body.email || "").trim().toLowerCase();
+  const phone = normalizeIndonesianPhone(String(body.phone || ""));
+  const password = String(body.password || "");
+  const confirmPassword = String(body.confirmPassword || "");
 
-  if (!name || !identifier || !password) {
+  if (!name || !email || !phone || !password || !confirmPassword) {
     return NextResponse.json({ error: "Semua field wajib diisi" }, { status: 400 });
+  }
+
+  if (!email.includes("@")) {
+    return NextResponse.json({ error: "Format email tidak valid" }, { status: 400 });
+  }
+
+  if (phone.length < 8 || !phone.startsWith("0")) {
+    return NextResponse.json({ error: "Nomor handphone tidak valid" }, { status: 400 });
   }
 
   if (password.length < 8) {
     return NextResponse.json({ error: "Password minimal 8 karakter" }, { status: 400 });
   }
 
-  const isEmail = identifier.includes("@");
+  if (password !== confirmPassword) {
+    return NextResponse.json({ error: "Konfirmasi password tidak sama" }, { status: 400 });
+  }
 
   const existing = await prisma.user.findFirst({
-    where: isEmail ? { email: identifier } : { phone: identifier },
+    where: {
+      OR: [
+        { email },
+        { phone },
+      ],
+    },
   });
 
   if (existing) {
-    return NextResponse.json({ error: "Email/HP sudah terdaftar" }, { status: 409 });
+    return NextResponse.json({ error: "Email atau no. handphone sudah terdaftar" }, { status: 409 });
   }
 
   const passwordHash = await bcrypt.hash(password, 12);
 
-  const user = await prisma.user.create({
+  await prisma.user.create({
     data: {
       name,
-      email: isEmail ? identifier : null,
-      phone: isEmail ? null : identifier,
+      email,
+      phone,
       passwordHash,
       role: "CUSTOMER",
     },
   });
 
-  const token = await createSessionToken({
-    sub: user.id,
-    role: "CUSTOMER",
-    name: user.name,
-  });
-
-  const response = NextResponse.json({ ok: true });
-  response.cookies.set("session", token, SESSION_COOKIE_OPTIONS);
-  return response;
+  return NextResponse.json({ ok: true });
 }

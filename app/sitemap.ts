@@ -12,10 +12,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: siteUrl, lastModified: new Date(), changeFrequency: "daily", priority: 1 },
     { url: `${siteUrl}/products`, lastModified: new Date(), changeFrequency: "daily", priority: 0.9 },
-    { url: `${siteUrl}/cart`, lastModified: new Date(), changeFrequency: "never", priority: 0.3 },
-    { url: `${siteUrl}/order-status`, lastModified: new Date(), changeFrequency: "never", priority: 0.4 },
-    { url: `${siteUrl}/member/login`, lastModified: new Date(), changeFrequency: "never", priority: 0.5 },
-    { url: `${siteUrl}/member/register`, lastModified: new Date(), changeFrequency: "never", priority: 0.5 },
+    { url: `${siteUrl}/tentang-kami`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.6 },
+    { url: `${siteUrl}/cara-pemesanan`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.5 },
+    { url: `${siteUrl}/order-status`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.4 },
+    { url: `${siteUrl}/kebijakan-pengembalian`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.4 },
+    { url: `${siteUrl}/kebijakan-privasi`, lastModified: new Date(), changeFrequency: "yearly", priority: 0.3 },
+    { url: `${siteUrl}/syarat-ketentuan`, lastModified: new Date(), changeFrequency: "yearly", priority: 0.3 },
   ];
 
   const productRoutes: MetadataRoute.Sitemap = products.map((p) => ({

@@ -3,9 +3,10 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET(request: NextRequest) {
   const orderNumber = request.nextUrl.searchParams.get("order");
+  const email = request.nextUrl.searchParams.get("email")?.trim().toLowerCase();
 
-  if (!orderNumber) {
-    return NextResponse.json({ message: "Nomor order wajib diisi" }, { status: 400 });
+  if (!orderNumber || !email) {
+    return NextResponse.json({ message: "Nomor order dan email wajib diisi" }, { status: 400 });
   }
 
   const order = await prisma.order.findUnique({
@@ -14,6 +15,11 @@ export async function GET(request: NextRequest) {
   });
 
   if (!order) {
+    return NextResponse.json({ message: "Order tidak ditemukan" }, { status: 404 });
+  }
+
+  // Verifikasi email customer
+  if ((order.customerEmail ?? "").toLowerCase() !== email) {
     return NextResponse.json({ message: "Order tidak ditemukan" }, { status: 404 });
   }
 
@@ -29,6 +35,8 @@ export async function GET(request: NextRequest) {
     shippingCost: order.shippingCost,
     discount: order.discount,
     total: order.total,
+    manualBank: order.manualBank,
+    uniqueCode: order.uniqueCode,
     shippingAddress: order.shippingAddress,
     shippingCity: order.shippingCity,
     courierCode: order.courierCode,

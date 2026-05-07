@@ -19,7 +19,6 @@ await prisma.category.deleteMany();
     slug: "angels-creamy-chicken-15gr-x-10pcs",
     description: `Snack creamy untuk kucing dengan rasa chicken. Cocok untuk reward, camilan harian, atau campuran makanan.`,
     price: 1000,
-    memberPrice: 900,
     stock: 1000,
     weightGram: 20,
     imageUrl: "/products/angels-creamy-chicken.png",
@@ -29,7 +28,6 @@ await prisma.category.deleteMany();
     slug: "angels-creamy-tuna-15gr-x-10pcs",
     description: `Kejutan kecil yang menghadirkan kenyamanan dan bahagia. Angels Snack Kucing 15 GR berbentuk strip yang creamy.`,
     price: 1000,
-    memberPrice: 900,
     stock: 1000,
     weightGram: 20,
     imageUrl: "/products/angels-creamy-tuna.png",
@@ -45,7 +43,6 @@ Keunggulan Utama:
 - Cocok untuk kitten dan adult.
 - Bisa diberikan langsung atau dicampur dengan makanan utama.`,
     price: 1000,
-    memberPrice: 900,
     stock: 1000,
     weightGram: 20,
     imageUrl: "/products/angels-creamy-salmon.jpg",

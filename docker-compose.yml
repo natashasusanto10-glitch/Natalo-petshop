@@ -1,0 +1,31 @@
+# Meilisearch instance lokal untuk search engine.
+#
+# Cara pakai:
+#   docker compose up -d         # start
+#   docker compose down          # stop (data tetap)
+#   docker compose down -v       # stop + hapus data (full reset)
+#
+# Web UI / API: http://localhost:7700
+# API key: lihat MEILI_MASTER_KEY di bawah (samakan dengan .env)
+
+services:
+  meilisearch:
+    image: getmeili/meilisearch:v1.10
+    container_name: toko-meilisearch
+    ports:
+      - "7700:7700"
+    environment:
+      - MEILI_MASTER_KEY=devmasterkey_change_in_production
+      - MEILI_ENV=development
+      - MEILI_NO_ANALYTICS=true
+    volumes:
+      - meili-data:/meili_data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  meili-data:

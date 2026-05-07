@@ -9,12 +9,21 @@ type CartItem = {
   price: number;
   quantity: number;
   weightGram: number;
+  stock?: number;
+  imageUrl?: string | null;
 };
 
 function getCart(): CartItem[] {
   if (typeof window === "undefined") return [];
   const raw = localStorage.getItem("cart");
-  return raw ? JSON.parse(raw) : [];
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    localStorage.removeItem("cart");
+    return [];
+  }
 }
 
 function saveCart(items: CartItem[]) {
@@ -27,11 +36,16 @@ export function AddToCartButton({ product }: { product: StoreProduct }) {
 
   const add = () => {
     const cart = getCart();
-    const price = product.memberPrice ?? product.price;
+    const price =
+      product.discountPrice !== null && product.discountPrice < product.price
+        ? product.discountPrice
+        : product.price;
     const existing = cart.find((item) => item.productId === product.id);
 
     if (existing) {
-      existing.quantity += 1;
+      existing.quantity = Math.min(product.stock, existing.quantity + 1);
+      existing.stock = product.stock;
+      existing.imageUrl = product.imageUrl;
     } else {
       cart.push({
         productId: product.id,
@@ -39,6 +53,8 @@ export function AddToCartButton({ product }: { product: StoreProduct }) {
         price,
         quantity: 1,
         weightGram: product.weightGram,
+        stock: product.stock,
+        imageUrl: product.imageUrl,
       });
     }
 
@@ -50,11 +66,16 @@ export function AddToCartButton({ product }: { product: StoreProduct }) {
   return (
     <button
       onClick={add}
+      disabled={product.stock <= 0}
       className={`w-full rounded-full px-6 py-4 text-sm font-bold text-white transition ${
-        added ? "bg-green-600" : "bg-zinc-950 hover:bg-zinc-800"
+        product.stock <= 0
+          ? "cursor-not-allowed bg-zinc-300"
+          : added
+          ? "bg-green-600"
+          : "bg-zinc-950 hover:bg-zinc-800"
       }`}
     >
-      {added ? "Ditambahkan ke keranjang ✓" : "Tambah ke Keranjang"}
+      {added ? "Ditambahkan ke keranjang ✓" : "+ Keranjang"}
     </button>
   );
 }

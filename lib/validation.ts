@@ -2,6 +2,8 @@ import { z } from "zod";
 
 export const cartItemSchema = z.object({
   productId: z.string(),
+  variantId: z.string().nullable().optional(),
+  variantLabel: z.string().nullable().optional(),
   name: z.string(),
   price: z.number().int().nonnegative(),
   quantity: z.number().int().positive(),
@@ -21,5 +23,7 @@ export const createOrderSchema = z.object({
   voucherCode: z.string().optional(),
   notes: z.string().optional(),
   paymentProvider: z.enum(["MANUAL", "MIDTRANS", "XENDIT"]).default("MANUAL"),
+  // Untuk TT manual: bank tujuan transfer
+  manualBank: z.enum(["BCA_NATASHA", "BCA_NL_PET"]).optional(),
   items: z.array(cartItemSchema).min(1),
 });

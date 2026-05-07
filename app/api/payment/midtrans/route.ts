@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { prisma } from "@/lib/prisma";
+import { sendPaymentConfirmed } from "@/lib/whatsapp";
 
 type MidtransNotification = {
   order_id: string;
@@ -54,13 +55,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: "Order tidak ditemukan" }, { status: 404 });
   }
 
-  await prisma.order.update({
+  const updatedOrder = await prisma.order.update({
     where: { orderNumber: notification.order_id },
     data: {
       paymentStatus,
       status: paymentStatus === "PAID" && order.status === "PENDING" ? "PAID" : undefined,
     },
   });
+
+  if (paymentStatus === "PAID" && order.paymentStatus !== "PAID") {
+    sendPaymentConfirmed(updatedOrder).catch((error) => {
+      console.error("[whatsapp] payment confirmed notification failed", error);
+    });
+  }
 
   return NextResponse.json({ message: "OK" });
 }
