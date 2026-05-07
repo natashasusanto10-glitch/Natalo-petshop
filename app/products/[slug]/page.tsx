@@ -9,7 +9,6 @@ import { FavoriteButton } from "@/components/FavoriteButton";
 import { ReviewSection } from "@/components/ReviewSection";
 import { formatRupiah } from "@/lib/format";
 import { getProductBySlug, getProducts } from "@/lib/products";
-import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ReviewForm } from "@/components/ReviewForm";
 import { ReviewList } from "@/components/ReviewList";
@@ -60,19 +59,13 @@ export default async function ProductDetailPage({
   const product = await getProductBySlug(slug);
   if (!product) return notFound();
 
-  const session = await getSession("CUSTOMER");
-
-  // Ambil kategori dan produk terkait (limit 12 biar fast — di-slice ke 4 di bawah)
-  const [productWithCategory, allProducts, favoriteIds] = await Promise.all([
+  // Tidak panggil getSession() agar route bisa di-cache di edge.
+  // Highlight favorit di-handle client-side via localStorage (WishlistButton).
+  const [productWithCategory, allProducts] = await Promise.all([
     prisma.product.findUnique({ where: { slug }, include: { category: true } }).catch(() => null),
     getProducts({ category: product.categorySlug ?? undefined, take: 12 }),
-    session
-      ? prisma.favorite
-          .findMany({ where: { userId: session.sub }, select: { productId: true } })
-          .then((f) => f.map((x) => x.productId))
-          .catch(() => [] as string[])
-      : Promise.resolve([] as string[]),
   ]);
+  const favoriteIds: string[] = [];
 
   const category = productWithCategory?.category ?? null;
   const related = allProducts

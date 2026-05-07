@@ -15,7 +15,6 @@ export const metadata: Metadata = {
 };
 import { getProducts, getProductsCount } from "@/lib/products";
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/auth";
 import Link from "next/link";
 
 const PAGE_SIZE = 24;
@@ -27,9 +26,10 @@ export default async function ProductsPage({
 }) {
   const { kategori, q, page: pageStr } = await searchParams;
   const page = Math.max(1, parseInt(pageStr ?? "1", 10) || 1);
-  const session = await getSession("CUSTOMER");
 
-  const [filteredProducts, total, categories, favoriteIds] = await Promise.all([
+  // Catatan: tidak panggil getSession() agar route bisa di-cache di edge.
+  // Highlight "favorited" di-handle client-side oleh WishlistButton (localStorage).
+  const [filteredProducts, total, categories] = await Promise.all([
     getProducts({
       category: kategori,
       search: q,
@@ -38,12 +38,6 @@ export default async function ProductsPage({
     }),
     getProductsCount({ category: kategori, search: q }),
     prisma.category.findMany({ orderBy: { name: "asc" } }).catch(() => []),
-    session
-      ? prisma.favorite
-          .findMany({ where: { userId: session.sub }, select: { productId: true } })
-          .then((f) => f.map((x) => x.productId))
-          .catch(() => [] as string[])
-      : Promise.resolve([] as string[]),
   ]);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const activeCategory = categories.find((cat) => cat.slug === kategori);
@@ -109,7 +103,6 @@ export default async function ProductsPage({
                 key={product.id}
                 product={product}
                 priority={index === 0}
-                isFavorited={favoriteIds.includes(product.id)}
               />
             ))}
           </div>
