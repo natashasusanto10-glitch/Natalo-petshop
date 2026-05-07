@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { formatRupiah } from "@/lib/format";
 
@@ -10,6 +11,7 @@ type CartItem = {
   price: number;
   quantity: number;
   weightGram: number;
+  imageUrl?: string | null;
 };
 
 function loadCart(): CartItem[] {
@@ -61,8 +63,12 @@ export default function CartPage() {
               className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm"
             >
               <div className="flex gap-3">
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-2xl">
-                  🐾
+                <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-gray-100">
+                  {item.imageUrl ? (
+                    <Image src={item.imageUrl} alt={item.name} fill className="object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-2xl">🐾</div>
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-gray-900 leading-snug">{item.name}</p>

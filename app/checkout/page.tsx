@@ -11,6 +11,7 @@ type CartItem = {
   price: number;
   quantity: number;
   weightGram: number;
+  imageUrl?: string | null;
 };
 
 type RateOption = {
@@ -105,6 +106,11 @@ export default function CheckoutPage() {
 
     if (items.length === 0) {
       setError("Keranjang kosong.");
+      return;
+    }
+
+    if (!selectedRate) {
+      setError("Pilih kurir pengiriman terlebih dahulu. Klik \"Cek Ongkir\" dan pilih salah satu layanan.");
       return;
     }
 
@@ -286,7 +292,7 @@ export default function CheckoutPage() {
                   }`}
                 >
                   <p className="font-semibold">Transfer Manual</p>
-                  <p className="text-zinc-500">BCA · Konfirmasi via WhatsApp</p>
+                  <p className="text-zinc-500">BCA · No. rek & instruksi tampil setelah order dibuat</p>
                 </button>
 
                 {isMidtransEnabled && (
@@ -331,11 +337,15 @@ export default function CheckoutPage() {
             </div>
             <div className="flex justify-between text-zinc-600">
               <span>Ongkir</span>
-              <span>{selectedRate ? formatRupiah(shippingCost) : "—"}</span>
+              {selectedRate ? (
+                <span>{formatRupiah(shippingCost)}</span>
+              ) : (
+                <span className="italic text-zinc-400">Belum dipilih</span>
+              )}
             </div>
             <div className="flex justify-between text-lg font-black text-zinc-950">
               <span>Total</span>
-              <span>{formatRupiah(total)}</span>
+              <span>{selectedRate ? formatRupiah(total) : formatRupiah(subtotal) + " + ongkir"}</span>
             </div>
           </div>
 

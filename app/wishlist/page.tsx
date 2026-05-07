@@ -15,8 +15,25 @@ type WishlistItem = {
   imageUrl: string | null;
 };
 
+function addToCart(item: WishlistItem) {
+  try {
+    const cart: { productId: string; name: string; price: number; quantity: number; weightGram: number; imageUrl?: string | null }[] =
+      JSON.parse(localStorage.getItem("cart") ?? "[]");
+    const price = item.memberPrice ?? item.price;
+    const existing = cart.find((c) => c.productId === item.id);
+    if (existing) {
+      existing.quantity += 1;
+    } else {
+      cart.push({ productId: item.id, name: item.name, price, quantity: 1, weightGram: 500, imageUrl: item.imageUrl });
+    }
+    localStorage.setItem("cart", JSON.stringify(cart));
+    window.dispatchEvent(new Event("cart-updated"));
+  } catch {}
+}
+
 export default function WishlistPage() {
   const [items, setItems] = useState<WishlistItem[]>([]);
+  const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     function sync() { setItems(getWishlistItems()); }
@@ -24,6 +41,14 @@ export default function WishlistPage() {
     window.addEventListener("wishlist-updated", sync);
     return () => window.removeEventListener("wishlist-updated", sync);
   }, []);
+
+  function handleAddToCart(item: WishlistItem) {
+    addToCart(item);
+    setAddedIds((prev) => new Set(prev).add(item.id));
+    setTimeout(() => {
+      setAddedIds((prev) => { const s = new Set(prev); s.delete(item.id); return s; });
+    }, 2000);
+  }
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
@@ -42,41 +67,65 @@ export default function WishlistPage() {
           </Link>
         </div>
       ) : (
-        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((item) => (
-            <div key={item.id} className="group relative rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
-              <Link href={`/products/${item.slug}`}>
-                <div className="relative aspect-square bg-gray-100">
-                  {item.imageUrl ? (
-                    <Image src={item.imageUrl} alt={item.name} fill className="object-cover transition group-hover:scale-105" />
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-5xl text-gray-300">🐾</div>
-                  )}
-                </div>
-                <div className="p-4">
-                  <p className="font-semibold text-gray-900 leading-snug">{item.name}</p>
-                  <div className="mt-2 flex items-center gap-2">
-                    <p className="font-bold text-gray-900">{formatRupiah(item.memberPrice ?? item.price)}</p>
-                    {item.memberPrice && (
-                      <p className="text-xs text-gray-400 line-through">{formatRupiah(item.price)}</p>
+        <>
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {items.map((item) => (
+              <div key={item.id} className="group relative flex flex-col rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+                <Link href={`/products/${item.slug}`}>
+                  <div className="relative aspect-square bg-gray-100">
+                    {item.imageUrl ? (
+                      <Image src={item.imageUrl} alt={item.name} fill className="object-cover transition group-hover:scale-105" />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-5xl text-gray-300">🐾</div>
                     )}
                   </div>
-                </div>
-              </Link>
-              <div className="absolute right-3 top-3">
-                <WishlistButton product={item} />
-              </div>
-              <div className="px-4 pb-4">
-                <Link
-                  href={`/products/${item.slug}`}
-                  className="flex w-full items-center justify-center rounded-full bg-orange-500 py-2.5 text-sm font-bold text-white transition hover:bg-orange-600"
-                >
-                  Lihat Produk
+                  <div className="p-4">
+                    <p className="font-semibold text-gray-900 leading-snug">{item.name}</p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <p className="font-bold text-gray-900">{formatRupiah(item.memberPrice ?? item.price)}</p>
+                      {item.memberPrice && (
+                        <p className="text-xs text-gray-400 line-through">{formatRupiah(item.price)}</p>
+                      )}
+                    </div>
+                  </div>
                 </Link>
+
+                {/* Wishlist remove button */}
+                <div className="absolute right-3 top-3">
+                  <WishlistButton product={item} />
+                </div>
+
+                {/* Actions */}
+                <div className="mt-auto grid grid-cols-2 gap-2 px-4 pb-4">
+                  <Link
+                    href={`/products/${item.slug}`}
+                    className="flex items-center justify-center rounded-full border border-gray-200 py-2.5 text-xs font-bold text-gray-700 transition hover:border-orange-400 hover:text-orange-500"
+                  >
+                    Lihat Produk
+                  </Link>
+                  <button
+                    onClick={() => handleAddToCart(item)}
+                    className={`flex items-center justify-center rounded-full py-2.5 text-xs font-bold text-white transition ${
+                      addedIds.has(item.id) ? "bg-green-500" : "bg-orange-500 hover:bg-orange-600"
+                    }`}
+                  >
+                    {addedIds.has(item.id) ? "✓ Ditambahkan" : "+ Keranjang"}
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+
+          {/* Quick checkout link */}
+          <div className="mt-8 flex justify-end">
+            <Link
+              href="/cart"
+              className="rounded-full bg-orange-500 px-7 py-3 text-sm font-bold text-white transition hover:bg-orange-600"
+            >
+              Lihat Keranjang →
+            </Link>
+          </div>
+        </>
       )}
     </div>
   );

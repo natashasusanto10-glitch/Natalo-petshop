@@ -87,6 +87,17 @@ export default function MemberLoginPage() {
             Daftar gratis
           </Link>
         </p>
+        <p className="mt-3 text-center text-sm text-gray-400">
+          Lupa password?{" "}
+          <a
+            href={`https://wa.me/${(process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ?? "").replace("+", "")}?text=${encodeURIComponent("Halo, saya lupa password akun member saya. Mohon bantuan reset password.")}`}
+            target="_blank"
+            rel="noreferrer"
+            className="font-semibold text-gray-500 hover:text-orange-500 hover:underline"
+          >
+            Hubungi kami via WhatsApp
+          </a>
+        </p>
       </div>
     </div>
   );

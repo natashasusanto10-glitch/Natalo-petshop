@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { StoreProduct } from "@/lib/products";
 
 type CartItem = {
@@ -9,6 +10,7 @@ type CartItem = {
   price: number;
   quantity: number;
   weightGram: number;
+  imageUrl?: string | null;
 };
 
 function getCart(): CartItem[] {
@@ -36,11 +38,18 @@ export function ProductActions({ product }: { product: StoreProduct }) {
     if (existing) {
       existing.quantity += qty;
     } else {
-      cart.push({ productId: product.id, name: product.name, price, quantity: qty, weightGram: product.weightGram });
+      cart.push({
+        productId: product.id,
+        name: product.name,
+        price,
+        quantity: qty,
+        weightGram: product.weightGram,
+        imageUrl: product.imageUrl,
+      });
     }
     saveCart(cart);
     setAdded(true);
-    setTimeout(() => setAdded(false), 2000);
+    setTimeout(() => setAdded(false), 3000);
   }
 
   return (
@@ -82,8 +91,21 @@ export function ProductActions({ product }: { product: StoreProduct }) {
             : "bg-orange-500 hover:bg-orange-600"
         }`}
       >
-        {outOfStock ? "Stok Habis" : added ? "✓ Ditambahkan ke Keranjang" : "Tambah ke Keranjang"}
+        {outOfStock ? "Stok Habis" : added ? "✓ Ditambahkan!" : "Tambah ke Keranjang"}
       </button>
+
+      {/* Toast setelah tambah */}
+      {added && (
+        <div className="flex items-center justify-between rounded-2xl bg-green-50 px-4 py-3 text-sm">
+          <span className="font-semibold text-green-700">Produk masuk keranjang 🎉</span>
+          <Link
+            href="/cart"
+            className="ml-4 shrink-0 rounded-full bg-green-600 px-4 py-1.5 text-xs font-bold text-white transition hover:bg-green-700"
+          >
+            Lihat Keranjang →
+          </Link>
+        </div>
+      )}
     </div>
   );
 }
