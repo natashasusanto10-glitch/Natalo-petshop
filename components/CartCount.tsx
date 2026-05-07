@@ -2,25 +2,27 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { loadCart } from "@/lib/cart";
 
 export function CartCount() {
   const [count, setCount] = useState(0);
 
   function sync() {
-    try {
-      const raw = localStorage.getItem("cart");
-      const items = raw ? JSON.parse(raw) : [];
-      const total = items.reduce((s: number, i: { quantity: number }) => s + i.quantity, 0);
-      setCount(total);
-    } catch {
-      setCount(0);
-    }
+    const items = loadCart();
+    setCount(items.reduce((s, i) => s + i.quantity, 0));
   }
 
   useEffect(() => {
     sync();
     window.addEventListener("cart-updated", sync);
-    return () => window.removeEventListener("cart-updated", sync);
+    function onStorage(e: StorageEvent) {
+      if (e.key === "cart") sync();
+    }
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("cart-updated", sync);
+      window.removeEventListener("storage", onStorage);
+    };
   }, []);
 
   return (

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { PasswordInput } from "@/components/PasswordInput";
+import { mergeFromServer } from "@/lib/cart";
 
 export default function MemberLoginPage() {
   const router = useRouter();
@@ -30,6 +31,9 @@ export default function MemberLoginPage() {
       setError(data.error || "Login gagal");
       return;
     }
+
+    // Sync cart: pull dari server, merge dengan local, push balik
+    await mergeFromServer().catch(() => {});
 
     router.push("/member");
     router.refresh();

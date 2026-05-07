@@ -2,40 +2,13 @@
 
 import { useState } from "react";
 import { StoreProduct } from "@/lib/products";
-
-type CartItem = {
-  productId: string;
-  name: string;
-  price: number;
-  quantity: number;
-  weightGram: number;
-  stock?: number;
-  imageUrl?: string | null;
-};
-
-function getCart(): CartItem[] {
-  if (typeof window === "undefined") return [];
-  const raw = localStorage.getItem("cart");
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    localStorage.removeItem("cart");
-    return [];
-  }
-}
-
-function saveCart(items: CartItem[]) {
-  localStorage.setItem("cart", JSON.stringify(items));
-  window.dispatchEvent(new Event("cart-updated"));
-}
+import { loadCart, saveCart } from "@/lib/cart";
 
 export function AddToCartButton({ product }: { product: StoreProduct }) {
   const [added, setAdded] = useState(false);
 
   const add = () => {
-    const cart = getCart();
+    const cart = loadCart();
     const price =
       product.discountPrice !== null && product.discountPrice < product.price
         ? product.discountPrice

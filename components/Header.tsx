@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { CartCount } from "./CartCount";
 import { WishlistCount } from "./WishlistButton";
+import { bootstrapCartSync } from "@/lib/cart";
 
 const NAV_LINKS = [
   { href: "/", label: "Beranda" },
@@ -31,7 +32,11 @@ export function Header() {
     fetch("/api/auth/me", { cache: "no-store" })
       .then((res) => res.json())
       .then((data: MemberProfile) => {
-        if (active) setMember(data.name ? data : null);
+        if (active) {
+          setMember(data.name ? data : null);
+          // Sync cart dari server kalau user login (multi-device support)
+          if (data.name) bootstrapCartSync();
+        }
       })
       .catch(() => {
         if (active) setMember(null);

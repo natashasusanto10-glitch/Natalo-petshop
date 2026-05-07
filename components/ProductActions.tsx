@@ -3,34 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { StoreProduct } from "@/lib/products";
-
-type CartItem = {
-  productId: string;
-  name: string;
-  price: number;
-  quantity: number;
-  weightGram: number;
-  imageUrl?: string | null;
-  stock?: number;
-};
-
-function getCart(): CartItem[] {
-  if (typeof window === "undefined") return [];
-  const raw = localStorage.getItem("cart");
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    localStorage.removeItem("cart");
-    return [];
-  }
-}
-
-function saveCart(items: CartItem[]) {
-  localStorage.setItem("cart", JSON.stringify(items));
-  window.dispatchEvent(new Event("cart-updated"));
-}
+import { loadCart, saveCart } from "@/lib/cart";
 
 export function ProductActions({ product }: { product: StoreProduct }) {
   const [qty, setQty] = useState(1);
@@ -54,7 +27,7 @@ export function ProductActions({ product }: { product: StoreProduct }) {
 
   function addToCart() {
     if (outOfStock) return;
-    const cart = getCart();
+    const cart = loadCart();
     const existing = cart.find((i) => i.productId === product.id);
     if (existing) {
       existing.quantity = Math.min(product.stock, existing.quantity + qty);

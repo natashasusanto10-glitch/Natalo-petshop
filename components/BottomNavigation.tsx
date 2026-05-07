@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { loadCart } from "@/lib/cart";
 
 const ITEMS = [
   { href: "/", label: "Beranda", icon: "🏠" },
@@ -23,16 +24,8 @@ export function BottomNavigation() {
 
   useEffect(() => {
     function syncCart() {
-      try {
-        const raw = localStorage.getItem("cart");
-        const items = raw ? JSON.parse(raw) : [];
-        const total = Array.isArray(items)
-          ? items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
-          : 0;
-        setCartCount(total);
-      } catch {
-        setCartCount(0);
-      }
+      const items = loadCart();
+      setCartCount(items.reduce((sum, item) => sum + Number(item.quantity || 0), 0));
     }
 
     function onStorage(e: StorageEvent) {

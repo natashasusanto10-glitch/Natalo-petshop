@@ -16,27 +16,25 @@ type WishlistItem = {
   weightGram?: number;
 };
 
+import { loadCart, saveCart } from "@/lib/cart";
+
 function addToCart(item: WishlistItem) {
-  try {
-    const cart: { productId: string; name: string; price: number; quantity: number; weightGram: number; imageUrl?: string | null }[] =
-      JSON.parse(localStorage.getItem("cart") ?? "[]");
-    const price = item.memberPrice ?? item.price;
-    const existing = cart.find((c) => c.productId === item.id);
-    if (existing) {
-      existing.quantity += 1;
-    } else {
-      cart.push({
-        productId: item.id,
-        name: item.name,
-        price,
-        quantity: 1,
-        weightGram: item.weightGram ?? 500,
-        imageUrl: item.imageUrl,
-      });
-    }
-    localStorage.setItem("cart", JSON.stringify(cart));
-    window.dispatchEvent(new Event("cart-updated"));
-  } catch {}
+  const cart = loadCart();
+  const price = item.memberPrice ?? item.price;
+  const existing = cart.find((c) => c.productId === item.id);
+  if (existing) {
+    existing.quantity += 1;
+  } else {
+    cart.push({
+      productId: item.id,
+      name: item.name,
+      price,
+      quantity: 1,
+      weightGram: item.weightGram ?? 500,
+      imageUrl: item.imageUrl,
+    });
+  }
+  saveCart(cart);
 }
 
 export default function WishlistPage() {

@@ -5,37 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { formatRupiah } from "@/lib/format";
 import { EmptyCart } from "@/components/LoadingEmptyStates";
-
-type CartItem = {
-  productId: string;
-  variantId?: string | null;
-  variantLabel?: string | null;
-  name: string;
-  price: number;
-  quantity: number;
-  weightGram: number;
-  imageUrl?: string | null;
-  stock?: number;
-};
-
-function loadCart(): CartItem[] {
-  if (typeof window === "undefined") return [];
-  const raw = localStorage.getItem("cart");
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    // localStorage corrupted — reset cart agar halaman tidak crash
-    localStorage.removeItem("cart");
-    return [];
-  }
-}
-
-function saveCart(items: CartItem[]) {
-  localStorage.setItem("cart", JSON.stringify(items));
-  window.dispatchEvent(new Event("cart-updated"));
-}
+import { loadCart, saveCart, type CartItem } from "@/lib/cart";
 
 export default function CartPage() {
   const [items, setItems] = useState<CartItem[]>([]);

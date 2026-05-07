@@ -3,29 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatRupiah } from "@/lib/format";
 import type { StoreVariantAttribute, StoreProductVariant } from "@/lib/products";
-
-// ── Cart helpers (sama dengan ProductActions) ──────────────────
-type CartItem = {
-  productId: string;
-  variantId?: string | null;
-  variantLabel?: string | null;
-  name: string;
-  price: number;
-  quantity: number;
-  weightGram: number;
-  stock?: number;
-  imageUrl?: string | null;
-};
-
-function getCart(): CartItem[] {
-  if (typeof window === "undefined") return [];
-  try { return JSON.parse(localStorage.getItem("cart") ?? "[]"); } catch { return []; }
-}
-
-function saveCart(items: CartItem[]) {
-  localStorage.setItem("cart", JSON.stringify(items));
-  window.dispatchEvent(new Event("cart-updated"));
-}
+import { loadCart, saveCart } from "@/lib/cart";
 
 function cartKey(productId: string, variantId: string | null | undefined) {
   return `${productId}:${variantId ?? ""}`;
@@ -183,7 +161,7 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
     // Ganti gambar utama kalau variant punya foto sendiri
     if (onVariantImage) onVariantImage(currentVariant.imageUrl);
 
-    const cart = getCart();
+    const cart = loadCart();
     const key = cartKey(product.id, currentVariant.id);
     const existing = cart.find(
       (i) => cartKey(i.productId, i.variantId) === key

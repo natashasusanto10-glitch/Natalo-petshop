@@ -1,18 +1,16 @@
 "use client";
 
+import { clearLocalCart } from "@/lib/cart";
+
 interface LogoutButtonProps {
   redirectTo: string;
   className?: string;
 }
 
 export function LogoutButton({ redirectTo, className = "" }: LogoutButtonProps) {
-  function clearCart() {
-    localStorage.removeItem("cart");
-    window.dispatchEvent(new Event("cart-updated"));
-  }
-
   async function handleLogout() {
-    clearCart();
+    // Clear local cart — server cart tetap, akan di-pull lagi saat user login di mana pun
+    clearLocalCart();
     await fetch("/api/auth/logout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -20,7 +18,7 @@ export function LogoutButton({ redirectTo, className = "" }: LogoutButtonProps) 
         scope: redirectTo.startsWith("/admin") ? "ADMIN" : "CUSTOMER",
       }),
     }).catch(() => {});
-    clearCart();
+    clearLocalCart();
     window.location.replace(redirectTo);
   }
 

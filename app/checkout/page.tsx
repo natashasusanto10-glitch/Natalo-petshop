@@ -10,15 +10,7 @@ import {
   MetodePembayaran,
   type PaymentSelection,
 } from "@/components/MetodePembayaran";
-
-type CartItem = {
-  productId: string;
-  name: string;
-  price: number;
-  quantity: number;
-  weightGram: number;
-  imageUrl?: string | null;
-};
+import { loadCart, clearCartEverywhere, type CartItem } from "@/lib/cart";
 
 type RateOption = {
   courier_name: string;
@@ -67,6 +59,9 @@ export default function CheckoutPage() {
     shippingAddress: "",
     shippingCity: "",
     shippingPostalCode: "",
+    shippingLatitude: null as number | null,
+    shippingLongitude: null as number | null,
+    shippingPinpointAddress: null as string | null,
     voucherCode: "",
     notes: "",
   });
@@ -94,14 +89,7 @@ export default function CheckoutPage() {
   const [showVoucherList, setShowVoucherList] = useState(false);
 
   useEffect(() => {
-    const raw = localStorage.getItem("cart");
-    try {
-      const parsed = raw ? JSON.parse(raw) : [];
-      setItems(Array.isArray(parsed) ? parsed : []);
-    } catch {
-      localStorage.removeItem("cart");
-      setItems([]);
-    }
+    setItems(loadCart());
 
     fetch("/api/auth/me")
       .then((r) => r.json())
@@ -124,7 +112,16 @@ export default function CheckoutPage() {
       .catch(() => {});
   }, []);
 
-  function applyAddressToForm(addr: { recipientName: string; phone: string; address: string; city: string; postalCode: string }) {
+  function applyAddressToForm(addr: {
+    recipientName: string;
+    phone: string;
+    address: string;
+    city: string;
+    postalCode: string;
+    latitude?: number | null;
+    longitude?: number | null;
+    pinpointAddress?: string | null;
+  }) {
     setForm((f) => ({
       ...f,
       customerName: addr.recipientName || f.customerName,
@@ -132,6 +129,9 @@ export default function CheckoutPage() {
       shippingAddress: addr.address,
       shippingCity: addr.city,
       shippingPostalCode: addr.postalCode,
+      shippingLatitude: addr.latitude ?? null,
+      shippingLongitude: addr.longitude ?? null,
+      shippingPinpointAddress: addr.pinpointAddress ?? null,
     }));
   }
 
@@ -250,6 +250,8 @@ export default function CheckoutPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           destinationPostalCode: form.shippingPostalCode,
+          destinationLatitude: form.shippingLatitude,
+          destinationLongitude: form.shippingLongitude,
           items: biteshipItems,
         }),
       });
@@ -270,8 +272,7 @@ export default function CheckoutPage() {
   }
 
   function clearCart() {
-    localStorage.removeItem("cart");
-    window.dispatchEvent(new Event("cart-updated"));
+    void clearCartEverywhere();
     setItems([]);
   }
 
@@ -306,6 +307,9 @@ export default function CheckoutPage() {
         shippingCost,
         courierCode: selectedRate?.courier_code,
         courierService: selectedRate?.courier_service_code,
+        shippingLatitude: form.shippingLatitude,
+        shippingLongitude: form.shippingLongitude,
+        shippingPinpointAddress: form.shippingPinpointAddress,
       }),
     });
 
@@ -361,7 +365,7 @@ export default function CheckoutPage() {
             rows={3}
             required={opts.required}
             placeholder={opts.placeholder}
-            value={form[key]}
+            value={String(form[key] ?? "")}
             onChange={(e) => setForm({ ...form, [key]: e.target.value })}
             className={cls}
           />
@@ -370,7 +374,7 @@ export default function CheckoutPage() {
             type={opts?.type ?? "text"}
             required={opts?.required}
             placeholder={opts?.placeholder}
-            value={form[key]}
+            value={String(form[key] ?? "")}
             onChange={(e) => setForm({ ...form, [key]: e.target.value })}
             className={cls}
           />

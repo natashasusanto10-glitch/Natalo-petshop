@@ -2,28 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-
-type CartItem = {
-  productId: string;
-  variantId?: string | null;
-  variantLabel?: string | null;
-  name: string;
-  price: number;
-  quantity: number;
-  weightGram: number;
-  stock?: number;
-  imageUrl?: string | null;
-};
-
-function loadCart(): CartItem[] {
-  if (typeof window === "undefined") return [];
-  try { return JSON.parse(localStorage.getItem("cart") ?? "[]"); } catch { return []; }
-}
-
-function saveCart(items: CartItem[]) {
-  localStorage.setItem("cart", JSON.stringify(items));
-  window.dispatchEvent(new Event("cart-updated"));
-}
+import { loadCart, saveCart } from "@/lib/cart";
 
 interface Props {
   product: {

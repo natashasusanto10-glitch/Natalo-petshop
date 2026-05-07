@@ -2,26 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
+import { loadCart, saveCart, type CartItem } from "@/lib/cart";
 
 type OrderItem = { name: string; quantity: number; price: number; productId?: string };
-
-type CartItem = {
-  productId: string;
-  name: string;
-  price: number;
-  quantity: number;
-  weightGram: number;
-  variantId?: string | null;
-  variantLabel?: string | null;
-};
-
-function getCart(): CartItem[] {
-  try {
-    return JSON.parse(localStorage.getItem("cart") ?? "[]");
-  } catch {
-    return [];
-  }
-}
 
 type Props =
   // Bulk: re-add semua item dari sebuah order
@@ -48,7 +31,7 @@ export function ReorderButton(props: Props) {
 
   async function handleReorder() {
     if ("items" in props && props.items) {
-      const cart = getCart();
+      const cart = loadCart();
       for (const item of props.items) {
         if (!item.productId) continue;
         const existing = cart.find((c) => c.productId === item.productId);
@@ -64,8 +47,7 @@ export function ReorderButton(props: Props) {
           });
         }
       }
-      localStorage.setItem("cart", JSON.stringify(cart));
-      window.dispatchEvent(new Event("cart-updated"));
+      saveCart(cart);
       router.push("/cart");
       return;
     }
@@ -78,7 +60,7 @@ export function ReorderButton(props: Props) {
         );
         if (res.ok) {
           const item = (await res.json()) as CartItem;
-          const cart = getCart();
+          const cart = loadCart();
           const existing = cart.find(
             (c) => c.productId === item.productId && (c.variantId ?? null) === (item.variantId ?? null)
           );
@@ -95,8 +77,7 @@ export function ReorderButton(props: Props) {
               variantLabel: item.variantLabel ?? null,
             });
           }
-          localStorage.setItem("cart", JSON.stringify(cart));
-          window.dispatchEvent(new Event("cart-updated"));
+          saveCart(cart);
         }
       } catch {
         /* ignore — endpoint optional */

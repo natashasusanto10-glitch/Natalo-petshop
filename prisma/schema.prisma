@@ -52,8 +52,29 @@ model User {
   pets                Pet[]
   chatThreads         ChatThread[]     @relation("CustomerChatThreads")
   chatMessages        ChatMessage[]    @relation("ChatSender")
+  cartItems           CartItem[]
   createdAt           DateTime        @default(now())
   updatedAt           DateTime        @updatedAt
+}
+
+model CartItem {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId    String
+  variantId    String?
+  variantLabel String?
+  name         String
+  price        Int
+  quantity     Int
+  weightGram   Int      @default(500)
+  imageUrl     String?
+  stock        Int?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, productId, variantId])
+  @@index([userId])
 }
 
 model Category {
@@ -116,9 +137,18 @@ model Order {
   shippingAddress      String
   shippingCity         String?
   shippingPostalCode   String?
+  shippingLatitude     Float?
+  shippingLongitude    Float?
+  shippingPinpointAddress String?
   courierCode          String?
   courierService       String?
   trackingNumber       String?
+  biteshipOrderId      String?
+  biteshipTrackingUrl  String?
+  shipmentStatus       String?
+  biteshipRequest      Json?
+  biteshipResponse     Json?
+  biteshipError        String?
   subtotal             Int
   shippingCost         Int             @default(0)
   discount             Int             @default(0)
@@ -136,6 +166,9 @@ model Order {
   items                OrderItem[]
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
+
+  @@index([biteshipOrderId])
+  @@index([shipmentStatus])
 }
 
 model OrderItem {
