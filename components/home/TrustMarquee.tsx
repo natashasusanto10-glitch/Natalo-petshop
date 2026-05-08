@@ -1,52 +1,15 @@
 "use client";
 
-import { Fragment, useEffect, useRef } from "react";
+import { Fragment } from "react";
 import { trustItems as defaultItems, type TrustItem, type TrustItemIcon } from "@/data/trustItems";
 
 export default function TrustMarquee({
   items = defaultItems,
-  durationSec = 28,
+  durationSec = 22,
 }: {
   items?: TrustItem[];
   durationSec?: number;
 }) {
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-  const trackRef = useRef<HTMLDivElement | null>(null);
-  const resumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    const wrap = wrapRef.current;
-    const track = trackRef.current;
-    if (!wrap || !track) return;
-
-    const pause = () => {
-      track.classList.add("is-paused");
-      if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
-    };
-
-    const resumeAfter = (ms: number) => {
-      if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
-      resumeTimerRef.current = setTimeout(() => {
-        track.classList.remove("is-paused");
-      }, ms);
-    };
-
-    const onTouchStart = () => pause();
-    const onTouchEnd = () => resumeAfter(4000);
-    const onTouchCancel = () => resumeAfter(2000);
-
-    wrap.addEventListener("touchstart", onTouchStart, { passive: true });
-    wrap.addEventListener("touchend", onTouchEnd, { passive: true });
-    wrap.addEventListener("touchcancel", onTouchCancel, { passive: true });
-
-    return () => {
-      wrap.removeEventListener("touchstart", onTouchStart);
-      wrap.removeEventListener("touchend", onTouchEnd);
-      wrap.removeEventListener("touchcancel", onTouchCancel);
-      if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
-    };
-  }, []);
-
   function renderItem(item: TrustItem, key: string) {
     const inner = (
       <>
@@ -90,48 +53,50 @@ export default function TrustMarquee({
     );
   }
 
-  return (
-    <div
-      ref={wrapRef}
-      className="marquee-wrap overflow-hidden border-b border-slate-200 bg-gradient-to-r from-natalo-50 via-amber-50 to-natalo-50"
-    >
-      <div
-        ref={trackRef}
-        className="marquee-track flex w-max items-center gap-5 whitespace-nowrap py-2 text-[11px] font-semibold text-slate-700"
-      >
+  function renderGroup(prefix: string) {
+    return (
+      <div className="marquee-group flex shrink-0 items-center gap-5 pr-5" aria-hidden={prefix === "b"}>
         {items.map((item, index) => (
-          <Fragment key={`a-${index}`}>
-            {renderItem(item, `a-${index}`)}
-            <span className="text-slate-300" aria-hidden="true">
-              |
-            </span>
-          </Fragment>
-        ))}
-        {items.map((item, index) => (
-          <Fragment key={`b-${index}`}>
-            {renderItem(item, `b-${index}`)}
+          <Fragment key={`${prefix}-${index}`}>
+            {renderItem(item, `${prefix}-${index}`)}
             <span className="text-slate-300" aria-hidden="true">
               |
             </span>
           </Fragment>
         ))}
       </div>
+    );
+  }
+
+  return (
+    <div className="marquee-wrap overflow-hidden border-b border-slate-200 bg-gradient-to-r from-natalo-50 via-amber-50 to-natalo-50">
+      <div
+        className="marquee-track flex w-max items-center whitespace-nowrap py-2 text-[11px] font-semibold text-slate-700"
+        style={{ animationDuration: `${durationSec}s` }}
+      >
+        {renderGroup("a")}
+        {renderGroup("b")}
+      </div>
 
       <style jsx>{`
         @keyframes marquee-slide {
-          0% {
-            transform: translateX(0);
+          from {
+            transform: translate3d(0, 0, 0);
           }
-          100% {
-            transform: translateX(-50%);
+          to {
+            transform: translate3d(-50%, 0, 0);
           }
         }
         .marquee-track {
-          animation: marquee-slide ${durationSec}s linear infinite;
+          animation-name: marquee-slide;
+          animation-timing-function: linear;
+          animation-iteration-count: infinite;
+          will-change: transform;
         }
-        .marquee-wrap:hover .marquee-track,
-        :global(.marquee-track.is-paused) {
-          animation-play-state: paused;
+        @media (prefers-reduced-motion: reduce) {
+          .marquee-track {
+            animation: none;
+          }
         }
       `}</style>
     </div>

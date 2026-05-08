@@ -7,7 +7,7 @@ import { heroSlides as defaultSlides, type HeroSlide, type HeroSlideIcon } from 
 import { filterActiveSlides } from "@/lib/filterActiveSlides";
 
 const ROTATE_INTERVAL_MS = 3000;
-const RESUME_AFTER_TOUCH_MS = 4000;
+const RESUME_AFTER_TOUCH_MS = 8000;
 
 export default function HeroBanner({
   slides = defaultSlides,
@@ -18,6 +18,7 @@ export default function HeroBanner({
 }) {
   const activeSlides = filterActiveSlides(slides);
   const [current, setCurrent] = useState(0);
+  const [manuallyPaused, setManuallyPaused] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const total = activeSlides.length;
@@ -36,7 +37,7 @@ export default function HeroBanner({
 
     function start() {
       stop();
-      if (total <= 1) return;
+      if (total <= 1 || manuallyPaused) return;
       timerRef.current = setInterval(() => {
         setCurrent((value) => (value + 1) % total);
       }, intervalMs);
@@ -56,7 +57,9 @@ export default function HeroBanner({
     };
     const touchEnd = () => {
       if (resumeTimeout) clearTimeout(resumeTimeout);
-      resumeTimeout = setTimeout(start, RESUME_AFTER_TOUCH_MS);
+      resumeTimeout = setTimeout(() => {
+        if (!manuallyPaused) start();
+      }, RESUME_AFTER_TOUCH_MS);
     };
 
     container.addEventListener("mouseenter", pause);
@@ -72,7 +75,7 @@ export default function HeroBanner({
       container.removeEventListener("touchstart", touchStart);
       container.removeEventListener("touchend", touchEnd);
     };
-  }, [total, intervalMs]);
+  }, [total, intervalMs, manuallyPaused]);
 
   if (total === 0) return null;
 
@@ -92,19 +95,39 @@ export default function HeroBanner({
         </div>
 
         {total > 1 && (
-          <div className="absolute inset-x-0 bottom-2 z-10 flex justify-center gap-1.5">
-            {activeSlides.map((slide, index) => (
-              <button
-                key={slide.id}
-                type="button"
-                onClick={() => setCurrent(index)}
-                aria-label={`Slide ${index + 1} dari ${total}`}
-                className={`rounded-full transition-all ${
-                  index === current ? "h-1.5 w-6 bg-white/90" : "h-1.5 w-1.5 bg-white/45"
-                }`}
-              />
-            ))}
-          </div>
+          <>
+            <div className="absolute inset-x-0 bottom-2 z-10 flex items-center justify-center gap-1.5">
+              {activeSlides.map((slide, index) => (
+                <button
+                  key={slide.id}
+                  type="button"
+                  onClick={() => setCurrent(index)}
+                  aria-label={`Slide ${index + 1} dari ${total}`}
+                  className={`rounded-full transition-all ${
+                    index === current ? "h-1.5 w-6 bg-white/90" : "h-1.5 w-1.5 bg-white/45"
+                  }`}
+                />
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setManuallyPaused((value) => !value)}
+              aria-label={manuallyPaused ? "Lanjutkan putaran otomatis" : "Jeda putaran otomatis"}
+              aria-pressed={manuallyPaused}
+              className="absolute bottom-1.5 right-2 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-sm transition hover:bg-black/55 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+            >
+              {manuallyPaused ? (
+                <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor" aria-hidden="true">
+                  <path d="M8 5v14l11-7L8 5Z" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor" aria-hidden="true">
+                  <rect x="6" y="5" width="4" height="14" rx="1" />
+                  <rect x="14" y="5" width="4" height="14" rx="1" />
+                </svg>
+              )}
+            </button>
+          </>
         )}
       </div>
     </div>
