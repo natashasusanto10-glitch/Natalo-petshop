@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 
 const stats = [
   { num: "2.200+", label: "Produk tersedia" },
-  { num: "10+", label: "Tahun pengalaman" },
+  { num: "7+", label: "Tahun pengalaman" },
   { num: "10.000+", label: "Pelanggan puas" },
   { num: "100+", label: "Brand terpercaya" },
 ];

@@ -6,10 +6,10 @@ import { ProductCard } from "@/components/ProductCard";
 import { getProducts } from "@/lib/products";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
-import { BannerCarousel, type HomeBanner } from "@/components/home/BannerCarousel";
-import { TestimonialSlider, type HomeTestimonial } from "@/components/home/TestimonialSlider";
 import { FlashSaleCountdown } from "@/components/home/FlashSaleCountdown";
 import { HomeSearchBar } from "@/components/home/HomeSearchBar";
+import HeroBanner from "@/components/home/HeroBanner";
+import TrustMarquee from "@/components/home/TrustMarquee";
 
 const brand = process.env.NEXT_PUBLIC_BRAND_NAME || "Natalo Petshop";
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -27,45 +27,6 @@ export const metadata: Metadata = {
     images: [{ url: `${siteUrl}/icon.svg`, width: 512, height: 512, alt: brand }],
   },
 };
-
-const HOME_BANNERS: HomeBanner[] = [
-  {
-    id: "b1",
-    title: "Diskon Besar Pakan Premium",
-    subtitle: "Promo Spesial",
-    emoji: "🐱",
-    bgFrom: "#f97316",
-    bgTo: "#fb923c",
-    href: "/products",
-  },
-  {
-    id: "b2",
-    title: "Member Baru Hemat Rp50.000",
-    subtitle: "Member Benefit",
-    emoji: "🎁",
-    bgFrom: "#10b981",
-    bgTo: "#34d399",
-    href: "/member/register",
-  },
-  {
-    id: "b3",
-    title: "Aquarium Set Lengkap Mulai 199K",
-    subtitle: "Aquarium",
-    emoji: "🐠",
-    bgFrom: "#3b82f6",
-    bgTo: "#60a5fa",
-    href: "/products?kategori=ikan",
-  },
-  {
-    id: "b4",
-    title: "Konsultasi Hewan Gratis 24 Jam",
-    subtitle: "Konsultasi",
-    emoji: "💬",
-    bgFrom: "#8b5cf6",
-    bgTo: "#a78bfa",
-    href: "/tentang-kami",
-  },
-];
 
 type HomeIconName =
   | "box"
@@ -100,61 +61,6 @@ const SHORTCUT_ITEMS: {
   { icon: "grooming", label: "Grooming", href: "/tentang-kami", bg: "bg-blue-50", color: "text-blue-600" },
   { icon: "truck", label: "Cek Ongkir", href: "/checkout", bg: "bg-indigo-50", color: "text-indigo-600" },
   { icon: "chat", label: "Konsultasi", href: "/tentang-kami", bg: "bg-purple-50", color: "text-purple-600" },
-];
-
-const PET_CATEGORIES: {
-  label: string;
-  slug: string;
-  icon: HomeIconName;
-  color: string;
-  iconColor: string;
-}[] = [
-  { label: "Ikan", slug: "ikan", icon: "fish", color: "bg-sky-50", iconColor: "text-sky-600" },
-  { label: "Kucing", slug: "kucing", icon: "cat", color: "bg-orange-50", iconColor: "text-orange-600" },
-  { label: "Anjing", slug: "anjing", icon: "dog", color: "bg-yellow-50", iconColor: "text-amber-600" },
-  { label: "Burung", slug: "burung", icon: "bird", color: "bg-green-50", iconColor: "text-green-600" },
-  { label: "Kelinci", slug: "kelinci", icon: "rabbit", color: "bg-pink-50", iconColor: "text-pink-600" },
-  { label: "Reptil", slug: "reptil", icon: "reptile", color: "bg-emerald-50", iconColor: "text-emerald-600" },
-];
-
-const TESTIMONIALS: HomeTestimonial[] = [
-  {
-    id: "t1",
-    name: "Sarah W.",
-    pet: "Kucing Persia, Mochi",
-    petEmoji: "🐱",
-    avatarEmoji: "👩",
-    quote:
-      "Pengiriman super cepat, pakannya original. Sudah langganan 6 bulan dan Mochi makin sehat.",
-    rating: 5,
-  },
-  {
-    id: "t2",
-    name: "Budi P.",
-    pet: "Anjing Golden, Rocky",
-    petEmoji: "🐶",
-    avatarEmoji: "👨",
-    quote: "Harga bersaing, admin responsif via WA. Konsultasi soal vitamin Rocky dibantu detail.",
-    rating: 5,
-  },
-  {
-    id: "t3",
-    name: "Linda T.",
-    pet: "Ikan Cupang, 12 ekor",
-    petEmoji: "🐠",
-    avatarEmoji: "👩‍🦰",
-    quote: "Aquarium lengkap, packing aman. Cupangku selamat semua sampai rumah, mantap!",
-    rating: 4,
-  },
-  {
-    id: "t4",
-    name: "Andi K.",
-    pet: "Burung Murai",
-    petEmoji: "🦜",
-    avatarEmoji: "🧑",
-    quote: "Bayar via QRIS gampang banget. Voucher member bikin belanja lebih hemat.",
-    rating: 5,
-  },
 ];
 
 function getJakartaMidnight() {
@@ -346,7 +252,7 @@ export default async function HomePage() {
     "";
   const waUrl = `https://wa.me/${wa.replace("+", "")}?text=${encodeURIComponent("Halo Natalo Petshop, saya mau tanya...")}`;
 
-  const [products, popularCategories, activePetCategories] = await Promise.all([
+  const [products, popularCategories] = await Promise.all([
     getProducts({ take: 24 }),
     prisma.category
       .findMany({
@@ -365,28 +271,14 @@ export default async function HomePage() {
         },
       })
       .catch(() => []),
-    prisma.category
-      .findMany({
-        where: {
-          slug: { in: PET_CATEGORIES.map((category) => category.slug) },
-          products: { some: { isActive: true } },
-        },
-        select: { slug: true },
-      })
-      .catch(() => []),
   ]);
 
   const flashSaleProducts = products
     .filter((p) => p.discountPrice !== null && p.discountPrice < p.price)
     .slice(0, 6);
-  const newArrivals = products.slice(0, 6);
   const bestSellers = [...products]
     .sort((a, b) => b.reviewCount - a.reviewCount || b.avgRating - a.avgRating)
     .slice(0, 6);
-  const activePetCategorySlugs = new Set(activePetCategories.map((category) => category.slug));
-  const visiblePetCategories = PET_CATEGORIES.filter((category) =>
-    activePetCategorySlugs.has(category.slug)
-  );
 
   const flashSaleEnd = getJakartaMidnight();
 
@@ -395,37 +287,11 @@ export default async function HomePage() {
       {/* ── 1. SEARCH BAR + CS ICON (mobile sticky) ── */}
       <HomeSearchBar waUrl={waUrl} />
 
+      <TrustMarquee />
+
       {/* ── 2. BANNER CAROUSEL UTAMA ── */}
       <section className="pt-3">
-        <BannerCarousel banners={HOME_BANNERS} />
-      </section>
-
-      {/* ── 3. 2 BANNER KECIL SIDE BY SIDE ── */}
-      <section className="mt-6 px-4">
-        <div className="grid grid-cols-2 gap-3">
-          <Link
-            href="/tentang-kami"
-            className="relative flex h-[160px] flex-col justify-between overflow-hidden rounded-xl p-4 text-white shadow-sm active:opacity-90"
-            style={{ background: "linear-gradient(135deg, #ec4899, #f472b6)" }}
-          >
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider opacity-90">Promo</p>
-              <p className="mt-1 text-base font-black leading-tight">Grooming Hemat 30%</p>
-            </div>
-            <HomeIcon name="grooming" className="h-9 w-9 text-white" />
-          </Link>
-          <Link
-            href="/tentang-kami"
-            className="relative flex h-[160px] flex-col justify-between overflow-hidden rounded-xl p-4 text-white shadow-sm active:opacity-90"
-            style={{ background: "linear-gradient(135deg, #14b8a6, #2dd4bf)" }}
-          >
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider opacity-90">Paket</p>
-              <p className="mt-1 text-base font-black leading-tight">Vaksin Hemat Mulai 75K</p>
-            </div>
-            <HomeIcon name="clinic" className="h-9 w-9 text-white" />
-          </Link>
-        </div>
+        <HeroBanner />
       </section>
 
       {/* ── 4. HASHTAG CAMPAIGN + SHORTCUT GRID ── */}
@@ -545,95 +411,6 @@ export default async function HomePage() {
         </section>
       )}
 
-      {/* ── 7. PRODUK BARU MASUK ── */}
-      <section className="mt-6 px-4">
-        <div className="flex items-end justify-between">
-          <h2 className="text-lg font-black text-zinc-900">🆕 Produk Baru Masuk</h2>
-          <Link href="/products?sort=newest" className="text-xs font-bold text-orange-600">
-            Lihat semua
-          </Link>
-        </div>
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          {newArrivals.map((p, i) => (
-            <ProductCard key={p.id} product={p} variant="compact" />
-          ))}
-        </div>
-      </section>
-
-      {/* ── 8. TESTIMONI PELANGGAN ── */}
-      <section className="mt-6 px-4">
-        <h2 className="text-lg font-black text-zinc-900">💛 Cerita Pelanggan</h2>
-        <p className="mt-0.5 text-xs text-zinc-500">Apa kata mereka tentang Natalo</p>
-        <div className="mt-3">
-          <TestimonialSlider testimonials={TESTIMONIALS} />
-        </div>
-      </section>
-
-      {/* ── 9. PROMO BUNDLE (3 BANNER STACK) ── */}
-      <section className="mt-6 px-4">
-        <div className="space-y-3">
-          <Link
-            href="/checkout"
-            className="flex items-center justify-between gap-3 rounded-xl p-5 text-white shadow-sm active:opacity-90"
-            style={{ background: "linear-gradient(135deg, #16a34a, #4ade80)" }}
-          >
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider opacity-90">Gratis</p>
-              <p className="mt-1 text-base font-black">Gratis Ongkir Min. 100K</p>
-              <p className="mt-0.5 text-xs opacity-90">Khusus area Medan</p>
-            </div>
-            <span className="text-4xl">🚚</span>
-          </Link>
-          <Link
-            href="/products"
-            className="flex items-center justify-between gap-3 rounded-xl p-5 text-white shadow-sm active:opacity-90"
-            style={{ background: "linear-gradient(135deg, #f97316, #fb923c)" }}
-          >
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider opacity-90">Bundle</p>
-              <p className="mt-1 text-base font-black">Beli 2 Hemat 15%</p>
-              <p className="mt-0.5 text-xs opacity-90">Kombinasi pakan + aksesoris</p>
-            </div>
-            <span className="text-4xl">📦</span>
-          </Link>
-          <Link
-            href="/member/register"
-            className="flex items-center justify-between gap-3 rounded-xl p-5 text-white shadow-sm active:opacity-90"
-            style={{ background: "linear-gradient(135deg, #7c3aed, #a78bfa)" }}
-          >
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider opacity-90">Member</p>
-              <p className="mt-1 text-base font-black">Harga Member Lebih Hemat</p>
-              <p className="mt-0.5 text-xs opacity-90">Daftar gratis 2 menit</p>
-            </div>
-            <span className="text-4xl">🎁</span>
-          </Link>
-        </div>
-      </section>
-
-      {/* ── 10. KATEGORI HEWAN ── */}
-      {visiblePetCategories.length > 0 && (
-        <section className="mt-6 px-4">
-          <h2 className="text-lg font-black text-zinc-900">🐾 Belanja by Hewan</h2>
-          <div className="mt-3 grid grid-cols-3 gap-3">
-            {visiblePetCategories.map((pet) => (
-              <Link
-                key={pet.slug}
-                href={`/products?kategori=${pet.slug}`}
-                className="flex flex-col items-center gap-2 rounded-2xl border border-[#f5f5f5] bg-white p-4 shadow-sm active:opacity-90"
-              >
-                <div
-                  className={`flex h-14 w-14 items-center justify-center rounded-full ${pet.color} ${pet.iconColor}`}
-                >
-                  <HomeIcon name={pet.icon} className="h-8 w-8" />
-                </div>
-                <span className="text-xs font-bold text-zinc-700">{pet.label}</span>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
       {/* ── 11. PRODUK TERLARIS ── */}
       <section className="mt-6 px-4">
         <div className="flex items-end justify-between">
@@ -665,25 +442,6 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ── 13. CTA KONSULTASI WA ── */}
-      <section className="mt-6 px-4">
-        <a
-          href={waUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="flex items-center justify-between gap-3 rounded-2xl p-5 text-white shadow-sm active:opacity-90"
-          style={{ background: "linear-gradient(135deg, #16a34a, #22c55e)" }}
-        >
-          <div>
-            <p className="text-base font-black leading-tight">Bingung pilih produk?</p>
-            <p className="mt-1 text-xs opacity-90">Konsultasi gratis dengan tim Natalo via WhatsApp.</p>
-            <span className="mt-3 inline-block rounded-full bg-white/20 px-4 py-1.5 text-xs font-bold backdrop-blur-sm">
-              💬 Chat Sekarang
-            </span>
-          </div>
-          <HomeIcon name="paw" className="h-14 w-14 shrink-0 text-white drop-shadow-lg" />
-        </a>
-      </section>
     </div>
   );
 }
