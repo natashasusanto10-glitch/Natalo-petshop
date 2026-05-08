@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Natalo Petshop &amp; Aquarium — Toko Hewan Peliharaan Medan</title>
+<meta name="description" content="Toko hewan peliharaan & akuarium terpercaya di Medan. 6 tahun melayani, rating 4.9 di Shopee & Tokopedia. Chat admin via WhatsApp." />
+<meta name="theme-color" content="#f97316" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700;9..144,800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          brand: {
+            50:  '#fff7ed',
+            100: '#ffedd5',
+            200: '#fed7aa',
+            300: '#fdba74',
+            400: '#fb923c',
+            500: '#f97316',
+            600: '#ea580c',
+            700: '#c2410c',
+            800: '#9a3412',
+            900: '#7c2d12',
+          },
+          ink: {
+            500: '#6b5a4d',
+            600: '#564738',
+            700: '#473a30',
+            800: '#2a221c',
+            900: '#1a1410',
+          },
+          cream: '#fdf8f2',
+        },
+        fontFamily: {
+          display: ['Fraunces', 'ui-serif', 'Georgia', 'serif'],
+          sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
+        },
+        boxShadow: {
+          soft: '0 4px 20px -4px rgba(124, 45, 18, 0.08)',
+          softer: '0 2px 12px -3px rgba(124, 45, 18, 0.06)',
+          glow: '0 10px 30px -8px rgba(249, 115, 22, 0.55)',
+          'glow-lg': '0 20px 50px -12px rgba(249, 115, 22, 0.5)',
+        },
+        animation: {
+          'fade-in-up': 'fadeInUp 0.5s ease-out',
+          'pulse-ring': 'pulseRing 2s infinite',
+        },
+        keyframes: {
+          fadeInUp: {
+            '0%': { opacity: '0', transform: 'translateY(12px)' },
+            '100%': { opacity: '1', transform: 'translateY(0)' },
+          },
+          pulseRing: {
+            '0%':   { boxShadow: '0 0 0 0 rgba(34,197,94,0.55)' },
+            '70%':  { boxShadow: '0 0 0 18px rgba(34,197,94,0)' },
+            '100%': { boxShadow: '0 0 0 0 rgba(34,197,94,0)' },
+          },
+        },
+      },
+    },
+  };
+</script>
+
+<style>
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    background-color: #fdf8f2;
+    color: #1a1410;
+    -webkit-font-smoothing: antialiased;
+    /* clear bottom nav + floating WA on mobile */
+    padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
+  }
+  @media (min-width: 768px) { body { padding-bottom: 0; } }
+  /* mobile menu drawer */
+  .drawer { transform: translateX(100%); transition: transform .3s cubic-bezier(.2,.8,.2,1); }
+  .drawer.open { transform: translateX(0); }
+  /* tab scroller mobile */
+  .tab-scroller { scroll-snap-type: x mandatory; }
+  /* bottom nav active */
+  .bottom-nav-item { transition: color .2s ease; -webkit-tap-highlight-color: transparent; }
+  .bottom-nav-item.active { color: #ea580c; }
+  .bottom-nav-item.active span:last-child { color: #ea580c; }
+  .bottom-nav-item:not(.active):hover { color: #1a1410; }
+  .font-display { font-family: 'Fraunces', ui-serif, Georgia, serif; font-optical-sizing: auto; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  .text-balance { text-wrap: balance; }
+  .card-hover { transition: transform .3s cubic-bezier(.2,.8,.2,1), box-shadow .3s ease; }
+  .card-hover:hover { transform: translateY(-4px); box-shadow: 0 12px 30px -8px rgba(124,45,18,0.12); }
+  .tab-active { background: linear-gradient(135deg,#f97316 0%,#ea580c 100%); color: #fff; box-shadow: 0 10px 30px -8px rgba(249,115,22,.55); }
+  .gradient-mask { background: radial-gradient(at 30% 20%, rgba(249,115,22,.18), transparent 60%), radial-gradient(at 80% 90%, rgba(245,158,11,.18), transparent 60%); }
+</style>
+</head>
+
+<body class="font-sans">
+
+<!-- ── NAVBAR ──────────────────────────────────────────────── -->
+<header class="sticky top-0 z-40 backdrop-blur-md bg-cream/80 border-b border-brand-100/60">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="flex h-16 items-center justify-between gap-4">
+      <a href="#" class="flex items-center gap-2.5 shrink-0">
+        <span class="grid h-10 w-10 place-items-center rounded-2xl bg-gradient-to-br from-brand-500 to-brand-600 text-white shadow-glow text-xl">🐾</span>
+        <span class="font-display font-bold text-lg leading-tight text-ink-900">
+          Natalo<span class="block text-[10px] tracking-widest font-sans font-semibold text-brand-600 uppercase">Petshop &amp; Aquarium</span>
+        </span>
+      </a>
+
+      <div class="hidden md:flex flex-1 max-w-lg">
+        <label class="relative w-full">
+          <span class="absolute left-4 top-1/2 -translate-y-1/2 text-ink-500">🔍</span>
+          <input type="search" placeholder="Cari makanan, vitamin, akuarium..." class="w-full rounded-full border border-brand-100 bg-white/70 px-12 py-2.5 text-sm placeholder:text-ink-500 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:border-brand-300" />
+        </label>
+      </div>
+
+      <nav class="flex items-center gap-1.5 sm:gap-2">
+        <button aria-label="Akun" class="hidden sm:grid h-10 w-10 place-items-center rounded-full hover:bg-brand-100/70 transition">
+          <span class="text-xl">👤</span>
+        </button>
+        <button aria-label="Keranjang" class="relative flex items-center gap-2 rounded-full bg-white border border-brand-100 px-3 py-2 hover:border-brand-300 transition">
+          <span class="text-lg">🛒</span>
+          <span class="hidden sm:inline text-sm font-semibold text-ink-900">Rp 0</span>
+          <span class="absolute -top-1 -right-1 grid h-5 w-5 place-items-center rounded-full bg-brand-500 text-[10px] font-bold text-white">0</span>
+        </button>
+        <button id="menuToggle" aria-label="Menu" class="md:hidden grid h-10 w-10 place-items-center rounded-full hover:bg-brand-100/70 transition">
+          <span class="text-xl">☰</span>
+        </button>
+      </nav>
+    </div>
+  </div>
+
+  <!-- Mobile drawer -->
+  <div id="drawerBackdrop" class="md:hidden fixed inset-0 z-50 bg-ink-900/40 backdrop-blur-sm hidden"></div>
+  <aside id="drawer" class="drawer md:hidden fixed top-0 right-0 z-50 h-dvh w-[82%] max-w-sm bg-cream shadow-2xl p-6 overflow-y-auto">
+    <div class="flex items-center justify-between">
+      <span class="font-display font-bold text-lg text-ink-900">Menu</span>
+      <button id="drawerClose" aria-label="Tutup" class="grid h-10 w-10 place-items-center rounded-full hover:bg-brand-100/70 transition text-2xl">×</button>
+    </div>
+    <label class="relative block mt-5">
+      <span class="absolute left-4 top-1/2 -translate-y-1/2 text-ink-500">🔍</span>
+      <input type="search" placeholder="Cari produk..." class="w-full rounded-full border border-brand-100 bg-white px-12 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300" />
+    </label>
+    <nav class="mt-6 space-y-1">
+      <a href="#kategori" class="flex items-center gap-3 rounded-2xl px-4 py-3 text-base font-bold text-ink-900 hover:bg-white transition"><span>🛍️</span> Semua Kategori</a>
+      <a href="#" class="flex items-center gap-3 rounded-2xl px-4 py-3 text-base font-bold text-ink-900 hover:bg-white transition"><span>🐶</span> Anjing</a>
+      <a href="#" class="flex items-center gap-3 rounded-2xl px-4 py-3 text-base font-bold text-ink-900 hover:bg-white transition"><span>🐱</span> Kucing</a>
+      <a href="#" class="flex items-center gap-3 rounded-2xl px-4 py-3 text-base font-bold text-ink-900 hover:bg-white transition"><span>🐠</span> Ikan &amp; Akuarium</a>
+      <a href="#" class="flex items-center gap-3 rounded-2xl px-4 py-3 text-base font-bold text-ink-900 hover:bg-white transition"><span>🐦</span> Burung</a>
+      <a href="#" class="flex items-center gap-3 rounded-2xl px-4 py-3 text-base font-bold text-ink-900 hover:bg-white transition"><span>👤</span> Akun Saya</a>
+      <a href="#" class="flex items-center gap-3 rounded-2xl px-4 py-3 text-base font-bold text-ink-900 hover:bg-white transition"><span>📦</span> Pesanan Saya</a>
+    </nav>
+    <a href="https://wa.me/6281289997113?text=Halo%20Natalo%20Petshop%2C%20saya%20mau%20tanya..." target="_blank" rel="noopener" class="mt-6 flex items-center justify-center gap-2 rounded-full bg-green-500 hover:bg-green-600 text-white py-3.5 text-sm font-bold transition">
+      💬 Chat Admin via WhatsApp
+    </a>
+  </aside>
+</header>
+
+<!-- ── SECTION 1: HERO ─────────────────────────────────────── -->
+<section class="relative overflow-hidden">
+  <div class="absolute inset-0 gradient-mask pointer-events-none"></div>
+  <div class="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-10 pb-12 lg:pt-16 lg:pb-20">
+    <div class="grid lg:grid-cols-2 gap-10 lg:gap-14 items-center">
+
+      <!-- Left -->
+      <div class="animate-fade-in-up">
+        <span class="inline-flex items-center gap-1.5 rounded-full bg-brand-100 text-brand-700 px-3.5 py-1.5 text-xs font-bold tracking-wide">
+          ✨ Promo Spesial Bulan Ini
+        </span>
+        <h1 class="mt-5 font-display font-bold text-4xl sm:text-5xl lg:text-6xl leading-[1.05] text-ink-900 text-balance">
+          Untuk yang
+          <span class="text-brand-600 italic">berbulu</span>,
+          <span class="text-brand-600 italic">bersisik</span>, atau
+          <span class="text-brand-600 italic">berkicau</span>.
+        </h1>
+        <p class="mt-5 text-base sm:text-lg text-ink-700 leading-relaxed max-w-lg">
+          Toko hewan peliharaan &amp; akuarium di Medan. Makanan, vitamin, perlengkapan — semua original, dipack hari yang sama.
+        </p>
+
+        <div class="mt-7 flex flex-wrap gap-3">
+          <a href="#kategori" class="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-brand-500 to-brand-600 text-white px-6 py-3.5 text-sm font-bold shadow-glow hover:shadow-glow-lg transition">
+            Mulai Belanja →
+          </a>
+          <a href="https://wa.me/6281289997113?text=Halo%20Natalo%20Petshop%2C%20saya%20mau%20tanya..." target="_blank" rel="noopener" class="inline-flex items-center gap-2 rounded-full bg-white border border-brand-200 text-ink-900 px-6 py-3.5 text-sm font-bold hover:border-brand-400 transition">
+            💬 Chat Admin
+          </a>
+        </div>
+
+        <p class="mt-7 text-sm text-ink-700 font-medium">
+          ⭐ <span class="font-bold">4.9 di Shopee &amp; Tokopedia</span> · 6 tahun melayani
+        </p>
+      </div>
+
+      <!-- Right (image + floating cards) -->
+      <div class="relative">
+        <div class="relative rounded-[2rem] overflow-hidden bg-gradient-to-br from-brand-100 via-amber-50 to-cream aspect-[4/5] shadow-soft">
+          <img
+            src="https://images.unsplash.com/photo-1450778869180-41d0601e046e?auto=format&fit=crop&w=900&q=80"
+            alt="Anjing dan kucing peliharaan"
+            class="absolute inset-0 h-full w-full object-cover"
+            loading="eager"
+            fetchpriority="high"
+          />
+        </div>
+
+        <!-- Floating card 1 -->
+        <div class="absolute left-3 sm:-left-6 top-6 sm:top-12 bg-white rounded-2xl shadow-soft px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2.5 sm:gap-3 max-w-[12rem] sm:max-w-[14rem] card-hover">
+          <div class="grid h-9 w-9 sm:h-10 sm:w-10 place-items-center rounded-xl bg-emerald-100 text-lg sm:text-xl shrink-0">🚚</div>
+          <div class="min-w-0">
+            <p class="text-[11px] sm:text-xs font-bold text-ink-900 leading-tight">Gratis Ongkir Instant</p>
+            <p class="text-[10px] sm:text-[11px] text-ink-700 mt-0.5">Min. 300K · Medan</p>
+          </div>
+        </div>
+
+        <!-- Floating card 2 -->
+        <div class="absolute right-3 sm:-right-6 bottom-6 sm:bottom-12 bg-white rounded-2xl shadow-soft px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2.5 sm:gap-3 max-w-[12rem] sm:max-w-[14rem] card-hover">
+          <div class="grid h-9 w-9 sm:h-10 sm:w-10 place-items-center rounded-xl bg-brand-100 text-lg sm:text-xl shrink-0">💬</div>
+          <div class="min-w-0">
+            <p class="text-[11px] sm:text-xs font-bold text-ink-900 leading-tight">Chat Admin</p>
+            <p class="text-[10px] sm:text-[11px] text-ink-700 mt-0.5">Balas &lt;15 menit</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Promo strip (horizontal scroll) -->
+    <div class="mt-12 lg:mt-16">
+      <div class="flex items-end justify-between mb-4">
+        <h2 class="font-display font-bold text-xl sm:text-2xl text-ink-900">Promo berjalan</h2>
+        <a href="#" class="text-xs font-bold text-brand-600 hover:text-brand-700">Lihat semua →</a>
+      </div>
+      <div class="flex gap-4 overflow-x-auto snap-x snap-mandatory no-scrollbar pb-2 -mx-4 px-4 sm:mx-0 sm:px-0">
+        <a class="snap-start shrink-0 w-[260px] sm:w-[300px] rounded-3xl bg-gradient-to-br from-orange-100 to-amber-200 p-5 card-hover">
+          <span class="inline-block bg-white/70 text-orange-800 rounded-full px-2.5 py-1 text-[10px] font-bold tracking-wide">DISKON 30%</span>
+          <h3 class="mt-3 font-display font-bold text-xl text-ink-900 leading-tight">Pakan Anjing Premium</h3>
+          <p class="mt-1.5 text-sm text-ink-700">Belanja Royal Canin &amp; Pro Plan dengan harga special.</p>
+          <p class="mt-4 text-xs font-bold text-orange-800">Belanja sekarang →</p>
+        </a>
+        <a class="snap-start shrink-0 w-[260px] sm:w-[300px] rounded-3xl bg-gradient-to-br from-emerald-100 to-teal-200 p-5 card-hover">
+          <span class="inline-block bg-white/70 text-emerald-800 rounded-full px-2.5 py-1 text-[10px] font-bold tracking-wide">BUNDLE</span>
+          <h3 class="mt-3 font-display font-bold text-xl text-ink-900 leading-tight">Starter Kit Akuarium</h3>
+          <p class="mt-1.5 text-sm text-ink-700">Filter, pakan, dekorasi — paket lengkap untuk pemula.</p>
+          <p class="mt-4 text-xs font-bold text-emerald-800">Belanja sekarang →</p>
+        </a>
+        <a class="snap-start shrink-0 w-[260px] sm:w-[300px] rounded-3xl bg-gradient-to-br from-violet-100 to-purple-200 p-5 card-hover">
+          <span class="inline-block bg-white/70 text-violet-800 rounded-full px-2.5 py-1 text-[10px] font-bold tracking-wide">FREE GIFT</span>
+          <h3 class="mt-3 font-display font-bold text-xl text-ink-900 leading-tight">Pakan Kucing 7kg</h3>
+          <p class="mt-1.5 text-sm text-ink-700">Gratis snack bonus tiap pembelian pakan ukuran besar.</p>
+          <p class="mt-4 text-xs font-bold text-violet-800">Belanja sekarang →</p>
+        </a>
+        <a class="snap-start shrink-0 w-[260px] sm:w-[300px] rounded-3xl bg-gradient-to-br from-rose-100 to-pink-200 p-5 card-hover">
+          <span class="inline-block bg-white/70 text-rose-800 rounded-full px-2.5 py-1 text-[10px] font-bold tracking-wide">FLASH SALE</span>
+          <h3 class="mt-3 font-display font-bold text-xl text-ink-900 leading-tight">Vitamin Burung</h3>
+          <p class="mt-1.5 text-sm text-ink-700">Stok terbatas tiap minggu — buruan sebelum habis.</p>
+          <p class="mt-4 text-xs font-bold text-rose-800">Belanja sekarang →</p>
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── SECTION 2: KATEGORI ─────────────────────────────────── -->
+<section id="kategori" class="py-14 lg:py-20">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="text-center max-w-2xl mx-auto">
+      <span class="inline-block rounded-full bg-brand-100 text-brand-700 px-3 py-1 text-xs font-bold tracking-wide">🛍️ Kategori Belanja</span>
+      <h2 class="mt-4 font-display font-bold text-3xl sm:text-4xl text-ink-900 text-balance">Apa yang dibutuhkan peliharaanmu?</h2>
+      <p class="mt-3 text-ink-700">Pilih kategori, kami siapkan produk terbaik dari brand terpercaya.</p>
+    </div>
+
+    <div class="mt-10 grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+      <!-- 8 tiles -->
+      <a href="#" class="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-orange-100 to-amber-100 p-5 sm:p-6 card-hover">
+        <div class="text-3xl">🐶</div>
+        <h3 class="mt-3 font-display font-bold text-lg text-ink-900">Anjing</h3>
+        <p class="text-xs text-ink-700 mt-0.5">240+ produk</p>
+        <div class="absolute -bottom-3 -right-3 text-7xl opacity-25 select-none pointer-events-none">🐶</div>
+      </a>
+      <a href="#" class="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-rose-100 to-pink-100 p-5 sm:p-6 card-hover">
+        <div class="text-3xl">🐱</div>
+        <h3 class="mt-3 font-display font-bold text-lg text-ink-900">Kucing</h3>
+        <p class="text-xs text-ink-700 mt-0.5">320+ produk</p>
+        <div class="absolute -bottom-3 -right-3 text-7xl opacity-25 select-none pointer-events-none">🐱</div>
+      </a>
+      <a href="#" class="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-amber-100 to-yellow-100 p-5 sm:p-6 card-hover">
+        <div class="text-3xl">🐰</div>
+        <h3 class="mt-3 font-display font-bold text-lg text-ink-900">Kelinci &amp; Hamster</h3>
+        <p class="text-xs text-ink-700 mt-0.5">85+ produk</p>
+        <div class="absolute -bottom-3 -right-3 text-7xl opacity-25 select-none pointer-events-none">🐰</div>
+      </a>
+      <a href="#" class="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-sky-100 to-cyan-100 p-5 sm:p-6 card-hover">
+        <div class="text-3xl">🐦</div>
+        <h3 class="mt-3 font-display font-bold text-lg text-ink-900">Burung</h3>
+        <p class="text-xs text-ink-700 mt-0.5">110+ produk</p>
+        <div class="absolute -bottom-3 -right-3 text-7xl opacity-25 select-none pointer-events-none">🐦</div>
+      </a>
+      <a href="#" class="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-teal-100 to-emerald-100 p-5 sm:p-6 card-hover">
+        <div class="text-3xl">🐠</div>
+        <h3 class="mt-3 font-display font-bold text-lg text-ink-900">Ikan &amp; Akuarium</h3>
+        <p class="text-xs text-ink-700 mt-0.5">180+ produk</p>
+        <div class="absolute -bottom-3 -right-3 text-7xl opacity-25 select-none pointer-events-none">🐠</div>
+      </a>
+      <a href="#" class="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-lime-100 to-green-100 p-5 sm:p-6 card-hover">
+        <div class="text-3xl">🦎</div>
+        <h3 class="mt-3 font-display font-bold text-lg text-ink-900">Reptil</h3>
+        <p class="text-xs text-ink-700 mt-0.5">45+ produk</p>
+        <div class="absolute -bottom-3 -right-3 text-7xl opacity-25 select-none pointer-events-none">🦎</div>
+      </a>
+      <a href="#" class="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-violet-100 to-fuchsia-100 p-5 sm:p-6 card-hover">
+        <div class="text-3xl">💊</div>
+        <h3 class="mt-3 font-display font-bold text-lg text-ink-900">Vitamin &amp; Obat</h3>
+        <p class="text-xs text-ink-700 mt-0.5">95+ produk</p>
+        <div class="absolute -bottom-3 -right-3 text-7xl opacity-25 select-none pointer-events-none">💊</div>
+      </a>
+      <a href="#" class="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-100 to-blue-100 p-5 sm:p-6 card-hover">
+        <div class="text-3xl">🛁</div>
+        <h3 class="mt-3 font-display font-bold text-lg text-ink-900">Grooming</h3>
+        <p class="text-xs text-ink-700 mt-0.5">70+ produk</p>
+        <div class="absolute -bottom-3 -right-3 text-7xl opacity-25 select-none pointer-events-none">🛁</div>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ── SECTION 3: PRODUK PILIHAN (TABS) ────────────────────── -->
+<section class="py-14 lg:py-20 bg-white">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="text-center max-w-2xl mx-auto">
+      <span class="inline-block rounded-full bg-brand-100 text-brand-700 px-3 py-1 text-xs font-bold tracking-wide">🌟 Produk Pilihan</span>
+      <h2 class="mt-4 font-display font-bold text-3xl sm:text-4xl text-ink-900 text-balance">Yang sedang naik daun</h2>
+      <p class="mt-3 text-ink-700">Dipilih langsung oleh tim kami — original, harga oke, banyak peminat.</p>
+    </div>
+
+    <!-- Tab buttons (scroll-x on mobile, center on desktop) -->
+    <div class="mt-8 -mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto no-scrollbar tab-scroller">
+      <div class="flex sm:justify-center gap-2 sm:gap-3 w-max sm:w-auto mx-auto">
+        <button data-tab="terbaru"  class="tab-btn shrink-0 rounded-full px-5 py-2.5 text-sm font-bold border border-brand-200 text-ink-900 hover:border-brand-400 transition tab-active">
+          ✨ Terbaru
+        </button>
+        <button data-tab="terlaris" class="tab-btn shrink-0 rounded-full px-5 py-2.5 text-sm font-bold border border-brand-200 text-ink-900 hover:border-brand-400 transition">
+          🔥 Terlaris
+        </button>
+        <button data-tab="populer"  class="tab-btn shrink-0 rounded-full px-5 py-2.5 text-sm font-bold border border-brand-200 text-ink-900 hover:border-brand-400 transition">
+          👀 Banyak Dicari
+        </button>
+        <button data-tab="promo"    class="tab-btn shrink-0 rounded-full px-5 py-2.5 text-sm font-bold border border-brand-200 text-ink-900 hover:border-brand-400 transition">
+          💸 Promo
+        </button>
+      </div>
+    </div>
+
+    <!-- Product grid (rendered by JS) -->
+    <div id="productGrid" class="mt-10 grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5"></div>
+  </div>
+</section>
+
+<!-- ── SECTION 4: MARKETPLACE PROOF + USP ──────────────────── -->
+<section class="py-14 lg:py-20">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="text-center max-w-2xl mx-auto">
+      <span class="inline-block rounded-full bg-brand-100 text-brand-700 px-3 py-1 text-xs font-bold tracking-wide">🏪 Toko yang Sama, Sekarang di Web</span>
+      <h2 class="mt-4 font-display font-bold text-3xl sm:text-4xl text-ink-900 text-balance">Sudah lama dipercaya di marketplace</h2>
+      <p class="mt-3 text-ink-700 text-balance">Natalo Petshop &amp; Aquarium sudah lama melayani pelanggan di Shopee &amp; Tokopedia. Sekarang kami hadir lewat website resmi.</p>
+    </div>
+
+    <!-- Marketplace cards -->
+    <div class="mt-10 grid md:grid-cols-2 gap-4 max-w-4xl mx-auto">
+      <a href="https://shopee.co.id/natalopetshop?entryPoint=ShopBySearch&searchKeyword=natalo%20petshop%20%26%20aquarium" target="_blank" rel="noopener" class="group rounded-3xl bg-white border border-brand-100 p-6 sm:p-7 card-hover">
+        <div class="flex items-center gap-4">
+          <div class="grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-orange-500 to-red-500 text-2xl text-white">🛒</div>
+          <div>
+            <p class="font-display font-bold text-xl text-ink-900">Shopee</p>
+            <p class="text-xs font-bold text-orange-600 tracking-wide uppercase">Star Seller</p>
+          </div>
+        </div>
+        <div class="mt-5 flex items-center gap-2">
+          <span class="text-amber-400 text-lg leading-none">★★★★★</span>
+          <span class="font-bold text-ink-900">4.9 / 5.0</span>
+        </div>
+        <p class="mt-2 text-sm text-ink-700">Ribuan pelanggan, terverifikasi marketplace.</p>
+        <p class="mt-5 text-xs font-bold text-orange-600 group-hover:text-orange-700">Kunjungi toko Shopee →</p>
+      </a>
+
+      <a href="https://www.tokopedia.com/fuzitahobbies" target="_blank" rel="noopener" class="group rounded-3xl bg-white border border-brand-100 p-6 sm:p-7 card-hover">
+        <div class="flex items-center gap-4">
+          <div class="grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-emerald-500 to-green-600 text-2xl text-white">🟢</div>
+          <div>
+            <p class="font-display font-bold text-xl text-ink-900">Tokopedia</p>
+            <p class="text-xs font-bold text-emerald-600 tracking-wide uppercase">Power Merchant</p>
+          </div>
+        </div>
+        <div class="mt-5 flex items-center gap-2">
+          <span class="text-amber-400 text-lg leading-none">★★★★★</span>
+          <span class="font-bold text-ink-900">4.9 / 5.0</span>
+        </div>
+        <p class="mt-2 text-sm text-ink-700">Ribuan ulasan dari pembeli sebenarnya.</p>
+        <p class="mt-5 text-xs font-bold text-emerald-600 group-hover:text-emerald-700">Kunjungi toko Tokopedia →</p>
+      </a>
+    </div>
+
+    <!-- USP cards -->
+    <div class="mt-10 grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+      <div class="rounded-2xl bg-white border border-brand-100 p-5 card-hover">
+        <div class="grid h-11 w-11 place-items-center rounded-xl bg-emerald-100 text-xl">✅</div>
+        <p class="mt-4 font-display font-bold text-ink-900">100% Original</p>
+        <p class="text-xs text-ink-700 mt-1">Garansi keaslian semua produk.</p>
+      </div>
+      <div class="rounded-2xl bg-white border border-brand-100 p-5 card-hover">
+        <div class="grid h-11 w-11 place-items-center rounded-xl bg-brand-100 text-xl">📦</div>
+        <p class="mt-4 font-display font-bold text-ink-900">Pengiriman Cepat</p>
+        <p class="text-xs text-ink-700 mt-1">Dipack hari yang sama saat order.</p>
+      </div>
+      <div class="rounded-2xl bg-white border border-brand-100 p-5 card-hover">
+        <div class="grid h-11 w-11 place-items-center rounded-xl bg-violet-100 text-xl">💬</div>
+        <p class="mt-4 font-display font-bold text-ink-900">Admin Responsif</p>
+        <p class="text-xs text-ink-700 mt-1">Balas via WhatsApp &lt;15 menit.</p>
+      </div>
+      <div class="rounded-2xl bg-white border border-brand-100 p-5 card-hover">
+        <div class="grid h-11 w-11 place-items-center rounded-xl bg-amber-100 text-xl">🏆</div>
+        <p class="mt-4 font-display font-bold text-ink-900">Star Seller</p>
+        <p class="text-xs text-ink-700 mt-1">Rating 4.9 di Shopee.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── SECTION 5: CHAT ADMIN ───────────────────────────────── -->
+<section class="py-14 lg:py-20">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-ink-900 via-ink-800 to-brand-900 p-8 sm:p-12 lg:p-16 shadow-soft">
+      <!-- Radial blur deco -->
+      <div class="pointer-events-none absolute -top-32 -left-32 h-80 w-80 rounded-full bg-brand-500/30 blur-3xl"></div>
+      <div class="pointer-events-none absolute -bottom-32 -right-20 h-80 w-80 rounded-full bg-amber-400/20 blur-3xl"></div>
+
+      <div class="relative grid lg:grid-cols-5 gap-10 items-center">
+        <!-- Left: 3 cols -->
+        <div class="lg:col-span-3">
+          <span class="inline-block rounded-full bg-white/10 backdrop-blur text-amber-200 px-3 py-1 text-xs font-bold tracking-wide">
+            💬 Tanya Sebelum Beli
+          </span>
+          <h2 class="mt-4 font-display font-bold text-3xl sm:text-4xl lg:text-5xl text-white text-balance leading-tight">
+            Bingung pilih produk untuk peliharaanmu?
+          </h2>
+          <p class="mt-4 text-amber-100/80 text-base sm:text-lg max-w-xl">
+            Chat admin toko kami via WhatsApp. Kami bantu rekomendasikan produk yang cocok dengan jenis &amp; usia hewanmu.
+          </p>
+
+          <div class="mt-7 flex flex-wrap gap-3">
+            <a href="https://wa.me/6281289997113?text=Halo%20Natalo%20Petshop%2C%20saya%20mau%20tanya..." target="_blank" rel="noopener" class="inline-flex items-center gap-2 rounded-full bg-green-500 hover:bg-green-600 text-white px-6 py-3.5 text-sm font-bold shadow-glow transition">
+              🟢 Chat Admin Sekarang
+            </a>
+            <a href="https://shopee.co.id/natalopetshop?entryPoint=ShopBySearch&searchKeyword=natalo%20petshop%20%26%20aquarium" target="_blank" rel="noopener" class="inline-flex items-center gap-2 rounded-full bg-white/10 hover:bg-white/20 text-white border border-white/30 px-6 py-3.5 text-sm font-bold transition backdrop-blur">
+              Lihat di Shopee
+            </a>
+          </div>
+        </div>
+
+        <!-- Right: 2 cols, 2x2 stats -->
+        <div class="lg:col-span-2 grid grid-cols-2 gap-3">
+          <div class="rounded-2xl bg-white/10 backdrop-blur border border-white/15 p-5">
+            <div class="text-2xl">⏰</div>
+            <p class="mt-3 font-display font-bold text-white text-lg leading-tight">09–18 WIB</p>
+            <p class="text-xs text-amber-100/70 mt-0.5">Senin–Sabtu</p>
+          </div>
+          <div class="rounded-2xl bg-white/10 backdrop-blur border border-white/15 p-5">
+            <div class="text-2xl">⚡</div>
+            <p class="mt-3 font-display font-bold text-white text-lg leading-tight">&lt;15 min</p>
+            <p class="text-xs text-amber-100/70 mt-0.5">Rata-rata balas</p>
+          </div>
+          <div class="rounded-2xl bg-white/10 backdrop-blur border border-white/15 p-5">
+            <div class="text-2xl">🏪</div>
+            <p class="mt-3 font-display font-bold text-white text-lg leading-tight">6 tahun</p>
+            <p class="text-xs text-amber-100/70 mt-0.5">Pengalaman jualan</p>
+          </div>
+          <div class="rounded-2xl bg-white/10 backdrop-blur border border-white/15 p-5">
+            <div class="text-2xl">✅</div>
+            <p class="mt-3 font-display font-bold text-white text-lg leading-tight">Original</p>
+            <p class="text-xs text-amber-100/70 mt-0.5">Garansi keaslian</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FOOTER ──────────────────────────────────────────────── -->
+<footer class="bg-ink-900 text-amber-50/80 mt-8">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12">
+    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
+      <div>
+        <div class="flex items-center gap-2.5">
+          <span class="grid h-10 w-10 place-items-center rounded-2xl bg-gradient-to-br from-brand-500 to-brand-600 text-white text-xl">🐾</span>
+          <span class="font-display font-bold text-lg text-white">Natalo Petshop &amp; Aquarium</span>
+        </div>
+        <p class="mt-4 text-sm leading-relaxed">
+          Toko hewan peliharaan &amp; akuarium terpercaya di Medan. 6 tahun melayani.
+        </p>
+      </div>
+
+      <div>
+        <p class="font-display font-bold text-white">Belanja</p>
+        <ul class="mt-3 space-y-2 text-sm">
+          <li><a class="hover:text-white transition" href="#">Anjing</a></li>
+          <li><a class="hover:text-white transition" href="#">Kucing</a></li>
+          <li><a class="hover:text-white transition" href="#">Ikan &amp; Akuarium</a></li>
+          <li><a class="hover:text-white transition" href="#">Burung</a></li>
+          <li><a class="hover:text-white transition" href="#">Vitamin &amp; Obat</a></li>
+        </ul>
+      </div>
+
+      <div>
+        <p class="font-display font-bold text-white">Bantuan</p>
+        <ul class="mt-3 space-y-2 text-sm">
+          <li><a class="hover:text-white transition" href="#">Cara Pemesanan</a></li>
+          <li><a class="hover:text-white transition" href="#">Pengiriman &amp; Ongkir</a></li>
+          <li><a class="hover:text-white transition" href="#">Pengembalian</a></li>
+          <li><a class="hover:text-white transition" href="#">FAQ</a></li>
+        </ul>
+      </div>
+
+      <div>
+        <p class="font-display font-bold text-white">Kontak</p>
+        <ul class="mt-3 space-y-2 text-sm">
+          <li class="flex items-start gap-2">
+            <span>📞</span>
+            <a class="hover:text-white transition" href="https://wa.me/6281289997113" target="_blank" rel="noopener">
+              +62 812-8999-7113
+            </a>
+          </li>
+          <li class="flex items-start gap-2">
+            <span>📧</span>
+            <a class="hover:text-white transition" href="mailto:hello@natalopetshop.com">
+              hello@natalopetshop.com
+            </a>
+          </li>
+          <li class="flex items-start gap-2">
+            <span>📍</span>
+            <span>Medan, Sumatera Utara</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="mt-10 pt-6 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
+      <p>© 2026 Natalo Petshop &amp; Aquarium. All rights reserved.</p>
+      <div class="flex items-center gap-3">
+        <a aria-label="Instagram" href="#" class="grid h-9 w-9 place-items-center rounded-full bg-white/10 hover:bg-white/20 transition">📷</a>
+        <a aria-label="WhatsApp" href="https://wa.me/6281289997113" target="_blank" rel="noopener" class="grid h-9 w-9 place-items-center rounded-full bg-white/10 hover:bg-white/20 transition">💬</a>
+        <a aria-label="TikTok" href="#" class="grid h-9 w-9 place-items-center rounded-full bg-white/10 hover:bg-white/20 transition">🎵</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<!-- ── FLOATING WHATSAPP ───────────────────────────────────── -->
+<a
+  href="https://wa.me/6281289997113?text=Halo%20Natalo%20Petshop%2C%20saya%20mau%20tanya..."
+  target="_blank"
+  rel="noopener"
+  aria-label="Chat WhatsApp"
+  class="fixed bottom-[5.5rem] md:bottom-5 right-4 md:right-5 z-40 inline-flex items-center gap-2 rounded-full bg-green-500 hover:bg-green-600 text-white px-4 md:px-5 h-12 md:h-14 shadow-soft animate-pulse-ring transition"
+>
+  <span class="text-xl md:text-2xl leading-none">💬</span>
+  <span class="hidden md:inline text-sm font-bold">Chat dengan kami</span>
+</a>
+
+<!-- ── BOTTOM NAV (mobile only) ────────────────────────────── -->
+<nav
+  aria-label="Navigasi utama"
+  class="md:hidden fixed inset-x-0 bottom-0 z-40 bg-white/95 backdrop-blur-md border-t border-brand-100 shadow-[0_-4px_20px_-6px_rgba(124,45,18,0.08)]"
+  style="padding-bottom: env(safe-area-inset-bottom);"
+>
+  <div class="grid grid-cols-4 h-16">
+    <a href="#" data-bottomnav="beranda" class="bottom-nav-item flex flex-col items-center justify-center gap-0.5 text-ink-700 active">
+      <span class="text-xl leading-none">🏠</span>
+      <span class="text-[10px] font-bold tracking-wide">Beranda</span>
+    </a>
+    <a href="#kategori" data-bottomnav="kategori" class="bottom-nav-item flex flex-col items-center justify-center gap-0.5 text-ink-700">
+      <span class="text-xl leading-none">🗂️</span>
+      <span class="text-[10px] font-bold tracking-wide">Kategori</span>
+    </a>
+    <a href="#" data-bottomnav="cart" class="bottom-nav-item relative flex flex-col items-center justify-center gap-0.5 text-ink-700">
+      <span class="relative text-xl leading-none">
+        🛒
+        <span class="absolute -top-1.5 -right-2.5 grid h-4 min-w-4 px-1 place-items-center rounded-full bg-brand-500 text-[9px] font-bold text-white">0</span>
+      </span>
+      <span class="text-[10px] font-bold tracking-wide">Keranjang</span>
+    </a>
+    <a href="#" data-bottomnav="akun" class="bottom-nav-item flex flex-col items-center justify-center gap-0.5 text-ink-700">
+      <span class="text-xl leading-none">👤</span>
+      <span class="text-[10px] font-bold tracking-wide">Akun</span>
+    </a>
+  </div>
+</nav>
+
+<!-- ── PRODUCT TABS JS ─────────────────────────────────────── -->
+<script>
+(function () {
+  const products = {
+    terbaru: [
+      { name: 'Royal Canin Mini Adult 2kg',     brand: 'Royal Canin', price: 'Rp 189.000', rating: 4.9, reviews: 128, badge: 'BARU',     emoji: '🐶', gradient: 'from-orange-100 to-amber-100' },
+      { name: 'Whiskas Tuna Dry Cat Food 1.2kg', brand: 'Whiskas',     price: 'Rp 79.500',  rating: 4.9, reviews: 86,  badge: 'BARU',     emoji: '🐱', gradient: 'from-rose-100 to-pink-100' },
+      { name: 'Filter Akuarium Sunsun HW-303B',  brand: 'SunSun',      price: 'Rp 875.000', rating: 4.8, reviews: 42,  badge: 'BARU',     emoji: '🐠', gradient: 'from-teal-100 to-emerald-100' },
+      { name: 'Vitamin Burung Vita Chicks 100ml',brand: 'Vita Chicks', price: 'Rp 35.000',  rating: 4.9, reviews: 64,  badge: 'BARU',     emoji: '🐦', gradient: 'from-sky-100 to-cyan-100' },
+    ],
+    terlaris: [
+      { name: 'Pro Plan Sensitive Skin 7kg',     brand: 'Pro Plan',    price: 'Rp 615.000', rating: 4.9, reviews: 412, badge: 'TERLARIS', emoji: '🐶', gradient: 'from-orange-100 to-amber-100' },
+      { name: 'Pakan Kucing Whiskas Junior 1.1kg',brand: 'Whiskas',    price: 'Rp 72.000',  rating: 4.9, reviews: 348, badge: 'TERLARIS', emoji: '🐱', gradient: 'from-rose-100 to-pink-100' },
+      { name: 'Pakan Lovebird Topsong 500g',     brand: 'Topsong',     price: 'Rp 28.500',  rating: 4.9, reviews: 215, badge: 'TERLARIS', emoji: '🐦', gradient: 'from-sky-100 to-cyan-100' },
+      { name: 'Pasir Wangi Kucing Cature 5L',    brand: 'Cature',      price: 'Rp 65.000',  rating: 4.9, reviews: 298, badge: 'TERLARIS', emoji: '🐱', gradient: 'from-violet-100 to-fuchsia-100' },
+    ],
+    populer: [
+      { name: 'Tank Akuarium Mini 30cm + Lampu', brand: 'Aquazonic',   price: 'Rp 285.000', rating: 4.8, reviews: 156, badge: 'POPULER',  emoji: '🐠', gradient: 'from-teal-100 to-emerald-100' },
+      { name: 'Snack Anjing Markotop Bone',      brand: 'Markotop',    price: 'Rp 22.000',  rating: 4.9, reviews: 189, badge: 'POPULER',  emoji: '🐶', gradient: 'from-orange-100 to-amber-100' },
+      { name: 'Vitamin Bulu Top Vit 60ml',       brand: 'Top Vit',     price: 'Rp 48.000',  rating: 4.8, reviews: 134, badge: 'POPULER',  emoji: '💊', gradient: 'from-violet-100 to-fuchsia-100' },
+      { name: 'Litter Box Mewah Cat 50cm',       brand: 'Pet Eight',   price: 'Rp 145.000', rating: 4.9, reviews: 98,  badge: 'POPULER',  emoji: '🐱', gradient: 'from-rose-100 to-pink-100' },
+    ],
+    promo: [
+      { name: 'Royal Canin Persian 2kg',         brand: 'Royal Canin', price: 'Rp 215.000', oldPrice: 'Rp 305.000', rating: 4.9, reviews: 256, badge: '-30%', emoji: '🐱', gradient: 'from-rose-100 to-pink-100' },
+      { name: 'Pro Plan Adult 2.5kg',            brand: 'Pro Plan',    price: 'Rp 235.000', oldPrice: 'Rp 320.000', rating: 4.9, reviews: 178, badge: '-26%', emoji: '🐶', gradient: 'from-orange-100 to-amber-100' },
+      { name: 'Pakan Ikan Hias Takari 100g',     brand: 'Takari',      price: 'Rp 12.500',  oldPrice: 'Rp 18.000',  rating: 4.8, reviews: 142, badge: '-30%', emoji: '🐠', gradient: 'from-teal-100 to-emerald-100' },
+      { name: 'Bird Cage Standard 35cm',         brand: 'Generic',     price: 'Rp 78.000',  oldPrice: 'Rp 110.000', rating: 4.7, reviews: 67,  badge: '-29%', emoji: '🐦', gradient: 'from-sky-100 to-cyan-100' },
+    ],
+  };
+
+  const grid = document.getElementById('productGrid');
+
+  function badgeColor(badge) {
+    if (badge === 'BARU')      return 'bg-emerald-500';
+    if (badge === 'TERLARIS')  return 'bg-rose-500';
+    if (badge === 'POPULER')   return 'bg-violet-500';
+    return 'bg-brand-500'; // discount
+  }
+
+  function card(p) {
+    return `
+      <article class="group relative rounded-2xl bg-white border border-brand-100 overflow-hidden card-hover animate-fade-in-up">
+        <div class="relative aspect-square bg-gradient-to-br ${p.gradient} grid place-items-center">
+          <span class="text-7xl">${p.emoji}</span>
+          <span class="absolute top-3 left-3 ${badgeColor(p.badge)} text-white text-[10px] font-bold tracking-wider px-2.5 py-1 rounded-full shadow-soft">
+            ${p.badge}
+          </span>
+          <button aria-label="Tambah ke keranjang" class="absolute bottom-3 right-3 grid h-10 w-10 place-items-center rounded-full bg-white border border-brand-200 hover:border-brand-400 shadow-soft transition group-hover:scale-110">
+            <span class="text-brand-600 text-lg leading-none">+</span>
+          </button>
+        </div>
+        <div class="p-3 sm:p-4">
+          <p class="text-[10px] font-bold uppercase tracking-widest text-ink-500">${p.brand}</p>
+          <h3 class="mt-1 font-display font-bold text-sm sm:text-base text-ink-900 line-clamp-2 leading-snug">${p.name}</h3>
+          <div class="mt-2 flex items-center gap-1.5 text-xs text-ink-700">
+            <span class="text-amber-400">★</span>
+            <span class="font-bold">${p.rating}</span>
+            <span class="text-ink-500">(${p.reviews})</span>
+          </div>
+          <div class="mt-2.5 flex items-baseline gap-2">
+            <span class="font-display font-bold text-base sm:text-lg text-ink-900">${p.price}</span>
+            ${p.oldPrice ? `<span class="text-xs text-ink-500 line-through">${p.oldPrice}</span>` : ''}
+          </div>
+        </div>
+      </article>
+    `;
+  }
+
+  function render(tab) {
+    const list = products[tab] || [];
+    grid.innerHTML = list.map(card).join('');
+  }
+
+  document.querySelectorAll('[data-tab]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-tab]').forEach((b) => b.classList.remove('tab-active'));
+      btn.classList.add('tab-active');
+      render(btn.dataset.tab);
+    });
+  });
+
+  // Initial render
+  render('terbaru');
+})();
+
+// Mobile drawer toggle
+(function () {
+  const toggle   = document.getElementById('menuToggle');
+  const drawer   = document.getElementById('drawer');
+  const backdrop = document.getElementById('drawerBackdrop');
+  const closeBtn = document.getElementById('drawerClose');
+  if (!toggle || !drawer || !backdrop) return;
+
+  function open() {
+    backdrop.classList.remove('hidden');
+    requestAnimationFrame(() => drawer.classList.add('open'));
+    document.body.style.overflow = 'hidden';
+  }
+  function close() {
+    drawer.classList.remove('open');
+    document.body.style.overflow = '';
+    setTimeout(() => backdrop.classList.add('hidden'), 280);
+  }
+
+  toggle.addEventListener('click', open);
+  backdrop.addEventListener('click', close);
+  closeBtn?.addEventListener('click', close);
+  drawer.querySelectorAll('a').forEach((a) => a.addEventListener('click', close));
+  // Esc key
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+})();
+
+// Bottom nav active state (visual only, file ini single-page)
+(function () {
+  const items = document.querySelectorAll('[data-bottomnav]');
+  items.forEach((el) => {
+    el.addEventListener('click', () => {
+      items.forEach((i) => i.classList.remove('active'));
+      el.classList.add('active');
+    });
+  });
+})();
+</script>
+
+</body>
+</html>

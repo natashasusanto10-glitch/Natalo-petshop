@@ -60,7 +60,7 @@ export default function CaraPemesananPage() {
       </Section>
 
       <Section title="Butuh Bantuan?">
-        Hubungi kami melalui WhatsApp atau chat langsung di website. Tim kami siap membantu
+        Hubungi kami melalui WhatsApp. Tim kami siap membantu
         kamu memilih produk yang tepat untuk hewan peliharaanmu.
       </Section>
     </LegalPage>

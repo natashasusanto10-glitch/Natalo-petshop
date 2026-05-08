@@ -196,7 +196,7 @@ export default async function AdminOrderDetailPage({
               rel="noreferrer"
               className="mt-5 inline-flex w-full justify-center rounded-full bg-green-600 px-5 py-3 text-sm font-bold text-white hover:bg-green-700"
             >
-              💬 Chat customer
+              Hubungi via WhatsApp
             </a>
           </section>
 

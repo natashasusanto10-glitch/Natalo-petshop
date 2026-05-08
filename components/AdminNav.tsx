@@ -82,15 +82,6 @@ const NAV_ITEMS = [
     ),
   },
   {
-    href: "/admin/chat",
-    label: "Chat",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5">
-        <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
-      </svg>
-    ),
-  },
-  {
     href: "/admin/reviews",
     label: "Review",
     icon: (
