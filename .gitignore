@@ -12,3 +12,12 @@ public/uploads/*
 # Meilisearch local
 meilisearch.exe
 data.ms/
+
+# Local tunneling tools
+ngrok.exe
+
+# Loose AI-generated images / scratch files
+ChatGPT Image*.png
+
+# TypeScript build cache
+tsconfig.tsbuildinfo
