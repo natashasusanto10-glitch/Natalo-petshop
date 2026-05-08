@@ -5,6 +5,14 @@
   --breakpoint-xs: 380px;
 }
 
+/* ── Default sans-serif: Nunito (loaded via next/font/google in app/layout.tsx).
+   Header pakai font-extrabold/font-black, nama produk font-bold,
+   deskripsi default 400, badge promo font-extrabold. ── */
+@theme {
+  --font-sans: var(--font-nunito), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
 /* ── Natalo brand palette — unified to Tailwind orange for site-wide consistency ── */
 @theme {
   --color-natalo-50: #fff7ed;
@@ -28,6 +36,7 @@
 body {
   background: var(--background);
   color: var(--foreground);
+  font-family: var(--font-sans);
 }
 
 input, textarea, select, button {
