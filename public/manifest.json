@@ -11,7 +11,7 @@
   "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
   "orientation": "any",
   "background_color": "#ffffff",
-  "theme_color": "#1E88E5",
+  "theme_color": "#1E5FBF",
   "categories": ["shopping", "lifestyle"],
   "icons": [
     {
