@@ -111,6 +111,7 @@ export async function POST(request: NextRequest) {
     sub: user.id,
     role: "CUSTOMER",
     name: user.name,
+    tv: user.tokenVersion,
   });
 
   const response = NextResponse.json({ ok: true, role: "CUSTOMER" });

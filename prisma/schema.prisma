@@ -40,6 +40,7 @@ model User {
   email               String?         @unique
   passwordHash        String?
   role                String          @default("CUSTOMER")
+  tokenVersion        Int             @default(0)
   birthDate           DateTime?
   birthdayVoucherYear Int?
   orders              Order[]

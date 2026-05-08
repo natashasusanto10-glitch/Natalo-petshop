@@ -248,12 +248,19 @@ export default async function MemberPage() {
         </div>
       </div>
 
-      <div className="mt-8 border-t border-zinc-100 pt-6 text-center">
+      <div className="mt-8 border-t border-zinc-100 pt-6 text-center text-xs">
+        <Link
+          href="/akun/sesi-aktif"
+          className="font-semibold text-blue-600 hover:underline"
+        >
+          🔐 Keamanan & sesi aktif
+        </Link>
+        <span className="mx-2 text-zinc-300">·</span>
         <Link
           href="/akun/hapus-akun"
-          className="text-xs font-semibold text-red-600 hover:underline"
+          className="font-semibold text-red-600 hover:underline"
         >
-          🗑️ Hapus akun secara permanen
+          🗑️ Hapus akun
         </Link>
       </div>
     </div>

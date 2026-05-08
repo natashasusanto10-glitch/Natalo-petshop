@@ -1,11 +1,19 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
+import { prisma } from "@/lib/prisma";
 
 export type SessionPayload = {
   sub: string;
   role: "ADMIN" | "CUSTOMER";
   name: string;
+  /**
+   * Token version. Bumped via `prisma.user.update({ tokenVersion: { increment: 1 } })`
+   * to invalidate all JWT yang sudah di-issue (mis. fitur "logout dari semua
+   * perangkat"). JWT lama (pre-fitur) yg tidak punya claim ini diperlakukan
+   * sebagai tv = 0 (backward-compat dengan default User.tokenVersion).
+   */
+  tv?: number;
 };
 
 export const LEGACY_SESSION_COOKIE = "session";
@@ -58,10 +66,38 @@ export async function getSession(
     if (!token) continue;
     const session = await verifySessionToken(token);
     if (!session) continue;
-    if (!expectedRole || session.role === expectedRole) return session;
+    if (expectedRole && session.role !== expectedRole) continue;
+    if (!(await isTokenVersionCurrent(session))) continue;
+    return session;
   }
 
   return null;
+}
+
+/**
+ * Untuk member session, cek `tv` claim di JWT >= User.tokenVersion di DB.
+ * Kalau user pernah klik "logout dari semua perangkat", tokenVersion DB
+ * naik 1, JWT lama dgn tv lebih kecil dianggap invalid.
+ *
+ * Kalau JWT tidak punya tv (issued sebelum fitur ada), default 0 — match
+ * default DB (0) sehingga session lama tetap valid sampai user revoke.
+ */
+async function isTokenVersionCurrent(session: SessionPayload): Promise<boolean> {
+  if (session.role !== "CUSTOMER") return true;
+
+  const tokenTv = session.tv ?? 0;
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: session.sub },
+      select: { tokenVersion: true },
+    });
+    if (!user) return false;
+    return tokenTv >= user.tokenVersion;
+  } catch {
+    /* Kalau DB unreachable, fail-open supaya storefront tidak total down. */
+    return true;
+  }
 }
 
 export const SESSION_COOKIE_OPTIONS = {
