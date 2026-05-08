@@ -42,6 +42,13 @@ export const heroSlides: HeroSlide[] = [
     priority: true,
   },
   {
+    id: "royal-canin-sizes",
+    type: "image",
+    image: "/banners/royal-canin-sizes.jpg",
+    imageAlt: "Royal Canin — Every Size Has Unique Needs. Pakan anjing S/M/L tersedia di Natalo.",
+    href: "/products?q=royal+canin",
+  },
+  {
     id: "instant-delivery",
     type: "image",
     image: "/banners/instant-max-3-jam.jpg",
