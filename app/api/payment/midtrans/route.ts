@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { prisma } from "@/lib/prisma";
+import { createBiteshipShipmentIfReady } from "@/lib/biteship";
 import { sendPaymentConfirmed } from "@/lib/whatsapp";
 
 type MidtransNotification = {
@@ -64,6 +65,7 @@ export async function POST(request: NextRequest) {
   });
 
   if (paymentStatus === "PAID" && order.paymentStatus !== "PAID") {
+    createBiteshipShipmentIfReady(updatedOrder.id).catch(() => {});
     sendPaymentConfirmed(updatedOrder).catch((error) => {
       console.error("[whatsapp] payment confirmed notification failed", error);
     });

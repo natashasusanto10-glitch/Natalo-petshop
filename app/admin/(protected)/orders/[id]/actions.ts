@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { createBiteshipShipment } from "@/lib/biteship";
 import { sendOrderStatusEmail } from "@/lib/email-order";
 import { assertCanTransitionOrderStatus, transitionOrderStatus } from "@/lib/order-transitions";
 import {
@@ -78,6 +79,15 @@ export async function markAsPaid(orderId: string) {
       console.error("[whatsapp] payment confirmed notification failed", error);
     });
   }
+
+  await createBiteshipShipment(orderId).catch((error) => {
+    console.error("[biteship] create shipment after manual payment failed", error);
+  });
+  revalidateOrderAdmin(orderId);
+}
+
+export async function createShipment(orderId: string) {
+  await createBiteshipShipment(orderId);
   revalidateOrderAdmin(orderId);
 }
 

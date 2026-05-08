@@ -1,7 +1,7 @@
 "use client";
 
 import { GoogleMap, useJsApiLoader } from "@react-google-maps/api";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type LatLng = {
   lat: number;
@@ -14,11 +14,19 @@ type ParsedAddress = {
   streetName: string;
 };
 
+export type PinpointValue = {
+  latitude: number | null;
+  longitude: number | null;
+  pinpointAddress: string | null;
+  streetName: string | null;
+};
+
 type AddressPinpointPickerProps = {
   defaultLatitude?: number | null;
   defaultLongitude?: number | null;
   defaultAddress?: string | null;
   defaultStreetName?: string | null;
+  onChange?: (value: PinpointValue) => void;
 };
 
 const nataloOrange = "#468284";
@@ -72,6 +80,7 @@ export function AddressPinpointPicker({
   defaultLongitude,
   defaultAddress,
   defaultStreetName,
+  onChange,
 }: AddressPinpointPickerProps) {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY ?? "";
   const initialPosition = useMemo<LatLng | null>(() => {
@@ -99,6 +108,20 @@ export function AddressPinpointPicker({
     googleMapsApiKey: apiKey,
     libraries: googleLibraries,
   });
+
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  useEffect(() => {
+    onChangeRef.current?.({
+      latitude: position?.lat ?? null,
+      longitude: position?.lng ?? null,
+      pinpointAddress: pinpointAddress || null,
+      streetName: streetName || null,
+    });
+  }, [position, pinpointAddress, streetName]);
 
   const applyGeocoderResult = useCallback((nextPosition: LatLng, result: google.maps.GeocoderResult) => {
     const parsedAddress = buildParsedAddress(result);

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
 import {
   markAsCancelled,
+  createShipment,
   markAsDelivered,
   markAsPaid,
   markAsProcessing,
@@ -60,6 +61,7 @@ export default async function AdminOrderDetailPage({
   const markAsShippedAction = markAsShipped.bind(null, id);
   const markAsDeliveredAction = markAsDelivered.bind(null, id);
   const markAsCancelledAction = markAsCancelled.bind(null, id);
+  const createShipmentAction = createShipment.bind(null, id);
 
   // ── Data Fetch ──────────────────────────────────────────────
   const order = await prisma.order.findUnique({
@@ -221,6 +223,12 @@ export default async function AdminOrderDetailPage({
                   {order.courierService}
                 </p>
               )}
+              {order.shippingLatitude !== null && order.shippingLongitude !== null && (
+                <p>
+                  <span className="font-semibold">Titik tujuan:</span>{" "}
+                  {order.shippingLatitude}, {order.shippingLongitude}
+                </p>
+              )}
               <p>
                 <span className="font-semibold">No. Resi:</span>{" "}
                 {order.trackingNumber ? (
@@ -229,6 +237,33 @@ export default async function AdminOrderDetailPage({
                   <span className="text-zinc-400">-</span>
                 )}
               </p>
+              {order.biteshipOrderId && (
+                <p>
+                  <span className="font-semibold">Biteship ID:</span>{" "}
+                  <span className="font-mono">{order.biteshipOrderId}</span>
+                </p>
+              )}
+              {order.shipmentStatus && (
+                <p>
+                  <span className="font-semibold">Status shipment:</span>{" "}
+                  {order.shipmentStatus}
+                </p>
+              )}
+              {order.biteshipTrackingUrl && (
+                <a
+                  href={order.biteshipTrackingUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex text-sm font-bold text-natalo-700 hover:underline"
+                >
+                  Lacak via Biteship →
+                </a>
+              )}
+              {order.biteshipError && (
+                <p className="rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                  Biteship: {order.biteshipError}
+                </p>
+              )}
             </div>
           </section>
 
@@ -305,6 +340,17 @@ export default async function AdminOrderDetailPage({
                       className="w-full rounded-full bg-natalo-600 px-5 py-3 text-sm font-bold text-white hover:bg-natalo-700"
                     >
                       📦 Mulai packing
+                    </button>
+                  </form>
+                )}
+
+                {order.paymentStatus === "PAID" && order.courierCode && !order.biteshipOrderId && (
+                  <form action={createShipmentAction}>
+                    <button
+                      type="submit"
+                      className="w-full rounded-full bg-emerald-600 px-5 py-3 text-sm font-bold text-white hover:bg-emerald-700"
+                    >
+                      🚚 Booking kurir Biteship
                     </button>
                   </form>
                 )}

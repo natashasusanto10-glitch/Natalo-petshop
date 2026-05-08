@@ -206,7 +206,7 @@ export async function POST(request: Request) {
   let discount = 0;
 
   try {
-    let appliedVoucherId: string | null = null;
+    let appliedVoucher: { id: string; maxUsage: number | null } | null = null;
 
     if (input.voucherCode) {
       const now = new Date();
@@ -224,7 +224,7 @@ export async function POST(request: Request) {
         if (voucher.discountPercent) discount += Math.floor((subtotal * voucher.discountPercent) / 100);
         if (voucher.discountAmount) discount += voucher.discountAmount;
         discount = Math.min(discount, subtotal);
-        appliedVoucherId = voucher.id;
+        appliedVoucher = { id: voucher.id, maxUsage: voucher.maxUsage };
       }
     }
 
@@ -307,6 +307,9 @@ export async function POST(request: Request) {
           shippingAddress: input.shippingAddress,
           shippingCity: input.shippingCity,
           shippingPostalCode: input.shippingPostalCode,
+          shippingLatitude: input.shippingLatitude ?? null,
+          shippingLongitude: input.shippingLongitude ?? null,
+          shippingPinpointAddress: input.shippingPinpointAddress || null,
           courierCode: input.courierCode,
           courierService: input.courierService,
           subtotal,
@@ -343,12 +346,22 @@ export async function POST(request: Request) {
         });
       }
 
-      // Increment usedCount voucher
-      if (appliedVoucherId) {
-        await tx.voucher.update({
-          where: { id: appliedVoucherId },
+      // Claim voucher atomically — guard against race jika maxUsage tercapai
+      // setelah pre-validation di luar transaction.
+      if (appliedVoucher) {
+        const claim = await tx.voucher.updateMany({
+          where: {
+            id: appliedVoucher.id,
+            isActive: true,
+            ...(appliedVoucher.maxUsage !== null
+              ? { usedCount: { lt: appliedVoucher.maxUsage } }
+              : {}),
+          },
           data: { usedCount: { increment: 1 } },
         });
+        if (claim.count !== 1) {
+          throw new Error("Voucher sudah mencapai batas pemakaian. Silakan coba lagi tanpa voucher.");
+        }
       }
 
       return createdOrder;
@@ -396,9 +409,9 @@ export async function POST(request: Request) {
                 data: { stock: agg._sum.stock ?? 0 },
               });
             }
-            if (appliedVoucherId) {
+            if (appliedVoucher) {
               await tx.voucher.update({
-                where: { id: appliedVoucherId },
+                where: { id: appliedVoucher.id },
                 data: { usedCount: { decrement: 1 } },
               });
             }

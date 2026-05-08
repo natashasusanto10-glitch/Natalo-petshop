@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { ProductCard } from "@/components/ProductCard";
@@ -66,24 +67,54 @@ const HOME_BANNERS: HomeBanner[] = [
   },
 ];
 
-const SHORTCUT_ITEMS = [
-  { emoji: "🆕", label: "Produk Baru", href: "/products?sort=newest", bg: "bg-orange-50" },
-  { emoji: "🔥", label: "Sedang Laris", href: "/products?sort=popular", bg: "bg-red-50" },
-  { emoji: "🎁", label: "Voucher", href: "/member", bg: "bg-pink-50" },
-  { emoji: "💰", label: "Promo Hemat", href: "/products?promo=1", bg: "bg-yellow-50" },
-  { emoji: "🏥", label: "Klinik", href: "/tentang-kami", bg: "bg-emerald-50" },
-  { emoji: "✂️", label: "Grooming", href: "/tentang-kami", bg: "bg-blue-50" },
-  { emoji: "🚚", label: "Cek Ongkir", href: "/checkout", bg: "bg-indigo-50" },
-  { emoji: "🐾", label: "Konsultasi", href: "/tentang-kami", bg: "bg-purple-50" },
+type HomeIconName =
+  | "box"
+  | "bird"
+  | "cat"
+  | "clinic"
+  | "dog"
+  | "fish"
+  | "flame"
+  | "gift"
+  | "grooming"
+  | "paw"
+  | "rabbit"
+  | "reptile"
+  | "sparkles"
+  | "tag"
+  | "truck"
+  | "chat";
+
+const SHORTCUT_ITEMS: {
+  icon: HomeIconName;
+  label: string;
+  href: string;
+  bg: string;
+  color: string;
+}[] = [
+  { icon: "sparkles", label: "Produk Baru", href: "/products?sort=newest", bg: "bg-orange-50", color: "text-orange-600" },
+  { icon: "flame", label: "Sedang Laris", href: "/products?sort=popular", bg: "bg-red-50", color: "text-red-600" },
+  { icon: "gift", label: "Voucher", href: "/member", bg: "bg-pink-50", color: "text-pink-600" },
+  { icon: "tag", label: "Promo Hemat", href: "/products?promo=1", bg: "bg-yellow-50", color: "text-amber-600" },
+  { icon: "clinic", label: "Klinik", href: "/tentang-kami", bg: "bg-emerald-50", color: "text-emerald-600" },
+  { icon: "grooming", label: "Grooming", href: "/tentang-kami", bg: "bg-blue-50", color: "text-blue-600" },
+  { icon: "truck", label: "Cek Ongkir", href: "/checkout", bg: "bg-indigo-50", color: "text-indigo-600" },
+  { icon: "chat", label: "Konsultasi", href: "/tentang-kami", bg: "bg-purple-50", color: "text-purple-600" },
 ];
 
-const PET_CATEGORIES = [
-  { label: "Ikan", emoji: "🐟", color: "bg-orange-50" },
-  { label: "Kucing", emoji: "🐱", color: "bg-orange-50" },
-  { label: "Anjing", emoji: "🐶", color: "bg-yellow-50" },
-  { label: "Burung", emoji: "🦜", color: "bg-green-50" },
-  { label: "Kelinci", emoji: "🐰", color: "bg-pink-50" },
-  { label: "Reptil", emoji: "🦎", color: "bg-emerald-50" },
+const PET_CATEGORIES: {
+  label: string;
+  slug: string;
+  icon: HomeIconName;
+  color: string;
+  iconColor: string;
+}[] = [
+  { label: "Ikan", slug: "ikan", icon: "fish", color: "bg-sky-50", iconColor: "text-sky-600" },
+  { label: "Kucing", slug: "kucing", icon: "cat", color: "bg-orange-50", iconColor: "text-orange-600" },
+  { label: "Anjing", slug: "anjing", icon: "dog", color: "bg-yellow-50", iconColor: "text-amber-600" },
+  { label: "Burung", slug: "burung", icon: "bird", color: "bg-green-50", iconColor: "text-green-600" },
+  { label: "Kelinci", slug: "kelinci", icon: "rabbit", color: "bg-pink-50", iconColor: "text-pink-600" },
+  { label: "Reptil", slug: "reptil", icon: "reptile", color: "bg-emerald-50", iconColor: "text-emerald-600" },
 ];
 
 const TESTIMONIALS: HomeTestimonial[] = [
@@ -141,6 +172,173 @@ function getJakartaMidnight() {
   return new Date(`${y}-${m}-${d}T23:59:59+07:00`).getTime();
 }
 
+function HomeIcon({
+  name,
+  className = "h-7 w-7",
+}: {
+  name: HomeIconName;
+  className?: string;
+}) {
+  const paths: Record<HomeIconName, ReactNode> = {
+    box: (
+      <>
+        <path d="m4 8 8 4 8-4" />
+        <path d="M12 12v8" />
+        <path d="M5 8.5v7l7 4 7-4v-7l-7-4-7 4Z" />
+      </>
+    ),
+    bird: (
+      <>
+        <path d="M5 14c3.5-5.5 8-7 14-5" />
+        <path d="M7 13c.5 4 3.5 6 7 5" />
+        <path d="M11 10c2 1 3.5 2.5 4 5" />
+        <path d="M18 9l2-2" />
+        <path d="M15 7.5V5" />
+      </>
+    ),
+    cat: (
+      <>
+        <path d="M6 10V5l4 3h4l4-3v5" />
+        <path d="M6 10c0 5 3 8 6 8s6-3 6-8" />
+        <path d="M9 13h.01" />
+        <path d="M15 13h.01" />
+        <path d="M11 16h2" />
+      </>
+    ),
+    clinic: (
+      <>
+        <path d="M5 20V8l7-4 7 4v12" />
+        <path d="M9 20v-6h6v6" />
+        <path d="M12 8v4" />
+        <path d="M10 10h4" />
+      </>
+    ),
+    dog: (
+      <>
+        <path d="M6 10c0-3 2.5-5 6-5s6 2 6 5v3c0 3-2.5 5-6 5s-6-2-6-5v-3Z" />
+        <path d="M6 11 3.5 9.5" />
+        <path d="m18 11 2.5-1.5" />
+        <path d="M9 12h.01" />
+        <path d="M15 12h.01" />
+        <path d="M11 15h2" />
+      </>
+    ),
+    fish: (
+      <>
+        <path d="M3 12s4-6 10-6c4 0 7 6 7 6s-3 6-7 6c-6 0-10-6-10-6Z" />
+        <path d="m20 12 2.5-3v6L20 12Z" />
+        <path d="M8 12h.01" />
+        <path d="M14 8c-1 2-1 6 0 8" />
+      </>
+    ),
+    flame: (
+      <>
+        <path d="M12 21c3.5-1 6-3.5 6-7 0-3-1.8-5-4.2-7.3-.7 2.3-2.1 3.4-3.8 4.7.2-2-.3-3.8-1.5-5.4C6.4 8.5 5 11.4 5 14c0 3.5 2.5 6 7 7Z" />
+      </>
+    ),
+    gift: (
+      <>
+        <path d="M4 11h16v9H4z" />
+        <path d="M3 7h18v4H3z" />
+        <path d="M12 7v13" />
+        <path d="M12 7c-1.2-2.4-4.5-3-5-1-.5 2 2.5 2 5 1Z" />
+        <path d="M12 7c1.2-2.4 4.5-3 5-1 .5 2-2.5 2-5 1Z" />
+      </>
+    ),
+    grooming: (
+      <>
+        <path d="m5 19 14-14" />
+        <path d="M7.5 7.5 5 5" />
+        <path d="M16.5 16.5 19 19" />
+        <circle cx="7" cy="17" r="2" />
+        <circle cx="17" cy="7" r="2" />
+      </>
+    ),
+    paw: (
+      <>
+        <path d="M8 20c-2 0-3-1.2-3-2.7 0-2.4 3.1-4.8 7-4.8s7 2.4 7 4.8c0 1.5-1 2.7-3 2.7-1.4 0-2.5-.8-4-.8s-2.6.8-4 .8Z" />
+        <circle cx="6.5" cy="10" r="1.8" />
+        <circle cx="10" cy="7" r="1.8" />
+        <circle cx="14" cy="7" r="1.8" />
+        <circle cx="17.5" cy="10" r="1.8" />
+      </>
+    ),
+    rabbit: (
+      <>
+        <path d="M8 11C6.5 6 7 3 9 3c1.5 0 2.5 3.5 3 7" />
+        <path d="M16 11c1.5-5 1-8-1-8-1.5 0-2.5 3.5-3 7" />
+        <path d="M6 14c0 4 2.5 6 6 6s6-2 6-6c0-2.5-2-4-6-4s-6 1.5-6 4Z" />
+        <path d="M10 15h.01" />
+        <path d="M14 15h.01" />
+      </>
+    ),
+    reptile: (
+      <>
+        <path d="M4 14c3-4 7-5 12-3l4 1" />
+        <path d="M7 16c2 2 5 2.5 8 1" />
+        <path d="M16 11l2-3" />
+        <path d="m15 17 2 3" />
+        <path d="M6 14l-2-2" />
+      </>
+    ),
+    sparkles: (
+      <>
+        <path d="M12 3l1.7 5.1L19 10l-5.3 1.9L12 17l-1.7-5.1L5 10l5.3-1.9L12 3Z" />
+        <path d="m5 15 .7 2.1L8 18l-2.3.9L5 21l-.7-2.1L2 18l2.3-.9L5 15Z" />
+      </>
+    ),
+    tag: (
+      <>
+        <path d="M4 12V5h7l9 9-7 7-9-9Z" />
+        <path d="M8 8h.01" />
+      </>
+    ),
+    truck: (
+      <>
+        <path d="M3 7h11v9H3z" />
+        <path d="M14 10h4l3 3v3h-7" />
+        <circle cx="7" cy="18" r="2" />
+        <circle cx="17" cy="18" r="2" />
+      </>
+    ),
+    chat: (
+      <>
+        <path d="M5 18.5V7c0-1.5 1.2-2.5 2.8-2.5h8.4C17.8 4.5 19 5.5 19 7v5c0 1.5-1.2 2.5-2.8 2.5H10l-5 4Z" />
+        <path d="M9 9h6" />
+        <path d="M9 12h4" />
+      </>
+    ),
+  };
+
+  return (
+    <svg
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.8"
+      viewBox="0 0 24 24"
+    >
+      {paths[name]}
+    </svg>
+  );
+}
+
+function categoryIconFor(name: string): HomeIconName {
+  const normalized = name.toLowerCase();
+
+  if (normalized.includes("ikan") || normalized.includes("aquarium")) return "fish";
+  if (normalized.includes("kucing")) return "cat";
+  if (normalized.includes("anjing")) return "dog";
+  if (normalized.includes("burung")) return "bird";
+  if (normalized.includes("kelinci")) return "rabbit";
+  if (normalized.includes("reptil")) return "reptile";
+
+  return "paw";
+}
+
 export default async function HomePage() {
   const wa =
     process.env.NEXT_PUBLIC_WA_NUMBER ||
@@ -148,10 +346,11 @@ export default async function HomePage() {
     "";
   const waUrl = `https://wa.me/${wa.replace("+", "")}?text=${encodeURIComponent("Halo Natalo Petshop, saya mau tanya...")}`;
 
-  const [products, popularCategories, mostSearchedCategories] = await Promise.all([
+  const [products, popularCategories, activePetCategories] = await Promise.all([
     getProducts({ take: 24 }),
     prisma.category
       .findMany({
+        where: { products: { some: { isActive: true } } },
         take: 6,
         orderBy: { products: { _count: "desc" } },
         select: {
@@ -168,18 +367,11 @@ export default async function HomePage() {
       .catch(() => []),
     prisma.category
       .findMany({
-        take: 6,
-        orderBy: { products: { _count: "desc" } },
-        select: {
-          name: true,
-          slug: true,
-          products: {
-            where: { isActive: true },
-            take: 1,
-            select: { imageUrl: true },
-          },
-          _count: { select: { products: { where: { isActive: true } } } },
+        where: {
+          slug: { in: PET_CATEGORIES.map((category) => category.slug) },
+          products: { some: { isActive: true } },
         },
+        select: { slug: true },
       })
       .catch(() => []),
   ]);
@@ -191,6 +383,10 @@ export default async function HomePage() {
   const bestSellers = [...products]
     .sort((a, b) => b.reviewCount - a.reviewCount || b.avgRating - a.avgRating)
     .slice(0, 6);
+  const activePetCategorySlugs = new Set(activePetCategories.map((category) => category.slug));
+  const visiblePetCategories = PET_CATEGORIES.filter((category) =>
+    activePetCategorySlugs.has(category.slug)
+  );
 
   const flashSaleEnd = getJakartaMidnight();
 
@@ -216,7 +412,7 @@ export default async function HomePage() {
               <p className="text-[10px] font-bold uppercase tracking-wider opacity-90">Promo</p>
               <p className="mt-1 text-base font-black leading-tight">Grooming Hemat 30%</p>
             </div>
-            <span className="text-3xl">✂️</span>
+            <HomeIcon name="grooming" className="h-9 w-9 text-white" />
           </Link>
           <Link
             href="/tentang-kami"
@@ -227,7 +423,7 @@ export default async function HomePage() {
               <p className="text-[10px] font-bold uppercase tracking-wider opacity-90">Paket</p>
               <p className="mt-1 text-base font-black leading-tight">Vaksin Hemat Mulai 75K</p>
             </div>
-            <span className="text-3xl">🏥</span>
+            <HomeIcon name="clinic" className="h-9 w-9 text-white" />
           </Link>
         </div>
       </section>
@@ -243,9 +439,9 @@ export default async function HomePage() {
               className="flex flex-col items-center gap-1.5 rounded-xl p-2 transition active:opacity-90"
             >
               <div
-                className={`flex h-14 w-14 items-center justify-center rounded-full ${s.bg} text-2xl shadow-sm`}
+                className={`flex h-14 w-14 items-center justify-center rounded-full ${s.bg} ${s.color} shadow-sm`}
               >
-                {s.emoji}
+                <HomeIcon name={s.icon} className="h-7 w-7" />
               </div>
               <span className="text-[11px] font-medium leading-tight text-zinc-700 text-center">
                 {s.label}
@@ -286,7 +482,9 @@ export default async function HomePage() {
                         className="object-cover"
                       />
                     ) : (
-                      <div className="flex h-full items-center justify-center text-3xl">🐾</div>
+                      <div className="flex h-full items-center justify-center text-zinc-300">
+                        <HomeIcon name="box" className="h-10 w-10" />
+                      </div>
                     )}
                     <span className="absolute left-1.5 top-1.5 rounded bg-red-500 px-1.5 py-0.5 text-[10px] font-black text-white">
                       -{off}%
@@ -330,7 +528,9 @@ export default async function HomePage() {
                       className="object-cover"
                     />
                   ) : (
-                    <div className="flex h-full items-center justify-center text-4xl">🐾</div>
+                    <div className="flex h-full items-center justify-center text-orange-300">
+                      <HomeIcon name={categoryIconFor(cat.name)} className="h-12 w-12" />
+                    </div>
                   )}
                 </div>
                 <div className="p-3">
@@ -355,7 +555,7 @@ export default async function HomePage() {
         </div>
         <div className="mt-3 grid grid-cols-2 gap-3">
           {newArrivals.map((p, i) => (
-            <ProductCard key={p.id} product={p} variant="compact" priority={i < 2} />
+            <ProductCard key={p.id} product={p} variant="compact" />
           ))}
         </div>
       </section>
@@ -412,25 +612,27 @@ export default async function HomePage() {
       </section>
 
       {/* ── 10. KATEGORI HEWAN ── */}
-      <section className="mt-6 px-4">
-        <h2 className="text-lg font-black text-zinc-900">🐾 Belanja by Hewan</h2>
-        <div className="mt-3 grid grid-cols-3 gap-3">
-          {PET_CATEGORIES.map((pet) => (
-            <Link
-              key={pet.label}
-              href={`/products?kategori=${pet.label.toLowerCase()}`}
-              className="flex flex-col items-center gap-2 rounded-2xl border border-[#f5f5f5] bg-white p-4 shadow-sm active:opacity-90"
-            >
-              <div
-                className={`flex h-14 w-14 items-center justify-center rounded-full ${pet.color} text-3xl`}
+      {visiblePetCategories.length > 0 && (
+        <section className="mt-6 px-4">
+          <h2 className="text-lg font-black text-zinc-900">🐾 Belanja by Hewan</h2>
+          <div className="mt-3 grid grid-cols-3 gap-3">
+            {visiblePetCategories.map((pet) => (
+              <Link
+                key={pet.slug}
+                href={`/products?kategori=${pet.slug}`}
+                className="flex flex-col items-center gap-2 rounded-2xl border border-[#f5f5f5] bg-white p-4 shadow-sm active:opacity-90"
               >
-                {pet.emoji}
-              </div>
-              <span className="text-xs font-bold text-zinc-700">{pet.label}</span>
-            </Link>
-          ))}
-        </div>
-      </section>
+                <div
+                  className={`flex h-14 w-14 items-center justify-center rounded-full ${pet.color} ${pet.iconColor}`}
+                >
+                  <HomeIcon name={pet.icon} className="h-8 w-8" />
+                </div>
+                <span className="text-xs font-bold text-zinc-700">{pet.label}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ── 11. PRODUK TERLARIS ── */}
       <section className="mt-6 px-4">
@@ -463,43 +665,6 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ── 12. LAGI BANYAK DICARI ── */}
-      {mostSearchedCategories.length > 0 && (
-        <section className="mt-6 px-4">
-          <h2 className="text-lg font-black text-zinc-900">🔍 Lagi Banyak Dicari</h2>
-          <div className="mt-3 grid grid-cols-2 gap-3">
-            {mostSearchedCategories.map((cat) => (
-              <Link
-                key={cat.slug}
-                href={`/products?kategori=${cat.slug}`}
-                className="flex items-center gap-3 overflow-hidden rounded-xl border border-[#f5f5f5] bg-white p-2 shadow-sm active:opacity-90"
-              >
-                <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-zinc-50">
-                  {cat.products[0]?.imageUrl ? (
-                    <Image
-                      src={cat.products[0].imageUrl}
-                      alt={cat.name}
-                      fill
-                      loading="lazy"
-                      sizes="56px"
-                      className="object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-2xl">🐾</div>
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold text-zinc-900">{cat.name}</p>
-                  <p className="mt-0.5 text-[11px] text-zinc-500">
-                    {cat._count.products} Produk
-                  </p>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
       {/* ── 13. CTA KONSULTASI WA ── */}
       <section className="mt-6 px-4">
         <a
@@ -516,7 +681,7 @@ export default async function HomePage() {
               💬 Chat Sekarang
             </span>
           </div>
-          <span className="text-5xl drop-shadow-lg">🐾</span>
+          <HomeIcon name="paw" className="h-14 w-14 shrink-0 text-white drop-shadow-lg" />
         </a>
       </section>
     </div>

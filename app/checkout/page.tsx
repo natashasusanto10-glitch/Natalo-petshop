@@ -11,6 +11,7 @@ import {
   type PaymentSelection,
 } from "@/components/MetodePembayaran";
 import { loadCart, clearCartEverywhere, type CartItem } from "@/lib/cart";
+import { AddressPinpointPicker, type PinpointValue } from "@/components/AddressPinpointPicker";
 
 type RateOption = {
   courier_name: string;
@@ -73,6 +74,9 @@ export default function CheckoutPage() {
   };
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string>("");
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [saveToAddressBook, setSaveToAddressBook] = useState(false);
+  const [addressLabel, setAddressLabel] = useState("");
 
   const [voucherInput, setVoucherInput] = useState("");
   const [voucherApplied, setVoucherApplied] = useState<{
@@ -94,23 +98,53 @@ export default function CheckoutPage() {
     fetch("/api/auth/me")
       .then((r) => r.json())
       .then((data) => {
+        if (data?.name) setIsLoggedIn(true);
         if (data.name) setForm((f) => ({ ...f, customerName: data.name }));
         if (data.email) setForm((f) => ({ ...f, customerEmail: data.email }));
         if (data.phone) setForm((f) => ({ ...f, customerPhone: data.phone }));
       })
       .catch(() => {});
 
-    fetch("/api/member/addresses")
-      .then((r) => r.json())
-      .then((addrs) => {
-        if (!Array.isArray(addrs) || addrs.length === 0) return;
-        setSavedAddresses(addrs);
-        const main = addrs.find((a) => a.isMain) ?? addrs[0];
+    fetch("/api/alamat")
+      .then((r) => (r.ok ? r.json() : { addresses: [] }))
+      .then((data) => {
+        const list = Array.isArray(data?.addresses) ? data.addresses : [];
+        if (list.length === 0) return;
+        const mapped: SavedAddress[] = list.map((a: {
+          id: string; label: string | null; recipient: string; phone: string;
+          address: string; city: string | null; postalCode: string | null;
+          isMain: boolean; latitude: number | null; longitude: number | null;
+          pinpointAddress: string | null; streetName: string | null;
+        }) => ({
+          id: a.id,
+          label: a.label ?? "Alamat",
+          recipientName: a.recipient,
+          phone: a.phone,
+          address: a.address,
+          city: a.city ?? "",
+          postalCode: a.postalCode ?? "",
+          isMain: a.isMain,
+          latitude: a.latitude,
+          longitude: a.longitude,
+          pinpointAddress: a.pinpointAddress,
+          streetName: a.streetName,
+        }));
+        setSavedAddresses(mapped);
+        const main = mapped.find((a) => a.isMain) ?? mapped[0];
         setSelectedAddressId(main.id);
         applyAddressToForm(main);
       })
       .catch(() => {});
   }, []);
+
+  function handlePinpoint(value: PinpointValue) {
+    setForm((f) => ({
+      ...f,
+      shippingLatitude: value.latitude,
+      shippingLongitude: value.longitude,
+      shippingPinpointAddress: value.pinpointAddress,
+    }));
+  }
 
   function applyAddressToForm(addr: {
     recipientName: string;
@@ -321,6 +355,26 @@ export default function CheckoutPage() {
       return;
     }
 
+    // Simpan alamat ke buku alamat (best-effort, jangan ganggu flow)
+    if (isLoggedIn && saveToAddressBook && form.shippingAddress) {
+      void fetch("/api/alamat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: addressLabel.trim() || "Rumah",
+          recipient: form.customerName,
+          phone: form.customerPhone,
+          address: form.shippingAddress,
+          city: form.shippingCity || null,
+          postalCode: form.shippingPostalCode || "",
+          latitude: form.shippingLatitude,
+          longitude: form.shippingLongitude,
+          pinpointAddress: form.shippingPinpointAddress,
+          isMain: savedAddresses.length === 0,
+        }),
+      }).catch(() => {});
+    }
+
     if (paymentMethod === "MIDTRANS" && data.snapToken && window.snap) {
       window.snap.pay(data.snapToken, {
         onSuccess: () => {
@@ -477,6 +531,40 @@ export default function CheckoutPage() {
               {field("Kota / Kecamatan", "shippingCity", { placeholder: "Contoh: Jakarta Selatan" })}
               {field("Kode pos", "shippingPostalCode", { type: "tel", placeholder: "12345" })}
             </div>
+
+            {/* Pinpoint GPS */}
+            <AddressPinpointPicker
+              defaultLatitude={form.shippingLatitude}
+              defaultLongitude={form.shippingLongitude}
+              defaultAddress={form.shippingPinpointAddress}
+              onChange={handlePinpoint}
+            />
+
+            {/* Simpan ke buku alamat (login only) */}
+            {isLoggedIn && (
+              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+                <label className="flex items-start gap-2 text-sm text-zinc-700">
+                  <input
+                    type="checkbox"
+                    checked={saveToAddressBook}
+                    onChange={(e) => setSaveToAddressBook(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-zinc-300"
+                  />
+                  <span>
+                    <span className="font-bold">Simpan alamat ini</span> supaya checkout berikutnya lebih cepat.
+                  </span>
+                </label>
+                {saveToAddressBook && (
+                  <input
+                    type="text"
+                    value={addressLabel}
+                    onChange={(e) => setAddressLabel(e.target.value)}
+                    placeholder="Label alamat (Rumah, Kantor, dll) — opsional"
+                    className="mt-2 block w-full rounded-2xl border border-zinc-300 px-4 py-2.5 text-sm outline-none focus:border-zinc-600"
+                  />
+                )}
+              </div>
+            )}
 
             {/* Pengiriman: tombol → bottom sheet */}
             <div>
