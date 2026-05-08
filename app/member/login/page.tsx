@@ -1,17 +1,28 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { PasswordInput } from "@/components/PasswordInput";
 import { mergeFromServer } from "@/lib/cart";
 
 export default function MemberLoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get("registered") === "1") {
+      setNotice("Pendaftaran berhasil! Silakan masuk dengan email/no. HP & password kamu.");
+      const url = new URL(window.location.href);
+      url.searchParams.delete("registered");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, [searchParams]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -47,6 +58,13 @@ export default function MemberLoginPage() {
           <h1 className="mt-3 text-2xl font-black text-gray-900">Masuk Member</h1>
           <p className="mt-1 text-sm text-gray-500">Gunakan email atau nomor HP yang terdaftar.</p>
         </div>
+
+        {notice && (
+          <div className="mb-4 flex items-start gap-3 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+            <span aria-hidden className="mt-0.5 text-base">✅</span>
+            <p className="leading-snug">{notice}</p>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4 rounded-3xl bg-white p-8 shadow-sm">
           <div>

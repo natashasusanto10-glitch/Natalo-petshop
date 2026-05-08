@@ -265,6 +265,25 @@ model PasswordResetToken {
   @@index([expiresAt])
 }
 
+model RegistrationOtp {
+  id           String    @id @default(cuid())
+  name         String
+  email        String
+  phone        String
+  passwordHash String
+  channel      String
+  otpHash      String
+  expiresAt    DateTime
+  attempts     Int       @default(0)
+  verifiedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([email])
+  @@index([phone])
+  @@index([expiresAt])
+}
+
 enum ReviewStatus {
   VISIBLE
   HIDDEN // di-hide oleh admin

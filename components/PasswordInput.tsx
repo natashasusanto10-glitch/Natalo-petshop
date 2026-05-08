@@ -10,6 +10,7 @@ type PasswordInputProps = {
   minLength?: number;
   placeholder?: string;
   autoComplete?: string;
+  disabled?: boolean;
   className?: string;
 };
 
@@ -21,6 +22,7 @@ export function PasswordInput({
   minLength,
   placeholder,
   autoComplete,
+  disabled,
   className,
 }: PasswordInputProps) {
   const [visible, setVisible] = useState(false);
@@ -59,16 +61,18 @@ export function PasswordInput({
         minLength={minLength}
         placeholder={placeholder}
         autoComplete={autoComplete}
+        disabled={disabled}
         className={`${className ?? ""} mt-0 pr-12 password-input-no-native-reveal`}
       />
       <button
         type="button"
+        disabled={disabled}
         aria-label={visible ? "Sembunyikan password" : "Tampilkan password"}
         aria-pressed={visible}
         // SIMPLE: hanya onClick — paling reliable cross-browser termasuk iOS Safari.
         // Tidak ada onMouseDown/onTouchEnd preventDefault yang bisa memblokir click di iOS.
         onClick={toggle}
-        className="absolute right-1 top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 cursor-pointer items-center justify-center text-[#999] transition hover:text-[#1E88E5] active:text-[#1E88E5]"
+        className="absolute right-1 top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 cursor-pointer items-center justify-center text-[#999] transition hover:text-[#1E88E5] active:text-[#1E88E5] disabled:cursor-not-allowed disabled:opacity-40"
         style={{
           touchAction: "manipulation",
           WebkitTapHighlightColor: "transparent",

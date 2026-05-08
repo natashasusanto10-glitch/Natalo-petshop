@@ -11,15 +11,24 @@ export default function MemberRegisterPage() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setNotice("");
 
     if (password !== confirmPassword) {
       setError("Konfirmasi password tidak sama.");
+      return;
+    }
+
+    if (otpSent && otp.replace(/\D/g, "").length !== 6) {
+      setError("Masukkan kode OTP 6 digit.");
       return;
     }
 
@@ -28,7 +37,14 @@ export default function MemberRegisterPage() {
     const res = await fetch("/api/auth/member-register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email, phone, password, confirmPassword }),
+      body: JSON.stringify({
+        name,
+        email,
+        phone,
+        password,
+        confirmPassword,
+        otp: otpSent ? otp : "",
+      }),
     });
 
     const data = await res.json();
@@ -39,7 +55,31 @@ export default function MemberRegisterPage() {
       return;
     }
 
+    if (data.otpRequired) {
+      setOtpSent(true);
+      setNotice(data.message || "Kode OTP sudah dikirim.");
+      return;
+    }
+
     window.location.replace("/member/login?registered=1");
+  }
+
+  async function handleResendOtp() {
+    setOtp("");
+    setOtpSent(false);
+    setNotice("");
+    setError("");
+    window.setTimeout(() => {
+      const form = document.querySelector("form");
+      form?.requestSubmit();
+    }, 0);
+  }
+
+  function unlockEdit() {
+    setOtp("");
+    setOtpSent(false);
+    setNotice("");
+    setError("");
   }
 
   return (
@@ -59,6 +99,7 @@ export default function MemberRegisterPage() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
+              disabled={otpSent}
               className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
               placeholder="Contoh: Andi Setiawan"
             />
@@ -71,6 +112,7 @@ export default function MemberRegisterPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              disabled={otpSent}
               className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
               placeholder="Contoh: nama@email.com"
             />
@@ -83,9 +125,15 @@ export default function MemberRegisterPage() {
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               required
+              disabled={otpSent}
               className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
               placeholder="Contoh: 08123456789"
             />
+          </div>
+
+          <div className="rounded-xl border border-orange-100 bg-orange-50/60 px-4 py-3 text-xs text-orange-800">
+            <p className="font-semibold">Kode OTP akan dikirim ke email <span className="underline">dan</span> WhatsApp kamu.</p>
+            <p className="mt-1 text-orange-700/80">Pastikan keduanya aktif — kamu cukup masukkan satu kode yang sama.</p>
           </div>
 
           <div>
@@ -95,6 +143,7 @@ export default function MemberRegisterPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={8}
+              disabled={otpSent}
               className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
               placeholder="Masukkan password (min. 8 karakter)"
             />
@@ -107,6 +156,7 @@ export default function MemberRegisterPage() {
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
               minLength={8}
+              disabled={otpSent}
               className={`mt-1 block w-full rounded-xl border px-4 py-3 text-sm outline-none transition focus:ring-2 ${
                 confirmPassword && confirmPassword !== password
                   ? "border-red-300 focus:border-red-400 focus:ring-red-100"
@@ -119,6 +169,37 @@ export default function MemberRegisterPage() {
             )}
           </div>
 
+          {otpSent && (
+            <div className="rounded-2xl border border-orange-100 bg-orange-50 p-4">
+              <label className="block text-sm font-bold text-gray-900">Kode OTP</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                required
+                className="mt-2 block w-full rounded-xl border border-orange-200 bg-white px-4 py-3 text-center text-lg font-black tracking-[0.35em] outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                placeholder="000000"
+              />
+              <p className="mt-2 text-xs text-gray-600">
+                Kode berlaku 10 menit. Cek inbox email atau WhatsApp kamu — gunakan salah satunya.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-3 text-xs font-bold">
+                <button type="button" onClick={handleResendOtp} className="text-orange-700 hover:underline">
+                  Kirim ulang OTP
+                </button>
+                <button type="button" onClick={unlockEdit} className="text-gray-600 hover:underline">
+                  Ubah data
+                </button>
+              </div>
+            </div>
+          )}
+
+          {notice && (
+            <p className="rounded-xl bg-green-50 px-4 py-3 text-sm text-green-700">{notice}</p>
+          )}
+
           {error && (
             <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>
           )}
@@ -128,7 +209,7 @@ export default function MemberRegisterPage() {
             disabled={loading || (!!confirmPassword && confirmPassword !== password)}
             className="w-full rounded-full bg-orange-500 py-3 text-sm font-bold text-white transition hover:bg-orange-600 disabled:opacity-50"
           >
-            {loading ? "Mendaftar..." : "Daftar Gratis"}
+            {loading ? "Memproses..." : otpSent ? "Verifikasi & Daftar" : "Kirim OTP"}
           </button>
 
           <div className="rounded-xl border border-gray-200 bg-gray-50 px-5 py-4 text-sm text-gray-700">

@@ -69,6 +69,46 @@ export async function sendPasswordResetEmail(params: {
   }
 }
 
+export async function sendRegistrationOtpEmail(params: {
+  to: string;
+  userName: string;
+  otp: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const { to, userName, otp } = params;
+
+  if (!resend) {
+    console.log("\n" + "=".repeat(60));
+    console.log("[DEV MODE] OTP daftar member");
+    console.log("=".repeat(60));
+    console.log(`To     : ${to}`);
+    console.log(`Halo   : ${userName}`);
+    console.log(`OTP    : ${otp}`);
+    console.log(`Expires: 10 menit`);
+    console.log("=".repeat(60));
+    console.log("Set RESEND_API_KEY di .env untuk kirim email beneran.\n");
+    return { ok: true };
+  }
+
+  try {
+    const { error } = await resend.emails.send({
+      from: RESEND_FROM,
+      to: [to],
+      subject: `Kode OTP Daftar Member ${BRAND}`,
+      html: buildRegistrationOtpHtml({ userName, otp }),
+      text: buildRegistrationOtpText({ userName, otp }),
+    });
+
+    if (error) {
+      console.error("[email] Resend OTP error:", error);
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (e) {
+    console.error("[email] Send OTP failed:", e);
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 function buildResetEmailHtml({
   userName,
   resetUrl,
@@ -135,4 +175,50 @@ Link berlaku 1 jam. Setelah itu kamu harus minta link reset baru.
 Kalau kamu tidak meminta reset password, abaikan email ini.
 
 — ${BRAND}`;
+}
+
+function buildRegistrationOtpHtml({
+  userName,
+  otp,
+}: {
+  userName: string;
+  otp: string;
+}) {
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Kode OTP</title></head>
+<body style="font-family:Arial,sans-serif;line-height:1.6;color:#333;background:#f5f5f5;padding:20px">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.05)">
+    <div style="background:#f97316;padding:24px;text-align:center;color:white">
+      <h1 style="margin:0;font-size:22px;font-weight:900">${BRAND}</h1>
+    </div>
+    <div style="padding:32px">
+      <h2 style="margin:0 0 16px;font-size:20px;color:#111">Halo, ${userName}!</h2>
+      <p style="margin:0 0 16px">Gunakan kode OTP berikut untuk menyelesaikan pendaftaran member:</p>
+      <div style="text-align:center;margin:28px 0">
+        <div style="display:inline-block;letter-spacing:8px;font-size:32px;font-weight:900;color:#111;background:#f8fafc;border:1px solid #e5e7eb;border-radius:16px;padding:16px 24px">${otp}</div>
+      </div>
+      <p style="margin:0;font-size:13px;color:#666">Kode berlaku 10 menit. Jangan bagikan kode ini ke siapa pun.</p>
+    </div>
+  </div>
+</body>
+</html>
+`;
+}
+
+function buildRegistrationOtpText({
+  userName,
+  otp,
+}: {
+  userName: string;
+  otp: string;
+}) {
+  return `Halo ${userName},
+
+Kode OTP pendaftaran member ${BRAND}: ${otp}
+
+Kode berlaku 10 menit. Jangan bagikan kode ini ke siapa pun.
+
+${BRAND}`;
 }
