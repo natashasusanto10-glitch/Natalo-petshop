@@ -32,20 +32,24 @@ export async function generateMetadata({
     product.discountPrice !== null && product.discountPrice < product.price
       ? product.discountPrice
       : product.price;
+  const shortDescription = product.description.replace(/\s+/g, " ").trim().slice(0, 140);
+  const productImage = product.imageUrl
+    ? product.imageUrl.startsWith("http")
+      ? product.imageUrl
+      : `${siteUrl}${product.imageUrl}`
+    : `${siteUrl}/icon.svg`;
 
   return {
-    title: product.name,
-    description: `${product.description.slice(0, 150)}... Harga ${formatRupiah(metadataPrice)} di ${brand}.`,
+    title: `${product.name} | Natalo Petshop Medan`,
+    description: `Beli ${product.name} di Natalo Petshop Medan. ${shortDescription} Kirim same-day via Gojek. Harga ${formatRupiah(metadataPrice)}.`,
     alternates: {
       canonical: `${siteUrl}/products/${slug}`,
     },
     openGraph: {
-      title: `${product.name} | ${brand}`,
-      description: product.description.slice(0, 150),
+      title: `${product.name} | Natalo Petshop Medan`,
+      description: `Beli ${product.name} di Natalo Petshop Medan.`,
       url: `${siteUrl}/products/${slug}`,
-      images: product.imageUrl
-        ? [{ url: product.imageUrl, alt: product.name }]
-        : [{ url: `${siteUrl}/icon.svg`, alt: brand }],
+      images: [{ url: productImage, alt: product.name }],
       type: "website",
     },
   };
