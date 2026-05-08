@@ -1,14 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { PasswordInput } from "@/components/PasswordInput";
 import { mergeFromServer } from "@/lib/cart";
 
 export default function MemberLoginPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -16,13 +15,13 @@ export default function MemberLoginPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (searchParams.get("registered") === "1") {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("registered") === "1") {
       setNotice("Pendaftaran berhasil! Silakan masuk dengan email/no. HP & password kamu.");
-      const url = new URL(window.location.href);
       url.searchParams.delete("registered");
       window.history.replaceState({}, "", url.toString());
     }
-  }, [searchParams]);
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
