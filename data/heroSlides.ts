@@ -44,7 +44,7 @@ export const heroSlides: HeroSlide[] = [
   {
     id: "trust-58k",
     type: "content",
-    background: "from-natalo-700 via-natalo-600 to-natalo-500",
+    background: "from-[#B85A18] via-[#E8711F] to-[#FB923C]",
     icon: "award",
     badge: "Rating 5.0 di Tokopedia",
     headlineBefore: "Dipercaya",
@@ -55,7 +55,7 @@ export const heroSlides: HeroSlide[] = [
       text: "Belanja sekarang",
       href: "/products",
       bg: "bg-white",
-      textColor: "text-natalo-800",
+      textColor: "text-[#B85A18]",
     },
   },
   {
@@ -65,8 +65,8 @@ export const heroSlides: HeroSlide[] = [
     icon: "bolt",
     badge: "Instant 3 jam",
     headlineBefore: "Pesan pagi,",
-    headlineHighlight: "sampai sore",
-    subtitle: "Pengiriman instan via Gojek untuk area Medan. Order sebelum 15.00 WIB.",
+    headlineHighlight: "sampai 3 jam",
+    subtitle: "Pesan pagi sampai dalam 3 jam dengan Instant Kurir untuk area Medan.",
     cta: {
       text: "Belanja sekarang",
       href: "/products",
@@ -113,7 +113,7 @@ export const heroSlides: HeroSlide[] = [
     background: "from-natalo-800 via-natalo-700 to-rose-700",
     icon: "store",
     badge: "Est. 2019",
-    headlineHighlight: "6 tahun",
+    headlineHighlight: "7 tahun",
     headlineAfter: "melayani pecinta hewan",
     subtitle: "Toko fisik di Medan, top seller di Tokopedia dan Shopee.",
     cta: {

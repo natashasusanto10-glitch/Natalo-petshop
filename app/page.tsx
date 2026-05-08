@@ -38,12 +38,14 @@ type HomeIconName =
   | "flame"
   | "gift"
   | "grooming"
+  | "medal"
   | "paw"
   | "rabbit"
   | "reptile"
   | "sparkles"
   | "tag"
   | "truck"
+  | "voucher-pet"
   | "chat";
 
 const SHORTCUT_ITEMS: {
@@ -54,13 +56,9 @@ const SHORTCUT_ITEMS: {
   color: string;
 }[] = [
   { icon: "sparkles", label: "Produk Baru", href: "/products?sort=newest", bg: "bg-orange-50", color: "text-orange-600" },
-  { icon: "flame", label: "Sedang Laris", href: "/products?sort=popular", bg: "bg-red-50", color: "text-red-600" },
-  { icon: "gift", label: "Voucher", href: "/member", bg: "bg-pink-50", color: "text-pink-600" },
-  { icon: "tag", label: "Promo Hemat", href: "/products?promo=1", bg: "bg-yellow-50", color: "text-amber-600" },
-  { icon: "clinic", label: "Klinik", href: "/tentang-kami", bg: "bg-emerald-50", color: "text-emerald-600" },
-  { icon: "grooming", label: "Grooming", href: "/tentang-kami", bg: "bg-blue-50", color: "text-blue-600" },
-  { icon: "truck", label: "Cek Ongkir", href: "/checkout", bg: "bg-indigo-50", color: "text-indigo-600" },
-  { icon: "chat", label: "Konsultasi", href: "/tentang-kami", bg: "bg-purple-50", color: "text-purple-600" },
+  { icon: "medal", label: "Terlaris", href: "/products?sort=popular", bg: "bg-amber-50", color: "text-amber-600" },
+  { icon: "voucher-pet", label: "Voucher", href: "/member", bg: "bg-pink-50", color: "text-pink-600" },
+  { icon: "flame", label: "Trending", href: "/products?promo=1", bg: "bg-red-50", color: "text-red-600" },
 ];
 
 function getJakartaMidnight() {
@@ -85,7 +83,35 @@ function HomeIcon({
   name: HomeIconName;
   className?: string;
 }) {
-  const paths: Record<HomeIconName, ReactNode> = {
+  if (name === "voucher-pet") {
+    return (
+      <svg
+        aria-hidden="true"
+        className={className}
+        viewBox="0 0 48 48"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M14 10 L11 6 L11 14 Z" fill="currentColor" stroke="none" />
+        <path d="M30 10 L33 6 L33 14 Z" fill="currentColor" stroke="none" />
+        <ellipse cx="22" cy="16" rx="11" ry="9" fill="#FFF" stroke="currentColor" />
+        <circle cx="18" cy="15.5" r="1.2" fill="currentColor" stroke="none" />
+        <circle cx="26" cy="15.5" r="1.2" fill="currentColor" stroke="none" />
+        <path d="M22 20 Q20.5 22 19 21" />
+        <path d="M22 20 Q23.5 22 25 21" />
+        <path d="M9 28 H35 a2 2 0 0 1 2 2 V36 a2 2 0 0 1-2 2 H9 a2 2 0 0 1 0-4 a2 2 0 0 1 0-4 Z" fill="#FFF" stroke="currentColor" />
+        <path d="M22 28 V38" strokeDasharray="1.5 2" />
+        <text x="14.5" y="35" fontSize="5" fontWeight="800" fill="currentColor" stroke="none">50%</text>
+        <ellipse cx="11" cy="26.5" rx="3.2" ry="2.4" fill="currentColor" stroke="none" />
+        <ellipse cx="33" cy="26.5" rx="3.2" ry="2.4" fill="currentColor" stroke="none" />
+      </svg>
+    );
+  }
+
+  const paths: Record<Exclude<HomeIconName, "voucher-pet">, ReactNode> = {
     box: (
       <>
         <path d="m4 8 8 4 8-4" />
@@ -158,6 +184,14 @@ function HomeIcon({
         <path d="M16.5 16.5 19 19" />
         <circle cx="7" cy="17" r="2" />
         <circle cx="17" cy="7" r="2" />
+      </>
+    ),
+    medal: (
+      <>
+        <path d="m8 13-2.5 8L8.5 19l1.5 3 2-5.5" />
+        <path d="m16 13 2.5 8L15.5 19l-1.5 3-2-5.5" />
+        <circle cx="12" cy="11" r="5.5" />
+        <path d="M12 8l1 2 2.2.3-1.6 1.5.4 2.2L12 13l-2 1 .4-2.2L8.8 10.3 11 10Z" fill="currentColor" stroke="none" />
       </>
     ),
     paw: (
