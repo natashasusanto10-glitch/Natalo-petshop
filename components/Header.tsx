@@ -90,16 +90,17 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-50 bg-white shadow-sm">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-2 px-4 py-3 md:py-4">
+      <div className="mx-auto flex max-w-6xl items-center justify-between gap-2 px-4 py-2 md:py-2.5">
         {/* Logo */}
         <Link href="/" aria-label={brand} className="flex items-center shrink-0">
           <Image
             src="/logo.png"
             alt={brand}
-            width={480}
-            height={150}
+            width={745}
+            height={527}
             priority
-            className="h-9 w-auto md:h-11"
+            sizes="(max-width: 768px) 160px, 220px"
+            className="h-14 w-auto md:h-16"
           />
         </Link>
 
