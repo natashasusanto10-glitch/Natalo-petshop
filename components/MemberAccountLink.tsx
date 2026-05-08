@@ -55,7 +55,7 @@ export function MemberAccountLink() {
   return (
     <Link
       href="/member"
-      className="inline-flex shrink-0 rounded-full bg-[#468284] px-3 py-1.5 text-xs font-black text-white transition hover:brightness-95 sm:px-4 sm:py-2 sm:text-sm"
+      className="inline-flex shrink-0 rounded-full bg-[#1E88E5] px-3 py-1.5 text-xs font-black text-white transition hover:brightness-95 sm:px-4 sm:py-2 sm:text-sm"
     >
       Masuk
     </Link>

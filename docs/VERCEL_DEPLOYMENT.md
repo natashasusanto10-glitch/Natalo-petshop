@@ -63,13 +63,6 @@ MEILISEARCH_API_KEY=
 MEILISEARCH_INDEX=products
 ```
 
-Optional payment provider:
-
-```env
-XENDIT_SECRET_KEY=
-XENDIT_CALLBACK_TOKEN=
-```
-
 Optional bank display:
 
 ```env
@@ -83,12 +76,6 @@ Configure Midtrans notification URL:
 
 ```text
 https://natalopetshop.com/api/payment/midtrans
-```
-
-If using Xendit:
-
-```text
-https://natalopetshop.com/api/payment/xendit
 ```
 
 ## Deploy Steps

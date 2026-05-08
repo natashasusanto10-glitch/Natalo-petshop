@@ -82,7 +82,7 @@ function buildResetEmailHtml({
 <head><meta charset="utf-8"><title>Reset Password</title></head>
 <body style="font-family:Arial,sans-serif;line-height:1.6;color:#333;background:#f5f5f5;padding:20px">
   <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.05)">
-    <div style="background:#468284;padding:24px;text-align:center;color:white">
+    <div style="background:#1E88E5;padding:24px;text-align:center;color:white">
       <p style="font-size:32px;margin:0">🐾</p>
       <h1 style="margin:8px 0 0;font-size:22px;font-weight:900">${BRAND}</h1>
     </div>
@@ -95,7 +95,7 @@ function buildResetEmailHtml({
         Klik tombol di bawah untuk membuat password baru:
       </p>
       <div style="text-align:center;margin:32px 0">
-        <a href="${resetUrl}" style="display:inline-block;padding:14px 32px;background:#468284;color:white;text-decoration:none;font-weight:bold;border-radius:999px;font-size:14px">
+        <a href="${resetUrl}" style="display:inline-block;padding:14px 32px;background:#1E88E5;color:white;text-decoration:none;font-weight:bold;border-radius:999px;font-size:14px">
           Reset Password
         </a>
       </div>
@@ -103,7 +103,7 @@ function buildResetEmailHtml({
         Atau salin link berikut:
       </p>
       <p style="margin:0 0 24px;font-size:13px;color:#666;word-break:break-all">
-        <a href="${resetUrl}" style="color:#468284">${resetUrl}</a>
+        <a href="${resetUrl}" style="color:#1E88E5">${resetUrl}</a>
       </p>
       <div style="border-top:1px solid #eee;padding-top:16px;margin-top:24px;font-size:12px;color:#999">
         <p style="margin:0 0 8px"><strong>⏱️ Link berlaku 1 jam.</strong> Setelah itu kamu harus minta link reset baru.</p>

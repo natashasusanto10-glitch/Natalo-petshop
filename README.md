@@ -6,7 +6,7 @@ Starter project untuk website toko sendiri / PWA dengan stack:
 - PostgreSQL
 - Prisma ORM
 - Tailwind CSS
-- Midtrans atau Xendit
+- Midtrans
 - Biteship
 - OpenAI API
 
@@ -47,7 +47,6 @@ http://localhost:3000
 - AI product assistant placeholder + OpenAI Responses API
 - Biteship rates endpoint dengan fallback dummy
 - Midtrans Snap redirect payment dari `/api/orders`
-- Xendit Payment Link dari `/api/orders`
 
 ## 3. Environment variables
 
@@ -68,7 +67,6 @@ Untuk payment/shipping/AI:
 MIDTRANS_SERVER_KEY=""
 MIDTRANS_CLIENT_KEY=""
 MIDTRANS_IS_PRODUCTION="false"
-XENDIT_SECRET_KEY=""
 BITESHIP_API_KEY=""
 SHOP_ORIGIN_POSTAL_CODE=""
 OPENAI_API_KEY=""
@@ -80,7 +78,7 @@ OPENAI_MODEL="gpt-5.5"
 1. Rapikan branding: nama toko, warna, logo, foto produk.
 2. Finalisasi database produk dan seed.
 3. Selesaikan checkout manual dulu.
-4. Pilih satu payment gateway untuk v1: Midtrans **atau** Xendit.
+4. Gunakan Midtrans untuk payment gateway v1.
 5. Pilih satu shipping aggregator untuk v1: Biteship **atau** RajaOngkir.
 6. Tambahkan webhook payment untuk update status order otomatis.
 7. Tambahkan admin auth sebelum production.
@@ -95,7 +93,7 @@ Starter ini belum production-ready. Wajib ditambahkan:
 - Authentication untuk admin.
 - Rate limiting API.
 - Validasi stok saat checkout.
-- Webhook Midtrans/Xendit untuk payment status.
+- Webhook Midtrans untuk payment status.
 - Logging error.
 - Backup database.
 - Kebijakan privasi dan syarat penggunaan.
@@ -110,7 +108,6 @@ app/
     ai/product-assistant
     orders
     payment/midtrans
-    payment/xendit
     shipping/rates
   admin
   cart

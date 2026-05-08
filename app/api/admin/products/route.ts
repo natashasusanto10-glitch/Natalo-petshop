@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
 import type { Prisma } from "@prisma/client";
 
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 50;
 
 export async function GET(request: NextRequest) {
+  const session = await getSession("ADMIN");
+  if (!session || session.role !== "ADMIN") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const sp = request.nextUrl.searchParams;
   const page = Math.max(1, parseInt(sp.get("page") || "1", 10));
   const limit = Math.min(

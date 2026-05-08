@@ -96,7 +96,7 @@ function buildEmailHtml(
   ctx: OrderEmailContext,
   trackingUrl: string
 ): string {
-  const headerColor = "#468284";
+  const headerColor = "#1E88E5";
   const headerEmoji = {
     PAID: "✅",
     SHIPPED: "🚚",
@@ -160,7 +160,7 @@ function buildBodyHtml(kind: EmailKind, ctx: OrderEmailContext): string {
       ? `
       <div style="margin:20px 0;padding:16px;background:#EFF6FF;border-radius:12px;border:1px solid #BFDBFE">
         <p style="margin:0 0 8px;font-size:13px;color:#666">Nomor Resi:</p>
-        <p style="margin:0;font-family:monospace;font-size:18px;font-weight:bold;color:#468284;letter-spacing:1px">
+        <p style="margin:0;font-family:monospace;font-size:18px;font-weight:bold;color:#1E88E5;letter-spacing:1px">
           ${ctx.trackingNumber}
         </p>
         ${courierLabel ? `<p style="margin:8px 0 0;font-size:12px;color:#999">Kurir: ${courierLabel}</p>` : ""}

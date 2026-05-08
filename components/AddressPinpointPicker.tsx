@@ -29,7 +29,7 @@ type AddressPinpointPickerProps = {
   onChange?: (value: PinpointValue) => void;
 };
 
-const nataloOrange = "#468284";
+const nataloOrange = "#1E88E5";
 const fallbackCenter: LatLng = { lat: -6.2, lng: 106.816666 };
 const googleLibraries: "places"[] = ["places"];
 

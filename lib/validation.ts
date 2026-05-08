@@ -25,7 +25,7 @@ export const createOrderSchema = z.object({
   shippingCost: z.number().int().nonnegative().default(0),
   voucherCode: z.string().optional(),
   notes: z.string().optional(),
-  paymentProvider: z.enum(["MANUAL", "MIDTRANS", "XENDIT"]).default("MANUAL"),
+  paymentProvider: z.enum(["MANUAL", "MIDTRANS"]).default("MANUAL"),
   // Untuk TT manual: bank tujuan transfer
   manualBank: z.enum(["BCA_NATASHA", "BCA_NL_PET"]).optional(),
   items: z.array(cartItemSchema).min(1),

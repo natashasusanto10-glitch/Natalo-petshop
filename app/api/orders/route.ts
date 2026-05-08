@@ -79,36 +79,6 @@ async function createMidtransPayment(order: { orderNumber: string; total: number
   return { reference: data.token as string, url: data.redirect_url as string };
 }
 
-async function createXenditPayment(order: { orderNumber: string; total: number; customerName: string; customerEmail?: string | null }) {
-  const secretKey = process.env.XENDIT_SECRET_KEY;
-  if (!secretKey) throw new Error("XENDIT_SECRET_KEY belum diisi.");
-
-  const auth = Buffer.from(`${secretKey}:`).toString("base64");
-  const res = await fetch("https://api.xendit.co/v2/invoices", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Basic ${auth}`,
-    },
-    body: JSON.stringify({
-      external_id: order.orderNumber,
-      amount: order.total,
-      description: `Pembayaran order ${order.orderNumber}`,
-      payer_email: order.customerEmail || undefined,
-      success_redirect_url: `${process.env.NEXT_PUBLIC_SITE_URL}/order-status?order=${order.orderNumber}`,
-      failure_redirect_url: `${process.env.NEXT_PUBLIC_SITE_URL}/checkout`,
-    }),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Xendit error: ${text}`);
-  }
-
-  const data = await res.json();
-  return { reference: data.id as string, url: data.invoice_url as string };
-}
-
 export async function POST(request: Request) {
   const json = await request.json();
   const parsed = createOrderSchema.safeParse(json);
@@ -370,12 +340,9 @@ export async function POST(request: Request) {
     let paymentUrl: string | undefined;
     let paymentReference: string | undefined;
 
-    if (input.paymentProvider === "MIDTRANS" || input.paymentProvider === "XENDIT") {
+    if (input.paymentProvider === "MIDTRANS") {
       try {
-        const payment =
-          input.paymentProvider === "MIDTRANS"
-            ? await createMidtransPayment(order)
-            : await createXenditPayment(order);
+        const payment = await createMidtransPayment(order);
         paymentUrl = payment.url;
         paymentReference = payment.reference;
       } catch (paymentErr) {

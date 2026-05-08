@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { WishlistCount } from "./WishlistButton";
@@ -91,11 +92,15 @@ export function Header() {
     <header className="sticky top-0 z-50 bg-white shadow-sm">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-2 px-4 py-3 md:py-4">
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-2">
-          <span className="text-2xl">🐾</span>
-          <span className="hidden truncate text-sm font-bold text-gray-900 xs:inline md:text-base">
-            {brand}
-          </span>
+        <Link href="/" aria-label={brand} className="flex items-center shrink-0">
+          <Image
+            src="/logo.png"
+            alt={brand}
+            width={480}
+            height={150}
+            priority
+            className="h-9 w-auto md:h-11"
+          />
         </Link>
 
         {/* Desktop nav */}

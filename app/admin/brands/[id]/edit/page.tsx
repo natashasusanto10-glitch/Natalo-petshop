@@ -2,14 +2,24 @@ import { prisma } from "@/lib/prisma";
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
+import { getSession } from "@/lib/auth";
+
+async function requireAdmin() {
+  const session = await getSession("ADMIN");
+  if (!session || session.role !== "ADMIN") redirect("/admin/login");
+}
 
 export default async function EditBrandPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireAdmin();
+
   const { id } = await params;
   const brand = await prisma.brand.findUnique({ where: { id } }).catch(() => null);
   if (!brand) return notFound();
 
   async function updateBrand(formData: FormData) {
     "use server";
+    await requireAdmin();
+
     const name = (formData.get("name") as string)?.trim();
     const slug = (formData.get("slug") as string)?.trim() || name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
     if (!name) return;

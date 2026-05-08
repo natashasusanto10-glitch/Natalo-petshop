@@ -36,7 +36,6 @@ export default function AdminSettingsPage() {
         <div className="mt-5 space-y-3">
           {[
             { name: "Midtrans", key: "MIDTRANS_SERVER_KEY", desc: "Kartu kredit, transfer, e-wallet" },
-            { name: "Xendit", key: "XENDIT_SECRET_KEY", desc: "VA, QRIS, e-wallet" },
           ].map((gw) => (
             <div key={gw.name} className="flex items-center justify-between rounded-2xl bg-zinc-50 px-4 py-3">
               <div>

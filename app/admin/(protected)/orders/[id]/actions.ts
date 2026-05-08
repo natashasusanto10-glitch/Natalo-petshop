@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
 import { createBiteshipShipment } from "@/lib/biteship";
 import { sendOrderStatusEmail } from "@/lib/email-order";
 import { assertCanTransitionOrderStatus, transitionOrderStatus } from "@/lib/order-transitions";
@@ -12,6 +13,19 @@ import {
   sendPaymentConfirmed,
 } from "@/lib/whatsapp";
 
+/**
+ * Guard semua admin server action. Layout (protected) hanya melindungi page render,
+ * tapi server action bisa di-invoke langsung lewat POST. Tanpa check ini, customer
+ * bisa eksekusi action admin (mark paid, cancel, dll) kalau tahu endpoint-nya.
+ */
+async function requireAdmin() {
+  const session = await getSession("ADMIN");
+  if (!session || session.role !== "ADMIN") {
+    throw new Error("Akses ditolak. Hanya admin yang bisa mengubah order.");
+  }
+  return session;
+}
+
 function revalidateOrderAdmin(orderId: string) {
   revalidatePath(`/admin/orders/${orderId}`);
   revalidatePath("/admin/orders");
@@ -19,7 +33,7 @@ function revalidateOrderAdmin(orderId: string) {
   revalidatePath("/admin/dashboard");
 }
 
-export async function getEmailContext(orderId: string) {
+async function getEmailContext(orderId: string) {
   return prisma.order.findUnique({
     where: { id: orderId },
     select: {
@@ -37,6 +51,7 @@ export async function getEmailContext(orderId: string) {
 }
 
 export async function markAsPaid(orderId: string) {
+  await requireAdmin();
   const current = await prisma.order.findUnique({
     where: { id: orderId },
     select: { status: true, paymentStatus: true },
@@ -87,11 +102,13 @@ export async function markAsPaid(orderId: string) {
 }
 
 export async function createShipment(orderId: string) {
+  await requireAdmin();
   await createBiteshipShipment(orderId);
   revalidateOrderAdmin(orderId);
 }
 
 export async function markAsProcessing(orderId: string) {
+  await requireAdmin();
   const current = await prisma.order.findUnique({
     where: { id: orderId },
     select: { status: true, paymentStatus: true },
@@ -106,6 +123,7 @@ export async function markAsProcessing(orderId: string) {
 }
 
 export async function markAsShipped(orderId: string, formData: FormData) {
+  await requireAdmin();
   const trackingNumber = String(formData.get("trackingNumber") || "").trim();
   const current = await prisma.order.findUnique({
     where: { id: orderId },
@@ -141,6 +159,7 @@ export async function markAsShipped(orderId: string, formData: FormData) {
 }
 
 export async function markAsDelivered(orderId: string) {
+  await requireAdmin();
   await transitionOrderStatus(orderId, "DELIVERED");
   const ctx = await getEmailContext(orderId);
   if (ctx) {
@@ -153,6 +172,7 @@ export async function markAsDelivered(orderId: string) {
 }
 
 export async function markAsCancelled(orderId: string) {
+  await requireAdmin();
   const variantProductIdsToSync = new Set<string>();
   const nonVariantProductIdsToSync = new Set<string>();
   let didCancel = false;

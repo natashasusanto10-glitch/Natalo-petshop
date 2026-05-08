@@ -71,9 +71,17 @@ export default async function AdminOrderDetailPage({
 
   if (!order) return notFound();
 
-  const waNumber = order.customerPhone.startsWith("0")
-    ? `62${order.customerPhone.slice(1)}`
-    : order.customerPhone;
+  // Sanitize phone — strip non-digit, lalu normalisasi prefix 0/62/+62.
+  // Kalau hasilnya tidak masuk akal (kurang dari 9 digit), hide tombol WA.
+  const phoneDigits = (order.customerPhone ?? "").replace(/\D/g, "");
+  const waNumber = phoneDigits.startsWith("0")
+    ? `62${phoneDigits.slice(1)}`
+    : phoneDigits.startsWith("62")
+    ? phoneDigits
+    : phoneDigits.startsWith("8")
+    ? `62${phoneDigits}`
+    : phoneDigits;
+  const isPhoneValid = waNumber.length >= 10 && waNumber.startsWith("62");
 
   const waText = encodeURIComponent(
     `Halo ${order.customerName}, kami dari Natalo Petshop & Aquarium. ` +
@@ -182,7 +190,8 @@ export default async function AdminOrderDetailPage({
                 <span className="font-semibold">Nama:</span> {order.customerName}
               </p>
               <p>
-                <span className="font-semibold">WhatsApp:</span> {order.customerPhone}
+                <span className="font-semibold">WhatsApp:</span>{" "}
+                {order.customerPhone || <span className="text-zinc-400 italic">tidak diisi</span>}
               </p>
               {order.customerEmail && (
                 <p>
@@ -190,14 +199,20 @@ export default async function AdminOrderDetailPage({
                 </p>
               )}
             </div>
-            <a
-              href={`https://wa.me/${waNumber}?text=${waText}`}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-5 inline-flex w-full justify-center rounded-full bg-green-600 px-5 py-3 text-sm font-bold text-white hover:bg-green-700"
-            >
-              Hubungi via WhatsApp
-            </a>
+            {isPhoneValid ? (
+              <a
+                href={`https://wa.me/${waNumber}?text=${waText}`}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-5 inline-flex w-full justify-center rounded-full bg-green-600 px-5 py-3 text-sm font-bold text-white hover:bg-green-700"
+              >
+                Hubungi via WhatsApp
+              </a>
+            ) : (
+              <p className="mt-5 rounded-full border border-dashed border-zinc-200 px-5 py-3 text-center text-xs font-semibold text-zinc-400">
+                Nomor WhatsApp tidak valid
+              </p>
+            )}
           </section>
 
           {/* Pengiriman */}

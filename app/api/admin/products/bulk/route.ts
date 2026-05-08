@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
 
 type Update = { id: string; price?: number; stock?: number };
 
 const MAX_BULK = 200;
 
 export async function PATCH(request: NextRequest) {
+  const session = await getSession("ADMIN");
+  if (!session || session.role !== "ADMIN") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const body = await request.json();
   if (!Array.isArray(body?.updates)) {
     return NextResponse.json({ error: "Payload tidak valid" }, { status: 400 });
