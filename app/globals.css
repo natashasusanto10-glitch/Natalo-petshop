@@ -72,3 +72,10 @@ input, textarea, select, button {
 }
 .nat-toast-slide { animation: nat-toast-slide-in 0.25s ease-out; }
 
+
+/* ── Search overlay slide-up (used by components/SearchOverlay.tsx) ── */
+@keyframes nat-search-slide-in {
+  from { transform: translateY(8%); opacity: 0; }
+  to   { transform: translateY(0);  opacity: 1; }
+}
+.nat-search-slide { animation: nat-search-slide-in 0.22s ease-out; }
