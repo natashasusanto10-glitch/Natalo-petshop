@@ -48,7 +48,7 @@ export function PaymentProofUpload({ orderNumber }: { orderNumber: string }) {
         type="file"
         accept="image/jpeg,image/png,image/webp"
         required
-        className="block w-full text-sm text-zinc-500 file:mr-4 file:rounded-full file:border-0 file:bg-orange-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-orange-600 hover:file:bg-orange-100"
+        className="block w-full text-sm text-zinc-500 file:mr-4 file:rounded-full file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-blue-600 hover:file:bg-blue-100"
       />
       {status === "error" && (
         <p className="text-sm text-red-500">{errorMsg}</p>

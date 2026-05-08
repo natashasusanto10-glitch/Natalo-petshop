@@ -81,7 +81,7 @@ export function ProductCard({
             </div>
 
             <div className="mt-2">
-              <p className="text-base font-black leading-tight text-[#E8711F]">
+              <p className="text-base font-black leading-tight text-[#1E5FBF]">
                 {formatRupiah(displayPrice)}
               </p>
               {hasMarkdown && (
@@ -134,7 +134,7 @@ export function ProductCard({
             <div className="flex h-full items-center justify-center text-5xl text-gray-300">🐾</div>
           )}
           {memberPrice !== null && (
-            <span className="absolute left-3 top-3 rounded-full bg-orange-500 px-2 py-0.5 text-xs font-bold text-white">
+            <span className="absolute left-3 top-3 rounded-full bg-blue-500 px-2 py-0.5 text-xs font-bold text-white">
               Member
             </span>
           )}

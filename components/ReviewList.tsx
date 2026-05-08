@@ -31,7 +31,7 @@ export async function ReviewList({ productId }: { productId: string }) {
             {[1, 2, 3, 4, 5].map((s) => (
               <span
                 key={s}
-                className={parseFloat(avg ?? "0") >= s ? "text-orange-400" : "text-gray-200"}
+                className={parseFloat(avg ?? "0") >= s ? "text-blue-400" : "text-gray-200"}
               >
                 ★
               </span>
@@ -61,7 +61,7 @@ export async function ReviewList({ productId }: { productId: string }) {
                     {[1, 2, 3, 4, 5].map((s) => (
                       <span
                         key={s}
-                        className={review.rating >= s ? "text-orange-400" : "text-gray-200"}
+                        className={review.rating >= s ? "text-blue-400" : "text-gray-200"}
                       >
                         ★
                       </span>

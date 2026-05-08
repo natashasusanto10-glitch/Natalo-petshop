@@ -22,17 +22,17 @@ export default function BlogPage() {
             href={`/blog/${post.slug}`}
             className="group overflow-hidden rounded-2xl bg-white shadow-sm border border-gray-100 transition hover:shadow-md"
           >
-            <div className="flex h-44 items-center justify-center bg-orange-50 text-7xl">
+            <div className="flex h-44 items-center justify-center bg-blue-50 text-7xl">
               {post.emoji}
             </div>
             <div className="p-5">
               <div className="flex items-center gap-2">
-                <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold text-orange-500">
+                <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-500">
                   {post.tag}
                 </span>
                 <span className="text-xs text-gray-400">{post.readTime}</span>
               </div>
-              <h2 className="mt-3 font-bold leading-snug text-gray-900 group-hover:text-orange-500 line-clamp-2">
+              <h2 className="mt-3 font-bold leading-snug text-gray-900 group-hover:text-blue-500 line-clamp-2">
                 {post.title}
               </h2>
               <p className="mt-2 text-xs text-gray-500 line-clamp-2">{post.excerpt}</p>

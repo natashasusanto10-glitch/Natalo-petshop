@@ -79,7 +79,7 @@ export function PushSubscribe() {
   return (
     <button
       onClick={subscribe}
-      className="flex w-full items-center justify-center gap-2 rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm font-semibold text-orange-600 transition hover:bg-orange-100"
+      className="flex w-full items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-600 transition hover:bg-blue-100"
     >
       🔔 Aktifkan notifikasi update pesanan
     </button>

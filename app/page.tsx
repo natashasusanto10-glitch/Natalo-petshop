@@ -55,7 +55,7 @@ const SHORTCUT_ITEMS: {
   bg: string;
   color: string;
 }[] = [
-  { icon: "sparkles", label: "Produk Baru", href: "/products?sort=newest", bg: "bg-orange-50", color: "text-orange-600" },
+  { icon: "sparkles", label: "Produk Baru", href: "/products?sort=newest", bg: "bg-blue-50", color: "text-blue-600" },
   { icon: "medal", label: "Terlaris", href: "/products?sort=popular", bg: "bg-amber-50", color: "text-amber-600" },
   { icon: "voucher-pet", label: "Voucher", href: "/member", bg: "bg-pink-50", color: "text-pink-600" },
   { icon: "flame", label: "Trending", href: "/products?promo=1", bg: "bg-red-50", color: "text-red-600" },
@@ -330,7 +330,7 @@ export default async function HomePage() {
 
       {/* ── 4. HASHTAG CAMPAIGN + SHORTCUT GRID ── */}
       <section className="mt-6 px-4">
-        <p className="text-center text-sm font-black text-orange-600">#PetshopMedanTerpercaya</p>
+        <p className="text-center text-sm font-black text-blue-600">#PetshopMedanTerpercaya</p>
         <div className="mt-4 grid grid-cols-4 gap-2">
           {SHORTCUT_ITEMS.map((s) => (
             <Link
@@ -392,7 +392,7 @@ export default async function HomePage() {
                   </div>
                   <div className="p-2">
                     <p className="line-clamp-2 text-[11px] font-bold text-zinc-700">{p.name}</p>
-                    <p className="mt-1 text-sm font-black text-[#E8711F]">
+                    <p className="mt-1 text-sm font-black text-[#1E5FBF]">
                       {formatRupiah(finalPrice)}
                     </p>
                     <p className="text-[10px] text-zinc-400 line-through">
@@ -428,7 +428,7 @@ export default async function HomePage() {
                       className="object-cover"
                     />
                   ) : (
-                    <div className="flex h-full items-center justify-center text-orange-300">
+                    <div className="flex h-full items-center justify-center text-blue-300">
                       <HomeIcon name={categoryIconFor(cat.name)} className="h-12 w-12" />
                     </div>
                   )}
@@ -449,7 +449,7 @@ export default async function HomePage() {
       <section className="mt-6 px-4">
         <div className="flex items-end justify-between">
           <h2 className="text-lg font-black text-zinc-900">🏆 Produk Terlaris</h2>
-          <Link href="/products?sort=popular" className="text-xs font-bold text-orange-600">
+          <Link href="/products?sort=popular" className="text-xs font-bold text-blue-600">
             Lihat semua
           </Link>
         </div>
@@ -463,7 +463,7 @@ export default async function HomePage() {
                       ? "bg-amber-400 text-white"
                       : i === 1
                         ? "bg-zinc-300 text-zinc-700"
-                        : "bg-orange-300 text-white"
+                        : "bg-blue-300 text-white"
                   }`}
                   aria-label={`Peringkat ${i + 1}`}
                 >

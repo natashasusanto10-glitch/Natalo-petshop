@@ -26,7 +26,7 @@ export default async function MemberFavoritesPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-orange-500 px-4 pb-0 pt-4 md:pt-8">
+      <div className="bg-blue-500 px-4 pb-0 pt-4 md:pt-8">
         <div className="mx-auto max-w-4xl">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -34,7 +34,7 @@ export default async function MemberFavoritesPage() {
                 🐾
               </div>
               <div>
-                <p className="text-xs text-orange-100">Member resmi</p>
+                <p className="text-xs text-blue-100">Member resmi</p>
                 <p className="text-base font-black text-white md:text-lg">Halo, {session?.name}!</p>
               </div>
             </div>

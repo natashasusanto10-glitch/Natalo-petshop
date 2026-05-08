@@ -11,13 +11,13 @@ export default function NotFound() {
       <div className="mt-6 flex flex-wrap justify-center gap-3">
         <Link
           href="/"
-          className="rounded-full bg-orange-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-orange-600"
+          className="rounded-full bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
         >
           Kembali ke Beranda
         </Link>
         <Link
           href="/products"
-          className="rounded-full border border-gray-200 px-6 py-3 text-sm font-bold text-gray-700 transition hover:border-orange-300 hover:text-orange-500"
+          className="rounded-full border border-gray-200 px-6 py-3 text-sm font-bold text-gray-700 transition hover:border-blue-300 hover:text-blue-500"
         >
           Lihat Produk
         </Link>

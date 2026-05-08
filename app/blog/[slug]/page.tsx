@@ -26,18 +26,18 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ slu
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
-      <Link href="/blog" className="text-sm font-bold text-orange-500 hover:underline">
+      <Link href="/blog" className="text-sm font-bold text-blue-500 hover:underline">
         ← Kembali ke Tips & Artikel
       </Link>
 
       <article className="mt-6">
         {/* Header */}
-        <div className="flex h-32 items-center justify-center rounded-3xl bg-orange-50 text-8xl">
+        <div className="flex h-32 items-center justify-center rounded-3xl bg-blue-50 text-8xl">
           {post.emoji}
         </div>
 
         <div className="mt-6 flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold text-orange-500">
+          <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-500">
             {post.tag}
           </span>
           <span className="text-xs text-gray-400">{post.date}</span>
@@ -59,7 +59,7 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ slu
             }
             if (line.startsWith("> ")) {
               return (
-                <blockquote key={i} className="border-l-4 border-orange-400 bg-orange-50 pl-4 py-3 pr-3 rounded-r-xl text-sm italic text-orange-900">
+                <blockquote key={i} className="border-l-4 border-blue-400 bg-blue-50 pl-4 py-3 pr-3 rounded-r-xl text-sm italic text-blue-900">
                   {line.slice(2)}
                 </blockquote>
               );
@@ -77,12 +77,12 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ slu
       </article>
 
       {/* CTA */}
-      <div className="mt-10 rounded-3xl bg-orange-50 p-6 text-center">
+      <div className="mt-10 rounded-3xl bg-blue-50 p-6 text-center">
         <p className="font-bold text-gray-900">Butuh rekomendasi produk?</p>
         <p className="mt-1 text-sm text-gray-500">Tim kami siap membantu memilih produk terbaik untuk hewan peliharaanmu.</p>
         <Link
           href="/products"
-          className="mt-4 inline-flex items-center gap-2 rounded-full bg-orange-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-orange-600"
+          className="mt-4 inline-flex items-center gap-2 rounded-full bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
         >
           Lihat Produk
         </Link>
@@ -101,8 +101,8 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ slu
               >
                 <span className="text-3xl">{p.emoji}</span>
                 <div>
-                  <span className="text-xs font-semibold text-orange-500">{p.tag}</span>
-                  <p className="mt-1 text-sm font-bold text-gray-900 group-hover:text-orange-500 line-clamp-2">
+                  <span className="text-xs font-semibold text-blue-500">{p.tag}</span>
+                  <p className="mt-1 text-sm font-bold text-gray-900 group-hover:text-blue-500 line-clamp-2">
                     {p.title}
                   </p>
                 </div>

@@ -30,7 +30,7 @@ export default async function EditBrandPage({ params }: { params: Promise<{ id: 
 
   return (
     <div className="mx-auto max-w-lg px-4 py-6 lg:py-10">
-      <Link href="/admin/brands" className="text-sm font-semibold text-orange-500 hover:underline">
+      <Link href="/admin/brands" className="text-sm font-semibold text-blue-500 hover:underline">
         ← Kembali ke Brand
       </Link>
 
@@ -43,7 +43,7 @@ export default async function EditBrandPage({ params }: { params: Promise<{ id: 
             name="name"
             defaultValue={brand.name}
             required
-            className="mt-1.5 w-full rounded-2xl border border-zinc-200 px-4 py-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+            className="mt-1.5 w-full rounded-2xl border border-zinc-200 px-4 py-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
           />
         </div>
         <div>
@@ -51,13 +51,13 @@ export default async function EditBrandPage({ params }: { params: Promise<{ id: 
           <input
             name="slug"
             defaultValue={brand.slug}
-            className="mt-1.5 w-full rounded-2xl border border-zinc-200 px-4 py-3 text-sm text-zinc-500 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+            className="mt-1.5 w-full rounded-2xl border border-zinc-200 px-4 py-3 text-sm text-zinc-500 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
             placeholder="auto-generated dari nama"
           />
         </div>
         <button
           type="submit"
-          className="w-full rounded-full bg-orange-500 py-3 text-sm font-bold text-white transition hover:bg-orange-600"
+          className="w-full rounded-full bg-blue-500 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
         >
           Simpan Perubahan
         </button>

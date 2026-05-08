@@ -100,7 +100,7 @@ export default function MemberRegisterPage() {
               onChange={(e) => setName(e.target.value)}
               required
               disabled={otpSent}
-              className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+              className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
               placeholder="Contoh: Andi Setiawan"
             />
           </div>
@@ -113,7 +113,7 @@ export default function MemberRegisterPage() {
               onChange={(e) => setEmail(e.target.value)}
               required
               disabled={otpSent}
-              className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+              className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
               placeholder="Contoh: nama@email.com"
             />
           </div>
@@ -126,14 +126,14 @@ export default function MemberRegisterPage() {
               onChange={(e) => setPhone(e.target.value)}
               required
               disabled={otpSent}
-              className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+              className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
               placeholder="Contoh: 08123456789"
             />
           </div>
 
-          <div className="rounded-xl border border-orange-100 bg-orange-50/60 px-4 py-3 text-xs text-orange-800">
+          <div className="rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-xs text-blue-800">
             <p className="font-semibold">Kode OTP akan dikirim ke email <span className="underline">dan</span> WhatsApp kamu.</p>
-            <p className="mt-1 text-orange-700/80">Pastikan keduanya aktif — kamu cukup masukkan satu kode yang sama.</p>
+            <p className="mt-1 text-blue-700/80">Pastikan keduanya aktif — kamu cukup masukkan satu kode yang sama.</p>
           </div>
 
           <div>
@@ -144,7 +144,7 @@ export default function MemberRegisterPage() {
               required
               minLength={8}
               disabled={otpSent}
-              className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+              className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
               placeholder="Masukkan password (min. 8 karakter)"
             />
           </div>
@@ -160,7 +160,7 @@ export default function MemberRegisterPage() {
               className={`mt-1 block w-full rounded-xl border px-4 py-3 text-sm outline-none transition focus:ring-2 ${
                 confirmPassword && confirmPassword !== password
                   ? "border-red-300 focus:border-red-400 focus:ring-red-100"
-                  : "border-gray-200 focus:border-orange-400 focus:ring-orange-100"
+                  : "border-gray-200 focus:border-blue-400 focus:ring-blue-100"
               }`}
               placeholder="Ulangi password yang sama"
             />
@@ -170,7 +170,7 @@ export default function MemberRegisterPage() {
           </div>
 
           {otpSent && (
-            <div className="rounded-2xl border border-orange-100 bg-orange-50 p-4">
+            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
               <label className="block text-sm font-bold text-gray-900">Kode OTP</label>
               <input
                 type="text"
@@ -179,14 +179,14 @@ export default function MemberRegisterPage() {
                 value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
                 required
-                className="mt-2 block w-full rounded-xl border border-orange-200 bg-white px-4 py-3 text-center text-lg font-black tracking-[0.35em] outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                className="mt-2 block w-full rounded-xl border border-blue-200 bg-white px-4 py-3 text-center text-lg font-black tracking-[0.35em] outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                 placeholder="000000"
               />
               <p className="mt-2 text-xs text-gray-600">
                 Kode berlaku 10 menit. Cek inbox email atau WhatsApp kamu — gunakan salah satunya.
               </p>
               <div className="mt-3 flex flex-wrap gap-3 text-xs font-bold">
-                <button type="button" onClick={handleResendOtp} className="text-orange-700 hover:underline">
+                <button type="button" onClick={handleResendOtp} className="text-blue-700 hover:underline">
                   Kirim ulang OTP
                 </button>
                 <button type="button" onClick={unlockEdit} className="text-gray-600 hover:underline">
@@ -207,7 +207,7 @@ export default function MemberRegisterPage() {
           <button
             type="submit"
             disabled={loading || (!!confirmPassword && confirmPassword !== password)}
-            className="w-full rounded-full bg-orange-500 py-3 text-sm font-bold text-white transition hover:bg-orange-600 disabled:opacity-50"
+            className="w-full rounded-full bg-blue-500 py-3 text-sm font-bold text-white transition hover:bg-blue-600 disabled:opacity-50"
           >
             {loading ? "Memproses..." : otpSent ? "Verifikasi & Daftar" : "Kirim OTP"}
           </button>
@@ -225,7 +225,7 @@ export default function MemberRegisterPage() {
 
         <p className="mt-6 text-center text-sm text-gray-500">
           Sudah punya akun?{" "}
-          <Link href="/member/login" className="font-semibold text-orange-600 hover:underline">
+          <Link href="/member/login" className="font-semibold text-blue-600 hover:underline">
             Masuk
           </Link>
         </p>

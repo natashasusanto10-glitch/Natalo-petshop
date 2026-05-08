@@ -13,19 +13,21 @@
     "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
-/* ── Natalo brand palette — unified to Tailwind orange for site-wide consistency ── */
+/* ── Natalo brand palette — biru sesuai logo (Primary #1E5FBF, Dark #143E7E,
+   Light #4A90E2). Diselaraskan dgn banner brand yang user buat untuk
+   menghindari clash visual dengan Shopee orange. ── */
 @theme {
-  --color-natalo-50: #fff7ed;
-  --color-natalo-100: #ffedd5;
-  --color-natalo-200: #fed7aa;
-  --color-natalo-300: #fdba74;
-  --color-natalo-400: #fb923c;
-  --color-natalo-500: #f97316;
-  --color-natalo-600: #ea580c;
-  --color-natalo-700: #c2410c;
-  --color-natalo-800: #9a3412;
-  --color-natalo-900: #7c2d12;
-  --color-natalo-950: #431407;
+  --color-natalo-50: #eff6ff;
+  --color-natalo-100: #dbeafe;
+  --color-natalo-200: #bfdbfe;
+  --color-natalo-300: #93c5fd;
+  --color-natalo-400: #4a90e2;
+  --color-natalo-500: #1e5fbf;
+  --color-natalo-600: #1a52a8;
+  --color-natalo-700: #143e7e;
+  --color-natalo-800: #0f2d5c;
+  --color-natalo-900: #0a1f40;
+  --color-natalo-950: #050f20;
 }
 
 :root {

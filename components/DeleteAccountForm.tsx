@@ -64,7 +64,7 @@ export default function DeleteAccountForm() {
               <label
                 key={r.value}
                 className={`flex cursor-pointer items-start gap-3 rounded-2xl border bg-white p-4 transition ${
-                  active ? "border-orange-400 ring-1 ring-orange-100" : "border-zinc-200 hover:border-orange-200"
+                  active ? "border-blue-400 ring-1 ring-blue-100" : "border-zinc-200 hover:border-blue-200"
                 }`}
               >
                 <input
@@ -78,10 +78,10 @@ export default function DeleteAccountForm() {
                 <span
                   aria-hidden
                   className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
-                    active ? "border-orange-500" : "border-zinc-300"
+                    active ? "border-blue-500" : "border-zinc-300"
                   }`}
                 >
-                  {active && <span className="h-2.5 w-2.5 rounded-full bg-orange-500" />}
+                  {active && <span className="h-2.5 w-2.5 rounded-full bg-blue-500" />}
                 </span>
                 <span className="flex-1">
                   <span className="block text-sm font-bold text-zinc-900">{r.label}</span>

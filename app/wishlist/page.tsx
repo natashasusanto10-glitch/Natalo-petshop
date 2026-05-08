@@ -67,7 +67,7 @@ export default function WishlistPage() {
           <p className="mt-4 font-semibold text-gray-500">Wishlist kamu masih kosong.</p>
           <Link
             href="/products"
-            className="mt-5 inline-flex rounded-full bg-orange-500 px-7 py-3 text-sm font-bold text-white transition hover:bg-orange-600"
+            className="mt-5 inline-flex rounded-full bg-blue-500 px-7 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
           >
             Jelajahi Produk
           </Link>
@@ -105,14 +105,14 @@ export default function WishlistPage() {
                 <div className="mt-auto grid grid-cols-2 gap-2 px-4 pb-4">
                   <Link
                     href={`/products/${item.slug}`}
-                    className="flex items-center justify-center rounded-full border border-gray-200 py-2.5 text-xs font-bold text-gray-700 transition hover:border-orange-400 hover:text-orange-500"
+                    className="flex items-center justify-center rounded-full border border-gray-200 py-2.5 text-xs font-bold text-gray-700 transition hover:border-blue-400 hover:text-blue-500"
                   >
                     Lihat Produk
                   </Link>
                   <button
                     onClick={() => handleAddToCart(item)}
                     className={`flex items-center justify-center rounded-full py-2.5 text-xs font-bold text-white transition ${
-                      addedIds.has(item.id) ? "bg-green-500" : "bg-orange-500 hover:bg-orange-600"
+                      addedIds.has(item.id) ? "bg-green-500" : "bg-blue-500 hover:bg-blue-600"
                     }`}
                   >
                     {addedIds.has(item.id) ? "✓ Ditambahkan" : "+ Keranjang"}
@@ -126,7 +126,7 @@ export default function WishlistPage() {
           <div className="mt-8 flex justify-end">
             <Link
               href="/cart"
-              className="rounded-full bg-orange-500 px-7 py-3 text-sm font-bold text-white transition hover:bg-orange-600"
+              className="rounded-full bg-blue-500 px-7 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
             >
               Lihat Keranjang →
             </Link>

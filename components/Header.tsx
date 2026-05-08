@@ -110,8 +110,8 @@ export function Header() {
             <Link
               key={link.href}
               href={link.href}
-              className={`transition hover:text-orange-500 ${
-                pathname === link.href ? "font-semibold text-orange-500" : ""
+              className={`transition hover:text-blue-500 ${
+                pathname === link.href ? "font-semibold text-blue-500" : ""
               }`}
             >
               {link.label}
@@ -149,11 +149,11 @@ export function Header() {
               <button
                 type="button"
                 onClick={() => setMemberMenuOpen((v) => !v)}
-                className="flex h-10 items-center gap-2 rounded-full border border-orange-100 bg-orange-50 px-2 text-sm font-semibold text-orange-700 transition hover:border-orange-200 hover:bg-orange-100 md:px-3"
+                className="flex h-10 items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-2 text-sm font-semibold text-blue-700 transition hover:border-blue-200 hover:bg-blue-100 md:px-3"
                 aria-expanded={memberMenuOpen}
                 aria-haspopup="menu"
               >
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-orange-500 text-xs font-black text-white">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-500 text-xs font-black text-white">
                   {member.name.charAt(0).toUpperCase()}
                 </span>
                 <span className="hidden max-w-[100px] truncate xs:inline">
@@ -197,7 +197,7 @@ export function Header() {
                         <Link
                           href={item.href}
                           onClick={() => setMemberMenuOpen(false)}
-                          className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 transition hover:bg-orange-50 hover:text-orange-600"
+                          className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 transition hover:bg-blue-50 hover:text-blue-600"
                         >
                           <span className="text-base">{item.icon}</span>
                           <span>{item.label}</span>
@@ -221,7 +221,7 @@ export function Header() {
           ) : (
             <Link
               href="/member/login"
-              className="rounded-full bg-orange-500 px-4 py-2 text-xs font-bold text-white transition hover:bg-orange-600 md:px-5 md:text-sm"
+              className="rounded-full bg-blue-500 px-4 py-2 text-xs font-bold text-white transition hover:bg-blue-600 md:px-5 md:text-sm"
             >
               Masuk
             </Link>
@@ -271,7 +271,7 @@ export function Header() {
                 href={link.href}
                 className={`flex items-center rounded-xl px-4 py-3 text-sm font-medium transition ${
                   pathname === link.href
-                    ? "bg-orange-50 font-semibold text-orange-500"
+                    ? "bg-blue-50 font-semibold text-blue-500"
                     : "text-gray-700 hover:bg-gray-50"
                 }`}
               >
@@ -281,7 +281,7 @@ export function Header() {
             {!member?.name && (
               <Link
                 href="/member/register"
-                className="mt-2 flex w-full items-center justify-center rounded-full border border-orange-300 py-3 text-sm font-bold text-orange-600 transition hover:bg-orange-50"
+                className="mt-2 flex w-full items-center justify-center rounded-full border border-blue-300 py-3 text-sm font-bold text-blue-600 transition hover:bg-blue-50"
               >
                 Daftar Member Baru
               </Link>

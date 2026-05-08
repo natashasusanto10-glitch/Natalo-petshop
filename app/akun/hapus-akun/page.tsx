@@ -83,8 +83,8 @@ export default async function DeleteAccountPage() {
           </ul>
         </div>
 
-        <div className="mt-4 rounded-2xl border border-orange-100 bg-orange-50 p-4 text-[13px] leading-relaxed text-orange-900">
-          <p className="font-bold text-orange-800">💡 Daripada hapus, mau coba dulu?</p>
+        <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-[13px] leading-relaxed text-blue-900">
+          <p className="font-bold text-blue-800">💡 Daripada hapus, mau coba dulu?</p>
           <ul className="mt-2 space-y-1">
             <li>
               <span className="font-semibold">Logout</span> dan kembali kapan saja.

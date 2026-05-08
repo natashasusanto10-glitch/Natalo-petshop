@@ -130,13 +130,13 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             onClick={onNavigate}
             className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
               isActive(item.href, item.exact)
-                ? "bg-orange-50 text-orange-600 font-semibold"
+                ? "bg-blue-50 text-blue-600 font-semibold"
                 : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
             }`}
           >
             <span
               className={
-                isActive(item.href, item.exact) ? "text-orange-500" : "text-zinc-400"
+                isActive(item.href, item.exact) ? "text-blue-500" : "text-zinc-400"
               }
             >
               {item.icon}

@@ -209,7 +209,7 @@ export default async function ProductDetailPage({
               /* ── Produk sederhana (tanpa varian) ─────────────── */
               <>
                 <div id="beli" className="mt-5 scroll-mt-20 rounded-2xl bg-gray-50 p-5">
-                  <p className="text-3xl font-black text-orange-600">{formatRupiah(price)}</p>
+                  <p className="text-3xl font-black text-blue-600">{formatRupiah(price)}</p>
                   {hasDiscount && (
                     <div className="mt-2 flex flex-wrap items-center gap-3">
                       <p className="text-sm text-gray-400 line-through">

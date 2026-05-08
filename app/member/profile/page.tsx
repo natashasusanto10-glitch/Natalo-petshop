@@ -33,20 +33,20 @@ export default async function MemberProfilePage() {
     <div className="mx-auto max-w-2xl px-4 py-4 md:py-10">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-black text-gray-900 md:text-2xl">Profil Saya</h1>
-        <Link href="/member" className="text-sm font-semibold text-orange-500 hover:underline">
+        <Link href="/member" className="text-sm font-semibold text-blue-500 hover:underline">
           ← Kembali
         </Link>
       </div>
 
       {/* Avatar + Loyalty Points */}
-      <div className="mt-4 overflow-hidden rounded-2xl bg-orange-500 text-white md:mt-6">
+      <div className="mt-4 overflow-hidden rounded-2xl bg-blue-500 text-white md:mt-6">
         <div className="flex items-center gap-3 p-4 md:gap-4 md:p-6">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-2xl font-black md:h-16 md:w-16 md:text-3xl">
             {user.name.charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-lg font-black">{user.name}</p>
-            <p className="text-sm text-orange-100">
+            <p className="text-sm text-blue-100">
               Member sejak{" "}
               {new Date(user.createdAt).toLocaleDateString("id-ID", {
                 month: "long",
@@ -62,7 +62,7 @@ export default async function MemberProfilePage() {
           <div className="flex items-center gap-2">
             <span className="text-xl">⭐</span>
             <div>
-              <p className="text-xs text-orange-100">Loyalty Poin</p>
+              <p className="text-xs text-blue-100">Loyalty Poin</p>
               <p className="text-base font-black">{points.toLocaleString("id-ID")} poin</p>
             </div>
           </div>
@@ -92,7 +92,7 @@ export default async function MemberProfilePage() {
           </div>
           <Link
             href="/akun/alamat"
-            className="rounded-full bg-orange-500 px-4 py-2 text-sm font-bold text-white transition hover:bg-orange-600"
+            className="rounded-full bg-blue-500 px-4 py-2 text-sm font-bold text-white transition hover:bg-blue-600"
           >
             Kelola →
           </Link>

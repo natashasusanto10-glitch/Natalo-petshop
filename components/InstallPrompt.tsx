@@ -39,7 +39,7 @@ export function InstallPrompt() {
   }
 
   return (
-    <div className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-sm rounded-2xl border border-orange-200 bg-white p-4 shadow-lg">
+    <div className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-sm rounded-2xl border border-blue-200 bg-white p-4 shadow-lg">
       <p className="font-semibold text-zinc-900">Pasang aplikasi</p>
       <p className="mt-1 text-sm text-zinc-500">
         Tambahkan ke layar utama untuk akses cepat & notifikasi pesanan.
@@ -47,7 +47,7 @@ export function InstallPrompt() {
       <div className="mt-3 flex gap-2">
         <button
           onClick={handleInstall}
-          className="flex-1 rounded-full bg-orange-500 px-4 py-2 text-sm font-bold text-white hover:bg-orange-600"
+          className="flex-1 rounded-full bg-blue-500 px-4 py-2 text-sm font-bold text-white hover:bg-blue-600"
         >
           Pasang
         </button>

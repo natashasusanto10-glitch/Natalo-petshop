@@ -65,7 +65,7 @@ export default async function AdminReportsPage() {
       <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <div className="rounded-2xl border border-zinc-100 bg-white p-4">
           <p className="text-xs font-semibold text-zinc-500">Pendapatan Bulan Ini</p>
-          <p className="mt-2 text-lg font-black text-orange-600">{formatRupiah(thisMonthRevenue)}</p>
+          <p className="mt-2 text-lg font-black text-blue-600">{formatRupiah(thisMonthRevenue)}</p>
           {revenueGrowth !== null && (
             <p className={`mt-1 text-xs font-semibold ${parseFloat(revenueGrowth) >= 0 ? "text-emerald-600" : "text-red-500"}`}>
               {parseFloat(revenueGrowth) >= 0 ? "▲" : "▼"} {Math.abs(parseFloat(revenueGrowth))}% vs bulan lalu
@@ -96,7 +96,7 @@ export default async function AdminReportsPage() {
                 <div key={item.name} className="flex items-center gap-3 rounded-xl bg-zinc-50 px-4 py-3">
                   <span className="w-6 shrink-0 text-center text-xs font-black text-zinc-400">{i + 1}</span>
                   <p className="flex-1 truncate text-sm font-semibold text-zinc-900">{item.name}</p>
-                  <span className="shrink-0 rounded-full bg-orange-100 px-2.5 py-1 text-xs font-bold text-orange-700">
+                  <span className="shrink-0 rounded-full bg-blue-100 px-2.5 py-1 text-xs font-bold text-blue-700">
                     {item._sum.quantity ?? 0}x
                   </span>
                 </div>

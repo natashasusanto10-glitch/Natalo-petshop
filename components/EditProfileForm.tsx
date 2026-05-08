@@ -82,7 +82,7 @@ export function EditProfileForm({ initialName, initialPhone, initialBirthDate, e
       {/* Nama */}
       <div>
         <label className="block text-sm font-semibold text-gray-800">
-          Nama <span className="text-orange-500">*</span>
+          Nama <span className="text-blue-500">*</span>
         </label>
         <input
           type="text"
@@ -90,7 +90,7 @@ export function EditProfileForm({ initialName, initialPhone, initialBirthDate, e
           value={form.name}
           onChange={(e) => update("name", e.target.value)}
           placeholder="Nama lengkap"
-          className="mt-2 block w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+          className="mt-2 block w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
         />
       </div>
 
@@ -102,7 +102,7 @@ export function EditProfileForm({ initialName, initialPhone, initialBirthDate, e
           value={form.phone}
           onChange={(e) => update("phone", e.target.value)}
           placeholder="08xxxxxxxxxx atau +628xxxxxxxxxx"
-          className="mt-2 block w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+          className="mt-2 block w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
         />
       </div>
 
@@ -114,7 +114,7 @@ export function EditProfileForm({ initialName, initialPhone, initialBirthDate, e
           value={form.birthDate}
           onChange={(e) => update("birthDate", e.target.value)}
           max={new Date().toISOString().split("T")[0]}
-          className="mt-2 block w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+          className="mt-2 block w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
         />
         <p className="mt-1 text-xs text-gray-400">
           Isi tanggal lahir untuk mendapatkan voucher diskon di hari ulang tahunmu 🎂
@@ -124,7 +124,7 @@ export function EditProfileForm({ initialName, initialPhone, initialBirthDate, e
       <button
         type="submit"
         disabled={submitting}
-        className="w-full rounded-full bg-orange-500 py-3 text-sm font-bold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+        className="w-full rounded-full bg-blue-500 py-3 text-sm font-bold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {submitting ? "Menyimpan..." : "Simpan Perubahan"}
       </button>

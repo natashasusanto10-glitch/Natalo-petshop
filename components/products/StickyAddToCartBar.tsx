@@ -67,13 +67,13 @@ export function StickyAddToCartBar({ initialState }: Props) {
               ? "Mulai dari"
               : "Harga"}
         </p>
-        <p className="truncate text-base font-black text-orange-600">
+        <p className="truncate text-base font-black text-blue-600">
           {state.outOfStock ? "Stok habis" : formatRupiah(state.price)}
         </p>
       </div>
       <span
         className={`flex h-12 shrink-0 items-center justify-center rounded-full px-6 text-sm font-bold text-white ${
-          disabled ? "bg-gray-300" : "bg-orange-500"
+          disabled ? "bg-gray-300" : "bg-blue-500"
         }`}
       >
         {label}

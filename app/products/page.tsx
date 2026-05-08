@@ -68,8 +68,8 @@ export default async function ProductsPage({
             href="/products"
             className={`shrink-0 rounded-full border px-4 py-2 text-sm font-medium transition ${
               !kategori
-                ? "border-orange-500 bg-orange-500 text-white"
-                : "border-gray-200 bg-white text-gray-600 hover:border-orange-400 hover:text-orange-600"
+                ? "border-blue-500 bg-blue-500 text-white"
+                : "border-gray-200 bg-white text-gray-600 hover:border-blue-400 hover:text-blue-600"
             }`}
           >
             Semua
@@ -80,8 +80,8 @@ export default async function ProductsPage({
               href={`/products?kategori=${cat.slug}`}
               className={`shrink-0 rounded-full border px-4 py-2 text-sm font-medium transition ${
                 kategori === cat.slug
-                  ? "border-orange-500 bg-orange-500 text-white"
-                  : "border-gray-200 bg-white text-gray-600 hover:border-orange-400 hover:text-orange-600"
+                  ? "border-blue-500 bg-blue-500 text-white"
+                  : "border-gray-200 bg-white text-gray-600 hover:border-blue-400 hover:text-blue-600"
               }`}
             >
               {cat.name}
@@ -121,7 +121,7 @@ export default async function ProductsPage({
           <p className="mt-4 text-gray-500">Belum ada produk yang sesuai dengan filter.</p>
           <Link
             href="/products"
-            className="mt-4 inline-flex rounded-full bg-orange-500 px-6 py-3 text-sm font-bold text-white"
+            className="mt-4 inline-flex rounded-full bg-blue-500 px-6 py-3 text-sm font-bold text-white"
           >
             Lihat semua produk
           </Link>
@@ -170,7 +170,7 @@ function Pagination({
       {page > 1 && (
         <Link
           href={buildHref(page - 1)}
-          className="rounded-full border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:border-orange-400"
+          className="rounded-full border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:border-blue-400"
         >
           ← Prev
         </Link>
@@ -186,8 +186,8 @@ function Pagination({
             href={buildHref(v)}
             className={`min-w-10 rounded-full px-3 py-2 text-center text-sm font-medium transition ${
               v === page
-                ? "bg-orange-500 text-white"
-                : "border border-gray-200 text-gray-600 hover:border-orange-400"
+                ? "bg-blue-500 text-white"
+                : "border border-gray-200 text-gray-600 hover:border-blue-400"
             }`}
           >
             {v}
@@ -197,7 +197,7 @@ function Pagination({
       {page < totalPages && (
         <Link
           href={buildHref(page + 1)}
-          className="rounded-full border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:border-orange-400"
+          className="rounded-full border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:border-blue-400"
         >
           Next →
         </Link>

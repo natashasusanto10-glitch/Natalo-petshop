@@ -69,7 +69,7 @@ export default function CartPage() {
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-gray-900 leading-snug">{item.name}</p>
                     {item.variantLabel && (
-                      <p className="mt-0.5 text-xs text-orange-600">{item.variantLabel}</p>
+                      <p className="mt-0.5 text-xs text-blue-600">{item.variantLabel}</p>
                     )}
                     <p className="mt-0.5 text-sm text-gray-400">{formatRupiah(item.price)} / item</p>
                   </div>
@@ -79,7 +79,7 @@ export default function CartPage() {
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => updateQty(key, item.quantity - 1)}
-                      className="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 text-lg text-gray-600 transition hover:border-orange-400 hover:text-orange-500"
+                      className="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 text-lg text-gray-600 transition hover:border-blue-400 hover:text-blue-500"
                       aria-label="Kurangi"
                     >
                       −
@@ -88,7 +88,7 @@ export default function CartPage() {
                     <button
                       onClick={() => updateQty(key, item.quantity + 1)}
                       disabled={item.stock != null && item.quantity >= item.stock}
-                      className="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 text-lg text-gray-600 transition hover:border-orange-400 hover:text-orange-500 disabled:cursor-not-allowed disabled:opacity-40"
+                      className="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 text-lg text-gray-600 transition hover:border-blue-400 hover:text-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
                       aria-label="Tambah"
                     >
                       +
@@ -122,13 +122,13 @@ export default function CartPage() {
             <p className="mt-2 text-xs text-gray-400">Ongkir dihitung saat checkout.</p>
             <Link
               href="/checkout"
-              className="mt-5 flex w-full items-center justify-center rounded-full bg-orange-500 py-4 text-sm font-bold text-white transition hover:bg-orange-600"
+              className="mt-5 flex w-full items-center justify-center rounded-full bg-blue-500 py-4 text-sm font-bold text-white transition hover:bg-blue-600"
             >
               Lanjut Checkout →
             </Link>
             <Link
               href="/products"
-              className="mt-3 flex w-full items-center justify-center rounded-full border border-gray-200 py-3 text-sm font-semibold text-gray-600 transition hover:border-orange-300 hover:text-orange-600"
+              className="mt-3 flex w-full items-center justify-center rounded-full border border-gray-200 py-3 text-sm font-semibold text-gray-600 transition hover:border-blue-300 hover:text-blue-600"
             >
               Tambah produk lagi
             </Link>
@@ -146,7 +146,7 @@ export default function CartPage() {
             </div>
             <Link
               href="/checkout"
-              className="flex h-12 shrink-0 items-center justify-center rounded-full bg-orange-500 px-6 text-sm font-bold text-white active:opacity-90"
+              className="flex h-12 shrink-0 items-center justify-center rounded-full bg-blue-500 px-6 text-sm font-bold text-white active:opacity-90"
             >
               Checkout →
             </Link>

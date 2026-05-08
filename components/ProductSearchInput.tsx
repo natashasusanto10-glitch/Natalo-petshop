@@ -48,7 +48,7 @@ export function ProductSearchInput({ defaultValue = "" }: { defaultValue?: strin
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder="Cari produk..."
-          className="w-full rounded-2xl border border-gray-200 bg-white py-3 pl-10 pr-10 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+          className="w-full rounded-2xl border border-gray-200 bg-white py-3 pl-10 pr-10 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
         />
         {value && (
           <button
@@ -65,7 +65,7 @@ export function ProductSearchInput({ defaultValue = "" }: { defaultValue?: strin
       </div>
       <button
         type="submit"
-        className="rounded-2xl bg-orange-500 px-5 py-3 text-sm font-bold text-white transition hover:bg-orange-600"
+        className="rounded-2xl bg-blue-500 px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
       >
         Cari
       </button>

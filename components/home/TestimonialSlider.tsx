@@ -35,7 +35,7 @@ export function TestimonialSlider({ testimonials, intervalMs = 5000 }: Props) {
     <div>
       <div className="rounded-2xl border border-[#f5f5f5] bg-white p-5 shadow-sm">
         <div className="flex items-start gap-3">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-orange-50 text-2xl">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-50 text-2xl">
             {t.avatarEmoji}
           </div>
           <div className="min-w-0 flex-1">
@@ -62,7 +62,7 @@ export function TestimonialSlider({ testimonials, intervalMs = 5000 }: Props) {
             onClick={() => setActive(i)}
             aria-label={`Testimoni ${i + 1}`}
             className={`h-1.5 rounded-full transition-all ${
-              i === active ? "w-6 bg-orange-500" : "w-1.5 bg-zinc-300"
+              i === active ? "w-6 bg-blue-500" : "w-1.5 bg-zinc-300"
             }`}
           />
         ))}

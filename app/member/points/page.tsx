@@ -51,27 +51,27 @@ export default async function MemberPointsPage() {
         <h1 className="text-xl font-black text-gray-900 md:text-2xl">Loyalty Poin</h1>
         <Link
           href="/member"
-          className="text-sm font-semibold text-orange-500 hover:underline"
+          className="text-sm font-semibold text-blue-500 hover:underline"
         >
           ← Kembali
         </Link>
       </div>
 
       {/* Total balance card */}
-      <div className="mt-4 overflow-hidden rounded-2xl bg-gradient-to-br from-orange-500 to-orange-600 p-5 text-white shadow-sm md:mt-6 md:p-6">
-        <p className="text-xs uppercase tracking-wider text-orange-100">Total Saldo Poin</p>
+      <div className="mt-4 overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 p-5 text-white shadow-sm md:mt-6 md:p-6">
+        <p className="text-xs uppercase tracking-wider text-blue-100">Total Saldo Poin</p>
         <p className="mt-2 text-4xl font-black md:text-5xl">{total.toLocaleString("id-ID")}</p>
-        <p className="mt-1 text-xs text-orange-100">
+        <p className="mt-1 text-xs text-blue-100">
           1 poin setiap Rp20.000 belanja · 1 poin = Rp100 voucher
         </p>
 
         <div className="mt-4 grid grid-cols-2 gap-3 border-t border-white/20 pt-4 text-sm">
           <div>
-            <p className="text-xs text-orange-100">Total Diperoleh</p>
+            <p className="text-xs text-blue-100">Total Diperoleh</p>
             <p className="mt-1 font-black">+{earned.toLocaleString("id-ID")}</p>
           </div>
           <div>
-            <p className="text-xs text-orange-100">Total Ditukar</p>
+            <p className="text-xs text-blue-100">Total Ditukar</p>
             <p className="mt-1 font-black">{redeemed.toLocaleString("id-ID")}</p>
           </div>
         </div>
@@ -81,15 +81,15 @@ export default async function MemberPointsPage() {
       {total >= 50 && (
         <Link
           href="/member"
-          className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-orange-200 bg-orange-50 p-4 transition hover:border-orange-300"
+          className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 transition hover:border-blue-300"
         >
           <div>
-            <p className="text-sm font-bold text-orange-700">🎁 Tukar jadi voucher</p>
-            <p className="mt-0.5 text-xs text-orange-600">
+            <p className="text-sm font-bold text-blue-700">🎁 Tukar jadi voucher</p>
+            <p className="mt-0.5 text-xs text-blue-600">
               Min. 50 poin (= Rp5.000 diskon). Klaim di halaman member.
             </p>
           </div>
-          <span className="text-sm font-bold text-orange-700">Tukar →</span>
+          <span className="text-sm font-bold text-blue-700">Tukar →</span>
         </Link>
       )}
 
@@ -138,7 +138,7 @@ export default async function MemberPointsPage() {
             </p>
             <Link
               href="/products"
-              className="mt-4 inline-flex rounded-full bg-orange-500 px-5 py-2 text-sm font-bold text-white transition hover:bg-orange-600"
+              className="mt-4 inline-flex rounded-full bg-blue-500 px-5 py-2 text-sm font-bold text-white transition hover:bg-blue-600"
             >
               Belanja sekarang
             </Link>

@@ -63,7 +63,7 @@ export function Footer() {
                   target="_blank"
                   rel="noreferrer"
                   aria-label={s.label}
-                  className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition hover:border-orange-500 hover:text-orange-600"
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition hover:border-blue-500 hover:text-blue-600"
                 >
                   {s.icon}
                 </a>
@@ -75,10 +75,10 @@ export function Footer() {
           <div>
             <p className="font-semibold text-gray-900">Toko</p>
             <ul className="mt-4 space-y-2 text-sm text-gray-500">
-              <li><Link href="/products" className="transition hover:text-orange-500">Semua Produk</Link></li>
-              <li><Link href="/wishlist" className="transition hover:text-orange-500">Wishlist</Link></li>
-              <li><Link href="/blog" className="transition hover:text-orange-500">Tips & Artikel</Link></li>
-              <li><Link href="/member" className="transition hover:text-orange-500">Program Member</Link></li>
+              <li><Link href="/products" className="transition hover:text-blue-500">Semua Produk</Link></li>
+              <li><Link href="/wishlist" className="transition hover:text-blue-500">Wishlist</Link></li>
+              <li><Link href="/blog" className="transition hover:text-blue-500">Tips & Artikel</Link></li>
+              <li><Link href="/member" className="transition hover:text-blue-500">Program Member</Link></li>
             </ul>
           </div>
 
@@ -86,8 +86,8 @@ export function Footer() {
           <div>
             <p className="font-semibold text-gray-900">Layanan</p>
             <ul className="mt-4 space-y-2 text-sm text-gray-500">
-              <li><Link href="/order-status" className="transition hover:text-orange-500">Cek Status Pesanan</Link></li>
-              <li><Link href="/member/orders" className="transition hover:text-orange-500">Riwayat Pesanan</Link></li>
+              <li><Link href="/order-status" className="transition hover:text-blue-500">Cek Status Pesanan</Link></li>
+              <li><Link href="/member/orders" className="transition hover:text-blue-500">Riwayat Pesanan</Link></li>
               <li>
                 <a
                   href={`https://wa.me/${wa.replace("+", "")}`}
@@ -98,7 +98,7 @@ export function Footer() {
                   Hubungi Kami
                 </a>
               </li>
-              <li><Link href="/member/login" className="transition hover:text-orange-500">Login Member</Link></li>
+              <li><Link href="/member/login" className="transition hover:text-blue-500">Login Member</Link></li>
             </ul>
           </div>
 

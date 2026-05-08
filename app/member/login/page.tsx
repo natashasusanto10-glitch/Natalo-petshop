@@ -73,7 +73,7 @@ export default function MemberLoginPage() {
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
               required
-              className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+              className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
               placeholder="email@kamu.com atau 08123..."
             />
           </div>
@@ -84,7 +84,7 @@ export default function MemberLoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+              className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
               placeholder="••••••••"
             />
           </div>
@@ -96,7 +96,7 @@ export default function MemberLoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-full bg-orange-500 py-3 text-sm font-bold text-white transition hover:bg-orange-600 disabled:opacity-50"
+            className="w-full rounded-full bg-blue-500 py-3 text-sm font-bold text-white transition hover:bg-blue-600 disabled:opacity-50"
           >
             {loading ? "Masuk..." : "Masuk"}
           </button>
@@ -104,12 +104,12 @@ export default function MemberLoginPage() {
 
         <p className="mt-6 text-center text-sm text-gray-500">
           Belum punya akun?{" "}
-          <Link href="/member/register" className="font-semibold text-orange-500 hover:underline">
+          <Link href="/member/register" className="font-semibold text-blue-500 hover:underline">
             Daftar gratis
           </Link>
         </p>
         <p className="mt-3 text-center text-sm text-gray-500">
-          <Link href="/member/forgot-password" className="font-semibold text-orange-500 hover:underline">
+          <Link href="/member/forgot-password" className="font-semibold text-blue-500 hover:underline">
             Lupa password?
           </Link>
         </p>

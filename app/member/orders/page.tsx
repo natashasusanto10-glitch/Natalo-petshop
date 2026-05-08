@@ -15,7 +15,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const STATUS_COLOR: Record<string, string> = {
-  PENDING: "bg-orange-100 text-orange-600",
+  PENDING: "bg-blue-100 text-blue-600",
   PAID: "bg-blue-100 text-blue-600",
   PROCESSING: "bg-blue-100 text-blue-600",
   SHIPPED: "bg-indigo-100 text-indigo-600",
@@ -39,7 +39,7 @@ export default async function MemberOrdersPage() {
     <div className="mx-auto max-w-4xl px-4 py-4 md:py-10">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-black text-gray-900 md:text-2xl">Riwayat Pesanan</h1>
-        <Link href="/member" className="text-sm font-semibold text-orange-500 hover:underline">
+        <Link href="/member" className="text-sm font-semibold text-blue-500 hover:underline">
           ← Kembali
         </Link>
       </div>
@@ -82,7 +82,7 @@ export default async function MemberOrdersPage() {
                   <ReorderButton items={order.items} />
                   <Link
                     href={`/order-status?order=${order.orderNumber}`}
-                    className="rounded-full border border-gray-200 px-4 py-2 text-xs font-bold text-gray-700 transition hover:border-orange-400 hover:text-orange-500"
+                    className="rounded-full border border-gray-200 px-4 py-2 text-xs font-bold text-gray-700 transition hover:border-blue-400 hover:text-blue-500"
                   >
                     Detail →
                   </Link>
@@ -96,7 +96,7 @@ export default async function MemberOrdersPage() {
             <p className="mt-4 font-semibold text-gray-500">Belum ada pesanan.</p>
             <Link
               href="/products"
-              className="mt-4 inline-flex rounded-full bg-orange-500 px-6 py-2.5 text-sm font-bold text-white transition hover:bg-orange-600"
+              className="mt-4 inline-flex rounded-full bg-blue-500 px-6 py-2.5 text-sm font-bold text-white transition hover:bg-blue-600"
             >
               Mulai belanja
             </Link>

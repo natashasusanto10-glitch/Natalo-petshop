@@ -101,14 +101,14 @@ export default async function MemberPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-4 md:py-10">
-      <div className="overflow-hidden rounded-3xl bg-orange-500 p-5 text-white md:p-8">
+      <div className="overflow-hidden rounded-3xl bg-blue-500 p-5 text-white md:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-center gap-3 md:gap-4">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-2xl font-black md:h-16 md:w-16 md:text-3xl">
               {session?.name?.charAt(0)?.toUpperCase() ?? "N"}
             </div>
             <div>
-              <p className="text-xs text-orange-100 md:text-sm">Member resmi</p>
+              <p className="text-xs text-blue-100 md:text-sm">Member resmi</p>
               <h1 className="mt-0.5 text-xl font-black md:text-2xl">
                 Halo, {session?.name ?? "Member"}!
               </h1>
@@ -136,10 +136,10 @@ export default async function MemberPage() {
         </div>
       )}
 
-      <div className="mt-6 rounded-2xl border border-orange-100 bg-orange-50 p-5">
+      <div className="mt-6 rounded-2xl border border-blue-100 bg-blue-50 p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold text-orange-700">⭐ Loyalty Poin</p>
+            <p className="text-sm font-semibold text-blue-700">⭐ Loyalty Poin</p>
             <p className="mt-2 text-3xl font-black text-gray-900">
               {points.toLocaleString("id-ID")}
             </p>
@@ -149,7 +149,7 @@ export default async function MemberPage() {
           </div>
           <Link
             href="/member/points"
-            className="shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-orange-600 ring-1 ring-orange-200 transition hover:ring-orange-300"
+            className="shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-blue-600 ring-1 ring-blue-200 transition hover:ring-blue-300"
           >
             History →
           </Link>
@@ -167,9 +167,9 @@ export default async function MemberPage() {
           <Link
             key={item.href}
             href={item.href}
-            className="flex flex-col items-center gap-2 rounded-2xl border border-gray-100 bg-white p-4 text-center shadow-sm transition hover:border-orange-200 hover:shadow-md"
+            className="flex flex-col items-center gap-2 rounded-2xl border border-gray-100 bg-white p-4 text-center shadow-sm transition hover:border-blue-200 hover:shadow-md"
           >
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-orange-50 text-sm font-black text-orange-600">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-sm font-black text-blue-600">
               {item.icon}
             </span>
             <span className="text-xs font-semibold text-gray-700">
@@ -180,10 +180,10 @@ export default async function MemberPage() {
       </div>
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
-        <div className="rounded-2xl border border-orange-100 bg-orange-50 p-5">
+        <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-orange-700">
+              <p className="text-sm font-semibold text-blue-700">
                 Voucher Member
               </p>
               <p className="mt-2 font-bold text-gray-900">
@@ -192,7 +192,7 @@ export default async function MemberPage() {
             </div>
             <Link
               href="/checkout"
-              className="rounded-full bg-white px-3 py-1 text-xs font-bold text-orange-600 ring-1 ring-orange-100 hover:ring-orange-200"
+              className="rounded-full bg-white px-3 py-1 text-xs font-bold text-blue-600 ring-1 ring-blue-100 hover:ring-blue-200"
             >
               Pakai
             </Link>
@@ -203,11 +203,11 @@ export default async function MemberPage() {
               {vouchers.map((voucher) => (
                 <div
                   key={voucher.id}
-                  className="rounded-2xl bg-white p-3 ring-1 ring-orange-100"
+                  className="rounded-2xl bg-white p-3 ring-1 ring-blue-100"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="truncate font-mono text-sm font-black text-orange-600">
+                      <p className="truncate font-mono text-sm font-black text-blue-600">
                         {voucher.code}
                       </p>
                       <p className="mt-1 text-xs font-semibold text-gray-700">
@@ -217,7 +217,7 @@ export default async function MemberPage() {
                           : ""}
                       </p>
                     </div>
-                    <span className="shrink-0 rounded-full bg-orange-100 px-2 py-1 text-[11px] font-bold text-orange-700">
+                    <span className="shrink-0 rounded-full bg-blue-100 px-2 py-1 text-[11px] font-bold text-blue-700">
                       Aktif
                     </span>
                   </div>
@@ -239,8 +239,8 @@ export default async function MemberPage() {
             </p>
           )}
         </div>
-        <div className="rounded-2xl border border-orange-100 bg-orange-50 p-5">
-          <p className="text-sm font-semibold text-orange-700">Notifikasi Order</p>
+        <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5">
+          <p className="text-sm font-semibold text-blue-700">Notifikasi Order</p>
           <p className="mt-2 font-bold text-gray-900">Pantau pesananmu</p>
           <p className="mt-1 text-sm text-gray-500">
             Detail pesanan lengkap tersedia di menu Pesanan Saya.

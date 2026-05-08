@@ -27,7 +27,7 @@ function NavIcon({ name, active }: { name: NavIconName; active: boolean }) {
       <>
         <path
           d="M5 14 L16 5 L27 14 V25 a2 2 0 0 1-2 2 H7 a2 2 0 0 1-2-2 Z"
-          fill={active ? "#FFEDD5" : "transparent"}
+          fill={active ? "#DBEAFE" : "transparent"}
         />
         <path d="M5 14 L16 5 L27 14 V25 a2 2 0 0 1-2 2 H7 a2 2 0 0 1-2-2 Z" />
         <ellipse cx="13" cy="18.5" rx="1.4" ry="1.8" fill="currentColor" stroke="none" />
@@ -66,7 +66,7 @@ function NavIcon({ name, active }: { name: NavIconName; active: boolean }) {
       <span
         aria-hidden
         className={`absolute inset-0 rounded-xl transition-colors ${
-          active ? "bg-[#FFF7ED]" : "bg-transparent"
+          active ? "bg-[#EFF6FF]" : "bg-transparent"
         }`}
       />
       <svg
@@ -117,18 +117,18 @@ export function BottomNavigation() {
               key={item.href}
               href={item.href}
               className={`relative flex min-h-12 flex-col items-center justify-center gap-0.5 px-1 py-1 text-[10px] font-bold transition active:opacity-90 ${
-                active ? "text-[#E8711F]" : "text-[#9ca3af]"
+                active ? "text-[#1E5FBF]" : "text-[#9ca3af]"
               }`}
             >
               <NavIcon name={item.icon} active={active} />
               <span>{item.label}</span>
               <span
                 className={`mt-0.5 h-[3px] w-4 rounded-full transition-colors ${
-                  active ? "bg-[#E8711F]" : "bg-transparent"
+                  active ? "bg-[#1E5FBF]" : "bg-transparent"
                 }`}
               />
               {item.href === "/cart" && cartCount > 0 && (
-                <span className="absolute right-[23%] top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-white bg-[#E8711F] px-1 text-[9px] font-black leading-none text-white">
+                <span className="absolute right-[23%] top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-white bg-[#1E5FBF] px-1 text-[9px] font-black leading-none text-white">
                   {cartCount > 99 ? "99+" : cartCount}
                 </span>
               )}

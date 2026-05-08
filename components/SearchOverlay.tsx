@@ -21,7 +21,7 @@ const TRENDING_PRODUCTS: { q: string; emoji: string; bg: string; title: string; 
   {
     q: "royal canin persian",
     emoji: "🐾",
-    bg: "linear-gradient(135deg,#fef3c7,#fed7aa)",
+    bg: "linear-gradient(135deg,#fef3c7,#bfdbfe)",
     title: "Royal Canin Persian Adult 2 kg",
     reason: "+248% pencarian · 30% off",
   },
@@ -144,7 +144,7 @@ export function SearchOverlay({ open, onClose }: Props) {
             <path d="m15 6-6 6 6 6" />
           </svg>
         </button>
-        <div className="flex flex-1 items-center gap-2 rounded-full border border-orange-300 bg-white px-4 py-2.5 shadow-sm focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-100">
+        <div className="flex flex-1 items-center gap-2 rounded-full border border-blue-300 bg-white px-4 py-2.5 shadow-sm focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100">
           <svg
             viewBox="0 0 24 24"
             fill="none"
@@ -191,7 +191,7 @@ export function SearchOverlay({ open, onClose }: Props) {
               <button
                 type="button"
                 onClick={clearAllHistory}
-                className="text-xs font-bold text-orange-600 hover:underline"
+                className="text-xs font-bold text-blue-600 hover:underline"
               >
                 Hapus semua
               </button>
@@ -231,9 +231,9 @@ export function SearchOverlay({ open, onClose }: Props) {
                 key={p.q}
                 type="button"
                 onClick={() => commit(p.q)}
-                className="inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-bold text-orange-900 hover:border-orange-300 hover:bg-orange-100"
+                className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-900 hover:border-blue-300 hover:bg-blue-100"
               >
-                <span className="font-black text-orange-600">#{p.rank}</span>
+                <span className="font-black text-blue-600">#{p.rank}</span>
                 <span>{p.q}</span>
               </button>
             ))}
@@ -248,7 +248,7 @@ export function SearchOverlay({ open, onClose }: Props) {
                 <button
                   type="button"
                   onClick={() => commit(t.q)}
-                  className="flex w-full items-center gap-3 rounded-2xl border border-zinc-100 bg-white p-3 text-left hover:border-orange-200 hover:bg-orange-50/50"
+                  className="flex w-full items-center gap-3 rounded-2xl border border-zinc-100 bg-white p-3 text-left hover:border-blue-200 hover:bg-blue-50/50"
                 >
                   <span
                     aria-hidden

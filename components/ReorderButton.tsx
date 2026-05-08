@@ -88,8 +88,8 @@ export function ReorderButton(props: Props) {
 
   const isGhost = "variant" in props && props.variant === "ghost";
   const baseClass = isGhost
-    ? "rounded-full border border-orange-200 px-3 py-1.5 text-xs font-bold text-orange-600 hover:bg-orange-50"
-    : "flex items-center gap-1.5 rounded-full border border-orange-300 px-4 py-2 text-xs font-bold text-orange-600 transition hover:bg-orange-50";
+    ? "rounded-full border border-blue-200 px-3 py-1.5 text-xs font-bold text-blue-600 hover:bg-blue-50"
+    : "flex items-center gap-1.5 rounded-full border border-blue-300 px-4 py-2 text-xs font-bold text-blue-600 transition hover:bg-blue-50";
 
   return (
     <button
