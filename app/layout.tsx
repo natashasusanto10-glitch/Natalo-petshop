@@ -7,6 +7,7 @@ import { InstallPrompt } from "@/components/InstallPrompt";
 import { StoreOnly } from "@/components/StoreOnly";
 import { BottomNavigation } from "@/components/BottomNavigation";
 import { WhatsAppFloat } from "@/components/WhatsAppFloat";
+import { ToastProvider } from "@/components/Toast";
 
 const brand = process.env.NEXT_PUBLIC_BRAND_NAME || "Natalo Petshop";
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -104,6 +105,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <BottomNavigation />
           <InstallPrompt />
         </StoreOnly>
+        <ToastProvider />
       </body>
     </html>
   );

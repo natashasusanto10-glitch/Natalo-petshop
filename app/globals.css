@@ -64,3 +64,11 @@ input, textarea, select, button {
     display: none !important;
   }
 }
+
+/* ── Toast slide-up (used by components/Toast.tsx) ── */
+@keyframes nat-toast-slide-in {
+  from { transform: translateY(20px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.nat-toast-slide { animation: nat-toast-slide-in 0.25s ease-out; }
+

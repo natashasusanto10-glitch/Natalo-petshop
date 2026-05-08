@@ -247,6 +247,15 @@ export default async function MemberPage() {
           </p>
         </div>
       </div>
+
+      <div className="mt-8 border-t border-zinc-100 pt-6 text-center">
+        <Link
+          href="/akun/hapus-akun"
+          className="text-xs font-semibold text-red-600 hover:underline"
+        >
+          🗑️ Hapus akun secara permanen
+        </Link>
+      </div>
     </div>
   );
 }
