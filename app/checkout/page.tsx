@@ -114,6 +114,7 @@ export default function CheckoutPage() {
     Array<{ code: string; description: string | null; discount: number }>
   >([]);
   const [showVoucherList, setShowVoucherList] = useState(false);
+  const [showAllCheckoutItems, setShowAllCheckoutItems] = useState(false);
 
   useEffect(() => {
     const cartItems = loadCart();
@@ -236,6 +237,9 @@ export default function CheckoutPage() {
   const shippingCost = selectedRate?.price ?? 0;
   const discount = voucherApplied?.discount ?? 0;
   const total = Math.max(subtotal + shippingCost - discount, 0);
+  const totalItemCount = items.reduce((sum, item) => sum + item.quantity, 0);
+  const visibleCheckoutItems = showAllCheckoutItems ? items : items.slice(0, 4);
+  const hiddenCheckoutItemCount = Math.max(items.length - visibleCheckoutItems.length, 0);
   const selectedAddress = useMemo(
     () => savedAddresses.find((addr) => addr.id === selectedAddressId) ?? null,
     [savedAddresses, selectedAddressId]
@@ -265,9 +269,9 @@ export default function CheckoutPage() {
         ? "Pilih Pengiriman Dulu"
         : !payment
           ? "Pilih Pembayaran Dulu"
-          : "Bayar Sekarang";
+          : "Buat Pesanan";
 
-  // ── Auto-apply voucher milik user ──────────────────────────────
+  // Auto-apply voucher milik user.
   // Fetch user vouchers tiap subtotal berubah. Auto-apply voucher TERBAIK
   // hanya kalau user belum pasang voucher manual.
   useEffect(() => {
@@ -310,7 +314,7 @@ export default function CheckoutPage() {
               });
             }
           } else {
-            // Tidak valid lagi (subtotal turun di bawah minimumOrder, dll) — lepas
+            // Tidak valid lagi (subtotal turun di bawah minimumOrder, dll) - lepas
             setVoucherApplied(null);
             setForm((f) => ({ ...f, voucherCode: "" }));
           }
@@ -713,7 +717,7 @@ export default function CheckoutPage() {
                           </span>
                         )}
                         {selectedAddressId === addr.id && (
-                          <span className="text-xs font-bold text-zinc-500">✓ Dipilih</span>
+                          <span className="text-xs font-bold text-zinc-500">Dipilih</span>
                         )}
                       </div>
                       <p className="mt-1 text-zinc-600">{addr.recipientName} · {addr.phone}</p>
@@ -808,14 +812,14 @@ export default function CheckoutPage() {
                     type="text"
                     value={addressLabel}
                     onChange={(e) => setAddressLabel(e.target.value)}
-                    placeholder="Label alamat (Rumah, Kantor, dll) — opsional"
+                    placeholder="Label alamat (Rumah, Kantor, dll) - opsional"
                     className="mt-2 block w-full rounded-2xl border border-zinc-300 px-4 py-2.5 text-sm outline-none focus:border-zinc-600"
                   />
                 )}
               </div>
             )}
 
-            {/* Pengiriman: tombol → bottom sheet */}
+            {/* Pengiriman: tombol ke bottom sheet */}
             <div>
               <label className="block text-sm font-medium text-zinc-700">
                 Metode Pengiriman
@@ -824,9 +828,9 @@ export default function CheckoutPage() {
                 <div className="mt-1 flex items-center justify-between gap-3 rounded-2xl border border-natalo-300 bg-natalo-50 p-4">
                   <div className="min-w-0">
                     <p className="font-bold text-zinc-950">
-                      🚚 {selectedRate.courier_name}{" "}
+                      {selectedRate.courier_name}{" "}
                       <span className="text-sm font-normal text-zinc-600">
-                        — {selectedRate.courier_service_name}
+                        - {selectedRate.courier_service_name}
                       </span>
                     </p>
                     <p className="mt-0.5 text-xs text-zinc-500">
@@ -850,13 +854,13 @@ export default function CheckoutPage() {
                 >
                   <span className="font-medium text-zinc-700">
                     {ratesLoading
-                      ? "🔄 Memuat ongkir..."
+                      ? "Memuat ongkir..."
                       : !addressValid
                       ? "Pilih atau lengkapi alamat dulu"
-                      : "🚚 Pilih metode pengiriman →"}
+                      : "Pilih metode pengiriman"}
                   </span>
                   {!ratesLoading && addressValid && (
-                    <span className="text-zinc-400">›</span>
+                    <span className="text-zinc-400">&gt;</span>
                   )}
                 </button>
               )}
@@ -864,6 +868,68 @@ export default function CheckoutPage() {
                 <p className="mt-2 text-xs text-red-500">{shippingError}</p>
               )}
             </div>
+
+            {/* Ringkasan produk */}
+            <section className="rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-black text-zinc-950">Ringkasan Produk</p>
+                  <p className="mt-0.5 text-xs text-zinc-500">
+                    {totalItemCount} item · subtotal {formatRupiah(subtotal)}
+                  </p>
+                </div>
+                {items.length > 4 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllCheckoutItems((value) => !value)}
+                    className="shrink-0 text-xs font-black text-natalo-600 hover:underline"
+                  >
+                    {showAllCheckoutItems ? "Sembunyikan" : "Lihat semua item"}
+                  </button>
+                )}
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {items.length > 0 ? (
+                  visibleCheckoutItems.map((item) => (
+                    <div key={cartKey(item)} className="flex items-center gap-3">
+                      <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-zinc-100">
+                        <Image
+                          src={item.imageUrl || "/logo.png"}
+                          alt={item.name}
+                          fill
+                          sizes="56px"
+                          className={item.imageUrl ? "object-cover" : "object-contain p-2"}
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="line-clamp-2 text-sm font-bold text-zinc-950">{item.name}</p>
+                        <p className="mt-0.5 text-xs font-semibold text-zinc-500">
+                          Qty {item.quantity}
+                        </p>
+                      </div>
+                      <p className="shrink-0 text-sm font-black text-zinc-950">
+                        {formatRupiah(item.price * item.quantity)}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="rounded-2xl bg-zinc-50 px-4 py-3 text-sm font-semibold text-zinc-500">
+                    Keranjang kosong.
+                  </p>
+                )}
+              </div>
+
+              {!showAllCheckoutItems && hiddenCheckoutItemCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllCheckoutItems(true)}
+                  className="mt-4 w-full rounded-2xl border border-zinc-200 px-4 py-3 text-sm font-black text-zinc-700 transition hover:border-natalo-300 hover:text-natalo-700"
+                >
+                  Lihat semua item ({hiddenCheckoutItemCount} lagi)
+                </button>
+              )}
+            </section>
 
             {/* Voucher */}
             <div>
@@ -875,7 +941,7 @@ export default function CheckoutPage() {
                     onClick={() => setShowVoucherList((v) => !v)}
                     className="text-xs font-bold text-natalo-600 hover:underline"
                   >
-                    {showVoucherList ? "Tutup" : `🎟️ Voucher saya (${availableVouchers.length})`}
+                    {showVoucherList ? "Tutup" : `Voucher saya (${availableVouchers.length})`}
                   </button>
                 )}
               </div>
@@ -886,16 +952,16 @@ export default function CheckoutPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <p className="truncate text-sm font-bold text-green-700">
-                          ✅ {voucherApplied.code}
+                          {voucherApplied.code}
                         </p>
                         {voucherApplied.autoApplied && (
                           <span className="shrink-0 rounded-full bg-natalo-100 px-2 py-0.5 text-[10px] font-bold text-natalo-800">
-                            ⚡ Otomatis
+                            Otomatis
                           </span>
                         )}
                       </div>
                       <p className="mt-0.5 text-xs text-green-600">
-                        {voucherApplied.description} — hemat{" "}
+                        {voucherApplied.description} - hemat{" "}
                         {formatRupiah(voucherApplied.discount)}
                       </p>
                     </div>
@@ -970,7 +1036,7 @@ export default function CheckoutPage() {
                             -{formatRupiah(v.discount)}
                           </p>
                           {isCurrent && (
-                            <p className="text-[10px] font-bold text-green-600">✓ Dipakai</p>
+                            <p className="text-[10px] font-bold text-green-600">Dipakai</p>
                           )}
                         </div>
                       </button>
@@ -1023,37 +1089,9 @@ export default function CheckoutPage() {
         </div>
 
         <aside className="h-fit rounded-3xl bg-zinc-50 p-5">
-          <p className="font-bold text-zinc-950">Ringkasan</p>
+          <p className="font-bold text-zinc-950">Rincian Pembayaran</p>
 
           <div className="mt-4 space-y-2 text-sm">
-            {items.length > 0 ? (
-              items.map((item) => (
-                <div key={item.productId} className="flex items-center justify-between gap-3">
-                  <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-zinc-100">
-                    {item.imageUrl ? (
-                      <Image
-                        src={item.imageUrl}
-                        alt={item.name}
-                        fill
-                        sizes="48px"
-                        className="object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-xl">ðŸ¾</div>
-                    )}
-                  </div>
-                  <span className="text-zinc-700">
-                    {item.name} × {item.quantity}
-                  </span>
-                  <span>{formatRupiah(item.price * item.quantity)}</span>
-                </div>
-              ))
-            ) : (
-              <p className="text-zinc-500">Keranjang kosong.</p>
-            )}
-          </div>
-
-          <div className="mt-5 space-y-2 border-t pt-4 text-sm">
             <div className="flex justify-between text-zinc-600">
               <span>Subtotal produk</span>
               <span>{formatRupiah(subtotal)}</span>
@@ -1116,7 +1154,7 @@ export default function CheckoutPage() {
           <div className="flex items-center gap-3">
             <div className="min-w-0 flex-1">
               <p className="text-xs text-zinc-500">
-                {selectedRate ? "Total" : "Subtotal"}
+                Total
               </p>
               <p className="truncate text-base font-black text-zinc-950">
                 {selectedRate ? formatRupiah(total) : `${formatRupiah(subtotal)} + ongkir`}

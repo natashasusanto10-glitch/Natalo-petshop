@@ -1,48 +1,38 @@
-export type TrustItemIcon = "star" | "users" | "calendar" | "bolt";
+export type TrustItemIcon = "bolt" | "chat" | "gift" | "paw" | "shield" | "star" | "truck" | "users" | "calendar";
 
 export type TrustItem = {
   icon: TrustItemIcon;
   iconClass: string;
   text: string;
   href?: string;
+  external?: boolean;
   showLinkIcon?: boolean;
 };
 
 export const trustItems: TrustItem[] = [
   {
-    icon: "star",
-    iconClass: "text-amber-500",
-    text: "5.0 di Tokopedia",
-    href: "https://tk.tokopedia.com/ZS9tktJbt/",
-    showLinkIcon: true,
-  },
-  {
-    icon: "star",
-    iconClass: "text-amber-500",
-    text: "4.9 Shopee Natalo",
-    href: "https://shopee.co.id/natalopetshop",
-    showLinkIcon: true,
-  },
-  {
-    icon: "star",
-    iconClass: "text-amber-500",
-    text: "4.9 Shopee Sinar",
-    href: "https://shopee.co.id/fuzitapetshop",
-    showLinkIcon: true,
-  },
-  {
-    icon: "users",
+    icon: "truck",
     iconClass: "text-natalo-700",
-    text: "58.000+ pelanggan",
+    text: "Gratis Ongkir Area Medan",
   },
   {
-    icon: "calendar",
+    icon: "shield",
+    iconClass: "text-emerald-600",
+    text: "Produk Original 100%",
+  },
+  {
+    icon: "chat",
     iconClass: "text-natalo-700",
-    text: "Est. 2019",
+    text: "Konsultasi via WhatsApp",
   },
   {
-    icon: "bolt",
+    icon: "paw",
+    iconClass: "text-natalo-700",
+    text: "Petshop Medan Terpercaya",
+  },
+  {
+    icon: "gift",
     iconClass: "text-amber-500",
-    text: "Instant 3 jam",
+    text: "Banyak Promo Setiap Hari",
   },
 ];

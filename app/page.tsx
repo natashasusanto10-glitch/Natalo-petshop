@@ -10,6 +10,7 @@ import { FlashSaleCountdown } from "@/components/home/FlashSaleCountdown";
 import { HomeSearchBar } from "@/components/home/HomeSearchBar";
 import HeroBanner from "@/components/home/HeroBanner";
 import TrustMarquee from "@/components/home/TrustMarquee";
+import type { TrustItem } from "@/data/trustItems";
 
 const brand = process.env.NEXT_PUBLIC_BRAND_NAME || "Natalo Petshop";
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -359,6 +360,37 @@ export default async function HomePage() {
     process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ||
     "";
   const waUrl = `https://wa.me/${wa.replace("+", "")}?text=${encodeURIComponent("Halo Natalo Petshop, saya mau tanya...")}`;
+  const trustItems: TrustItem[] = [
+    {
+      icon: "truck",
+      iconClass: "text-natalo-700",
+      text: "Gratis Ongkir Area Medan",
+    },
+    {
+      icon: "shield",
+      iconClass: "text-emerald-600",
+      text: "Produk Original 100%",
+    },
+    {
+      icon: "chat",
+      iconClass: "text-natalo-700",
+      text: "Konsultasi via WhatsApp",
+      href: waUrl,
+      external: true,
+      showLinkIcon: true,
+    },
+    {
+      icon: "paw",
+      iconClass: "text-natalo-700",
+      text: "Petshop Medan Terpercaya",
+      href: "/tentang-kami",
+    },
+    {
+      icon: "gift",
+      iconClass: "text-amber-500",
+      text: "Banyak Promo Setiap Hari",
+    },
+  ];
 
   const [products, popularCategories] = await Promise.all([
     getProducts({ take: 24 }),
@@ -395,7 +427,7 @@ export default async function HomePage() {
       {/* ── 1. SEARCH BAR + CS ICON (mobile sticky) ── */}
       <HomeSearchBar waUrl={waUrl} />
 
-      <TrustMarquee />
+      <TrustMarquee items={trustItems} />
 
       {/* ── 2. BANNER CAROUSEL UTAMA ── */}
       <section className="pt-3">
@@ -404,8 +436,7 @@ export default async function HomePage() {
 
       {/* ── 4. HASHTAG CAMPAIGN + SHORTCUT GRID ── */}
       <section className="mt-6 px-4">
-        <p className="text-center text-sm font-black text-blue-600">#PetshopMedanTerpercaya</p>
-        <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
           {SHORTCUT_ITEMS.map((s) => {
             const content = (
               <>
