@@ -23,8 +23,12 @@ export function WhatsAppFloat() {
       setTooltipDismissed(true);
       return;
     }
-    const t = setTimeout(() => setShowTooltip(true), 3000);
-    return () => clearTimeout(t);
+    const showTimer = setTimeout(() => setShowTooltip(true), 2500);
+    const hideTimer = setTimeout(() => setShowTooltip(false), 7000);
+    return () => {
+      clearTimeout(showTimer);
+      clearTimeout(hideTimer);
+    };
   }, [pathname]);
 
   function dismissTooltip() {
@@ -53,19 +57,19 @@ export function WhatsAppFloat() {
   return (
     <div className="nat-whatsapp-float fixed z-40 flex flex-col items-end gap-2">
       {showTooltip && !tooltipDismissed && (
-        <div className="relative max-w-[220px] rounded-2xl bg-white px-3 py-2.5 shadow-lg ring-1 ring-zinc-200 animate-in slide-in-from-bottom-2 fade-in duration-300">
+        <div className="relative max-w-[170px] rounded-xl bg-white px-2.5 py-1.5 shadow-md ring-1 ring-zinc-200 animate-in slide-in-from-bottom-2 fade-in duration-300">
           <button
             type="button"
             onClick={dismissTooltip}
             aria-label="Tutup"
-            className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-zinc-200 text-[10px] text-zinc-600 hover:bg-zinc-300"
+            className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-zinc-200 text-[9px] text-zinc-600 hover:bg-zinc-300"
           >
             x
           </button>
-          <p className="text-xs font-bold text-zinc-950">Ada yang bisa kami bantu?</p>
-          <p className="mt-1 text-xs text-zinc-500">Chat via WhatsApp admin Natalo.</p>
+          <p className="text-[11px] font-bold leading-tight text-zinc-950">Butuh bantuan?</p>
+          <p className="mt-0.5 text-[10px] leading-tight text-zinc-500">Chat admin Natalo</p>
           <div
-            className="absolute -bottom-2 right-5 h-3 w-3 rotate-45 bg-white"
+            className="absolute -bottom-1.5 right-4 h-2.5 w-2.5 rotate-45 bg-white"
             style={{ boxShadow: "1px 1px 0 0 rgb(228, 228, 231)" }}
           />
         </div>

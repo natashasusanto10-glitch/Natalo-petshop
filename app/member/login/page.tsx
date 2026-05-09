@@ -7,12 +7,6 @@ import Link from "next/link";
 import { PasswordInput } from "@/components/PasswordInput";
 import { dispatchAuthUpdated, mergeFromServer } from "@/lib/cart";
 
-const BENEFITS = [
-  "Simpan alamat pengiriman",
-  "Cek riwayat pesanan",
-  "Dapat voucher member",
-];
-
 function safeRedirect(value: string | null) {
   if (!value || !value.startsWith("/") || value.startsWith("//")) return "/member";
   return value;
@@ -99,18 +93,6 @@ export default function MemberLoginPage() {
           <p className="mx-auto mt-2 max-w-xs text-sm font-medium leading-relaxed text-gray-500">
             Belanja kebutuhan hewan jadi lebih mudah, cepat, dan hemat.
           </p>
-
-          <div className="mt-4 flex flex-wrap justify-center gap-2">
-            {BENEFITS.map((benefit) => (
-              <span
-                key={benefit}
-                className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-blue-700 shadow-sm ring-1 ring-blue-100"
-              >
-                <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-                {benefit}
-              </span>
-            ))}
-          </div>
         </section>
 
         {notice && (
@@ -143,7 +125,7 @@ export default function MemberLoginPage() {
               autoComplete="username"
               inputMode="email"
               className="mt-1.5 block w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-              placeholder="email@kamu.com atau 08123..."
+              placeholder="Masukan Email / No Hp"
             />
           </div>
 

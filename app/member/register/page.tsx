@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { OperatingHoursCard } from "@/components/OperatingHours";
 import { PasswordInput } from "@/components/PasswordInput";
@@ -86,8 +87,19 @@ export default function MemberRegisterPage() {
     <div className="flex min-h-screen items-start justify-center bg-gray-50 px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <span className="text-4xl">🐾</span>
-          <h1 className="mt-3 text-2xl font-black text-gray-900">Daftar Member</h1>
+          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[26px] bg-white p-2 shadow-sm ring-1 ring-blue-100">
+            <Image
+              src="/icons/icon-192x192.png"
+              alt="NL Petshop"
+              width={64}
+              height={64}
+              priority
+              className="h-16 w-16 rounded-2xl"
+            />
+          </div>
+          <h1 className="mt-4 text-2xl font-black tracking-tight text-gray-950">
+            Daftar Member Natalo
+          </h1>
           <p className="mt-1 text-sm text-gray-500">Gratis! Dapatkan harga khusus dan benefit member.</p>
         </div>
 
