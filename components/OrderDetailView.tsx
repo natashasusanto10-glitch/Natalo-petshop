@@ -10,8 +10,8 @@ import { PushSubscribe } from "@/components/PushSubscribe";
 const BANK_ACCOUNTS: Record<string, { bankName: string; accountNumber: string; accountName: string }> = {
   BCA_NATASHA: {
     bankName: "BCA",
-    accountNumber: "1234567890",
-    accountName: "Natasha Lim",
+    accountNumber: "8280277046",
+    accountName: "NATASHA",
   },
   BCA_NL_PET: {
     bankName: "BCA",

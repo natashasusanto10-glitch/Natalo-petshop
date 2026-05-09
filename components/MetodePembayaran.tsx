@@ -17,7 +17,7 @@ const MANUAL_BANKS = [
     code: "BCA_NATASHA" as const,
     bank: "BCA",
     number: "8280277046",
-    accountName: "Natasha",
+    accountName: "NATASHA",
     color: "bg-natalo-500",
   },
   {
