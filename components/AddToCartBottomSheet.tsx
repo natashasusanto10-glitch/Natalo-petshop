@@ -3,8 +3,8 @@
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { BottomSheet } from "@/components/BottomSheet";
-import { natToast } from "@/components/Toast";
-import { addItemToCart } from "@/lib/cart-actions";
+import { cartSuccessToast } from "@/components/Toast";
+import { addItemToCart, showAddToCartErrorToast } from "@/lib/cart-actions";
 import type { CartItem } from "@/lib/cart";
 import { formatRupiah } from "@/lib/format";
 
@@ -63,11 +63,14 @@ export function AddToCartBottomSheet({ open, item, onClose, onAdded }: Props) {
       { showToast: false },
     );
 
-    if (!result.ok) return;
+    if (!result.ok) {
+      showAddToCartErrorToast();
+      return;
+    }
 
     onClose();
     onAdded?.();
-    natToast("Dimasukkan ke Keranjang", { kind: "ok" });
+    cartSuccessToast();
   }
 
   return (

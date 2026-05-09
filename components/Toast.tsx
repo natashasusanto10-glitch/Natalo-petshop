@@ -25,6 +25,9 @@ type ToastEventDetail = {
 
 const EVENT = "nat-toast";
 const DURATION_MS = 5000;
+const CART_SUCCESS_EVENT = "nat-cart-success-toast";
+const CART_SUCCESS_DURATION_MS = 1800;
+const CART_SUCCESS_EXIT_MS = 240;
 
 export function natToast(
   msg: string,
@@ -38,9 +41,21 @@ export function natToast(
   );
 }
 
+export function cartSuccessToast(msg = "Dimasukkan ke Keranjang") {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent<{ msg: string }>(CART_SUCCESS_EVENT, {
+      detail: { msg },
+    })
+  );
+}
+
 export function ToastProvider() {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [cartSuccess, setCartSuccess] = useState<{ msg: string; visible: boolean } | null>(null);
   const timersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+  const cartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cartUnmountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     function dismiss(id: number) {
@@ -67,27 +82,75 @@ export function ToastProvider() {
       timersRef.current.set(id, timer);
     }
 
+    function handleCartSuccess(e: Event) {
+      const detail = (e as CustomEvent<{ msg: string }>).detail;
+      if (!detail?.msg) return;
+
+      if (cartTimerRef.current) clearTimeout(cartTimerRef.current);
+      if (cartUnmountTimerRef.current) clearTimeout(cartUnmountTimerRef.current);
+
+      setCartSuccess({ msg: detail.msg, visible: false });
+      requestAnimationFrame(() => {
+        setCartSuccess({ msg: detail.msg, visible: true });
+      });
+
+      cartTimerRef.current = setTimeout(() => {
+        setCartSuccess((prev) => (prev ? { ...prev, visible: false } : prev));
+        cartUnmountTimerRef.current = setTimeout(() => {
+          setCartSuccess(null);
+        }, CART_SUCCESS_EXIT_MS);
+      }, CART_SUCCESS_DURATION_MS);
+    }
+
     window.addEventListener(EVENT, handle);
+    window.addEventListener(CART_SUCCESS_EVENT, handleCartSuccess);
     const timers = timersRef.current;
     return () => {
       window.removeEventListener(EVENT, handle);
+      window.removeEventListener(CART_SUCCESS_EVENT, handleCartSuccess);
       timers.forEach((t) => clearTimeout(t));
       timers.clear();
+      if (cartTimerRef.current) clearTimeout(cartTimerRef.current);
+      if (cartUnmountTimerRef.current) clearTimeout(cartUnmountTimerRef.current);
     };
   }, []);
 
-  if (toasts.length === 0) return null;
-
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-[88px] z-[70] flex flex-col items-center gap-2 px-4 md:bottom-6">
-      {toasts.map((t) => (
-        <ToastItem
-          key={t.id}
-          toast={t}
-          onDismiss={() => setToasts((prev) => prev.filter((x) => x.id !== t.id))}
-        />
-      ))}
-    </div>
+    <>
+      {toasts.length > 0 && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-[88px] z-[70] flex flex-col items-center gap-2 px-4 md:bottom-6">
+          {toasts.map((t) => (
+            <ToastItem
+              key={t.id}
+              toast={t}
+              onDismiss={() => setToasts((prev) => prev.filter((x) => x.id !== t.id))}
+            />
+          ))}
+        </div>
+      )}
+
+      {cartSuccess && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={`cart-success-toast ${cartSuccess.visible ? "is-show" : ""}`}
+        >
+          <span className="cart-success-toast__icon" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M20 6 9 17l-5-5" />
+            </svg>
+          </span>
+          <span className="cart-success-toast__text">{cartSuccess.msg}</span>
+        </div>
+      )}
+    </>
   );
 }
 

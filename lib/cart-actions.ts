@@ -1,9 +1,9 @@
 "use client";
 
-import { natToast } from "@/components/Toast";
+import { cartSuccessToast, natToast } from "@/components/Toast";
 import { loadCart, saveCart, type CartItem } from "@/lib/cart";
 
-const SUCCESS_MESSAGE = "Produk berhasil dimasukkan ke keranjang";
+const SUCCESS_MESSAGE = "Dimasukkan ke Keranjang";
 const ERROR_MESSAGE = "Produk gagal dimasukkan ke keranjang, silakan coba lagi";
 
 type AddCartOptions = {
@@ -24,18 +24,7 @@ function withSubtotal(item: CartItem): CartItem {
 }
 
 export function showAddToCartSuccessToast(message = SUCCESS_MESSAGE) {
-  natToast(message, {
-    kind: "ok",
-    actions: [
-      {
-        label: "Lihat Keranjang",
-        onClick: () => {
-          window.location.href = "/cart";
-        },
-      },
-      { label: "Lanjut Belanja" },
-    ],
-  });
+  cartSuccessToast(message);
 }
 
 export function showAddToCartErrorToast(message = ERROR_MESSAGE) {

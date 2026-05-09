@@ -40,7 +40,7 @@ export function BottomSheet({ open, onClose, title, children, footer }: Props) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end" aria-modal="true" role="dialog">
+    <div className="fixed inset-0 z-[80] flex items-end" aria-modal="true" role="dialog">
       {/* Backdrop */}
       <button
         type="button"
@@ -51,10 +51,9 @@ export function BottomSheet({ open, onClose, title, children, footer }: Props) {
 
       {/* Sheet */}
       <div
-        className="relative ml-auto mr-auto w-full max-w-2xl rounded-t-3xl bg-white shadow-2xl"
+        className="relative ml-auto mr-auto flex max-h-[90dvh] w-full max-w-2xl flex-col rounded-t-3xl bg-white shadow-2xl"
         style={{
           animation: "slideUp 250ms ease-out",
-          maxHeight: "90vh",
         }}
       >
         {/* Drag handle */}
@@ -79,15 +78,16 @@ export function BottomSheet({ open, onClose, title, children, footer }: Props) {
 
         {/* Content (scrollable) */}
         <div
-          className="overflow-y-auto p-5"
-          style={{ maxHeight: footer ? "calc(90vh - 180px)" : "calc(90vh - 80px)" }}
+          className="min-h-0 flex-1 overflow-y-auto p-5"
         >
           {children}
         </div>
 
         {/* Footer */}
         {footer && (
-          <div className="border-t border-zinc-100 p-4">{footer}</div>
+          <div className="shrink-0 border-t border-zinc-100 bg-white px-4 pt-4 [padding-bottom:calc(16px+env(safe-area-inset-bottom))]">
+            {footer}
+          </div>
         )}
       </div>
 
