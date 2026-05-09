@@ -1,4 +1,4 @@
-const CACHE = "natalo-v9";
+const CACHE = "natalo-v10";
 
 const PRECACHE = [
   "/",

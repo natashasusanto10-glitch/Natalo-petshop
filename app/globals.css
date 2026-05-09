@@ -31,10 +31,17 @@
 }
 
 :root {
+  color-scheme: light;
   --background: #ffffff;
   --foreground: #111111;
   --natalo-bottom-nav-height: 70px;
   --natalo-mobile-header-min-height: 60px;
+}
+
+/* Lock light mode di seluruh app — iOS dark mode tidak boleh invert UI. */
+html {
+  color-scheme: light;
+  background-color: #1E5FBF; /* brand blue, terlihat saat PWA boot sebelum body paint */
 }
 
 body {
@@ -138,3 +145,66 @@ input, textarea, select, button {
   to   { transform: translateY(0);  opacity: 1; }
 }
 .nat-search-slide { animation: nat-search-slide-in 0.22s ease-out; }
+
+.cart-success-toast {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  z-index: 99999;
+  display: flex;
+  min-width: 230px;
+  max-width: 82vw;
+  transform: translate(-50%, calc(-50% + 8px)) scale(0.92);
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  background: linear-gradient(145deg, rgba(24, 24, 27, 0.96), rgba(64, 64, 64, 0.92));
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.28), 0 1px 0 rgba(255, 255, 255, 0.08) inset;
+  color: #ffffff;
+  opacity: 0;
+  padding: 22px 26px;
+  pointer-events: none;
+  text-align: center;
+  transition: opacity 0.22s ease, transform 0.22s ease;
+  backdrop-filter: blur(8px);
+}
+
+.cart-success-toast.is-show {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.cart-success-toast__icon {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18);
+}
+
+.cart-success-toast__icon svg {
+  width: 28px;
+  height: 28px;
+}
+
+.cart-success-toast__text {
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+@media (max-width: 380px) {
+  .cart-success-toast {
+    min-width: 220px;
+    padding: 20px 22px;
+  }
+
+  .cart-success-toast__text {
+    font-size: 15px;
+  }
+}
