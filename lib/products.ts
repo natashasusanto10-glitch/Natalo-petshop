@@ -46,6 +46,12 @@ export type StoreProduct = {
   variants?: StoreProductVariant[];
 };
 
+function normalizeProductWeight(name: string, slug: string, weightGram: number) {
+  const text = `${name} ${slug}`.toLowerCase();
+  if (text.includes("maxi-cat") && text.includes("20kg")) return 20000;
+  return weightGram;
+}
+
 const variantInclude = {
   variantAttrs: {
     orderBy: { position: "asc" as const },
@@ -102,7 +108,7 @@ export async function getProducts(opts?: {
           discountPrice: null,
           memberPrice: p.memberPrice,
           stock: totalStock,
-          weightGram: p.weightGram,
+          weightGram: normalizeProductWeight(p.name, p.slug, p.weightGram),
           imageUrl: p.imageUrl,
           hasVariants: true,
           avgRating: p.avgRating,
@@ -119,7 +125,7 @@ export async function getProducts(opts?: {
         discountPrice: p.discountPrice,
         memberPrice: p.memberPrice,
         stock: p.stock,
-        weightGram: p.weightGram,
+        weightGram: normalizeProductWeight(p.name, p.slug, p.weightGram),
         imageUrl: p.imageUrl,
         hasVariants: false,
         avgRating: p.avgRating,
@@ -172,7 +178,7 @@ export async function getProductBySlug(slug: string): Promise<StoreProduct | nul
         discountPrice: null,
         memberPrice: p.memberPrice,
         stock: totalStock,
-        weightGram: p.weightGram,
+        weightGram: normalizeProductWeight(p.name, p.slug, p.weightGram),
         imageUrl: p.imageUrl,
         hasVariants: true,
         avgRating: p.avgRating,
@@ -192,7 +198,7 @@ export async function getProductBySlug(slug: string): Promise<StoreProduct | nul
       discountPrice: p.discountPrice,
       memberPrice: p.memberPrice,
       stock: p.stock,
-      weightGram: p.weightGram,
+      weightGram: normalizeProductWeight(p.name, p.slug, p.weightGram),
       imageUrl: p.imageUrl,
       hasVariants: false,
       avgRating: p.avgRating,

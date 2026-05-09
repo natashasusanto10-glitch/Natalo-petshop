@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { WishlistCount } from "./WishlistButton";
+import { CartCount } from "./CartCount";
 import { bootstrapCartSync, clearLocalCart, switchToGuestCart } from "@/lib/cart";
 import { prefetchCategories } from "@/lib/client-performance";
 
@@ -29,6 +30,7 @@ export function Header() {
   const [member, setMember] = useState<MemberProfile | null>(null);
   const pathname = usePathname();
   const memberMenuRef = useRef<HTMLDivElement>(null);
+  const isProductDetail = /^\/products\/[^/]+$/.test(pathname ?? "");
 
   useEffect(() => {
     let active = true;
@@ -110,8 +112,72 @@ export function Header() {
     router.refresh();
   }
 
+  async function handleShare() {
+    const shareData = { title: document.title, url: window.location.href };
+    if (navigator.share) {
+      await navigator.share(shareData).catch(() => {});
+      return;
+    }
+    await navigator.clipboard?.writeText(window.location.href).catch(() => {});
+  }
+
   return (
     <header className="nat-site-header sticky z-50 bg-white shadow-sm">
+      {isProductDetail && (
+        <div className="nat-header-inner nat-safe-x mx-auto flex max-w-6xl items-center justify-between gap-1.5 py-1.5 md:hidden">
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="flex h-10 w-10 items-center justify-center rounded-full text-gray-800 active:bg-gray-100"
+            aria-label="Kembali"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} className="h-5 w-5">
+              <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+
+          <div className="flex items-center gap-1">
+            <Link
+              href="/search"
+              className="flex h-10 w-10 items-center justify-center rounded-full text-gray-700 active:bg-gray-100"
+              aria-label="Cari produk"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5">
+                <circle cx="11" cy="11" r="7" />
+                <path d="m20 20-3.5-3.5" strokeLinecap="round" />
+              </svg>
+            </Link>
+            <button
+              type="button"
+              onClick={handleShare}
+              className="flex h-10 w-10 items-center justify-center rounded-full text-gray-700 active:bg-gray-100"
+              aria-label="Bagikan produk"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5">
+                <circle cx="18" cy="5" r="3" />
+                <circle cx="6" cy="12" r="3" />
+                <circle cx="18" cy="19" r="3" />
+                <path d="M8.6 10.6 15.4 6.4M8.6 13.4l6.8 4.2" strokeLinecap="round" />
+              </svg>
+            </button>
+            <div className="flex h-10 w-10 items-center justify-center rounded-full text-gray-700 active:bg-gray-100 [&_span.hidden]:hidden [&_svg]:!h-5 [&_svg]:!w-5">
+              <CartCount />
+            </div>
+            <button
+              onClick={() => setOpen((v) => !v)}
+              className="flex h-10 w-10 items-center justify-center rounded-full text-gray-700 active:bg-gray-100"
+              aria-label={open ? "Tutup menu" : "Buka menu"}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5">
+                <line x1="4" y1="7" x2="20" y2="7" />
+                <line x1="4" y1="12" x2="20" y2="12" />
+                <line x1="4" y1="17" x2="20" y2="17" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+      <div className={isProductDetail ? "hidden md:block" : ""}>
       <div className="nat-header-inner nat-safe-x mx-auto flex max-w-6xl items-center justify-between gap-1.5 py-1.5 xs:gap-2 md:py-3">
         {/* Logo */}
         <Link href="/" aria-label={brand} className="flex min-w-0 shrink-0 items-center">
@@ -308,6 +374,28 @@ export function Header() {
                 Daftar Member Baru
               </Link>
             )}
+          </nav>
+        </div>
+      )}
+      </div>
+      {isProductDetail && open && (
+        <div className="border-t border-gray-100 bg-white md:hidden">
+          <nav className="nat-safe-x mx-auto max-w-6xl space-y-1 py-3">
+            {NAV_LINKS.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="flex items-center rounded-xl px-4 py-3 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+              >
+                {link.label}
+              </Link>
+            ))}
+            <Link
+              href="/member"
+              className="flex items-center rounded-xl px-4 py-3 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+            >
+              Akun Member
+            </Link>
           </nav>
         </div>
       )}

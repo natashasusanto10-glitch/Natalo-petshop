@@ -110,6 +110,8 @@ export function ProductCard({
               memberPrice,
               imageUrl: product.imageUrl,
               weightGram: product.weightGram,
+              stock: product.stock,
+              hasVariants: product.hasVariants,
             }}
           />
         </div>
@@ -166,6 +168,8 @@ export function ProductCard({
             memberPrice,
             imageUrl: product.imageUrl,
             weightGram: product.weightGram,
+            stock: product.stock,
+            hasVariants: product.hasVariants,
           }}
         />
       </div>
