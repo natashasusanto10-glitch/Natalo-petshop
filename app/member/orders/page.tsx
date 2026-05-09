@@ -79,7 +79,7 @@ export default async function MemberOrdersPage() {
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3">
                 <span className="text-sm font-semibold text-gray-900">Total: {formatRupiah(order.total)}</span>
                 <div className="flex items-center gap-2">
-                  <ReorderButton items={order.items} />
+                  <ReorderButton orderNumber={order.orderNumber} />
                   <Link
                     href={`/pesanan/${order.orderNumber}`}
                     className="rounded-full border border-gray-200 px-4 py-2 text-xs font-bold text-gray-700 transition hover:border-blue-400 hover:text-blue-500"
