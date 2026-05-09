@@ -96,8 +96,8 @@ jobs:
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
           MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
           MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
-          # Workspace path (Capacitor default)
-          GYM_WORKSPACE: ios/App/App.xcworkspace
+          # Capacitor 8 + SPM: tidak ada .xcworkspace, langsung pakai .xcodeproj
+          GYM_PROJECT: ios/App/App.xcodeproj
           GYM_SCHEME: App
         run: bundle exec fastlane "$LANE"
 
