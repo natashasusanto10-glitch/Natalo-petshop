@@ -3,13 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatRupiah } from "@/lib/format";
 import type { StoreVariantAttribute, StoreProductVariant } from "@/lib/products";
-import { loadCart, saveCart } from "@/lib/cart";
+import { addItemToCart } from "@/lib/cart-actions";
 
-function cartKey(productId: string, variantId: string | null | undefined) {
-  return `${productId}:${variantId ?? ""}`;
-}
-
-// ── Props ──────────────────────────────────────────────────────
+// Props
 interface Props {
   product: { id: string; name: string; imageUrl: string | null };
   attrs: StoreVariantAttribute[];
@@ -19,13 +15,11 @@ interface Props {
 }
 
 export function VariantSelector({ product, attrs, variants, onVariantImage }: Props) {
-  // ── State ──────────────────────────────────────────────────────
+  // State
   // selected[attributeId] = optionId
   const [selected, setSelected] = useState<Record<string, string>>({});
-  const [qty, setQty] = useState(1);
-  const [toast, setToast] = useState(false);
 
-  // ── Derived ───────────────────────────────────────────────────
+  // Derived
   const sortedAttrs = useMemo(
     () => [...attrs].sort((a, b) => a.position - b.position),
     [attrs]
@@ -59,7 +53,7 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
     const max = Math.max(...activePrices);
     return min === max
       ? formatRupiah(min)
-      : `${formatRupiah(min)} – ${formatRupiah(max)}`;
+      : `${formatRupiah(min)} - ${formatRupiah(max)}`;
   }, [currentVariant, variants]);
 
   // Total stok
@@ -70,7 +64,6 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
       .reduce((s, v) => s + v.stock, 0);
   }, [currentVariant, variants]);
 
-  const maxQty = currentVariant ? currentVariant.stock : 0;
   const outOfStock = currentVariant ? currentVariant.stock === 0 : false;
 
   // Broadcast state ke StickyAddToCartBar
@@ -92,7 +85,7 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
     );
   }, [currentVariant, outOfStock, minPrice]);
 
-  // ── Disabled check untuk tombol opsi ─────────────────────────
+  // Disabled check untuk tombol opsi
   const isOptionDisabled = useCallback(
     (attrIdx: number, optionId: string): boolean => {
       return !variants.some((v) => {
@@ -109,7 +102,7 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
     [variants, selected, sortedAttrs]
   );
 
-  // ── Pilih opsi ────────────────────────────────────────────────
+  // Pilih opsi
   function selectOption(attrId: string, optionId: string, attrIdx: number) {
     setSelected((prev) => {
       const next = { ...prev, [attrId]: optionId };
@@ -133,20 +126,26 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
       }
       return next;
     });
-    setQty(1);
   }
 
   // Listen trigger dari StickyAddToCartBar
   useEffect(() => {
-    function onTrigger() {
+    function onAddToCart() {
       addToCart(false);
     }
-    window.addEventListener("pdp-add-to-cart", onTrigger);
-    return () => window.removeEventListener("pdp-add-to-cart", onTrigger);
+    function onBuyNow() {
+      addToCart(true);
+    }
+    window.addEventListener("pdp-add-to-cart", onAddToCart);
+    window.addEventListener("pdp-buy-now", onBuyNow);
+    return () => {
+      window.removeEventListener("pdp-add-to-cart", onAddToCart);
+      window.removeEventListener("pdp-buy-now", onBuyNow);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentVariant, allSelected, qty, outOfStock]);
+  }, [currentVariant, allSelected, outOfStock]);
 
-  // ── Add to cart ───────────────────────────────────────────────
+  // Add to cart
   function addToCart(redirectToCheckout = false) {
     if (!currentVariant || !allSelected || outOfStock) return;
 
@@ -161,41 +160,30 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
     // Ganti gambar utama kalau variant punya foto sendiri
     if (onVariantImage) onVariantImage(currentVariant.imageUrl);
 
-    const cart = loadCart();
-    const key = cartKey(product.id, currentVariant.id);
-    const existing = cart.find(
-      (i) => cartKey(i.productId, i.variantId) === key
-    );
-
-    if (existing) {
-      existing.quantity = Math.min(maxQty, existing.quantity + qty);
-      existing.stock = currentVariant.stock;
-    } else {
-      cart.push({
+    const result = addItemToCart(
+      {
         productId: product.id,
         variantId: currentVariant.id,
         variantLabel: label,
         name: product.name,
         price: currentVariant.price,
-        quantity: qty,
+        quantity: 1,
+        subtotal: currentVariant.price,
         weightGram: currentVariant.weightGram,
         stock: currentVariant.stock,
         imageUrl: currentVariant.imageUrl ?? product.imageUrl,
-      });
-    }
+      },
+      { showToast: !redirectToCheckout },
+    );
 
-    saveCart(cart);
+    if (!result.ok) return;
 
     if (redirectToCheckout) {
       window.location.href = "/checkout";
-    } else {
-      setQty(1);
-      setToast(true);
-      setTimeout(() => setToast(false), 2500);
     }
   }
 
-  // ── Render ────────────────────────────────────────────────────
+  // Render
   return (
     <div className="space-y-5">
       {/* Harga */}
@@ -252,38 +240,10 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
         ))}
       </div>
 
-      {/* Qty stepper */}
-      {currentVariant && (
-        <div>
-          <p className="mb-2 text-sm font-medium text-gray-700">Jumlah</p>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setQty((q) => Math.max(1, q - 1))}
-              disabled={qty <= 1}
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-lg font-bold text-gray-700 transition hover:border-natalo-400 hover:text-natalo-600 disabled:opacity-40"
-            >
-              −
-            </button>
-            <span className="w-8 text-center text-lg font-bold text-gray-900">{qty}</span>
-            <button
-              onClick={() => setQty((q) => Math.min(maxQty, q + 1))}
-              disabled={outOfStock || qty >= maxQty}
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-lg font-bold text-gray-700 transition hover:border-natalo-400 hover:text-natalo-600 disabled:opacity-40"
-            >
-              +
-            </button>
-            {maxQty > 0 && qty >= maxQty && (
-              <span className="text-xs text-red-400">Stok tersisa: {maxQty}</span>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Tombol aksi */}
       <div className="space-y-3">
         {!allSelected && (
           <p className="text-sm text-gray-400">
-            ← Pilih{" "}
+            Pilih{" "}
             {sortedAttrs
               .filter((a) => !selected[a.id])
               .map((a) => a.name)
@@ -291,34 +251,6 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
             terlebih dahulu
           </p>
         )}
-
-        <button
-          onClick={() => addToCart(false)}
-          disabled={!allSelected || outOfStock}
-          className={`w-full rounded-full py-4 text-sm font-bold text-white transition ${
-            toast
-              ? "bg-green-500"
-              : !allSelected || outOfStock
-              ? "cursor-not-allowed bg-gray-300"
-              : "bg-natalo-600 hover:bg-natalo-700"
-          }`}
-        >
-          {toast
-            ? "✓ Ditambahkan ke Keranjang"
-            : outOfStock
-            ? "Stok Habis"
-            : allSelected
-            ? "+ Keranjang"
-            : "Pilih Varian"}
-        </button>
-
-        <button
-          onClick={() => addToCart(true)}
-          disabled={!allSelected || outOfStock}
-          className="w-full rounded-full border-2 border-natalo-600 py-4 text-sm font-bold text-natalo-600 transition hover:bg-natalo-50 disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-300"
-        >
-          Beli Sekarang
-        </button>
       </div>
     </div>
   );
