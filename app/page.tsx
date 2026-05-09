@@ -583,8 +583,8 @@ export default async function HomePage() {
           {bestSellers.map((p, i) => {
             const finalPrice = p.memberPrice ?? p.discountPrice ?? p.price;
             const hasMarkdown =
-              (p.memberPrice !== null && p.memberPrice < p.price) ||
-              (p.discountPrice !== null && p.discountPrice < p.price);
+              (p.memberPrice != null && p.memberPrice < p.price) ||
+              (p.discountPrice != null && p.discountPrice < p.price);
             return (
               <Link
                 key={p.id}
