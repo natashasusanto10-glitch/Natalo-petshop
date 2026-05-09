@@ -7,6 +7,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { reconcileCartItemsWithStock } from "@/lib/cart-stock";
+import { getCartStockSnapshots } from "@/lib/cart-stock-server";
 
 type ApiCartItem = {
   productId: string;
@@ -62,20 +64,22 @@ export async function GET() {
     orderBy: { updatedAt: "desc" },
   });
 
-  return NextResponse.json({
-    items: items.map((i) => ({
-      productId: i.productId,
-      variantId: i.variantId,
-      variantLabel: i.variantLabel,
-      name: i.name,
-      price: i.price,
-      quantity: i.quantity,
-      subtotal: i.price * i.quantity,
-      weightGram: i.weightGram,
-      imageUrl: i.imageUrl,
-      stock: i.stock,
-    })),
-  });
+  const cartItems = items.map((i) => ({
+    productId: i.productId,
+    variantId: i.variantId,
+    variantLabel: i.variantLabel,
+    name: i.name,
+    price: i.price,
+    quantity: i.quantity,
+    subtotal: i.price * i.quantity,
+    weightGram: i.weightGram,
+    imageUrl: i.imageUrl,
+    stock: i.stock,
+  }));
+  const snapshots = await getCartStockSnapshots(cartItems);
+  const result = reconcileCartItemsWithStock(cartItems, snapshots);
+
+  return NextResponse.json({ items: result.items, stockIssues: result.issues });
 }
 
 export async function PUT(req: NextRequest) {

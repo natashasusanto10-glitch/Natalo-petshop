@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { formatRupiah } from "@/lib/format";
 import { EmptyCart } from "@/components/LoadingEmptyStates";
 import { loadCart, saveCart, type CartItem } from "@/lib/cart";
+import type { CartStockIssue } from "@/lib/cart-stock";
 
 const CHECKOUT_SELECTION_KEY = "checkout:selectedCartItems";
 
@@ -38,7 +39,10 @@ export default function CartPage() {
   const router = useRouter();
   const [items, setItems] = useState<CartItem[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [stockIssues, setStockIssues] = useState<CartStockIssue[]>([]);
+  const [stockRefreshing, setStockRefreshing] = useState(false);
   const didInitialSelect = useRef(false);
+  const didInitialStockRefresh = useRef(false);
 
   useEffect(() => {
     function syncCart() {
@@ -52,6 +56,10 @@ export default function CartPage() {
         }
         return new Set([...current].filter((key) => available.has(key)));
       });
+      if (!didInitialStockRefresh.current && nextItems.length > 0) {
+        didInitialStockRefresh.current = true;
+        void refreshCartStock(nextItems, { silent: true });
+      }
     }
     function onStorage(e: StorageEvent) {
       if (e.key?.startsWith("cart")) syncCart();
@@ -78,6 +86,62 @@ export default function CartPage() {
   function persist(next: CartItem[]) {
     setItems(next);
     saveCart(next);
+  }
+
+  async function refreshCartStock(
+    itemsToValidate = items,
+    opts: { silent?: boolean } = {},
+  ) {
+    if (itemsToValidate.length === 0) {
+      setStockIssues([]);
+      return { ok: true, items: itemsToValidate, issues: [] as CartStockIssue[] };
+    }
+
+    if (!opts.silent) setStockRefreshing(true);
+    try {
+      const response = await fetch("/api/cart/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: itemsToValidate }),
+      });
+      const data = (await response.json()) as {
+        ok?: boolean;
+        changed?: boolean;
+        items?: CartItem[];
+        issues?: CartStockIssue[];
+      };
+      if (!response.ok || !Array.isArray(data.items)) {
+        throw new Error("Gagal mengecek stok terbaru.");
+      }
+
+      const nextItems = data.items;
+      const issues = Array.isArray(data.issues) ? data.issues : [];
+      if (data.changed) {
+        persist(nextItems);
+        const available = new Set(nextItems.map(cartKey));
+        setSelectedKeys((current) => new Set([...current].filter((key) => available.has(key))));
+      }
+      setStockIssues(issues);
+      return { ok: issues.length === 0, items: nextItems, issues };
+    } catch {
+      const issues = [
+        {
+          key: "__stock-refresh__",
+          productId: "",
+          variantId: null,
+          variantLabel: null,
+          name: "Keranjang",
+          requestedQuantity: 0,
+          availableStock: 0,
+          action: "removed" as const,
+          message: "Stok terbaru belum bisa dicek. Coba refresh sebelum checkout.",
+        },
+      ];
+      setStockIssues(issues);
+      return { ok: false, items: itemsToValidate, issues };
+    } finally {
+      if (!opts.silent) setStockRefreshing(false);
+    }
   }
 
   function toggleItem(key: string) {
@@ -119,10 +183,16 @@ export default function CartPage() {
     persist(next);
   }
 
-  function checkoutSelected() {
+  async function checkoutSelected() {
     if (selectedItems.length === 0) return;
-    sessionStorage.setItem(CHECKOUT_SELECTION_KEY, JSON.stringify(selectedItems));
-    const ids = selectedItems.map(cartKey).map(encodeURIComponent).join(",");
+    const result = await refreshCartStock(items);
+    const selectedKeySet = new Set(selectedKeys);
+    const nextSelectedItems = result.items.filter((item) => selectedKeySet.has(cartKey(item)));
+    const selectedHasIssue = result.issues.some((issue) => selectedKeySet.has(issue.key));
+    if (!result.ok || selectedHasIssue || nextSelectedItems.length === 0) return;
+
+    sessionStorage.setItem(CHECKOUT_SELECTION_KEY, JSON.stringify(nextSelectedItems));
+    const ids = nextSelectedItems.map(cartKey).map(encodeURIComponent).join(",");
     router.push(`/checkout?cart_item_ids=${ids}`);
   }
 
@@ -181,6 +251,19 @@ export default function CartPage() {
                 </div>
               </div>
             </div>
+
+            {stockIssues.length > 0 && (
+              <div className="border-y border-amber-100 bg-amber-50 px-4 py-3">
+                <p className="text-xs font-black text-amber-800">Stok keranjang diperbarui</p>
+                <div className="mt-1 space-y-1">
+                  {stockIssues.slice(0, 3).map((issue) => (
+                    <p key={issue.key} className="text-xs font-semibold text-amber-700">
+                      {issue.message}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="divide-y divide-gray-100">
               {items.map((item) => {
@@ -284,10 +367,10 @@ export default function CartPage() {
             <button
               type="button"
               onClick={checkoutSelected}
-              disabled={selectedCount === 0}
+              disabled={selectedCount === 0 || stockRefreshing}
               className="mt-5 flex w-full items-center justify-center rounded-full bg-blue-500 py-4 text-sm font-bold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-gray-300"
             >
-              Checkout ({selectedCount})
+              {stockRefreshing ? "Cek stok..." : `Checkout (${selectedCount})`}
             </button>
             <Link
               href="/products"
@@ -318,10 +401,10 @@ export default function CartPage() {
             <button
               type="button"
               onClick={checkoutSelected}
-              disabled={selectedCount === 0}
+              disabled={selectedCount === 0 || stockRefreshing}
               className="flex h-12 shrink-0 items-center justify-center rounded-full bg-blue-500 px-5 text-sm font-black text-white active:opacity-90 disabled:cursor-not-allowed disabled:bg-gray-300"
             >
-              Checkout ({selectedCount})
+              {stockRefreshing ? "Cek stok..." : `Checkout (${selectedCount})`}
             </button>
           </div>
         </div>
