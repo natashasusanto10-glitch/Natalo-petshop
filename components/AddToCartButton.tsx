@@ -2,42 +2,39 @@
 
 import { useState } from "react";
 import { StoreProduct } from "@/lib/products";
-import { loadCart, saveCart } from "@/lib/cart";
+import { addItemToCart } from "@/lib/cart-actions";
 
 export function AddToCartButton({ product }: { product: StoreProduct }) {
   const [added, setAdded] = useState(false);
 
   const add = () => {
-    const cart = loadCart();
     const price =
       product.discountPrice !== null && product.discountPrice < product.price
         ? product.discountPrice
         : product.price;
-    const existing = cart.find((item) => item.productId === product.id);
 
-    if (existing) {
-      existing.quantity = Math.min(product.stock, existing.quantity + 1);
-      existing.stock = product.stock;
-      existing.imageUrl = product.imageUrl;
-    } else {
-      cart.push({
-        productId: product.id,
-        name: product.name,
-        price,
-        quantity: 1,
-        weightGram: product.weightGram,
-        stock: product.stock,
-        imageUrl: product.imageUrl,
-      });
+    const result = addItemToCart({
+      productId: product.id,
+      variantId: null,
+      variantLabel: null,
+      name: product.name,
+      price,
+      quantity: 1,
+      subtotal: price,
+      weightGram: product.weightGram,
+      stock: product.stock,
+      imageUrl: product.imageUrl,
+    });
+
+    if (result.ok) {
+      setAdded(true);
+      setTimeout(() => setAdded(false), 1800);
     }
-
-    saveCart(cart);
-    setAdded(true);
-    setTimeout(() => setAdded(false), 2000);
   };
 
   return (
     <button
+      type="button"
       onClick={add}
       disabled={product.stock <= 0}
       className={`w-full rounded-full px-6 py-4 text-sm font-bold text-white transition ${
@@ -48,7 +45,7 @@ export function AddToCartButton({ product }: { product: StoreProduct }) {
           : "bg-zinc-950 hover:bg-zinc-800"
       }`}
     >
-      {added ? "Ditambahkan ke keranjang ✓" : "+ Keranjang"}
+      {added ? "Ditambahkan" : "Masukkan Keranjang"}
     </button>
   );
 }

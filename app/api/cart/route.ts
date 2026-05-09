@@ -15,6 +15,7 @@ type ApiCartItem = {
   name: string;
   price: number;
   quantity: number;
+  subtotal?: number;
   weightGram: number;
   imageUrl?: string | null;
   stock?: number | null;
@@ -43,6 +44,7 @@ function sanitizeItems(raw: unknown): ApiCartItem[] {
       name: typeof item.name === "string" ? item.name.slice(0, 200) : "",
       price: Math.floor(price),
       quantity: Math.floor(quantity),
+      subtotal: Math.floor(price) * Math.floor(quantity),
       weightGram: Number.isFinite(weightGram) ? Math.floor(weightGram) : 500,
       imageUrl: typeof item.imageUrl === "string" ? item.imageUrl.slice(0, 500) : null,
       stock: Number.isFinite(Number(item.stock)) ? Math.floor(Number(item.stock)) : null,
@@ -68,6 +70,7 @@ export async function GET() {
       name: i.name,
       price: i.price,
       quantity: i.quantity,
+      subtotal: i.price * i.quantity,
       weightGram: i.weightGram,
       imageUrl: i.imageUrl,
       stock: i.stock,

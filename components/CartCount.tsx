@@ -33,7 +33,7 @@ export function CartCount() {
       <span className="hidden xs:inline">Keranjang</span>
       {count > 0 && (
         <span className="absolute -right-2 -top-2 flex h-4 w-4 items-center justify-center rounded-full bg-natalo-600 text-[10px] font-bold text-white">
-          {count > 9 ? "9+" : count}
+          {count > 99 ? "99+" : count}
         </span>
       )}
     </Link>

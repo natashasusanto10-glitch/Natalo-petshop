@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { loadCart, saveCart } from "@/lib/cart";
+import { addItemToCart } from "@/lib/cart-actions";
 
 interface Props {
   product: {
@@ -20,12 +20,6 @@ interface Props {
   className?: string;
 }
 
-/**
- * Tombol "+ Keranjang" cepat untuk halaman wishlist/favorit.
- * - Produk varian → redirect ke detail (pilih varian)
- * - Produk non-varian → langsung add ke cart
- * - Produk inactive / stok 0 → disabled
- */
 export function QuickAddToCart({ product, className }: Props) {
   const router = useRouter();
   const [added, setAdded] = useState(false);
@@ -52,7 +46,7 @@ export function QuickAddToCart({ product, className }: Props) {
         onClick={() => router.push(`/products/${product.slug}`)}
         className={`w-full rounded-full bg-natalo-600 py-2 text-xs font-bold text-white hover:bg-natalo-700 ${className ?? ""}`}
       >
-        Pilih Varian →
+        Pilih Varian
       </button>
     );
   }
@@ -75,30 +69,23 @@ export function QuickAddToCart({ product, className }: Props) {
         ? product.discountPrice
         : product.price;
 
-    const cart = loadCart();
-    const existing = cart.find(
-      (i) => i.productId === product.id && !i.variantId
-    );
-    if (existing) {
-      existing.quantity = Math.min(product.stock, existing.quantity + 1);
-      existing.stock = product.stock;
-      existing.imageUrl = product.imageUrl;
-    } else {
-      cart.push({
-        productId: product.id,
-        variantId: null,
-        variantLabel: null,
-        name: product.name,
-        price,
-        quantity: 1,
-        weightGram: product.weightGram,
-        stock: product.stock,
-        imageUrl: product.imageUrl,
-      });
+    const result = addItemToCart({
+      productId: product.id,
+      variantId: null,
+      variantLabel: null,
+      name: product.name,
+      price,
+      quantity: 1,
+      subtotal: price,
+      weightGram: product.weightGram,
+      stock: product.stock,
+      imageUrl: product.imageUrl,
+    });
+
+    if (result.ok) {
+      setAdded(true);
+      setTimeout(() => setAdded(false), 1800);
     }
-    saveCart(cart);
-    setAdded(true);
-    setTimeout(() => setAdded(false), 1800);
   }
 
   return (
@@ -109,7 +96,7 @@ export function QuickAddToCart({ product, className }: Props) {
         added ? "bg-green-500" : "bg-natalo-600 hover:bg-natalo-700"
       } ${className ?? ""}`}
     >
-      {added ? "✓ Ditambahkan" : "+ Keranjang"}
+      {added ? "Ditambahkan" : "+ Keranjang"}
     </button>
   );
 }

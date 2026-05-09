@@ -18,6 +18,7 @@ export type CartItem = {
   name: string;
   price: number;
   quantity: number;
+  subtotal?: number;
   weightGram: number;
   imageUrl?: string | null;
   stock?: number | null;
