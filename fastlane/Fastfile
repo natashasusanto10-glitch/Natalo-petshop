@@ -4,6 +4,11 @@
 
 default_platform(:ios)
 
+TEAM_ID = "87FXPV558A" # Apple Developer team ID Leonardi Agustinus
+APP_BUNDLE = "com.natalo.petshop"
+PROFILE_NAME = "match AppStore com.natalo.petshop"
+XCODEPROJ = "ios/App/App.xcodeproj"
+
 platform :ios do
   before_all do
     setup_ci if ENV["CI"]
@@ -40,13 +45,27 @@ platform :ios do
     ) + 1
 
     increment_build_number(
-      xcodeproj: "ios/App/App.xcodeproj",
+      xcodeproj: XCODEPROJ,
       build_number: build_number,
+    )
+
+    # Capacitor template tidak set DEVELOPMENT_TEAM di project.pbxproj.
+    # Force manual signing dengan team + profile dari match — biar archive
+    # tahu cert/profile mana yang dipakai (tanpa modifikasi pbxproj).
+    update_code_signing_settings(
+      use_automatic_signing: false,
+      path: XCODEPROJ,
+      team_id: TEAM_ID,
+      bundle_identifier: APP_BUNDLE,
+      profile_name: PROFILE_NAME,
+      code_sign_identity: "Apple Distribution",
+      targets: ["App"],
+      build_configurations: ["Release"],
     )
 
     # Build & sign .ipa
     build_app(
-      project: ENV["GYM_PROJECT"] || "ios/App/App.xcodeproj",
+      project: ENV["GYM_PROJECT"] || XCODEPROJ,
       scheme: ENV["GYM_SCHEME"] || "App",
       export_method: "app-store",
       output_directory: "./build",
@@ -54,10 +73,14 @@ platform :ios do
       clean: true,
       include_bitcode: false,
       include_symbols: true,
+      xcargs: "DEVELOPMENT_TEAM=#{TEAM_ID} CODE_SIGN_STYLE=Manual",
       export_options: {
         provisioningProfiles: {
-          "com.natalo.petshop" => "match AppStore com.natalo.petshop",
+          APP_BUNDLE => PROFILE_NAME,
         },
+        teamID: TEAM_ID,
+        signingStyle: "manual",
+        signingCertificate: "Apple Distribution",
       },
     )
 
