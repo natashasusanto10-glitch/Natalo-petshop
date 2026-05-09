@@ -7,6 +7,10 @@ default_platform(:ios)
 platform :ios do
   before_all do
     setup_ci if ENV["CI"]
+    # setup_ci default-nya MATCH_READONLY=true. Override karena kita butuh
+    # match generate cert/profile pertama kali (repo natalo-ios-certs masih kosong).
+    # Setelah cert ada, run berikutnya bisa readonly aman.
+    ENV["MATCH_READONLY"] = "false"
   end
 
   desc "Build .ipa + upload ke TestFlight"
