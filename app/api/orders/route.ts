@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { createOrderNumber } from "@/lib/format";
 import { createOrderSchema } from "@/lib/validation";
@@ -14,6 +15,14 @@ type CheckedOutItem = {
   quantity: number;
   weightGram: number;
 };
+
+class StockConflictError extends Error {
+  status = 409;
+}
+
+function itemLabel(item: Pick<CheckedOutItem, "name" | "variantLabel">) {
+  return `${item.name}${item.variantLabel ? ` (${item.variantLabel})` : ""}`;
+}
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string) {
   return Promise.race([
@@ -236,23 +245,37 @@ export async function POST(request: Request) {
 
       for (const item of checkoutItems) {
         if (item.variantId) {
-          // Deduct dari stok variant
+          // Atomic stock guard: validate stock >= requested qty and deduct while the row is locked by the write.
           const updateResult = await tx.productVariant.updateMany({
             where: { id: item.variantId, stock: { gte: item.quantity }, isActive: true, deletedAt: null },
             data: { stock: { decrement: item.quantity } },
           });
           if (updateResult.count !== 1) {
-            throw new Error(`${item.name} (${item.variantLabel ?? ""}) stoknya baru saja berubah. Silakan cek keranjang lagi.`);
+            const latest = await tx.productVariant.findFirst({
+              where: { id: item.variantId },
+              select: { stock: true, isActive: true, deletedAt: true },
+            });
+            const available = latest && latest.isActive && !latest.deletedAt ? latest.stock : 0;
+            throw new StockConflictError(
+              `${itemLabel(item)} hanya tersedia ${available} unit. Silakan cek keranjang lagi.`,
+            );
           }
           variantProductIdsToSync.add(item.productId);
         } else {
-          // Deduct dari stok produk (non-variant)
+          // Atomic stock guard for non-variant product rows.
           const updateResult = await tx.product.updateMany({
             where: { id: item.productId, stock: { gte: item.quantity }, isActive: true },
             data: { stock: { decrement: item.quantity } },
           });
           if (updateResult.count !== 1) {
-            throw new Error(`${item.name} stoknya baru saja berubah. Silakan cek keranjang lagi.`);
+            const latest = await tx.product.findFirst({
+              where: { id: item.productId },
+              select: { stock: true, isActive: true },
+            });
+            const available = latest && latest.isActive ? latest.stock : 0;
+            throw new StockConflictError(
+              `${item.name} hanya tersedia ${available} unit. Silakan cek keranjang lagi.`,
+            );
           }
         }
       }
@@ -338,7 +361,7 @@ export async function POST(request: Request) {
       }
 
       return createdOrder;
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     let paymentUrl: string | undefined;
     let paymentReference: string | undefined;
@@ -450,6 +473,9 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error(error);
+    if (error instanceof StockConflictError) {
+      return NextResponse.json({ message: error.message }, { status: error.status });
+    }
     return NextResponse.json({ message: error instanceof Error ? error.message : "Gagal membuat order." }, { status: 500 });
   }
 }

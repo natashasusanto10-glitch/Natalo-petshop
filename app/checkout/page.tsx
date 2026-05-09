@@ -14,6 +14,7 @@ import {
 } from "@/components/MetodePembayaran";
 import { loadCart, saveCart, clearCartEverywhere, type CartItem } from "@/lib/cart";
 import type { PinpointValue } from "@/components/AddressPinpointPicker";
+import type { CartStockIssue } from "@/lib/cart-stock";
 
 const AddressPinpointPicker = dynamic(
   () => import("@/components/AddressPinpointPicker").then((mod) => mod.AddressPinpointPicker),
@@ -120,6 +121,8 @@ export default function CheckoutPage() {
   const [showVoucherList, setShowVoucherList] = useState(false);
   const [showAllCheckoutItems, setShowAllCheckoutItems] = useState(false);
   const [draftReady, setDraftReady] = useState(false);
+  const [stockIssues, setStockIssues] = useState<CartStockIssue[]>([]);
+  const [stockRefreshing, setStockRefreshing] = useState(false);
 
   useEffect(() => {
     let restoredDraft: {
@@ -183,9 +186,14 @@ export default function CheckoutPage() {
 
       setItems(selectedCartItems);
       setCheckoutItemKeys(new Set(selectedCartItems.map(cartKey)));
+      void refreshCheckoutStock(selectedCartItems, {
+        silent: true,
+        checkoutKeys: new Set(selectedCartItems.map(cartKey)),
+      });
     } else {
       setItems(cartItems);
       setCheckoutItemKeys(null);
+      void refreshCheckoutStock(cartItems, { silent: true, checkoutKeys: null });
     }
 
     fetch("/api/auth/me")
@@ -341,6 +349,86 @@ export default function CheckoutPage() {
     setShowSavedPinpointPicker(false);
   }
 
+  function persistValidatedCheckoutItems(
+    nextCheckoutItems: CartItem[],
+    keysOverride?: Set<string> | null,
+  ) {
+    const keys = keysOverride === undefined ? checkoutItemKeys : keysOverride;
+    setItems(nextCheckoutItems);
+
+    if (keys && keys.size > 0) {
+      const nextMap = new Map(nextCheckoutItems.map((item) => [cartKey(item), item]));
+      const nextCart = loadCart()
+        .map((item) => {
+          const key = cartKey(item);
+          return keys.has(key) ? nextMap.get(key) ?? null : item;
+        })
+        .filter((item): item is CartItem => Boolean(item));
+      saveCart(nextCart);
+      sessionStorage.setItem(CHECKOUT_SELECTION_KEY, JSON.stringify(nextCheckoutItems));
+      setCheckoutItemKeys(new Set(nextCheckoutItems.map(cartKey)));
+      return;
+    }
+
+    saveCart(nextCheckoutItems);
+  }
+
+  async function refreshCheckoutStock(
+    itemsToValidate = items,
+    opts: { silent?: boolean; checkoutKeys?: Set<string> | null } = {},
+  ) {
+    if (itemsToValidate.length === 0) {
+      setStockIssues([]);
+      return { ok: true, items: itemsToValidate, issues: [] as CartStockIssue[] };
+    }
+
+    if (!opts.silent) setStockRefreshing(true);
+    try {
+      const response = await fetch("/api/cart/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: itemsToValidate }),
+      });
+      const data = (await response.json()) as {
+        ok?: boolean;
+        changed?: boolean;
+        items?: CartItem[];
+        issues?: CartStockIssue[];
+      };
+      if (!response.ok || !Array.isArray(data.items)) {
+        throw new Error("Gagal mengecek stok terbaru.");
+      }
+
+      const issues = Array.isArray(data.issues) ? data.issues : [];
+      if (data.changed) {
+        persistValidatedCheckoutItems(data.items, opts.checkoutKeys);
+        setSelectedRate(null);
+        setPayment(null);
+        setRates([]);
+      }
+      setStockIssues(issues);
+      return { ok: issues.length === 0, items: data.items, issues };
+    } catch {
+      const issues = [
+        {
+          key: "__stock-refresh__",
+          productId: "",
+          variantId: null,
+          variantLabel: null,
+          name: "Keranjang",
+          requestedQuantity: 0,
+          availableStock: 0,
+          action: "removed" as const,
+          message: "Stok terbaru belum bisa dicek. Coba refresh sebelum membuat pesanan.",
+        },
+      ];
+      setStockIssues(issues);
+      return { ok: false, items: itemsToValidate, issues };
+    } finally {
+      if (!opts.silent) setStockRefreshing(false);
+    }
+  }
+
   function openCheckoutAddressList() {
     const returnTo = `${window.location.pathname}${window.location.search}`;
     router.push(`/checkout/addresses?returnTo=${encodeURIComponent(returnTo)}`);
@@ -372,10 +460,13 @@ export default function CheckoutPage() {
       selectedRate &&
       payment &&
       total >= 0 &&
+      !stockRefreshing &&
       !orderLoading
   );
   const primaryCtaLabel = orderLoading
     ? "Memproses..."
+    : stockRefreshing
+      ? "Cek stok..."
     : !addressValid
       ? "Lengkapi Alamat"
       : !selectedRate
@@ -539,6 +630,14 @@ export default function CheckoutPage() {
 
     if (items.length === 0) {
       setError("Keranjang kosong.");
+      return;
+    }
+
+    const stockResult = await refreshCheckoutStock(items);
+    if (!stockResult.ok) {
+      setError(
+        "Stok beberapa produk berubah. Jumlah keranjang sudah diperbarui, mohon cek ulang sebelum membuat pesanan.",
+      );
       return;
     }
 
@@ -997,6 +1096,22 @@ export default function CheckoutPage() {
                 </button>
               )}
             </section>
+
+            {stockIssues.length > 0 && (
+              <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <p className="text-sm font-black text-amber-900">Stok produk berubah</p>
+                <div className="mt-1 space-y-1">
+                  {stockIssues.slice(0, 3).map((issue) => (
+                    <p key={issue.key} className="text-xs font-semibold text-amber-800">
+                      {issue.message}
+                    </p>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs font-semibold text-amber-700">
+                  Cek ringkasan produk lalu klik buat pesanan lagi jika sudah sesuai.
+                </p>
+              </section>
+            )}
 
             {/* Pengiriman: tombol ke bottom sheet — setelah ringkasan */}
             <div>
