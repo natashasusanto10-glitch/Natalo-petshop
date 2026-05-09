@@ -19,26 +19,31 @@ const BG_COLOR = { r: 30, g: 95, b: 191, alpha: 1 }; // #1E5FBF (Natalo brand)
 // Media query: device-width × device-height (CSS pt) + DPR
 // Sumber resmi: https://developer.apple.com/design/human-interface-guidelines/foundations/layout/
 const SPLASH_SIZES = [
-  // iPhone 16 Pro Max / 15 Pro Max (6.7" / 6.9")
-  [1290, 2796, "iphone-16-pro-max-portrait", "(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)"],
-  // iPhone 16 Pro / 15 Pro (6.1" / 6.3")
+  // iPhone 16 Pro Max (6.9") — 1320×2868, device-width 440pt
+  [1320, 2868, "iphone-16-pro-max-portrait", "(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)"],
+  // iPhone 16 Pro (6.3") — 1206×2622, device-width 402pt
   [1206, 2622, "iphone-16-pro-portrait", "(device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)"],
-  // iPhone 16 / 15 / 14 Pro
+  // iPhone 16 Plus / 15 Pro Max / 15 Plus (6.7") — 1290×2796, device-width 430pt
+  [1290, 2796, "iphone-15-pro-max-portrait", "(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)"],
+  // iPhone 16 / 15 / 14 Pro (6.1") — 1179×2556, device-width 393pt
   [1179, 2556, "iphone-15-portrait", "(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)"],
-  // iPhone 14 Pro Max / 13 Pro Max / 14 Plus / 12 Pro Max
+  // iPhone 14 Pro Max / 13 Pro Max / 14 Plus / 12 Pro Max (6.7") — 1284×2778
   [1284, 2778, "iphone-14-pro-max-portrait", "(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)"],
-  // iPhone 14 / 13 / 13 Pro / 12 / 12 Pro
+  // iPhone 14 / 13 / 13 Pro / 12 / 12 Pro (6.1") — 1170×2532
   [1170, 2532, "iphone-14-portrait", "(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)"],
-  // iPhone 13 mini / 12 mini / 11 Pro / X / XS
+  // iPhone 13 mini / 12 mini / 11 Pro / X / XS (5.4-5.8") — 1125×2436
   [1125, 2436, "iphone-12-mini-portrait", "(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)"],
-  // iPhone 11 Pro Max / XS Max
+  // iPhone 11 Pro Max / XS Max (6.5") — 1242×2688
   [1242, 2688, "iphone-xs-max-portrait", "(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)"],
-  // iPhone 11 / XR
+  // iPhone 11 / XR (6.1" @2x) — 828×1792
   [828, 1792, "iphone-xr-portrait", "(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)"],
-  // iPhone 8 Plus / 7 Plus / 6S Plus / 6 Plus
+  // iPhone 8 Plus / 7 Plus / 6S Plus / 6 Plus (5.5") — 1242×2208
   [1242, 2208, "iphone-8-plus-portrait", "(device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)"],
-  // iPhone SE 2nd/3rd gen / 8 / 7 / 6S / 6
+  // iPhone SE 2nd/3rd gen / 8 / 7 / 6S / 6 (4.7") — 750×1334
   [750, 1334, "iphone-se-portrait", "(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)"],
+  // FALLBACK universal — tanpa media query, dipakai iOS kalau resolusi device tidak match satupun di atas.
+  // 1290×2796 (iPhone 16 Plus size) — kompromi tengah, scale baik di smaller/larger devices.
+  [1290, 2796, "fallback", null],
 ];
 
 async function generate() {
@@ -79,9 +84,15 @@ async function generate() {
 
     console.log(`✓ ${label}.png  ${width}×${height}`);
 
-    linkTags.push(
-      `<link rel="apple-touch-startup-image" href="/splash/${label}.png" media="${mediaQuery}" />`
-    );
+    if (mediaQuery) {
+      linkTags.push(
+        `<link rel="apple-touch-startup-image" href="/splash/${label}.png" media="${mediaQuery}" />`
+      );
+    } else {
+      linkTags.push(
+        `<link rel="apple-touch-startup-image" href="/splash/${label}.png" />`
+      );
+    }
   }
 
   console.log("\n📋 Copy meta tag berikut ke <head> di app/layout.tsx (atau sudah handled):\n");
