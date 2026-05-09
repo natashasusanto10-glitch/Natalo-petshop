@@ -18,6 +18,9 @@ on:
           - beta # Build + upload TestFlight
           - build_only # Build .ipa, upload sebagai artifact saja, tidak ke TestFlight
 
+permissions:
+  contents: write # Diperlukan oleh stefanzweifel/git-auto-commit-action untuk push ios/ scaffold
+
 jobs:
   ios-build:
     name: Build iOS app
