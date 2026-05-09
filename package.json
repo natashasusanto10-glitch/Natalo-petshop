@@ -9,10 +9,18 @@
     "lint": "next lint",
     "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:seed": "tsx prisma/seed.ts"
+    "prisma:migrate": "dotenv -e .env.local -- prisma migrate dev",
+    "prisma:migrate:deploy": "dotenv -e .env.local -- prisma migrate deploy",
+    "prisma:migrate:status": "dotenv -e .env.local -- prisma migrate status",
+    "prisma:seed": "dotenv -e .env.local -- tsx prisma/seed.ts",
+    "cap:add:ios": "npx cap add ios",
+    "cap:sync:ios": "npx cap sync ios",
+    "cap:open:ios": "npx cap open ios",
+    "cap:assets": "npx capacitor-assets generate --ios --iconBackgroundColor \"#1E5FBF\" --splashBackgroundColor \"#1E5FBF\""
   },
   "dependencies": {
+    "@capacitor/core": "^8.3.3",
+    "@capacitor/ios": "^8.3.3",
     "@prisma/client": "6.19.0",
     "@react-google-maps/api": "^2.20.8",
     "@types/bcryptjs": "^2.4.6",
@@ -29,11 +37,14 @@
     "zod": "latest"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.3.3",
     "@tailwindcss/postcss": "latest",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "@types/web-push": "^3.6.4",
+    "dotenv-cli": "^7.4.4",
     "prisma": "6.19.0",
     "tailwindcss": "latest",
     "tsx": "latest",

@@ -21,3 +21,18 @@ ChatGPT Image*.png
 
 # TypeScript build cache
 tsconfig.tsbuildinfo
+
+# Capacitor iOS build artifacts (everything except hand-edited project files)
+ios/App/Pods/
+ios/App/Podfile.lock
+ios/App/build/
+ios/App/App/public/
+ios/App/DerivedData/
+ios/.build/
+ios/*.xcworkspace/xcuserdata/
+ios/**/xcuserdata/
+ios/App/App.xcodeproj/xcuserdata/
+ios/App/App.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Capacitor generated assets (regen via `npm run cap:assets`)
+# Note: ios/App/App/Assets.xcassets is committed; only DerivedData ignored.
