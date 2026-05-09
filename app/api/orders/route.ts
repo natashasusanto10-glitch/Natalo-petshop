@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createOrderNumber } from "@/lib/format";
 import { createOrderSchema } from "@/lib/validation";
+import { buildOrderDetailPath, buildOrderDetailUrl, createTrackingToken } from "@/lib/order-detail";
 import { sendAdminOrderCreated, sendOrderCreated } from "@/lib/whatsapp";
 
 type CheckedOutItem = {
@@ -29,7 +30,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string) {
   ]);
 }
 
-async function createMidtransPayment(order: { orderNumber: string; total: number; customerName: string; customerEmail?: string | null; customerPhone: string }) {
+async function createMidtransPayment(order: { orderNumber: string; trackingToken?: string | null; total: number; customerName: string; customerEmail?: string | null; customerPhone: string }) {
   const serverKey = process.env.MIDTRANS_SERVER_KEY;
   if (!serverKey) throw new Error("MIDTRANS_SERVER_KEY belum diisi.");
 
@@ -65,7 +66,7 @@ async function createMidtransPayment(order: { orderNumber: string; total: number
         "qris",
       ],
       callbacks: {
-        finish: `${process.env.NEXT_PUBLIC_SITE_URL}/order-status?order=${order.orderNumber}`,
+        finish: buildOrderDetailUrl(order.orderNumber, order.trackingToken),
       },
     }),
   });
@@ -200,6 +201,7 @@ export async function POST(request: Request) {
 
     const total = Math.max(subtotal + input.shippingCost - discount, 0);
     const orderNumber = createOrderNumber();
+    const trackingToken = createTrackingToken();
 
     // Kode unik 3-digit untuk TT manual (memudahkan admin identifikasi pembayaran)
     // Hanya digenerate kalau pembayaran MANUAL
@@ -270,6 +272,7 @@ export async function POST(request: Request) {
       const createdOrder = await tx.order.create({
         data: {
           orderNumber,
+          trackingToken,
           userId: user.id,
           customerName: input.customerName,
           customerPhone: input.customerPhone,
@@ -415,6 +418,7 @@ export async function POST(request: Request) {
       ...order,
       paymentUrl,
       paymentReference,
+      trackingUrl: buildOrderDetailUrl(order.orderNumber, order.trackingToken),
       items: checkoutItems,
     };
 
@@ -438,6 +442,8 @@ export async function POST(request: Request) {
         ? "Order dibuat. Silakan lanjutkan instruksi transfer manual."
         : "Order dibuat.",
       orderNumber,
+      trackingToken: order.trackingToken,
+      detailUrl: buildOrderDetailPath(order.orderNumber, order.trackingToken),
       earnedPoints,
       paymentUrl,
       snapToken: input.paymentProvider === "MIDTRANS" ? paymentReference : undefined,

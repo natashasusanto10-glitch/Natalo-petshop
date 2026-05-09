@@ -81,7 +81,7 @@ export default async function MemberOrdersPage() {
                 <div className="flex items-center gap-2">
                   <ReorderButton items={order.items} />
                   <Link
-                    href={`/order-status?order=${order.orderNumber}`}
+                    href={`/pesanan/${order.orderNumber}`}
                     className="rounded-full border border-gray-200 px-4 py-2 text-xs font-bold text-gray-700 transition hover:border-blue-400 hover:text-blue-500"
                   >
                     Detail →

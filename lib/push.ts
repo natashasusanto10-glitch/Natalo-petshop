@@ -1,5 +1,6 @@
 import webpush from "web-push";
 import { prisma } from "./prisma";
+import { buildOrderDetailPath } from "./order-detail";
 
 function getVapidConfig() {
   const publicKey = process.env.VAPID_PUBLIC_KEY;
@@ -35,7 +36,7 @@ export async function sendPushToUser(userId: string, payload: { title: string; b
 }
 
 export async function sendOrderStatusPush(orderId: string, orderNumber: string, status: string) {
-  const order = await prisma.order.findUnique({ where: { id: orderId }, select: { userId: true } }).catch(() => null);
+  const order = await prisma.order.findUnique({ where: { id: orderId }, select: { userId: true, trackingToken: true } }).catch(() => null);
   if (!order?.userId) return;
 
   const statusMessages: Record<string, string> = {
@@ -52,6 +53,6 @@ export async function sendOrderStatusPush(orderId: string, orderNumber: string, 
   await sendPushToUser(order.userId, {
     title: "Update Pesanan 🛍️",
     body,
-    url: `/order-status?order=${orderNumber}`,
+    url: buildOrderDetailPath(orderNumber, order.trackingToken),
   });
 }

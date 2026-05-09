@@ -17,6 +17,8 @@ export type WhatsAppOrder = Record<string, unknown> & {
   orderNumber?: string;
   order_number?: string;
   order_id?: string;
+  trackingToken?: string | null;
+  tracking_token?: string | null;
   total?: number;
   grandTotal?: number;
   total_amount?: number;

@@ -6,7 +6,10 @@ import { getSession } from "@/lib/auth";
 import { createBiteshipShipment } from "@/lib/biteship";
 import { sendOrderStatusEmail } from "@/lib/email-order";
 import { assertCanTransitionOrderStatus, transitionOrderStatus } from "@/lib/order-transitions";
+import { buildOrderDetailUrl } from "@/lib/order-detail";
+import { sendOrderStatusPush } from "@/lib/push";
 import {
+  sendCustomMessage,
   sendOrderCancelled,
   sendOrderCompleted,
   sendOrderShipped,
@@ -38,6 +41,7 @@ async function getEmailContext(orderId: string) {
     where: { id: orderId },
     select: {
       orderNumber: true,
+      trackingToken: true,
       customerName: true,
       customerPhone: true,
       customerEmail: true,
@@ -90,6 +94,7 @@ export async function markAsPaid(orderId: string) {
   const ctx = await getEmailContext(orderId);
   if (ctx) {
     await sendOrderStatusEmail("PAID", ctx).catch(() => {});
+    await sendOrderStatusPush(orderId, ctx.orderNumber, "PAID").catch(() => {});
     sendPaymentConfirmed(ctx).catch((error) => {
       console.error("[whatsapp] payment confirmed notification failed", error);
     });
@@ -119,6 +124,16 @@ export async function markAsProcessing(orderId: string) {
   }
 
   await transitionOrderStatus(orderId, "PROCESSING");
+  const ctx = await getEmailContext(orderId);
+  if (ctx) {
+    await sendOrderStatusPush(orderId, ctx.orderNumber, "PROCESSING").catch(() => {});
+    sendCustomMessage(
+      ctx.customerPhone,
+      `Halo ${ctx.customerName}, pesanan ${ctx.orderNumber} sedang kami proses. Detail pesanan: ${buildOrderDetailUrl(ctx.orderNumber, ctx.trackingToken)}`
+    ).catch((error) => {
+      console.error("[whatsapp] order processing notification failed", error);
+    });
+  }
   revalidateOrderAdmin(orderId);
 }
 
@@ -149,6 +164,7 @@ export async function markAsShipped(orderId: string, formData: FormData) {
     const ctx = await getEmailContext(orderId);
     if (ctx) {
       await sendOrderStatusEmail("SHIPPED", ctx).catch(() => {});
+      await sendOrderStatusPush(orderId, ctx.orderNumber, "SHIPPED").catch(() => {});
       sendOrderShipped(ctx).catch((error) => {
         console.error("[whatsapp] order shipped notification failed", error);
       });
@@ -164,6 +180,7 @@ export async function markAsDelivered(orderId: string) {
   const ctx = await getEmailContext(orderId);
   if (ctx) {
     await sendOrderStatusEmail("DELIVERED", ctx).catch(() => {});
+    await sendOrderStatusPush(orderId, ctx.orderNumber, "DELIVERED").catch(() => {});
     sendOrderCompleted(ctx).catch((error) => {
       console.error("[whatsapp] order completed notification failed", error);
     });
@@ -232,6 +249,7 @@ export async function markAsCancelled(orderId: string) {
   const ctx = didCancel ? await getEmailContext(orderId) : null;
   if (ctx) {
     await sendOrderStatusEmail("CANCELLED", ctx).catch(() => {});
+    await sendOrderStatusPush(orderId, ctx.orderNumber, "CANCELLED").catch(() => {});
     sendOrderCancelled(ctx).catch((error) => {
       console.error("[whatsapp] order cancelled notification failed", error);
     });

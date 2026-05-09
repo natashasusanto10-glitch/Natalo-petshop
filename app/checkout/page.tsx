@@ -463,6 +463,12 @@ export default function CheckoutPage() {
       return;
     }
 
+    const detailUrl =
+      data.detailUrl ||
+      `/pesanan/${encodeURIComponent(data.orderNumber)}${
+        data.trackingToken ? `?token=${encodeURIComponent(data.trackingToken)}` : ""
+      }`;
+
     // Simpan alamat ke buku alamat (best-effort, jangan ganggu flow)
     if (isLoggedIn && saveToAddressBook && form.shippingAddress) {
       void fetch("/api/alamat", {
@@ -487,26 +493,26 @@ export default function CheckoutPage() {
       window.snap.pay(data.snapToken, {
         onSuccess: () => {
           clearCart();
-          router.push(`/order-status?order=${data.orderNumber}`);
+          router.push(detailUrl);
         },
         onPending: () => {
           clearCart();
-          router.push(`/order-status?order=${data.orderNumber}`);
+          router.push(detailUrl);
         },
         onError: () => {
           setError("Pembayaran gagal. Silakan coba lagi.");
         },
         onClose: () => {
-          setError("Pembayaran dibatalkan. Order tetap tersimpan, buka kembali melalui cek status order.");
+          setError("Pembayaran dibatalkan. Order tetap tersimpan dan bisa dibuka dari detail pesanan.");
           clearCart();
-          router.push(`/order-status?order=${data.orderNumber}`);
+          router.push(detailUrl);
         },
       });
       return;
     }
 
     clearCart();
-    router.push(`/order-status?order=${data.orderNumber}`);
+    router.push(detailUrl);
   }
 
   function field(

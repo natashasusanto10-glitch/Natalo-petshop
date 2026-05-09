@@ -144,6 +144,7 @@ model Order {
   courierCode          String?
   courierService       String?
   trackingNumber       String?
+  trackingToken        String?         @unique
   biteshipOrderId      String?
   biteshipTrackingUrl  String?
   shipmentStatus       String?

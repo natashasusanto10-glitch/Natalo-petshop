@@ -10,6 +10,7 @@
 
 import { Resend } from "resend";
 import { formatRupiah } from "@/lib/format";
+import { buildOrderDetailUrl } from "@/lib/order-detail";
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY ?? "";
 const RESEND_FROM =
@@ -21,6 +22,7 @@ const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 
 export interface OrderEmailContext {
   orderNumber: string;
+  trackingToken?: string | null;
   customerName: string;
   customerEmail: string | null;
   total: number;
@@ -52,7 +54,7 @@ export async function sendOrderStatusEmail(
   }
 
   const subject = SUBJECTS[kind](ctx.orderNumber);
-  const trackingUrl = `${SITE_URL}/order-status?order=${ctx.orderNumber}`;
+  const trackingUrl = buildOrderDetailUrl(ctx.orderNumber, ctx.trackingToken);
   const html = buildEmailHtml(kind, ctx, trackingUrl);
   const text = buildEmailText(kind, ctx, trackingUrl);
 

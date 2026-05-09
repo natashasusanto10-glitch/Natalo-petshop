@@ -1,53 +1,43 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { buildOrderDetailPath, createTrackingToken, isOrderContactMatch } from "@/lib/order-detail";
 
 export async function GET(request: NextRequest) {
   const orderNumber = request.nextUrl.searchParams.get("order");
-  const email = request.nextUrl.searchParams.get("email")?.trim().toLowerCase();
+  const contact = request.nextUrl.searchParams.get("contact")?.trim() || request.nextUrl.searchParams.get("email")?.trim();
 
-  if (!orderNumber || !email) {
-    return NextResponse.json({ message: "Nomor order dan email wajib diisi" }, { status: 400 });
+  if (!orderNumber || !contact) {
+    return NextResponse.json({ message: "Nomor pesanan dan email/nomor HP wajib diisi." }, { status: 400 });
   }
 
   const order = await prisma.order.findUnique({
     where: { orderNumber },
-    include: { items: true },
+    select: {
+      id: true,
+      orderNumber: true,
+      customerEmail: true,
+      customerPhone: true,
+      trackingToken: true,
+    },
   });
 
   if (!order) {
-    return NextResponse.json({ message: "Order tidak ditemukan" }, { status: 404 });
+    return NextResponse.json({ message: "Pesanan tidak ditemukan." }, { status: 404 });
   }
 
-  // Verifikasi email customer
-  if ((order.customerEmail ?? "").toLowerCase() !== email) {
-    return NextResponse.json({ message: "Order tidak ditemukan" }, { status: 404 });
+  if (!isOrderContactMatch(order, contact)) {
+    return NextResponse.json({ message: "Nomor pesanan tidak cocok dengan email atau nomor HP tersebut." }, { status: 404 });
+  }
+
+  const trackingToken = order.trackingToken ?? createTrackingToken();
+  if (!order.trackingToken) {
+    await prisma.order.update({
+      where: { id: order.id },
+      data: { trackingToken },
+    });
   }
 
   return NextResponse.json({
-    orderNumber: order.orderNumber,
-    customerName: order.customerName,
-    customerPhone: order.customerPhone,
-    status: order.status,
-    paymentStatus: order.paymentStatus,
-    paymentProvider: order.paymentProvider,
-    paymentUrl: order.paymentUrl,
-    subtotal: order.subtotal,
-    shippingCost: order.shippingCost,
-    discount: order.discount,
-    total: order.total,
-    manualBank: order.manualBank,
-    uniqueCode: order.uniqueCode,
-    shippingAddress: order.shippingAddress,
-    shippingCity: order.shippingCity,
-    courierCode: order.courierCode,
-    courierService: order.courierService,
-    trackingNumber: order.trackingNumber,
-    notes: order.notes,
-    createdAt: order.createdAt.toISOString(),
-    items: order.items.map((item) => ({
-      name: item.name,
-      quantity: item.quantity,
-      price: item.price,
-    })),
+    detailUrl: buildOrderDetailPath(order.orderNumber, trackingToken),
   });
 }
