@@ -80,11 +80,9 @@ jobs:
           commit_user_name: github-actions[bot]
           commit_user_email: 41898282+github-actions[bot]@users.noreply.github.com
 
-      - name: CocoaPods install
-        working-directory: ios/App
-        run: |
-          pod repo update
-          pod install
+      # Capacitor 8 pakai Swift Package Manager (SPM), bukan CocoaPods.
+      # Dependency resolution otomatis ditangani Xcode/gym dari Package.swift.
+      # Tidak perlu `pod install` lagi.
 
       - name: Run Fastlane lane
         env:
