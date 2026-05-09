@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Script from "next/script";
 import { formatRupiah } from "@/lib/format";
@@ -52,6 +52,10 @@ export default function CheckoutPage() {
   const [ratesLoading, setRatesLoading] = useState(false);
   const [orderLoading, setOrderLoading] = useState(false);
   const [error, setError] = useState("");
+  const [addressBookLoading, setAddressBookLoading] = useState(true);
+  const [addressBookError, setAddressBookError] = useState("");
+  const [addressMode, setAddressMode] = useState<"saved" | "manual" | "select">("manual");
+  const [showSavedPinpointPicker, setShowSavedPinpointPicker] = useState(false);
 
   const [form, setForm] = useState({
     customerName: "",
@@ -133,8 +137,13 @@ export default function CheckoutPage() {
         const main = mapped.find((a) => a.isMain) ?? mapped[0];
         setSelectedAddressId(main.id);
         applyAddressToForm(main);
+        setAddressMode("saved");
       })
-      .catch(() => {});
+      .catch(() => {
+        setAddressBookError("Alamat tersimpan belum bisa dimuat. Kamu tetap bisa isi alamat baru.");
+        setAddressMode("manual");
+      })
+      .finally(() => setAddressBookLoading(false));
   }, []);
 
   function handlePinpoint(value: PinpointValue) {
@@ -144,6 +153,9 @@ export default function CheckoutPage() {
       shippingLongitude: value.longitude,
       shippingPinpointAddress: value.pinpointAddress,
     }));
+    setSelectedRate(null);
+    setPayment(null);
+    setRates([]);
   }
 
   function applyAddressToForm(addr: {
@@ -167,12 +179,47 @@ export default function CheckoutPage() {
       shippingLongitude: addr.longitude ?? null,
       shippingPinpointAddress: addr.pinpointAddress ?? null,
     }));
+    setSelectedRate(null);
+    setPayment(null);
+    setRates([]);
+    setShippingError("");
+    setShowSavedPinpointPicker(false);
   }
 
   const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const shippingCost = selectedRate?.price ?? 0;
   const discount = voucherApplied?.discount ?? 0;
   const total = Math.max(subtotal + shippingCost - discount, 0);
+  const selectedAddress = useMemo(
+    () => savedAddresses.find((addr) => addr.id === selectedAddressId) ?? null,
+    [savedAddresses, selectedAddressId]
+  );
+  const usingSavedAddress = addressMode === "saved" && Boolean(selectedAddress);
+  const showManualAddressForm =
+    !addressBookLoading && (addressMode === "manual" || savedAddresses.length === 0);
+  const addressValid = Boolean(
+    form.customerName.trim() &&
+      form.customerPhone.trim() &&
+      form.shippingAddress.trim() &&
+      form.shippingPostalCode.trim()
+  );
+  const canPlaceOrder = Boolean(
+    items.length > 0 &&
+      addressValid &&
+      selectedRate &&
+      payment &&
+      total >= 0 &&
+      !orderLoading
+  );
+  const primaryCtaLabel = orderLoading
+    ? "Memproses..."
+    : !addressValid
+      ? "Lengkapi Alamat"
+      : !selectedRate
+        ? "Pilih Pengiriman Dulu"
+        : !payment
+          ? "Pilih Pembayaran Dulu"
+          : "Bayar Sekarang";
 
   // ── Auto-apply voucher milik user ──────────────────────────────
   // Fetch user vouchers tiap subtotal berubah. Auto-apply voucher TERBAIK
@@ -258,6 +305,10 @@ export default function CheckoutPage() {
   }
 
   async function getRates() {
+    if (!addressValid) {
+      setShippingError("Pilih atau lengkapi alamat pengiriman terlebih dahulu.");
+      return;
+    }
     if (!form.shippingPostalCode) {
       setShippingError("Isi kode pos dulu untuk cek ongkir.");
       return;
@@ -316,6 +367,11 @@ export default function CheckoutPage() {
 
     if (items.length === 0) {
       setError("Keranjang kosong.");
+      return;
+    }
+
+    if (!addressValid) {
+      setError("Pilih atau lengkapi alamat pengiriman terlebih dahulu.");
       return;
     }
 
@@ -408,6 +464,22 @@ export default function CheckoutPage() {
   ) {
     const cls =
       "mt-1 block w-full rounded-2xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-600";
+    const shouldResetCheckout =
+      key === "shippingAddress" ||
+      key === "shippingCity" ||
+      key === "shippingPostalCode" ||
+      key === "shippingLatitude" ||
+      key === "shippingLongitude" ||
+      key === "shippingPinpointAddress";
+    function updateField(value: string) {
+      setForm({ ...form, [key]: value });
+      if (shouldResetCheckout) {
+        setSelectedRate(null);
+        setPayment(null);
+        setRates([]);
+      }
+    }
+
     return (
       <div>
         <label className="block text-sm font-medium text-zinc-700">
@@ -420,7 +492,7 @@ export default function CheckoutPage() {
             required={opts.required}
             placeholder={opts.placeholder}
             value={String(form[key] ?? "")}
-            onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+            onChange={(e) => updateField(e.target.value)}
             className={cls}
           />
         ) : (
@@ -429,7 +501,7 @@ export default function CheckoutPage() {
             required={opts?.required}
             placeholder={opts?.placeholder}
             value={String(form[key] ?? "")}
-            onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+            onChange={(e) => updateField(e.target.value)}
             className={cls}
           />
         )}
@@ -469,8 +541,94 @@ export default function CheckoutPage() {
           )}
 
           <form id="checkout-form" onSubmit={handleOrder} className="mt-8 space-y-4">
+            <section className="rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-black text-zinc-950">Alamat Pengiriman</p>
+                  <p className="mt-0.5 text-xs text-zinc-500">
+                    Alamat tersimpan dipakai otomatis agar checkout lebih cepat.
+                  </p>
+                </div>
+                {usingSavedAddress && (
+                  <button
+                    type="button"
+                    onClick={() => setAddressMode("select")}
+                    className="shrink-0 text-xs font-black text-natalo-600 hover:underline"
+                  >
+                    Ubah Alamat
+                  </button>
+                )}
+              </div>
+
+              {addressBookLoading && (
+                <div className="mt-3 rounded-xl bg-zinc-50 px-4 py-3 text-sm font-semibold text-zinc-500">
+                  Memuat alamat tersimpan...
+                </div>
+              )}
+
+              {addressBookError && (
+                <div className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-700">
+                  {addressBookError}
+                </div>
+              )}
+
+              {usingSavedAddress && selectedAddress && (
+                <div className="mt-3 rounded-2xl border border-natalo-200 bg-natalo-50 p-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-white px-2.5 py-1 text-xs font-black text-natalo-700">
+                      {selectedAddress.label}
+                    </span>
+                    {selectedAddress.isMain && (
+                      <span className="rounded-full bg-natalo-600 px-2.5 py-1 text-xs font-black text-white">
+                        Utama
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-3 font-black text-zinc-950">
+                    {selectedAddress.recipientName} · {selectedAddress.phone}
+                  </p>
+                  <p className="mt-1 text-sm leading-relaxed text-zinc-700">
+                    {selectedAddress.address}
+                  </p>
+                  <p className="mt-1 text-xs font-semibold text-zinc-500">
+                    {[selectedAddress.city, selectedAddress.postalCode].filter(Boolean).join(" · ")}
+                  </p>
+
+                  {selectedAddress.pinpointAddress ? (
+                    <div className="mt-3 rounded-xl bg-white px-3 py-2 text-xs font-semibold text-natalo-800">
+                      Pinpoint tersimpan: {selectedAddress.pinpointAddress}
+                    </div>
+                  ) : (
+                    <div className="mt-3 rounded-xl border border-dashed border-natalo-200 bg-white px-3 py-2">
+                      <p className="text-xs font-semibold text-zinc-600">
+                        Tambahkan pinpoint agar kurir lebih mudah menemukan alamat.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setShowSavedPinpointPicker((value) => !value)}
+                        className="mt-2 text-xs font-black text-natalo-600 hover:underline"
+                      >
+                        {showSavedPinpointPicker ? "Tutup Pinpoint" : "Tambah Pinpoint"}
+                      </button>
+                    </div>
+                  )}
+
+                  {showSavedPinpointPicker && (
+                    <div className="mt-3">
+                      <AddressPinpointPicker
+                        defaultLatitude={form.shippingLatitude}
+                        defaultLongitude={form.shippingLongitude}
+                        defaultAddress={form.shippingPinpointAddress}
+                        onChange={handlePinpoint}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+
             {/* Pilih alamat tersimpan */}
-            {savedAddresses.length > 0 && (
+            {addressMode === "select" && savedAddresses.length > 0 && (
               <div>
                 <p className="text-sm font-medium text-zinc-700">Alamat tersimpan</p>
                 <div className="mt-2 space-y-2">
@@ -481,6 +639,7 @@ export default function CheckoutPage() {
                       onClick={() => {
                         setSelectedAddressId(addr.id);
                         applyAddressToForm(addr);
+                        setAddressMode("saved");
                       }}
                       className={`w-full rounded-2xl border p-4 text-left text-sm transition ${
                         selectedAddressId === addr.id
@@ -515,33 +674,65 @@ export default function CheckoutPage() {
                 <p className="mt-2 text-xs text-zinc-400">
                   Atau isi form di bawah secara manual untuk alamat berbeda.
                 </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAddressMode("manual");
+                    setSelectedAddressId("");
+                    setSelectedRate(null);
+                    setPayment(null);
+                    setRates([]);
+                  }}
+                  className="mt-3 w-full rounded-2xl border border-dashed border-natalo-300 bg-white p-4 text-left text-sm font-black text-natalo-700 transition hover:bg-natalo-50"
+                >
+                  + Tambah Alamat Baru
+                </button>
               </div>
             )}
 
-            {field("Nama lengkap", "customerName", { required: true, placeholder: "Nama penerima" })}
-            {field("Nomor WhatsApp", "customerPhone", { required: true, type: "tel", placeholder: "08123..." })}
-            {field("Email", "customerEmail", { type: "email", placeholder: "Opsional" })}
-            {field("Alamat lengkap", "shippingAddress", {
-              required: true,
-              placeholder: "Jalan, RT/RW, Kelurahan, Kecamatan...",
-              textarea: true,
-            })}
+            {showManualAddressForm && (
+              <>
+                {savedAddresses.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const fallback = selectedAddress ?? savedAddresses.find((addr) => addr.isMain) ?? savedAddresses[0];
+                      setSelectedAddressId(fallback.id);
+                      applyAddressToForm(fallback);
+                      setAddressMode("saved");
+                    }}
+                    className="text-xs font-black text-natalo-600 hover:underline"
+                  >
+                    Pakai alamat tersimpan
+                  </button>
+                )}
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              {field("Kota / Kecamatan", "shippingCity", { placeholder: "Contoh: Jakarta Selatan" })}
-              {field("Kode pos", "shippingPostalCode", { type: "tel", placeholder: "12345" })}
-            </div>
+                {field("Nama lengkap", "customerName", { required: true, placeholder: "Nama penerima" })}
+                {field("Nomor WhatsApp", "customerPhone", { required: true, type: "tel", placeholder: "08123..." })}
+                {field("Email", "customerEmail", { type: "email", placeholder: "Opsional" })}
+                {field("Alamat lengkap", "shippingAddress", {
+                  required: true,
+                  placeholder: "Jalan, RT/RW, Kelurahan, Kecamatan...",
+                  textarea: true,
+                })}
 
-            {/* Pinpoint GPS */}
-            <AddressPinpointPicker
-              defaultLatitude={form.shippingLatitude}
-              defaultLongitude={form.shippingLongitude}
-              defaultAddress={form.shippingPinpointAddress}
-              onChange={handlePinpoint}
-            />
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {field("Kota / Kecamatan", "shippingCity", { placeholder: "Contoh: Jakarta Selatan" })}
+                  {field("Kode pos", "shippingPostalCode", { type: "tel", placeholder: "12345" })}
+                </div>
+
+                {/* Pinpoint GPS */}
+                <AddressPinpointPicker
+                  defaultLatitude={form.shippingLatitude}
+                  defaultLongitude={form.shippingLongitude}
+                  defaultAddress={form.shippingPinpointAddress}
+                  onChange={handlePinpoint}
+                />
+              </>
+            )}
 
             {/* Simpan ke buku alamat (login only) */}
-            {isLoggedIn && (
+            {isLoggedIn && showManualAddressForm && (
               <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
                 <label className="flex items-start gap-2 text-sm text-zinc-700">
                   <input
@@ -596,17 +787,17 @@ export default function CheckoutPage() {
                 <button
                   type="button"
                   onClick={getRates}
-                  disabled={ratesLoading || !form.shippingPostalCode}
+                  disabled={ratesLoading || !addressValid}
                   className="mt-1 flex w-full items-center justify-between rounded-2xl border border-zinc-300 bg-white p-4 text-left transition hover:border-natalo-300 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <span className="font-medium text-zinc-700">
                     {ratesLoading
                       ? "🔄 Memuat ongkir..."
-                      : !form.shippingPostalCode
-                      ? "Isi kode pos dulu untuk cek ongkir"
+                      : !addressValid
+                      ? "Pilih atau lengkapi alamat dulu"
                       : "🚚 Pilih metode pengiriman →"}
                   </span>
-                  {!ratesLoading && form.shippingPostalCode && (
+                  {!ratesLoading && addressValid && (
                     <span className="text-zinc-400">›</span>
                   )}
                 </button>
@@ -738,6 +929,7 @@ export default function CheckoutPage() {
             {/* Metode pembayaran */}
             <div>
               <p className="text-sm font-medium text-zinc-700">Metode pembayaran</p>
+              {selectedRate ? (
               <div className="mt-2 space-y-2">
                 <button
                   type="button"
@@ -763,6 +955,11 @@ export default function CheckoutPage() {
                   </button>
                 )}
               </div>
+              ) : (
+                <div className="mt-2 rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-semibold text-zinc-500">
+                  Pilih pengiriman dulu untuk membuka metode pembayaran.
+                </div>
+              )}
             </div>
           </form>
         </div>
@@ -800,11 +997,11 @@ export default function CheckoutPage() {
 
           <div className="mt-5 space-y-2 border-t pt-4 text-sm">
             <div className="flex justify-between text-zinc-600">
-              <span>Subtotal</span>
+              <span>Subtotal produk</span>
               <span>{formatRupiah(subtotal)}</span>
             </div>
             <div className="flex justify-between text-zinc-600">
-              <span>Ongkir</span>
+              <span>Ongkos kirim</span>
               {selectedRate ? (
                 <span>{formatRupiah(shippingCost)}</span>
               ) : (
@@ -818,7 +1015,7 @@ export default function CheckoutPage() {
               </div>
             )}
             <div className="flex justify-between text-lg font-black text-zinc-950">
-              <span>Total</span>
+              <span>Total bayar</span>
               <span>{selectedRate ? formatRupiah(total) : formatRupiah(subtotal) + " + ongkir"}</span>
             </div>
           </div>
@@ -830,14 +1027,10 @@ export default function CheckoutPage() {
           <button
             type="submit"
             form="checkout-form"
-            disabled={orderLoading || items.length === 0}
-            className="mt-5 w-full rounded-full bg-zinc-950 px-6 py-4 text-sm font-bold text-white disabled:opacity-50"
+            disabled={!canPlaceOrder}
+            className="mt-5 w-full rounded-full bg-natalo-600 px-6 py-4 text-sm font-bold text-white transition hover:bg-natalo-700 disabled:cursor-not-allowed disabled:bg-zinc-300 disabled:text-zinc-500"
           >
-            {orderLoading
-              ? "Memproses..."
-              : paymentMethod === "MIDTRANS"
-              ? "Bayar dengan Midtrans"
-              : "Buat Order"}
+            {primaryCtaLabel}
           </button>
 
           {paymentMethod === "MANUAL" && (
@@ -861,7 +1054,7 @@ export default function CheckoutPage() {
 
       {/* Mobile sticky bottom CTA */}
       {items.length > 0 && (
-        <div className="fixed inset-x-0 bottom-[70px] z-40 border-t border-zinc-200 bg-white px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] md:hidden [padding-bottom:calc(12px+env(safe-area-inset-bottom))]">
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-200 bg-white px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] md:hidden [padding-bottom:calc(12px+env(safe-area-inset-bottom))]">
           <div className="flex items-center gap-3">
             <div className="min-w-0 flex-1">
               <p className="text-xs text-zinc-500">
@@ -874,14 +1067,10 @@ export default function CheckoutPage() {
             <button
               type="submit"
               form="checkout-form"
-              disabled={orderLoading || items.length === 0}
-              className="flex h-12 shrink-0 items-center justify-center rounded-full bg-zinc-950 px-6 text-sm font-bold text-white disabled:opacity-50"
+              disabled={!canPlaceOrder}
+              className="flex h-12 shrink-0 items-center justify-center rounded-full bg-natalo-600 px-6 text-sm font-bold text-white transition hover:bg-natalo-700 disabled:cursor-not-allowed disabled:bg-zinc-300 disabled:text-zinc-500"
             >
-              {orderLoading
-                ? "Memproses..."
-                : paymentMethod === "MIDTRANS"
-                  ? "Bayar"
-                  : "Buat Order"}
+              {primaryCtaLabel}
             </button>
           </div>
         </div>

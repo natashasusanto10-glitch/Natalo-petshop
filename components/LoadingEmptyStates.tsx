@@ -109,7 +109,7 @@ export function EmptySearch({
         <div className="flex flex-wrap justify-center gap-2">
           {onReset && (
             <button
-              className="rounded-lg bg-[#D85A30] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#c64d27]"
+              className="rounded-lg bg-natalo-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-natalo-600 active:bg-natalo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-natalo-300 focus-visible:ring-offset-2"
               onClick={onReset}
               type="button"
             >
@@ -216,7 +216,7 @@ function PrimaryLink({
 }) {
   return (
     <Link
-      className="inline-flex rounded-lg bg-[#D85A30] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#c64d27]"
+      className="inline-flex rounded-lg bg-natalo-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-natalo-600 active:bg-natalo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-natalo-300 focus-visible:ring-offset-2"
       href={href}
     >
       {children}

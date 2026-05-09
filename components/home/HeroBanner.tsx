@@ -7,7 +7,7 @@ import { heroSlides as defaultSlides, type HeroSlide, type HeroSlideIcon } from 
 import { filterActiveSlides } from "@/lib/filterActiveSlides";
 
 const ROTATE_INTERVAL_MS = 3000;
-const RESUME_AFTER_TOUCH_MS = 8000;
+const SWIPE_THRESHOLD_PX = 48;
 
 export default function HeroBanner({
   slides = defaultSlides,
@@ -18,9 +18,15 @@ export default function HeroBanner({
 }) {
   const activeSlides = filterActiveSlides(slides);
   const [current, setCurrent] = useState(0);
-  const [manuallyPaused, setManuallyPaused] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [isHovering, setIsHovering] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState(0);
+  const [autoplayTick, setAutoplayTick] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const dragStartXRef = useRef(0);
+  const dragLastXRef = useRef(0);
+  const suppressClickRef = useRef(false);
   const total = activeSlides.length;
 
   useEffect(() => {
@@ -28,69 +34,89 @@ export default function HeroBanner({
   }, [current, total]);
 
   useEffect(() => {
-    function stop() {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-    }
+    if (timerRef.current) clearTimeout(timerRef.current);
+    if (total <= 1 || isHovering || isDragging) return;
 
-    function start() {
-      stop();
-      if (total <= 1 || manuallyPaused) return;
-      timerRef.current = setInterval(() => {
-        setCurrent((value) => (value + 1) % total);
-      }, intervalMs);
-    }
-
-    start();
-
-    const container = containerRef.current;
-    if (!container) return stop;
-
-    let resumeTimeout: ReturnType<typeof setTimeout> | null = null;
-    const pause = () => stop();
-    const resume = () => start();
-    const touchStart = () => {
-      stop();
-      if (resumeTimeout) clearTimeout(resumeTimeout);
-    };
-    const touchEnd = () => {
-      if (resumeTimeout) clearTimeout(resumeTimeout);
-      resumeTimeout = setTimeout(() => {
-        if (!manuallyPaused) start();
-      }, RESUME_AFTER_TOUCH_MS);
-    };
-
-    container.addEventListener("mouseenter", pause);
-    container.addEventListener("mouseleave", resume);
-    container.addEventListener("touchstart", touchStart, { passive: true });
-    container.addEventListener("touchend", touchEnd, { passive: true });
+    timerRef.current = setTimeout(() => {
+      setCurrent((value) => (value + 1) % total);
+    }, intervalMs);
 
     return () => {
-      stop();
-      if (resumeTimeout) clearTimeout(resumeTimeout);
-      container.removeEventListener("mouseenter", pause);
-      container.removeEventListener("mouseleave", resume);
-      container.removeEventListener("touchstart", touchStart);
-      container.removeEventListener("touchend", touchEnd);
+      if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [total, intervalMs, manuallyPaused]);
+  }, [current, total, intervalMs, isHovering, isDragging, autoplayTick]);
 
   if (total === 0) return null;
 
+  function resetAutoplayTimer() {
+    setAutoplayTick((value) => value + 1);
+  }
+
+  function goToSlide(index: number) {
+    setCurrent((index + total) % total);
+    resetAutoplayTimer();
+  }
+
+  function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (total <= 1 || event.pointerType === "mouse" && event.button !== 0) return;
+    dragStartXRef.current = event.clientX;
+    dragLastXRef.current = event.clientX;
+    suppressClickRef.current = false;
+    setIsDragging(true);
+    setDragOffset(0);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    if (!isDragging) return;
+    const offset = event.clientX - dragStartXRef.current;
+    dragLastXRef.current = event.clientX;
+    setDragOffset(Math.max(Math.min(offset, 120), -120));
+    if (Math.abs(offset) > 8) suppressClickRef.current = true;
+  }
+
+  function finishPointerDrag() {
+    if (!isDragging) return;
+    const offset = dragLastXRef.current - dragStartXRef.current;
+    setIsDragging(false);
+    setDragOffset(0);
+
+    if (Math.abs(offset) >= SWIPE_THRESHOLD_PX) {
+      goToSlide(offset < 0 ? current + 1 : current - 1);
+      return;
+    }
+
+    resetAutoplayTimer();
+  }
+
+  function handleClickCapture(event: React.MouseEvent<HTMLDivElement>) {
+    if (!suppressClickRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    suppressClickRef.current = false;
+  }
+
   return (
     <div className="px-4 pt-3">
-      <div ref={containerRef} className="relative aspect-[16/9] overflow-hidden rounded-2xl shadow-sm">
+      <div
+        ref={containerRef}
+        onClickCapture={handleClickCapture}
+        onMouseEnter={() => setIsHovering(true)}
+        onMouseLeave={() => setIsHovering(false)}
+        onPointerCancel={finishPointerDrag}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={finishPointerDrag}
+        className="relative aspect-[16/9] touch-pan-y overflow-hidden rounded-2xl shadow-sm"
+      >
         <div
-          className="flex h-full transition-transform duration-700 ease-out"
+          className={`flex h-full ${isDragging ? "" : "transition-transform duration-700 ease-out"}`}
           style={{
-            width: `${total * 100}%`,
-            transform: `translateX(-${(100 / total) * current}%)`,
+            transform: `translateX(calc(-${current * 100}% + ${dragOffset}px))`,
           }}
         >
           {activeSlides.map((slide) => (
-            <SlideContent key={slide.id} slide={slide} totalSlides={total} />
+            <SlideContent key={slide.id} slide={slide} />
           ))}
         </div>
 
@@ -101,7 +127,7 @@ export default function HeroBanner({
                 <button
                   key={slide.id}
                   type="button"
-                  onClick={() => setCurrent(index)}
+                  onClick={() => goToSlide(index)}
                   aria-label={`Slide ${index + 1} dari ${total}`}
                   className={`rounded-full transition-all ${
                     index === current ? "h-1.5 w-6 bg-white/90" : "h-1.5 w-1.5 bg-white/45"
@@ -109,24 +135,6 @@ export default function HeroBanner({
                 />
               ))}
             </div>
-            <button
-              type="button"
-              onClick={() => setManuallyPaused((value) => !value)}
-              aria-label={manuallyPaused ? "Lanjutkan putaran otomatis" : "Jeda putaran otomatis"}
-              aria-pressed={manuallyPaused}
-              className="absolute bottom-1.5 right-2 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-sm transition hover:bg-black/55 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
-            >
-              {manuallyPaused ? (
-                <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor" aria-hidden="true">
-                  <path d="M8 5v14l11-7L8 5Z" />
-                </svg>
-              ) : (
-                <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor" aria-hidden="true">
-                  <rect x="6" y="5" width="4" height="14" rx="1" />
-                  <rect x="14" y="5" width="4" height="14" rx="1" />
-                </svg>
-              )}
-            </button>
           </>
         )}
       </div>
@@ -134,9 +142,7 @@ export default function HeroBanner({
   );
 }
 
-function SlideContent({ slide, totalSlides }: { slide: HeroSlide; totalSlides: number }) {
-  const slideWidth = `${100 / totalSlides}%`;
-
+function SlideContent({ slide }: { slide: HeroSlide }) {
   if (slide.type === "image") {
     const image = (
       <Image
@@ -150,9 +156,9 @@ function SlideContent({ slide, totalSlides }: { slide: HeroSlide; totalSlides: n
     );
 
     return (
-      <div className="relative shrink-0" style={{ width: slideWidth }}>
+      <div className="relative w-full shrink-0">
         {slide.href ? (
-          <Link href={slide.href} className="block h-full w-full">
+          <Link href={slide.href} className="relative block h-full w-full">
             {image}
           </Link>
         ) : (
@@ -165,7 +171,7 @@ function SlideContent({ slide, totalSlides }: { slide: HeroSlide; totalSlides: n
   return (
     <div
       className={`relative flex shrink-0 flex-col justify-center overflow-hidden bg-gradient-to-br p-4 ${slide.background}`}
-      style={{ width: slideWidth }}
+      style={{ width: "100%" }}
     >
       <div className="absolute -right-5 -top-5 flex h-24 w-24 items-center justify-center rounded-full bg-white/10 text-white/35">
         <HeroSlideSvg name={slide.icon} className="h-12 w-12" />

@@ -107,6 +107,8 @@ export function BottomNavigation() {
     };
   }, []);
 
+  if (pathname === "/checkout" || pathname?.startsWith("/checkout/")) return null;
+
   return (
     <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-[#f0f0f0] bg-white py-2 shadow-[0_-2px_12px_rgba(0,0,0,0.05)] md:hidden [padding-bottom:calc(4px+env(safe-area-inset-bottom))]">
       <div className="grid grid-cols-4">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 interface Props {
@@ -10,48 +10,120 @@ interface Props {
   email: string | null;
 }
 
-export function EditProfileForm({ initialName, initialPhone, initialBirthDate, email }: Props) {
-  const router = useRouter();
-  const [submitting, setSubmitting] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [error, setError] = useState("");
+type ProfileForm = {
+  name: string;
+  phone: string;
+  birthDate: string;
+};
 
-  const [form, setForm] = useState({
+type SaveState = "idle" | "saving" | "saved";
+
+function buildInitialForm(initialName: string, initialPhone: string | null, initialBirthDate: string | null): ProfileForm {
+  return {
     name: initialName,
     phone: initialPhone ?? "",
     birthDate: initialBirthDate ?? "",
-  });
+  };
+}
+
+export function EditProfileForm({ initialName, initialPhone, initialBirthDate, email }: Props) {
+  const router = useRouter();
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState("");
+
+  const [initialForm, setInitialForm] = useState<ProfileForm>(() =>
+    buildInitialForm(initialName, initialPhone, initialBirthDate)
+  );
+  const [form, setForm] = useState<ProfileForm>(initialForm);
+
+  const hasChanges = useMemo(
+    () =>
+      form.name !== initialForm.name ||
+      form.phone !== initialForm.phone ||
+      form.birthDate !== initialForm.birthDate,
+    [form, initialForm]
+  );
+
+  const isSaving = saveState === "saving";
+  const isSaved = saveState === "saved";
+  const isSubmitDisabled = !hasChanges || isSaving || isSaved;
+
+  const buttonText = isSaving
+    ? "Menyimpan..."
+    : isSaved
+      ? "Tersimpan ✓"
+      : hasChanges
+        ? "Simpan Perubahan"
+        : "Tidak Ada Perubahan";
+
+  useEffect(() => {
+    const nextInitialForm = buildInitialForm(initialName, initialPhone, initialBirthDate);
+    setInitialForm(nextInitialForm);
+    setForm(nextInitialForm);
+  }, [initialName, initialPhone, initialBirthDate]);
+
+  useEffect(() => {
+    return () => {
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    };
+  }, []);
 
   function update(field: string, value: string) {
+    if (savedTimerRef.current) {
+      clearTimeout(savedTimerRef.current);
+      savedTimerRef.current = null;
+    }
     setForm((prev) => ({ ...prev, [field]: value }));
+    setSaveState("idle");
     setSuccess(false);
     setError("");
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!hasChanges || isSaving) return;
+
+    if (savedTimerRef.current) {
+      clearTimeout(savedTimerRef.current);
+      savedTimerRef.current = null;
+    }
+
     setError("");
     setSuccess(false);
-    setSubmitting(true);
+    setSaveState("saving");
+
+    const nextForm: ProfileForm = {
+      name: form.name.trim(),
+      phone: form.phone.trim(),
+      birthDate: form.birthDate,
+    };
 
     try {
       const res = await fetch("/api/member/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: form.name.trim(),
-          phone: form.phone.trim() || null,
-          birthDate: form.birthDate || null,
+          name: nextForm.name,
+          phone: nextForm.phone || null,
+          birthDate: nextForm.birthDate || null,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Gagal menyimpan.");
+      setForm(nextForm);
+      setInitialForm(nextForm);
       setSuccess(true);
+      setSaveState("saved");
+      savedTimerRef.current = setTimeout(() => {
+        setSaveState("idle");
+        savedTimerRef.current = null;
+      }, 1500);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal menyimpan.");
-    } finally {
-      setSubmitting(false);
+      setSaveState("idle");
     }
   }
 
@@ -64,7 +136,7 @@ export function EditProfileForm({ initialName, initialPhone, initialBirthDate, e
       )}
       {success && (
         <div className="rounded-xl border border-green-100 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
-          ✅ Profil berhasil disimpan.
+          Profil berhasil disimpan
         </div>
       )}
 
@@ -123,10 +195,16 @@ export function EditProfileForm({ initialName, initialPhone, initialBirthDate, e
 
       <button
         type="submit"
-        disabled={submitting}
-        className="w-full rounded-full bg-blue-500 py-3 text-sm font-bold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
+        disabled={isSubmitDisabled}
+        className={`w-full rounded-full py-3 text-sm font-bold transition disabled:cursor-not-allowed ${
+          hasChanges && !isSaved
+            ? "bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-60"
+            : isSaved
+              ? "bg-green-500 text-white"
+              : "bg-gray-200 text-gray-500"
+        }`}
       >
-        {submitting ? "Menyimpan..." : "Simpan Perubahan"}
+        {buttonText}
       </button>
     </form>
   );
