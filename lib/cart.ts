@@ -23,8 +23,11 @@ export type CartItem = {
   stock?: number | null;
 };
 
-const STORAGE_KEY = "cart";
+const LEGACY_STORAGE_KEY = "cart";
+const GUEST_STORAGE_KEY = "cart:guest";
+const OWNER_KEY = "cart:owner";
 const EVENT_NAME = "cart-updated";
+const AUTH_EVENT_NAME = "auth-updated";
 const DEBOUNCE_MS = 500;
 
 function isBrowser() {
@@ -33,24 +36,88 @@ function isBrowser() {
 
 export function loadCart(): CartItem[] {
   if (!isBrowser()) return [];
+  migrateLegacyGuestCart();
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(activeStorageKey());
     const parsed = raw ? JSON.parse(raw) : [];
     return Array.isArray(parsed) ? parsed : [];
   } catch {
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(activeStorageKey());
     return [];
   }
 }
 
 function writeLocal(items: CartItem[]) {
   if (!isBrowser()) return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  localStorage.setItem(activeStorageKey(), JSON.stringify(items));
   window.dispatchEvent(new Event(EVENT_NAME));
+}
+
+function activeOwner() {
+  if (!isBrowser()) return "guest";
+  return localStorage.getItem(OWNER_KEY) || "guest";
+}
+
+function storageKeyForOwner(owner: string) {
+  return owner === "guest" ? GUEST_STORAGE_KEY : `cart:user:${owner}`;
+}
+
+function activeStorageKey() {
+  return storageKeyForOwner(activeOwner());
+}
+
+function readStorage(key: string): CartItem[] {
+  if (!isBrowser()) return [];
+  try {
+    const raw = localStorage.getItem(key);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    localStorage.removeItem(key);
+    return [];
+  }
+}
+
+function writeStorage(key: string, items: CartItem[]) {
+  if (!isBrowser()) return;
+  localStorage.setItem(key, JSON.stringify(items));
+}
+
+function setActiveOwner(owner: string) {
+  if (!isBrowser()) return;
+  localStorage.setItem(OWNER_KEY, owner);
+}
+
+function migrateLegacyGuestCart() {
+  if (!isBrowser()) return;
+  const legacy = readStorage(LEGACY_STORAGE_KEY);
+  if (legacy.length > 0 && !localStorage.getItem(GUEST_STORAGE_KEY)) {
+    writeStorage(GUEST_STORAGE_KEY, legacy);
+  }
+  localStorage.removeItem(LEGACY_STORAGE_KEY);
+}
+
+function dispatchCartUpdated() {
+  if (!isBrowser()) return;
+  window.dispatchEvent(new Event(EVENT_NAME));
+}
+
+export function dispatchAuthUpdated() {
+  if (!isBrowser()) return;
+  window.dispatchEvent(new Event(AUTH_EVENT_NAME));
+}
+
+export function switchToGuestCart() {
+  if (!isBrowser()) return;
+  setActiveOwner("guest");
+  memberStatus = "guest";
+  currentMemberId = null;
+  dispatchCartUpdated();
 }
 
 // ── Server sync ────────────────────────────────────────────────────
 let memberStatus: "unknown" | "guest" | "member" = "unknown";
+let currentMemberId: string | null = null;
 let pushTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingItems: CartItem[] | null = null;
 
@@ -61,10 +128,22 @@ async function checkAuth(): Promise<boolean> {
   try {
     const res = await fetch("/api/auth/me", { cache: "no-store" });
     const data = await res.json();
-    memberStatus = data?.name ? "member" : "guest";
+    if (data?.id && data?.name) {
+      memberStatus = "member";
+      currentMemberId = data.id;
+      setActiveOwner(data.id);
+    } else {
+      memberStatus = "guest";
+      currentMemberId = null;
+      setActiveOwner("guest");
+      dispatchCartUpdated();
+    }
     return memberStatus === "member";
   } catch {
     memberStatus = "guest";
+    currentMemberId = null;
+    setActiveOwner("guest");
+    dispatchCartUpdated();
     return false;
   }
 }
@@ -129,6 +208,7 @@ function mergeItems(local: CartItem[], server: CartItem[]): CartItem[] {
  */
 export async function mergeFromServer(): Promise<void> {
   if (!isBrowser()) return;
+  migrateLegacyGuestCart();
   // Force re-check auth
   memberStatus = "unknown";
   const isMember = await checkAuth();
@@ -138,9 +218,13 @@ export async function mergeFromServer(): Promise<void> {
     if (!res.ok) return;
     const data = await res.json();
     const serverItems: CartItem[] = Array.isArray(data?.items) ? data.items : [];
-    const localItems = loadCart();
+    const guestItems = readStorage(GUEST_STORAGE_KEY);
+    const userItems = readStorage(storageKeyForOwner(currentMemberId ?? activeOwner()));
+    const localItems = mergeItems(guestItems, userItems);
     const merged = mergeItems(localItems, serverItems);
+    setActiveOwner(currentMemberId ?? activeOwner());
     writeLocal(merged);
+    writeStorage(GUEST_STORAGE_KEY, []);
     // Push merged back to server (biar server up-to-date juga)
     schedulePush(merged);
   } catch {
@@ -154,8 +238,15 @@ export async function mergeFromServer(): Promise<void> {
  */
 export function clearLocalCart() {
   if (!isBrowser()) return;
-  localStorage.removeItem(STORAGE_KEY);
-  window.dispatchEvent(new Event(EVENT_NAME));
+  const owner = activeOwner();
+  localStorage.removeItem(storageKeyForOwner(owner));
+  localStorage.removeItem(LEGACY_STORAGE_KEY);
+  writeStorage(GUEST_STORAGE_KEY, []);
+  setActiveOwner("guest");
+  memberStatus = "guest";
+  currentMemberId = null;
+  dispatchCartUpdated();
+  dispatchAuthUpdated();
 }
 
 /**
@@ -163,8 +254,8 @@ export function clearLocalCart() {
  */
 export async function clearCartEverywhere() {
   if (!isBrowser()) return;
-  localStorage.removeItem(STORAGE_KEY);
-  window.dispatchEvent(new Event(EVENT_NAME));
+  localStorage.removeItem(activeStorageKey());
+  dispatchCartUpdated();
   if (await checkAuth()) {
     try {
       await fetch("/api/cart", {

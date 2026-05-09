@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { WishlistCount } from "./WishlistButton";
-import { bootstrapCartSync, clearLocalCart } from "@/lib/cart";
+import { bootstrapCartSync, clearLocalCart, switchToGuestCart } from "@/lib/cart";
 import { prefetchCategories } from "@/lib/client-performance";
 
 const NAV_LINKS = [
@@ -15,6 +15,7 @@ const NAV_LINKS = [
 ];
 
 type MemberProfile = {
+  id?: string;
   name?: string;
   email?: string | null;
   phone?: string | null;
@@ -32,20 +33,30 @@ export function Header() {
   useEffect(() => {
     let active = true;
 
-    fetch("/api/auth/me", { cache: "no-store" })
+    async function loadMember() {
+      fetch("/api/auth/me", { cache: "no-store" })
       .then((res) => res.json())
       .then((data: MemberProfile) => {
         if (active) {
           setMember(data.name ? data : null);
           if (data.name) bootstrapCartSync();
+          else switchToGuestCart();
         }
       })
       .catch(() => {
-        if (active) setMember(null);
+        if (active) {
+          setMember(null);
+          switchToGuestCart();
+        }
       });
+    }
+
+    loadMember();
+    window.addEventListener("auth-updated", loadMember);
 
     return () => {
       active = false;
+      window.removeEventListener("auth-updated", loadMember);
     };
   }, []);
 
@@ -88,7 +99,6 @@ export function Header() {
 
   async function handleLogout() {
     setMemberMenuOpen(false);
-    clearLocalCart();
     await fetch("/api/auth/logout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

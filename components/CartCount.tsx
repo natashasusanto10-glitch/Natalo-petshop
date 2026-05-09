@@ -16,7 +16,7 @@ export function CartCount() {
     sync();
     window.addEventListener("cart-updated", sync);
     function onStorage(e: StorageEvent) {
-      if (e.key === "cart") sync();
+      if (e.key?.startsWith("cart")) sync();
     }
     window.addEventListener("storage", onStorage);
     return () => {

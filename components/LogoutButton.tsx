@@ -9,8 +9,6 @@ interface LogoutButtonProps {
 
 export function LogoutButton({ redirectTo, className = "" }: LogoutButtonProps) {
   async function handleLogout() {
-    // Clear local cart — server cart tetap, akan di-pull lagi saat user login di mana pun
-    clearLocalCart();
     await fetch("/api/auth/logout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

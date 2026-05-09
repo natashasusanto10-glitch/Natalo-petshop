@@ -99,7 +99,7 @@ export function BottomNavigation() {
     }
 
     function onStorage(e: StorageEvent) {
-      if (e.key === "cart") syncCart();
+      if (e.key?.startsWith("cart")) syncCart();
     }
     syncCart();
     window.addEventListener("cart-updated", syncCart);

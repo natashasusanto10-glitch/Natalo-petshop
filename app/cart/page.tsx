@@ -54,7 +54,7 @@ export default function CartPage() {
       });
     }
     function onStorage(e: StorageEvent) {
-      if (e.key === "cart") syncCart();
+      if (e.key?.startsWith("cart")) syncCart();
     }
 
     syncCart();

@@ -114,7 +114,16 @@ export async function POST(request: NextRequest) {
     tv: user.tokenVersion,
   });
 
-  const response = NextResponse.json({ ok: true, role: "CUSTOMER" });
+  const response = NextResponse.json({
+    ok: true,
+    role: "CUSTOMER",
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+    },
+  });
   response.cookies.set(MEMBER_SESSION_COOKIE, token, getSessionCookieOptions(request));
   return response;
 }
