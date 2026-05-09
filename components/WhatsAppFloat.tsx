@@ -60,7 +60,7 @@ export function WhatsAppFloat() {
   const href = `https://wa.me/${PHONE.replace(/^\+/, "")}?text=${encodeURIComponent(DEFAULT_MESSAGE)}`;
 
   return (
-    <div className="fixed bottom-[86px] right-4 z-40 flex flex-col items-end gap-2 md:bottom-6 md:right-6">
+    <div className="nat-whatsapp-float fixed z-40 flex flex-col items-end gap-2">
       {/* Tooltip popup */}
       {showTooltip && !tooltipDismissed && (
         <div className="relative max-w-[260px] rounded-2xl bg-white px-4 py-3 shadow-xl ring-1 ring-zinc-200 animate-in slide-in-from-bottom-2 fade-in duration-300">

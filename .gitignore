@@ -50,3 +50,5 @@ build/
 # Bundler / Ruby
 .bundle/
 vendor/bundle/
+
+.vercel

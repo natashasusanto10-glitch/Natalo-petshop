@@ -106,7 +106,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <StoreOnly>
           <Header />
         </StoreOnly>
-        <main className="pb-[70px] md:pb-0">{children}</main>
+        <main className="nat-main-shell">{children}</main>
         <StoreOnly>
           <Footer />
           <WhatsAppFloat />

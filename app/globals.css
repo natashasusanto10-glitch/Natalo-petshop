@@ -33,6 +33,8 @@
 :root {
   --background: #ffffff;
   --foreground: #111111;
+  --natalo-bottom-nav-height: 70px;
+  --natalo-mobile-header-min-height: 60px;
 }
 
 body {
@@ -43,6 +45,52 @@ body {
 
 input, textarea, select, button {
   font: inherit;
+}
+
+.nat-safe-x {
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+
+.nat-site-header {
+  top: 0;
+  padding-top: env(safe-area-inset-top);
+}
+
+.nat-header-inner {
+  min-height: var(--natalo-mobile-header-min-height);
+}
+
+.nat-main-shell {
+  padding-bottom: calc(var(--natalo-bottom-nav-height) + env(safe-area-inset-bottom));
+}
+
+.nat-bottom-nav {
+  min-height: calc(var(--natalo-bottom-nav-height) + env(safe-area-inset-bottom));
+  padding-bottom: calc(4px + env(safe-area-inset-bottom));
+}
+
+.nat-whatsapp-float {
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: calc(var(--natalo-bottom-nav-height) + env(safe-area-inset-bottom) + 16px);
+}
+
+@media (max-width: 360px) {
+  :root {
+    --natalo-bottom-nav-height: 66px;
+    --natalo-mobile-header-min-height: 56px;
+  }
+}
+
+@media (min-width: 768px) {
+  .nat-main-shell {
+    padding-bottom: 0;
+  }
+
+  .nat-whatsapp-float {
+    right: 1.5rem;
+    bottom: 1.5rem;
+  }
 }
 
 /* ── Print label 100×150mm ─────────────────────────────── */

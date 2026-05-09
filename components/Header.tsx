@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { WishlistCount } from "./WishlistButton";
 import { bootstrapCartSync, clearLocalCart } from "@/lib/cart";
+import { prefetchCategories } from "@/lib/client-performance";
 
 const NAV_LINKS = [
   { href: "/", label: "Beranda" },
@@ -48,6 +49,17 @@ export function Header() {
     };
   }, []);
 
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      router.prefetch("/kategori");
+      router.prefetch("/cart");
+      router.prefetch("/member");
+      prefetchCategories();
+    }, 1000);
+
+    return () => window.clearTimeout(id);
+  }, [router]);
+
   // Close on route change
   useEffect(() => {
     setOpen(false);
@@ -89,18 +101,18 @@ export function Header() {
   }
 
   return (
-    <header className="sticky top-0 z-50 bg-white shadow-sm">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-2 px-4 py-2.5 md:py-3">
+    <header className="nat-site-header sticky z-50 bg-white shadow-sm">
+      <div className="nat-header-inner nat-safe-x mx-auto flex max-w-6xl items-center justify-between gap-1.5 py-1.5 xs:gap-2 md:py-3">
         {/* Logo */}
-        <Link href="/" aria-label={brand} className="flex items-center shrink-0">
+        <Link href="/" aria-label={brand} className="flex min-w-0 shrink-0 items-center">
           <Image
             src="/logo.png"
             alt={brand}
             width={600}
             height={196}
             priority
-            sizes="(max-width: 768px) 140px, 180px"
-            className="h-10 w-auto md:h-12"
+            sizes="(max-width: 360px) 128px, (max-width: 768px) 150px, 180px"
+            className="h-9 w-auto max-w-[128px] xs:h-10 xs:max-w-[150px] md:h-12 md:max-w-none"
           />
         </Link>
 
@@ -120,11 +132,11 @@ export function Header() {
         </nav>
 
         {/* Right actions */}
-        <div className="flex items-center gap-1.5 md:gap-2">
+        <div className="flex shrink-0 items-center gap-1 xs:gap-1.5 md:gap-2">
           {/* Wishlist */}
           <Link
             href="/wishlist"
-            className="relative flex h-10 w-10 items-center justify-center rounded-full text-gray-600 transition hover:bg-gray-100"
+            className="relative flex h-9 w-9 items-center justify-center rounded-full text-gray-600 transition hover:bg-gray-100 xs:h-10 xs:w-10"
             aria-label="Wishlist"
           >
             <svg
@@ -149,7 +161,7 @@ export function Header() {
               <button
                 type="button"
                 onClick={() => setMemberMenuOpen((v) => !v)}
-                className="flex h-10 items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-2 text-sm font-semibold text-blue-700 transition hover:border-blue-200 hover:bg-blue-100 md:px-3"
+                className="flex h-9 items-center gap-1.5 rounded-full border border-blue-100 bg-blue-50 px-1.5 text-sm font-semibold text-blue-700 transition hover:border-blue-200 hover:bg-blue-100 xs:h-10 xs:gap-2 xs:px-2 md:px-3"
                 aria-expanded={memberMenuOpen}
                 aria-haspopup="menu"
               >
@@ -221,7 +233,7 @@ export function Header() {
           ) : (
             <Link
               href="/member/login"
-              className="rounded-full bg-blue-500 px-4 py-2 text-xs font-bold text-white transition hover:bg-blue-600 md:px-5 md:text-sm"
+              className="rounded-full bg-blue-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-600 xs:px-4 md:px-5 md:text-sm"
             >
               Masuk
             </Link>
@@ -230,7 +242,7 @@ export function Header() {
           {/* Mobile hamburger */}
           <button
             onClick={() => setOpen((v) => !v)}
-            className="flex h-10 w-10 items-center justify-center rounded-full text-gray-700 transition hover:bg-gray-100 md:hidden"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-gray-700 transition hover:bg-gray-100 xs:h-10 xs:w-10 md:hidden"
             aria-label={open ? "Tutup menu" : "Buka menu"}
           >
             {open ? (
@@ -264,7 +276,7 @@ export function Header() {
       {/* Mobile dropdown — site navigation only (member actions di dropdown avatar) */}
       {open && (
         <div className="border-t border-gray-100 bg-white md:hidden">
-          <nav className="mx-auto max-w-6xl space-y-1 px-4 py-3">
+          <nav className="nat-safe-x mx-auto max-w-6xl space-y-1 py-3">
             {NAV_LINKS.map((link) => (
               <Link
                 key={link.href}

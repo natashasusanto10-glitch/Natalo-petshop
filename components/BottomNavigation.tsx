@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { loadCart } from "@/lib/cart";
+import { bootstrapCartSync, loadCart } from "@/lib/cart";
+import { prefetchCategories } from "@/lib/client-performance";
 
 type NavIconName = "home" | "bone" | "bag" | "person";
 
@@ -87,7 +88,9 @@ function NavIcon({ name, active }: { name: NavIconName; active: boolean }) {
 
 export function BottomNavigation() {
   const pathname = usePathname();
+  const router = useRouter();
   const [cartCount, setCartCount] = useState(0);
+  const [optimisticHref, setOptimisticHref] = useState<string | null>(null);
 
   useEffect(() => {
     function syncCart() {
@@ -107,17 +110,38 @@ export function BottomNavigation() {
     };
   }, []);
 
+  useEffect(() => {
+    setOptimisticHref(null);
+  }, [pathname]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      router.prefetch("/");
+      router.prefetch("/kategori");
+      router.prefetch("/cart");
+      router.prefetch("/member");
+      prefetchCategories();
+      void bootstrapCartSync();
+    }, 800);
+
+    return () => window.clearTimeout(id);
+  }, [router]);
+
   if (pathname === "/checkout" || pathname?.startsWith("/checkout/")) return null;
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-[#f0f0f0] bg-white py-2 shadow-[0_-2px_12px_rgba(0,0,0,0.05)] md:hidden [padding-bottom:calc(4px+env(safe-area-inset-bottom))]">
+    <nav className="nat-bottom-nav fixed inset-x-0 bottom-0 z-50 border-t border-[#f0f0f0] bg-white py-2 shadow-[0_-2px_12px_rgba(0,0,0,0.05)] md:hidden">
       <div className="grid grid-cols-4">
         {ITEMS.map((item) => {
-          const active = isActive(pathname, item.href);
+          const active = optimisticHref === item.href || (!optimisticHref && isActive(pathname, item.href));
           return (
             <Link
               key={item.href}
               href={item.href}
+              prefetch
+              onClick={() => setOptimisticHref(item.href)}
+              onMouseEnter={() => router.prefetch(item.href)}
+              onTouchStart={() => router.prefetch(item.href)}
               className={`relative flex min-h-12 flex-col items-center justify-center gap-0.5 px-1 py-1 text-[10px] font-bold transition active:opacity-90 ${
                 active ? "text-[#1E5FBF]" : "text-[#9ca3af]"
               }`}

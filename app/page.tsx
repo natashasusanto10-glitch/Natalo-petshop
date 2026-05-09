@@ -38,6 +38,7 @@ type HomeIconName =
   | "flame"
   | "gift"
   | "grooming"
+  | "house-call-grooming"
   | "medal"
   | "paw"
   | "rabbit"
@@ -46,6 +47,7 @@ type HomeIconName =
   | "tag"
   | "truck"
   | "voucher-pet"
+  | "dog-training"
   | "chat";
 
 const SHORTCUT_ITEMS: {
@@ -54,11 +56,28 @@ const SHORTCUT_ITEMS: {
   href: string;
   bg: string;
   color: string;
+  external?: boolean;
 }[] = [
   { icon: "sparkles", label: "Produk Baru", href: "/products?sort=newest", bg: "bg-blue-50", color: "text-blue-600" },
   { icon: "medal", label: "Terlaris", href: "/products?sort=popular", bg: "bg-amber-50", color: "text-amber-600" },
   { icon: "voucher-pet", label: "Voucher", href: "/member", bg: "bg-pink-50", color: "text-pink-600" },
   { icon: "flame", label: "Trending", href: "/products?promo=1", bg: "bg-red-50", color: "text-red-600" },
+  {
+    icon: "house-call-grooming",
+    label: "House Call Grooming",
+    href: "https://wa.me/6281330003880?text=Halo%20Natalo%2C%20saya%20ingin%20booking%20House%20Call%20Grooming",
+    bg: "bg-emerald-50",
+    color: "text-emerald-600",
+    external: true,
+  },
+  {
+    icon: "dog-training",
+    label: "Dog Training",
+    href: "https://wa.me/6281330003880?text=Halo%20Natalo%2C%20saya%20ingin%20konsultasi%20Dog%20Training",
+    bg: "bg-violet-50",
+    color: "text-violet-600",
+    external: true,
+  },
 ];
 
 function getJakartaMidnight() {
@@ -111,7 +130,62 @@ function HomeIcon({
     );
   }
 
-  const paths: Record<Exclude<HomeIconName, "voucher-pet">, ReactNode> = {
+  if (name === "house-call-grooming") {
+    return (
+      <svg
+        aria-hidden="true"
+        className={className}
+        viewBox="0 0 48 48"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M8 22 L24 9 L40 22 V39 a2 2 0 0 1-2 2 H10 a2 2 0 0 1-2-2 Z" fill="#FFF" />
+        <path d="M6 23 L24 8 L42 23" />
+        <circle cx="18" cy="32" r="3" />
+        <circle cx="30" cy="32" r="3" />
+        <path d="M20.5 30 L29 22 M27.5 30 L19 22" />
+        <ellipse cx="24" cy="17" rx="2.2" ry="1.7" fill="currentColor" stroke="none" />
+        <ellipse cx="21" cy="14.5" rx="1" ry="1.3" fill="currentColor" stroke="none" />
+        <ellipse cx="23" cy="13" rx="1" ry="1.3" fill="currentColor" stroke="none" />
+        <ellipse cx="25" cy="13" rx="1" ry="1.3" fill="currentColor" stroke="none" />
+        <ellipse cx="27" cy="14.5" rx="1" ry="1.3" fill="currentColor" stroke="none" />
+      </svg>
+    );
+  }
+
+  if (name === "dog-training") {
+    return (
+      <svg
+        aria-hidden="true"
+        className={className}
+        viewBox="0 0 48 48"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M11 14 Q8 22 12 28 L16 26 Z" fill="currentColor" stroke="none" />
+        <path d="M37 14 Q40 22 36 28 L32 26 Z" fill="currentColor" stroke="none" />
+        <ellipse cx="24" cy="22" rx="11" ry="10" fill="#FFF" />
+        <ellipse cx="24" cy="27" rx="5" ry="4" fill="#FFF" />
+        <ellipse cx="24" cy="25" rx="1.6" ry="1.2" fill="currentColor" stroke="none" />
+        <circle cx="20" cy="21" r="1.1" fill="currentColor" stroke="none" />
+        <circle cx="28" cy="21" r="1.1" fill="currentColor" stroke="none" />
+        <path d="M24 27 V29 M24 29 Q22.5 30.5 21 30 M24 29 Q25.5 30.5 27 30" />
+        <rect x="34" y="36" width="9" height="6" rx="1.5" fill="currentColor" stroke="none" />
+        <circle cx="43" cy="39" r="1.4" fill="#F5F3FF" stroke="none" />
+        <path d="M30 35 Q28 37 30 39 M27 33 Q24 37 27 41" />
+        <path d="M16 30 Q24 34 32 30" />
+        <circle cx="24" cy="32.5" r="1.2" fill="currentColor" stroke="none" />
+      </svg>
+    );
+  }
+
+  const paths: Record<Exclude<HomeIconName, "voucher-pet" | "house-call-grooming" | "dog-training">, ReactNode> = {
     box: (
       <>
         <path d="m4 8 8 4 8-4" />
@@ -331,23 +405,45 @@ export default async function HomePage() {
       {/* ── 4. HASHTAG CAMPAIGN + SHORTCUT GRID ── */}
       <section className="mt-6 px-4">
         <p className="text-center text-sm font-black text-blue-600">#PetshopMedanTerpercaya</p>
-        <div className="mt-4 grid grid-cols-4 gap-2">
-          {SHORTCUT_ITEMS.map((s) => (
-            <Link
-              key={s.label}
-              href={s.href}
-              className="flex flex-col items-center gap-1.5 rounded-xl p-2 transition active:opacity-90"
-            >
-              <div
-                className={`flex h-14 w-14 items-center justify-center rounded-full ${s.bg} ${s.color} shadow-sm`}
+        <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
+          {SHORTCUT_ITEMS.map((s) => {
+            const content = (
+              <>
+                <div
+                  className={`flex h-14 w-14 items-center justify-center rounded-full ${s.bg} ${s.color} shadow-sm`}
+                >
+                  <HomeIcon name={s.icon} className="h-7 w-7" />
+                </div>
+                <span className="text-center text-[11px] font-medium leading-tight text-zinc-700">
+                  {s.label}
+                </span>
+              </>
+            );
+
+            if (s.external) {
+              return (
+                <a
+                  key={s.label}
+                  href={s.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex flex-col items-center gap-1.5 rounded-xl p-2 transition active:opacity-90"
+                >
+                  {content}
+                </a>
+              );
+            }
+
+            return (
+              <Link
+                key={s.label}
+                href={s.href}
+                className="flex flex-col items-center gap-1.5 rounded-xl p-2 transition active:opacity-90"
               >
-                <HomeIcon name={s.icon} className="h-7 w-7" />
-              </div>
-              <span className="text-[11px] font-medium leading-tight text-zinc-700 text-center">
-                {s.label}
-              </span>
-            </Link>
-          ))}
+                {content}
+              </Link>
+            );
+          })}
         </div>
       </section>
 

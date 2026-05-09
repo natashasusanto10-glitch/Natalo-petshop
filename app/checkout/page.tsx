@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Script from "next/script";
@@ -10,8 +11,20 @@ import {
   MetodePembayaran,
   type PaymentSelection,
 } from "@/components/MetodePembayaran";
-import { loadCart, clearCartEverywhere, type CartItem } from "@/lib/cart";
-import { AddressPinpointPicker, type PinpointValue } from "@/components/AddressPinpointPicker";
+import { loadCart, saveCart, clearCartEverywhere, type CartItem } from "@/lib/cart";
+import type { PinpointValue } from "@/components/AddressPinpointPicker";
+
+const AddressPinpointPicker = dynamic(
+  () => import("@/components/AddressPinpointPicker").then((mod) => mod.AddressPinpointPicker),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-semibold text-zinc-500">
+        Memuat pilihan pinpoint...
+      </div>
+    ),
+  }
+);
 
 type RateOption = {
   courier_name: string;
@@ -39,10 +52,16 @@ declare global {
 }
 
 const isMidtransEnabled = !!process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY;
+const CHECKOUT_SELECTION_KEY = "checkout:selectedCartItems";
+
+function cartKey(item: CartItem) {
+  return `${item.productId}:${item.variantId ?? ""}`;
+}
 
 export default function CheckoutPage() {
   const router = useRouter();
   const [items, setItems] = useState<CartItem[]>([]);
+  const [checkoutItemKeys, setCheckoutItemKeys] = useState<Set<string> | null>(null);
   const [rates, setRates] = useState<RateOption[]>([]);
   const [selectedRate, setSelectedRate] = useState<RateOption | null>(null);
   const [shippingSheetOpen, setShippingSheetOpen] = useState(false);
@@ -97,7 +116,34 @@ export default function CheckoutPage() {
   const [showVoucherList, setShowVoucherList] = useState(false);
 
   useEffect(() => {
-    setItems(loadCart());
+    const cartItems = loadCart();
+    const params = new URLSearchParams(window.location.search);
+    const selectedParam = params.get("cart_item_ids");
+    const selectedKeys = selectedParam
+      ? selectedParam.split(",").map((key) => decodeURIComponent(key)).filter(Boolean)
+      : [];
+
+    if (selectedKeys.length > 0) {
+      const keySet = new Set(selectedKeys);
+      let selectedCartItems = cartItems.filter((item) => keySet.has(cartKey(item)));
+
+      if (selectedCartItems.length === 0) {
+        try {
+          const stored = JSON.parse(sessionStorage.getItem(CHECKOUT_SELECTION_KEY) || "[]");
+          selectedCartItems = Array.isArray(stored)
+            ? stored.filter((item: CartItem) => keySet.has(cartKey(item)))
+            : [];
+        } catch {
+          selectedCartItems = [];
+        }
+      }
+
+      setItems(selectedCartItems);
+      setCheckoutItemKeys(new Set(selectedCartItems.map(cartKey)));
+    } else {
+      setItems(cartItems);
+      setCheckoutItemKeys(null);
+    }
 
     fetch("/api/auth/me")
       .then((r) => r.json())
@@ -357,7 +403,13 @@ export default function CheckoutPage() {
   }
 
   function clearCart() {
-    void clearCartEverywhere();
+    if (checkoutItemKeys && checkoutItemKeys.size > 0) {
+      const remaining = loadCart().filter((item) => !checkoutItemKeys.has(cartKey(item)));
+      saveCart(remaining);
+      sessionStorage.removeItem(CHECKOUT_SELECTION_KEY);
+    } else {
+      void clearCartEverywhere();
+    }
     setItems([]);
   }
 
