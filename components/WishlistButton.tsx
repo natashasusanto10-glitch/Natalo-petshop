@@ -10,6 +10,8 @@ type WishlistItem = {
   memberPrice?: number | null;
   imageUrl: string | null;
   weightGram?: number;
+  stock?: number | null;
+  hasVariants?: boolean;
 };
 
 function getWishlist(): string[] {
