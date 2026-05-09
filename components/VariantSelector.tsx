@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatRupiah } from "@/lib/format";
 import type { StoreVariantAttribute, StoreProductVariant } from "@/lib/products";
 import { addItemToCart } from "@/lib/cart-actions";
+import { AddToCartBottomSheet } from "@/components/AddToCartBottomSheet";
 
 // Props
 interface Props {
@@ -18,6 +19,7 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
   // State
   // selected[attributeId] = optionId
   const [selected, setSelected] = useState<Record<string, string>>({});
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   // Derived
   const sortedAttrs = useMemo(
@@ -65,6 +67,33 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
   }, [currentVariant, variants]);
 
   const outOfStock = currentVariant ? currentVariant.stock === 0 : false;
+
+  const selectedLabel = useMemo(
+    () =>
+      sortedAttrs
+        .map((a) => {
+          const optId = selected[a.id];
+          return a.options.find((o) => o.id === optId)?.value ?? "";
+        })
+        .filter(Boolean)
+        .join(" / "),
+    [selected, sortedAttrs],
+  );
+
+  const sheetItem = useMemo(() => {
+    if (!currentVariant || !allSelected || outOfStock) return null;
+
+    return {
+      productId: product.id,
+      variantId: currentVariant.id,
+      variantLabel: selectedLabel,
+      name: product.name,
+      price: currentVariant.price,
+      weightGram: currentVariant.weightGram,
+      stock: currentVariant.stock,
+      imageUrl: currentVariant.imageUrl ?? product.imageUrl,
+    };
+  }, [allSelected, currentVariant, outOfStock, product.id, product.imageUrl, product.name, selectedLabel]);
 
   // Broadcast state ke StickyAddToCartBar
   const minPrice = useMemo(() => {
@@ -131,7 +160,9 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
   // Listen trigger dari StickyAddToCartBar
   useEffect(() => {
     function onAddToCart() {
-      addToCart(false);
+      if (!currentVariant || !allSelected || outOfStock) return;
+      if (onVariantImage) onVariantImage(currentVariant.imageUrl);
+      setSheetOpen(true);
     }
     function onBuyNow() {
       addToCart(true);
@@ -149,14 +180,6 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
   function addToCart(redirectToCheckout = false) {
     if (!currentVariant || !allSelected || outOfStock) return;
 
-    const label = sortedAttrs
-      .map((a) => {
-        const optId = selected[a.id];
-        return a.options.find((o) => o.id === optId)?.value ?? "";
-      })
-      .filter(Boolean)
-      .join(" / ");
-
     // Ganti gambar utama kalau variant punya foto sendiri
     if (onVariantImage) onVariantImage(currentVariant.imageUrl);
 
@@ -164,7 +187,7 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
       {
         productId: product.id,
         variantId: currentVariant.id,
-        variantLabel: label,
+        variantLabel: selectedLabel,
         name: product.name,
         price: currentVariant.price,
         quantity: 1,
@@ -185,73 +208,80 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
 
   // Render
   return (
-    <div className="space-y-5">
-      {/* Harga */}
-      <div className="rounded-2xl bg-gray-50 p-5">
-        <p className="text-3xl font-black text-natalo-600">{priceDisplay}</p>
-        <p className="mt-1 text-sm text-gray-400">
-          Stok:{" "}
-          {currentVariant
-            ? outOfStock
-              ? "Habis"
-              : `${currentVariant.stock} tersedia`
-            : `${stockDisplay} total semua varian`}
-        </p>
-      </div>
-
-      {/* Pilihan atribut */}
-      <div className="space-y-4">
-        {sortedAttrs.map((attr, attrIdx) => (
-          <div key={attr.id}>
-            <p className="mb-2 text-sm font-semibold text-gray-700">
-              {attr.name}
-              {selected[attr.id] && (
-                <span className="ml-2 font-normal text-natalo-600">
-                  {attr.options.find((o) => o.id === selected[attr.id])?.value}
-                </span>
-              )}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {[...attr.options]
-                .sort((a, b) => a.position - b.position)
-                .map((opt) => {
-                  const isSelected = selected[attr.id] === opt.id;
-                  const disabled = isOptionDisabled(attrIdx, opt.id);
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => selectOption(attr.id, opt.id, attrIdx)}
-                      className={`rounded-xl border px-4 py-2 text-sm font-semibold transition ${
-                        isSelected
-                          ? "border-natalo-600 bg-natalo-50 text-natalo-700"
-                          : disabled
-                          ? "cursor-not-allowed border-gray-200 bg-gray-50 text-gray-300 line-through"
-                          : "border-gray-200 text-gray-700 hover:border-natalo-400 hover:text-natalo-600"
-                      }`}
-                    >
-                      {opt.value}
-                    </button>
-                  );
-                })}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="space-y-3">
-        {!allSelected && (
-          <p className="text-sm text-gray-400">
-            Pilih{" "}
-            {sortedAttrs
-              .filter((a) => !selected[a.id])
-              .map((a) => a.name)
-              .join(", ")}{" "}
-            terlebih dahulu
+    <>
+      <div className="space-y-5">
+        {/* Harga */}
+        <div className="rounded-2xl bg-gray-50 p-5">
+          <p className="text-3xl font-black text-natalo-600">{priceDisplay}</p>
+          <p className="mt-1 text-sm text-gray-400">
+            Stok:{" "}
+            {currentVariant
+              ? outOfStock
+                ? "Habis"
+                : `${currentVariant.stock} tersedia`
+              : `${stockDisplay} total semua varian`}
           </p>
-        )}
+        </div>
+
+        {/* Pilihan atribut */}
+        <div className="space-y-4">
+          {sortedAttrs.map((attr, attrIdx) => (
+            <div key={attr.id}>
+              <p className="mb-2 text-sm font-semibold text-gray-700">
+                {attr.name}
+                {selected[attr.id] && (
+                  <span className="ml-2 font-normal text-natalo-600">
+                    {attr.options.find((o) => o.id === selected[attr.id])?.value}
+                  </span>
+                )}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {[...attr.options]
+                  .sort((a, b) => a.position - b.position)
+                  .map((opt) => {
+                    const isSelected = selected[attr.id] === opt.id;
+                    const disabled = isOptionDisabled(attrIdx, opt.id);
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => selectOption(attr.id, opt.id, attrIdx)}
+                        className={`rounded-xl border px-4 py-2 text-sm font-semibold transition ${
+                          isSelected
+                            ? "border-natalo-600 bg-natalo-50 text-natalo-700"
+                            : disabled
+                              ? "cursor-not-allowed border-gray-200 bg-gray-50 text-gray-300 line-through"
+                              : "border-gray-200 text-gray-700 hover:border-natalo-400 hover:text-natalo-600"
+                        }`}
+                      >
+                        {opt.value}
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="space-y-3">
+          {!allSelected && (
+            <p className="text-sm text-gray-400">
+              Pilih{" "}
+              {sortedAttrs
+                .filter((a) => !selected[a.id])
+                .map((a) => a.name)
+                .join(", ")}{" "}
+              terlebih dahulu
+            </p>
+          )}
+        </div>
       </div>
-    </div>
+      <AddToCartBottomSheet
+        open={sheetOpen}
+        item={sheetItem}
+        onClose={() => setSheetOpen(false)}
+      />
+    </>
   );
 }

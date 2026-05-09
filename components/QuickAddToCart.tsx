@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { addItemToCart } from "@/lib/cart-actions";
+import { AddToCartBottomSheet } from "@/components/AddToCartBottomSheet";
 
 interface Props {
   product: {
@@ -23,6 +23,7 @@ interface Props {
 export function QuickAddToCart({ product, className }: Props) {
   const router = useRouter();
   const [added, setAdded] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const isOut = product.stock === 0;
   const isUnavailable = !product.isActive;
@@ -63,40 +64,46 @@ export function QuickAddToCart({ product, className }: Props) {
     );
   }
 
-  function addToCart() {
+  function cartItem() {
     const price =
       product.discountPrice !== null && product.discountPrice < product.price
         ? product.discountPrice
         : product.price;
 
-    const result = addItemToCart({
+    return {
       productId: product.id,
       variantId: null,
       variantLabel: null,
       name: product.name,
       price,
-      quantity: 1,
-      subtotal: price,
       weightGram: product.weightGram,
       stock: product.stock,
       imageUrl: product.imageUrl,
-    });
+    };
+  }
 
-    if (result.ok) {
-      setAdded(true);
-      setTimeout(() => setAdded(false), 1800);
-    }
+  function onAdded() {
+    setAdded(true);
+    setTimeout(() => setAdded(false), 1800);
   }
 
   return (
-    <button
-      type="button"
-      onClick={addToCart}
-      className={`w-full rounded-full py-2 text-xs font-bold text-white transition ${
-        added ? "bg-green-500" : "bg-natalo-600 hover:bg-natalo-700"
-      } ${className ?? ""}`}
-    >
-      {added ? "Ditambahkan" : "+ Keranjang"}
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() => setSheetOpen(true)}
+        className={`w-full rounded-full py-2 text-xs font-bold text-white transition ${
+          added ? "bg-green-500" : "bg-natalo-600 hover:bg-natalo-700"
+        } ${className ?? ""}`}
+      >
+        {added ? "Ditambahkan" : "+ Keranjang"}
+      </button>
+      <AddToCartBottomSheet
+        open={sheetOpen}
+        item={cartItem()}
+        onClose={() => setSheetOpen(false)}
+        onAdded={onAdded}
+      />
+    </>
   );
 }

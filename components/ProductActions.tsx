@@ -1,15 +1,34 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { StoreProduct } from "@/lib/products";
 import { addItemToCart } from "@/lib/cart-actions";
+import { AddToCartBottomSheet } from "@/components/AddToCartBottomSheet";
 
 export function ProductActions({ product }: { product: StoreProduct }) {
+  const [sheetOpen, setSheetOpen] = useState(false);
   const price =
     product.discountPrice !== null && product.discountPrice < product.price
       ? product.discountPrice
       : product.price;
   const outOfStock = product.stock === 0;
+  const minimumQuantity = (product as StoreProduct & { minimumQuantity?: number | null })
+    .minimumQuantity;
+
+  const sheetItem = useMemo(
+    () => ({
+      productId: product.id,
+      variantId: null,
+      variantLabel: null,
+      name: product.name,
+      price,
+      weightGram: product.weightGram,
+      imageUrl: product.imageUrl,
+      stock: product.stock,
+      minimumQuantity,
+    }),
+    [minimumQuantity, price, product.id, product.imageUrl, product.name, product.stock, product.weightGram],
+  );
 
   useEffect(() => {
     function addToCart(redirectToCheckout = false) {
@@ -37,7 +56,7 @@ export function ProductActions({ product }: { product: StoreProduct }) {
     }
 
     function onAddToCart() {
-      addToCart(false);
+      if (!outOfStock) setSheetOpen(true);
     }
 
     function onBuyNow() {
@@ -52,5 +71,11 @@ export function ProductActions({ product }: { product: StoreProduct }) {
     };
   }, [outOfStock, price, product]);
 
-  return null;
+  return (
+    <AddToCartBottomSheet
+      open={sheetOpen}
+      item={sheetItem}
+      onClose={() => setSheetOpen(false)}
+    />
+  );
 }

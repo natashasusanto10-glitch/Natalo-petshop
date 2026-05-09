@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { formatRupiah } from "@/lib/format";
 import { addItemToCart } from "@/lib/cart-actions";
 import { getWishlistItems, WishlistButton } from "@/components/WishlistButton";
+import { AddToCartBottomSheet } from "@/components/AddToCartBottomSheet";
 
 type WishlistItem = {
   id: string;
@@ -44,11 +45,26 @@ function cartPayload(item: WishlistItem) {
   };
 }
 
+function cartSheetItem(item: WishlistItem) {
+  const price = currentPrice(item);
+  return {
+    productId: item.id,
+    variantId: null,
+    variantLabel: null,
+    name: item.name,
+    price,
+    weightGram: item.weightGram ?? 500,
+    stock: item.stock ?? null,
+    imageUrl: item.imageUrl,
+  };
+}
+
 export default function WishlistPage() {
   const router = useRouter();
   const [items, setItems] = useState<WishlistItem[]>([]);
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
   const [variantItem, setVariantItem] = useState<WishlistItem | null>(null);
+  const [sheetItem, setSheetItem] = useState<ReturnType<typeof cartSheetItem> | null>(null);
 
   useEffect(() => {
     function sync() {
@@ -66,20 +82,18 @@ export default function WishlistPage() {
       return;
     }
 
-    const result = addItemToCart(cartPayload(item), {
-      successMessage: "Produk berhasil ditambahkan ke keranjang",
-    });
+    setSheetItem(cartSheetItem(item));
+  }
 
-    if (result.ok) {
-      setAddedIds((prev) => new Set(prev).add(item.id));
-      setTimeout(() => {
-        setAddedIds((prev) => {
-          const next = new Set(prev);
-          next.delete(item.id);
-          return next;
-        });
-      }, 1800);
-    }
+  function handleAddedToCart(productId: string) {
+    setAddedIds((prev) => new Set(prev).add(productId));
+    setTimeout(() => {
+      setAddedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(productId);
+        return next;
+      });
+    }, 1800);
   }
 
   function handleBuyNow(item: WishlistItem) {
@@ -170,22 +184,36 @@ export default function WishlistPage() {
                     )}
                   </div>
 
-                  <div className="mt-2 grid grid-cols-2 gap-1.5">
+                  <div className="mt-3 flex w-full gap-2">
                     <button
                       type="button"
                       onClick={() => handleAddToCart(item)}
                       disabled={outOfStock}
-                      className="flex h-9 items-center justify-center rounded-lg border border-natalo-300 px-1 text-[10px] font-extrabold text-natalo-600 transition active:bg-natalo-50 disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-300 xs:text-[11px]"
+                      aria-label={added ? "Sudah masuk keranjang" : "Tambah ke keranjang"}
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-blue-600 bg-white text-blue-600 transition active:bg-blue-50 disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-300"
                     >
-                      <span className="whitespace-nowrap">{added ? "Masuk" : "Keranjang"}</span>
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="h-5 w-5"
+                      >
+                        <circle cx="8" cy="21" r="1" />
+                        <circle cx="19" cy="21" r="1" />
+                        <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
+                      </svg>
                     </button>
                     <button
                       type="button"
                       onClick={() => handleBuyNow(item)}
                       disabled={outOfStock}
-                      className="flex h-9 items-center justify-center rounded-lg bg-natalo-600 px-1 text-[10px] font-extrabold text-white transition active:opacity-90 disabled:cursor-not-allowed disabled:bg-gray-300 xs:text-[11px]"
+                      className="h-11 flex-1 whitespace-nowrap rounded-xl bg-blue-700 text-sm font-semibold text-white transition active:bg-blue-800 disabled:cursor-not-allowed disabled:bg-gray-300"
                     >
-                      <span className="whitespace-nowrap">{outOfStock ? "Stok Habis" : "Beli Sekarang"}</span>
+                      {outOfStock ? "Stok Habis" : "Beli Sekarang"}
                     </button>
                   </div>
                 </div>
@@ -237,6 +265,14 @@ export default function WishlistPage() {
           </div>
         </div>
       )}
+      <AddToCartBottomSheet
+        open={!!sheetItem}
+        item={sheetItem}
+        onClose={() => setSheetItem(null)}
+        onAdded={() => {
+          if (sheetItem) handleAddedToCart(sheetItem.productId);
+        }}
+      />
     </div>
   );
 }
