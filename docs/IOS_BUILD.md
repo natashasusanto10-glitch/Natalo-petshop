@@ -1,216 +1,206 @@
-# Build .ipa Natalo Petshop untuk iOS
+# Build .ipa Natalo Petshop — Tanpa Mac, Lewat GitHub Actions
 
-Panduan lengkap mengubah PWA Natalo Petshop jadi aplikasi iOS native (.ipa) lewat Capacitor. Strategi: shell native tipis yang membungkus URL produksi — Prisma + API routes tetap jalan di Vercel.
-
----
-
-## Prasyarat (di Mac)
-
-Wajib:
-
-- **macOS 13+** dengan **Xcode 15+** (wajib App Store / Apple ID).
-- **CocoaPods** — install: `sudo gem install cocoapods` (atau `brew install cocoapods`).
-- **Node.js 18+** & **npm**.
-- **Akun Apple Developer** ($99/tahun) — wajib untuk distribusi App Store / TestFlight. Untuk test di device sendiri saja cukup pakai free Apple ID.
-- **iPhone fisik** (untuk test dengan device asli) atau pakai **Simulator** bawaan Xcode.
+Workflow: GitHub Actions runner macOS-15 yang otomatis build & sign `.ipa`, lalu upload ke TestFlight. Kamu kerja **100% dari Windows + browser**.
 
 ---
 
-## Langkah 1 — Clone & Install di Mac
+## Prasyarat
 
-```bash
-git clone https://github.com/natashasusanto10-glitch/Natalo-petshop.git
-cd Natalo-petshop
-npm install
+- ✅ Apple Developer Program **berbayar** ($99/tahun) — status "Membership Active".
+- ✅ App Store Connect API key (file `.p8`, Key ID, Issuer ID).
+- ✅ GitHub repo Natalo-petshop (sudah ada).
+- ✅ GitHub Personal Access Token dengan akses repo.
+- ⚠️ Private GitHub repo kedua untuk Fastlane match (`natalo-ios-certs` — kosong, akan diisi otomatis oleh CI).
+
+---
+
+## SETUP PERTAMA KALI (sekali saja)
+
+### Langkah 1 — App ID & App Store Connect
+
+Begitu enrollment kamu **APPROVED**:
+
+#### 1a. Register App ID
+[developer.apple.com → Identifiers](https://developer.apple.com/account/resources/identifiers/list) → **+** :
+- App IDs → App
+- Description: `Natalo Petshop`
+- Bundle ID: **Explicit** → `com.natalo.petshop`
+- Capabilities: leave default (kosongin)
+- Continue → Register
+
+#### 1b. Create App di App Store Connect
+[appstoreconnect.apple.com](https://appstoreconnect.apple.com/apps) → **+** → New App:
+- Platforms: iOS
+- Name: **Natalo Petshop**
+- Primary Language: Indonesian
+- Bundle ID: pilih `com.natalo.petshop`
+- SKU: `natalo-petshop-001`
+- User Access: Full Access
+
+### Langkah 2 — App Store Connect API Key
+
+[App Store Connect → Users and Access → Integrations → App Store Connect API → Team Keys](https://appstoreconnect.apple.com/access/integrations/api):
+
+1. Klik **+** → Generate Key
+2. Name: `GitHub Actions Build`
+3. Access: **App Manager** (atau Admin)
+4. Generate
+5. **DOWNLOAD `.p8` FILE SEKARANG** — Apple cuma kasih sekali. Simpan di `~/Downloads/AuthKey_XXXXXXXXXX.p8`.
+6. Catat **Issuer ID** (di header tabel, format UUID) dan **Key ID** (10 karakter).
+
+### Langkah 3 — Private Repo untuk Match Certs
+
+[github.com/new](https://github.com/new):
+- Name: `natalo-ios-certs`
+- Visibility: **Private** (WAJIB — isinya cert encrypted, jangan public)
+- Initialize: **Add a README**
+- Create
+
+Jangan push apapun ke repo ini — fastlane match akan isi otomatis.
+
+### Langkah 4 — GitHub Personal Access Token (PAT)
+
+[github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new) (Fine-grained):
+- Token name: `Natalo iOS CI match`
+- Expiration: 1 year
+- Repository access: **Only select repositories** → pilih `natalo-ios-certs`
+- Permissions → Repository permissions:
+  - **Contents**: Read and write
+  - **Metadata**: Read-only (auto)
+- Generate token
+- **COPY TOKEN SEKARANG** — Apple-style, GitHub cuma tampilkan sekali.
+
+### Langkah 5 — Set GitHub Secrets
+
+[github.com/natashasusanto10-glitch/Natalo-petshop/settings/secrets/actions](https://github.com/natashasusanto10-glitch/Natalo-petshop/settings/secrets/actions) → New repository secret:
+
+| Secret Name | Isi | Cara dapatkan |
+|---|---|---|
+| `APP_STORE_CONNECT_API_KEY_ID` | 10 karakter (mis. `ABCDE12345`) | Dari Langkah 2 |
+| `APP_STORE_CONNECT_API_ISSUER_ID` | UUID | Dari Langkah 2 |
+| `APP_STORE_CONNECT_API_KEY_CONTENT` | Buka file `.p8` di Notepad, copy SELURUH ISI termasuk `-----BEGIN PRIVATE KEY-----` dan `-----END PRIVATE KEY-----` | File `.p8` dari Langkah 2 |
+| `MATCH_PASSWORD` | Password kamu pilih sendiri (contoh: `NataloIOS2026!@#`). Catat baik-baik — dipakai untuk decrypt cert kalau kamu rebuild kemudian. | Bikin sendiri, password kuat |
+| `MATCH_GIT_URL` | URL clone repo certs, mis. `https://github.com/natashasusanto10-glitch/natalo-ios-certs.git` | Dari Langkah 3 |
+| `MATCH_GIT_BASIC_AUTHORIZATION` | Hasil base64 dari `username:PAT_TOKEN` (lihat di bawah) | Generate via PowerShell |
+
+#### Cara generate `MATCH_GIT_BASIC_AUTHORIZATION` di PowerShell Windows:
+
+```powershell
+$user = "natashasusanto10-glitch"
+$pat = "github_pat_XXXXXXXXXXXX"  # ganti dengan PAT dari Langkah 4
+$pair = "$user`:$pat"
+[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($pair))
 ```
 
+Output (string panjang) → paste sebagai value secret `MATCH_GIT_BASIC_AUTHORIZATION`.
+
 ---
 
-## Langkah 2 — Set Domain Produksi
+## BUILD `.ipa` PERTAMA
 
-Edit `capacitor.config.ts`, ganti `server.url` dengan URL produksi yang sebenarnya:
+Setelah semua secret ter-set:
 
-```ts
-server: {
-  url: "https://DOMAIN-PRODUKSI-KAMU.com",  // ← ganti
-  allowNavigation: ["DOMAIN-PRODUKSI-KAMU.com", "*.DOMAIN-PRODUKSI-KAMU.com"],
-}
+1. **Update `capacitor.config.ts`** — pastikan `server.url` sudah pakai domain produksi yang benar (sekarang masih placeholder `https://natalo-petshop.vercel.app`).
+
+2. **Push tag versi pertama** dari Windows:
+   ```powershell
+   git tag v1.0.0
+   git push origin v1.0.0
+   ```
+
+3. **Tunggu di GitHub UI**: [Actions tab](https://github.com/natashasusanto10-glitch/Natalo-petshop/actions) → workflow "iOS Build & TestFlight" → klik run yang sedang jalan.
+
+4. **Yang terjadi otomatis di runner macOS GitHub** (~10-15 menit):
+   - npm install
+   - `npx cap add ios` (generate folder iOS) — auto-commit balik ke repo
+   - `cap sync` (copy capacitor.config + plugin native ke ios/)
+   - `cap:assets` (generate icon dari `resources/icon-only.png`)
+   - `pod install`
+   - Fastlane match: generate Distribution cert + App Store profile, simpan encrypted ke `natalo-ios-certs`
+   - Fastlane gym: archive Xcode → `.ipa`
+   - Fastlane pilot: upload ke TestFlight
+   - Upload `.ipa` sebagai GitHub artifact
+
+5. **Hasil**: build muncul di TestFlight ~5 menit setelah upload (Apple proses ulang). Cek email TestFlight.
+
+---
+
+## INSTALL DI iPHONE LEWAT TESTFLIGHT
+
+1. Di iPhone, buka App Store → cari **TestFlight** → install.
+2. Login pakai Apple ID kamu (yang sama dengan Apple Developer).
+3. Buka TestFlight → Natalo Petshop muncul di **Apps**.
+4. Tap **Install** → app terpasang di home screen.
+
+**Untuk tester lain (bukan kamu):**
+
+- **Internal Testers** (s/d 100 orang, tanpa Apple review): tambah Apple ID mereka di App Store Connect → Users and Access → Sandbox / Internal Testers.
+- **External Testers** (s/d 10.000 orang, perlu Beta Review Apple 1-2 hari): set up Public Link di TestFlight tab.
+
+---
+
+## UPDATE APP
+
+### Update isi web (UI, halaman, logic)
+Karena strategi WebView remote-load di `capacitor.config.ts → server.url`:
+
+```powershell
+git push origin main  # auto-deploy Vercel → app di iPhone refresh, dapat versi baru
 ```
 
-Domain harus HTTPS (Apple Transport Security menolak HTTP). Vercel default-nya HTTPS, jadi aman.
+**Tidak perlu rebuild .ipa.** iPhone tinggal pull-to-refresh atau buka ulang.
 
----
+### Update native (capacitor config, plugin, icon, splash)
 
-## Langkah 3 — Generate Folder iOS
-
-```bash
-npm run cap:add:ios
+```powershell
+git tag v1.0.1
+git push origin v1.0.1
 ```
 
-Ini menjalankan `npx cap add ios` yang membuat folder `ios/` lengkap dengan project Xcode (`ios/App/App.xcworkspace`). Internal-nya akan `pod install` otomatis.
-
-> ⚠️ Jangan jalankan ini di Windows — `pod install` butuh Ruby + Xcode.
+GitHub Actions trigger build baru → upload TestFlight → tester dapat notifikasi update.
 
 ---
 
-## Langkah 4 — Icon & Splash
+## TROUBLESHOOTING
 
-Sumber sudah tersedia di `resources/`:
+### "Match: Could not find Repository"
+Cek `MATCH_GIT_URL` benar (HTTPS, ada `.git` di akhir) dan PAT (`MATCH_GIT_BASIC_AUTHORIZATION`) punya akses write ke repo certs.
 
-- `resources/icon-only.png` — 512×512 (saat ini). **Untuk produksi, ganti dengan 1024×1024.**
-- `resources/icon-foreground.png` — versi maskable (boleh dibiarkan).
+### "Could not find provisioning profile"
+Cek bundle ID di App Store Connect = `com.natalo.petshop` PERSIS sama dengan `capacitor.config.ts` dan `fastlane/Appfile`.
 
-**Yang masih kurang:** `resources/splash.png` 2732×2732 (background brand `#1E5FBF`, logo di tengah). Bikin pakai Figma / Photoshop, simpan di path itu, lalu jalankan:
+### "App Store Connect API: Authentication credentials are missing"
+Salah satu dari 3 secret API key salah/typo:
+- `APP_STORE_CONNECT_API_KEY_ID` — 10 char
+- `APP_STORE_CONNECT_API_ISSUER_ID` — UUID
+- `APP_STORE_CONNECT_API_KEY_CONTENT` — termasuk header/footer `-----BEGIN/END PRIVATE KEY-----`
 
-```bash
-npm run cap:assets
-```
+### Build sukses tapi TestFlight kosong
+Tunggu 5-30 menit, Apple proses ulang. Cek **App Store Connect → My Apps → Natalo Petshop → TestFlight tab → Builds**.
 
-Tool ini auto-generate semua ukuran iOS app icon (29px – 1024px) dan splash screen (semua ukuran iPhone & iPad), output ke `ios/App/App/Assets.xcassets/`.
-
-**Kalau splash.png belum ada:** tetap bisa jalan — splash screen akan jadi default putih. Bisa diganti belakangan.
-
----
-
-## Langkah 5 — Sync ke iOS
-
-```bash
-npm run cap:sync:ios
-```
-
-Sync `capacitor.config.ts` + plugin native ke project Xcode.
+### "Code signing identity not found"
+First run `match` belum sukses generate cert. Cek log fastlane match step. Coba:
+- Hapus repo `natalo-ios-certs`, bikin ulang fresh, push tag baru.
+- Atau jalankan workflow manual via "Run workflow" → pilih lane `beta`.
 
 ---
 
-## Langkah 6 — Buka di Xcode
+## ARCHITECTURE NOTES
 
-```bash
-npm run cap:open:ios
-```
+**Mengapa WebView remote-load (server.url) bukan static export?**
 
-Buka `App.xcworkspace` di Xcode. Yang harus di-set di Xcode:
+Project Natalo punya:
+- API routes (`app/api/*`) yang butuh Node runtime
+- Prisma client yang butuh DB connection
+- jose JWT auth via httpOnly cookie
+- Server actions untuk admin CRUD
 
-1. **Project navigator → "App" → target "App" → Signing & Capabilities**
-   - Centang **Automatically manage signing**.
-   - **Team:** pilih Apple Developer team kamu (atau Apple ID free untuk personal test).
-   - **Bundle Identifier:** `com.natalo.petshop` (sesuaikan kalau sudah punya bundle ID di App Store Connect).
+Static export (`output: 'export'`) akan break semua di atas. WebView remote-load = `.ipa` cuma shell tipis yang membuka URL Vercel produksi. Konsekuensi positif: update UI = tinggal `git push`, bukan rebuild + redistribute.
 
-2. **Display Name:** "Natalo Petshop" (sudah di-set via capacitor.config.ts).
+**Plugin native yang bisa ditambah nanti** (kalau perlu):
+- `@capacitor/push-notifications` — APNS push native iOS (vs web push terbatas)
+- `@capacitor/camera` — akses kamera native (vs `<input type="file">` mobile web)
+- `@capacitor/geolocation` — GPS lebih akurat
+- `@capacitor/share` — system share sheet
 
-3. **Deployment Info → iOS Deployment Target:** 14.0 atau lebih tinggi (default 13.0 sudah cukup).
-
----
-
-## Langkah 7 — Test di Simulator atau Device
-
-### Simulator (paling cepat)
-
-1. Pilih device di toolbar atas Xcode (mis. "iPhone 15 Pro").
-2. Tekan **▶ Run** (atau `Cmd+R`).
-3. App jalan di Simulator, langsung load URL produksi.
-
-### iPhone Fisik
-
-1. Colok iPhone via USB.
-2. **Settings → Privacy & Security → Developer Mode → On** (di iPhone, butuh restart).
-3. Di Xcode toolbar, pilih device kamu.
-4. ▶ Run → app dipasang & jalan.
-
-> Pertama kali, iPhone akan complain "Untrusted Developer". Buka **Settings → General → VPN & Device Management** di iPhone, trust profile developer kamu.
-
----
-
-## Langkah 8 — Build .ipa (Archive)
-
-Untuk menghasilkan file `.ipa` yang bisa dibagikan / di-upload ke App Store:
-
-1. Di Xcode toolbar, ganti device target ke **"Any iOS Device (arm64)"** (BUKAN simulator).
-2. Menu **Product → Archive**. Tunggu build selesai (~3–5 menit).
-3. Window **Organizer** akan otomatis muncul. Klik archive yang baru jadi.
-4. **Distribute App** → pilih method:
-
-| Method | Gunanya |
-|---|---|
-| **App Store Connect** | Upload ke TestFlight & App Store. Butuh app sudah terdaftar di App Store Connect. |
-| **TestFlight Internal Only** | Hanya untuk internal team (s/d 100 tester). Tidak butuh review Apple. |
-| **Ad Hoc** | Untuk install di device tertentu (UDID harus terdaftar). Output `.ipa` bisa dipasang via tools mis. Diawi, AltStore, atau Apple Configurator 2. |
-| **Enterprise** | Cuma kalau punya Apple Enterprise Program ($299/tahun). |
-| **Development** | Untuk development & internal test. Limit device sesuai daftar di Apple Dev Portal. |
-
-5. **Next → Next → Export** — pilih folder, dapat file `Natalo Petshop.ipa`.
-
----
-
-## Distribusi via TestFlight (paling umum)
-
-Setelah Archive → Distribute → "App Store Connect":
-
-1. Login App Store Connect (https://appstoreconnect.apple.com/).
-2. **My Apps → + → New App.** Isi nama, bundle ID (`com.natalo.petshop`), SKU.
-3. Upload archive dari Xcode Organizer **"Upload"**.
-4. Tunggu Apple proses (~10–30 menit), masuk ke **TestFlight** tab.
-5. Tambah **Internal Testers** (anggota team) — mereka instant dapat email & bisa langsung pasang lewat TestFlight app.
-6. Untuk **External Testers** (sampai 10.000 orang), butuh Beta Review dari Apple (1–2 hari).
-
----
-
-## Update App (setiap kali ada perubahan kode di repo)
-
-Karena strategi-nya WebView remote-load:
-
-- **Perubahan UI / halaman web** → tinggal `git push` ke production. iPhone tidak perlu re-install, refresh app langsung dapat versi baru.
-- **Perubahan native** (plugin Capacitor, splash, icon, capacitor.config.ts) → wajib build ulang `.ipa` & distribusi lagi via TestFlight.
-
----
-
-## Plugin Native (kalau mau ditambah)
-
-Kalau nanti butuh fitur native dari iPhone (kamera, push, geo, dll):
-
-```bash
-npm install @capacitor/push-notifications @capacitor/camera @capacitor/geolocation
-npx cap sync ios
-```
-
-Lalu di code web bisa import dan pakai. Ingat tambah usage description di `ios/App/App/Info.plist` (mis. `NSCameraUsageDescription`).
-
----
-
-## Troubleshooting
-
-**`pod install` gagal di langkah `cap add ios`:**
-```bash
-cd ios/App && pod repo update && pod install
-```
-
-**Build error "No matching profile":**
-- Login Xcode → Preferences → Accounts → tambah Apple ID.
-- Manage Certificates → +Apple Development.
-
-**App buka cuma layar putih:**
-- Cek `server.url` di capacitor.config.ts sudah HTTPS & valid.
-- Buka URL itu di Safari Mac dulu, pastikan jalan.
-
-**Cookie auth tidak persisten:**
-- `limitsNavigationsToAppBoundDomains: false` di capacitor.config.ts (sudah).
-- Pastikan domain produksi pakai cookie `Secure; SameSite=None` atau `Lax` (jose JWT cookie kita default `Lax`, aman).
-
-**Splash screen flicker:**
-- Setting `SplashScreen.launchAutoHide: true` (sudah).
-- Manual hide via plugin: `import { SplashScreen } from '@capacitor/splash-screen'; SplashScreen.hide();` setelah app ready.
-
----
-
-## Ringkasan command (di Mac, setelah pull dari git)
-
-```bash
-npm install
-# edit capacitor.config.ts → set server.url
-npm run cap:add:ios          # sekali saja, generate folder ios/
-npm run cap:assets           # generate icon & splash dari resources/
-npm run cap:sync:ios         # tiap habis ubah config / install plugin
-npm run cap:open:ios         # buka Xcode
-# di Xcode: Product → Archive → Distribute App → pilih method → Export
-```
-
-Output akhir: `Natalo Petshop.ipa` siap upload ke TestFlight / App Store / Ad Hoc.
+Setiap habis tambah plugin: `git push tag v1.x.0` → CI rebuild `.ipa` → distribute via TestFlight.

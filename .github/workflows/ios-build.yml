@@ -1,0 +1,112 @@
+name: iOS Build & TestFlight
+
+# Triggers:
+# - Push tag v* (mis. v1.0.0) → full build + auto upload ke TestFlight
+# - Manual via "Run workflow" button di GitHub UI → bisa pilih lane
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      lane:
+        description: "Fastlane lane to run"
+        required: true
+        default: "beta"
+        type: choice
+        options:
+          - beta # Build + upload TestFlight
+          - build_only # Build .ipa, upload sebagai artifact saja, tidak ke TestFlight
+
+jobs:
+  ios-build:
+    name: Build iOS app
+    runs-on: macos-15 # Xcode terbaru
+    timeout-minutes: 60
+
+    env:
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Select Xcode 16
+        run: sudo xcode-select -switch /Applications/Xcode_16.app
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Setup Ruby + Fastlane
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Generate iOS platform (first time)
+        run: |
+          if [ ! -d "ios" ]; then
+            echo "::notice::ios/ folder belum ada — generate via cap add ios"
+            npx cap add ios
+          else
+            echo "ios/ folder sudah ada — skip cap add"
+          fi
+
+      - name: Sync Capacitor → iOS
+        run: npx cap sync ios
+
+      - name: Generate iOS app icons & splash
+        run: npm run cap:assets || echo "::warning::cap:assets gagal — cek resources/ punya icon-only.png + splash.png"
+        continue-on-error: true
+
+      - name: Auto-commit ios/ kalau baru di-generate
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore(ios): scaffold ios/ via CI [skip ci]"
+          file_pattern: "ios/** Gemfile.lock"
+          commit_user_name: github-actions[bot]
+          commit_user_email: 41898282+github-actions[bot]@users.noreply.github.com
+
+      - name: CocoaPods install
+        working-directory: ios/App
+        run: |
+          pod repo update
+          pod install
+
+      - name: Run Fastlane lane
+        env:
+          LANE: ${{ inputs.lane || 'beta' }}
+          # App Store Connect API key — generate di https://appstoreconnect.apple.com/access/integrations/api
+          APP_STORE_CONNECT_API_KEY_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+          APP_STORE_CONNECT_API_KEY_IS_KEY_CONTENT_BASE64: "false"
+          # Fastlane match — buat private repo natalo-ios-certs untuk simpan cert encrypted
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+          # Workspace path (Capacitor default)
+          GYM_WORKSPACE: ios/App/App.xcworkspace
+          GYM_SCHEME: App
+        run: bundle exec fastlane "$LANE"
+
+      - name: Upload .ipa as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: natalo-petshop-ipa
+          path: |
+            *.ipa
+            ios/App/build/**/*.ipa
+          if-no-files-found: warn
+          retention-days: 14

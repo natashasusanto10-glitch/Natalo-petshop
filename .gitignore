@@ -36,3 +36,17 @@ ios/App/App.xcodeproj/project.xcworkspace/xcuserdata/
 
 # Capacitor generated assets (regen via `npm run cap:assets`)
 # Note: ios/App/App/Assets.xcassets is committed; only DerivedData ignored.
+
+# Fastlane build outputs
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+*.ipa
+*.dSYM.zip
+*.dSYM
+build/
+
+# Bundler / Ruby
+.bundle/
+vendor/bundle/
