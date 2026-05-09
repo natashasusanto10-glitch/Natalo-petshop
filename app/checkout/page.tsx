@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -53,6 +54,9 @@ declare global {
 
 const isMidtransEnabled = !!process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY;
 const CHECKOUT_SELECTION_KEY = "checkout:selectedCartItems";
+const CHECKOUT_DRAFT_KEY = "checkout:draft";
+const CHECKOUT_SELECTED_ADDRESS_KEY = "checkout:selectedAddressId";
+const CHECKOUT_ADDRESS_FORCE_APPLY_KEY = "checkout:addressForceApply";
 
 function cartKey(item: CartItem) {
   return `${item.productId}:${item.variantId ?? ""}`;
@@ -115,8 +119,46 @@ export default function CheckoutPage() {
   >([]);
   const [showVoucherList, setShowVoucherList] = useState(false);
   const [showAllCheckoutItems, setShowAllCheckoutItems] = useState(false);
+  const [draftReady, setDraftReady] = useState(false);
 
   useEffect(() => {
+    let restoredDraft: {
+      form?: typeof form;
+      selectedAddressId?: string;
+      addressMode?: "saved" | "manual" | "select";
+      voucherInput?: string;
+      voucherApplied?: typeof voucherApplied;
+      selectedRate?: RateOption | null;
+      rates?: RateOption[];
+      payment?: PaymentSelection | null;
+      saveToAddressBook?: boolean;
+      addressLabel?: string;
+    } | null = null;
+
+    try {
+      restoredDraft = JSON.parse(sessionStorage.getItem(CHECKOUT_DRAFT_KEY) || "null");
+    } catch {
+      restoredDraft = null;
+    }
+
+    if (restoredDraft) {
+      if (restoredDraft.form) setForm((current) => ({ ...current, ...restoredDraft.form }));
+      if (restoredDraft.selectedAddressId) setSelectedAddressId(restoredDraft.selectedAddressId);
+      if (restoredDraft.addressMode) {
+        setAddressMode(restoredDraft.addressMode === "select" ? "saved" : restoredDraft.addressMode);
+      }
+      if (restoredDraft.voucherInput !== undefined) setVoucherInput(restoredDraft.voucherInput);
+      if (restoredDraft.voucherApplied !== undefined) setVoucherApplied(restoredDraft.voucherApplied);
+      if (restoredDraft.selectedRate !== undefined) setSelectedRate(restoredDraft.selectedRate);
+      if (Array.isArray(restoredDraft.rates)) setRates(restoredDraft.rates);
+      if (restoredDraft.payment !== undefined) setPayment(restoredDraft.payment);
+      if (restoredDraft.saveToAddressBook !== undefined) {
+        setSaveToAddressBook(Boolean(restoredDraft.saveToAddressBook));
+      }
+      if (restoredDraft.addressLabel !== undefined) setAddressLabel(restoredDraft.addressLabel);
+    }
+    setDraftReady(true);
+
     const cartItems = loadCart();
     const params = new URLSearchParams(window.location.search);
     const selectedParam = params.get("cart_item_ids");
@@ -150,9 +192,9 @@ export default function CheckoutPage() {
       .then((r) => r.json())
       .then((data) => {
         if (data?.name) setIsLoggedIn(true);
-        if (data.name) setForm((f) => ({ ...f, customerName: data.name }));
-        if (data.email) setForm((f) => ({ ...f, customerEmail: data.email }));
-        if (data.phone) setForm((f) => ({ ...f, customerPhone: data.phone }));
+        if (data.name) setForm((f) => ({ ...f, customerName: f.customerName || data.name }));
+        if (data.email) setForm((f) => ({ ...f, customerEmail: f.customerEmail || data.email }));
+        if (data.phone) setForm((f) => ({ ...f, customerPhone: f.customerPhone || data.phone }));
       })
       .catch(() => {});
 
@@ -181,9 +223,42 @@ export default function CheckoutPage() {
           streetName: a.streetName,
         }));
         setSavedAddresses(mapped);
+
+        let checkoutSelectedId = "";
+        let draftSelectedId = restoredDraft?.selectedAddressId || "";
+        let draftMode = restoredDraft?.addressMode === "select" ? "saved" : restoredDraft?.addressMode;
+        let forceAddressApply = false;
+
+        try {
+          checkoutSelectedId = sessionStorage.getItem(CHECKOUT_SELECTED_ADDRESS_KEY) || "";
+          forceAddressApply = sessionStorage.getItem(CHECKOUT_ADDRESS_FORCE_APPLY_KEY) === "1";
+          if (forceAddressApply) sessionStorage.removeItem(CHECKOUT_ADDRESS_FORCE_APPLY_KEY);
+        } catch {
+          checkoutSelectedId = "";
+        }
+
+        const nextSelectedId = checkoutSelectedId || draftSelectedId;
+        const selected = nextSelectedId
+          ? mapped.find((addr) => addr.id === nextSelectedId)
+          : null;
+
+        if (selected) {
+          setSelectedAddressId(selected.id);
+          setAddressMode("saved");
+          if (forceAddressApply || !draftSelectedId || checkoutSelectedId !== draftSelectedId) {
+            applyAddressToForm(selected);
+          }
+          return;
+        }
+
+        if (draftMode === "manual") {
+          setAddressMode("manual");
+          return;
+        }
+
         const main = mapped.find((a) => a.isMain) ?? mapped[0];
         setSelectedAddressId(main.id);
-        applyAddressToForm(main);
+        if (!restoredDraft?.form) applyAddressToForm(main);
         setAddressMode("saved");
       })
       .catch(() => {
@@ -192,6 +267,39 @@ export default function CheckoutPage() {
       })
       .finally(() => setAddressBookLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    try {
+      sessionStorage.setItem(
+        CHECKOUT_DRAFT_KEY,
+        JSON.stringify({
+          form,
+          selectedAddressId,
+          addressMode: addressMode === "select" ? "saved" : addressMode,
+          voucherInput,
+          voucherApplied,
+          selectedRate,
+          rates,
+          payment,
+          saveToAddressBook,
+          addressLabel,
+        }),
+      );
+    } catch {}
+  }, [
+    draftReady,
+    form,
+    selectedAddressId,
+    addressMode,
+    voucherInput,
+    voucherApplied,
+    selectedRate,
+    rates,
+    payment,
+    saveToAddressBook,
+    addressLabel,
+  ]);
 
   function handlePinpoint(value: PinpointValue) {
     setForm((f) => ({
@@ -231,6 +339,11 @@ export default function CheckoutPage() {
     setRates([]);
     setShippingError("");
     setShowSavedPinpointPicker(false);
+  }
+
+  function openCheckoutAddressList() {
+    const returnTo = `${window.location.pathname}${window.location.search}`;
+    router.push(`/checkout/addresses?returnTo=${encodeURIComponent(returnTo)}`);
   }
 
   const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -414,6 +527,9 @@ export default function CheckoutPage() {
     } else {
       void clearCartEverywhere();
     }
+    sessionStorage.removeItem(CHECKOUT_DRAFT_KEY);
+    sessionStorage.removeItem(CHECKOUT_SELECTED_ADDRESS_KEY);
+    sessionStorage.removeItem(CHECKOUT_ADDRESS_FORCE_APPLY_KEY);
     setItems([]);
   }
 
@@ -586,156 +702,164 @@ export default function CheckoutPage() {
         />
       )}
 
-      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-4 pb-32 lg:grid-cols-[1fr_360px] lg:py-10 lg:pb-10">
+      <div className="mx-auto max-w-6xl gap-8 px-3 py-3 pb-32 lg:grid lg:grid-cols-[1fr_360px] lg:px-4 lg:py-10 lg:pb-10">
         <div>
-          <h1 className="text-2xl font-black tracking-tight text-zinc-950 lg:text-3xl">Checkout</h1>
+          <h1 className="hidden text-2xl font-black tracking-tight text-zinc-950 lg:block lg:text-3xl">Checkout</h1>
 
-          {/* Mobile-only: ringkasan mini di atas form */}
-          {items.length > 0 && (
-            <div className="mt-4 rounded-2xl bg-zinc-50 px-4 py-3 lg:hidden">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-zinc-500">{items.reduce((s, i) => s + i.quantity, 0)} item</span>
-                <span className="font-black text-zinc-950">
-                  {selectedRate ? `Total: Rp ${(total).toLocaleString("id-ID")}` : `Subtotal: Rp ${subtotal.toLocaleString("id-ID")}`}
-                </span>
-              </div>
-            </div>
-          )}
-
-          <form id="checkout-form" onSubmit={handleOrder} className="mt-8 space-y-4">
-            <section className="rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div>
+          <form id="checkout-form" onSubmit={handleOrder} className="space-y-3 lg:mt-8 lg:space-y-4">
+            <section className={`overflow-hidden rounded-2xl border border-zinc-100 bg-white shadow-sm ${addressMode === "select" ? "hidden" : ""}`}>
+              {addressBookLoading ? (
+                <div className="px-4 py-3 text-sm font-semibold text-zinc-500">
+                  Memuat alamat tersimpan...
+                </div>
+              ) : usingSavedAddress && selectedAddress ? (
+                <button
+                  type="button"
+                  onClick={openCheckoutAddressList}
+                  className="flex w-full items-start gap-3 p-3 text-left transition active:bg-zinc-50"
+                >
+                  <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-natalo-50 text-natalo-600">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                      <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+                      <circle cx="12" cy="10" r="3" />
+                    </svg>
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-zinc-500">Alamat Pengiriman</p>
+                    <p className="mt-0.5 truncate text-sm font-black text-zinc-950">
+                      <span className="text-natalo-700">{selectedAddress.label}</span>
+                      {" • "}
+                      {selectedAddress.recipientName}
+                    </p>
+                    <p className="mt-0.5 truncate text-xs text-zinc-500">
+                      {selectedAddress.address}
+                    </p>
+                  </div>
+                  <span className="shrink-0 self-center text-xs font-black text-natalo-600">
+                    Ubah ›
+                  </span>
+                </button>
+              ) : (
+                <div className="px-4 py-3">
                   <p className="text-sm font-black text-zinc-950">Alamat Pengiriman</p>
                   <p className="mt-0.5 text-xs text-zinc-500">
-                    Alamat tersimpan dipakai otomatis agar checkout lebih cepat.
+                    Lengkapi alamat untuk lanjut ke pengiriman.
                   </p>
                 </div>
-                {usingSavedAddress && (
+              )}
+
+              {!addressBookLoading && !usingSavedAddress && isLoggedIn && (
+                <div className="border-t border-zinc-100 px-4 pb-3">
                   <button
                     type="button"
-                    onClick={() => setAddressMode("select")}
-                    className="shrink-0 text-xs font-black text-natalo-600 hover:underline"
+                    onClick={openCheckoutAddressList}
+                    className="w-full rounded-2xl border border-natalo-200 bg-natalo-50 px-4 py-3 text-sm font-black text-natalo-700 transition hover:border-natalo-300 hover:bg-natalo-100"
                   >
-                    Ubah Alamat
+                    Pilih alamat tersimpan
                   </button>
-                )}
-              </div>
-
-              {addressBookLoading && (
-                <div className="mt-3 rounded-xl bg-zinc-50 px-4 py-3 text-sm font-semibold text-zinc-500">
-                  Memuat alamat tersimpan...
                 </div>
               )}
 
               {addressBookError && (
-                <div className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-700">
+                <div className="border-t border-zinc-100 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-700">
                   {addressBookError}
-                </div>
-              )}
-
-              {usingSavedAddress && selectedAddress && (
-                <div className="mt-3 rounded-2xl border border-natalo-200 bg-natalo-50 p-4">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-white px-2.5 py-1 text-xs font-black text-natalo-700">
-                      {selectedAddress.label}
-                    </span>
-                    {selectedAddress.isMain && (
-                      <span className="rounded-full bg-natalo-600 px-2.5 py-1 text-xs font-black text-white">
-                        Utama
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-3 font-black text-zinc-950">
-                    {selectedAddress.recipientName} · {selectedAddress.phone}
-                  </p>
-                  <p className="mt-1 text-sm leading-relaxed text-zinc-700">
-                    {selectedAddress.address}
-                  </p>
-                  <p className="mt-1 text-xs font-semibold text-zinc-500">
-                    {[selectedAddress.city, selectedAddress.postalCode].filter(Boolean).join(" · ")}
-                  </p>
-
-                  {selectedAddress.pinpointAddress ? (
-                    <div className="mt-3 rounded-xl bg-white px-3 py-2 text-xs font-semibold text-natalo-800">
-                      Pinpoint tersimpan: {selectedAddress.pinpointAddress}
-                    </div>
-                  ) : (
-                    <div className="mt-3 rounded-xl border border-dashed border-natalo-200 bg-white px-3 py-2">
-                      <p className="text-xs font-semibold text-zinc-600">
-                        Tambahkan pinpoint agar kurir lebih mudah menemukan alamat.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setShowSavedPinpointPicker((value) => !value)}
-                        className="mt-2 text-xs font-black text-natalo-600 hover:underline"
-                      >
-                        {showSavedPinpointPicker ? "Tutup Pinpoint" : "Tambah Pinpoint"}
-                      </button>
-                    </div>
-                  )}
-
-                  {showSavedPinpointPicker && (
-                    <div className="mt-3">
-                      <AddressPinpointPicker
-                        defaultLatitude={form.shippingLatitude}
-                        defaultLongitude={form.shippingLongitude}
-                        defaultAddress={form.shippingPinpointAddress}
-                        onChange={handlePinpoint}
-                      />
-                    </div>
-                  )}
                 </div>
               )}
             </section>
 
+            {/* Pinpoint hint untuk alamat tersimpan tanpa pinpoint */}
+            {usingSavedAddress && selectedAddress && !selectedAddress.pinpointAddress && (
+              <section className="rounded-2xl border border-dashed border-natalo-200 bg-natalo-50 px-3 py-2.5">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-semibold text-zinc-700">
+                    📍 Tambah pinpoint agar kurir lebih mudah menemukan alamat
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowSavedPinpointPicker((value) => !value)}
+                    className="shrink-0 text-xs font-black text-natalo-600 hover:underline"
+                  >
+                    {showSavedPinpointPicker ? "Tutup" : "Pinpoint"}
+                  </button>
+                </div>
+                {showSavedPinpointPicker && (
+                  <div className="mt-3">
+                    <AddressPinpointPicker
+                      defaultLatitude={form.shippingLatitude}
+                      defaultLongitude={form.shippingLongitude}
+                      defaultAddress={form.shippingPinpointAddress}
+                      onChange={handlePinpoint}
+                    />
+                  </div>
+                )}
+              </section>
+            )}
+
             {/* Pilih alamat tersimpan */}
-            {addressMode === "select" && savedAddresses.length > 0 && (
+            {false && addressMode === "select" && savedAddresses.length > 0 && (
               <div>
-                <p className="text-sm font-medium text-zinc-700">Alamat tersimpan</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-bold text-zinc-900">Pilih Alamat</p>
+                  {selectedAddress && (
+                    <button
+                      type="button"
+                      onClick={() => setAddressMode("saved")}
+                      className="text-xs font-bold text-zinc-500 hover:underline"
+                    >
+                      Batal
+                    </button>
+                  )}
+                </div>
                 <div className="mt-2 space-y-2">
                   {savedAddresses.map((addr) => (
-                    <button
+                    <div
                       key={addr.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedAddressId(addr.id);
-                        applyAddressToForm(addr);
-                        setAddressMode("saved");
-                      }}
-                      className={`w-full rounded-2xl border p-4 text-left text-sm transition ${
+                      className={`relative rounded-2xl border text-sm transition ${
                         selectedAddressId === addr.id
-                          ? "border-zinc-950 bg-zinc-50"
+                          ? "border-natalo-500 bg-natalo-50"
                           : "border-zinc-200 hover:border-zinc-400"
                       }`}
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-bold text-zinc-900">{addr.label}</span>
-                        {addr.isMain && (
-                          <span className="rounded-full bg-natalo-100 px-2 py-0.5 text-xs font-bold text-natalo-700">
-                            Utama
-                          </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedAddressId(addr.id);
+                          applyAddressToForm(addr);
+                          setAddressMode("saved");
+                        }}
+                        className="block w-full p-4 pr-16 text-left"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-zinc-900">{addr.label}</span>
+                          {addr.isMain && (
+                            <span className="rounded-full bg-natalo-100 px-2 py-0.5 text-xs font-bold text-natalo-700">
+                              Utama
+                            </span>
+                          )}
+                          {selectedAddressId === addr.id && (
+                            <span className="text-xs font-bold text-natalo-600">Dipilih</span>
+                          )}
+                        </div>
+                        <p className="mt-1 text-zinc-600">{addr.recipientName} · {addr.phone}</p>
+                        <p className="mt-0.5 text-zinc-400 line-clamp-1">{addr.address}, {addr.city} {addr.postalCode}</p>
+                        {addr.streetName && (
+                          <p className="mt-2 text-xs font-bold text-natalo-700">{addr.streetName}</p>
                         )}
-                        {selectedAddressId === addr.id && (
-                          <span className="text-xs font-bold text-zinc-500">Dipilih</span>
+                        {addr.pinpointAddress && (
+                          <p className="mt-2 rounded-xl bg-natalo-50 px-3 py-2 text-xs font-semibold text-natalo-800 line-clamp-2">
+                            Pinpoint: {addr.pinpointAddress}
+                          </p>
                         )}
-                      </div>
-                      <p className="mt-1 text-zinc-600">{addr.recipientName} · {addr.phone}</p>
-                      <p className="mt-0.5 text-zinc-400 line-clamp-1">{addr.address}, {addr.city} {addr.postalCode}</p>
-                      {addr.streetName && (
-                        <p className="mt-2 text-xs font-bold text-natalo-700">{addr.streetName}</p>
-                      )}
-                      {addr.pinpointAddress && (
-                        <p className="mt-2 rounded-xl bg-natalo-50 px-3 py-2 text-xs font-semibold text-natalo-800 line-clamp-2">
-                          Pinpoint: {addr.pinpointAddress}
-                        </p>
-                      )}
-                    </button>
+                      </button>
+                      <Link
+                        href={`/akun/alamat/edit/${addr.id}`}
+                        className="absolute right-3 top-3 rounded-full bg-white px-3 py-1 text-xs font-bold text-natalo-600 ring-1 ring-natalo-200 hover:bg-natalo-50"
+                      >
+                        Edit
+                      </Link>
+                    </div>
                   ))}
                 </div>
-                <p className="mt-2 text-xs text-zinc-400">
-                  Atau isi form di bawah secara manual untuk alamat berbeda.
-                </p>
                 <button
                   type="button"
                   onClick={() => {
@@ -745,7 +869,7 @@ export default function CheckoutPage() {
                     setPayment(null);
                     setRates([]);
                   }}
-                  className="mt-3 w-full rounded-2xl border border-dashed border-natalo-300 bg-white p-4 text-left text-sm font-black text-natalo-700 transition hover:bg-natalo-50"
+                  className="mt-3 w-full rounded-2xl border border-dashed border-natalo-300 bg-white p-4 text-center text-sm font-black text-natalo-700 transition hover:bg-natalo-50"
                 >
                   + Tambah Alamat Baru
                 </button>
@@ -757,12 +881,7 @@ export default function CheckoutPage() {
                 {savedAddresses.length > 0 && (
                   <button
                     type="button"
-                    onClick={() => {
-                      const fallback = selectedAddress ?? savedAddresses.find((addr) => addr.isMain) ?? savedAddresses[0];
-                      setSelectedAddressId(fallback.id);
-                      applyAddressToForm(fallback);
-                      setAddressMode("saved");
-                    }}
+                    onClick={openCheckoutAddressList}
                     className="text-xs font-black text-natalo-600 hover:underline"
                   >
                     Pakai alamat tersimpan
@@ -819,86 +938,25 @@ export default function CheckoutPage() {
               </div>
             )}
 
-            {/* Pengiriman: tombol ke bottom sheet */}
-            <div>
-              <label className="block text-sm font-medium text-zinc-700">
-                Metode Pengiriman
-              </label>
-              {selectedRate ? (
-                <div className="mt-1 flex items-center justify-between gap-3 rounded-2xl border border-natalo-300 bg-natalo-50 p-4">
-                  <div className="min-w-0">
-                    <p className="font-bold text-zinc-950">
-                      {selectedRate.courier_name}{" "}
-                      <span className="text-sm font-normal text-zinc-600">
-                        - {selectedRate.courier_service_name}
-                      </span>
-                    </p>
-                    <p className="mt-0.5 text-xs text-zinc-500">
-                      {selectedRate.duration} · {formatRupiah(selectedRate.price)}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={getRates}
-                    className="shrink-0 text-xs font-bold text-natalo-700 hover:underline"
-                  >
-                    Ganti
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={getRates}
-                  disabled={ratesLoading || !addressValid}
-                  className="mt-1 flex w-full items-center justify-between rounded-2xl border border-zinc-300 bg-white p-4 text-left transition hover:border-natalo-300 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <span className="font-medium text-zinc-700">
-                    {ratesLoading
-                      ? "Memuat ongkir..."
-                      : !addressValid
-                      ? "Pilih atau lengkapi alamat dulu"
-                      : "Pilih metode pengiriman"}
-                  </span>
-                  {!ratesLoading && addressValid && (
-                    <span className="text-zinc-400">&gt;</span>
-                  )}
-                </button>
-              )}
-              {shippingError && (
-                <p className="mt-2 text-xs text-red-500">{shippingError}</p>
-              )}
-            </div>
-
-            {/* Ringkasan produk */}
-            <section className="rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-black text-zinc-950">Ringkasan Produk</p>
-                  <p className="mt-0.5 text-xs text-zinc-500">
-                    {totalItemCount} item · subtotal {formatRupiah(subtotal)}
-                  </p>
-                </div>
-                {items.length > 4 && (
-                  <button
-                    type="button"
-                    onClick={() => setShowAllCheckoutItems((value) => !value)}
-                    className="shrink-0 text-xs font-black text-natalo-600 hover:underline"
-                  >
-                    {showAllCheckoutItems ? "Sembunyikan" : "Lihat semua item"}
-                  </button>
-                )}
+            {/* Ringkasan produk — di atas pengiriman supaya user bisa cek dulu */}
+            <section className="rounded-2xl border border-zinc-100 bg-white p-3 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-black text-zinc-950">Ringkasan Produk</p>
+                <p className="text-xs text-zinc-500">
+                  {totalItemCount} item
+                </p>
               </div>
 
-              <div className="mt-4 space-y-3">
+              <div className="mt-3 space-y-3">
                 {items.length > 0 ? (
                   visibleCheckoutItems.map((item) => (
                     <div key={cartKey(item)} className="flex items-center gap-3">
-                      <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-zinc-100">
+                      <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-zinc-100">
                         <Image
                           src={item.imageUrl || "/logo.png"}
                           alt={item.name}
                           fill
-                          sizes="56px"
+                          sizes="48px"
                           className={item.imageUrl ? "object-cover" : "object-contain p-2"}
                         />
                       </div>
@@ -920,59 +978,112 @@ export default function CheckoutPage() {
                 )}
               </div>
 
-              {!showAllCheckoutItems && hiddenCheckoutItemCount > 0 && (
+              {hiddenCheckoutItemCount > 0 && (
                 <button
                   type="button"
                   onClick={() => setShowAllCheckoutItems(true)}
-                  className="mt-4 w-full rounded-2xl border border-zinc-200 px-4 py-3 text-sm font-black text-zinc-700 transition hover:border-natalo-300 hover:text-natalo-700"
+                  className="mt-3 w-full rounded-xl border border-zinc-100 py-2 text-center text-xs font-black text-natalo-600 transition hover:bg-natalo-50"
                 >
-                  Lihat semua item ({hiddenCheckoutItemCount} lagi)
+                  Lihat semua item ({hiddenCheckoutItemCount} lagi) ›
+                </button>
+              )}
+              {showAllCheckoutItems && items.length > 4 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllCheckoutItems(false)}
+                  className="mt-3 w-full rounded-xl border border-zinc-100 py-2 text-center text-xs font-black text-zinc-500 transition hover:bg-zinc-50"
+                >
+                  Sembunyikan
                 </button>
               )}
             </section>
 
-            {/* Voucher */}
+            {/* Pengiriman: tombol ke bottom sheet — setelah ringkasan */}
             <div>
-              <div className="flex items-center justify-between">
-                <label className="block text-sm font-medium text-zinc-700">Kode voucher</label>
-                {availableVouchers.length > 0 && (
+              <label className="block text-sm font-medium text-zinc-700">
+                Metode Pengiriman
+              </label>
+              {selectedRate ? (
+                <div className="mt-1 flex items-center justify-between gap-3 rounded-2xl border border-natalo-300 bg-natalo-50 p-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-zinc-950">
+                      {selectedRate.courier_name}{" "}
+                      <span className="font-normal text-zinc-600">
+                        - {selectedRate.courier_service_name}
+                      </span>
+                    </p>
+                    <p className="mt-0.5 truncate text-xs text-zinc-500">
+                      {selectedRate.duration} · {formatRupiah(selectedRate.price)}
+                    </p>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => setShowVoucherList((v) => !v)}
-                    className="text-xs font-bold text-natalo-600 hover:underline"
+                    onClick={getRates}
+                    className="shrink-0 text-xs font-bold text-natalo-700 hover:underline"
                   >
-                    {showVoucherList ? "Tutup" : `Voucher saya (${availableVouchers.length})`}
+                    Ganti ›
                   </button>
-                )}
-              </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={getRates}
+                  disabled={ratesLoading || !addressValid}
+                  className="mt-1 flex w-full items-center justify-between rounded-2xl border border-zinc-200 bg-white p-3 text-left transition hover:border-natalo-300 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <span className="text-sm font-medium text-zinc-700">
+                    {ratesLoading
+                      ? "Memuat ongkir..."
+                      : !addressValid
+                      ? "Pilih atau lengkapi alamat dulu"
+                      : "Pilih metode pengiriman"}
+                  </span>
+                  {!ratesLoading && addressValid && (
+                    <span className="text-zinc-400">›</span>
+                  )}
+                </button>
+              )}
+              {shippingError && (
+                <p className="mt-2 text-xs text-red-500">{shippingError}</p>
+              )}
+            </div>
+
+            {/* Voucher — compact row */}
+            <div>
+              <label className="block text-sm font-medium text-zinc-700">Kode voucher</label>
 
               {voucherApplied ? (
-                <div className="mt-1 rounded-2xl border border-green-300 bg-green-50 px-4 py-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="truncate text-sm font-bold text-green-700">
-                          {voucherApplied.code}
-                        </p>
-                        {voucherApplied.autoApplied && (
-                          <span className="shrink-0 rounded-full bg-natalo-100 px-2 py-0.5 text-[10px] font-bold text-natalo-800">
-                            Otomatis
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-0.5 text-xs text-green-600">
-                        {voucherApplied.description} - hemat{" "}
-                        {formatRupiah(voucherApplied.discount)}
+                <div className="mt-1 flex items-center gap-3 rounded-2xl border border-green-300 bg-green-50 px-3 py-2.5">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-green-600">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                      <path d="M20 12V7H4v10h11" />
+                      <path d="M16 3v4M8 3v4" />
+                      <path d="M16.5 18 18 19.5 21.5 16" />
+                    </svg>
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-sm font-bold text-green-700">
+                        {voucherApplied.code}
                       </p>
+                      {voucherApplied.autoApplied && (
+                        <span className="shrink-0 rounded-full bg-natalo-100 px-2 py-0.5 text-[10px] font-bold text-natalo-800">
+                          Otomatis
+                        </span>
+                      )}
                     </div>
-                    <button
-                      type="button"
-                      onClick={removeVoucher}
-                      className="shrink-0 text-xs font-semibold text-zinc-500 hover:text-red-500"
-                    >
-                      {voucherApplied.autoApplied ? "Ganti" : "Hapus"}
-                    </button>
+                    <p className="mt-0.5 truncate text-xs text-green-600">
+                      {voucherApplied.description} - hemat{" "}
+                      {formatRupiah(voucherApplied.discount)}
+                    </p>
                   </div>
+                  <button
+                    type="button"
+                    onClick={removeVoucher}
+                    className="shrink-0 text-xs font-bold text-green-700 hover:text-red-500"
+                  >
+                    {voucherApplied.autoApplied ? "Ganti" : "Hapus"}
+                  </button>
                 </div>
               ) : (
                 <div className="mt-1 flex gap-2">
@@ -980,8 +1091,8 @@ export default function CheckoutPage() {
                     type="text"
                     value={voucherInput}
                     onChange={(e) => setVoucherInput(e.target.value.toUpperCase())}
-                    placeholder="Contoh: LEBARAN20 atau POIN-XXXX"
-                    className="block flex-1 rounded-2xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-600"
+                    placeholder="Masukkan kode voucher"
+                    className="block flex-1 rounded-2xl border border-zinc-200 bg-white px-4 py-2.5 text-sm outline-none focus:border-zinc-600"
                     onKeyDown={(e) =>
                       e.key === "Enter" && (e.preventDefault(), applyVoucher())
                     }
@@ -990,11 +1101,21 @@ export default function CheckoutPage() {
                     type="button"
                     onClick={applyVoucher}
                     disabled={voucherLoading || !voucherInput.trim()}
-                    className="rounded-2xl bg-zinc-950 px-5 py-3 text-sm font-bold text-white disabled:opacity-40"
+                    className="rounded-2xl bg-zinc-950 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40"
                   >
                     {voucherLoading ? "..." : "Terapkan"}
                   </button>
                 </div>
+              )}
+
+              {availableVouchers.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowVoucherList((v) => !v)}
+                  className="mt-1.5 text-xs font-bold text-natalo-600 hover:underline"
+                >
+                  {showVoucherList ? "Tutup voucher saya" : `Voucher saya (${availableVouchers.length})`}
+                </button>
               )}
 
               {/* Daftar voucher milik user */}
@@ -1048,7 +1169,17 @@ export default function CheckoutPage() {
               {voucherError && <p className="mt-1 text-xs text-red-500">{voucherError}</p>}
             </div>
 
-            {field("Catatan pesanan", "notes", { placeholder: "Opsional", textarea: true })}
+            {/* Catatan compact */}
+            <div>
+              <label className="block text-sm font-medium text-zinc-700">Catatan pesanan</label>
+              <input
+                type="text"
+                placeholder="Opsional"
+                value={form.notes}
+                onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                className="mt-1 block w-full rounded-2xl border border-zinc-200 bg-white px-4 py-2.5 text-sm outline-none focus:border-zinc-600"
+              />
+            </div>
 
             {/* Metode pembayaran */}
             <div>

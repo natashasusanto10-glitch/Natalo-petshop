@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 const LABELS = ["Rumah", "Kantor", "Toko", "Lainnya"];
 const KODEPOS_API = "https://kodepos.vercel.app/search";
@@ -11,6 +11,8 @@ const GOOGLE_API_KEY =
   "";
 const INPUT_CLASS =
   "mt-2 block w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-natalo-400 focus:ring-4 focus:ring-natalo-100 disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400";
+const CHECKOUT_SELECTED_ADDRESS_KEY = "checkout:selectedAddressId";
+const CHECKOUT_ADDRESS_FORCE_APPLY_KEY = "checkout:addressForceApply";
 
 let googleMapsPromise = null;
 
@@ -448,6 +450,21 @@ function MapPreview({ lat, lng, onPinMove }) {
 
 export default function FormAlamat({ mode = "create", initialAddress = null }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Allow callers (e.g. /checkout) to specify where to return after save/cancel
+  // via ?return=/some/path. Restrict to internal paths only for safety.
+  const rawReturn = searchParams.get("return") || "";
+  const returnUrl =
+    rawReturn.startsWith("/") && !rawReturn.startsWith("//")
+      ? rawReturn
+      : "/akun/alamat";
+  const source = searchParams.get("source") || "profile";
+  const rawCheckoutReturn = searchParams.get("checkoutReturn") || "";
+  const checkoutReturnUrl =
+    rawCheckoutReturn.startsWith("/checkout") && !rawCheckoutReturn.startsWith("//")
+      ? rawCheckoutReturn
+      : "/checkout";
+  const isCheckoutFlow = source === "checkout";
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -755,7 +772,13 @@ export default function FormAlamat({ mode = "create", initialAddress = null }) {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Gagal menyimpan alamat.");
-      router.push("/akun/alamat");
+      if (isCheckoutFlow && data?.address?.id) {
+        sessionStorage.setItem(CHECKOUT_SELECTED_ADDRESS_KEY, data.address.id);
+        sessionStorage.setItem(CHECKOUT_ADDRESS_FORCE_APPLY_KEY, "1");
+        router.push(checkoutReturnUrl);
+      } else {
+        router.push(returnUrl);
+      }
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal menyimpan alamat.");
@@ -965,7 +988,9 @@ export default function FormAlamat({ mode = "create", initialAddress = null }) {
         <span>
           <span className="block text-sm font-black text-zinc-900">Jadikan Alamat Utama</span>
           <span className="mt-0.5 block text-xs font-medium text-zinc-500">
-            Pakai alamat ini sebagai default saat checkout.
+            {isCheckoutFlow
+              ? "Opsional. Tanpa ini, alamat hanya dipilih untuk pesanan checkout saat ini."
+              : "Pakai alamat ini sebagai default saat checkout."}
           </span>
         </span>
         <input
@@ -986,7 +1011,7 @@ export default function FormAlamat({ mode = "create", initialAddress = null }) {
         </button>
         <button
           type="button"
-          onClick={() => router.push("/akun/alamat")}
+          onClick={() => router.push(returnUrl)}
           className="mt-2 w-full rounded-full px-6 py-3 text-sm font-bold text-zinc-600 transition hover:bg-zinc-50"
         >
           Batal
