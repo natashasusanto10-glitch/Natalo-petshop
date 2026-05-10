@@ -80,6 +80,12 @@ jobs:
         continue-on-error: true
 
       - name: Auto-commit ios/ kalau baru di-generate
+        # Hanya jalan saat run dari branch (workflow_dispatch / push ke main),
+        # SKIP saat run dari tag (push: tags) — di tag run, HEAD detached, push back
+        # ke branch akan gagal. Splash/icon yang di-generate cap:assets akan tetap
+        # tersedia in-memory untuk build_app step di run yang sama, jadi gak masalah.
+        if: github.ref_type == 'branch'
+        continue-on-error: true # Defensive: jangan fail seluruh workflow kalau commit gagal
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "chore(ios): scaffold ios/ via CI [skip ci]"
