@@ -401,10 +401,10 @@ export function CheckoutVoucherCard({
 
       {manualCard}
 
-      {/* Info text aturan voucher */}
+      {/* Info text aturan voucher — match spec exactly */}
       {!applied && !manualApplied && (
         <p className="mt-2 text-[11px] text-zinc-500">
-          Maksimal 2 voucher: 1 voucher pembeli + 1 voucher penjual via kode manual.
+          Maksimal 2 voucher: 1 voucher pembeli + 1 voucher penjual melalui kode manual
         </p>
       )}
 
@@ -443,7 +443,7 @@ export function CheckoutVoucherCard({
                       </button>
                     )}
                     <h2 className="text-base font-extrabold text-zinc-950">
-                      {showManualInput ? "Masukkan Kode Voucher" : "Pilih Voucher"}
+                      {showManualInput ? "Voucher Manual Penjual" : "Pilih Voucher"}
                     </h2>
                   </div>
                   <button
@@ -462,8 +462,12 @@ export function CheckoutVoucherCard({
                   <>
                     <div className="min-h-0 flex-1 overflow-y-auto p-4">
                       <label className="block text-sm font-bold text-zinc-800" htmlFor="manual-voucher-code">
-                        Masukkan kode voucher
+                        Masukkan kode voucher manual dari penjual
                       </label>
+                      <p className="mt-1 text-xs text-zinc-500">
+                        Kode rahasia dari penjual (bukan voucher publik). Untuk
+                        voucher pembeli (publik), pilih lewat daftar di tab sebelumnya.
+                      </p>
                       <input
                         ref={manualInputRef}
                         id="manual-voucher-code"
@@ -605,7 +609,7 @@ export function CheckoutVoucherCard({
                         onClick={() => setShowManualInput(true)}
                         className="w-full text-center text-xs font-bold text-natalo-600 hover:underline"
                       >
-                        Punya kode voucher? Masukkan manual
+                        Punya kode voucher manual dari penjual? Masukkan di sini
                       </button>
                     </div>
                   </div>

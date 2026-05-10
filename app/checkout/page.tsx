@@ -704,17 +704,16 @@ export default function CheckoutPage() {
     setForm((f) => ({ ...f, manualVoucherCode: "" }));
   }
 
-  // Kode manual divalidasi lewat checkout recalculate. Backend route
-  // berdasarkan sourceType voucher:
-  // - SELLER_MANUAL → applied_manual_voucher
-  // - CUSTOMER → applied_customer_voucher (auto-route untuk UX, supaya user
-  //   bisa input customer code di kotak manual juga kalau dia tahu kodenya)
+  // Input kode manual STRICT untuk voucher SELLER_MANUAL (rahasia dari
+  // penjual). Voucher pembeli (CUSTOMER) HARUS dipilih lewat daftar voucher,
+  // bukan via input manual — sesuai aturan: "Voucher manual hanya bisa
+  // digunakan jika pembeli memasukkan kode voucher dari penjual secara
+  // manual." Tidak ada auto-route ke customer slot.
   async function applyManualVoucherCode(
     code: string,
   ): Promise<{ ok: boolean; error?: string }> {
     const upperCode = code.trim().toUpperCase();
     try {
-      // Pertama coba sebagai voucher manual penjual
       const data = await recalculateCheckout(
         form.voucherCode || null,
         upperCode,
@@ -724,24 +723,6 @@ export default function CheckoutPage() {
       if (data.applied_manual_voucher?.code === upperCode) {
         setVoucherInvalidated(null);
         return { ok: true };
-      }
-
-      // Backend reject karena bukan SELLER_MANUAL? Coba auto-route sebagai
-      // customer voucher (replace customer slot).
-      const isSourceMismatch =
-        data.manual_voucher_error?.includes("manual penjual") ?? false;
-
-      if (isSourceMismatch) {
-        const fallback = await recalculateCheckout(
-          upperCode,
-          form.manualVoucherCode || null,
-          false,
-        );
-        if (fallback.applied_customer_voucher?.code === upperCode) {
-          setAutoVoucherSuppressed(false);
-          setVoucherInvalidated(null);
-          return { ok: true };
-        }
       }
 
       return {

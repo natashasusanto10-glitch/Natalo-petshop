@@ -266,6 +266,8 @@ export async function POST(request: NextRequest) {
     if (!manualVoucher || !manualVoucher.isActive) {
       manualVoucherError = "Kode voucher tidak valid.";
     } else if (manualVoucher.sourceType !== "SELLER_MANUAL") {
+      // Sesuai aturan: input kode manual HANYA untuk voucher SELLER_MANUAL.
+      // Customer voucher (publik / claim user) harus dipilih lewat daftar.
       manualVoucherError =
         "Kode ini bukan voucher manual penjual. Pilih lewat daftar voucher pembeli.";
     } else if (manualVoucher.expiresAt && manualVoucher.expiresAt <= now) {
@@ -288,6 +290,21 @@ export async function POST(request: NextRequest) {
         manualApplied = normalizeVoucher(manualVoucher, discount);
       }
     }
+  }
+
+  // Guard defensif: kalau input legacy `voucherCode` & `customerVoucherCode`
+  // dikirim DUA-DUA dgn nilai berbeda → klien mencoba apply 2 customer
+  // voucher sekaligus. Tolak dengan pesan sesuai spec.
+  const legacyCustomer = (input.voucherCode ?? "").trim().toUpperCase();
+  const dualCustomerProvided =
+    !!input.customerVoucherCode &&
+    !!legacyCustomer &&
+    legacyCustomer !== (input.customerVoucherCode ?? "").trim().toUpperCase();
+  if (dualCustomerProvided) {
+    return NextResponse.json(
+      { message: "Hanya 1 voucher pembeli yang dapat digunakan" },
+      { status: 400 },
+    );
   }
 
   // Build available + unavailable list dari customer vouchers
