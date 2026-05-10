@@ -18,6 +18,11 @@ ngrok.exe
 
 # Loose AI-generated images / scratch files
 ChatGPT Image*.png
+splash-preview.png
+
+# Dev server logs
+.next-dev.err.log
+.next-dev.out.log
 
 # TypeScript build cache
 tsconfig.tsbuildinfo
