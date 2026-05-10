@@ -6,8 +6,13 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Script from "next/script";
-import { formatRupiah } from "@/lib/format";
+import { formatRupiah, formatShippingDuration } from "@/lib/format";
 import { MetodePengiriman } from "@/components/MetodePengiriman";
+import {
+  CheckoutVoucherCard,
+  type EligibleVoucher,
+  type IneligibleVoucher,
+} from "@/components/checkout/CheckoutVoucherCard";
 import {
   MetodePembayaran,
   type PaymentSelection,
@@ -113,12 +118,9 @@ export default function CheckoutPage() {
     description: string;
     autoApplied?: boolean;
   } | null>(null);
-  const [voucherLoading, setVoucherLoading] = useState(false);
-  const [voucherError, setVoucherError] = useState("");
-  const [availableVouchers, setAvailableVouchers] = useState<
-    Array<{ code: string; description: string | null; discount: number }>
-  >([]);
-  const [showVoucherList, setShowVoucherList] = useState(false);
+  const [eligibleVouchers, setEligibleVouchers] = useState<EligibleVoucher[]>([]);
+  const [ineligibleVouchers, setIneligibleVouchers] = useState<IneligibleVoucher[]>([]);
+  const [voucherInvalidated, setVoucherInvalidated] = useState<string | null>(null);
   const [showAllCheckoutItems, setShowAllCheckoutItems] = useState(false);
   const [draftReady, setDraftReady] = useState(false);
   const [stockIssues, setStockIssues] = useState<CartStockIssue[]>([]);
@@ -475,26 +477,59 @@ export default function CheckoutPage() {
           ? "Pilih Pembayaran Dulu"
           : "Buat Pesanan";
 
-  // Auto-apply voucher milik user.
-  // Fetch user vouchers tiap subtotal berubah. Auto-apply voucher TERBAIK
-  // hanya kalau user belum pasang voucher manual.
+  // Fetch voucher milik user tiap subtotal berubah.
+  // Re-cek voucher yang sebelumnya terpasang — kalau jadi tidak valid (subtotal
+  // turun di bawah minimumOrder, expired, dll), lepas + tampilkan pesan.
+  // Auto-apply voucher terbaik kalau user belum pilih voucher.
   useEffect(() => {
     if (subtotal === 0) {
-      setAvailableVouchers([]);
+      setEligibleVouchers([]);
+      setIneligibleVouchers([]);
       return;
     }
 
     let cancelled = false;
     fetch(`/api/member/vouchers?subtotal=${subtotal}`)
-      .then((r) => (r.ok ? r.json() : { vouchers: [] }))
+      .then((r) => (r.ok ? r.json() : { eligible: [], ineligible: [] }))
       .then((data) => {
         if (cancelled) return;
-        const list = Array.isArray(data.vouchers) ? data.vouchers : [];
-        setAvailableVouchers(list);
+        const eligible: EligibleVoucher[] = Array.isArray(data.eligible)
+          ? data.eligible
+          : Array.isArray(data.vouchers)
+            ? data.vouchers
+            : [];
+        const ineligible: IneligibleVoucher[] = Array.isArray(data.ineligible)
+          ? data.ineligible
+          : [];
+        setEligibleVouchers(eligible);
+        setIneligibleVouchers(ineligible);
 
-        // Auto-apply yang terbaik kalau user belum pakai voucher manual
-        if (list.length > 0 && !voucherApplied) {
-          const best = list[0];
+        // Re-validate voucher yang sudah terpasang
+        if (voucherApplied) {
+          const stillValid = eligible.find((v) => v.code === voucherApplied.code);
+          if (stillValid) {
+            // Update discount kalau angkanya berubah
+            if (stillValid.discount !== voucherApplied.discount) {
+              setVoucherApplied({
+                code: stillValid.code,
+                discount: stillValid.discount,
+                description: stillValid.description ?? voucherApplied.description,
+                autoApplied: voucherApplied.autoApplied,
+              });
+            }
+            setVoucherInvalidated(null);
+          } else {
+            setVoucherApplied(null);
+            setForm((f) => ({ ...f, voucherCode: "" }));
+            setVoucherInvalidated(
+              "Voucher tidak bisa digunakan untuk pilihan ini",
+            );
+          }
+        }
+
+        // Auto-apply yang terbaik kalau user belum pakai voucher
+        if (eligible.length > 0 && !voucherApplied) {
+          const best = eligible[0];
           setVoucherApplied({
             code: best.code,
             discount: best.discount,
@@ -502,26 +537,6 @@ export default function CheckoutPage() {
             autoApplied: true,
           });
           setForm((f) => ({ ...f, voucherCode: best.code }));
-        }
-
-        // Re-validate voucher yang auto-applied (subtotal mungkin berubah)
-        if (voucherApplied?.autoApplied) {
-          const stillValid = list.find((v: { code: string }) => v.code === voucherApplied.code);
-          if (stillValid) {
-            // Update discount kalau berbeda
-            if (stillValid.discount !== voucherApplied.discount) {
-              setVoucherApplied({
-                code: stillValid.code,
-                discount: stillValid.discount,
-                description: stillValid.description ?? "Voucher otomatis",
-                autoApplied: true,
-              });
-            }
-          } else {
-            // Tidak valid lagi (subtotal turun di bawah minimumOrder, dll) - lepas
-            setVoucherApplied(null);
-            setForm((f) => ({ ...f, voucherCode: "" }));
-          }
         }
       })
       .catch(() => {});
@@ -532,30 +547,52 @@ export default function CheckoutPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subtotal]);
 
-  async function applyVoucher() {
-    setVoucherError("");
-    if (!voucherInput.trim()) return;
-    setVoucherLoading(true);
-    const res = await fetch("/api/vouchers/validate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code: voucherInput.trim().toUpperCase(), subtotal }),
-    });
-    const data = await res.json();
-    setVoucherLoading(false);
-    if (data.valid) {
-      setVoucherApplied({ code: data.code, discount: data.discount, description: data.description });
-      setForm((f) => ({ ...f, voucherCode: data.code }));
-    } else {
-      setVoucherError(data.error || "Kode voucher tidak valid.");
-    }
+  // Bersihkan pesan invalidated saat user pilih voucher baru
+  function applyVoucherFromList(
+    code: string,
+    discount: number,
+    description: string,
+  ) {
+    setVoucherApplied({ code, discount, description, autoApplied: false });
+    setForm((f) => ({ ...f, voucherCode: code }));
+    setVoucherInvalidated(null);
   }
 
   function removeVoucher() {
     setVoucherApplied(null);
     setVoucherInput("");
-    setVoucherError("");
+    setVoucherInvalidated(null);
     setForm((f) => ({ ...f, voucherCode: "" }));
+  }
+
+  // Manual voucher code (fallback untuk voucher publik yang tidak terikat ke
+  // user — misal kode promo poster). Validasi via /api/vouchers/validate.
+  async function applyManualVoucherCode(
+    code: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const res = await fetch("/api/vouchers/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, subtotal }),
+      });
+      const data = await res.json();
+      if (data.valid) {
+        setVoucherApplied({
+          code: data.code,
+          discount: data.discount,
+          description: data.description ?? "Voucher",
+          autoApplied: false,
+        });
+        setVoucherInput(data.code);
+        setForm((f) => ({ ...f, voucherCode: data.code }));
+        setVoucherInvalidated(null);
+        return { ok: true };
+      }
+      return { ok: false, error: data.error ?? "Kode voucher tidak valid." };
+    } catch {
+      return { ok: false, error: "Gagal memvalidasi kode voucher." };
+    }
   }
 
   async function getRates() {
@@ -1122,13 +1159,10 @@ export default function CheckoutPage() {
                 <div className="mt-1 flex items-center justify-between gap-3 rounded-2xl border border-natalo-300 bg-natalo-50 p-3">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-bold text-zinc-950">
-                      {selectedRate.courier_name}{" "}
-                      <span className="font-normal text-zinc-600">
-                        - {selectedRate.courier_service_name}
-                      </span>
+                      {selectedRate.courier_name} {selectedRate.courier_service_name}
                     </p>
                     <p className="mt-0.5 truncate text-xs text-zinc-500">
-                      {selectedRate.duration} · {formatRupiah(selectedRate.price)}
+                      {formatShippingDuration(selectedRate.duration)} · {formatRupiah(selectedRate.price)}
                     </p>
                   </div>
                   <button
@@ -1163,126 +1197,16 @@ export default function CheckoutPage() {
               )}
             </div>
 
-            {/* Voucher — compact row */}
-            <div>
-              <label className="block text-sm font-medium text-zinc-700">Kode voucher</label>
-
-              {voucherApplied ? (
-                <div className="mt-1 flex items-center gap-3 rounded-2xl border border-green-300 bg-green-50 px-3 py-2.5">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-green-600">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-                      <path d="M20 12V7H4v10h11" />
-                      <path d="M16 3v4M8 3v4" />
-                      <path d="M16.5 18 18 19.5 21.5 16" />
-                    </svg>
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate text-sm font-bold text-green-700">
-                        {voucherApplied.code}
-                      </p>
-                      {voucherApplied.autoApplied && (
-                        <span className="shrink-0 rounded-full bg-natalo-100 px-2 py-0.5 text-[10px] font-bold text-natalo-800">
-                          Otomatis
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-0.5 truncate text-xs text-green-600">
-                      {voucherApplied.description} - hemat{" "}
-                      {formatRupiah(voucherApplied.discount)}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={removeVoucher}
-                    className="shrink-0 text-xs font-bold text-green-700 hover:text-red-500"
-                  >
-                    {voucherApplied.autoApplied ? "Ganti" : "Hapus"}
-                  </button>
-                </div>
-              ) : (
-                <div className="mt-1 flex gap-2">
-                  <input
-                    type="text"
-                    value={voucherInput}
-                    onChange={(e) => setVoucherInput(e.target.value.toUpperCase())}
-                    placeholder="Masukkan kode voucher"
-                    className="block flex-1 rounded-2xl border border-zinc-200 bg-white px-4 py-2.5 text-sm outline-none focus:border-zinc-600"
-                    onKeyDown={(e) =>
-                      e.key === "Enter" && (e.preventDefault(), applyVoucher())
-                    }
-                  />
-                  <button
-                    type="button"
-                    onClick={applyVoucher}
-                    disabled={voucherLoading || !voucherInput.trim()}
-                    className="rounded-2xl bg-zinc-950 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40"
-                  >
-                    {voucherLoading ? "..." : "Terapkan"}
-                  </button>
-                </div>
-              )}
-
-              {availableVouchers.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setShowVoucherList((v) => !v)}
-                  className="mt-1.5 text-xs font-bold text-natalo-600 hover:underline"
-                >
-                  {showVoucherList ? "Tutup voucher saya" : `Voucher saya (${availableVouchers.length})`}
-                </button>
-              )}
-
-              {/* Daftar voucher milik user */}
-              {showVoucherList && availableVouchers.length > 0 && (
-                <div className="mt-2 space-y-1.5 rounded-2xl border border-zinc-200 bg-zinc-50 p-2">
-                  {availableVouchers.map((v) => {
-                    const isCurrent = voucherApplied?.code === v.code;
-                    return (
-                      <button
-                        key={v.code}
-                        type="button"
-                        disabled={isCurrent}
-                        onClick={() => {
-                          setVoucherApplied({
-                            code: v.code,
-                            discount: v.discount,
-                            description: v.description ?? "Voucher",
-                            autoApplied: false,
-                          });
-                          setForm((f) => ({ ...f, voucherCode: v.code }));
-                          setShowVoucherList(false);
-                        }}
-                        className={`flex w-full items-center justify-between gap-3 rounded-xl border p-3 text-left transition ${
-                          isCurrent
-                            ? "border-green-300 bg-green-50"
-                            : "border-zinc-200 bg-white hover:border-natalo-300 hover:bg-natalo-50"
-                        }`}
-                      >
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate font-mono text-sm font-bold text-zinc-950">
-                            {v.code}
-                          </p>
-                          <p className="truncate text-xs text-zinc-500">
-                            {v.description}
-                          </p>
-                        </div>
-                        <div className="shrink-0 text-right">
-                          <p className="text-sm font-bold text-natalo-600">
-                            -{formatRupiah(v.discount)}
-                          </p>
-                          {isCurrent && (
-                            <p className="text-[10px] font-bold text-green-600">Dipakai</p>
-                          )}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              {voucherError && <p className="mt-1 text-xs text-red-500">{voucherError}</p>}
-            </div>
+            {/* Voucher — smart picker dengan bottom sheet */}
+            <CheckoutVoucherCard
+              applied={voucherApplied}
+              eligible={eligibleVouchers}
+              ineligible={ineligibleVouchers}
+              invalidatedMessage={voucherInvalidated}
+              onApply={applyVoucherFromList}
+              onRemove={removeVoucher}
+              onApplyManualCode={applyManualVoucherCode}
+            />
 
             {/* Catatan compact */}
             <div>

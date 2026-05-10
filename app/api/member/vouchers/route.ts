@@ -1,16 +1,19 @@
 /**
  * GET /api/member/vouchers?subtotal=XXX
  *
- * Return voucher milik user yang APPLICABLE untuk subtotal saat ini.
- * Sorted by best discount value (descending) — index 0 = paling untung.
+ * Return SEMUA voucher milik user, dipisah jadi:
+ *   - eligible[]   — sudah memenuhi syarat (subtotal >= minimumOrder), discount > 0
+ *   - ineligible[] — milik user tapi belum memenuhi syarat (mis. subtotal kurang)
  *
- * Filter:
+ * Eligible disort dari discount terbesar ke terkecil — index 0 = paling untung,
+ * cocok untuk auto-apply.
+ *
+ * Filter dasar (untuk kedua list):
  *   - voucher.userId = current user
  *   - isActive = true
- *   - belum expired (expiresAt null OR > now)
  *   - sudah aktif (startsAt <= now)
+ *   - belum expired (expiresAt null OR > now)
  *   - usedCount < maxUsage (atau maxUsage null)
- *   - subtotal >= minimumOrder
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
@@ -35,31 +38,81 @@ export async function GET(request: NextRequest) {
   const subtotal = Math.max(0, Number(sp.get("subtotal") ?? 0));
   const now = new Date();
 
+  // Ambil SEMUA voucher milik user yang masih aktif & belum expired (tanpa
+  // filter minimumOrder) — biar bisa kasih tau user voucher yang "kurang
+  // belanja sekian lagi".
   const vouchers = await prisma.voucher.findMany({
     where: {
       userId: session.sub,
       isActive: true,
       startsAt: { lte: now },
       OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-      minimumOrder: { lte: subtotal },
     },
     orderBy: { createdAt: "desc" },
   });
 
-  // Filter usedCount < maxUsage (tidak bisa langsung di Prisma where karena column-to-column)
-  const applicable = vouchers
-    .filter((v) => v.maxUsage === null || v.usedCount < v.maxUsage)
-    .map((v) => ({
-      code: v.code,
-      description: v.description,
-      discount: calcDiscount(subtotal, v),
-      discountPercent: v.discountPercent,
-      discountAmount: v.discountAmount,
-      minimumOrder: v.minimumOrder,
-      expiresAt: v.expiresAt,
-    }))
-    .filter((v) => v.discount > 0)
-    .sort((a, b) => b.discount - a.discount);
+  // Filter usedCount < maxUsage (column-to-column gak bisa di Prisma where)
+  const usable = vouchers.filter(
+    (v) => v.maxUsage === null || v.usedCount < v.maxUsage,
+  );
 
-  return NextResponse.json({ vouchers: applicable });
+  const eligible: Array<{
+    code: string;
+    description: string | null;
+    discount: number;
+    discountPercent: number | null;
+    discountAmount: number | null;
+    minimumOrder: number;
+    expiresAt: Date | null;
+  }> = [];
+
+  const ineligible: Array<{
+    code: string;
+    description: string | null;
+    discountPercent: number | null;
+    discountAmount: number | null;
+    minimumOrder: number;
+    expiresAt: Date | null;
+    shortfall: number; // berapa rupiah lagi belanja agar memenuhi minimumOrder
+  }> = [];
+
+  for (const v of usable) {
+    const meetsMinimum = subtotal >= v.minimumOrder;
+    if (meetsMinimum) {
+      const discount = calcDiscount(subtotal, v);
+      if (discount > 0) {
+        eligible.push({
+          code: v.code,
+          description: v.description,
+          discount,
+          discountPercent: v.discountPercent,
+          discountAmount: v.discountAmount,
+          minimumOrder: v.minimumOrder,
+          expiresAt: v.expiresAt,
+        });
+      }
+    } else {
+      ineligible.push({
+        code: v.code,
+        description: v.description,
+        discountPercent: v.discountPercent,
+        discountAmount: v.discountAmount,
+        minimumOrder: v.minimumOrder,
+        expiresAt: v.expiresAt,
+        shortfall: v.minimumOrder - subtotal,
+      });
+    }
+  }
+
+  eligible.sort((a, b) => b.discount - a.discount);
+  // Untuk ineligible, urutkan dari yang shortfall paling kecil — paling dekat untuk dipakai
+  ineligible.sort((a, b) => a.shortfall - b.shortfall);
+
+  return NextResponse.json({
+    // Backwards-compat: field "vouchers" tetap return eligible saja agar
+    // konsumen lama tidak break.
+    vouchers: eligible,
+    eligible,
+    ineligible,
+  });
 }

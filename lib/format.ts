@@ -6,6 +6,55 @@ export function formatRupiah(amount: number) {
   }).format(amount);
 }
 
+/**
+ * Translate Biteship-style English duration strings ke frasa Bahasa Indonesia
+ * yang lebih natural untuk user.
+ *
+ * Contoh:
+ *   "1 - 2 Hours"  → "Tiba dalam 1–2 jam"
+ *   "1 Day"        → "Tiba dalam 1 hari"
+ *   "1 - 3 Days"   → "Tiba dalam 1–3 hari"
+ *   "Same day"     → "Tiba hari ini"
+ *   "Next day"     → "Tiba besok"
+ *
+ * Kalau tidak match pola yang dikenal, return string asli (fallback aman).
+ */
+export function formatShippingDuration(en: string | null | undefined): string {
+  if (!en) return "";
+  const raw = String(en).trim();
+  if (!raw) return "";
+
+  const lower = raw.toLowerCase();
+  if (lower === "same day" || lower === "sameday") return "Tiba hari ini";
+  if (lower === "next day" || lower === "nextday") return "Tiba besok";
+
+  // Pola "X Hour(s)" / "X - Y Hour(s)" / "X-Y Hour(s)"
+  const hour = lower.match(/^(\d+)(?:\s*[-–]\s*(\d+))?\s*hours?$/);
+  if (hour) {
+    const a = hour[1];
+    const b = hour[2];
+    return b ? `Tiba dalam ${a}–${b} jam` : `Tiba dalam ${a} jam`;
+  }
+
+  // Pola "X Day(s)" / "X - Y Day(s)"
+  const day = lower.match(/^(\d+)(?:\s*[-–]\s*(\d+))?\s*days?$/);
+  if (day) {
+    const a = day[1];
+    const b = day[2];
+    return b ? `Tiba dalam ${a}–${b} hari` : `Tiba dalam ${a} hari`;
+  }
+
+  // Pola "X Minute(s)" — jarang tapi mungkin
+  const minute = lower.match(/^(\d+)(?:\s*[-–]\s*(\d+))?\s*minutes?$/);
+  if (minute) {
+    const a = minute[1];
+    const b = minute[2];
+    return b ? `Tiba dalam ${a}–${b} menit` : `Tiba dalam ${a} menit`;
+  }
+
+  return raw;
+}
+
 export function createOrderNumber() {
   const date = new Date();
   const y = date.getFullYear();
