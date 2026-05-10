@@ -23,7 +23,11 @@ export const createOrderSchema = z.object({
   courierCode: z.string().optional(),
   courierService: z.string().optional(),
   shippingCost: z.number().int().nonnegative().default(0),
+  // Customer voucher (CUSTOMER source type — public/user-owned)
   voucherCode: z.string().optional(),
+  // Seller manual voucher (SELLER_MANUAL source type — kode rahasia
+  // yang hanya bisa di-apply via input manual)
+  manualVoucherCode: z.string().optional(),
   notes: z.string().optional(),
   paymentProvider: z.enum(["MANUAL", "MIDTRANS"]).default("MANUAL"),
   // Untuk TT manual: bank tujuan transfer

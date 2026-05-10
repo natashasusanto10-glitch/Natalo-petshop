@@ -33,6 +33,15 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum VoucherSourceType {
+  // Voucher publik admin promo + voucher claim user (BDAY, POIN). Tampil
+  // di daftar voucher pembeli. Maks 1 per checkout.
+  CUSTOMER
+  // Voucher rahasia dari penjual. TIDAK muncul di daftar publik. Hanya
+  // bisa di-apply via input kode manual. Maks 1 per checkout.
+  SELLER_MANUAL
+}
+
 model User {
   id                  String          @id @default(cuid())
   name                String
@@ -166,7 +175,8 @@ model Order {
   paymentProofUrl      String?
   manualBank           String?
   uniqueCode           Int?
-  voucherCode          String?
+  voucherCode          String? // Customer voucher (CUSTOMER source type)
+  manualVoucherCode    String? // Seller manual voucher (SELLER_MANUAL)
   notes                String?
   items                OrderItem[]
   createdAt            DateTime        @default(now())
@@ -206,6 +216,10 @@ model Voucher {
   isActive        Boolean   @default(true)
   // Voucher milik user spesifik (BDAY, POIN claim). NULL = voucher publik (admin promo).
   userId          String?
+  // Source type: CUSTOMER (visible di daftar pembeli) vs SELLER_MANUAL
+  // (tersembunyi, hanya via input kode manual). Default CUSTOMER untuk
+  // backward compat semua voucher existing.
+  sourceType      VoucherSourceType @default(CUSTOMER)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 

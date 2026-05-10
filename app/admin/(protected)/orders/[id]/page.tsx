@@ -307,7 +307,7 @@ export default async function AdminOrderDetailPage({
           )}
 
           {/* Info tambahan */}
-          {(order.paymentProvider || order.voucherCode || order.notes) && (
+          {(order.paymentProvider || order.voucherCode || order.manualVoucherCode || order.notes) && (
             <section className="rounded-3xl border border-zinc-200 p-5">
               <h2 className="font-bold text-zinc-950">Info tambahan</h2>
               <div className="mt-4 space-y-2 text-sm text-zinc-700">
@@ -317,7 +317,14 @@ export default async function AdminOrderDetailPage({
                 </p>
                 {order.voucherCode && (
                   <p>
-                    <span className="font-semibold">Voucher:</span> {order.voucherCode}
+                    <span className="font-semibold">Voucher Pembeli:</span>{" "}
+                    {order.voucherCode}
+                  </p>
+                )}
+                {order.manualVoucherCode && (
+                  <p>
+                    <span className="font-semibold">Voucher Penjual (manual):</span>{" "}
+                    {order.manualVoucherCode}
                   </p>
                 )}
                 {order.notes && (

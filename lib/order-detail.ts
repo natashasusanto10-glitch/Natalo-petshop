@@ -63,6 +63,7 @@ export function serializeOrderDetail(order: OrderDetailRecord) {
     manualBank: order.manualBank,
     uniqueCode: order.uniqueCode,
     voucherCode: order.voucherCode,
+    manualVoucherCode: order.manualVoucherCode,
     shippingAddress: order.shippingAddress,
     shippingCity: order.shippingCity,
     shippingPostalCode: order.shippingPostalCode,

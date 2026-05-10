@@ -31,7 +31,11 @@ export type AppliedVoucher = {
 };
 
 type Props = {
+  /** Voucher CUSTOMER (publik / milik user) yg sedang ter-apply */
   applied: AppliedVoucher | null;
+  /** Voucher SELLER_MANUAL yg sedang ter-apply (slot terpisah) */
+  manualApplied?: AppliedVoucher | null;
+  /** Daftar voucher CUSTOMER yg eligible — SELLER_MANUAL tidak muncul di sini */
   eligible: EligibleVoucher[];
   ineligible: IneligibleVoucher[];
   /** Pesan kalau voucher sebelumnya jadi tidak valid karena context berubah */
@@ -39,7 +43,9 @@ type Props = {
   loading?: boolean;
   onApply: (code: string, discount: number, description: string) => void;
   onRemove: () => void;
-  /** Fallback: input kode manual (untuk voucher publik / promo dari poster) */
+  /** Lepas voucher manual (slot SELLER_MANUAL) */
+  onRemoveManual?: () => void;
+  /** Fallback: input kode manual (untuk voucher SELLER_MANUAL atau CUSTOMER) */
   onApplyManualCode: (code: string) => Promise<{ ok: boolean; error?: string }>;
 };
 
@@ -52,12 +58,14 @@ function describeBenefit(v: { discount?: number; description: string | null }) {
 
 export function CheckoutVoucherCard({
   applied,
+  manualApplied = null,
   eligible,
   ineligible,
   invalidatedMessage,
   loading = false,
   onApply,
   onRemove,
+  onRemoveManual,
   onApplyManualCode,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -323,10 +331,82 @@ export function CheckoutVoucherCard({
     );
   })();
 
+  // Slot voucher manual penjual (SELLER_MANUAL) — selalu render terpisah
+  // dari card customer voucher.
+  const manualCard = manualApplied ? (
+    <button
+      type="button"
+      onClick={() => {
+        setOpen(true);
+        setShowManualInput(true);
+      }}
+      className="mt-2 flex w-full items-start gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-left transition active:bg-amber-100"
+    >
+      <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-amber-600">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5" aria-hidden>
+          <path d="M3 9V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4z" strokeLinejoin="round" />
+        </svg>
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[11px] font-bold uppercase tracking-wide text-amber-700">
+          Voucher dari Penjual
+        </span>
+        <span className="mt-0.5 block text-sm font-extrabold text-zinc-950">
+          {manualApplied.code} terpakai
+        </span>
+        <span className="mt-0.5 block truncate text-xs font-semibold text-amber-800">
+          Hemat {formatRupiah(manualApplied.discount)}
+          <span className="ml-2 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
+            Manual
+          </span>
+        </span>
+      </span>
+      {onRemoveManual && (
+        <span
+          role="button"
+          tabIndex={0}
+          aria-label={`Lepas voucher ${manualApplied.code}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemoveManual();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              e.stopPropagation();
+              onRemoveManual();
+            }
+          }}
+          className="shrink-0 self-center rounded-full px-2 py-1 text-xs font-bold text-amber-700 active:bg-amber-100"
+        >
+          Lepas
+        </span>
+      )}
+    </button>
+  ) : null;
+
+  // Helper untuk render label customer slot kalau applied — tambah label
+  // "Voucher Pembeli" supaya terlihat distinct dari slot manual penjual.
+  const showSlotLabels = applied != null && manualApplied != null;
+
   return (
     <div>
       <label className="block text-sm font-medium text-zinc-700">Voucher</label>
+      {showSlotLabels && (
+        <p className="mt-0.5 text-[11px] font-bold uppercase tracking-wide text-natalo-700">
+          Voucher Pembeli
+        </p>
+      )}
       <div className="mt-1">{card}</div>
+
+      {manualCard}
+
+      {/* Info text aturan voucher */}
+      {!applied && !manualApplied && (
+        <p className="mt-2 text-[11px] text-zinc-500">
+          Maksimal 2 voucher: 1 voucher pembeli + 1 voucher penjual via kode manual.
+        </p>
+      )}
 
       {invalidatedMessage && (
         <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">

@@ -186,27 +186,69 @@ export async function POST(request: Request) {
   let discount = 0;
 
   try {
-    let appliedVoucher: { id: string; maxUsage: number | null } | null = null;
+    // Aturan voucher (lihat CLAUDE.md):
+    // - Maks 1 voucher CUSTOMER + 1 voucher SELLER_MANUAL
+    // - SELLER_MANUAL hanya boleh di slot manual
+    // - CUSTOMER hanya boleh di slot customer
+    type AppliedVoucher = { id: string; maxUsage: number | null; code: string };
+    let appliedCustomerVoucher: AppliedVoucher | null = null;
+    let appliedManualVoucher: AppliedVoucher | null = null;
 
-    if (input.voucherCode) {
+    async function validateAndCalc(
+      code: string,
+      expectedType: "CUSTOMER" | "SELLER_MANUAL",
+    ): Promise<{ voucher: AppliedVoucher; addedDiscount: number } | null> {
       const now = new Date();
       const voucher = await prisma.voucher.findUnique({
-        where: { code: input.voucherCode.trim().toUpperCase() },
+        where: { code: code.trim().toUpperCase() },
       });
+      if (!voucher || !voucher.isActive) return null;
+      if (voucher.sourceType !== expectedType) {
+        // Routing salah — kode customer di slot manual atau sebaliknya.
+        // Backend MENOLAK alih-alih auto-route, supaya frontend explicit.
+        throw new Error(
+          expectedType === "CUSTOMER"
+            ? "Kode ini adalah voucher manual penjual. Masukkan lewat input kode manual."
+            : "Kode ini bukan voucher manual penjual.",
+        );
+      }
       const isValid =
-        voucher?.isActive &&
         subtotal >= voucher.minimumOrder &&
         (!voucher.expiresAt || voucher.expiresAt > now) &&
         voucher.startsAt <= now &&
         (voucher.maxUsage === null || voucher.usedCount < voucher.maxUsage);
+      if (!isValid) return null;
+      let added = 0;
+      if (voucher.discountPercent)
+        added += Math.floor((subtotal * voucher.discountPercent) / 100);
+      if (voucher.discountAmount) added += voucher.discountAmount;
+      return {
+        voucher: { id: voucher.id, maxUsage: voucher.maxUsage, code: voucher.code },
+        addedDiscount: added,
+      };
+    }
 
-      if (isValid && voucher) {
-        if (voucher.discountPercent) discount += Math.floor((subtotal * voucher.discountPercent) / 100);
-        if (voucher.discountAmount) discount += voucher.discountAmount;
-        discount = Math.min(discount, subtotal);
-        appliedVoucher = { id: voucher.id, maxUsage: voucher.maxUsage };
+    if (input.voucherCode) {
+      const result = await validateAndCalc(input.voucherCode, "CUSTOMER");
+      if (result) {
+        appliedCustomerVoucher = result.voucher;
+        discount += result.addedDiscount;
       }
     }
+    if (input.manualVoucherCode) {
+      const result = await validateAndCalc(input.manualVoucherCode, "SELLER_MANUAL");
+      if (result) {
+        appliedManualVoucher = result.voucher;
+        discount += result.addedDiscount;
+      }
+    }
+    discount = Math.min(discount, subtotal);
+
+    // Legacy variable name agar diff selanjutnya minimal — array kedua voucher
+    const appliedVouchers: AppliedVoucher[] = [];
+    if (appliedCustomerVoucher) appliedVouchers.push(appliedCustomerVoucher);
+    if (appliedManualVoucher) appliedVouchers.push(appliedManualVoucher);
+    const appliedVoucher = appliedVouchers[0] ?? null;
 
     const total = Math.max(subtotal + input.shippingCost - discount, 0);
     const orderNumber = createOrderNumber();
@@ -312,7 +354,8 @@ export async function POST(request: Request) {
           shippingCost: input.shippingCost,
           discount,
           total,
-          voucherCode: input.voucherCode,
+          voucherCode: appliedCustomerVoucher?.code ?? null,
+          manualVoucherCode: appliedManualVoucher?.code ?? null,
           manualBank: input.manualBank ?? null,
           uniqueCode,
           notes: input.notes,
@@ -343,20 +386,21 @@ export async function POST(request: Request) {
       }
 
       // Claim voucher atomically — guard against race jika maxUsage tercapai
-      // setelah pre-validation di luar transaction.
-      if (appliedVoucher) {
+      // setelah pre-validation di luar transaction. Loop semua voucher
+      // (customer + manual) yang ter-apply.
+      for (const v of appliedVouchers) {
         const claim = await tx.voucher.updateMany({
           where: {
-            id: appliedVoucher.id,
+            id: v.id,
             isActive: true,
-            ...(appliedVoucher.maxUsage !== null
-              ? { usedCount: { lt: appliedVoucher.maxUsage } }
-              : {}),
+            ...(v.maxUsage !== null ? { usedCount: { lt: v.maxUsage } } : {}),
           },
           data: { usedCount: { increment: 1 } },
         });
         if (claim.count !== 1) {
-          throw new Error("Voucher sudah mencapai batas pemakaian. Silakan coba lagi tanpa voucher.");
+          throw new Error(
+            `Voucher ${v.code} sudah mencapai batas pemakaian. Silakan coba lagi.`,
+          );
         }
       }
 
@@ -402,9 +446,9 @@ export async function POST(request: Request) {
                 data: { stock: agg._sum.stock ?? 0 },
               });
             }
-            if (appliedVoucher) {
+            for (const v of appliedVouchers) {
               await tx.voucher.update({
-                where: { id: appliedVoucher.id },
+                where: { id: v.id },
                 data: { usedCount: { decrement: 1 } },
               });
             }

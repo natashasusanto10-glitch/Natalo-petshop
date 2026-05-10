@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Script from "next/script";
@@ -19,20 +18,7 @@ import {
   type PaymentSelection,
 } from "@/components/MetodePembayaran";
 import { loadCart, saveCart, clearCartEverywhere, type CartItem } from "@/lib/cart";
-import type { PinpointValue } from "@/components/AddressPinpointPicker";
 import type { CartStockIssue } from "@/lib/cart-stock";
-
-const AddressPinpointPicker = dynamic(
-  () => import("@/components/AddressPinpointPicker").then((mod) => mod.AddressPinpointPicker),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-semibold text-zinc-500">
-        Memuat pilihan pinpoint...
-      </div>
-    ),
-  }
-);
 
 type RateOption = {
   courier_name: string;
@@ -53,21 +39,28 @@ type CheckoutPricing = {
   total: number;
 };
 
+type AppliedVoucherShape = (EligibleVoucher & {
+  title?: string;
+  autoApplied?: boolean;
+}) | null;
+
 type CheckoutRecalculateResponse = CheckoutPricing & {
-  applied_voucher?: (EligibleVoucher & {
-    title?: string;
-    autoApplied?: boolean;
-  }) | null;
+  applied_voucher?: AppliedVoucherShape;
   auto_applied_voucher?: {
     code: string;
     title: string;
     description: string;
     discount: number;
   } | null;
+  // Dual-slot fields (lihat aturan voucher di CLAUDE.md)
+  applied_customer_voucher?: AppliedVoucherShape;
+  applied_manual_voucher?: AppliedVoucherShape;
   available_vouchers?: EligibleVoucher[];
   unavailable_vouchers?: IneligibleVoucher[];
   voucher_invalidated?: boolean;
   invalidated_message?: string | null;
+  customer_voucher_error?: string | null;
+  manual_voucher_error?: string | null;
 };
 
 declare global {
@@ -93,6 +86,16 @@ function cartKey(item: CartItem) {
   return `${item.productId}:${item.variantId ?? ""}`;
 }
 
+function hasUsablePinpoint(latitude?: number | null, longitude?: number | null) {
+  return (
+    typeof latitude === "number" &&
+    Number.isFinite(latitude) &&
+    typeof longitude === "number" &&
+    Number.isFinite(longitude) &&
+    !(latitude === 0 && longitude === 0)
+  );
+}
+
 export default function CheckoutPage() {
   const router = useRouter();
   const [items, setItems] = useState<CartItem[]>([]);
@@ -109,7 +112,6 @@ export default function CheckoutPage() {
   const [addressBookLoading, setAddressBookLoading] = useState(true);
   const [addressBookError, setAddressBookError] = useState("");
   const [addressMode, setAddressMode] = useState<"saved" | "manual" | "select">("manual");
-  const [showSavedPinpointPicker, setShowSavedPinpointPicker] = useState(false);
 
   const [form, setForm] = useState({
     customerName: "",
@@ -122,6 +124,7 @@ export default function CheckoutPage() {
     shippingLongitude: null as number | null,
     shippingPinpointAddress: null as string | null,
     voucherCode: "",
+    manualVoucherCode: "",
     notes: "",
   });
 
@@ -138,6 +141,10 @@ export default function CheckoutPage() {
 
   const [voucherInput, setVoucherInput] = useState("");
   const [voucherApplied, setVoucherApplied] = useState<AppliedVoucher | null>(null);
+  // Slot voucher manual penjual (SELLER_MANUAL) — paralel dgn voucherApplied
+  // (CUSTOMER). Maks 1 dari masing-masing per checkout.
+  const [manualVoucherApplied, setManualVoucherApplied] =
+    useState<AppliedVoucher | null>(null);
   const [eligibleVouchers, setEligibleVouchers] = useState<EligibleVoucher[]>([]);
   const [ineligibleVouchers, setIneligibleVouchers] = useState<IneligibleVoucher[]>([]);
   const [voucherInvalidated, setVoucherInvalidated] = useState<string | null>(null);
@@ -241,20 +248,23 @@ export default function CheckoutPage() {
           address: string; city: string | null; postalCode: string | null;
           isMain: boolean; latitude: number | null; longitude: number | null;
           pinpointAddress: string | null; streetName: string | null;
-        }) => ({
-          id: a.id,
-          label: a.label ?? "Alamat",
-          recipientName: a.recipient,
-          phone: a.phone,
-          address: a.address,
-          city: a.city ?? "",
-          postalCode: a.postalCode ?? "",
-          isMain: a.isMain,
-          latitude: a.latitude,
-          longitude: a.longitude,
-          pinpointAddress: a.pinpointAddress,
-          streetName: a.streetName,
-        }));
+        }) => {
+          const hasPinpoint = hasUsablePinpoint(a.latitude, a.longitude);
+          return {
+            id: a.id,
+            label: a.label ?? "Alamat",
+            recipientName: a.recipient,
+            phone: a.phone,
+            address: a.address,
+            city: a.city ?? "",
+            postalCode: a.postalCode ?? "",
+            isMain: a.isMain,
+            latitude: hasPinpoint ? a.latitude : null,
+            longitude: hasPinpoint ? a.longitude : null,
+            pinpointAddress: hasPinpoint ? a.pinpointAddress : null,
+            streetName: a.streetName,
+          };
+        });
         setSavedAddresses(mapped);
 
         let checkoutSelectedId = "";
@@ -334,18 +344,6 @@ export default function CheckoutPage() {
     addressLabel,
   ]);
 
-  function handlePinpoint(value: PinpointValue) {
-    setForm((f) => ({
-      ...f,
-      shippingLatitude: value.latitude,
-      shippingLongitude: value.longitude,
-      shippingPinpointAddress: value.pinpointAddress,
-    }));
-    setSelectedRate(null);
-    setPayment(null);
-    setRates([]);
-  }
-
   function applyAddressToForm(addr: {
     recipientName: string;
     phone: string;
@@ -356,6 +354,7 @@ export default function CheckoutPage() {
     longitude?: number | null;
     pinpointAddress?: string | null;
   }) {
+    const hasPinpoint = hasUsablePinpoint(addr.latitude, addr.longitude);
     setForm((f) => ({
       ...f,
       customerName: addr.recipientName || f.customerName,
@@ -363,15 +362,14 @@ export default function CheckoutPage() {
       shippingAddress: addr.address,
       shippingCity: addr.city,
       shippingPostalCode: addr.postalCode,
-      shippingLatitude: addr.latitude ?? null,
-      shippingLongitude: addr.longitude ?? null,
-      shippingPinpointAddress: addr.pinpointAddress ?? null,
+      shippingLatitude: hasPinpoint ? addr.latitude ?? null : null,
+      shippingLongitude: hasPinpoint ? addr.longitude ?? null : null,
+      shippingPinpointAddress: hasPinpoint ? addr.pinpointAddress ?? null : null,
     }));
     setSelectedRate(null);
     setPayment(null);
     setRates([]);
     setShippingError("");
-    setShowSavedPinpointPicker(false);
   }
 
   function persistValidatedCheckoutItems(
@@ -503,11 +501,19 @@ export default function CheckoutPage() {
 
   // Checkout pricing/voucher selalu berasal dari API recalculate agar total,
   // voucher terpakai, dan daftar voucher tidak saling drift.
-  function checkoutRecalculatePayload(voucherCode: string | null, autoApply: boolean) {
+  function checkoutRecalculatePayload(
+    customerVoucherCode: string | null,
+    manualVoucherCode: string | null,
+    autoApply: boolean,
+  ) {
     return {
       items,
       shipping_fee: shippingCost,
-      voucherCode,
+      // Legacy field — backend treat sebagai customer voucher kalau
+      // customerVoucherCode tidak ada. Aman untuk dikirim selalu.
+      voucherCode: customerVoucherCode,
+      customerVoucherCode,
+      manualVoucherCode,
       autoApply,
       address: {
         postalCode: form.shippingPostalCode,
@@ -526,7 +532,8 @@ export default function CheckoutPage() {
   function applyCheckoutPricing(data: CheckoutRecalculateResponse) {
     const eligible = Array.isArray(data.available_vouchers) ? data.available_vouchers : [];
     const ineligible = Array.isArray(data.unavailable_vouchers) ? data.unavailable_vouchers : [];
-    const applied = data.applied_voucher ?? null;
+    const customerApplied = data.applied_customer_voucher ?? data.applied_voucher ?? null;
+    const manualApplied = data.applied_manual_voucher ?? null;
 
     setCheckoutPricing({
       subtotal: data.subtotal,
@@ -537,21 +544,42 @@ export default function CheckoutPage() {
     setEligibleVouchers(eligible);
     setIneligibleVouchers(ineligible);
 
-    if (applied) {
+    if (customerApplied) {
       setVoucherApplied({
-        code: applied.code,
-        discount: applied.discount,
-        description: applied.description ?? `Hemat ${formatRupiah(applied.discount)}`,
-        autoApplied: applied.autoApplied,
+        code: customerApplied.code,
+        discount: customerApplied.discount,
+        description: customerApplied.description ?? `Hemat ${formatRupiah(customerApplied.discount)}`,
+        autoApplied: customerApplied.autoApplied,
       });
-      setVoucherInput(applied.code);
+      setVoucherInput(customerApplied.code);
       setForm((current) =>
-        current.voucherCode === applied.code ? current : { ...current, voucherCode: applied.code },
+        current.voucherCode === customerApplied.code
+          ? current
+          : { ...current, voucherCode: customerApplied.code },
       );
     } else {
       setVoucherApplied(null);
       setVoucherInput("");
       setForm((current) => (current.voucherCode ? { ...current, voucherCode: "" } : current));
+    }
+
+    if (manualApplied) {
+      setManualVoucherApplied({
+        code: manualApplied.code,
+        discount: manualApplied.discount,
+        description: manualApplied.description ?? `Hemat ${formatRupiah(manualApplied.discount)}`,
+        autoApplied: false,
+      });
+      setForm((current) =>
+        current.manualVoucherCode === manualApplied.code
+          ? current
+          : { ...current, manualVoucherCode: manualApplied.code },
+      );
+    } else {
+      setManualVoucherApplied(null);
+      setForm((current) =>
+        current.manualVoucherCode ? { ...current, manualVoucherCode: "" } : current,
+      );
     }
 
     setVoucherInvalidated(
@@ -562,14 +590,17 @@ export default function CheckoutPage() {
   }
 
   async function recalculateCheckout(
-    voucherCode: string | null,
+    customerVoucherCode: string | null,
+    manualVoucherCode: string | null,
     autoApply: boolean,
     signal?: AbortSignal,
   ) {
     const res = await fetch("/api/checkout/recalculate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(checkoutRecalculatePayload(voucherCode, autoApply)),
+      body: JSON.stringify(
+        checkoutRecalculatePayload(customerVoucherCode, manualVoucherCode, autoApply),
+      ),
       signal,
     });
     const data = await res.json();
@@ -593,14 +624,21 @@ export default function CheckoutPage() {
 
     const controller = new AbortController();
     setVoucherSyncLoading(true);
-    recalculateCheckout(form.voucherCode || null, !autoVoucherSuppressed, controller.signal)
+    recalculateCheckout(
+      form.voucherCode || null,
+      form.manualVoucherCode || null,
+      !autoVoucherSuppressed,
+      controller.signal,
+    )
       .catch((err) => {
         if (err?.name !== "AbortError") {
+          const totalDiscount =
+            (voucherApplied?.discount ?? 0) + (manualVoucherApplied?.discount ?? 0);
           setCheckoutPricing({
             subtotal: localSubtotal,
             shipping_fee: shippingCost,
-            discount: voucherApplied?.discount ?? 0,
-            total: Math.max(localSubtotal + shippingCost - (voucherApplied?.discount ?? 0), 0),
+            discount: totalDiscount,
+            total: Math.max(localSubtotal + shippingCost - totalDiscount, 0),
           });
         }
       })
@@ -621,6 +659,7 @@ export default function CheckoutPage() {
     form.shippingLongitude,
     form.shippingCity,
     form.voucherCode,
+    form.manualVoucherCode,
     paymentMethod,
     autoVoucherSuppressed,
   ]);
@@ -660,20 +699,57 @@ export default function CheckoutPage() {
     setForm((f) => ({ ...f, voucherCode: "" }));
   }
 
-  // Kode manual juga divalidasi lewat checkout recalculate agar total langsung sinkron.
+  function removeManualVoucher() {
+    setManualVoucherApplied(null);
+    setForm((f) => ({ ...f, manualVoucherCode: "" }));
+  }
+
+  // Kode manual divalidasi lewat checkout recalculate. Backend route
+  // berdasarkan sourceType voucher:
+  // - SELLER_MANUAL → applied_manual_voucher
+  // - CUSTOMER → applied_customer_voucher (auto-route untuk UX, supaya user
+  //   bisa input customer code di kotak manual juga kalau dia tahu kodenya)
   async function applyManualVoucherCode(
     code: string,
   ): Promise<{ ok: boolean; error?: string }> {
+    const upperCode = code.trim().toUpperCase();
     try {
-      const data = await recalculateCheckout(code, false);
-      if (data.applied_voucher?.code === code) {
-        setAutoVoucherSuppressed(false);
+      // Pertama coba sebagai voucher manual penjual
+      const data = await recalculateCheckout(
+        form.voucherCode || null,
+        upperCode,
+        !autoVoucherSuppressed,
+      );
+
+      if (data.applied_manual_voucher?.code === upperCode) {
         setVoucherInvalidated(null);
         return { ok: true };
       }
+
+      // Backend reject karena bukan SELLER_MANUAL? Coba auto-route sebagai
+      // customer voucher (replace customer slot).
+      const isSourceMismatch =
+        data.manual_voucher_error?.includes("manual penjual") ?? false;
+
+      if (isSourceMismatch) {
+        const fallback = await recalculateCheckout(
+          upperCode,
+          form.manualVoucherCode || null,
+          false,
+        );
+        if (fallback.applied_customer_voucher?.code === upperCode) {
+          setAutoVoucherSuppressed(false);
+          setVoucherInvalidated(null);
+          return { ok: true };
+        }
+      }
+
       return {
         ok: false,
-        error: data.invalidated_message ?? "Kode voucher tidak valid.",
+        error:
+          data.manual_voucher_error ??
+          data.invalidated_message ??
+          "Kode voucher tidak valid.",
       };
     } catch {
       return { ok: false, error: "Gagal memvalidasi kode voucher." };
@@ -988,34 +1064,6 @@ export default function CheckoutPage() {
               )}
             </section>
 
-            {/* Pinpoint hint untuk alamat tersimpan tanpa pinpoint */}
-            {usingSavedAddress && selectedAddress && !selectedAddress.pinpointAddress && (
-              <section className="rounded-2xl border border-dashed border-natalo-200 bg-natalo-50 px-3 py-2.5">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs font-semibold text-zinc-700">
-                    📍 Tambah pinpoint agar kurir lebih mudah menemukan alamat
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setShowSavedPinpointPicker((value) => !value)}
-                    className="shrink-0 text-xs font-black text-natalo-600 hover:underline"
-                  >
-                    {showSavedPinpointPicker ? "Tutup" : "Pinpoint"}
-                  </button>
-                </div>
-                {showSavedPinpointPicker && (
-                  <div className="mt-3">
-                    <AddressPinpointPicker
-                      defaultLatitude={form.shippingLatitude}
-                      defaultLongitude={form.shippingLongitude}
-                      defaultAddress={form.shippingPinpointAddress}
-                      onChange={handlePinpoint}
-                    />
-                  </div>
-                )}
-              </section>
-            )}
-
             {/* Pilih alamat tersimpan */}
             {false && addressMode === "select" && savedAddresses.length > 0 && (
               <div>
@@ -1122,14 +1170,6 @@ export default function CheckoutPage() {
                   {field("Kota / Kecamatan", "shippingCity", { placeholder: "Contoh: Jakarta Selatan" })}
                   {field("Kode pos", "shippingPostalCode", { type: "tel", placeholder: "12345" })}
                 </div>
-
-                {/* Pinpoint GPS */}
-                <AddressPinpointPicker
-                  defaultLatitude={form.shippingLatitude}
-                  defaultLongitude={form.shippingLongitude}
-                  defaultAddress={form.shippingPinpointAddress}
-                  onChange={handlePinpoint}
-                />
               </>
             )}
 
@@ -1282,15 +1322,19 @@ export default function CheckoutPage() {
               )}
             </div>
 
-            {/* Voucher — smart picker dengan bottom sheet */}
+            {/* Voucher — smart picker dengan bottom sheet. Mendukung 2
+                slot: 1 voucher pembeli (CUSTOMER) + 1 voucher manual
+                penjual (SELLER_MANUAL). */}
             <CheckoutVoucherCard
               applied={voucherApplied}
+              manualApplied={manualVoucherApplied}
               eligible={eligibleVouchers}
               ineligible={ineligibleVouchers}
               invalidatedMessage={voucherInvalidated}
               loading={voucherSyncLoading}
               onApply={applyVoucherFromList}
               onRemove={removeVoucher}
+              onRemoveManual={removeManualVoucher}
               onApplyManualCode={applyManualVoucherCode}
             />
 

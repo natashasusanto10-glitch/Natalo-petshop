@@ -19,6 +19,9 @@ export default async function AdminVoucherNewPage() {
     const maxUsage = maxUsageRaw ? parseInt(maxUsageRaw, 10) : null;
     const expiresAtRaw = String(formData.get("expiresAt") || "").trim();
     const expiresAt = expiresAtRaw ? new Date(expiresAtRaw) : null;
+    const sourceTypeRaw = String(formData.get("sourceType") || "CUSTOMER").trim();
+    const sourceType =
+      sourceTypeRaw === "SELLER_MANUAL" ? "SELLER_MANUAL" : "CUSTOMER";
 
     if (!code) return;
     if (!discountPercent && !discountAmount) return;
@@ -36,6 +39,7 @@ export default async function AdminVoucherNewPage() {
         maxUsage,
         expiresAt,
         isActive: true,
+        sourceType,
       },
     });
 
@@ -86,6 +90,24 @@ export default async function AdminVoucherNewPage() {
           placeholder="0 = tidak ada minimum"
           defaultValue="0"
         />
+
+        <div>
+          <label className="block text-sm font-medium text-zinc-700">Tipe voucher</label>
+          <select
+            name="sourceType"
+            defaultValue="CUSTOMER"
+            className="mt-1 block w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-600"
+          >
+            <option value="CUSTOMER">Voucher Pembeli (publik / claim user)</option>
+            <option value="SELLER_MANUAL">Voucher Manual Penjual (rahasia)</option>
+          </select>
+          <p className="mt-1 text-xs text-zinc-400">
+            <strong>Pembeli</strong>: muncul di daftar voucher checkout, bisa
+            di-pilih atau auto-apply. <strong>Manual penjual</strong>:
+            tersembunyi, hanya bisa dipakai jika pembeli memasukkan kode
+            secara manual. 1 checkout maks 1 dari masing-masing tipe.
+          </p>
+        </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field
