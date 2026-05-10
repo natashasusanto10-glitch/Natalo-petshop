@@ -13,6 +13,7 @@ import {
   CartVoucherSheet,
   type AppliedPrivateVoucher,
 } from "@/components/cart/CartVoucherSheet";
+import { ConfirmDeleteModal } from "@/components/ConfirmDeleteModal";
 
 const CHECKOUT_SELECTION_KEY = "checkout:selectedCartItems";
 // Voucher pre-selection di cart, di-pickup oleh /checkout/page.tsx saat
@@ -60,6 +61,12 @@ export default function CartPage() {
   const [voucherSheetOpen, setVoucherSheetOpen] = useState(false);
   const [memberVoucher, setMemberVoucher] = useState<CartAppliedMember | null>(null);
   const [privateVoucher, setPrivateVoucher] = useState<AppliedPrivateVoucher | null>(null);
+
+  // Delete confirmation modal state
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteMode, setDeleteMode] = useState<"single" | "selected" | null>(null);
+  const [targetItem, setTargetItem] = useState<CartItem | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Restore voucher pilihan dari sessionStorage saat mount
   useEffect(() => {
@@ -250,6 +257,56 @@ export default function CartPage() {
     persist(next);
   }
 
+  // ── Delete confirmation flow ─────────────────────────────────
+  // Buka modal — TIDAK langsung hapus. User harus konfirmasi.
+
+  function openDeleteSelectedModal() {
+    if (selectedItems.length === 0) return;
+    setDeleteMode("selected");
+    setTargetItem(null);
+    setIsDeleteModalOpen(true);
+  }
+
+  function openDeleteSingleModal(item: CartItem) {
+    setDeleteMode("single");
+    setTargetItem(item);
+    setIsDeleteModalOpen(true);
+  }
+
+  function closeDeleteModal() {
+    if (isDeleting) return;
+    setIsDeleteModalOpen(false);
+    setDeleteMode(null);
+    setTargetItem(null);
+  }
+
+  async function handleConfirmDelete() {
+    setIsDeleting(true);
+    try {
+      if (deleteMode === "single" && targetItem) {
+        // Hapus item single — pakai cartKey + remove via filter (sama
+        // pattern dgn updateQty(0) tapi tanpa side-effect quantity).
+        const targetKey = cartKey(targetItem);
+        const next = items.filter((item) => cartKey(item) !== targetKey);
+        setSelectedKeys((current) => {
+          const nextSelected = new Set(current);
+          nextSelected.delete(targetKey);
+          return nextSelected;
+        });
+        persist(next);
+      } else if (deleteMode === "selected") {
+        const next = items.filter((item) => !selectedKeys.has(cartKey(item)));
+        setSelectedKeys(new Set());
+        persist(next);
+      }
+      setIsDeleteModalOpen(false);
+      setDeleteMode(null);
+      setTargetItem(null);
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
   async function checkoutSelected() {
     if (selectedItems.length === 0) return;
     const result = await refreshCartStock(items);
@@ -275,7 +332,7 @@ export default function CartPage() {
         {items.length > 0 && (
           <button
             type="button"
-            onClick={removeSelected}
+            onClick={openDeleteSelectedModal}
             disabled={selectedCount === 0}
             className="inline-flex h-10 items-center gap-2 rounded-full px-3 text-sm font-bold text-red-500 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:text-gray-300 disabled:hover:bg-transparent"
           >
@@ -372,7 +429,7 @@ export default function CartPage() {
                           </div>
                           <button
                             type="button"
-                            onClick={() => updateQty(key, 0)}
+                            onClick={() => openDeleteSingleModal(item)}
                             aria-label={`Hapus ${item.name}`}
                             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-300 transition hover:bg-red-50 hover:text-red-500"
                           >
@@ -457,6 +514,19 @@ export default function CartPage() {
           </section>
         </>
       )}
+
+      <ConfirmDeleteModal
+        open={isDeleteModalOpen}
+        title={deleteMode === "single" ? "Hapus Produk Ini?" : "Hapus Produk?"}
+        message={
+          deleteMode === "single" && targetItem
+            ? `Apakah kamu yakin ingin menghapus "${targetItem.name}" dari keranjang?`
+            : `Apakah kamu yakin ingin menghapus ${selectedItems.length} jenis produk dari keranjang?`
+        }
+        loading={isDeleting}
+        onCancel={closeDeleteModal}
+        onConfirm={handleConfirmDelete}
+      />
 
       <CartVoucherSheet
         open={voucherSheetOpen}
