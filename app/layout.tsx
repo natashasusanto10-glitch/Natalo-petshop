@@ -11,6 +11,7 @@ import { WhatsAppFloat } from "@/components/WhatsAppFloat";
 import { ToastProvider } from "@/components/Toast";
 import { AppSplashOverlay } from "@/components/AppSplashOverlay";
 import { PullToRefresh } from "@/components/PullToRefresh";
+import { PageStatusBar } from "@/components/PageStatusBar";
 
 const nunito = Nunito({
   subsets: ["latin"],
@@ -137,6 +138,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 5,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -151,6 +153,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <StoreOnly>
           <AppSplashOverlay />
           <PullToRefresh />
+          {/* App-wide default status bar — dark icons (black) untuk halaman
+              dengan header putih (kebanyakan). Per-page override bisa mount
+              <PageStatusBar iconColor="light" themeColor="#1E5FBF" /> di page
+              dengan dark hero / brand blue full background. */}
+          <PageStatusBar iconColor="dark" themeColor="#ffffff" />
           <Header />
         </StoreOnly>
         <main className="nat-main-shell">{children}</main>
