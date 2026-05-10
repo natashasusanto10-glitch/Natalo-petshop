@@ -37,6 +37,29 @@ async function getSessionPayload(
   return null;
 }
 
+function safeCustomerRedirect(value: string | null) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/";
+  if (
+    value.startsWith("/api") ||
+    value.startsWith("/admin") ||
+    value.startsWith("/member/login") ||
+    value.startsWith("/member/register")
+  ) {
+    return "/";
+  }
+  return value;
+}
+
+function currentPathWithSearch(request: NextRequest) {
+  return `${request.nextUrl.pathname}${request.nextUrl.search}`;
+}
+
+function redirectToMemberLogin(request: NextRequest) {
+  const url = new URL("/member/login", request.url);
+  url.searchParams.set("redirect", currentPathWithSearch(request));
+  return NextResponse.redirect(url);
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -65,13 +88,20 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  if (pathname.startsWith("/member") || pathname.startsWith("/akun")) {
+  if (
+    pathname.startsWith("/member") ||
+    pathname.startsWith("/akun") ||
+    pathname.startsWith("/checkout") ||
+    pathname === "/wishlist"
+  ) {
     const session = await getSessionPayload(request, "CUSTOMER");
 
-    // Halaman login & register: kalau sudah login → redirect ke dashboard
+    // Halaman login & register: kalau sudah login, hormati redirect internal.
     if (pathname === "/member/login" || pathname === "/member/register") {
       if (session?.role === "CUSTOMER") {
-        return NextResponse.redirect(new URL("/member/dashboard", request.url));
+        return NextResponse.redirect(
+          new URL(safeCustomerRedirect(request.nextUrl.searchParams.get("redirect")), request.url)
+        );
       }
       return NextResponse.next();
     }
@@ -87,7 +117,7 @@ export async function proxy(request: NextRequest) {
 
     // Sisanya wajib login sebagai CUSTOMER
     if (!session || session.role !== "CUSTOMER") {
-      return NextResponse.redirect(new URL("/member/login", request.url));
+      return redirectToMemberLogin(request);
     }
   }
 
@@ -95,5 +125,12 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/api/admin/:path*", "/member/:path*", "/akun/:path*"],
+  matcher: [
+    "/admin/:path*",
+    "/api/admin/:path*",
+    "/member/:path*",
+    "/akun/:path*",
+    "/checkout/:path*",
+    "/wishlist",
+  ],
 };

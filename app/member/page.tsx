@@ -157,13 +157,12 @@ export default async function MemberPage() {
         <ClaimVoucherButton totalPoints={points} />
       </div>
 
-      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
+      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
           { href: "/member/orders", icon: "📦", label: "Pesanan Saya" },
-          { href: "/member/points", icon: "⭐", label: "Loyalty Poin" },
           { href: "/member/profile", icon: "👤", label: "Profil" },
           { href: "/wishlist", icon: "❤️", label: "Wishlist" },
-          { href: "/tentang-kami", icon: "i", label: "Tentang Kami" },
+          { href: "#voucher-member", icon: "🎟️", label: "Voucher Member" },
         ].map((item) => (
           <Link
             key={item.href}
@@ -181,7 +180,7 @@ export default async function MemberPage() {
       </div>
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
-        <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5">
+        <div id="voucher-member" className="scroll-mt-24 rounded-2xl border border-blue-100 bg-blue-50 p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-blue-700">
@@ -262,6 +261,13 @@ export default async function MemberPage() {
           className="font-semibold text-red-600 hover:underline"
         >
           🗑️ Hapus akun
+        </Link>
+        <span className="mx-2 text-zinc-300">·</span>
+        <Link
+          href="/tentang-kami"
+          className="font-semibold text-zinc-500 hover:text-blue-600 hover:underline"
+        >
+          Tentang Kami
         </Link>
       </div>
     </div>

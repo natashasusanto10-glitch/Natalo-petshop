@@ -6,7 +6,6 @@ import { getProducts } from "@/lib/products";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
 import { FlashSaleCountdown } from "@/components/home/FlashSaleCountdown";
-import { HomeSearchBar } from "@/components/home/HomeSearchBar";
 import HeroBanner from "@/components/home/HeroBanner";
 import TrustMarquee from "@/components/home/TrustMarquee";
 import type { TrustItem } from "@/data/trustItems";
@@ -423,9 +422,6 @@ export default async function HomePage() {
 
   return (
     <div className="bg-[#FAFAFA] pb-8">
-      {/* ── 1. SEARCH BAR + CS ICON (mobile sticky) ── */}
-      <HomeSearchBar waUrl={waUrl} />
-
       <TrustMarquee items={trustItems} />
 
       {/* ── 2. BANNER CAROUSEL UTAMA ── */}

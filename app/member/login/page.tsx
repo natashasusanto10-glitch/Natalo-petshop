@@ -8,7 +8,15 @@ import { PasswordInput } from "@/components/PasswordInput";
 import { dispatchAuthUpdated, mergeFromServer } from "@/lib/cart";
 
 function safeRedirect(value: string | null) {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/member";
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/";
+  if (
+    value.startsWith("/api") ||
+    value.startsWith("/admin") ||
+    value.startsWith("/member/login") ||
+    value.startsWith("/member/register")
+  ) {
+    return "/";
+  }
   return value;
 }
 
@@ -32,7 +40,7 @@ export default function MemberLoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [redirectTo, setRedirectTo] = useState("/member");
+  const [redirectTo, setRedirectTo] = useState("/");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -69,7 +77,7 @@ export default function MemberLoginPage() {
     await mergeFromServer().catch(() => {});
     dispatchAuthUpdated();
 
-    router.push(redirectTo);
+    router.replace(redirectTo);
     router.refresh();
   }
 
@@ -167,7 +175,10 @@ export default function MemberLoginPage() {
           <div className="border-t border-gray-100 pt-4 text-center">
             <p className="text-sm text-gray-500">
               Belum punya akun?{" "}
-              <Link href="/member/register" className="font-black text-blue-600 hover:underline">
+              <Link
+                href={`/member/register?redirect=${encodeURIComponent(redirectTo)}`}
+                className="font-black text-blue-600 hover:underline"
+              >
                 Daftar gratis
               </Link>
             </p>

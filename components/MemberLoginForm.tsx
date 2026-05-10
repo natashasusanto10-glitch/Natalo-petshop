@@ -1,15 +1,34 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { OperatingHoursCard } from "@/components/OperatingHours";
 import { PasswordInput } from "@/components/PasswordInput";
+
+function safeRedirect(value: string | null) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/";
+  if (
+    value.startsWith("/api") ||
+    value.startsWith("/admin") ||
+    value.startsWith("/member/login") ||
+    value.startsWith("/member/register")
+  ) {
+    return "/";
+  }
+  return value;
+}
 
 export function MemberLoginForm({ registered }: { registered: boolean }) {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [redirectTo, setRedirectTo] = useState("/");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    setRedirectTo(safeRedirect(url.searchParams.get("redirect")));
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -31,7 +50,7 @@ export function MemberLoginForm({ registered }: { registered: boolean }) {
       return;
     }
 
-    window.location.replace("/member/dashboard");
+    window.location.replace(redirectTo);
   }
 
   return (
@@ -116,7 +135,7 @@ export function MemberLoginForm({ registered }: { registered: boolean }) {
           <p className="mt-6 text-center text-sm text-zinc-500">
             Belum punya akun?{" "}
             <Link
-              href="/member/register"
+              href={`/member/register?redirect=${encodeURIComponent(redirectTo)}`}
               className="font-semibold text-natalo-700 hover:underline"
             >
               Daftar gratis

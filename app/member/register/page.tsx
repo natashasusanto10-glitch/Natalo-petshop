@@ -1,12 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { OperatingHoursCard } from "@/components/OperatingHours";
 import { PasswordInput } from "@/components/PasswordInput";
 
+function safeRedirect(value: string | null) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/";
+  if (
+    value.startsWith("/api") ||
+    value.startsWith("/admin") ||
+    value.startsWith("/member/login") ||
+    value.startsWith("/member/register")
+  ) {
+    return "/";
+  }
+  return value;
+}
+
 export default function MemberRegisterPage() {
+  const [redirectTo, setRedirectTo] = useState("/");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -17,6 +31,11 @@ export default function MemberRegisterPage() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    setRedirectTo(safeRedirect(url.searchParams.get("redirect")));
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -62,7 +81,9 @@ export default function MemberRegisterPage() {
       return;
     }
 
-    window.location.replace("/member/login?registered=1");
+    const loginParams = new URLSearchParams({ registered: "1" });
+    if (redirectTo !== "/") loginParams.set("redirect", redirectTo);
+    window.location.replace(`/member/login?${loginParams.toString()}`);
   }
 
   async function handleResendOtp() {
@@ -237,7 +258,10 @@ export default function MemberRegisterPage() {
 
         <p className="mt-6 text-center text-sm text-gray-500">
           Sudah punya akun?{" "}
-          <Link href="/member/login" className="font-semibold text-blue-600 hover:underline">
+          <Link
+            href={`/member/login?redirect=${encodeURIComponent(redirectTo)}`}
+            className="font-semibold text-blue-600 hover:underline"
+          >
             Masuk
           </Link>
         </p>

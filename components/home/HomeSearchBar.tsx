@@ -3,16 +3,21 @@
 import { useState } from "react";
 import { SearchOverlay } from "@/components/SearchOverlay";
 
-// `waUrl` masih diterima supaya call-site di app/page.tsx tidak perlu diubah,
-// tapi tombol customer-service WhatsApp di samping search bar sudah dihapus
-// sesuai design (FAB WhatsApp tetap aktif via components/WhatsAppFloat).
-export function HomeSearchBar({ waUrl: _waUrl }: { waUrl?: string }) {
+// `waUrl` masih diterima supaya pemanggil lama tetap aman. Tombol customer-service
+// WhatsApp di samping search bar sudah dihapus; FAB WhatsApp tetap aktif.
+export function HomeSearchBar({
+  waUrl: _waUrl,
+  className = "mobile-search-wrapper md:hidden",
+}: {
+  waUrl?: string;
+  className?: string;
+}) {
   void _waUrl;
   const [open, setOpen] = useState(false);
 
   return (
     <>
-      <div className="nat-safe-x sticky z-40 bg-[#FAFAFA] pb-3 pt-3 shadow-[0_1px_0_rgba(0,0,0,0.04)] [top:env(safe-area-inset-top)] md:hidden">
+      <div className={className}>
         <button
           type="button"
           onClick={() => setOpen(true)}
