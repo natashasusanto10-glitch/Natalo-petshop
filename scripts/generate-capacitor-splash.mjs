@@ -18,7 +18,9 @@ const OUT_DIR = resolve(ROOT, "resources");
 const SPLASH_SIZE = 2732; // Capacitor recommended source resolution
 const BG = { r: 30, g: 95, b: 191, alpha: 1 }; // #1E5FBF Natalo brand
 const BG_DARK = { r: 15, g: 45, b: 92, alpha: 1 }; // natalo-800 #0F2D5C dark variant
-const LOGO_RATIO = 0.3; // 30% dari canvas — visible tapi gak overpowering
+const LOGO_RATIO = 0.45; // 45% dari canvas — logo dominant, "N" putih jelas terlihat
+                          // Sebelumnya 30% kelihatan terlalu kecil di splash full-screen
+                          // karena icon source punya bg biru yang blend dengan splash bg.
 
 async function generateOne(outName, bgColor) {
   const logoSize = Math.round(SPLASH_SIZE * LOGO_RATIO);
