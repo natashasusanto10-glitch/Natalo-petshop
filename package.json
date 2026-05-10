@@ -16,6 +16,7 @@
     "prisma:migrate:status": "dotenv -e .env.local -- prisma migrate status",
     "prisma:seed": "dotenv -e .env.local -- tsx prisma/seed.ts",
     "db:wipe-products": "dotenv -e .env.local -- tsx scripts/wipe-products.ts",
+    "db:wipe-orders-points:prod": "dotenv -e .env -- tsx scripts/wipe-orders-points.ts",
     "cap:add:ios": "npx cap add ios",
     "cap:sync:ios": "npx cap sync ios",
     "cap:open:ios": "npx cap open ios",
