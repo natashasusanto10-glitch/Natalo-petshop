@@ -155,12 +155,20 @@ export default async function AdminProductsPage({
             )}
           </p>
         </div>
-        <Link
-          href="/admin/products/new"
-          className="rounded-full bg-zinc-950 px-5 py-3 text-sm font-bold text-white"
-        >
-          + Tambah produk
-        </Link>
+        <div className="flex shrink-0 items-center gap-2">
+          <Link
+            href="/admin/products/import"
+            className="rounded-full border border-zinc-300 bg-white px-4 py-3 text-sm font-bold text-zinc-700 transition hover:border-natalo-400 hover:bg-natalo-50 hover:text-natalo-700"
+          >
+            ↧ Import Excel
+          </Link>
+          <Link
+            href="/admin/products/new"
+            className="rounded-full bg-zinc-950 px-5 py-3 text-sm font-bold text-white"
+          >
+            + Tambah produk
+          </Link>
+        </div>
       </div>
 
       {/* Search & Filter bar */}
