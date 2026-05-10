@@ -7,18 +7,20 @@ import type { ReactNode } from "react";
 import { bootstrapCartSync, loadCart } from "@/lib/cart";
 import { prefetchCategories } from "@/lib/client-performance";
 
-type NavIconName = "home" | "bone" | "bag" | "person";
+type NavIconName = "home" | "catalog" | "bag" | "person";
 
 const ITEMS: { href: string; label: string; icon: NavIconName }[] = [
   { href: "/", label: "Beranda", icon: "home" },
-  { href: "/kategori", label: "Kategori", icon: "bone" },
+  { href: "/products", label: "Produk", icon: "catalog" },
   { href: "/cart", label: "Keranjang", icon: "bag" },
   { href: "/member", label: "Akun", icon: "person" },
 ];
 
 function isActive(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
-  if (href === "/kategori") return pathname === "/kategori" || pathname.startsWith("/products");
+  if (href === "/products") {
+    return pathname === "/products" || pathname.startsWith("/products/") || pathname === "/kategori" || pathname === "/produk";
+  }
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -38,8 +40,15 @@ function NavIcon({ name, active }: { name: NavIconName; active: boolean }) {
         <ellipse cx="16" cy="24" rx="2.6" ry="2" fill="currentColor" stroke="none" />
       </>
     ),
-    bone: (
-      <path d="M9 8 a3.5 3 0 0 0 -3 4.7 a3 3 0 0 0 0 5.6 A3.5 3 0 0 0 9 23 a3 3 0 0 0 4-1.5 L18 21 a3 3 0 0 0 4 1.5 a3.5 3 0 0 0 3-4.7 a3 3 0 0 0 0-5.6 A3.5 3 0 0 0 22 7.5 a3 3 0 0 0-4 1.5 L13 9 a3 3 0 0 0-4-1.5 Z" />
+    catalog: (
+      <>
+        <path d="M7 7.5 H25 a2 2 0 0 1 2 2 V24.5 a2 2 0 0 1-2 2 H7 a2 2 0 0 1-2-2 V9.5 a2 2 0 0 1 2-2 Z" />
+        <path d="M9 13 H23" />
+        <path d="M9 18 H23" />
+        <path d="M13.5 7.5 V26.5" />
+        <path d="M19 7.5 V26.5" />
+        <path d="M10.5 5.5 H21.5" />
+      </>
     ),
     bag: (
       <>
@@ -117,7 +126,7 @@ export function BottomNavigation() {
   useEffect(() => {
     const id = window.setTimeout(() => {
       router.prefetch("/");
-      router.prefetch("/kategori");
+      router.prefetch("/products");
       router.prefetch("/cart");
       router.prefetch("/member");
       prefetchCategories();

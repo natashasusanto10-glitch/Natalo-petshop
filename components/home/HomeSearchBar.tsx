@@ -12,7 +12,7 @@ export function HomeSearchBar({ waUrl: _waUrl }: { waUrl?: string }) {
 
   return (
     <>
-      <div className="nat-safe-x bg-[#FAFAFA] pb-3 pt-3 md:hidden">
+      <div className="nat-safe-x sticky z-40 bg-[#FAFAFA] pb-3 pt-3 shadow-[0_1px_0_rgba(0,0,0,0.04)] [top:env(safe-area-inset-top)] md:hidden">
         <button
           type="button"
           onClick={() => setOpen(true)}

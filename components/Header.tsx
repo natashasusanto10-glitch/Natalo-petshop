@@ -25,7 +25,6 @@ type MemberProfile = {
 export function Header() {
   const brand = process.env.NEXT_PUBLIC_BRAND_NAME || "Pet Shop";
   const router = useRouter();
-  const [open, setOpen] = useState(false);
   const [memberMenuOpen, setMemberMenuOpen] = useState(false);
   const [member, setMember] = useState<MemberProfile | null>(null);
   const pathname = usePathname();
@@ -64,7 +63,7 @@ export function Header() {
 
   useEffect(() => {
     const id = window.setTimeout(() => {
-      router.prefetch("/kategori");
+      router.prefetch("/products");
       router.prefetch("/cart");
       router.prefetch("/member");
       prefetchCategories();
@@ -75,17 +74,8 @@ export function Header() {
 
   // Close on route change
   useEffect(() => {
-    setOpen(false);
     setMemberMenuOpen(false);
   }, [pathname]);
-
-  // Lock scroll when hamburger menu open
-  useEffect(() => {
-    document.body.style.overflow = open ? "hidden" : "";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [open]);
 
   // Click outside to close member dropdown
   useEffect(() => {
@@ -122,7 +112,7 @@ export function Header() {
   }
 
   return (
-    <header className="nat-site-header sticky z-50 bg-white shadow-sm">
+    <header className="nat-site-header z-50 bg-white shadow-sm md:sticky">
       {isProductDetail && (
         <div className="nat-header-inner nat-safe-x mx-auto flex max-w-6xl items-center justify-between gap-1.5 py-1.5 md:hidden">
           <button
@@ -163,17 +153,6 @@ export function Header() {
             <div className="flex h-10 w-10 items-center justify-center rounded-full text-gray-700 active:bg-gray-100 [&_span.hidden]:hidden [&_svg]:!h-5 [&_svg]:!w-5">
               <CartCount />
             </div>
-            <button
-              onClick={() => setOpen((v) => !v)}
-              className="flex h-10 w-10 items-center justify-center rounded-full text-gray-700 active:bg-gray-100"
-              aria-label={open ? "Tutup menu" : "Buka menu"}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5">
-                <line x1="4" y1="7" x2="20" y2="7" />
-                <line x1="4" y1="12" x2="20" y2="12" />
-                <line x1="4" y1="17" x2="20" y2="17" />
-              </svg>
-            </button>
           </div>
         </div>
       )}
@@ -212,7 +191,7 @@ export function Header() {
           {/* Wishlist */}
           <Link
             href="/wishlist"
-            className="relative flex h-9 w-9 items-center justify-center rounded-full text-gray-600 transition hover:bg-gray-100 xs:h-10 xs:w-10"
+            className="relative hidden h-9 w-9 items-center justify-center rounded-full text-gray-600 transition hover:bg-gray-100 xs:h-10 xs:w-10 md:flex"
             aria-label="Wishlist"
           >
             <svg
@@ -315,90 +294,9 @@ export function Header() {
             </Link>
           )}
 
-          {/* Mobile hamburger */}
-          <button
-            onClick={() => setOpen((v) => !v)}
-            className="flex h-9 w-9 items-center justify-center rounded-full text-gray-700 transition hover:bg-gray-100 xs:h-10 xs:w-10 md:hidden"
-            aria-label={open ? "Tutup menu" : "Buka menu"}
-          >
-            {open ? (
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-                className="h-5 w-5"
-              >
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            ) : (
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-                className="h-5 w-5"
-              >
-                <line x1="3" y1="6" x2="21" y2="6" />
-                <line x1="3" y1="12" x2="21" y2="12" />
-                <line x1="3" y1="18" x2="21" y2="18" />
-              </svg>
-            )}
-          </button>
         </div>
       </div>
-
-      {/* Mobile dropdown — site navigation only (member actions di dropdown avatar) */}
-      {open && (
-        <div className="border-t border-gray-100 bg-white md:hidden">
-          <nav className="nat-safe-x mx-auto max-w-6xl space-y-1 py-3">
-            {NAV_LINKS.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={`flex items-center rounded-xl px-4 py-3 text-sm font-medium transition ${
-                  pathname === link.href
-                    ? "bg-blue-50 font-semibold text-blue-500"
-                    : "text-gray-700 hover:bg-gray-50"
-                }`}
-              >
-                {link.label}
-              </Link>
-            ))}
-            {!member?.name && (
-              <Link
-                href="/member/register"
-                className="mt-2 flex w-full items-center justify-center rounded-full border border-blue-300 py-3 text-sm font-bold text-blue-600 transition hover:bg-blue-50"
-              >
-                Daftar Member Baru
-              </Link>
-            )}
-          </nav>
-        </div>
-      )}
       </div>
-      {isProductDetail && open && (
-        <div className="border-t border-gray-100 bg-white md:hidden">
-          <nav className="nat-safe-x mx-auto max-w-6xl space-y-1 py-3">
-            {NAV_LINKS.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className="flex items-center rounded-xl px-4 py-3 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-              >
-                {link.label}
-              </Link>
-            ))}
-            <Link
-              href="/member"
-              className="flex items-center rounded-xl px-4 py-3 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-            >
-              Akun Member
-            </Link>
-          </nav>
-        </div>
-      )}
     </header>
   );
 }

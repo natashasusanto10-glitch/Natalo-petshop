@@ -157,12 +157,13 @@ export default async function MemberPage() {
         <ClaimVoucherButton totalPoints={points} />
       </div>
 
-      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
         {[
           { href: "/member/orders", icon: "📦", label: "Pesanan Saya" },
           { href: "/member/points", icon: "⭐", label: "Loyalty Poin" },
           { href: "/member/profile", icon: "👤", label: "Profil" },
           { href: "/wishlist", icon: "❤️", label: "Wishlist" },
+          { href: "/tentang-kami", icon: "i", label: "Tentang Kami" },
         ].map((item) => (
           <Link
             key={item.href}
