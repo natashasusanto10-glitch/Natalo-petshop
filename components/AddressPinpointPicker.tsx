@@ -26,6 +26,7 @@ type AddressPinpointPickerProps = {
   defaultLongitude?: number | null;
   defaultAddress?: string | null;
   defaultStreetName?: string | null;
+  searchHint?: string | null;
   onChange?: (value: PinpointValue) => void;
 };
 
@@ -80,9 +81,11 @@ export function AddressPinpointPicker({
   defaultLongitude,
   defaultAddress,
   defaultStreetName,
+  searchHint,
   onChange,
 }: AddressPinpointPickerProps) {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY ?? "";
+  const normalizedSearchHint = searchHint?.trim() ?? "";
   const initialPosition = useMemo<LatLng | null>(() => {
     if (typeof defaultLatitude === "number" && typeof defaultLongitude === "number") {
       return { lat: defaultLatitude, lng: defaultLongitude };
@@ -93,6 +96,7 @@ export function AddressPinpointPicker({
   const mapRef = useRef<google.maps.Map | null>(null);
   const geocodeTimerRef = useRef<number | null>(null);
   const autocompleteSessionRef = useRef<google.maps.places.AutocompleteSessionToken | null>(null);
+  const autoGeocodeAttemptedRef = useRef(false);
   const [isOpen, setIsOpen] = useState(false);
   const [position, setPosition] = useState<LatLng | null>(initialPosition);
   const [mapCenter, setMapCenter] = useState<LatLng>(initialPosition ?? fallbackCenter);
@@ -113,6 +117,34 @@ export function AddressPinpointPicker({
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+
+  useEffect(() => {
+    const nextPosition =
+      typeof defaultLatitude === "number" && typeof defaultLongitude === "number"
+        ? { lat: defaultLatitude, lng: defaultLongitude }
+        : null;
+    setPosition(nextPosition);
+    setMapCenter(nextPosition ?? fallbackCenter);
+    setPinpointAddress(defaultAddress ?? "");
+    setDisplayAddress(defaultStreetName || defaultAddress || "");
+    setStreetName(defaultStreetName ?? "");
+  }, [defaultLatitude, defaultLongitude, defaultAddress, defaultStreetName]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      autoGeocodeAttemptedRef.current = false;
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.body.classList.add("nat-modal-open");
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.classList.remove("nat-modal-open");
+    };
+  }, [isOpen]);
 
   useEffect(() => {
     onChangeRef.current?.({
@@ -153,6 +185,20 @@ export function AddressPinpointPicker({
     geocodeTimerRef.current = window.setTimeout(() => reverseGeocode(nextPosition), 350);
   }, [reverseGeocode]);
 
+  const geocodeAddress = useCallback((query: string) => {
+    if (!window.google?.maps || !query.trim()) return;
+
+    const geocoder = new window.google.maps.Geocoder();
+    geocoder.geocode({ address: query, region: "ID" }, (results, geocoderStatus) => {
+      if (geocoderStatus === "OK" && results?.[0]?.geometry?.location) {
+        const location = results[0].geometry.location;
+        applyGeocoderResult({ lat: location.lat(), lng: location.lng() }, results[0]);
+        return;
+      }
+      setStatus("Titik belum ditemukan dari alamat. Cari alamat atau gunakan lokasi saat ini.");
+    });
+  }, [applyGeocoderResult]);
+
   const moveToPosition = useCallback((nextPosition: LatLng) => {
     setPosition(nextPosition);
     setMapCenter(nextPosition);
@@ -183,8 +229,20 @@ export function AddressPinpointPicker({
 
   function openModal() {
     setIsOpen(true);
-    if (!position) detectLocation();
+    if (position) return;
+    if (normalizedSearchHint) {
+      setSearch(normalizedSearchHint);
+      setStatus("Mencari titik dari alamat...");
+      return;
+    }
+    detectLocation();
   }
+
+  useEffect(() => {
+    if (!isOpen || position || !isLoaded || !normalizedSearchHint || autoGeocodeAttemptedRef.current) return;
+    autoGeocodeAttemptedRef.current = true;
+    geocodeAddress(normalizedSearchHint);
+  }, [geocodeAddress, isLoaded, isOpen, normalizedSearchHint, position]);
 
   function handleMapSettled() {
     const center = mapRef.current?.getCenter();
@@ -281,8 +339,8 @@ export function AddressPinpointPicker({
       </div>
 
       {isOpen && (
-        <div className="fixed inset-0 z-50 bg-white">
-          <div className="flex h-dvh flex-col bg-white">
+        <div className="fixed inset-0 z-[2000] bg-white">
+          <div className="flex h-dvh flex-col bg-white pt-[env(safe-area-inset-top)]">
             <div className="flex items-center justify-between border-b border-natalo-100 px-4 py-3">
               <button
                 type="button"
@@ -307,7 +365,7 @@ export function AddressPinpointPicker({
               </p>
             )}
 
-            <div className="relative h-[60dvh] min-h-[360px] overflow-hidden bg-gray-100">
+            <div className="relative h-[56dvh] min-h-[320px] overflow-hidden bg-gray-100">
               <button
                 type="button"
                 onClick={detectLocation}
@@ -340,7 +398,7 @@ export function AddressPinpointPicker({
               </div>
             </div>
 
-            <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 py-4">
+            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4">
               <div className="relative">
                 <input
                   type="search"

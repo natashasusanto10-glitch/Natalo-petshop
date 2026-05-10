@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { AddressPinpointPicker } from "@/components/AddressPinpointPicker";
 
 const LABELS = ["Rumah", "Kantor", "Toko", "Lainnya"];
 const KODEPOS_API = "https://kodepos.vercel.app/search";
@@ -15,6 +16,21 @@ const CHECKOUT_SELECTED_ADDRESS_KEY = "checkout:selectedAddressId";
 const CHECKOUT_ADDRESS_FORCE_APPLY_KEY = "checkout:addressForceApply";
 
 let googleMapsPromise = null;
+
+function hasUsablePinpoint(latitude, longitude) {
+  return (
+    typeof latitude === "number" &&
+    Number.isFinite(latitude) &&
+    typeof longitude === "number" &&
+    Number.isFinite(longitude) &&
+    !(latitude === 0 && longitude === 0)
+  );
+}
+
+function normalizeInitialCoordinate(value) {
+  const coordinate = value === null || value === undefined || value === "" ? null : Number(value);
+  return Number.isFinite(coordinate) ? coordinate : null;
+}
 
 function loadGoogleMaps() {
   if (typeof window === "undefined") return Promise.reject(new Error("Browser belum tersedia."));
@@ -467,6 +483,9 @@ export default function FormAlamat({ mode = "create", initialAddress = null }) {
   const isCheckoutFlow = source === "checkout";
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const initialLatitude = normalizeInitialCoordinate(initialAddress?.latitude);
+  const initialLongitude = normalizeInitialCoordinate(initialAddress?.longitude);
+  const initialHasPinpoint = hasUsablePinpoint(initialLatitude, initialLongitude);
 
   const [form, setForm] = useState({
     recipient: initialAddress?.recipient ?? "",
@@ -476,9 +495,9 @@ export default function FormAlamat({ mode = "create", initialAddress = null }) {
     postalCode: initialAddress?.postalCode ?? "",
     label: initialAddress?.label ?? "Rumah",
     isMain: Boolean(initialAddress?.isMain),
-    latitude: initialAddress?.latitude ?? null,
-    longitude: initialAddress?.longitude ?? null,
-    pinpointAddress: initialAddress?.pinpointAddress ?? "",
+    latitude: initialHasPinpoint ? initialLatitude : null,
+    longitude: initialHasPinpoint ? initialLongitude : null,
+    pinpointAddress: initialHasPinpoint ? initialAddress?.pinpointAddress ?? "" : "",
     streetName: initialAddress?.streetName ?? "",
   });
 
@@ -496,7 +515,6 @@ export default function FormAlamat({ mode = "create", initialAddress = null }) {
   const [loadingKota, setLoadingKota] = useState(false);
   const [loadingKecamatan, setLoadingKecamatan] = useState(false);
   const [loadingKelurahan, setLoadingKelurahan] = useState(false);
-  const [pinpointLoading, setPinpointLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
 
   function updateForm(field, value) {
@@ -663,6 +681,11 @@ export default function FormAlamat({ mode = "create", initialAddress = null }) {
         .join(", "),
     [selectedNames]
   );
+  const pinpointSearchHint = useMemo(
+    () => [form.address, addressContext || form.city].filter(Boolean).join(", "),
+    [addressContext, form.address, form.city]
+  );
+  const hasPinpoint = hasUsablePinpoint(form.latitude, form.longitude);
 
   const requiredComplete = useMemo(() => {
     const hasSavedRegion = mode === "edit" && Boolean(form.city);
@@ -705,43 +728,6 @@ export default function FormAlamat({ mode = "create", initialAddress = null }) {
 
     setFieldErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
-  }
-
-  async function handleAddPinpoint() {
-    setError("");
-    const query = [form.address, addressContext].filter(Boolean).join(", ");
-
-    if (!query.trim()) {
-      setError("Isi alamat dan wilayah terlebih dahulu sebelum menambah pinpoint.");
-      return;
-    }
-
-    setPinpointLoading(true);
-
-    try {
-      const maps = await loadGoogleMaps();
-      const geocoder = new maps.Geocoder();
-
-      geocoder.geocode({ address: query, region: "ID" }, (results, status) => {
-        setPinpointLoading(false);
-        if (status !== "OK" || !results?.[0]?.geometry?.location) {
-          setError("Pinpoint belum ditemukan. Coba lengkapi alamat atau pilih wilayah lebih spesifik.");
-          return;
-        }
-
-        const location = results[0].geometry.location;
-        setForm((current) => ({
-          ...current,
-          latitude: location.lat(),
-          longitude: location.lng(),
-          pinpointAddress: results[0].formatted_address || current.pinpointAddress,
-          streetName: current.streetName || form.address,
-        }));
-      });
-    } catch {
-      setPinpointLoading(false);
-      setError("Google Maps belum bisa dimuat. Cek API key Google Maps di environment.");
-    }
   }
 
   async function handleSubmit(event) {
@@ -944,43 +930,44 @@ export default function FormAlamat({ mode = "create", initialAddress = null }) {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-        <p className="text-sm font-bold text-zinc-800">Pinpoint Lokasi GPS</p>
-        <p className="mt-1 text-xs font-medium text-zinc-500">
-          Opsional, pin titik tepat agar kurir lebih mudah menemukan alamatmu.
-        </p>
-        <button
-          type="button"
-          onClick={handleAddPinpoint}
-          disabled={pinpointLoading || !form.address.trim()}
-          className="mt-3 w-full rounded-full border border-natalo-200 bg-white px-4 py-3 text-sm font-black text-natalo-700 transition hover:border-natalo-400 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {pinpointLoading ? "Mencari titik..." : form.latitude && form.longitude ? "Ubah Pinpoint" : "Tambah Pinpoint"}
-        </button>
-
-        {form.latitude && form.longitude && (
-          <div className="mt-4">
-            <MapPreview
-              lat={Number(form.latitude)}
-              lng={Number(form.longitude)}
-              onPinMove={(latitude, longitude, formattedAddress) => {
-                setForm((current) => ({
-                  ...current,
-                  latitude,
-                  longitude,
-                  pinpointAddress: formattedAddress || current.pinpointAddress,
-                }));
-              }}
-            />
-            <div className="mt-2 rounded-xl bg-white px-4 py-3 text-sm">
-              <p className="font-semibold text-zinc-900">
-                {form.pinpointAddress || "Alamat pinpoint belum terbaca."}
-              </p>
-              <p className="mt-1 font-mono text-xs text-zinc-500">
-                {Number(form.latitude).toFixed(6)}, {Number(form.longitude).toFixed(6)}
-              </p>
-            </div>
+      <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-black text-zinc-900">Pinpoint Lokasi Pengiriman</p>
+            <p className="mt-1 text-xs font-semibold text-zinc-500">
+              Cari alamat, gunakan lokasi saat ini, lalu geser peta sampai titiknya pas.
+            </p>
           </div>
+          <span
+            className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-black ${
+              hasPinpoint ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
+            }`}
+          >
+            {hasPinpoint ? "Tersimpan" : "Disarankan"}
+          </span>
+        </div>
+
+        <div className="mt-4">
+          <AddressPinpointPicker
+            defaultLatitude={form.latitude}
+            defaultLongitude={form.longitude}
+            defaultAddress={form.pinpointAddress}
+            searchHint={pinpointSearchHint}
+            onChange={(value) => {
+              setForm((current) => ({
+                ...current,
+                latitude: value.latitude,
+                longitude: value.longitude,
+                pinpointAddress: value.pinpointAddress ?? "",
+              }));
+            }}
+          />
+        </div>
+
+        {!hasPinpoint && (
+          <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+            Pinpoint membantu kurir menemukan rumah/toko lebih akurat, terutama untuk instant courier.
+          </p>
         )}
       </div>
 

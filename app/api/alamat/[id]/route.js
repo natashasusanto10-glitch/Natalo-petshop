@@ -4,9 +4,16 @@ import { prisma } from "@/lib/prisma";
 
 const PHONE_RE = /^(\+?62|0)8[1-9][0-9]{6,12}$/;
 
+function coordinateOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "string" && !value.trim()) return null;
+  const coordinate = Number(value);
+  return Number.isFinite(coordinate) ? coordinate : null;
+}
+
 function normalizePayload(body) {
-  const lat = Number(body.latitude);
-  const lng = Number(body.longitude);
+  const lat = coordinateOrNull(body.latitude);
+  const lng = coordinateOrNull(body.longitude);
 
   const cityName = typeof body.city === "object"
     ? String(body.city?.name ?? "").trim()
@@ -20,8 +27,8 @@ function normalizePayload(body) {
     city: cityName,
     postalCode: String(body.postalCode || "").trim(),
     isMain: Boolean(body.isMain),
-    latitude: Number.isFinite(lat) ? lat : null,
-    longitude: Number.isFinite(lng) ? lng : null,
+    latitude: lat,
+    longitude: lng,
     pinpointAddress: String(body.pinpointAddress || "").trim() || null,
     streetName: String(body.streetName || "").trim() || null,
   };

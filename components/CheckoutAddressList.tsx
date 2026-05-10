@@ -17,6 +17,8 @@ type CheckoutAddress = {
   city: string | null;
   postalCode: string | null;
   isMain: boolean;
+  latitude: number | null;
+  longitude: number | null;
   pinpointAddress: string | null;
   streetName: string | null;
 };
@@ -28,6 +30,16 @@ type Props = {
 
 function encodePath(path: string) {
   return encodeURIComponent(path);
+}
+
+function hasUsablePinpoint(latitude?: number | null, longitude?: number | null) {
+  return (
+    typeof latitude === "number" &&
+    Number.isFinite(latitude) &&
+    typeof longitude === "number" &&
+    Number.isFinite(longitude) &&
+    !(latitude === 0 && longitude === 0)
+  );
 }
 
 export function CheckoutAddressList({ addresses, returnTo }: Props) {
@@ -110,6 +122,7 @@ export function CheckoutAddressList({ addresses, returnTo }: Props) {
           ) : (
             addresses.map((address) => {
               const selected = selectedId === address.id;
+              const hasPinpoint = hasUsablePinpoint(address.latitude, address.longitude);
               return (
                 <section
                   key={address.id}
@@ -136,6 +149,13 @@ export function CheckoutAddressList({ addresses, returnTo }: Props) {
                               Dipilih
                             </span>
                           )}
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-xs font-black ${
+                              hasPinpoint ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
+                            }`}
+                          >
+                            {hasPinpoint ? "Pinpoint OK" : "Perlu pinpoint"}
+                          </span>
                         </div>
                         <p className="mt-2 text-sm font-bold text-zinc-800">
                           {address.recipient} - {address.phone}
@@ -148,9 +168,14 @@ export function CheckoutAddressList({ addresses, returnTo }: Props) {
                         {address.streetName && (
                           <p className="mt-2 text-xs font-bold text-natalo-700">{address.streetName}</p>
                         )}
-                        {address.pinpointAddress && (
+                        {hasPinpoint && address.pinpointAddress && (
                           <p className="mt-2 rounded-2xl bg-natalo-50 px-3 py-2 text-xs font-semibold text-natalo-800">
                             Pinpoint: {address.pinpointAddress}
+                          </p>
+                        )}
+                        {!hasPinpoint && (
+                          <p className="mt-2 rounded-2xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+                            Tambahkan pinpoint agar pengiriman lebih akurat.
                           </p>
                         )}
                       </div>
@@ -170,7 +195,7 @@ export function CheckoutAddressList({ addresses, returnTo }: Props) {
                       href={`/akun/alamat/edit/${address.id}?source=checkout&return=${encodedListReturn}&checkoutReturn=${encodedReturnTo}`}
                       className="rounded-full border border-zinc-200 px-4 py-2 text-xs font-black text-zinc-700 transition hover:border-natalo-300 hover:text-natalo-700"
                     >
-                      Edit
+                      {hasPinpoint ? "Edit" : "Tambah Pinpoint"}
                     </Link>
                   </div>
                 </section>
