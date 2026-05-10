@@ -31,17 +31,20 @@ const config: CapacitorConfig = {
   },
 
   ios: {
-    // Tampilan status bar default — light content di atas brand blue.
+    // Status bar default: dark icons di atas white bg (selaras dgn header
+    // putih web). Lihat plugins.StatusBar di bawah untuk runtime config.
     contentInset: "automatic",
     // Kalau pakai cookie auth (jose JWT lewat httpOnly cookie),
     // biarkan WebView pakai shared cookie store iOS.
     limitsNavigationsToAppBoundDomains: false,
-    backgroundColor: "#1E5FBF",
+    // WebView container background — terlihat di safe area top/bottom
+    // sebelum WebView paint penuh. Selaras dgn body bg web (#f8f8f8).
+    backgroundColor: "#f8f8f8",
   },
 
   plugins: {
     SplashScreen: {
-      // Plugin show storyboard view (solid brand blue, NO logo — sudah edited
+      // Plugin show storyboard view (sekarang putih, NO logo — sudah edited
       // di LaunchScreen.storyboard) selama 1s untuk cover cold-start network
       // blank period: WebView creation + HTML fetch + JS bundle download.
       // Setelah plugin hide, WebView visible dengan AppSplashOverlay yang
@@ -49,14 +52,15 @@ const config: CapacitorConfig = {
       // animation continues seamlessly, no jarring transition.
       launchShowDuration: 1000,
       launchAutoHide: true,
-      backgroundColor: "#1E5FBF",
-      showSpinner: false, // Tetap clean, no spinner — full solid blue saja
+      backgroundColor: "#ffffff",
+      showSpinner: false, // Tetap clean, no spinner
       fadeOutDuration: 250, // Smooth handoff ke web overlay
       androidScaleType: "CENTER_CROP",
     },
     StatusBar: {
-      style: "LIGHT",
-      backgroundColor: "#1E5FBF",
+      // Style.DARK = darkContent = ikon hitam, untuk bg terang (header putih).
+      style: "DARK",
+      backgroundColor: "#ffffff",
       overlaysWebView: false,
     },
     Keyboard: {
