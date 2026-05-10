@@ -1,6 +1,7 @@
 import webpush from "web-push";
 import { prisma } from "./prisma";
 import { buildOrderDetailPath } from "./order-detail";
+import { sendApnsToUser } from "./apns";
 
 function getVapidConfig() {
   const publicKey = process.env.VAPID_PUBLIC_KEY;
@@ -15,7 +16,13 @@ export async function sendPushToUser(userId: string, payload: { title: string; b
 
   webpush.setVapidDetails(`mailto:admin@toko.com`, publicKey, privateKey);
 
-  const subs = await prisma.pushSubscription.findMany({ where: { userId } }).catch(() => []);
+  // Filter: cuma Web Push subscriptions (HTTPS endpoint).
+  // APNs tokens (endpoint "apns:...") di-handle sendApnsToUser() di lib/apns.ts.
+  const subs = await prisma.pushSubscription
+    .findMany({
+      where: { userId, NOT: { endpoint: { startsWith: "apns:" } } },
+    })
+    .catch(() => []);
   const data = JSON.stringify(payload);
 
   await Promise.allSettled(
@@ -50,9 +57,22 @@ export async function sendOrderStatusPush(orderId: string, orderNumber: string, 
   const body = statusMessages[status];
   if (!body) return;
 
-  await sendPushToUser(order.userId, {
+  const url = buildOrderDetailPath(orderNumber, order.trackingToken);
+  const payload = {
     title: "Update Pesanan 🛍️",
     body,
-    url: buildOrderDetailPath(orderNumber, order.trackingToken),
-  });
+    url,
+  };
+
+  // Kirim ke 2 channel paralel:
+  // - Web Push (PWA Safari, Chrome Android, dll) via VAPID
+  // - APNs (iOS native app via TestFlight/App Store) via @parse/node-apn
+  // Subs disimpan di table sama (PushSubscription), dibedakan dari endpoint
+  // prefix: "apns:..." → APNs, "https://..." → Web Push.
+  // Existing sendPushToUser() filter ke endpoint Web Push. sendApnsToUser()
+  // filter ke endpoint apns:.
+  await Promise.all([
+    sendPushToUser(order.userId, payload),
+    sendApnsToUser(order.userId, payload),
+  ]);
 }

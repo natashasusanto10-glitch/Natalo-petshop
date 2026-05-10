@@ -15,5 +15,12 @@
 		<string>applinks:natalo-petshop.vercel.app</string>
 		<string>webcredentials:natalo-petshop.vercel.app</string>
 	</array>
+	<!--
+	  APNs environment — "development" untuk Xcode debug builds (sandbox APNs),
+	  "production" untuk TestFlight + App Store (production APNs).
+	  Match auto-pilih based on provisioning profile saat build.
+	-->
+	<key>aps-environment</key>
+	<string>production</string>
 </dict>
 </plist>
