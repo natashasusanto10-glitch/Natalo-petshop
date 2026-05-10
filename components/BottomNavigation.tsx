@@ -139,7 +139,7 @@ export function BottomNavigation() {
   if (pathname === "/checkout" || pathname?.startsWith("/checkout/")) return null;
 
   return (
-    <nav className="nat-bottom-nav fixed inset-x-0 bottom-0 z-50 border-t border-[#f0f0f0] bg-white py-2 shadow-[0_-2px_12px_rgba(0,0,0,0.05)] md:hidden">
+    <nav className="bottom-nav nat-bottom-nav inset-x-0 border-t border-[#f0f0f0] bg-white py-2 shadow-[0_-2px_12px_rgba(0,0,0,0.05)] md:hidden">
       <div className="grid grid-cols-4">
         {ITEMS.map((item) => {
           const active = optimisticHref === item.href || (!optimisticHref && isActive(pathname, item.href));

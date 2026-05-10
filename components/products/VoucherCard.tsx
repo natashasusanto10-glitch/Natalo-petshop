@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 export type VoucherItem = {
   code: string;
@@ -52,11 +53,15 @@ export function VoucherCard({ vouchers }: Props) {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
 
+  function closeVoucher() {
+    setOpen(false);
+  }
+
   // Tutup dengan tombol Esc untuk aksesibilitas keyboard.
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") closeVoucher();
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -67,8 +72,10 @@ export function VoucherCard({ vouchers }: Props) {
     if (!open) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    document.body.classList.add("voucher-modal-open");
     return () => {
       document.body.style.overflow = prev;
+      document.body.classList.remove("voucher-modal-open");
     };
   }, [open]);
 
@@ -80,7 +87,7 @@ export function VoucherCard({ vouchers }: Props) {
       setCopiedCode(code);
       window.setTimeout(() => setCopiedCode(null), 1800);
     } catch {
-      // Fallback diam-diam — tetap tampilkan pesan tersalin agar UX konsisten.
+      // Fallback diam-diam: tetap tampilkan pesan tersalin agar UX konsisten.
       setCopiedCode(code);
       window.setTimeout(() => setCopiedCode(null), 1800);
     }
@@ -89,6 +96,85 @@ export function VoucherCard({ vouchers }: Props) {
   const teaser =
     vouchers.length > 0 ? describeBenefit(vouchers[0]) : "Lihat penawaran tersedia";
   const count = vouchers.length;
+
+  const voucherPortal =
+    open && typeof document !== "undefined"
+      ? createPortal(
+          <>
+            <div className="voucher-backdrop" onClick={closeVoucher} />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Pilih voucher"
+              className="voucher-safe-area"
+            >
+              <div ref={dialogRef} className="voucher-sheet">
+                <div className="sticky top-0 flex items-center justify-between border-b border-gray-100 bg-white px-4 py-3">
+                  <h2 className="text-base font-extrabold text-gray-900">
+                    Voucher Tersedia
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={closeVoucher}
+                    className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 active:bg-gray-100"
+                    aria-label="Tutup"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5">
+                      <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="p-4">
+                  {vouchers.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-gray-500">
+                      Belum ada voucher publik aktif saat ini.
+                    </p>
+                  ) : (
+                    <ul className="space-y-3">
+                      {vouchers.map((v) => {
+                        const expiry = describeExpiry(v.expiresAt);
+                        const isCopied = copiedCode === v.code;
+                        return (
+                          <li
+                            key={v.code}
+                            className="flex items-stretch overflow-hidden rounded-xl border border-orange-200 bg-orange-50/60"
+                          >
+                            <div className="flex flex-1 flex-col justify-center px-4 py-3">
+                              <p className="text-sm font-extrabold text-gray-900">
+                                {describeBenefit(v)}
+                              </p>
+                              <p className="mt-0.5 text-xs text-gray-500">
+                                Kode <span className="font-bold text-gray-700">{v.code}</span> - {describeMin(v)}
+                              </p>
+                              {expiry && (
+                                <p className="mt-0.5 text-[11px] font-bold text-orange-600">
+                                  {expiry}
+                                </p>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleApply(v.code)}
+                              className="shrink-0 px-4 text-sm font-extrabold text-natalo-600 transition active:bg-natalo-50"
+                            >
+                              {isCopied ? "Tersalin" : "Pakai"}
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                  <p className="mt-4 text-center text-[11px] text-gray-400">
+                    Kode otomatis tersalin. Tempel di halaman keranjang saat checkout.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </>,
+          document.body
+        )
+      : null;
 
   return (
     <>
@@ -117,7 +203,7 @@ export function VoucherCard({ vouchers }: Props) {
             Pakai Voucher
           </span>
           <span className="block truncate text-xs text-gray-500">
-            {count > 0 ? `${count} tersedia • ${teaser}` : teaser}
+            {count > 0 ? `${count} tersedia - ${teaser}` : teaser}
           </span>
         </span>
         <span className="text-orange-500" aria-hidden>
@@ -127,83 +213,7 @@ export function VoucherCard({ vouchers }: Props) {
         </span>
       </button>
 
-      {open && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Pilih voucher"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setOpen(false);
-          }}
-        >
-          <div
-            ref={dialogRef}
-            className="max-h-[85vh] w-full overflow-y-auto rounded-t-2xl bg-white shadow-xl md:max-w-md md:rounded-2xl"
-          >
-            <div className="sticky top-0 flex items-center justify-between border-b border-gray-100 bg-white px-4 py-3">
-              <h2 className="text-base font-extrabold text-gray-900">
-                Voucher Tersedia
-              </h2>
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 active:bg-gray-100"
-                aria-label="Tutup"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5">
-                  <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
-                </svg>
-              </button>
-            </div>
-
-            <div className="p-4">
-              {vouchers.length === 0 ? (
-                <p className="py-8 text-center text-sm text-gray-500">
-                  Belum ada voucher publik aktif saat ini.
-                </p>
-              ) : (
-                <ul className="space-y-3">
-                  {vouchers.map((v) => {
-                    const expiry = describeExpiry(v.expiresAt);
-                    const isCopied = copiedCode === v.code;
-                    return (
-                      <li
-                        key={v.code}
-                        className="flex items-stretch overflow-hidden rounded-xl border border-orange-200 bg-orange-50/60"
-                      >
-                        <div className="flex flex-1 flex-col justify-center px-4 py-3">
-                          <p className="text-sm font-extrabold text-gray-900">
-                            {describeBenefit(v)}
-                          </p>
-                          <p className="mt-0.5 text-xs text-gray-500">
-                            Kode <span className="font-bold text-gray-700">{v.code}</span> · {describeMin(v)}
-                          </p>
-                          {expiry && (
-                            <p className="mt-0.5 text-[11px] font-bold text-orange-600">
-                              {expiry}
-                            </p>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleApply(v.code)}
-                          className="shrink-0 px-4 text-sm font-extrabold text-natalo-600 transition active:bg-natalo-50"
-                        >
-                          {isCopied ? "Tersalin" : "Pakai"}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-              <p className="mt-4 text-center text-[11px] text-gray-400">
-                Kode otomatis tersalin. Tempel di halaman keranjang saat checkout.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+      {voucherPortal}
     </>
   );
 }

@@ -65,12 +65,14 @@ export function CheckoutVoucherCard({
     if (!open) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    document.body.classList.add("voucher-modal-open");
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
     }
     document.addEventListener("keydown", onKey);
     return () => {
       document.body.style.overflow = prev;
+      document.body.classList.remove("voucher-modal-open");
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
@@ -209,12 +211,13 @@ export function CheckoutVoucherCard({
         <>
           <div className="voucher-backdrop" onClick={() => setOpen(false)} />
           <div
-            className="voucher-sheet shadow-xl md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2"
+            className="voucher-safe-area"
             role="dialog"
             aria-modal="true"
             aria-label="Pilih Voucher"
           >
-            <div className="sticky top-0 flex items-center justify-between border-b border-zinc-100 bg-white px-4 py-3">
+            <div className="voucher-sheet">
+              <div className="sticky top-0 flex items-center justify-between border-b border-zinc-100 bg-white px-4 py-3">
               <h2 className="text-base font-extrabold text-zinc-950">Pilih Voucher</h2>
               <button
                 type="button"
@@ -228,7 +231,7 @@ export function CheckoutVoucherCard({
               </button>
             </div>
 
-            <div className="space-y-5 p-4">
+              <div className="space-y-5 p-4">
               {/* Section: Bisa digunakan */}
               <section>
                 <h3 className="text-xs font-bold uppercase tracking-wide text-zinc-500">
@@ -362,6 +365,7 @@ export function CheckoutVoucherCard({
                     )}
                   </div>
                 )}
+              </div>
               </div>
             </div>
           </div>

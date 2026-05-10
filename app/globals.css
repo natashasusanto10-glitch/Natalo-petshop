@@ -96,9 +96,50 @@ input, textarea, select, button {
   padding-bottom: calc(var(--natalo-bottom-nav-height) + env(safe-area-inset-bottom));
 }
 
+.bottom-nav,
 .nat-bottom-nav {
+  position: fixed;
+  bottom: 0;
+  z-index: 100;
   min-height: calc(var(--natalo-bottom-nav-height) + env(safe-area-inset-bottom));
   padding-bottom: calc(4px + env(safe-area-inset-bottom));
+}
+
+body.voucher-modal-open .bottom-nav,
+body.voucher-modal-open .nat-bottom-nav {
+  display: none !important;
+  pointer-events: none;
+}
+
+.voucher-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.voucher-safe-area {
+  position: fixed;
+  inset: 0;
+  z-index: 2001;
+  display: flex;
+  align-items: flex-end;
+  background: transparent;
+  padding-top: env(safe-area-inset-top);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  pointer-events: none;
+}
+
+.voucher-sheet {
+  width: 100%;
+  max-height: 80vh;
+  overflow-y: auto;
+  border-radius: 24px 24px 0 0;
+  background: #ffffff;
+  box-shadow: 0 -18px 40px rgba(15, 23, 42, 0.16);
+  pointer-events: auto;
 }
 
 .nat-whatsapp-float {
@@ -128,6 +169,17 @@ input, textarea, select, button {
   .nat-whatsapp-float {
     right: 1.5rem;
     bottom: 1.5rem;
+  }
+
+  .voucher-safe-area {
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+  }
+
+  .voucher-sheet {
+    width: min(28rem, calc(100vw - 2rem));
+    border-radius: 24px;
   }
 }
 
