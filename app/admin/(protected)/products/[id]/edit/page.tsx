@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { ImageUpload } from "@/components/ImageUpload";
+import { MultiImageUpload } from "@/components/MultiImageUpload";
 import { VariantEditor } from "@/components/admin/VariantEditor";
 
 export default async function AdminProductEditPage({
@@ -43,7 +43,14 @@ export default async function AdminProductEditPage({
       : null;
     const stock = parseInt(String(formData.get("stock") || "0"), 10);
     const weightGram = parseInt(String(formData.get("weightGram") || "500"), 10);
-    const imageUrl = String(formData.get("imageUrl") || "").trim() || null;
+
+    const images = formData
+      .getAll("images")
+      .map((v) => String(v).trim())
+      .filter(Boolean);
+    const imageUrl = images[0] ?? null;
+    const gallery = images.slice(1);
+
     const categoryId = String(formData.get("categoryId") || "").trim() || null;
     const brandId = String(formData.get("brandId") || "").trim() || null;
 
@@ -52,7 +59,7 @@ export default async function AdminProductEditPage({
     await prisma.product.update({
       where: { id },
       data: {
-        name, description, price, discountPrice, stock, weightGram, imageUrl, categoryId,
+        name, description, price, discountPrice, stock, weightGram, imageUrl, gallery, categoryId,
         brandId,
         // User assign manual = bukan auto lagi
         brandAutoAssigned: false,
@@ -99,7 +106,14 @@ export default async function AdminProductEditPage({
           <Field label="Berat (gram)" name="weightGram" type="number" defaultValue={String(product.weightGram)} />
         </div>
 
-        <ImageUpload name="imageUrl" defaultValue={product.imageUrl ?? ""} />
+        <MultiImageUpload
+          name="images"
+          max={5}
+          defaultValue={[
+            ...(product.imageUrl ? [product.imageUrl] : []),
+            ...product.gallery,
+          ]}
+        />
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div>

@@ -108,6 +108,9 @@ model Product {
   stock             Int                @default(0)
   weightGram        Int                @default(500)
   imageUrl          String?
+  // Galeri tambahan (max 4 gambar). imageUrl tetap jadi thumbnail utama,
+  // gallery dipakai di halaman detail produk untuk carousel.
+  gallery           String[]           @default([])
   isActive          Boolean            @default(true)
   hasVariants       Boolean            @default(false)
   brandAutoAssigned Boolean            @default(false)

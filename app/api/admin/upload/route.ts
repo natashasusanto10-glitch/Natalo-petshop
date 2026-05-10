@@ -4,7 +4,7 @@ import { validateImageMagicBytes } from "@/lib/upload/validate-image-bytes";
 import { uploadToUT } from "@/lib/uploadthing";
 
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
-const MAX_SIZE = 5 * 1024 * 1024;
+const MAX_SIZE = 2 * 1024 * 1024;
 
 export async function POST(request: NextRequest) {
   const session = await getSession("ADMIN");
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (file.size > MAX_SIZE) {
-    return NextResponse.json({ error: "Ukuran file maksimal 5 MB" }, { status: 400 });
+    return NextResponse.json({ error: "Ukuran file maksimal 2 MB" }, { status: 400 });
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
