@@ -25,6 +25,7 @@
   "dependencies": {
     "@capacitor/core": "^8.3.3",
     "@capacitor/ios": "^8.3.3",
+    "@capacitor/splash-screen": "^8.0.1",
     "@prisma/client": "6.19.0",
     "@react-google-maps/api": "^2.20.8",
     "@types/bcryptjs": "^2.4.6",
@@ -39,6 +40,9 @@
     "uploadthing": "^7.7.4",
     "web-push": "^3.6.7",
     "zod": "latest"
+  },
+  "prisma": {
+    "seed": "dotenv -e .env.local -- tsx prisma/seed.ts"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
