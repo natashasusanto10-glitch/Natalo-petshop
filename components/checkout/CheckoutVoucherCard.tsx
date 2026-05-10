@@ -84,6 +84,12 @@ export function CheckoutVoucherCard({
     };
   }, [open]);
 
+  // Track keyboard height via visualViewport API (web fallback). Catatan:
+  // di iOS Capacitor dengan KeyboardResize.Native, window.innerHeight TIDAK
+  // shrink saat keyboard muncul, jadi kalkulasi
+  // (innerHeight - viewport.height - offsetTop) menghasilkan tinggi keyboard
+  // dgn benar. Dengan KeyboardResize.Body (lama), nilai ini selalu 0 — itu
+  // sebabnya sheet tidak pernah naik di TestFlight build sebelumnya.
   useEffect(() => {
     if (!open) return;
 
@@ -92,7 +98,16 @@ export function CheckoutVoucherCard({
       const inset = viewport
         ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
         : 0;
-      document.documentElement.style.setProperty("--nat-keyboard-inset", `${Math.round(inset)}px`);
+      // Ambang 80px supaya focus event yg sebabkan jitter kecil di toolbar
+      // browser tidak men-trigger sheet naik. Keyboard mobile pasti > 80px.
+      if (inset > 80) {
+        document.documentElement.style.setProperty(
+          "--nat-keyboard-inset",
+          `${Math.round(inset)}px`,
+        );
+      } else {
+        document.documentElement.style.removeProperty("--nat-keyboard-inset");
+      }
     }
 
     updateKeyboardInset();
@@ -108,6 +123,49 @@ export function CheckoutVoucherCard({
     };
   }, [open]);
 
+  // Capacitor native (iOS TestFlight) — gunakan @capacitor/keyboard plugin
+  // yang langsung kasih keyboardHeight. Di WebView native ini lebih reliable
+  // daripada visualViewport (yg di iOS WKWebView kadang lambat/tidak fire).
+  useEffect(() => {
+    if (!open) return;
+
+    let cleanup: (() => void) | null = null;
+
+    (async () => {
+      try {
+        const { Keyboard } = await import("@capacitor/keyboard");
+        const showHandle = await Keyboard.addListener(
+          "keyboardWillShow",
+          (info) => {
+            document.documentElement.style.setProperty(
+              "--nat-keyboard-inset",
+              `${Math.max(0, Math.round(info.keyboardHeight))}px`,
+            );
+          },
+        );
+        const hideHandle = await Keyboard.addListener(
+          "keyboardWillHide",
+          () => {
+            document.documentElement.style.removeProperty("--nat-keyboard-inset");
+          },
+        );
+
+        cleanup = () => {
+          showHandle.remove();
+          hideHandle.remove();
+        };
+      } catch {
+        // Browser web non-Capacitor: plugin import gagal silently. Fallback
+        // visualViewport listener di atas sudah handle.
+      }
+    })();
+
+    return () => {
+      cleanup?.();
+      document.documentElement.style.removeProperty("--nat-keyboard-inset");
+    };
+  }, [open]);
+
   // Reset manual input state tiap kali sheet ditutup
   useEffect(() => {
     if (!open) {
@@ -119,7 +177,18 @@ export function CheckoutVoucherCard({
 
   useEffect(() => {
     if (!open || !showManualInput) return;
-    const id = window.setTimeout(() => manualInputRef.current?.focus(), 80);
+    const id = window.setTimeout(() => {
+      manualInputRef.current?.focus();
+      // Scroll input ke center setelah keyboard mulai naik (iOS keyboard
+      // animation ~250ms). Tanpa ini, di iPhone kecil input bisa tertutup
+      // keyboard walaupun sheet sudah dipaksa max-height.
+      window.setTimeout(() => {
+        manualInputRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      }, 280);
+    }, 80);
     return () => window.clearTimeout(id);
   }, [open, showManualInput]);
 
@@ -270,7 +339,7 @@ export function CheckoutVoucherCard({
           <>
             <div className="voucher-backdrop" onClick={() => setOpen(false)} />
             <div
-              className="voucher-safe-area"
+              className={`voucher-safe-area ${showManualInput ? "voucher-safe-area--manual" : ""}`}
               role="dialog"
               aria-modal="true"
               aria-label={showManualInput ? "Masukkan Kode Voucher" : "Pilih Voucher"}
@@ -323,6 +392,17 @@ export function CheckoutVoucherCard({
                         autoCapitalize="characters"
                         value={manualCode}
                         onChange={(e) => setManualCode(e.target.value.toUpperCase())}
+                        onFocus={() => {
+                          // Pengaman ekstra: kalau user tap input yg sudah
+                          // ter-render tapi keyboard membuka belakangan,
+                          // pastikan input tetap terlihat.
+                          window.setTimeout(() => {
+                            manualInputRef.current?.scrollIntoView({
+                              behavior: "smooth",
+                              block: "center",
+                            });
+                          }, 280);
+                        }}
                         placeholder="Masukkan kode voucher"
                         className="mt-2 block w-full rounded-2xl border border-zinc-200 px-4 py-3 text-base uppercase tracking-wide outline-none focus:border-natalo-400"
                         onKeyDown={(e) =>

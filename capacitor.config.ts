@@ -64,9 +64,13 @@ const config: CapacitorConfig = {
       overlaysWebView: false,
     },
     Keyboard: {
-      // resize Body → WebView resize saat keyboard muncul, body shrink supaya
-      // input area gak ke-cover. iOS pakai ResizePolicy.Body.
-      resize: KeyboardResize.Body,
+      // resize Native → iOS WebView TIDAK resize saat keyboard muncul,
+      // keyboard float di atas. Kita handle layout via visualViewport API
+      // + @capacitor/keyboard event keyboardWillShow.keyboardHeight di
+      // CheckoutVoucherCard. Pakai Body bikin window.innerHeight shrink
+      // sehingga kalkulasi keyboard-inset = 0 (visualViewport.height
+      // sudah match innerHeight) — sheet tidak pernah naik.
+      resize: KeyboardResize.Native,
       // Default follows app theme (light/dark).
       style: KeyboardStyle.Default,
       resizeOnFullScreen: true,
