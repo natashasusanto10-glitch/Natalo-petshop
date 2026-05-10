@@ -6,8 +6,11 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { WishlistCount } from "./WishlistButton";
 import { CartCount } from "./CartCount";
+import { HomeSearchBar } from "@/components/home/HomeSearchBar";
 import { bootstrapCartSync, clearLocalCart, switchToGuestCart } from "@/lib/cart";
 import { prefetchCategories } from "@/lib/client-performance";
+import { shareContent } from "@/lib/share";
+import { natToast } from "@/components/Toast";
 
 const NAV_LINKS = [
   { href: "/", label: "Beranda" },
@@ -33,6 +36,7 @@ export function Header() {
   const [member, setMember] = useState<MemberProfile | null>(null);
   const pathname = usePathname();
   const memberMenuRef = useRef<HTMLDivElement>(null);
+  const isHome = pathname === "/";
   const isProductDetail = /^\/products\/[^/]+$/.test(pathname ?? "");
   const isMainTab = MAIN_TABS.includes(pathname ?? "");
   // Back button universal: tampil di mobile untuk semua halaman selain main tab
@@ -124,16 +128,35 @@ export function Header() {
   }
 
   async function handleShare() {
-    const shareData = { title: document.title, url: window.location.href };
-    if (navigator.share) {
-      await navigator.share(shareData).catch(() => {});
-      return;
+    // Universal share via lib/share.ts:
+    // 1. iOS native (.ipa) → UIActivityView dengan semua app installed
+    //    (WhatsApp, Instagram, Mail, AirDrop, Notes, dll)
+    // 2. Web modern → Web Share API
+    // 3. Fallback → clipboard copy + toast feedback
+    const result = await shareContent({
+      title: document.title,
+      text: `Cek produk ini di Natalo Petshop: ${document.title}`,
+      url: window.location.href,
+      dialogTitle: "Bagikan produk",
+    });
+
+    if (result.method === "clipboard") {
+      natToast("Link disalin — paste ke chat / sosial media", { kind: "ok" });
+    } else if (result.method === "failed") {
+      natToast("Gagal membagikan — coba lagi", { kind: "err" });
     }
-    await navigator.clipboard?.writeText(window.location.href).catch(() => {});
+    // method "native" / "web-share" / "cancelled" — gak perlu toast
+    // karena UI sheet Apple/browser sudah kasih feedback sendiri
   }
 
   return (
-    <header className="nat-site-header z-50 bg-white shadow-sm md:sticky">
+    <header
+      className={
+        isHome
+          ? "nat-site-header mobile-sticky-header md:sticky"
+          : "nat-site-header z-50 bg-white shadow-sm md:sticky"
+      }
+    >
       {isProductDetail && (
         <div className="nat-header-inner nat-safe-x mx-auto flex max-w-6xl items-center justify-between gap-1.5 py-1.5 md:hidden">
           <button
@@ -178,7 +201,13 @@ export function Header() {
         </div>
       )}
       <div className={isProductDetail ? "hidden md:block" : ""}>
-      <div className="nat-header-inner nat-safe-x mx-auto flex max-w-6xl items-center justify-between gap-1.5 py-1.5 xs:gap-2 md:py-3">
+      <div
+        className={
+          isHome
+            ? "mobile-header-row mx-auto max-w-6xl gap-1.5 xs:gap-2"
+            : "nat-header-inner nat-safe-x mx-auto flex max-w-6xl items-center justify-between gap-1.5 py-1.5 xs:gap-2 md:py-3"
+        }
+      >
         {/* Back button — hanya tampil di mobile untuk halaman non-main-tab.
             Memberikan fallback navigasi yang jelas selain swipe gesture iOS. */}
         {showBackButton && (
@@ -264,7 +293,7 @@ export function Header() {
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-500 text-xs font-black text-white">
                   {member.name.charAt(0).toUpperCase()}
                 </span>
-                <span className="hidden max-w-[100px] truncate xs:inline">
+                <span className="max-w-[82px] truncate xs:max-w-[100px]">
                   {member.name.split(" ")[0]}
                 </span>
                 <svg
@@ -328,7 +357,7 @@ export function Header() {
             </div>
           ) : (
             <Link
-              href="/member/login"
+              href="/member/login?redirect=%2F"
               className="rounded-full bg-blue-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-600 xs:px-4 md:px-5 md:text-sm"
             >
               Masuk
@@ -337,6 +366,7 @@ export function Header() {
 
         </div>
       </div>
+      {isHome && <HomeSearchBar />}
       </div>
     </header>
   );
