@@ -14,6 +14,11 @@ const nextConfig: NextConfig = {
       // UploadThing CDN
       { protocol: "https", hostname: "utfs.io" },
       { protocol: "https", hostname: "**.ufs.sh" },
+      // Shopee CDN — sumber gambar produk di prisma/products_import.json
+      // (URL pattern: https://cf.shopee.co.id/file/...)
+      { protocol: "https", hostname: "cf.shopee.co.id" },
+      { protocol: "https", hostname: "**.shopee.co.id" },
+      { protocol: "https", hostname: "down-id.img.susercontent.com" },
       // Allow localhost upload previews
       { protocol: "http", hostname: "localhost" },
       // QR code generation service
