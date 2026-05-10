@@ -40,15 +40,17 @@ const config: CapacitorConfig = {
 
   plugins: {
     SplashScreen: {
-      // Static splash dengan logo NL di-skip — biar langsung ke animation
-      // overlay "N → atalo PETSHOP" via components/AppSplashOverlay.tsx.
-      // launchShowDuration: 0 + launchAutoHide: true = plugin gak muncul,
-      // iOS LaunchScreen.storyboard (sudah di-set solid brand blue, no logo)
-      // jadi cuma flash sangat singkat sebelum WebView load + animation.
-      launchShowDuration: 0,
+      // Plugin show storyboard view (solid brand blue, NO logo — sudah edited
+      // di LaunchScreen.storyboard) selama 1s untuk cover cold-start network
+      // blank period: WebView creation + HTML fetch + JS bundle download.
+      // Setelah plugin hide, WebView visible dengan AppSplashOverlay yang
+      // langsung punya "N" visible (initial state show-n di komponen) →
+      // animation continues seamlessly, no jarring transition.
+      launchShowDuration: 1000,
       launchAutoHide: true,
       backgroundColor: "#1E5FBF",
-      showSpinner: false,
+      showSpinner: false, // Tetap clean, no spinner — full solid blue saja
+      fadeOutDuration: 250, // Smooth handoff ke web overlay
       androidScaleType: "CENTER_CROP",
     },
     StatusBar: {

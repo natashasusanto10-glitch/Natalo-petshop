@@ -14,23 +14,25 @@ const SEEN_KEY = "natalo:splash-shown";
  * setelah WebView/browser load page pertama kali.
  */
 export function AppSplashOverlay() {
+  // Initial state "show-n" supaya server-rendered HTML LANGSUNG punya "N" visible
+  // dari first paint (sebelum JS bundle download / React hydrate selesai).
+  // Cold start cover: user lihat "N" instan, bukan blank blue selama 1-2 detik
+  // nunggu network + JS bundle.
   const [phase, setPhase] = useState<
-    "hidden" | "show-n" | "reveal-rest" | "show-subtitle" | "fade-out" | "done"
-  >("hidden");
+    "show-n" | "reveal-rest" | "show-subtitle" | "fade-out" | "done"
+  >("show-n");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    // Hanya show sekali per session
+    // Repeat visit (sessionStorage seen) — dismiss langsung tanpa flash terlalu lama
     if (sessionStorage.getItem(SEEN_KEY)) {
       setPhase("done");
       return;
     }
     sessionStorage.setItem(SEEN_KEY, "1");
 
-    // Phase 1: "N" zoom-in (next frame, biar smooth)
-    requestAnimationFrame(() => setPhase("show-n"));
-
+    // "N" sudah visible dari initial state — langsung lanjut ke reveal phases
     const timers: ReturnType<typeof setTimeout>[] = [
       setTimeout(() => setPhase("reveal-rest"), 450), // "atalo" slide in
       setTimeout(() => setPhase("show-subtitle"), 950), // "PETSHOP" fade in
@@ -43,7 +45,7 @@ export function AppSplashOverlay() {
   if (phase === "done") return null;
 
   const isVisible = phase !== "fade-out";
-  const showN = phase !== "hidden";
+  const showN = true; // Always true sejak initial state, biar "N" visible from first paint
   const showRest =
     phase === "reveal-rest" || phase === "show-subtitle" || phase === "fade-out";
   const showSubtitle = phase === "show-subtitle" || phase === "fade-out";
