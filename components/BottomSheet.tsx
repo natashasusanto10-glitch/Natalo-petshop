@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 
 interface Props {
   open: boolean;
@@ -17,13 +18,15 @@ interface Props {
  * Body scroll di-lock saat open.
  */
 export function BottomSheet({ open, onClose, title, children, footer }: Props) {
-  // Lock body scroll
+  // Lock body scroll and hide app-level fixed navigation while the sheet owns the screen.
   useEffect(() => {
     if (!open) return;
     const original = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    document.body.classList.add("nat-modal-open");
     return () => {
       document.body.style.overflow = original;
+      document.body.classList.remove("nat-modal-open");
     };
   }, [open]);
 
@@ -37,21 +40,21 @@ export function BottomSheet({ open, onClose, title, children, footer }: Props) {
     return () => document.removeEventListener("keydown", handler);
   }, [open, onClose]);
 
-  if (!open) return null;
+  if (!open || typeof document === "undefined") return null;
 
-  return (
-    <div className="fixed inset-0 z-[80] flex items-end" aria-modal="true" role="dialog">
+  return createPortal(
+    <div className="fixed inset-0 z-[2000] flex items-end overflow-hidden" aria-modal="true" role="dialog">
       {/* Backdrop */}
       <button
         type="button"
         aria-label="Tutup"
         onClick={onClose}
-        className="absolute inset-0 bg-black/40 transition"
+        className="absolute inset-0 bg-black/45 transition"
       />
 
       {/* Sheet */}
       <div
-        className="relative ml-auto mr-auto flex max-h-[90dvh] w-full max-w-2xl flex-col rounded-t-3xl bg-white shadow-2xl"
+        className="relative ml-auto mr-auto flex max-h-[90dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl"
         style={{
           animation: "slideUp 250ms ease-out",
         }}
@@ -85,7 +88,7 @@ export function BottomSheet({ open, onClose, title, children, footer }: Props) {
 
         {/* Footer */}
         {footer && (
-          <div className="shrink-0 border-t border-zinc-100 bg-white px-4 pt-4 [padding-bottom:calc(16px+env(safe-area-inset-bottom))]">
+          <div className="sticky bottom-0 z-10 shrink-0 border-t border-zinc-100 bg-white px-4 pt-4 [padding-bottom:calc(16px+env(safe-area-inset-bottom))]">
             {footer}
           </div>
         )}
@@ -102,6 +105,7 @@ export function BottomSheet({ open, onClose, title, children, footer }: Props) {
           }
         }
       `}</style>
-    </div>
+    </div>,
+    document.body
   );
 }

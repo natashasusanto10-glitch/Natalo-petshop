@@ -132,6 +132,8 @@ input, textarea, select, button {
   height: 24px;
 }
 
+body.nat-modal-open .bottom-nav,
+body.nat-modal-open .nat-bottom-nav,
 body.voucher-modal-open .bottom-nav,
 body.voucher-modal-open .nat-bottom-nav {
   display: none !important;

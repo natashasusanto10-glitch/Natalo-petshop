@@ -46,7 +46,7 @@ export function StickyAddToCartBar({ initialState, waHref }: Props) {
       : "Beli Sekarang";
 
   return (
-    <div className="fixed inset-x-0 bottom-[70px] z-40 border-t border-gray-100 bg-white px-3 py-2 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] md:hidden [padding-bottom:calc(8px+env(safe-area-inset-bottom))]">
+    <div className="fixed inset-x-0 z-40 border-t border-gray-100 bg-white px-3 py-2 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] md:hidden [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom))]">
       <div className="grid grid-cols-[0.9fr_1.15fr_1.35fr] gap-2">
         <ExternalLink
           href={waHref}
