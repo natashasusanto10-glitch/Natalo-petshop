@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { PageStatusBar } from "@/components/PageStatusBar";
 
 const SEEN_KEY = "natalo:splash-shown";
 
@@ -58,10 +57,11 @@ export function AppSplashOverlay() {
         isVisible ? "opacity-100" : "opacity-0 pointer-events-none"
       }`}
     >
-      {/* Saat splash overlay aktif (brand blue full screen), status bar
-          ikon harus PUTIH biar terbaca di atas brand blue. Setelah splash
-          unmount, layout default (dark icons) take over via cleanup restore. */}
-      <PageStatusBar iconColor="light" themeColor="#1E5FBF" />
+      {/* NOTE: tidak perlu <PageStatusBar themeColor="#1E5FBF"> di sini —
+          itu menyebabkan banner biru di status bar/safe area iOS Safari
+          selama 2 detik splash. Splash sendiri sudah cover seluruh layar
+          (fixed inset-0), jadi status bar tinted biru = overlap.
+          Layout default <PageStatusBar themeColor="#ffffff"> tetap aktif. */}
       <div className="flex items-baseline">
         {/* "N" — zoom-in fade-in */}
         <span
