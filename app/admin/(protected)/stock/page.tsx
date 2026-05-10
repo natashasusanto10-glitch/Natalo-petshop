@@ -1,10 +1,14 @@
-import { prisma } from "@/lib/prisma";
+import { revalidatePath } from "next/cache";
 import Link from "next/link";
+import { prisma } from "@/lib/prisma";
+import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
+
+// Halaman ini selalu render fresh — tidak boleh kena Next.js full-route cache
+// karena perubahan stok sering & user expect angka-nya selalu akurat.
+export const dynamic = "force-dynamic";
 
 export default async function AdminStockPage() {
-  // Hanya produk aktif. Produk soft-archive (isActive=false, biasanya hasil
-  // reset yg melindungi history pesanan) tidak ditampilkan di sini supaya
-  // halaman ini mencerminkan stok yg masih dijual saja.
+  // Hanya produk aktif. Produk soft-archive tidak ditampilkan di sini.
   const products = await prisma.product.findMany({
     where: { isActive: true },
     orderBy: { stock: "asc" },
@@ -19,6 +23,42 @@ export default async function AdminStockPage() {
 
   const lowStock = products.filter((p) => p.stock <= 5);
   const outOfStock = products.filter((p) => p.stock === 0);
+
+  async function archiveProduct(formData: FormData) {
+    "use server";
+    const id = String(formData.get("id"));
+    await prisma.product.update({
+      where: { id },
+      data: { isActive: false },
+    });
+    const { syncProduct } = await import("@/lib/search");
+    await syncProduct(id).catch(() => {});
+    revalidatePath("/admin/stock");
+    revalidatePath("/admin/products");
+    revalidatePath("/admin/dashboard");
+  }
+
+  async function deleteProduct(formData: FormData) {
+    "use server";
+    const id = String(formData.get("id"));
+
+    // Refuse hapus permanen kalau pernah dipesan — paksa user pakai Arsip.
+    const orderCount = await prisma.orderItem.count({ where: { productId: id } });
+    if (orderCount > 0) {
+      throw new Error(
+        `Produk pernah dipesan (${orderCount}× di order). Tidak bisa dihapus permanen — gunakan tombol Arsip.`,
+      );
+    }
+
+    await prisma.product.delete({ where: { id } });
+
+    const { deleteProductFromIndex } = await import("@/lib/search");
+    await deleteProductFromIndex(id).catch(() => {});
+
+    revalidatePath("/admin/stock");
+    revalidatePath("/admin/products");
+    revalidatePath("/admin/dashboard");
+  }
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-6 lg:py-10">
@@ -56,7 +96,7 @@ export default async function AdminStockPage() {
                   <th className="px-5 py-4 text-left font-semibold text-zinc-600 hidden sm:table-cell">Kategori</th>
                   <th className="px-5 py-4 text-right font-semibold text-zinc-600">Stok</th>
                   <th className="px-5 py-4 text-left font-semibold text-zinc-600">Status</th>
-                  <th className="px-5 py-4" />
+                  <th className="px-5 py-4 text-right font-semibold text-zinc-600">Aksi</th>
                 </tr>
               </thead>
               <tbody>
@@ -93,13 +133,33 @@ export default async function AdminStockPage() {
                         <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700">Tersedia</span>
                       )}
                     </td>
-                    <td className="px-5 py-4 text-right">
-                      <Link
-                        href={`/admin/products/${product.id}/edit`}
-                        className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-bold hover:border-zinc-400 transition"
-                      >
-                        Edit
-                      </Link>
+                    <td className="px-5 py-4">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <Link
+                          href={`/admin/products/${product.id}/edit`}
+                          className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-bold hover:border-zinc-400 transition"
+                        >
+                          Edit
+                        </Link>
+                        <form action={archiveProduct}>
+                          <input type="hidden" name="id" value={product.id} />
+                          <ConfirmSubmitButton
+                            className="rounded-full border border-amber-200 px-3 py-1.5 text-xs font-bold text-amber-700 hover:bg-amber-50 transition"
+                            message={`Arsipkan "${product.name}"? Produk akan di-set non-aktif dan tidak muncul di toko, tapi history pesanan tetap aman.`}
+                          >
+                            Arsip
+                          </ConfirmSubmitButton>
+                        </form>
+                        <form action={deleteProduct}>
+                          <input type="hidden" name="id" value={product.id} />
+                          <ConfirmSubmitButton
+                            className="rounded-full border border-red-200 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50 transition"
+                            message={`Hapus permanen "${product.name}"? Tidak bisa di-undo. Produk yg pernah dipesan tidak bisa dihapus permanen — gunakan Arsip.`}
+                          >
+                            Hapus
+                          </ConfirmSubmitButton>
+                        </form>
+                      </div>
                     </td>
                   </tr>
                 ))}

@@ -91,6 +91,8 @@ export default async function AdminProductsPage({
     const { syncProduct } = await import("@/lib/search");
     await syncProduct(id).catch(() => {});
     revalidatePath("/admin/products");
+    revalidatePath("/admin/stock");
+    revalidatePath("/admin/dashboard");
   }
 
   async function deleteProduct(formData: FormData) {
@@ -113,6 +115,8 @@ export default async function AdminProductsPage({
     await deleteProductFromIndex(id).catch(() => {});
 
     revalidatePath("/admin/products");
+    revalidatePath("/admin/stock");
+    revalidatePath("/admin/dashboard");
   }
 
   // ── Helper: build URL preserving semua filter aktif ──────────
