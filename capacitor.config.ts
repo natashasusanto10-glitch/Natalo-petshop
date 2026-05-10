@@ -58,6 +58,14 @@ const config: CapacitorConfig = {
       backgroundColor: "#1E5FBF",
       overlaysWebView: false,
     },
+    Keyboard: {
+      // resize "body" → WebView resize saat keyboard muncul, body shrink supaya
+      // input area gak ke-cover. iOS pakai ResizePolicy.Body.
+      resize: "body",
+      // Style "default" follows app theme (light/dark). Set "light" force.
+      style: "default",
+      resizeOnFullScreen: true,
+    },
   },
 };
 

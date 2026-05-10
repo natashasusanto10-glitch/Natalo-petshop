@@ -7,6 +7,7 @@ import type { SerializedOrderDetail } from "@/lib/order-detail";
 import { PaymentProofUpload } from "@/components/PaymentProofUpload";
 import { PushSubscribe } from "@/components/PushSubscribe";
 import { ExternalLink } from "@/components/ExternalLink";
+import { trackSuccessfulOrder } from "@/lib/app-rating";
 
 const BANK_ACCOUNTS: Record<string, { bankName: string; accountNumber: string; accountName: string }> = {
   BCA_NATASHA: {
@@ -160,6 +161,20 @@ export function OrderDetailView({
   const [order, setOrder] = useState(initialOrder);
   const [refreshError, setRefreshError] = useState("");
   const { msg: copyMsg, copy } = useCopyToast();
+
+  // App Store rating prompt — trigger setelah order ke-3 berhasil dibayar.
+  // Dedup per-order ID via localStorage di lib/app-rating.ts. Apple internal
+  // rate-limit max 3 prompts/year/user, jadi aman dipanggil multiple times.
+  useEffect(() => {
+    if (order.paymentStatus === "PAID") {
+      // Delay sedikit biar gak prompt langsung saat halaman load — kasih
+      // user beberapa detik nikmati confirmation success page dulu.
+      const t = setTimeout(() => {
+        void trackSuccessfulOrder(order.id);
+      }, 3000);
+      return () => clearTimeout(t);
+    }
+  }, [order.paymentStatus, order.id]);
 
   useEffect(() => {
     let cancelled = false;
