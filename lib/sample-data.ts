@@ -25,6 +25,7 @@ Kandungan Nutrisi:
   avgRating: 0,
   reviewCount: 0,
   imageUrl: "/products/angels-creamy-tuna.jpg",
+  gallery: [],
 },
   {
     id: "produk-2",
@@ -53,6 +54,7 @@ Kandungan Nutrisi:
     avgRating: 0,
     reviewCount: 0,
   imageUrl: "/products/angels-creamy-salmon.jpg",
+  gallery: [],
   },
   {
     id: "produk-3",
@@ -81,5 +83,6 @@ Kandungan Nutrisi:
     avgRating: 0,
     reviewCount: 0,
   imageUrl: "/products/angels-creamy-chicken.png",
+  gallery: [],
   },
 ];

@@ -37,6 +37,7 @@ export type StoreProduct = {
   stock: number;
   weightGram: number;
   imageUrl: string | null;
+  gallery: string[];
   hasVariants: boolean;
   avgRating: number;
   reviewCount: number;
@@ -110,6 +111,7 @@ export async function getProducts(opts?: {
           stock: totalStock,
           weightGram: normalizeProductWeight(p.name, p.slug, p.weightGram),
           imageUrl: p.imageUrl,
+          gallery: p.gallery ?? [],
           hasVariants: true,
           avgRating: p.avgRating,
           reviewCount: p.reviewCount,
@@ -127,6 +129,7 @@ export async function getProducts(opts?: {
         stock: p.stock,
         weightGram: normalizeProductWeight(p.name, p.slug, p.weightGram),
         imageUrl: p.imageUrl,
+        gallery: p.gallery ?? [],
         hasVariants: false,
         avgRating: p.avgRating,
         reviewCount: p.reviewCount,
@@ -180,6 +183,7 @@ export async function getProductBySlug(slug: string): Promise<StoreProduct | nul
         stock: totalStock,
         weightGram: normalizeProductWeight(p.name, p.slug, p.weightGram),
         imageUrl: p.imageUrl,
+        gallery: p.gallery ?? [],
         hasVariants: true,
         avgRating: p.avgRating,
         reviewCount: p.reviewCount,
@@ -200,6 +204,7 @@ export async function getProductBySlug(slug: string): Promise<StoreProduct | nul
       stock: p.stock,
       weightGram: normalizeProductWeight(p.name, p.slug, p.weightGram),
       imageUrl: p.imageUrl,
+      gallery: p.gallery ?? [],
       hasVariants: false,
       avgRating: p.avgRating,
       reviewCount: p.reviewCount,

@@ -148,7 +148,11 @@ export default async function ProductDetailPage({
   const waHref = `https://wa.me/${waPhone}?text=${encodeURIComponent(
     `Halo Admin Natalo, saya ingin bertanya tentang produk ${product.name}. Apakah produk ini ready?`,
   )}`;
-  const productImages = [product.imageUrl].filter(Boolean) as string[];
+  // imageUrl = thumbnail utama (slide pertama, ditandai "Utama" di admin).
+  // gallery = gambar tambahan yg di-upload via MultiImageUpload.
+  const productImages = [product.imageUrl, ...(product.gallery ?? [])].filter(
+    Boolean,
+  ) as string[];
 
   const jsonLd = {
     "@context": "https://schema.org",
