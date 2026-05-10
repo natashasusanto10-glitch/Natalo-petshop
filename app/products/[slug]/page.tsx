@@ -1,30 +1,27 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ProductCard } from "@/components/ProductCard";
 import { ProductActions } from "@/components/ProductActions";
-import { ProductDescriptionAccordion } from "@/components/ProductDescriptionAccordion";
 import { ProductImageCarousel } from "@/components/ProductImageCarousel";
 import { ProductPurchaseButtons } from "@/components/ProductPurchaseButtons";
 import { VariantSelector } from "@/components/VariantSelector";
 import { StickyAddToCartBar } from "@/components/products/StickyAddToCartBar";
-import { FavoriteButton } from "@/components/FavoriteButton";
+import { PriceBlock } from "@/components/products/PriceBlock";
+import { SocialProofRow } from "@/components/products/SocialProofRow";
+import { TrustInfoCard } from "@/components/products/TrustInfoCard";
+import { VoucherCard, type VoucherItem } from "@/components/products/VoucherCard";
+import { ProductTabs } from "@/components/products/ProductTabs";
 import { formatRupiah } from "@/lib/format";
 import { getProductBySlug, getProducts } from "@/lib/products";
 import { prisma } from "@/lib/prisma";
 import { ReviewForm } from "@/components/ReviewForm";
 import { ReviewList } from "@/components/ReviewList";
+import { PageStatusBar } from "@/components/PageStatusBar";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 const brand = process.env.NEXT_PUBLIC_BRAND_NAME || "Natalo Petshop";
 
 export const revalidate = 60;
-
-function formatWeight(weightGram: number) {
-  if (weightGram >= 1000 && weightGram % 1000 === 0) return `${weightGram / 1000}KG`;
-  if (weightGram >= 1000) return `${(weightGram / 1000).toLocaleString("id-ID")}KG`;
-  return `${weightGram} gram`;
-}
 
 function discountPercent(price: number, discountPrice: number | null) {
   if (discountPrice === null || discountPrice >= price) return null;
@@ -67,6 +64,39 @@ export async function generateMetadata({
   };
 }
 
+async function loadPublicVouchers(): Promise<VoucherItem[]> {
+  try {
+    const now = new Date();
+    const rows = await prisma.voucher.findMany({
+      where: {
+        isActive: true,
+        userId: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      orderBy: { expiresAt: "asc" },
+      take: 6,
+      select: {
+        code: true,
+        description: true,
+        discountPercent: true,
+        discountAmount: true,
+        minimumOrder: true,
+        expiresAt: true,
+      },
+    });
+    return rows.map((v) => ({
+      code: v.code,
+      description: v.description,
+      discountPercent: v.discountPercent,
+      discountAmount: v.discountAmount,
+      minimumOrder: v.minimumOrder,
+      expiresAt: v.expiresAt ? v.expiresAt.toISOString() : null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 export default async function ProductDetailPage({
   params,
 }: {
@@ -76,13 +106,13 @@ export default async function ProductDetailPage({
   const product = await getProductBySlug(slug);
   if (!product) return notFound();
 
-  const [productWithCategory, allProducts] = await Promise.all([
+  const [productWithCategory, allProducts, vouchers] = await Promise.all([
     prisma.product.findUnique({ where: { slug }, include: { category: true } }).catch(() => null),
     getProducts({ category: product.categorySlug ?? undefined, take: 12 }),
+    loadPublicVouchers(),
   ]);
   const favoriteIds: string[] = [];
 
-  const category = productWithCategory?.category ?? null;
   const related = allProducts
     .filter((p) => p.id !== product.id)
     .sort((a, b) => {
@@ -96,7 +126,15 @@ export default async function ProductDetailPage({
       if (!aMatch && bMatch) return 1;
       return 0;
     })
-    .slice(0, 4);
+    .slice(0, 6)
+    .map((p) => ({
+      id: p.id,
+      slug: p.slug,
+      name: p.name,
+      price: p.price,
+      discountPrice: p.discountPrice ?? null,
+      imageUrl: p.imageUrl ?? null,
+    }));
 
   const hasDiscount = product.discountPrice !== null && product.discountPrice < product.price;
   const price = hasDiscount ? product.discountPrice! : product.price;
@@ -111,7 +149,6 @@ export default async function ProductDetailPage({
     `Halo Admin Natalo, saya ingin bertanya tentang produk ${product.name}. Apakah produk ini ready?`,
   )}`;
   const productImages = [product.imageUrl].filter(Boolean) as string[];
-  const shippingLabel = /gojek/i.test(product.description) ? "Gojek" : "Pengiriman";
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -144,6 +181,12 @@ export default async function ProductDetailPage({
 
   return (
     <div className="bg-gray-50 md:bg-white">
+      {/* Status bar override per-product. Default app-wide = dark icons + white
+          themeColor. Untuk produk dengan hero photo gelap atau brand-themed
+          card di top, ganti ke iconColor="light" themeColor="#1E5FBF" supaya
+          icon putih kontras dengan content gelap. Di sini default OK karena
+          mobile header bar putih sticky di atas product image. */}
+      <PageStatusBar iconColor="dark" themeColor="#ffffff" />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
@@ -166,61 +209,33 @@ export default async function ProductDetailPage({
           <ProductImageCarousel images={productImages} alt={product.name} />
 
           <section className="bg-white px-4 py-4 md:rounded-3xl md:border md:border-gray-100 md:p-6">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-2xl font-black leading-none text-natalo-600 md:text-3xl">
-                  {formatRupiah(price)}
-                </p>
-                {hasDiscount && (
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-semibold text-gray-400 line-through">
-                      {formatRupiah(product.price)}
-                    </span>
-                    {percent !== null && (
-                      <span className="rounded bg-red-50 px-1.5 py-0.5 text-xs font-black text-red-500">
-                        -{percent}%
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-              <FavoriteButton
-                productId={product.id}
-                initialFavorited={favoriteIds.includes(product.id)}
-                size="md"
-              />
-            </div>
+            {/* 1. Blok harga jangkar */}
+            <PriceBlock
+              productId={product.id}
+              price={price}
+              originalPrice={hasDiscount ? product.price : null}
+              discountPercent={percent}
+              initialFavorited={favoriteIds.includes(product.id)}
+            />
 
-            <h1 className="mt-3 line-clamp-2 text-base font-extrabold leading-snug text-gray-900 md:text-2xl">
+            {/* 2. Judul produk — ukuran sedang, weight 600 */}
+            <h1 className="mt-3 line-clamp-2 text-base font-semibold leading-snug text-gray-900 md:text-xl md:font-bold">
               {product.name}
             </h1>
 
-            {product.avgRating > 0 && product.reviewCount > 0 && (
-              <p className="mt-2 text-xs font-bold text-amber-500">
-                {product.avgRating.toFixed(1)} / 5 dari {product.reviewCount} ulasan
-              </p>
-            )}
+            {/* 3. Bukti sosial satu baris */}
+            <SocialProofRow
+              avgRating={product.avgRating}
+              reviewCount={product.reviewCount}
+            />
 
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              <span className="rounded-full bg-green-50 px-2.5 py-1 text-xs font-extrabold text-green-700">
-                {outOfStock ? "Stok Habis" : "Tersedia"}
-              </span>
-              <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-extrabold text-gray-700">
-                {formatWeight(product.weightGram)}
-              </span>
-              <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-extrabold text-gray-700">
-                Stok {product.stock}
-              </span>
-              {category && (
-                <span className="rounded-full bg-natalo-50 px-2.5 py-1 text-xs font-extrabold text-natalo-700">
-                  {category.name}
-                </span>
-              )}
-              <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-extrabold text-gray-700">
-                {shippingLabel}
-              </span>
-            </div>
+            {/* 4. Voucher card */}
+            <VoucherCard vouchers={vouchers} />
 
+            {/* 5. Trust info — garansi + stok */}
+            <TrustInfoCard stock={product.stock} outOfStock={outOfStock} />
+
+            {/* 6. Variant selector / quantity actions */}
             {product.hasVariants && product.variantAttrs && product.variants ? (
               <div id="beli" className="mt-4 scroll-mt-20 rounded-2xl border border-gray-100 p-4">
                 <VariantSelector
@@ -235,6 +250,7 @@ export default async function ProductDetailPage({
               </div>
             )}
 
+            {/* 7. Tombol pembelian inline (desktop only) */}
             <ProductPurchaseButtons
               waHref={waHref}
               initialState={{
@@ -247,10 +263,12 @@ export default async function ProductDetailPage({
           </section>
         </div>
 
-        <div className="mt-2 md:mt-8">
-          <ProductDescriptionAccordion description={product.description} />
-        </div>
+        {/* 8. Tabs Deskripsi / Rekomendasi */}
+        <section className="mt-2 bg-white md:mt-10 md:rounded-3xl md:border md:border-gray-100">
+          <ProductTabs description={product.description} related={related} />
+        </section>
 
+        {/* 9. Ulasan tetap section terpisah di bawah agar tab tidak overload */}
         <section className="mt-2 bg-white px-4 py-5 md:mt-10 md:rounded-3xl md:border md:border-gray-100 md:p-6">
           <h2 className="text-base font-black text-gray-900 md:text-xl">Ulasan Produk</h2>
           <div className="mt-4 grid gap-6 md:mt-6 md:gap-8 lg:grid-cols-2">
@@ -264,24 +282,9 @@ export default async function ProductDetailPage({
             </div>
           </div>
         </section>
-
-        {related.length > 0 && (
-          <section className="mt-2 bg-white px-4 py-5 md:mt-10 md:rounded-3xl md:border md:border-gray-100 md:p-6">
-            <h2 className="text-base font-black text-gray-900 md:text-xl">Produk Terkait</h2>
-            <div className="mt-4 grid grid-cols-2 gap-3 md:mt-6 md:gap-5 lg:grid-cols-4">
-              {related.map((p) => (
-                <ProductCard
-                  key={p.id}
-                  product={p}
-                  isFavorited={favoriteIds.includes(p.id)}
-                  variant="compact"
-                />
-              ))}
-            </div>
-          </section>
-        )}
       </div>
 
+      {/* Sticky bottom bar — selalu terlihat di mobile */}
       <StickyAddToCartBar
         waHref={waHref}
         initialState={{

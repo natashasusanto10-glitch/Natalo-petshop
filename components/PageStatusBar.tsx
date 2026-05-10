@@ -51,11 +51,21 @@ export function PageStatusBar({ iconColor = "dark", themeColor = "#ffffff" }: Pr
       document.head.appendChild(injectedMeta);
     }
 
-    // 2. Update iOS native status bar via Capacitor plugin
+    // 2. Update iOS native status bar via Capacitor plugin.
+    // Capture previous style sebelum override, untuk restore di cleanup
+    // (penting kalau component di-mount nested — mis. di splash overlay).
     let cancelled = false;
+    let previousNativeStyle: string | null = null;
     (async () => {
       try {
         const { StatusBar, Style } = await import("@capacitor/status-bar");
+        if (cancelled) return;
+        try {
+          const info = await StatusBar.getInfo();
+          previousNativeStyle = info.style;
+        } catch {
+          // getInfo bisa fail di simulator, biarkan
+        }
         if (cancelled) return;
         await StatusBar.setStyle({
           style: iconColor === "dark" ? Style.Dark : Style.Light,
@@ -76,6 +86,19 @@ export function PageStatusBar({ iconColor = "dark", themeColor = "#ffffff" }: Pr
       });
       if (injectedMeta && injectedMeta.parentNode) {
         injectedMeta.parentNode.removeChild(injectedMeta);
+      }
+      // Restore iOS native status bar ke state sebelum component mount.
+      // Wajib supaya nested mount (splash overlay → unmount) gak leave
+      // status bar di style yang salah.
+      if (previousNativeStyle) {
+        (async () => {
+          try {
+            const { StatusBar } = await import("@capacitor/status-bar");
+            await StatusBar.setStyle({
+              style: previousNativeStyle as "DARK" | "LIGHT" | "DEFAULT",
+            });
+          } catch {}
+        })();
       }
     };
   }, [iconColor, themeColor]);
