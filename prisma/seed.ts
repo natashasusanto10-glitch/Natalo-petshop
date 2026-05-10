@@ -31,6 +31,9 @@ interface ProductData {
   weightGram: number;
   hasVariants: boolean;
   variants: VariantData[];
+  imageUrl?: string;
+  description?: string;
+  original_name?: string;
 }
 
 interface ImportData {
@@ -100,8 +103,8 @@ async function main() {
     const categoryId = categoryMap[prod.category] ?? undefined;
     const brandId = brandMap[prod.brand] ?? undefined;
 
-    // Generate deskripsi otomatis
-    const description = generateDescription(prod);
+    // Gunakan deskripsi dari JSON jika ada, fallback ke auto-generate
+    const description = prod.description || generateDescription(prod);
 
     try {
       const product = await prisma.product.upsert({
@@ -113,6 +116,7 @@ async function main() {
           weightGram: prod.weightGram,
           hasVariants: prod.hasVariants,
           isActive: prod.stock > 0,
+          imageUrl: prod.imageUrl ?? null,
           categoryId: categoryId ?? null,
           brandId: brandId ?? null,
           brandAutoAssigned: true,
@@ -126,6 +130,7 @@ async function main() {
           weightGram: prod.weightGram,
           hasVariants: prod.hasVariants,
           isActive: prod.stock > 0,
+          imageUrl: prod.imageUrl ?? null,
           categoryId: categoryId ?? null,
           brandId: brandId ?? null,
           brandAutoAssigned: true,
