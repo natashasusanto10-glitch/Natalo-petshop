@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { StarsInput } from "@/components/StarRating";
+import { pickPhoto } from "@/lib/photo-picker";
 
 interface Props {
   orderItemId: string;
@@ -28,24 +29,37 @@ export function ReviewModal({
   const [error, setError] = useState("");
   const [uploading, setUploading] = useState(false);
 
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  async function handleAddPhoto() {
     if (imageUrls.length >= 5) {
       setError("Maksimal 5 foto.");
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      setError("Foto maksimal 5MB.");
-      return;
-    }
 
-    setUploading(true);
     setError("");
-    const fd = new FormData();
-    fd.append("file", file);
+    setUploading(true);
 
     try {
+      // Universal photo picker: native camera plugin di iOS/.ipa, file input di web.
+      // Plugin auto-resize ke max 1600px + quality 80% — file size lebih kecil
+      // dari raw HEIC iPhone (yang bisa 3-5MB).
+      const result = await pickPhoto({
+        quality: 80,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        source: "prompt", // Action sheet: Take Photo / Photo Library
+      });
+
+      if (!result.ok) {
+        // User cancelled — silent, no error
+        if ("cancelled" in result && result.cancelled) return;
+        throw result.error;
+      }
+
+      // Upload ke endpoint existing
+      const fd = new FormData();
+      const ext = result.format === "jpeg" ? "jpg" : result.format;
+      fd.append("file", result.blob, `review-photo.${ext}`);
+
       const res = await fetch("/api/reviews/upload", { method: "POST", body: fd });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Upload gagal");
@@ -54,7 +68,6 @@ export function ReviewModal({
       setError(err instanceof Error ? err.message : "Upload gagal");
     } finally {
       setUploading(false);
-      e.target.value = "";
     }
   }
 
@@ -177,22 +190,19 @@ export function ReviewModal({
                 </div>
               ))}
               {imageUrls.length < 5 && (
-                <label
+                <button
+                  type="button"
+                  onClick={handleAddPhoto}
+                  disabled={uploading}
                   className={`flex h-20 w-20 cursor-pointer items-center justify-center rounded-lg border-2 border-dashed text-2xl transition ${
                     uploading
                       ? "cursor-wait border-natalo-300 text-natalo-300"
                       : "border-gray-300 text-gray-300 hover:border-natalo-300 hover:text-natalo-300"
                   }`}
+                  aria-label="Tambah foto review"
                 >
                   {uploading ? "..." : "+"}
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    onChange={handleUpload}
-                    className="hidden"
-                    disabled={uploading}
-                  />
-                </label>
+                </button>
               )}
             </div>
           </div>

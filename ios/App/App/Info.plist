@@ -49,5 +49,13 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<!-- Permission usage descriptions — wajib untuk plugin native iOS.
+	     Tanpa keys ini, app akan crash saat akses Camera/Photos. Apple mandates. -->
+	<key>NSCameraUsageDescription</key>
+	<string>Natalo butuh akses kamera untuk kamu ambil foto saat menulis review produk.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Natalo butuh akses galeri foto untuk kamu pilih foto saat menulis review produk.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Natalo butuh izin menyimpan foto ke galeri kamu (untuk save tracking screenshot, dll).</string>
 </dict>
 </plist>
