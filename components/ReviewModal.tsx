@@ -51,7 +51,7 @@ export function ReviewModal({
 
       if (!result.ok) {
         // User cancelled — silent, no error
-        if ("cancelled" in result && result.cancelled) return;
+        if ("cancelled" in result) return;
         throw result.error;
       }
 

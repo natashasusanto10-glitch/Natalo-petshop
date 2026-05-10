@@ -33,7 +33,7 @@ export async function pickPhoto(opts: PickPhotoOptions = {}): Promise<PickPhotoR
   try {
     const { Camera, CameraSource, CameraResultType } = await import("@capacitor/camera");
 
-    const sourceMap: Record<typeof source, number> = {
+    const sourceMap = {
       prompt: CameraSource.Prompt,
       camera: CameraSource.Camera,
       photos: CameraSource.Photos,
@@ -45,7 +45,7 @@ export async function pickPhoto(opts: PickPhotoOptions = {}): Promise<PickPhotoR
       height: maxHeight,
       allowEditing: false,
       resultType: CameraResultType.Base64, // base64 langsung, gampang convert ke Blob
-      source: sourceMap[source] as 0 | 1 | 2,
+      source: sourceMap[source],
       promptLabelHeader: "Pilih Foto",
       promptLabelCancel: "Batal",
       promptLabelPhoto: "Pilih dari Galeri",
