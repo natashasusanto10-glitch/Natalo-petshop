@@ -72,10 +72,13 @@ export function Header() {
 
     loadMember();
     window.addEventListener("auth-updated", loadMember);
+    // Listen pull-to-refresh — refetch member info & re-bootstrap cart sync
+    window.addEventListener("app-refresh", loadMember);
 
     return () => {
       active = false;
       window.removeEventListener("auth-updated", loadMember);
+      window.removeEventListener("app-refresh", loadMember);
     };
   }, []);
 

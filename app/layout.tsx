@@ -10,6 +10,7 @@ import { BottomNavigation } from "@/components/BottomNavigation";
 import { WhatsAppFloat } from "@/components/WhatsAppFloat";
 import { ToastProvider } from "@/components/Toast";
 import { AppSplashOverlay } from "@/components/AppSplashOverlay";
+import { PullToRefresh } from "@/components/PullToRefresh";
 
 const nunito = Nunito({
   subsets: ["latin"],
@@ -149,6 +150,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <PWARegister />
         <StoreOnly>
           <AppSplashOverlay />
+          <PullToRefresh />
           <Header />
         </StoreOnly>
         <main className="nat-main-shell">{children}</main>
