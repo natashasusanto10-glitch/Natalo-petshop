@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => ({}))) as {
     confirm?: string;
     wipeOrders?: boolean;
+    wipeTaxonomy?: boolean;
   };
   if (body.confirm !== "HAPUS") {
     return NextResponse.json(
@@ -48,6 +49,7 @@ export async function POST(request: NextRequest) {
   }
 
   const wipeOrders = body.wipeOrders === true;
+  const wipeTaxonomy = body.wipeTaxonomy === true;
 
   // Snapshot count sebelum reset.
   const totalBefore = await prisma.product.count();
@@ -95,7 +97,22 @@ export async function POST(request: NextRequest) {
     where: protectedIds.length > 0 ? { id: { notIn: protectedIds } } : {},
   });
 
+  // 5. Optional: hapus semua Category & Brand setelah produk bersih.
+  //    SetNull behavior pada Product.categoryId/brandId aman, tapi karena
+  //    produk sudah ke-delete di atas, query ini biasanya jalan tanpa
+  //    side-effect ke produk.
+  let categoriesDeleted = 0;
+  let brandsDeleted = 0;
+  if (wipeTaxonomy) {
+    const catResult = await prisma.category.deleteMany({});
+    const brandResult = await prisma.brand.deleteMany({});
+    categoriesDeleted = catResult.count;
+    brandsDeleted = brandResult.count;
+  }
+
   const remainingProducts = await prisma.product.count();
+  const remainingCategories = await prisma.category.count();
+  const remainingBrands = await prisma.brand.count();
 
   revalidatePath("/products");
   revalidatePath("/produk");
@@ -109,6 +126,10 @@ export async function POST(request: NextRequest) {
       remaining: remainingProducts,
       cartItemsCleared: cartCleared.count,
       ordersDeleted,
+      categoriesDeleted,
+      brandsDeleted,
+      remainingCategories,
+      remainingBrands,
     },
   });
 }
