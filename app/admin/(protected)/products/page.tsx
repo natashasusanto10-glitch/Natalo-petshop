@@ -38,10 +38,13 @@ export default async function AdminProductsPage({
   const activeBrand = isNoBrand ? null : brands.find((b) => b.slug === brandSlug) ?? null;
 
   // ── Build where clause ──────────────────────────────────────
+  // - "out" hanya produk aktif yg habis (yg perlu di-restock).
+  // - "archived" semua produk non-aktif (termasuk soft-archive hasil reset
+  //   yg di-set stock=0).
   const stockWhere =
     stockFilter === "ready"    ? { isActive: true, stock: { gt: 0 } }
-    : stockFilter === "out"    ? { stock: { equals: 0 } }
-    : stockFilter === "archived" ? { isActive: false, stock: { gt: 0 } }
+    : stockFilter === "out"    ? { isActive: true, stock: { equals: 0 } }
+    : stockFilter === "archived" ? { isActive: false }
     : {};
 
   const searchWhere = search
@@ -65,8 +68,8 @@ export default async function AdminProductsPage({
   const [totalAll, totalReady, totalOut, totalArchived, filtered, products] = await Promise.all([
     prisma.product.count({ where: baseWhere }),
     prisma.product.count({ where: { ...baseWhere, isActive: true, stock: { gt: 0 } } }),
-    prisma.product.count({ where: { ...baseWhere, stock: { equals: 0 } } }),
-    prisma.product.count({ where: { ...baseWhere, isActive: false, stock: { gt: 0 } } }),
+    prisma.product.count({ where: { ...baseWhere, isActive: true, stock: { equals: 0 } } }),
+    prisma.product.count({ where: { ...baseWhere, isActive: false } }),
     prisma.product.count({ where }),
     prisma.product.findMany({
       where,

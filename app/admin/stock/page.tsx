@@ -2,7 +2,11 @@ import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 
 export default async function AdminStockPage() {
+  // Hanya produk aktif. Produk soft-archive (isActive=false, biasanya hasil
+  // reset yg melindungi history pesanan) tidak ditampilkan di sini supaya
+  // halaman ini mencerminkan stok yg masih dijual saja.
   const products = await prisma.product.findMany({
+    where: { isActive: true },
     orderBy: { stock: "asc" },
     select: {
       id: true,
