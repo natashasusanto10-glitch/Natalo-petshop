@@ -42,6 +42,19 @@ export default function ImportProductsPage() {
   const [batchSize, setBatchSize] = useState(DEFAULT_BATCH_SIZE);
   const cancelRef = useRef(false);
 
+  // Reset state
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetSummary, setResetSummary] = useState<{
+    totalBefore: number;
+    archived: number;
+    deleted: number;
+    remaining: number;
+    cartItemsCleared: number;
+  } | null>(null);
+  const [resetError, setResetError] = useState<string | null>(null);
+
   function appendLog(line: string) {
     setLogs((prev) => [...prev.slice(-100), line]);
   }
@@ -121,6 +134,42 @@ export default function ImportProductsPage() {
   function cancelImport() {
     cancelRef.current = true;
     appendLog("Pembatalan diminta — akan berhenti setelah batch berjalan selesai.");
+  }
+
+  async function runReset() {
+    if (resetConfirmText !== "HAPUS") return;
+    setResetLoading(true);
+    setResetError(null);
+    setResetSummary(null);
+
+    try {
+      const res = await fetch("/api/admin/products/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "HAPUS" }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      setResetSummary(data.summary);
+      // Reset progress / done state karena DB sudah berubah
+      setProgress(null);
+      setDone(false);
+      setTotals({
+        categoriesUpserted: 0,
+        brandsUpserted: 0,
+        productsUpserted: 0,
+        variantsUpserted: 0,
+        skipped: 0,
+      });
+      setResetConfirmText("");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Gagal reset.";
+      setResetError(msg);
+    } finally {
+      setResetLoading(false);
+    }
   }
 
   const pct =
@@ -257,6 +306,143 @@ export default function ImportProductsPage() {
           </div>
         )}
       </div>
+
+      {/* Danger zone — reset semua produk */}
+      <div className="mt-8 rounded-2xl border border-red-200 bg-red-50/40 p-5">
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-600">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5" aria-hidden>
+              <path d="M12 9v4M12 17h.01" strokeLinecap="round" />
+              <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" strokeLinejoin="round" />
+            </svg>
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-extrabold text-red-900">
+              Reset Semua Produk
+            </p>
+            <p className="mt-1 text-xs text-red-800">
+              Hapus semua produk dari katalog. Produk dengan history pesanan
+              akan di-soft-archive (isActive=false) supaya history tetap aman.
+              Produk lainnya di-hard-delete (cascade ke varian, review,
+              wishlist).
+            </p>
+            <p className="mt-2 text-xs font-bold text-red-900">
+              Tindakan ini tidak bisa di-undo. Pastikan{" "}
+              <code className="rounded bg-red-100 px-1 py-0.5">
+                products_import.json
+              </code>{" "}
+              versi baru sudah siap sebelum reset.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setResetOpen(true);
+                setResetError(null);
+              }}
+              disabled={running || resetLoading}
+              className="mt-3 rounded-xl border border-red-300 bg-white px-4 py-2 text-sm font-bold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Reset Semua Produk
+            </button>
+
+            {resetSummary && (
+              <div className="mt-3 rounded-xl border border-red-200 bg-white p-3">
+                <p className="text-sm font-bold text-red-800">
+                  ✅ Reset selesai
+                </p>
+                <ul className="mt-1.5 space-y-0.5 text-xs text-red-900">
+                  <li>Produk sebelum reset: {resetSummary.totalBefore}</li>
+                  <li>Hard-deleted: {resetSummary.deleted}</li>
+                  <li>Soft-archived (punya pesanan): {resetSummary.archived}</li>
+                  <li>Sisa produk di DB: {resetSummary.remaining}</li>
+                  <li>Cart items dibersihkan: {resetSummary.cartItemsCleared}</li>
+                </ul>
+                <p className="mt-2 text-xs text-red-700">
+                  Klik &ldquo;Mulai Import&rdquo; di atas untuk isi ulang dari{" "}
+                  <code className="rounded bg-red-50 px-1">products_import.json</code>.
+                </p>
+              </div>
+            )}
+            {resetError && (
+              <p className="mt-3 rounded-xl border border-red-300 bg-white px-3 py-2 text-xs font-bold text-red-700">
+                {resetError}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Modal konfirmasi reset — pakai .voucher-* CSS yg sudah ada */}
+      {resetOpen && (
+        <>
+          <div
+            className="voucher-backdrop"
+            onClick={() => !resetLoading && setResetOpen(false)}
+          />
+          <div
+            className="voucher-sheet shadow-xl md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Konfirmasi reset"
+          >
+            <div className="border-b border-zinc-100 px-4 py-3">
+              <h2 className="text-base font-extrabold text-red-900">
+                Konfirmasi Reset
+              </h2>
+            </div>
+            <div className="space-y-3 p-4">
+              <p className="text-sm text-zinc-700">
+                Tindakan ini akan:
+              </p>
+              <ul className="ml-4 list-disc space-y-1 text-sm text-zinc-700">
+                <li>Hapus seluruh produk yang tidak punya pesanan</li>
+                <li>Soft-archive produk yang punya history pesanan</li>
+                <li>Bersihkan semua keranjang user</li>
+              </ul>
+              <p className="text-sm font-bold text-red-700">
+                Ketik <code className="rounded bg-zinc-900 px-1.5 py-0.5 text-white">HAPUS</code> untuk konfirmasi.
+              </p>
+              <input
+                type="text"
+                value={resetConfirmText}
+                onChange={(e) => setResetConfirmText(e.target.value)}
+                placeholder="HAPUS"
+                disabled={resetLoading}
+                autoFocus
+                className="block w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm uppercase tracking-wide outline-none focus:border-red-400 disabled:bg-zinc-50"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && resetConfirmText === "HAPUS") {
+                    e.preventDefault();
+                    void runReset();
+                  }
+                  if (e.key === "Escape" && !resetLoading) {
+                    setResetOpen(false);
+                  }
+                }}
+              />
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setResetOpen(false)}
+                  disabled={resetLoading}
+                  className="flex-1 rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={runReset}
+                  disabled={resetLoading || resetConfirmText !== "HAPUS"}
+                  className="flex-1 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {resetLoading ? "Menghapus..." : "Konfirmasi Reset"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Log */}
       {logs.length > 0 && (
