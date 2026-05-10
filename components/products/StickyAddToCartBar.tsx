@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { formatRupiah } from "@/lib/format";
 
 type PdpState = {
   hasVariants: boolean;
@@ -75,9 +74,6 @@ export function StickyAddToCartBar({ initialState, waHref }: Props) {
           {buyLabel}
         </button>
       </div>
-      <p className="mt-1 text-center text-[11px] font-bold text-gray-400">
-        {state.outOfStock ? "Stok habis" : formatRupiah(state.price)}
-      </p>
     </div>
   );
 }

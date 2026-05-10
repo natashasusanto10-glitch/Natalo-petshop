@@ -3,10 +3,10 @@
   "configurations": [
     {
       "name": "toko-pwa",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
-      "port": 3000,
-      "autoPort": true
+      "runtimeExecutable": "npx.cmd",
+      "runtimeArgs": ["next", "dev", "-p", "3100"],
+      "port": 3100,
+      "autoPort": false
     }
   ]
 }
