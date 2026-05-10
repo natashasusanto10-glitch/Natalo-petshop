@@ -15,6 +15,10 @@ const NAV_LINKS = [
   { href: "/tentang-kami", label: "Tentang Kami" },
 ];
 
+// Halaman yang ada di BottomNavigation — gak perlu tombol back karena
+// user bisa pindah via tab.
+const MAIN_TABS = ["/", "/products", "/cart", "/member"];
+
 type MemberProfile = {
   id?: string;
   name?: string;
@@ -30,6 +34,20 @@ export function Header() {
   const pathname = usePathname();
   const memberMenuRef = useRef<HTMLDivElement>(null);
   const isProductDetail = /^\/products\/[^/]+$/.test(pathname ?? "");
+  const isMainTab = MAIN_TABS.includes(pathname ?? "");
+  // Back button universal: tampil di mobile untuk semua halaman selain main tab
+  // & product detail (yang punya header sendiri dengan back + search + share + cart).
+  const showBackButton = !isMainTab && !isProductDetail;
+
+  function handleBack() {
+    // Fallback ke home kalau buka deep link langsung (no history) — biar back gak
+    // exit out of app di iOS native (yang bikin pengalaman jelek).
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+    } else {
+      router.push("/");
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -117,7 +135,7 @@ export function Header() {
         <div className="nat-header-inner nat-safe-x mx-auto flex max-w-6xl items-center justify-between gap-1.5 py-1.5 md:hidden">
           <button
             type="button"
-            onClick={() => router.back()}
+            onClick={handleBack}
             className="flex h-10 w-10 items-center justify-center rounded-full text-gray-800 active:bg-gray-100"
             aria-label="Kembali"
           >
@@ -158,6 +176,26 @@ export function Header() {
       )}
       <div className={isProductDetail ? "hidden md:block" : ""}>
       <div className="nat-header-inner nat-safe-x mx-auto flex max-w-6xl items-center justify-between gap-1.5 py-1.5 xs:gap-2 md:py-3">
+        {/* Back button — hanya tampil di mobile untuk halaman non-main-tab.
+            Memberikan fallback navigasi yang jelas selain swipe gesture iOS. */}
+        {showBackButton && (
+          <button
+            type="button"
+            onClick={handleBack}
+            className="-ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-700 active:bg-gray-100 md:hidden"
+            aria-label="Kembali ke halaman sebelumnya"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2.2}
+              className="h-5 w-5"
+            >
+              <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        )}
         {/* Logo */}
         <Link href="/" aria-label={brand} className="flex min-w-0 shrink-0 items-center">
           <Image
