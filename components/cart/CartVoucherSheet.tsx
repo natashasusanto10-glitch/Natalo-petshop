@@ -1,0 +1,500 @@
+"use client";
+
+/**
+ * Bottom sheet pemilihan voucher di halaman keranjang.
+ *
+ * 2 section:
+ * 1. Voucher Member Natalo (sourceType=CUSTOMER) — list dari API
+ *    /api/cart/vouchers, hanya untuk user login
+ * 2. Kode Voucher Private (sourceType=SELLER_MANUAL) — input manual,
+ *    di-validate via /api/cart/vouchers/validate-private
+ *
+ * Aturan kombinasi: maks 1 member + 1 private (single slot per tipe).
+ *
+ * Reuse CSS .voucher-* dari globals.css supaya konsisten dgn voucher
+ * sheet di checkout. Keyboard handling pakai visualViewport +
+ * @capacitor/keyboard untuk iOS native.
+ */
+
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { formatRupiah } from "@/lib/format";
+
+export type MemberVoucherItem = {
+  id: string;
+  code: string;
+  description: string | null;
+  minimumOrder: number;
+  expiresAt: string | Date | null;
+  discount: number;
+  applicable: boolean;
+  disabledReason: string | null;
+};
+
+export type AppliedPrivateVoucher = {
+  code: string;
+  description: string;
+  discount: number;
+};
+
+type Props = {
+  open: boolean;
+  onClose: () => void;
+  isLoggedIn: boolean;
+  /** Subtotal cart yg dipakai untuk filter voucher applicable */
+  subtotal: number;
+  /** Voucher member terpilih saat ini */
+  selectedMemberCode: string | null;
+  /** Voucher private yg sudah di-apply */
+  appliedPrivate: AppliedPrivateVoucher | null;
+  /** Callback saat user pilih voucher member */
+  onSelectMember: (
+    code: string | null,
+    discount: number,
+    description: string,
+  ) => void;
+  /** Callback saat private voucher berhasil di-apply */
+  onApplyPrivate: (voucher: AppliedPrivateVoucher) => void;
+  /** Callback saat private voucher di-lepas */
+  onRemovePrivate: () => void;
+  /** Trigger redirect ke /login (kalau guest klik klaim) */
+  onRequireLogin: () => void;
+};
+
+export function CartVoucherSheet({
+  open,
+  onClose,
+  isLoggedIn,
+  subtotal,
+  selectedMemberCode,
+  appliedPrivate,
+  onSelectMember,
+  onApplyPrivate,
+  onRemovePrivate,
+  onRequireLogin,
+}: Props) {
+  const [memberAvailable, setMemberAvailable] = useState<MemberVoucherItem[]>([]);
+  const [memberUnavailable, setMemberUnavailable] = useState<MemberVoucherItem[]>([]);
+  const [memberLoading, setMemberLoading] = useState(false);
+  const [memberError, setMemberError] = useState("");
+
+  const [privateCode, setPrivateCode] = useState("");
+  const [privateValidating, setPrivateValidating] = useState(false);
+  const [privateError, setPrivateError] = useState("");
+  const privateInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Lock body scroll + hide bottom-nav saat sheet open
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.body.classList.add("voucher-modal-open");
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      document.body.classList.remove("voucher-modal-open");
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, onClose]);
+
+  // Keyboard inset detection — visualViewport (web) + Capacitor Keyboard (iOS native)
+  useEffect(() => {
+    if (!open) return;
+
+    function updateInset() {
+      const vp = window.visualViewport;
+      const inset = vp
+        ? Math.max(0, window.innerHeight - vp.height - vp.offsetTop)
+        : 0;
+      if (inset > 80) {
+        document.documentElement.style.setProperty(
+          "--nat-keyboard-inset",
+          `${Math.round(inset)}px`,
+        );
+      } else {
+        document.documentElement.style.removeProperty("--nat-keyboard-inset");
+      }
+    }
+
+    updateInset();
+    window.visualViewport?.addEventListener("resize", updateInset);
+    window.visualViewport?.addEventListener("scroll", updateInset);
+
+    let cleanupCap: (() => void) | null = null;
+    (async () => {
+      try {
+        const { Keyboard } = await import("@capacitor/keyboard");
+        const showH = await Keyboard.addListener("keyboardWillShow", (info) => {
+          document.documentElement.style.setProperty(
+            "--nat-keyboard-inset",
+            `${Math.max(0, Math.round(info.keyboardHeight))}px`,
+          );
+        });
+        const hideH = await Keyboard.addListener("keyboardWillHide", () => {
+          document.documentElement.style.removeProperty("--nat-keyboard-inset");
+        });
+        cleanupCap = () => {
+          showH.remove();
+          hideH.remove();
+        };
+      } catch {
+        // browser non-Capacitor: fallback visualViewport
+      }
+    })();
+
+    return () => {
+      window.visualViewport?.removeEventListener("resize", updateInset);
+      window.visualViewport?.removeEventListener("scroll", updateInset);
+      cleanupCap?.();
+      document.documentElement.style.removeProperty("--nat-keyboard-inset");
+    };
+  }, [open]);
+
+  // Fetch member vouchers saat sheet dibuka (kalau logged in)
+  useEffect(() => {
+    if (!open) return;
+    if (!isLoggedIn) {
+      setMemberAvailable([]);
+      setMemberUnavailable([]);
+      setMemberError("");
+      return;
+    }
+    setMemberLoading(true);
+    setMemberError("");
+    fetch(`/api/cart/vouchers?subtotal=${subtotal}`)
+      .then((r) => r.json().then((data) => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok) {
+          setMemberError(data.message ?? "Gagal memuat voucher member");
+          return;
+        }
+        setMemberAvailable(data.available ?? []);
+        setMemberUnavailable(data.unavailable ?? []);
+      })
+      .catch(() => setMemberError("Gagal memuat voucher member"))
+      .finally(() => setMemberLoading(false));
+  }, [open, isLoggedIn, subtotal]);
+
+  async function handleApplyPrivate() {
+    const code = privateCode.trim().toUpperCase();
+    if (!code) return;
+    if (!isLoggedIn) {
+      setPrivateError("Login dulu untuk pakai voucher.");
+      return;
+    }
+    setPrivateValidating(true);
+    setPrivateError("");
+    try {
+      const res = await fetch("/api/cart/vouchers/validate-private", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, subtotal }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setPrivateError(data.message ?? "Kode voucher tidak valid");
+        return;
+      }
+      onApplyPrivate({
+        code: data.voucher.code,
+        description: data.voucher.description,
+        discount: data.voucher.discount,
+      });
+      setPrivateCode("");
+      setPrivateError("");
+    } catch {
+      setPrivateError("Gagal memvalidasi kode");
+    } finally {
+      setPrivateValidating(false);
+    }
+  }
+
+  if (!open || typeof document === "undefined") return null;
+
+  return createPortal(
+    <>
+      <div className="voucher-backdrop" onClick={onClose} />
+      <div
+        className="voucher-safe-area voucher-safe-area--manual"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Pilih Voucher"
+      >
+        <div className="voucher-sheet">
+          {/* Drag handle + header */}
+          <div className="shrink-0 border-b border-zinc-100 bg-white">
+            <div className="flex justify-center pt-2">
+              <span className="block h-1 w-10 rounded-full bg-zinc-200" />
+            </div>
+            <div className="flex items-start justify-between gap-3 px-4 pb-3 pt-2">
+              <div className="min-w-0">
+                <h2 className="text-base font-extrabold text-zinc-950">Pilih Voucher</h2>
+                <p className="mt-0.5 text-xs text-zinc-500">
+                  Pilih voucher yang bisa dipakai untuk pesanan ini.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-500 active:bg-zinc-100"
+                aria-label="Tutup"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5">
+                  <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Konten scrollable */}
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 [padding-bottom:calc(8px+env(safe-area-inset-bottom))]">
+            {/* === Section 1: Voucher Member Natalo === */}
+            <section>
+              <div className="flex items-baseline justify-between">
+                <h3 className="text-xs font-extrabold uppercase tracking-wide text-zinc-700">
+                  Voucher Member Natalo
+                </h3>
+                {selectedMemberCode && (
+                  <button
+                    type="button"
+                    onClick={() => onSelectMember(null, 0, "")}
+                    className="text-[11px] font-bold text-natalo-600 active:underline"
+                  >
+                    Lepas
+                  </button>
+                )}
+              </div>
+
+              {!isLoggedIn ? (
+                <div className="mt-2 rounded-xl border border-blue-100 bg-blue-50 p-3">
+                  <p className="text-sm font-bold text-blue-900">Login dulu</p>
+                  <p className="mt-1 text-xs text-blue-700">
+                    Voucher member Natalo hanya untuk user yang sudah login.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onRequireLogin}
+                    className="mt-3 w-full rounded-full bg-blue-600 px-4 py-2 text-sm font-bold text-white active:bg-blue-700"
+                  >
+                    Masuk / Daftar
+                  </button>
+                </div>
+              ) : memberLoading ? (
+                <p className="mt-2 text-xs text-zinc-500">Memuat voucher...</p>
+              ) : memberError ? (
+                <p className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
+                  {memberError}
+                </p>
+              ) : (
+                <>
+                  <p className="mt-1 text-[11px] font-bold uppercase tracking-wide text-emerald-700">
+                    Bisa dipakai
+                  </p>
+                  {memberAvailable.length === 0 ? (
+                    <p className="mt-1 rounded-xl bg-zinc-50 px-3 py-2 text-xs text-zinc-500">
+                      Belum ada voucher yang bisa dipakai untuk pesanan ini.
+                    </p>
+                  ) : (
+                    <ul className="mt-1 space-y-2">
+                      {memberAvailable.map((v) => (
+                        <li key={v.id}>
+                          <MemberVoucherRow
+                            voucher={v}
+                            selected={selectedMemberCode === v.code}
+                            disabled={false}
+                            onSelect={() =>
+                              onSelectMember(
+                                v.code,
+                                v.discount,
+                                v.description ?? `Hemat ${formatRupiah(v.discount)}`,
+                              )
+                            }
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {memberUnavailable.length > 0 && (
+                    <>
+                      <p className="mt-3 text-[11px] font-bold uppercase tracking-wide text-zinc-500">
+                        Belum bisa dipakai
+                      </p>
+                      <ul className="mt-1 space-y-2">
+                        {memberUnavailable.map((v) => (
+                          <li key={v.id}>
+                            <MemberVoucherRow
+                              voucher={v}
+                              selected={false}
+                              disabled
+                              onSelect={() => {}}
+                            />
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </>
+              )}
+            </section>
+
+            {/* === Section 2: Kode Voucher Private === */}
+            <section className="mt-6">
+              <h3 className="text-xs font-extrabold uppercase tracking-wide text-zinc-700">
+                Masukkan Kode Voucher Private
+              </h3>
+              <p className="mt-1 text-[11px] text-zinc-500">
+                Kode rahasia dari penjual. Untuk voucher publik / member, pilih lewat daftar di atas.
+              </p>
+
+              {appliedPrivate ? (
+                <div className="mt-2 flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-amber-600">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5" aria-hidden>
+                      <path d="M3 9V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4z" strokeLinejoin="round" />
+                    </svg>
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-extrabold text-zinc-950">
+                      {appliedPrivate.code} terpakai
+                    </p>
+                    <p className="mt-0.5 text-xs font-semibold text-amber-800">
+                      Hemat {formatRupiah(appliedPrivate.discount)}
+                      <span className="ml-2 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
+                        Manual
+                      </span>
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onRemovePrivate();
+                      setPrivateCode("");
+                      setPrivateError("");
+                    }}
+                    className="shrink-0 rounded-full px-3 py-1.5 text-xs font-bold text-amber-700 active:bg-amber-100"
+                  >
+                    Lepas
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-2 flex gap-2">
+                  <input
+                    ref={privateInputRef}
+                    type="text"
+                    inputMode="text"
+                    autoCapitalize="characters"
+                    value={privateCode}
+                    onChange={(e) => {
+                      setPrivateCode(e.target.value.toUpperCase());
+                      setPrivateError("");
+                    }}
+                    onFocus={() => {
+                      window.setTimeout(() => {
+                        privateInputRef.current?.scrollIntoView({
+                          behavior: "smooth",
+                          block: "center",
+                        });
+                      }, 280);
+                    }}
+                    onKeyDown={(e) =>
+                      e.key === "Enter" &&
+                      (e.preventDefault(), handleApplyPrivate())
+                    }
+                    placeholder="Masukkan kode dari penjual"
+                    disabled={!isLoggedIn || privateValidating}
+                    className="flex-1 rounded-xl border border-zinc-200 px-3 py-2.5 text-sm uppercase tracking-wide outline-none focus:border-natalo-400 disabled:bg-zinc-50"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleApplyPrivate}
+                    disabled={!isLoggedIn || !privateCode.trim() || privateValidating}
+                    className="shrink-0 rounded-xl bg-natalo-600 px-4 py-2.5 text-sm font-bold text-white active:bg-natalo-700 disabled:cursor-not-allowed disabled:bg-zinc-300"
+                  >
+                    {privateValidating ? "..." : "Gunakan"}
+                  </button>
+                </div>
+              )}
+              {privateError && (
+                <p className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
+                  {privateError}
+                </p>
+              )}
+            </section>
+
+            <p className="mt-6 text-center text-[11px] text-zinc-400">
+              Maksimal 2 voucher: 1 voucher member + 1 voucher penjual melalui kode manual
+            </p>
+          </div>
+
+          {/* Sticky footer — Terapkan */}
+          <div className="sticky bottom-0 shrink-0 border-t border-zinc-100 bg-white px-4 pt-3 [padding-bottom:calc(12px+env(safe-area-inset-bottom))]">
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full rounded-2xl bg-natalo-600 px-4 py-3 text-sm font-black text-white transition active:bg-natalo-700"
+            >
+              Terapkan
+            </button>
+          </div>
+        </div>
+      </div>
+    </>,
+    document.body,
+  );
+}
+
+function MemberVoucherRow({
+  voucher,
+  selected,
+  disabled,
+  onSelect,
+}: {
+  voucher: MemberVoucherItem;
+  selected: boolean;
+  disabled: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={disabled ? undefined : onSelect}
+      disabled={disabled}
+      aria-pressed={selected}
+      className={`flex w-full items-stretch overflow-hidden rounded-xl border text-left transition ${
+        disabled
+          ? "cursor-not-allowed border-zinc-200 bg-zinc-50/60 opacity-70"
+          : selected
+          ? "border-natalo-400 bg-natalo-50 ring-1 ring-natalo-300"
+          : "border-zinc-200 bg-white active:bg-zinc-50"
+      }`}
+    >
+      <div className="flex flex-1 flex-col justify-center px-3 py-3">
+        <p className={`text-sm font-extrabold ${disabled ? "text-zinc-500" : "text-zinc-950"}`}>
+          {voucher.description ?? voucher.code}
+        </p>
+        <p className="mt-0.5 text-xs text-zinc-500">
+          {voucher.minimumOrder > 0
+            ? `Min. belanja Rp${new Intl.NumberFormat("id-ID").format(voucher.minimumOrder)}`
+            : "Tanpa minimum belanja"}
+        </p>
+        <p className="mt-0.5 text-[11px] font-bold text-blue-700">Eksklusif member</p>
+        {disabled && voucher.disabledReason && (
+          <p className="mt-1 text-[11px] font-bold text-amber-700">
+            {voucher.disabledReason}
+          </p>
+        )}
+      </div>
+      <div className={`flex shrink-0 items-center px-4 ${disabled ? "text-zinc-400" : "text-natalo-700"}`}>
+        <span className="text-sm font-extrabold">
+          {voucher.discount > 0
+            ? `Rp${new Intl.NumberFormat("id-ID").format(voucher.discount)}`
+            : "—"}
+        </span>
+      </div>
+    </button>
+  );
+}

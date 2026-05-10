@@ -232,23 +232,20 @@ export async function POST(request: NextRequest) {
   const subtotal = checkoutItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const now = new Date();
 
-  // Fetch SEMUA voucher relevan: customer (public + user-owned) DAN
-  // seller_manual (kalau code spesifik di-request).
-  const customerOwnership = session
-    ? [{ userId: null }, { userId: session.sub }]
-    : [{ userId: null }];
-
-  // Customer vouchers — tampil di daftar publik
-  const customerVouchers = (await prisma.voucher.findMany({
-    where: {
-      isActive: true,
-      sourceType: "CUSTOMER",
-      startsAt: { lte: now },
-      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-      AND: [{ OR: customerOwnership }],
-    },
-    orderBy: { createdAt: "desc" },
-  })) as VoucherRow[];
+  // Aturan Natalo: voucher CUSTOMER (member) HANYA untuk user login.
+  // Guest tidak boleh dapat voucher publik. Kalau no session, list kosong.
+  const customerVouchers = session
+    ? ((await prisma.voucher.findMany({
+        where: {
+          isActive: true,
+          sourceType: "CUSTOMER",
+          startsAt: { lte: now },
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+          AND: [{ OR: [{ userId: null }, { userId: session.sub }] }],
+        },
+        orderBy: { createdAt: "desc" },
+      })) as VoucherRow[])
+    : [];
 
   // Manual seller voucher — hanya kalau di-request via kode
   const manualVoucher = manualRequested

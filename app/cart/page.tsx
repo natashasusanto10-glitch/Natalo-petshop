@@ -8,8 +8,18 @@ import { formatRupiah } from "@/lib/format";
 import { EmptyCart } from "@/components/LoadingEmptyStates";
 import { loadCart, saveCart, type CartItem } from "@/lib/cart";
 import type { CartStockIssue } from "@/lib/cart-stock";
+import { VoucherClaimBar } from "@/components/cart/VoucherClaimBar";
+import {
+  CartVoucherSheet,
+  type AppliedPrivateVoucher,
+} from "@/components/cart/CartVoucherSheet";
 
 const CHECKOUT_SELECTION_KEY = "checkout:selectedCartItems";
+// Voucher pre-selection di cart, di-pickup oleh /checkout/page.tsx saat
+// user klik Checkout (lihat applyCheckoutPricing di checkout page).
+const CART_VOUCHER_KEY = "cart:voucher";
+
+type CartAppliedMember = { code: string; discount: number; description: string };
 
 function cartKey(item: CartItem) {
   return `${item.productId}:${item.variantId ?? ""}`;
@@ -43,6 +53,56 @@ export default function CartPage() {
   const [stockRefreshing, setStockRefreshing] = useState(false);
   const didInitialSelect = useRef(false);
   const didInitialStockRefresh = useRef(false);
+
+  // Voucher state — di-persist ke sessionStorage supaya di-pickup oleh
+  // /checkout/page.tsx saat user lanjut ke checkout.
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [voucherSheetOpen, setVoucherSheetOpen] = useState(false);
+  const [memberVoucher, setMemberVoucher] = useState<CartAppliedMember | null>(null);
+  const [privateVoucher, setPrivateVoucher] = useState<AppliedPrivateVoucher | null>(null);
+
+  // Restore voucher pilihan dari sessionStorage saat mount
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(CART_VOUCHER_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as {
+          member?: CartAppliedMember | null;
+          private?: AppliedPrivateVoucher | null;
+        };
+        if (parsed.member) setMemberVoucher(parsed.member);
+        if (parsed.private) setPrivateVoucher(parsed.private);
+      }
+    } catch {
+      // ignore corrupt session
+    }
+  }, []);
+
+  // Cek login status
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.name) setIsLoggedIn(true);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Persist voucher selection setiap kali berubah
+  useEffect(() => {
+    try {
+      if (memberVoucher || privateVoucher) {
+        sessionStorage.setItem(
+          CART_VOUCHER_KEY,
+          JSON.stringify({ member: memberVoucher, private: privateVoucher }),
+        );
+      } else {
+        sessionStorage.removeItem(CART_VOUCHER_KEY);
+      }
+    } catch {
+      // ignore quota / disabled storage
+    }
+  }, [memberVoucher, privateVoucher]);
 
   useEffect(() => {
     function syncCart() {
@@ -80,7 +140,14 @@ export default function CartPage() {
   );
   const selectedCount = selectedItems.length;
   const selectedQuantity = selectedItems.reduce((sum, item) => sum + item.quantity, 0);
-  const selectedTotal = selectedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const selectedSubtotal = selectedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  // Total diskon dari kombinasi voucher member + private (capped at subtotal
+  // supaya tidak negative — match logic backend).
+  const voucherDiscount = Math.min(
+    (memberVoucher?.discount ?? 0) + (privateVoucher?.discount ?? 0),
+    selectedSubtotal,
+  );
+  const selectedTotal = Math.max(selectedSubtotal - voucherDiscount, 0);
   const allSelected = items.length > 0 && selectedKeys.size === items.length;
 
   function persist(next: CartItem[]) {
@@ -240,16 +307,13 @@ export default function CartPage() {
               </span>
             </div>
 
-            <div className="bg-blue-50/70 px-4 py-3">
-              <div className="flex items-start gap-2 text-xs text-blue-700">
-                <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white font-black text-blue-600">
-                  %
-                </span>
-                <div>
-                  <p className="font-black">Voucher tersedia</p>
-                  <p className="mt-0.5 text-blue-600">Gratis ongkir dan diskon khusus bisa dipakai saat checkout.</p>
-                </div>
-              </div>
+            <div className="px-4 py-3">
+              <VoucherClaimBar
+                isLoggedIn={isLoggedIn}
+                memberVoucher={memberVoucher}
+                privateVoucher={privateVoucher}
+                onClick={() => setVoucherSheetOpen(true)}
+              />
             </div>
 
             {stockIssues.length > 0 && (
@@ -359,11 +423,23 @@ export default function CartPage() {
           </section>
 
           <section className="mt-4 hidden rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100 md:block">
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-gray-700">Total produk terpilih</span>
-              <span className="text-xl font-black text-gray-900">{formatRupiah(selectedTotal)}</span>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-sm text-gray-600">
+                <span>Subtotal produk</span>
+                <span className="font-semibold text-gray-700">{formatRupiah(selectedSubtotal)}</span>
+              </div>
+              {voucherDiscount > 0 && (
+                <div className="flex items-center justify-between text-sm text-natalo-700">
+                  <span>Diskon voucher</span>
+                  <span className="font-semibold">−{formatRupiah(voucherDiscount)}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between border-t border-gray-100 pt-2.5">
+                <span className="font-semibold text-gray-700">Total produk terpilih</span>
+                <span className="text-xl font-black text-gray-900">{formatRupiah(selectedTotal)}</span>
+              </div>
             </div>
-            <p className="mt-2 text-xs text-gray-400">Ongkir dan voucher dihitung saat checkout.</p>
+            <p className="mt-2 text-xs text-gray-400">Ongkir dihitung saat checkout. Voucher dapat diubah sebelum bayar.</p>
             <button
               type="button"
               onClick={checkoutSelected}
@@ -382,6 +458,28 @@ export default function CartPage() {
         </>
       )}
 
+      <CartVoucherSheet
+        open={voucherSheetOpen}
+        onClose={() => setVoucherSheetOpen(false)}
+        isLoggedIn={isLoggedIn}
+        subtotal={selectedSubtotal}
+        selectedMemberCode={memberVoucher?.code ?? null}
+        appliedPrivate={privateVoucher}
+        onSelectMember={(code, discount, description) => {
+          if (!code) {
+            setMemberVoucher(null);
+          } else {
+            setMemberVoucher({ code, discount, description });
+          }
+        }}
+        onApplyPrivate={(v) => setPrivateVoucher(v)}
+        onRemovePrivate={() => setPrivateVoucher(null)}
+        onRequireLogin={() => {
+          setVoucherSheetOpen(false);
+          router.push("/login?next=/cart");
+        }}
+      />
+
       {items.length > 0 && (
         <div className="fixed inset-x-0 z-40 border-t border-gray-100 bg-white px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] md:hidden [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom))]">
           <div className="mx-auto flex max-w-3xl items-center gap-3">
@@ -395,7 +493,9 @@ export default function CartPage() {
               Semua
             </label>
             <div className="min-w-0 flex-1 text-right">
-              <p className="text-[11px] font-semibold text-gray-500">Total</p>
+              <p className="text-[11px] font-semibold text-gray-500">
+                {voucherDiscount > 0 ? `Total (hemat ${formatRupiah(voucherDiscount)})` : "Total"}
+              </p>
               <p className="truncate text-base font-black text-gray-900">{formatRupiah(selectedTotal)}</p>
             </div>
             <button

@@ -187,6 +187,38 @@ export default function CheckoutPage() {
       if (restoredDraft.selectedRate !== undefined) setSelectedRate(restoredDraft.selectedRate);
       if (Array.isArray(restoredDraft.rates)) setRates(restoredDraft.rates);
       if (restoredDraft.payment !== undefined) setPayment(restoredDraft.payment);
+
+    }
+
+    // Pickup voucher pre-selection dari cart (cart:voucher sessionStorage).
+    // Backend tetap re-validate semua voucher di /api/checkout/recalculate.
+    try {
+      const cartVoucherRaw = sessionStorage.getItem("cart:voucher");
+      if (cartVoucherRaw) {
+        const parsed = JSON.parse(cartVoucherRaw) as {
+          member?: { code: string; discount: number; description: string } | null;
+          private?: { code: string; discount: number; description: string } | null;
+        };
+        if (parsed.member?.code) {
+          setForm((current) =>
+            current.voucherCode
+              ? current
+              : { ...current, voucherCode: parsed.member!.code },
+          );
+        }
+        if (parsed.private?.code) {
+          setForm((current) =>
+            current.manualVoucherCode
+              ? current
+              : { ...current, manualVoucherCode: parsed.private!.code },
+          );
+        }
+      }
+    } catch {
+      // ignore corrupt session
+    }
+
+    if (restoredDraft) {
       if (restoredDraft.saveToAddressBook !== undefined) {
         setSaveToAddressBook(Boolean(restoredDraft.saveToAddressBook));
       }
