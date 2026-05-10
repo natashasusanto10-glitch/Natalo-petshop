@@ -2,9 +2,8 @@
  * Voucher business rules helpers — dipakai bersama oleh halaman cart &
  * checkout supaya logic seragam (lihat CLAUDE.md - Voucher business rules).
  *
- * Catatan: ini library shared. Validasi FINAL & total tetap dilakukan di
- * backend (route handlers di app/api/...). Helper ini cuma compute display
- * & disabled-reason untuk UI.
+ * Catatan: validasi FINAL & total tetap di backend (route handlers di
+ * app/api/...). Helper ini cuma compute display & disabled-reason untuk UI.
  */
 
 import type { Voucher } from "@prisma/client";
@@ -47,29 +46,47 @@ export function calcVoucherDiscount(
 }
 
 /**
- * Tentukan apakah voucher applicable untuk user + subtotal saat ini.
- * Return alasan disabled (string) atau null kalau OK.
+ * Cek apakah voucher harus DI-FILTER OUT (tidak ditampilkan sama sekali)
+ * dari daftar voucher member. Sesuai aturan UX baru:
+ * - Voucher expired
+ * - Voucher tidak aktif
+ * - Global max usage tercapai
+ * - User sudah pernah pakai (per-user usage limit tercapai)
  *
- * Sesuai aturan Natalo:
- * - Voucher (CUSTOMER & SELLER_MANUAL) wajib login. Guest tidak boleh
- *   memakai voucher publik / member.
- * - Min belanja, expiry, dan max usage dievaluasi di sini.
+ * Voucher yg di-filter out tidak relevan lagi — tampil cuma bikin
+ * daftar berisik & user bingung.
  *
- * Note: cek per-user usage limit & per-product/category eligibility tidak
- * diputuskan di helper ini karena butuh DB lookup; logic itu ada di
- * route handler.
+ * Param `userUsedCodes` adalah Set kode voucher yang sudah dipakai user
+ * di order sebelumnya. Voucher dgn kode di Set ini di-skip.
  */
-export function getVoucherDisabledReason(
+export function shouldHideVoucher(
   voucher: Pick<
     Voucher,
-    | "minimumOrder"
-    | "expiresAt"
-    | "startsAt"
-    | "maxUsage"
-    | "usedCount"
-    | "isActive"
-    | "sourceType"
+    "code" | "isActive" | "expiresAt" | "maxUsage" | "usedCount"
   >,
+  userUsedCodes: Set<string>,
+  now: Date = new Date(),
+): boolean {
+  if (!voucher.isActive) return true;
+  if (voucher.expiresAt && voucher.expiresAt <= now) return true;
+  if (voucher.maxUsage !== null && voucher.usedCount >= voucher.maxUsage) return true;
+  if (userUsedCodes.has(voucher.code)) return true;
+  return false;
+}
+
+/**
+ * Tentukan alasan disabled UI untuk voucher yang LOLOS shouldHideVoucher
+ * (artinya masih mungkin dipakai nanti).
+ *
+ * Return alasan disabled atau null kalau applicable.
+ *
+ * Hanya return alasan untuk kondisi "transient" — yg bisa berubah saat
+ * cart berubah (mis. user nambah produk → memenuhi min belanja). Voucher
+ * yg permanently invalid (expired, sudah dipakai) sudah di-filter di
+ * shouldHideVoucher dan tidak masuk function ini.
+ */
+export function getVoucherDisabledReason(
+  voucher: Pick<Voucher, "minimumOrder" | "startsAt">,
   subtotal: number,
   user: VoucherUserContext,
   now: Date = new Date(),
@@ -77,17 +94,8 @@ export function getVoucherDisabledReason(
   if (!user.isLoggedIn) {
     return "Login untuk menggunakan voucher";
   }
-  if (!voucher.isActive) {
-    return "Voucher sudah tidak aktif";
-  }
-  if (voucher.expiresAt && voucher.expiresAt <= now) {
-    return "Voucher sudah berakhir";
-  }
   if (voucher.startsAt > now) {
     return "Voucher belum berlaku";
-  }
-  if (voucher.maxUsage !== null && voucher.usedCount >= voucher.maxUsage) {
-    return "Sudah pernah digunakan sesuai batas";
   }
   if (subtotal < voucher.minimumOrder) {
     return "Belum memenuhi minimum belanja";

@@ -2,10 +2,15 @@
  * GET /api/cart/vouchers?subtotal=N
  *
  * Return daftar voucher member Natalo (sourceType=CUSTOMER) untuk user
- * login + cart subtotal saat ini, lengkap dgn applicable status.
+ * login + cart subtotal saat ini.
  *
- * Sesuai aturan: voucher Natalo HANYA untuk member login. Guest dapat
- * 401 — tidak boleh lihat / klaim voucher member.
+ * Aturan visibility (lihat CLAUDE.md - Voucher business rules):
+ * - HIDDEN sama sekali kalau: voucher expired / inactive / global max
+ *   usage tercapai / user sudah pernah pakai voucher ini
+ * - Tampil DISABLED hanya kalau masih mungkin dipakai nanti: subtotal
+ *   kurang dari min belanja, voucher belum mulai berlaku, dll
+ *
+ * Guest dapat 401 — tidak boleh lihat voucher member.
  *
  * SELLER_MANUAL voucher TIDAK pernah muncul di endpoint ini (rahasia,
  * harus di-validate via /api/cart/vouchers/validate-private).
@@ -16,6 +21,7 @@ import { prisma } from "@/lib/prisma";
 import {
   calcVoucherDiscount,
   getVoucherDisabledReason,
+  shouldHideVoucher,
 } from "@/lib/voucher-helpers";
 
 export async function GET(request: NextRequest) {
@@ -34,22 +40,63 @@ export async function GET(request: NextRequest) {
   const subtotal = Math.max(0, parseInt(subtotalRaw ?? "0", 10) || 0);
 
   const now = new Date();
-  // Voucher member = sourceType CUSTOMER, baik publik admin promo
-  // (userId=null) maupun voucher claim user (userId=session.sub).
-  // Per aturan Natalo: keduanya butuh login.
-  const vouchers = await prisma.voucher.findMany({
-    where: {
-      sourceType: "CUSTOMER",
-      OR: [{ userId: null }, { userId: session.sub }],
-    },
-    orderBy: { createdAt: "desc" },
-  });
+
+  // Fetch voucher CUSTOMER yg user-nya berhak (publik atau owned).
+  const [vouchers, userUsedOrders] = await Promise.all([
+    prisma.voucher.findMany({
+      where: {
+        sourceType: "CUSTOMER",
+        OR: [{ userId: null }, { userId: session.sub }],
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    // Voucher code yg user sudah pernah pakai (di slot customer atau manual).
+    // Per aturan Natalo: 1 voucher = 1× per user. Voucher yg sudah dipakai
+    // di-skip dari daftar.
+    prisma.order.findMany({
+      where: {
+        userId: session.sub,
+        OR: [{ voucherCode: { not: null } }, { manualVoucherCode: { not: null } }],
+        // Order CANCELLED/REFUNDED idealnya tidak count sebagai "sudah
+        // pakai" — tapi untuk simplicity & strict-safety, semua order
+        // count. Kalau user butuh re-claim setelah cancel, admin bisa
+        // unset code di order.
+      },
+      select: { voucherCode: true, manualVoucherCode: true },
+    }),
+  ]);
+
+  const userUsedCodes = new Set<string>();
+  for (const ord of userUsedOrders) {
+    if (ord.voucherCode) userUsedCodes.add(ord.voucherCode);
+    if (ord.manualVoucherCode) userUsedCodes.add(ord.manualVoucherCode);
+  }
 
   const userCtx = { isLoggedIn: true, userId: session.sub };
-  const items = vouchers.map((v) => {
+  const items: Array<{
+    id: string;
+    code: string;
+    description: string | null;
+    discountPercent: number | null;
+    discountAmount: number | null;
+    minimumOrder: number;
+    expiresAt: Date | null;
+    sourceType: "CUSTOMER" | "SELLER_MANUAL";
+    discount: number;
+    applicable: boolean;
+    disabledReason: string | null;
+  }> = [];
+
+  for (const v of vouchers) {
+    // Aturan visibility: filter out voucher yg permanently invalid
+    if (shouldHideVoucher(v, userUsedCodes, now)) continue;
+
+    // Voucher yg lolos masih mungkin dipakai — compute disabled reason
+    // untuk transient state (min belanja, dll).
     const disabledReason = getVoucherDisabledReason(v, subtotal, userCtx, now);
     const discount = disabledReason ? 0 : calcVoucherDiscount(subtotal, v);
-    return {
+
+    items.push({
       id: v.id,
       code: v.code,
       description: v.description,
@@ -62,13 +109,13 @@ export async function GET(request: NextRequest) {
       applicable: disabledReason === null && discount > 0,
       disabledReason:
         disabledReason ??
-        (discount === 0 && !v.maxUsage
+        (discount === 0
           ? "Voucher tidak memberikan potongan untuk pesanan ini"
           : null),
-    };
-  });
+    });
+  }
 
-  // Sort: applicable dulu, lalu non-applicable
+  // Sort: applicable dulu (best discount duluan), lalu disabled
   items.sort((a, b) => {
     if (a.applicable !== b.applicable) return a.applicable ? -1 : 1;
     return b.discount - a.discount;

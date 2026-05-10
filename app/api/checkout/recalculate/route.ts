@@ -234,7 +234,7 @@ export async function POST(request: NextRequest) {
 
   // Aturan Natalo: voucher CUSTOMER (member) HANYA untuk user login.
   // Guest tidak boleh dapat voucher publik. Kalau no session, list kosong.
-  const customerVouchers = session
+  const customerVouchersRaw = session
     ? ((await prisma.voucher.findMany({
         where: {
           isActive: true,
@@ -246,6 +246,28 @@ export async function POST(request: NextRequest) {
         orderBy: { createdAt: "desc" },
       })) as VoucherRow[])
     : [];
+
+  // Aturan visibility (lihat /api/cart/vouchers): filter voucher yg user
+  // sudah pernah pakai (per-user 1×). Voucher yg sudah dipakai TIDAK
+  // muncul di available/unavailable, sekaligus mencegah auto-apply.
+  const userUsedCodes = new Set<string>();
+  if (session) {
+    const userOrders = await prisma.order.findMany({
+      where: {
+        userId: session.sub,
+        OR: [{ voucherCode: { not: null } }, { manualVoucherCode: { not: null } }],
+      },
+      select: { voucherCode: true, manualVoucherCode: true },
+    });
+    for (const o of userOrders) {
+      if (o.voucherCode) userUsedCodes.add(o.voucherCode);
+      if (o.manualVoucherCode) userUsedCodes.add(o.manualVoucherCode);
+    }
+  }
+
+  const customerVouchers = customerVouchersRaw.filter(
+    (v) => !userUsedCodes.has(v.code),
+  );
 
   // Manual seller voucher — hanya kalau di-request via kode
   const manualVoucher = manualRequested
@@ -262,6 +284,10 @@ export async function POST(request: NextRequest) {
   if (manualRequested) {
     if (!manualVoucher || !manualVoucher.isActive) {
       manualVoucherError = "Kode voucher tidak valid.";
+    } else if (userUsedCodes.has(manualRequested)) {
+      // Per aturan: 1 voucher = 1× per user. Reject kalau user sudah
+      // pernah pakai kode ini di order sebelumnya.
+      manualVoucherError = "Kode voucher sudah pernah digunakan";
     } else if (manualVoucher.sourceType !== "SELLER_MANUAL") {
       // Sesuai aturan: input kode manual HANYA untuk voucher SELLER_MANUAL.
       // Customer voucher (publik / claim user) harus dipilih lewat daftar.
@@ -351,6 +377,11 @@ export async function POST(request: NextRequest) {
     const inAvailable = available.find((v) => v.code === customerRequested);
     if (inAvailable) {
       customerApplied = inAvailable;
+    } else if (userUsedCodes.has(customerRequested)) {
+      // User sudah pernah pakai voucher ini sebelumnya. Voucher di-filter
+      // dari available list, tapi user masih bisa coba submit code via
+      // form draft / manual. Reject explicit.
+      customerVoucherError = "Kode voucher sudah pernah digunakan";
     } else {
       const inUnavailable = unavailable.find((v) => v.code === customerRequested);
       // Cek apakah code ada tapi sourceType salah (manual code di-input ke

@@ -71,6 +71,24 @@ export async function POST(request: NextRequest) {
       message: "Voucher sudah mencapai batas penggunaan",
     });
   }
+
+  // Cek apakah user sudah pernah pakai kode private ini (di order
+  // sebelumnya, slot manual ATAU customer). Per aturan: 1 voucher = 1× per
+  // user. Karena private code tidak tampil di daftar, kita gate via error
+  // saat user input kode yg sama lagi.
+  const userUsedCount = await prisma.order.count({
+    where: {
+      userId: session.sub,
+      OR: [{ voucherCode: upperCode }, { manualVoucherCode: upperCode }],
+    },
+  });
+  if (userUsedCount > 0) {
+    return NextResponse.json({
+      ok: false,
+      message: "Kode voucher sudah pernah digunakan",
+    });
+  }
+
   if (subtotal < voucher.minimumOrder) {
     return NextResponse.json({
       ok: false,
