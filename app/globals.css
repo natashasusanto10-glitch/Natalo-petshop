@@ -34,17 +34,26 @@
   color-scheme: light;
   --background: #ffffff;
   --foreground: #111111;
-  --natalo-bottom-nav-height: 70px;
+  --natalo-bottom-nav-height: 68px;
   --natalo-mobile-header-min-height: 60px;
 }
 
 /* Lock light mode di seluruh app — iOS dark mode tidak boleh invert UI. */
+html,
+body,
+#root {
+  margin: 0;
+  background: #ffffff;
+}
+
 html {
   color-scheme: light;
-  background-color: #1E5FBF; /* brand blue, terlihat saat PWA boot sebelum body paint */
+  background-color: #ffffff;
 }
 
 body {
+  margin: 0;
+  padding: 0;
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
@@ -99,10 +108,28 @@ input, textarea, select, button {
 .bottom-nav,
 .nat-bottom-nav {
   position: fixed;
+  left: 0;
+  right: 0;
   bottom: 0;
   z-index: 100;
+  box-sizing: border-box;
+  height: calc(var(--natalo-bottom-nav-height) + env(safe-area-inset-bottom));
   min-height: calc(var(--natalo-bottom-nav-height) + env(safe-area-inset-bottom));
-  padding-bottom: calc(4px + env(safe-area-inset-bottom));
+  padding-top: 0;
+  padding-bottom: env(safe-area-inset-bottom);
+  border-top: 1px solid #eeeeee;
+  background: #ffffff;
+}
+
+.bottom-nav-item {
+  padding-top: 6px;
+  font-size: 12px;
+}
+
+.bottom-nav-item svg,
+.bottom-nav-item img {
+  width: 24px;
+  height: 24px;
 }
 
 body.voucher-modal-open .bottom-nav,
@@ -149,7 +176,7 @@ body.voucher-modal-open .nat-bottom-nav {
 
 @media (max-width: 360px) {
   :root {
-    --natalo-bottom-nav-height: 66px;
+    --natalo-bottom-nav-height: 68px;
     --natalo-mobile-header-min-height: 56px;
   }
 }

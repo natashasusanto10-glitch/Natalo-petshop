@@ -139,8 +139,8 @@ export function BottomNavigation() {
   if (pathname === "/checkout" || pathname?.startsWith("/checkout/")) return null;
 
   return (
-    <nav className="bottom-nav nat-bottom-nav inset-x-0 border-t border-[#f0f0f0] bg-white py-2 shadow-[0_-2px_12px_rgba(0,0,0,0.05)] md:hidden">
-      <div className="grid grid-cols-4">
+    <nav className="bottom-nav nat-bottom-nav inset-x-0 border-t border-[#eeeeee] bg-white shadow-[0_-2px_12px_rgba(0,0,0,0.05)] md:hidden">
+      <div className="grid h-[var(--natalo-bottom-nav-height)] grid-cols-4">
         {ITEMS.map((item) => {
           const active = optimisticHref === item.href || (!optimisticHref && isActive(pathname, item.href));
           return (
@@ -151,7 +151,7 @@ export function BottomNavigation() {
               onClick={() => setOptimisticHref(item.href)}
               onMouseEnter={() => router.prefetch(item.href)}
               onTouchStart={() => router.prefetch(item.href)}
-              className={`relative flex min-h-12 flex-col items-center justify-center gap-0.5 px-1 py-1 text-[10px] font-bold transition active:opacity-90 ${
+              className={`bottom-nav-item relative flex h-full flex-col items-center justify-center gap-0.5 px-1 pb-1.5 font-bold leading-none transition active:opacity-90 ${
                 active ? "text-[#1E5FBF]" : "text-[#9ca3af]"
               }`}
             >

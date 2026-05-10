@@ -128,15 +128,14 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  // theme-color media-aware: brand blue di kedua mode (light/dark) supaya
-  // status bar PWA tetap konsisten brand, tidak ke-invert iOS dark mode.
+  // Theme color putih: status bar/browser chrome terang dengan ikon gelap,
+  // selaras dengan header dan bottom navigation putih.
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#1E5FBF" },
-    { media: "(prefers-color-scheme: dark)", color: "#1E5FBF" },
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#ffffff" },
   ],
   // Force light color-scheme supaya iOS PWA tidak auto-render dark splash.
-  // Tanpa ini, iPhone dalam dark mode bisa render splash hitam meskipun
-  // manifest background_color #1E5FBF.
+  // Tanpa ini, iPhone dalam dark mode bisa render splash gelap.
   colorScheme: "light",
   width: "device-width",
   initialScale: 1,

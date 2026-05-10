@@ -10,8 +10,8 @@
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
   "orientation": "any",
-  "background_color": "#1E5FBF",
-  "theme_color": "#1E5FBF",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
   "categories": ["shopping", "lifestyle"],
   "icons": [
     {
