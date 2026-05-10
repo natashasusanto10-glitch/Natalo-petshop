@@ -2,10 +2,27 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics";
 
 const TRIGGER_DISTANCE = 80; // px pull sebelum trigger refresh
 const MAX_PULL = 120; // hard cap (resistance setelah trigger)
 const RESISTANCE_FACTOR = 0.45; // setelah threshold, pull jadi lebih berat
+
+/** Native iOS UIImpactFeedbackGenerator (atau Android HapticFeedback). No-op di
+ * browser web non-Capacitor — plugin handle platform detection internally. */
+async function hapticImpact(style: ImpactStyle = ImpactStyle.Medium) {
+  try {
+    await Haptics.impact({ style });
+  } catch {
+    // Web / unsupported — silent fail
+  }
+}
+
+async function hapticNotification(type: NotificationType = NotificationType.Success) {
+  try {
+    await Haptics.notification({ type });
+  } catch {}
+}
 
 /**
  * Pull-to-refresh wrapper untuk seluruh app.
@@ -32,6 +49,9 @@ export function PullToRefresh({ disabled = false }: { disabled?: boolean }) {
   const startYRef = useRef(0);
   const isPullingRef = useRef(false);
   const refreshingRef = useRef(false);
+  // Track apakah pull sudah pernah past threshold di gesture saat ini, biar
+  // haptic cuma fire SEKALI saat transition (gak spam tiap touchmove).
+  const wasPastThresholdRef = useRef(false);
 
   // Sync state ke ref biar event handler dapat nilai terbaru tanpa rebind
   refreshingRef.current = refreshing;
@@ -56,6 +76,7 @@ export function PullToRefresh({ disabled = false }: { disabled?: boolean }) {
       if (target.closest?.("[data-no-pull]")) return;
       startYRef.current = e.touches[0].clientY;
       isPullingRef.current = true;
+      wasPastThresholdRef.current = false; // Reset state per-gesture
     }
 
     function handleTouchMove(e: TouchEvent) {
@@ -76,6 +97,15 @@ export function PullToRefresh({ disabled = false }: { disabled?: boolean }) {
           : TRIGGER_DISTANCE + (delta - TRIGGER_DISTANCE) * RESISTANCE_FACTOR;
       const clamped = Math.min(adjusted, MAX_PULL);
       setPullDistance(clamped);
+
+      // Haptic feedback saat pull pertama kali crossing threshold ke atas.
+      // Match iOS native pull-to-refresh — getaran "click" memberitahu user
+      // mereka boleh release sekarang.
+      const isPastNow = clamped >= TRIGGER_DISTANCE;
+      if (isPastNow && !wasPastThresholdRef.current) {
+        hapticImpact(ImpactStyle.Medium);
+      }
+      wasPastThresholdRef.current = isPastNow;
 
       // Prevent native overscroll bounce conflict — hanya saat actively pulling
       if (clamped > 5 && e.cancelable) {
@@ -100,6 +130,9 @@ export function PullToRefresh({ disabled = false }: { disabled?: boolean }) {
           window.dispatchEvent(new CustomEvent("wishlist-updated"));
           // Hold spinner ~800ms biar user lihat feedback
           await new Promise<void>((resolve) => setTimeout(resolve, 800));
+          // Haptic success — UINotificationFeedbackGenerator success pattern,
+          // memberi tahu user bahwa refresh sudah selesai
+          hapticNotification(NotificationType.Success);
         } finally {
           setRefreshing(false);
           setPullDistance(0);
@@ -107,6 +140,7 @@ export function PullToRefresh({ disabled = false }: { disabled?: boolean }) {
       } else {
         setPullDistance(0);
       }
+      wasPastThresholdRef.current = false;
     }
 
     document.addEventListener("touchstart", handleTouchStart, { passive: true });
