@@ -1,4 +1,5 @@
 import type { CapacitorConfig } from "@capacitor/cli";
+import { KeyboardResize, KeyboardStyle } from "@capacitor/keyboard";
 
 /**
  * Capacitor config — Natalo Petshop iOS wrapper.
@@ -59,11 +60,11 @@ const config: CapacitorConfig = {
       overlaysWebView: false,
     },
     Keyboard: {
-      // resize "body" → WebView resize saat keyboard muncul, body shrink supaya
+      // resize Body → WebView resize saat keyboard muncul, body shrink supaya
       // input area gak ke-cover. iOS pakai ResizePolicy.Body.
-      resize: "body",
-      // Style "default" follows app theme (light/dark). Set "light" force.
-      style: "default",
+      resize: KeyboardResize.Body,
+      // Default follows app theme (light/dark).
+      style: KeyboardStyle.Default,
       resizeOnFullScreen: true,
     },
   },

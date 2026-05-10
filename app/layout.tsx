@@ -14,6 +14,7 @@ import { PullToRefresh } from "@/components/PullToRefresh";
 import { PageStatusBar } from "@/components/PageStatusBar";
 import { KeyboardManager } from "@/components/KeyboardManager";
 import { NetworkStatusBanner } from "@/components/NetworkStatusBanner";
+import { DeepLinkHandler } from "@/components/DeepLinkHandler";
 
 const nunito = Nunito({
   subsets: ["latin"],
@@ -157,6 +158,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <PullToRefresh />
           <KeyboardManager />
           <NetworkStatusBanner />
+          <DeepLinkHandler />
           {/* App-wide default status bar — dark icons (black) untuk halaman
               dengan header putih (kebanyakan). Per-page override bisa mount
               <PageStatusBar iconColor="light" themeColor="#1E5FBF" /> di page

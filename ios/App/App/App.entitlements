@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Universal Links — link ke natalo-petshop.vercel.app dibuka di app native.
+	  Wajib pasangkan dengan AASA file di app/.well-known/apple-app-site-association/route.ts
+	  dan capability "Associated Domains" di App ID portal Apple Developer.
+
+	  Format "applinks:domain" untuk Universal Links.
+	  Format "webcredentials:domain" optional untuk shared web credentials.
+	-->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:natalo-petshop.vercel.app</string>
+		<string>webcredentials:natalo-petshop.vercel.app</string>
+	</array>
+</dict>
+</plist>
