@@ -42,6 +42,14 @@ export const heroSlides: HeroSlide[] = [
     priority: true,
   },
   {
+    id: "bersinar-aquarium",
+    type: "image",
+    image: "/banners/bersinar-aquarium.jpeg",
+    imageAlt:
+      "Bersinar Aquarium — Aquarium Shop Terlengkap. Aneka ikan hias, perlengkapan akuarium, pakan, dan peralatan lengkap.",
+    href: "/products?kategori=ikan",
+  },
+  {
     id: "royal-canin-sizes",
     type: "image",
     image: "/banners/royal-canin-sizes.jpg",
