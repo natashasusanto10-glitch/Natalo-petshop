@@ -93,10 +93,14 @@ export function PageStatusBar({ iconColor = "dark", themeColor = "#ffffff" }: Pr
       if (previousNativeStyle) {
         (async () => {
           try {
-            const { StatusBar } = await import("@capacitor/status-bar");
-            await StatusBar.setStyle({
-              style: previousNativeStyle as "DARK" | "LIGHT" | "DEFAULT",
-            });
+            const { StatusBar, Style } = await import("@capacitor/status-bar");
+            const restored =
+              previousNativeStyle === "LIGHT"
+                ? Style.Light
+                : previousNativeStyle === "DARK"
+                  ? Style.Dark
+                  : Style.Default;
+            await StatusBar.setStyle({ style: restored });
           } catch {}
         })();
       }
