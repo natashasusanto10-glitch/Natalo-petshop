@@ -10,6 +10,7 @@ import { formatRupiah, formatShippingDuration } from "@/lib/format";
 import { MetodePengiriman } from "@/components/MetodePengiriman";
 import {
   CheckoutVoucherCard,
+  type AppliedVoucher,
   type EligibleVoucher,
   type IneligibleVoucher,
 } from "@/components/checkout/CheckoutVoucherCard";
@@ -43,6 +44,30 @@ type RateOption = {
   duration: string;
   available: boolean;
   unavailable_reason?: string;
+};
+
+type CheckoutPricing = {
+  subtotal: number;
+  shipping_fee: number;
+  discount: number;
+  total: number;
+};
+
+type CheckoutRecalculateResponse = CheckoutPricing & {
+  applied_voucher?: (EligibleVoucher & {
+    title?: string;
+    autoApplied?: boolean;
+  }) | null;
+  auto_applied_voucher?: {
+    code: string;
+    title: string;
+    description: string;
+    discount: number;
+  } | null;
+  available_vouchers?: EligibleVoucher[];
+  unavailable_vouchers?: IneligibleVoucher[];
+  voucher_invalidated?: boolean;
+  invalidated_message?: string | null;
 };
 
 declare global {
@@ -112,15 +137,13 @@ export default function CheckoutPage() {
   const [addressLabel, setAddressLabel] = useState("");
 
   const [voucherInput, setVoucherInput] = useState("");
-  const [voucherApplied, setVoucherApplied] = useState<{
-    code: string;
-    discount: number;
-    description: string;
-    autoApplied?: boolean;
-  } | null>(null);
+  const [voucherApplied, setVoucherApplied] = useState<AppliedVoucher | null>(null);
   const [eligibleVouchers, setEligibleVouchers] = useState<EligibleVoucher[]>([]);
   const [ineligibleVouchers, setIneligibleVouchers] = useState<IneligibleVoucher[]>([]);
   const [voucherInvalidated, setVoucherInvalidated] = useState<string | null>(null);
+  const [voucherSyncLoading, setVoucherSyncLoading] = useState(false);
+  const [autoVoucherSuppressed, setAutoVoucherSuppressed] = useState(false);
+  const [checkoutPricing, setCheckoutPricing] = useState<CheckoutPricing | null>(null);
   const [showAllCheckoutItems, setShowAllCheckoutItems] = useState(false);
   const [draftReady, setDraftReady] = useState(false);
   const [stockIssues, setStockIssues] = useState<CartStockIssue[]>([]);
@@ -436,10 +459,11 @@ export default function CheckoutPage() {
     router.push(`/checkout/addresses?returnTo=${encodeURIComponent(returnTo)}`);
   }
 
-  const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const localSubtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const shippingCost = selectedRate?.price ?? 0;
-  const discount = voucherApplied?.discount ?? 0;
-  const total = Math.max(subtotal + shippingCost - discount, 0);
+  const subtotal = checkoutPricing?.subtotal ?? localSubtotal;
+  const discount = checkoutPricing?.discount ?? voucherApplied?.discount ?? 0;
+  const total = checkoutPricing?.total ?? Math.max(subtotal + shippingCost - discount, 0);
   const totalItemCount = items.reduce((sum, item) => sum + item.quantity, 0);
   const visibleCheckoutItems = showAllCheckoutItems ? items : items.slice(0, 4);
   const hiddenCheckoutItemCount = Math.max(items.length - visibleCheckoutItems.length, 0);
@@ -477,75 +501,144 @@ export default function CheckoutPage() {
           ? "Pilih Pembayaran Dulu"
           : "Buat Pesanan";
 
-  // Fetch voucher milik user tiap subtotal berubah.
-  // Re-cek voucher yang sebelumnya terpasang — kalau jadi tidak valid (subtotal
-  // turun di bawah minimumOrder, expired, dll), lepas + tampilkan pesan.
-  // Auto-apply voucher terbaik kalau user belum pilih voucher.
+  // Checkout pricing/voucher selalu berasal dari API recalculate agar total,
+  // voucher terpakai, dan daftar voucher tidak saling drift.
+  function checkoutRecalculatePayload(voucherCode: string | null, autoApply: boolean) {
+    return {
+      items,
+      shipping_fee: shippingCost,
+      voucherCode,
+      autoApply,
+      address: {
+        postalCode: form.shippingPostalCode,
+        latitude: form.shippingLatitude,
+        longitude: form.shippingLongitude,
+        city: form.shippingCity,
+      },
+      shippingMethod: {
+        courierCode: selectedRate?.courier_code ?? null,
+        courierService: selectedRate?.courier_service_code ?? null,
+      },
+      paymentProvider: paymentMethod,
+    };
+  }
+
+  function applyCheckoutPricing(data: CheckoutRecalculateResponse) {
+    const eligible = Array.isArray(data.available_vouchers) ? data.available_vouchers : [];
+    const ineligible = Array.isArray(data.unavailable_vouchers) ? data.unavailable_vouchers : [];
+    const applied = data.applied_voucher ?? null;
+
+    setCheckoutPricing({
+      subtotal: data.subtotal,
+      shipping_fee: data.shipping_fee,
+      discount: data.discount,
+      total: data.total,
+    });
+    setEligibleVouchers(eligible);
+    setIneligibleVouchers(ineligible);
+
+    if (applied) {
+      setVoucherApplied({
+        code: applied.code,
+        discount: applied.discount,
+        description: applied.description ?? `Hemat ${formatRupiah(applied.discount)}`,
+        autoApplied: applied.autoApplied,
+      });
+      setVoucherInput(applied.code);
+      setForm((current) =>
+        current.voucherCode === applied.code ? current : { ...current, voucherCode: applied.code },
+      );
+    } else {
+      setVoucherApplied(null);
+      setVoucherInput("");
+      setForm((current) => (current.voucherCode ? { ...current, voucherCode: "" } : current));
+    }
+
+    setVoucherInvalidated(
+      data.voucher_invalidated
+        ? data.invalidated_message ?? "Voucher tidak bisa digunakan untuk pilihan ini"
+        : null,
+    );
+  }
+
+  async function recalculateCheckout(
+    voucherCode: string | null,
+    autoApply: boolean,
+    signal?: AbortSignal,
+  ) {
+    const res = await fetch("/api/checkout/recalculate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(checkoutRecalculatePayload(voucherCode, autoApply)),
+      signal,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message ?? "Gagal menghitung ulang checkout.");
+    applyCheckoutPricing(data as CheckoutRecalculateResponse);
+    return data as CheckoutRecalculateResponse;
+  }
+
+  // Recalculate checkout dari satu API agar total, voucher terpakai, dan daftar voucher selalu sinkron.
   useEffect(() => {
-    if (subtotal === 0) {
+    if (items.length === 0) {
+      setCheckoutPricing(null);
+      setVoucherApplied(null);
       setEligibleVouchers([]);
       setIneligibleVouchers([]);
+      setVoucherInput("");
+      setVoucherInvalidated(null);
+      setVoucherSyncLoading(false);
       return;
     }
 
-    let cancelled = false;
-    fetch(`/api/member/vouchers?subtotal=${subtotal}`)
-      .then((r) => (r.ok ? r.json() : { eligible: [], ineligible: [] }))
-      .then((data) => {
-        if (cancelled) return;
-        const eligible: EligibleVoucher[] = Array.isArray(data.eligible)
-          ? data.eligible
-          : Array.isArray(data.vouchers)
-            ? data.vouchers
-            : [];
-        const ineligible: IneligibleVoucher[] = Array.isArray(data.ineligible)
-          ? data.ineligible
-          : [];
-        setEligibleVouchers(eligible);
-        setIneligibleVouchers(ineligible);
-
-        // Re-validate voucher yang sudah terpasang
-        if (voucherApplied) {
-          const stillValid = eligible.find((v) => v.code === voucherApplied.code);
-          if (stillValid) {
-            // Update discount kalau angkanya berubah
-            if (stillValid.discount !== voucherApplied.discount) {
-              setVoucherApplied({
-                code: stillValid.code,
-                discount: stillValid.discount,
-                description: stillValid.description ?? voucherApplied.description,
-                autoApplied: voucherApplied.autoApplied,
-              });
-            }
-            setVoucherInvalidated(null);
-          } else {
-            setVoucherApplied(null);
-            setForm((f) => ({ ...f, voucherCode: "" }));
-            setVoucherInvalidated(
-              "Voucher tidak bisa digunakan untuk pilihan ini",
-            );
-          }
-        }
-
-        // Auto-apply yang terbaik kalau user belum pakai voucher
-        if (eligible.length > 0 && !voucherApplied) {
-          const best = eligible[0];
-          setVoucherApplied({
-            code: best.code,
-            discount: best.discount,
-            description: best.description ?? "Voucher otomatis",
-            autoApplied: true,
+    const controller = new AbortController();
+    setVoucherSyncLoading(true);
+    recalculateCheckout(form.voucherCode || null, !autoVoucherSuppressed, controller.signal)
+      .catch((err) => {
+        if (err?.name !== "AbortError") {
+          setCheckoutPricing({
+            subtotal: localSubtotal,
+            shipping_fee: shippingCost,
+            discount: voucherApplied?.discount ?? 0,
+            total: Math.max(localSubtotal + shippingCost - (voucherApplied?.discount ?? 0), 0),
           });
-          setForm((f) => ({ ...f, voucherCode: best.code }));
         }
       })
-      .catch(() => {});
+      .finally(() => {
+        if (!controller.signal.aborted) setVoucherSyncLoading(false);
+      });
 
-    return () => {
-      cancelled = true;
-    };
+    return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subtotal]);
+  }, [
+    items,
+    localSubtotal,
+    shippingCost,
+    selectedRate?.courier_code,
+    selectedRate?.courier_service_code,
+    form.shippingPostalCode,
+    form.shippingLatitude,
+    form.shippingLongitude,
+    form.shippingCity,
+    form.voucherCode,
+    paymentMethod,
+    autoVoucherSuppressed,
+  ]);
+
+  useEffect(() => {
+    setAutoVoucherSuppressed(false);
+  }, [
+    items,
+    localSubtotal,
+    shippingCost,
+    selectedRate?.courier_code,
+    selectedRate?.courier_service_code,
+    form.shippingPostalCode,
+    form.shippingLatitude,
+    form.shippingLongitude,
+    form.shippingCity,
+    paymentMethod,
+  ]);
 
   // Bersihkan pesan invalidated saat user pilih voucher baru
   function applyVoucherFromList(
@@ -554,6 +647,7 @@ export default function CheckoutPage() {
     description: string,
   ) {
     setVoucherApplied({ code, discount, description, autoApplied: false });
+    setAutoVoucherSuppressed(false);
     setForm((f) => ({ ...f, voucherCode: code }));
     setVoucherInvalidated(null);
   }
@@ -562,34 +656,25 @@ export default function CheckoutPage() {
     setVoucherApplied(null);
     setVoucherInput("");
     setVoucherInvalidated(null);
+    setAutoVoucherSuppressed(true);
     setForm((f) => ({ ...f, voucherCode: "" }));
   }
 
-  // Manual voucher code (fallback untuk voucher publik yang tidak terikat ke
-  // user — misal kode promo poster). Validasi via /api/vouchers/validate.
+  // Kode manual juga divalidasi lewat checkout recalculate agar total langsung sinkron.
   async function applyManualVoucherCode(
     code: string,
   ): Promise<{ ok: boolean; error?: string }> {
     try {
-      const res = await fetch("/api/vouchers/validate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, subtotal }),
-      });
-      const data = await res.json();
-      if (data.valid) {
-        setVoucherApplied({
-          code: data.code,
-          discount: data.discount,
-          description: data.description ?? "Voucher",
-          autoApplied: false,
-        });
-        setVoucherInput(data.code);
-        setForm((f) => ({ ...f, voucherCode: data.code }));
+      const data = await recalculateCheckout(code, false);
+      if (data.applied_voucher?.code === code) {
+        setAutoVoucherSuppressed(false);
         setVoucherInvalidated(null);
         return { ok: true };
       }
-      return { ok: false, error: data.error ?? "Kode voucher tidak valid." };
+      return {
+        ok: false,
+        error: data.invalidated_message ?? "Kode voucher tidak valid.",
+      };
     } catch {
       return { ok: false, error: "Gagal memvalidasi kode voucher." };
     }
@@ -1203,6 +1288,7 @@ export default function CheckoutPage() {
               eligible={eligibleVouchers}
               ineligible={ineligibleVouchers}
               invalidatedMessage={voucherInvalidated}
+              loading={voucherSyncLoading}
               onApply={applyVoucherFromList}
               onRemove={removeVoucher}
               onApplyManualCode={applyManualVoucherCode}
