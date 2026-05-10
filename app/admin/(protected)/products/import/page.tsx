@@ -45,6 +45,7 @@ export default function ImportProductsPage() {
   // Reset state
   const [resetOpen, setResetOpen] = useState(false);
   const [resetConfirmText, setResetConfirmText] = useState("");
+  const [resetWipeOrders, setResetWipeOrders] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
   const [resetSummary, setResetSummary] = useState<{
     totalBefore: number;
@@ -52,6 +53,7 @@ export default function ImportProductsPage() {
     deleted: number;
     remaining: number;
     cartItemsCleared: number;
+    ordersDeleted: number;
   } | null>(null);
   const [resetError, setResetError] = useState<string | null>(null);
 
@@ -146,7 +148,7 @@ export default function ImportProductsPage() {
       const res = await fetch("/api/admin/products/reset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ confirm: "HAPUS" }),
+        body: JSON.stringify({ confirm: "HAPUS", wipeOrders: resetWipeOrders }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -164,6 +166,7 @@ export default function ImportProductsPage() {
         skipped: 0,
       });
       setResetConfirmText("");
+      setResetOpen(false);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Gagal reset.";
       setResetError(msg);
@@ -356,6 +359,9 @@ export default function ImportProductsPage() {
                   <li>Soft-archived (punya pesanan): {resetSummary.archived}</li>
                   <li>Sisa produk di DB: {resetSummary.remaining}</li>
                   <li>Cart items dibersihkan: {resetSummary.cartItemsCleared}</li>
+                  {resetSummary.ordersDeleted > 0 && (
+                    <li>Order dihapus (cascade ke OrderItem & Review): {resetSummary.ordersDeleted}</li>
+                  )}
                 </ul>
                 <p className="mt-2 text-xs text-red-700">
                   Klik &ldquo;Mulai Import&rdquo; di atas untuk isi ulang dari{" "}
@@ -396,9 +402,36 @@ export default function ImportProductsPage() {
               </p>
               <ul className="ml-4 list-disc space-y-1 text-sm text-zinc-700">
                 <li>Hapus seluruh produk yang tidak punya pesanan</li>
-                <li>Soft-archive produk yang punya history pesanan</li>
+                <li>
+                  {resetWipeOrders
+                    ? "Hapus semua produk (termasuk yang punya order) — order ikut di-wipe"
+                    : "Soft-archive produk yang punya history pesanan"}
+                </li>
                 <li>Bersihkan semua keranjang user</li>
+                {resetWipeOrders && (
+                  <li className="font-bold text-red-700">
+                    Hapus SEMUA order, OrderItem, dan Review (cascade)
+                  </li>
+                )}
               </ul>
+
+              <label className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-900">
+                <input
+                  type="checkbox"
+                  checked={resetWipeOrders}
+                  onChange={(e) => setResetWipeOrders(e.target.checked)}
+                  disabled={resetLoading}
+                  className="mt-0.5 h-4 w-4 rounded border-red-300 accent-red-600"
+                />
+                <span>
+                  <span className="font-bold">Hapus juga semua data order</span>
+                  <span className="mt-0.5 block text-xs text-red-800">
+                    Pakai ini hanya kalau order yang ada masih dummy/testing.
+                    Cascade akan hapus OrderItem &amp; Review terkait.
+                  </span>
+                </span>
+              </label>
+
               <p className="text-sm font-bold text-red-700">
                 Ketik <code className="rounded bg-zinc-900 px-1.5 py-0.5 text-white">HAPUS</code> untuk konfirmasi.
               </p>
