@@ -4,6 +4,7 @@ import "./globals.css";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { PWARegister } from "@/components/PWARegister";
+import { NativeSwipeBackController } from "@/components/NativeSwipeBackController";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import { StoreOnly } from "@/components/StoreOnly";
 import { BottomNavigation } from "@/components/BottomNavigation";
@@ -152,6 +153,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       </head>
       <body>
         <PWARegister />
+        <NativeSwipeBackController />
         <StoreOnly>
           <AppSplashOverlay />
           <PullToRefresh />
