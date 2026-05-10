@@ -6,6 +6,7 @@ import { formatRupiah } from "@/lib/format";
 import type { SerializedOrderDetail } from "@/lib/order-detail";
 import { PaymentProofUpload } from "@/components/PaymentProofUpload";
 import { PushSubscribe } from "@/components/PushSubscribe";
+import { ExternalLink } from "@/components/ExternalLink";
 
 const BANK_ACCOUNTS: Record<string, { bankName: string; accountNumber: string; accountName: string }> = {
   BCA_NATASHA: {
@@ -141,9 +142,9 @@ function CourierTracking({ order }: { order: SerializedOrderDetail }) {
         Nomor Resi: <span className="font-black">{order.trackingNumber}</span>
       </p>
       {url && (
-        <a href={url} target="_blank" rel="noreferrer" className="mt-2 inline-flex text-xs font-bold text-blue-700 hover:underline">
+        <ExternalLink href={url} className="mt-2 inline-flex text-xs font-bold text-blue-700 hover:underline">
           Lacak pengiriman
-        </a>
+        </ExternalLink>
       )}
     </div>
   );
@@ -338,14 +339,12 @@ export function OrderDetailView({
               </div>
               <PaymentProofUpload orderNumber={order.orderNumber} />
               {waNumber && (
-                <a
+                <ExternalLink
                   href={`https://wa.me/${waNumber}?text=${waText}`}
-                  target="_blank"
-                  rel="noreferrer"
                   className="mt-3 inline-flex w-full justify-center rounded-full bg-blue-600 px-5 py-3 text-sm font-black text-white hover:bg-blue-700"
                 >
                   Konfirmasi via WhatsApp
-                </a>
+                </ExternalLink>
               )}
             </div>
           )}

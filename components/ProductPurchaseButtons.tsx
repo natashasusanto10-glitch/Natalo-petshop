@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ExternalLink } from "@/components/ExternalLink";
 
 type PdpState = {
   hasVariants: boolean;
@@ -37,14 +38,12 @@ export function ProductPurchaseButtons({ initialState, waHref }: Props) {
 
   return (
     <div className="mt-4 hidden grid-cols-3 gap-2 md:grid">
-      <a
+      <ExternalLink
         href={waHref}
-        target="_blank"
-        rel="noreferrer"
         className="flex h-12 items-center justify-center rounded-xl border border-green-200 bg-green-50 text-sm font-extrabold text-green-700"
       >
         Chat WA
-      </a>
+      </ExternalLink>
       <button
         type="button"
         onClick={() => handleCommerceClick("cart")}

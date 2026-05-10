@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Stars } from "@/components/StarRating";
+import { ExternalLink } from "@/components/ExternalLink";
 
 type Review = {
   id: string;
@@ -238,14 +239,14 @@ function ReviewCard({ review, onHelpful }: { review: Review; onHelpful: () => vo
       {review.images.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
           {review.images.map((url, i) => (
-            <a key={i} href={url} target="_blank" rel="noreferrer">
+            <ExternalLink key={i} href={url}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={url}
                 alt={`Foto review ${i + 1}`}
                 className="h-20 w-20 rounded-lg object-cover hover:opacity-90"
               />
-            </a>
+            </ExternalLink>
           ))}
         </div>
       )}

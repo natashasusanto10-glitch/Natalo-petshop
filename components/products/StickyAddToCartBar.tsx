@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ExternalLink } from "@/components/ExternalLink";
 
 type PdpState = {
   hasVariants: boolean;
@@ -47,14 +48,12 @@ export function StickyAddToCartBar({ initialState, waHref }: Props) {
   return (
     <div className="fixed inset-x-0 bottom-[70px] z-40 border-t border-gray-100 bg-white px-3 py-2 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] md:hidden [padding-bottom:calc(8px+env(safe-area-inset-bottom))]">
       <div className="grid grid-cols-[0.9fr_1.15fr_1.35fr] gap-2">
-        <a
+        <ExternalLink
           href={waHref}
-          target="_blank"
-          rel="noreferrer"
           className="flex h-11 items-center justify-center rounded-xl border border-green-200 bg-green-50 px-2 text-xs font-extrabold text-green-700 active:bg-green-100"
         >
           Chat WA
-        </a>
+        </ExternalLink>
         <button
           type="button"
           onClick={(event) => handleCommerceClick(event, "cart")}

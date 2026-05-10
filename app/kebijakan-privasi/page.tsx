@@ -1,5 +1,6 @@
 import { LegalPage, Section } from "@/components/LegalPage";
 import { OperatingHours } from "@/components/OperatingHours";
+import { ExternalLink } from "@/components/ExternalLink";
 
 export const metadata = {
   title: "Kebijakan Privasi",
@@ -82,17 +83,17 @@ export default function KebijakanPrivasiPage() {
           <li>
             <b>Midtrans</b> (PT Midtrans / Gojek Group) — payment gateway untuk memproses
             pembayaran kartu, e-wallet, dan virtual account. Menerima: nama, email, nominal
-            pembayaran. <a className="text-natalo-700 underline" href="https://midtrans.com/privacy" target="_blank" rel="noopener noreferrer">Privacy policy Midtrans</a>
+            pembayaran. <ExternalLink className="text-natalo-700 underline" href="https://midtrans.com/privacy">Privacy policy Midtrans</ExternalLink>
           </li>
           <li>
             <b>Resend</b> (Resend.com) — penyedia layanan email transaksional (konfirmasi
             order, reset password). Menerima: email, nama, isi notifikasi.
-            <a className="text-natalo-700 underline ml-1" href="https://resend.com/legal/privacy-policy" target="_blank" rel="noopener noreferrer">Privacy policy Resend</a>
+            <ExternalLink className="text-natalo-700 underline ml-1" href="https://resend.com/legal/privacy-policy">Privacy policy Resend</ExternalLink>
           </li>
           <li>
             <b>Vercel</b> (Vercel Inc.) — hosting infrastruktur website. Menerima: log akses
             (IP, user agent), tidak menerima isi data pribadi pesanan.
-            <a className="text-natalo-700 underline ml-1" href="https://vercel.com/legal/privacy-policy" target="_blank" rel="noopener noreferrer">Privacy policy Vercel</a>
+            <ExternalLink className="text-natalo-700 underline ml-1" href="https://vercel.com/legal/privacy-policy">Privacy policy Vercel</ExternalLink>
           </li>
           <li>
             <b>UploadThing</b> — penyimpanan gambar produk dan upload yang kamu kirim

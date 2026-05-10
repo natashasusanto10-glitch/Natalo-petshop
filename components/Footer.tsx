@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { OperatingHours } from "@/components/OperatingHours";
+import { ExternalLink } from "@/components/ExternalLink";
 
 function InstagramIcon() {
   return (
@@ -66,16 +67,14 @@ export function Footer() {
             </p>
             <div className="mt-4 flex gap-2">
               {socialLinks.map((item) => (
-                <a
+                <ExternalLink
                   key={item.label}
                   href={item.href}
-                  target="_blank"
-                  rel="noreferrer"
                   aria-label={item.label}
                   className="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-600 transition hover:border-natalo-500 hover:text-natalo-600"
                 >
                   {item.icon}
-                </a>
+                </ExternalLink>
               ))}
             </div>
           </div>
@@ -105,9 +104,9 @@ export function Footer() {
             <ul className="mt-3 space-y-2 text-sm text-zinc-600">
               {wa && (
                 <li>
-                  <a href={waHref} target="_blank" rel="noreferrer" className="font-bold text-natalo-700 hover:underline">
+                  <ExternalLink href={waHref} className="font-bold text-natalo-700 hover:underline">
                     WhatsApp: {wa}
-                  </a>
+                  </ExternalLink>
                 </li>
               )}
               <li><Link href="/tentang-kami" className="hover:text-natalo-600">Tentang Natalo</Link></li>

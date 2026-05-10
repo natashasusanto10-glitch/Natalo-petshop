@@ -9,6 +9,7 @@ import { FlashSaleCountdown } from "@/components/home/FlashSaleCountdown";
 import HeroBanner from "@/components/home/HeroBanner";
 import TrustMarquee from "@/components/home/TrustMarquee";
 import type { TrustItem } from "@/data/trustItems";
+import { ExternalLink } from "@/components/ExternalLink";
 
 const brand = process.env.NEXT_PUBLIC_BRAND_NAME || "Natalo Petshop";
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -448,15 +449,13 @@ export default async function HomePage() {
 
             if (s.external) {
               return (
-                <a
+                <ExternalLink
                   key={s.label}
                   href={s.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
                   className="flex flex-col items-center gap-1.5 rounded-xl p-2 transition active:opacity-90"
                 >
                   {content}
-                </a>
+                </ExternalLink>
               );
             }
 
