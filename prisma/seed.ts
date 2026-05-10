@@ -107,10 +107,12 @@ async function main() {
       const product = await prisma.product.upsert({
         where: { slug: prod.slug },
         update: {
+          name: prod.name,
           price: prod.price,
           stock: prod.stock,
           weightGram: prod.weightGram,
           hasVariants: prod.hasVariants,
+          isActive: prod.stock > 0,
           categoryId: categoryId ?? null,
           brandId: brandId ?? null,
           brandAutoAssigned: true,
