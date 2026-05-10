@@ -404,17 +404,18 @@ export default function ImportProductsPage() {
             onClick={() => !resetLoading && setResetOpen(false)}
           />
           <div
-            className="voucher-sheet shadow-xl md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2"
+            className="voucher-safe-area"
             role="dialog"
             aria-modal="true"
             aria-label="Konfirmasi reset"
           >
-            <div className="border-b border-zinc-100 px-4 py-3">
-              <h2 className="text-base font-extrabold text-red-900">
-                Konfirmasi Reset
-              </h2>
-            </div>
-            <div className="space-y-3 p-4">
+            <div className="voucher-sheet md:max-w-md">
+              <div className="border-b border-zinc-100 px-4 py-3">
+                <h2 className="text-base font-extrabold text-red-900">
+                  Konfirmasi Reset
+                </h2>
+              </div>
+              <div className="space-y-3 p-4">
               <p className="text-sm text-zinc-700">
                 Tindakan ini akan:
               </p>
@@ -507,6 +508,7 @@ export default function ImportProductsPage() {
                   {resetLoading ? "Menghapus..." : "Konfirmasi Reset"}
                 </button>
               </div>
+            </div>
             </div>
           </div>
         </>
