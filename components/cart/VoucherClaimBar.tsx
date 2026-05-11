@@ -2,49 +2,28 @@
 
 /**
  * Voucher claim bar di halaman keranjang. Muncul di atas daftar produk
- * sebagai entry point ke bottom sheet pemilihan voucher member + private.
+ * sebagai entry point ke bottom sheet pemilihan voucher member.
  *
- * Sesuai aturan Natalo: voucher hanya untuk user login (member). Bar tetap
- * tampil untuk guest, tapi klik akan minta login.
+ * Voucher private/manual tidak muncul di cart; kode khusus penjual hanya
+ * dimasukkan di checkout.
  */
 
 import { formatRupiah } from "@/lib/format";
 
 type Props = {
-  /** Apakah user sudah login (member). Mempengaruhi text & behavior. */
   isLoggedIn: boolean;
-  /** Voucher member yg sudah dipilih (CUSTOMER). */
   memberVoucher: { code: string; discount: number } | null;
-  /** Voucher private yg sudah di-apply (SELLER_MANUAL). */
-  privateVoucher: { code: string; discount: number } | null;
-  /** Klik bar (mobile keseluruhan area) — buka bottom sheet atau redirect login. */
   onClick: () => void;
 };
 
 export function VoucherClaimBar({
   isLoggedIn,
   memberVoucher,
-  privateVoucher,
   onClick,
 }: Props) {
-  const totalApplied = (memberVoucher ? 1 : 0) + (privateVoucher ? 1 : 0);
-  const totalDiscount =
-    (memberVoucher?.discount ?? 0) + (privateVoucher?.discount ?? 0);
-
-  // Summary text saat ada voucher applied
-  const summary = (() => {
-    if (totalApplied === 0) return null;
-    if (memberVoucher && privateVoucher) {
-      return `Member + Private dipakai · Hemat ${formatRupiah(totalDiscount)}`;
-    }
-    if (memberVoucher) {
-      return `${memberVoucher.code} dipakai · Hemat ${formatRupiah(memberVoucher.discount)}`;
-    }
-    if (privateVoucher) {
-      return `${privateVoucher.code} dipakai · Hemat ${formatRupiah(privateVoucher.discount)}`;
-    }
-    return null;
-  })();
+  const summary = memberVoucher
+    ? `Voucher member dipakai · Hemat ${formatRupiah(memberVoucher.discount)}`
+    : null;
 
   return (
     <button
@@ -73,7 +52,7 @@ export function VoucherClaimBar({
         {summary ? (
           <>
             <span className="block text-sm font-extrabold text-blue-900">
-              {totalApplied} voucher dipakai
+              1 voucher dipakai
             </span>
             <span className="mt-0.5 block truncate text-xs font-semibold text-blue-700">
               {summary}
@@ -82,11 +61,11 @@ export function VoucherClaimBar({
         ) : (
           <>
             <span className="block text-sm font-extrabold text-blue-900">
-              Voucher Gratis Ongkir!
+              Voucher Member Natalo
             </span>
             <span className="mt-0.5 block text-xs text-blue-700">
               {isLoggedIn
-                ? "Eksklusif Khusus Member Natalo"
+                ? "Eksklusif khusus member Natalo"
                 : "Login dulu untuk klaim voucher member"}
             </span>
           </>

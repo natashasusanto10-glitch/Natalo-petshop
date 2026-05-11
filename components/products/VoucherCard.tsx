@@ -4,12 +4,22 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 export type VoucherItem = {
-  code: string;
+  id: string;
+  title: string;
   description: string | null;
+  label: string;
+  type: "member";
   discountPercent: number | null;
   discountAmount: number | null;
   minimumOrder: number;
+  minPurchase?: number;
   expiresAt: string | null; // ISO
+  visibility?: "member" | "private" | string;
+  isPrivate?: boolean;
+  isManualOnly?: boolean;
+  usedByCurrentUser?: boolean;
+  isActive?: boolean;
+  isExpired?: boolean;
 };
 
 type Props = {
@@ -21,6 +31,7 @@ function formatRupiahShort(n: number) {
 }
 
 function describeBenefit(v: VoucherItem) {
+  if (v.title) return v.title;
   if (v.discountPercent && v.discountPercent > 0) {
     return `Diskon ${v.discountPercent}%`;
   }
@@ -50,8 +61,18 @@ function describeExpiry(iso: string | null) {
 
 export function VoucherCard({ vouchers }: Props) {
   const [open, setOpen] = useState(false);
-  const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  const visibleProductVouchers = vouchers.filter((voucher) => {
+    return (
+      voucher.type === "member" &&
+      voucher.visibility !== "private" &&
+      !voucher.isPrivate &&
+      !voucher.isManualOnly &&
+      !voucher.usedByCurrentUser &&
+      voucher.isActive !== false &&
+      !voucher.isExpired
+    );
+  });
 
   function closeVoucher() {
     setOpen(false);
@@ -79,23 +100,21 @@ export function VoucherCard({ vouchers }: Props) {
     };
   }, [open]);
 
-  async function handleApply(code: string) {
-    try {
-      if (typeof navigator !== "undefined" && navigator.clipboard) {
-        await navigator.clipboard.writeText(code);
-      }
-      setCopiedCode(code);
-      window.setTimeout(() => setCopiedCode(null), 1800);
-    } catch {
-      // Fallback diam-diam: tetap tampilkan pesan tersalin agar UX konsisten.
-      setCopiedCode(code);
-      window.setTimeout(() => setCopiedCode(null), 1800);
-    }
+  function handleUse() {
+    closeVoucher();
+    window.setTimeout(() => {
+      document.getElementById("beli")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 80);
   }
 
   const teaser =
-    vouchers.length > 0 ? describeBenefit(vouchers[0]) : "Lihat penawaran tersedia";
-  const count = vouchers.length;
+    visibleProductVouchers.length > 0
+      ? describeBenefit(visibleProductVouchers[0])
+      : "Lihat penawaran member";
+  const count = visibleProductVouchers.length;
 
   const voucherPortal =
     open && typeof document !== "undefined"
@@ -126,18 +145,17 @@ export function VoucherCard({ vouchers }: Props) {
                 </div>
 
                 <div className="p-4">
-                  {vouchers.length === 0 ? (
+                  {visibleProductVouchers.length === 0 ? (
                     <p className="py-8 text-center text-sm text-gray-500">
-                      Belum ada voucher publik aktif saat ini.
+                      Belum ada voucher member aktif saat ini.
                     </p>
                   ) : (
                     <ul className="space-y-3">
-                      {vouchers.map((v) => {
+                      {visibleProductVouchers.map((v) => {
                         const expiry = describeExpiry(v.expiresAt);
-                        const isCopied = copiedCode === v.code;
                         return (
                           <li
-                            key={v.code}
+                            key={v.id}
                             className="flex items-stretch overflow-hidden rounded-xl border border-orange-200 bg-orange-50/60"
                           >
                             <div className="flex flex-1 flex-col justify-center px-4 py-3">
@@ -145,7 +163,10 @@ export function VoucherCard({ vouchers }: Props) {
                                 {describeBenefit(v)}
                               </p>
                               <p className="mt-0.5 text-xs text-gray-500">
-                                Kode <span className="font-bold text-gray-700">{v.code}</span> - {describeMin(v)}
+                                {describeMin(v)}
+                              </p>
+                              <p className="mt-0.5 text-[11px] font-bold text-orange-700">
+                                {v.label}
                               </p>
                               {expiry && (
                                 <p className="mt-0.5 text-[11px] font-bold text-orange-600">
@@ -155,10 +176,10 @@ export function VoucherCard({ vouchers }: Props) {
                             </div>
                             <button
                               type="button"
-                              onClick={() => handleApply(v.code)}
+                              onClick={handleUse}
                               className="shrink-0 px-4 text-sm font-extrabold text-natalo-600 transition active:bg-natalo-50"
                             >
-                              {isCopied ? "Tersalin" : "Pakai"}
+                              Pakai
                             </button>
                           </li>
                         );
@@ -166,7 +187,7 @@ export function VoucherCard({ vouchers }: Props) {
                     </ul>
                   )}
                   <p className="mt-4 text-center text-[11px] text-gray-400">
-                    Kode otomatis tersalin. Tempel di halaman keranjang saat checkout.
+                    Voucher member dipilih dari keranjang atau checkout.
                   </p>
                 </div>
               </div>

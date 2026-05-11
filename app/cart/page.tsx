@@ -9,10 +9,7 @@ import { EmptyCart } from "@/components/LoadingEmptyStates";
 import { loadCart, saveCart, type CartItem } from "@/lib/cart";
 import type { CartStockIssue } from "@/lib/cart-stock";
 import { VoucherClaimBar } from "@/components/cart/VoucherClaimBar";
-import {
-  CartVoucherSheet,
-  type AppliedPrivateVoucher,
-} from "@/components/cart/CartVoucherSheet";
+import { CartVoucherSheet } from "@/components/cart/CartVoucherSheet";
 import { ConfirmDeleteModal } from "@/components/ConfirmDeleteModal";
 
 const CHECKOUT_SELECTION_KEY = "checkout:selectedCartItems";
@@ -60,7 +57,6 @@ export default function CartPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [voucherSheetOpen, setVoucherSheetOpen] = useState(false);
   const [memberVoucher, setMemberVoucher] = useState<CartAppliedMember | null>(null);
-  const [privateVoucher, setPrivateVoucher] = useState<AppliedPrivateVoucher | null>(null);
 
   // Delete confirmation modal state
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -75,10 +71,15 @@ export default function CartPage() {
       if (raw) {
         const parsed = JSON.parse(raw) as {
           member?: CartAppliedMember | null;
-          private?: AppliedPrivateVoucher | null;
+          private?: unknown;
         };
         if (parsed.member) setMemberVoucher(parsed.member);
-        if (parsed.private) setPrivateVoucher(parsed.private);
+        if (parsed.private) {
+          sessionStorage.setItem(
+            CART_VOUCHER_KEY,
+            JSON.stringify({ member: parsed.member ?? null }),
+          );
+        }
       }
     } catch {
       // ignore corrupt session
@@ -98,10 +99,10 @@ export default function CartPage() {
   // Persist voucher selection setiap kali berubah
   useEffect(() => {
     try {
-      if (memberVoucher || privateVoucher) {
+      if (memberVoucher) {
         sessionStorage.setItem(
           CART_VOUCHER_KEY,
-          JSON.stringify({ member: memberVoucher, private: privateVoucher }),
+          JSON.stringify({ member: memberVoucher }),
         );
       } else {
         sessionStorage.removeItem(CART_VOUCHER_KEY);
@@ -109,7 +110,7 @@ export default function CartPage() {
     } catch {
       // ignore quota / disabled storage
     }
-  }, [memberVoucher, privateVoucher]);
+  }, [memberVoucher]);
 
   useEffect(() => {
     function syncCart() {
@@ -151,7 +152,7 @@ export default function CartPage() {
   // Total diskon dari kombinasi voucher member + private (capped at subtotal
   // supaya tidak negative — match logic backend).
   const voucherDiscount = Math.min(
-    (memberVoucher?.discount ?? 0) + (privateVoucher?.discount ?? 0),
+    memberVoucher?.discount ?? 0,
     selectedSubtotal,
   );
   const selectedTotal = Math.max(selectedSubtotal - voucherDiscount, 0);
@@ -368,7 +369,6 @@ export default function CartPage() {
               <VoucherClaimBar
                 isLoggedIn={isLoggedIn}
                 memberVoucher={memberVoucher}
-                privateVoucher={privateVoucher}
                 onClick={() => setVoucherSheetOpen(true)}
               />
             </div>
@@ -534,7 +534,6 @@ export default function CartPage() {
         isLoggedIn={isLoggedIn}
         subtotal={selectedSubtotal}
         selectedMemberCode={memberVoucher?.code ?? null}
-        appliedPrivate={privateVoucher}
         onSelectMember={(code, discount, description) => {
           if (!code) {
             setMemberVoucher(null);
@@ -542,8 +541,6 @@ export default function CartPage() {
             setMemberVoucher({ code, discount, description });
           }
         }}
-        onApplyPrivate={(v) => setPrivateVoucher(v)}
-        onRemovePrivate={() => setPrivateVoucher(null)}
         onRequireLogin={() => {
           setVoucherSheetOpen(false);
           router.push("/login?next=/cart");

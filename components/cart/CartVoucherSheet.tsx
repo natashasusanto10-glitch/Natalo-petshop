@@ -16,7 +16,7 @@
  * @capacitor/keyboard untuk iOS native.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { formatRupiah } from "@/lib/format";
 
@@ -31,12 +31,6 @@ export type MemberVoucherItem = {
   disabledReason: string | null;
 };
 
-export type AppliedPrivateVoucher = {
-  code: string;
-  description: string;
-  discount: number;
-};
-
 type Props = {
   open: boolean;
   onClose: () => void;
@@ -45,18 +39,12 @@ type Props = {
   subtotal: number;
   /** Voucher member terpilih saat ini */
   selectedMemberCode: string | null;
-  /** Voucher private yg sudah di-apply */
-  appliedPrivate: AppliedPrivateVoucher | null;
   /** Callback saat user pilih voucher member */
   onSelectMember: (
     code: string | null,
     discount: number,
     description: string,
   ) => void;
-  /** Callback saat private voucher berhasil di-apply */
-  onApplyPrivate: (voucher: AppliedPrivateVoucher) => void;
-  /** Callback saat private voucher di-lepas */
-  onRemovePrivate: () => void;
   /** Trigger redirect ke /login (kalau guest klik klaim) */
   onRequireLogin: () => void;
 };
@@ -67,21 +55,13 @@ export function CartVoucherSheet({
   isLoggedIn,
   subtotal,
   selectedMemberCode,
-  appliedPrivate,
   onSelectMember,
-  onApplyPrivate,
-  onRemovePrivate,
   onRequireLogin,
 }: Props) {
   const [memberAvailable, setMemberAvailable] = useState<MemberVoucherItem[]>([]);
   const [memberUnavailable, setMemberUnavailable] = useState<MemberVoucherItem[]>([]);
   const [memberLoading, setMemberLoading] = useState(false);
   const [memberError, setMemberError] = useState("");
-
-  const [privateCode, setPrivateCode] = useState("");
-  const [privateValidating, setPrivateValidating] = useState(false);
-  const [privateError, setPrivateError] = useState("");
-  const privateInputRef = useRef<HTMLInputElement | null>(null);
 
   // Lock body scroll + hide bottom-nav saat sheet open
   useEffect(() => {
@@ -178,47 +158,13 @@ export function CartVoucherSheet({
       .finally(() => setMemberLoading(false));
   }, [open, isLoggedIn, subtotal]);
 
-  async function handleApplyPrivate() {
-    const code = privateCode.trim().toUpperCase();
-    if (!code) return;
-    if (!isLoggedIn) {
-      setPrivateError("Login dulu untuk pakai voucher.");
-      return;
-    }
-    setPrivateValidating(true);
-    setPrivateError("");
-    try {
-      const res = await fetch("/api/cart/vouchers/validate-private", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, subtotal }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        setPrivateError(data.message ?? "Kode voucher tidak valid");
-        return;
-      }
-      onApplyPrivate({
-        code: data.voucher.code,
-        description: data.voucher.description,
-        discount: data.voucher.discount,
-      });
-      setPrivateCode("");
-      setPrivateError("");
-    } catch {
-      setPrivateError("Gagal memvalidasi kode");
-    } finally {
-      setPrivateValidating(false);
-    }
-  }
-
   if (!open || typeof document === "undefined") return null;
 
   return createPortal(
     <>
       <div className="voucher-backdrop" onClick={onClose} />
       <div
-        className="voucher-safe-area voucher-safe-area--manual"
+        className="voucher-safe-area"
         role="dialog"
         aria-modal="true"
         aria-label="Pilih Voucher"
@@ -341,92 +287,8 @@ export function CartVoucherSheet({
               )}
             </section>
 
-            {/* === Section 2: Kode Voucher Private === */}
-            <section className="mt-6">
-              <h3 className="text-xs font-extrabold uppercase tracking-wide text-zinc-700">
-                Masukkan Kode Voucher Private
-              </h3>
-              <p className="mt-1 text-[11px] text-zinc-500">
-                Kode rahasia dari penjual. Untuk voucher publik / member, pilih lewat daftar di atas.
-              </p>
-
-              {appliedPrivate ? (
-                <div className="mt-2 flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-amber-600">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5" aria-hidden>
-                      <path d="M3 9V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4z" strokeLinejoin="round" />
-                    </svg>
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-extrabold text-zinc-950">
-                      {appliedPrivate.code} terpakai
-                    </p>
-                    <p className="mt-0.5 text-xs font-semibold text-amber-800">
-                      Hemat {formatRupiah(appliedPrivate.discount)}
-                      <span className="ml-2 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
-                        Manual
-                      </span>
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onRemovePrivate();
-                      setPrivateCode("");
-                      setPrivateError("");
-                    }}
-                    className="shrink-0 rounded-full px-3 py-1.5 text-xs font-bold text-amber-700 active:bg-amber-100"
-                  >
-                    Lepas
-                  </button>
-                </div>
-              ) : (
-                <div className="mt-2 flex gap-2">
-                  <input
-                    ref={privateInputRef}
-                    type="text"
-                    inputMode="text"
-                    autoCapitalize="characters"
-                    value={privateCode}
-                    onChange={(e) => {
-                      setPrivateCode(e.target.value.toUpperCase());
-                      setPrivateError("");
-                    }}
-                    onFocus={() => {
-                      window.setTimeout(() => {
-                        privateInputRef.current?.scrollIntoView({
-                          behavior: "smooth",
-                          block: "center",
-                        });
-                      }, 280);
-                    }}
-                    onKeyDown={(e) =>
-                      e.key === "Enter" &&
-                      (e.preventDefault(), handleApplyPrivate())
-                    }
-                    placeholder="Masukkan kode dari penjual"
-                    disabled={!isLoggedIn || privateValidating}
-                    className="flex-1 rounded-xl border border-zinc-200 px-3 py-2.5 text-sm uppercase tracking-wide outline-none focus:border-natalo-400 disabled:bg-zinc-50"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleApplyPrivate}
-                    disabled={!isLoggedIn || !privateCode.trim() || privateValidating}
-                    className="shrink-0 rounded-xl bg-natalo-600 px-4 py-2.5 text-sm font-bold text-white active:bg-natalo-700 disabled:cursor-not-allowed disabled:bg-zinc-300"
-                  >
-                    {privateValidating ? "..." : "Gunakan"}
-                  </button>
-                </div>
-              )}
-              {privateError && (
-                <p className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
-                  {privateError}
-                </p>
-              )}
-            </section>
-
             <p className="mt-6 text-center text-[11px] text-zinc-400">
-              Maksimal 2 voucher: 1 voucher member + 1 voucher penjual melalui kode manual
+              Voucher khusus dari penjual dimasukkan di halaman checkout.
             </p>
           </div>
 
@@ -474,7 +336,9 @@ function MemberVoucherRow({
     >
       <div className="flex flex-1 flex-col justify-center px-3 py-3">
         <p className={`text-sm font-extrabold ${disabled ? "text-zinc-500" : "text-zinc-950"}`}>
-          {voucher.description ?? voucher.code}
+          {voucher.discount > 0
+            ? `Hemat Rp${new Intl.NumberFormat("id-ID").format(voucher.discount)}`
+            : "Voucher Member Natalo"}
         </p>
         <p className="mt-0.5 text-xs text-zinc-500">
           {voucher.minimumOrder > 0

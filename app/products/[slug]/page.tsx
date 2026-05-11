@@ -9,9 +9,11 @@ import { StickyAddToCartBar } from "@/components/products/StickyAddToCartBar";
 import { PriceBlock } from "@/components/products/PriceBlock";
 import { SocialProofRow } from "@/components/products/SocialProofRow";
 import { TrustInfoCard } from "@/components/products/TrustInfoCard";
-import { VoucherCard, type VoucherItem } from "@/components/products/VoucherCard";
+import { VoucherCard } from "@/components/products/VoucherCard";
 import { ProductTabs } from "@/components/products/ProductTabs";
 import { formatRupiah } from "@/lib/format";
+import { getSession } from "@/lib/auth";
+import { loadVisibleProductVouchers } from "@/lib/product-vouchers";
 import { getProductBySlug, getProducts } from "@/lib/products";
 import { prisma } from "@/lib/prisma";
 import { ReviewForm } from "@/components/ReviewForm";
@@ -21,7 +23,7 @@ import { PageStatusBar } from "@/components/PageStatusBar";
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 const brand = process.env.NEXT_PUBLIC_BRAND_NAME || "Natalo Petshop";
 
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 function discountPercent(price: number, discountPrice: number | null) {
   if (discountPrice === null || discountPrice >= price) return null;
@@ -64,39 +66,6 @@ export async function generateMetadata({
   };
 }
 
-async function loadPublicVouchers(): Promise<VoucherItem[]> {
-  try {
-    const now = new Date();
-    const rows = await prisma.voucher.findMany({
-      where: {
-        isActive: true,
-        userId: null,
-        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-      },
-      orderBy: { expiresAt: "asc" },
-      take: 6,
-      select: {
-        code: true,
-        description: true,
-        discountPercent: true,
-        discountAmount: true,
-        minimumOrder: true,
-        expiresAt: true,
-      },
-    });
-    return rows.map((v) => ({
-      code: v.code,
-      description: v.description,
-      discountPercent: v.discountPercent,
-      discountAmount: v.discountAmount,
-      minimumOrder: v.minimumOrder,
-      expiresAt: v.expiresAt ? v.expiresAt.toISOString() : null,
-    }));
-  } catch {
-    return [];
-  }
-}
-
 export default async function ProductDetailPage({
   params,
 }: {
@@ -106,10 +75,11 @@ export default async function ProductDetailPage({
   const product = await getProductBySlug(slug);
   if (!product) return notFound();
 
+  const session = await getSession("CUSTOMER");
   const [productWithCategory, allProducts, vouchers] = await Promise.all([
     prisma.product.findUnique({ where: { slug }, include: { category: true } }).catch(() => null),
     getProducts({ category: product.categorySlug ?? undefined, take: 12 }),
-    loadPublicVouchers(),
+    loadVisibleProductVouchers(session?.sub ?? null),
   ]);
   const favoriteIds: string[] = [];
 
@@ -234,7 +204,7 @@ export default async function ProductDetailPage({
             />
 
             {/* 4. Voucher card */}
-            <VoucherCard vouchers={vouchers} />
+            {vouchers.length > 0 && <VoucherCard vouchers={vouchers} />}
 
             {/* 5. Trust info — garansi + stok */}
             <TrustInfoCard stock={product.stock} outOfStock={outOfStock} />

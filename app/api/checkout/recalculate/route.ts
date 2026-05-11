@@ -266,7 +266,9 @@ export async function POST(request: NextRequest) {
   }
 
   const customerVouchers = customerVouchersRaw.filter(
-    (v) => !userUsedCodes.has(v.code),
+    (v) =>
+      !userUsedCodes.has(v.code) &&
+      (v.maxUsage === null || v.usedCount < v.maxUsage),
   );
 
   // Manual seller voucher — hanya kalau di-request via kode
@@ -294,7 +296,7 @@ export async function POST(request: NextRequest) {
       manualVoucherError =
         "Kode ini bukan voucher manual penjual. Pilih lewat daftar voucher pembeli.";
     } else if (manualVoucher.expiresAt && manualVoucher.expiresAt <= now) {
-      manualVoucherError = "Voucher sudah kedaluwarsa.";
+      manualVoucherError = "Kode voucher sudah berakhir";
     } else if (manualVoucher.startsAt > now) {
       manualVoucherError = "Voucher belum berlaku.";
     } else if (
@@ -335,13 +337,6 @@ export async function POST(request: NextRequest) {
   const unavailable: ReturnType<typeof normalizeUnavailable>[] = [];
 
   for (const voucher of customerVouchers) {
-    if (voucher.maxUsage !== null && voucher.usedCount >= voucher.maxUsage) {
-      unavailable.push(
-        normalizeUnavailable(voucher, "Voucher sudah mencapai batas penggunaan", 0),
-      );
-      continue;
-    }
-
     if (subtotal < voucher.minimumOrder) {
       const shortfall = voucher.minimumOrder - subtotal;
       unavailable.push(
@@ -419,7 +414,7 @@ export async function POST(request: NextRequest) {
       customerApplied && customerAuto
         ? {
             code: customerApplied.code,
-            title: `${customerApplied.code} terpakai`,
+            title: "Voucher member terpakai",
             description: describeDiscount(customerApplied.discount),
             discount: customerApplied.discount,
           }
@@ -427,7 +422,7 @@ export async function POST(request: NextRequest) {
     applied_voucher: customerApplied
       ? {
           ...customerApplied,
-          title: `${customerApplied.code} terpakai`,
+          title: "Voucher member terpakai",
           autoApplied: customerAuto,
         }
       : null,
@@ -435,14 +430,14 @@ export async function POST(request: NextRequest) {
     applied_customer_voucher: customerApplied
       ? {
           ...customerApplied,
-          title: `${customerApplied.code} terpakai`,
+          title: "Voucher member terpakai",
           autoApplied: customerAuto,
         }
       : null,
     applied_manual_voucher: manualApplied
       ? {
           ...manualApplied,
-          title: `${manualApplied.code} terpakai`,
+          title: "Voucher khusus terpakai",
           autoApplied: false,
         }
       : null,

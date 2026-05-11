@@ -41,19 +41,37 @@ export async function GET(request: NextRequest) {
   // Ambil SEMUA voucher milik user yang masih aktif & belum expired (tanpa
   // filter minimumOrder) — biar bisa kasih tau user voucher yang "kurang
   // belanja sekian lagi".
-  const vouchers = await prisma.voucher.findMany({
-    where: {
-      userId: session.sub,
-      isActive: true,
-      startsAt: { lte: now },
-      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  const [vouchers, usedOrders] = await Promise.all([
+    prisma.voucher.findMany({
+      where: {
+        userId: session.sub,
+        sourceType: "CUSTOMER",
+        isActive: true,
+        startsAt: { lte: now },
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.order.findMany({
+      where: {
+        userId: session.sub,
+        OR: [{ voucherCode: { not: null } }, { manualVoucherCode: { not: null } }],
+      },
+      select: { voucherCode: true, manualVoucherCode: true },
+    }),
+  ]);
+
+  const usedCodes = new Set<string>();
+  for (const order of usedOrders) {
+    if (order.voucherCode) usedCodes.add(order.voucherCode);
+    if (order.manualVoucherCode) usedCodes.add(order.manualVoucherCode);
+  }
 
   // Filter usedCount < maxUsage (column-to-column gak bisa di Prisma where)
   const usable = vouchers.filter(
-    (v) => v.maxUsage === null || v.usedCount < v.maxUsage,
+    (v) =>
+      !usedCodes.has(v.code) &&
+      (v.maxUsage === null || v.usedCount < v.maxUsage),
   );
 
   const eligible: Array<{

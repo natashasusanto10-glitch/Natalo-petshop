@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
+import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { createOrderNumber } from "@/lib/format";
 import { createOrderSchema } from "@/lib/validation";
@@ -18,6 +19,15 @@ type CheckedOutItem = {
 
 class StockConflictError extends Error {
   status = 409;
+}
+
+class VoucherValidationError extends Error {
+  status: number;
+
+  constructor(message: string, status = 400) {
+    super(message);
+    this.status = status;
+  }
 }
 
 function itemLabel(item: Pick<CheckedOutItem, "name" | "variantLabel">) {
@@ -185,7 +195,44 @@ export async function POST(request: Request) {
   const subtotal = checkoutItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   let discount = 0;
 
+  let user = await prisma.user.findFirst({
+    where: {
+      OR: [
+        { phone: input.customerPhone },
+        input.customerEmail ? { email: input.customerEmail } : undefined,
+      ].filter(Boolean) as { phone?: string; email?: string }[],
+    },
+  });
+
+  if (!user) {
+    user = await prisma.user.create({
+      data: {
+        name: input.customerName,
+        phone: input.customerPhone,
+        email: input.customerEmail || null,
+      },
+    });
+  }
+
   try {
+    const voucherSession = await getSession("CUSTOMER");
+    if (input.voucherCode?.trim() && !voucherSession) {
+      throw new VoucherValidationError("Login dulu untuk menggunakan voucher member.", 401);
+    }
+
+    const userUsedCodes = new Set<string>();
+    const userUsedOrders = await prisma.order.findMany({
+      where: {
+        userId: user.id,
+        OR: [{ voucherCode: { not: null } }, { manualVoucherCode: { not: null } }],
+      },
+      select: { voucherCode: true, manualVoucherCode: true },
+    });
+    for (const order of userUsedOrders) {
+      if (order.voucherCode) userUsedCodes.add(order.voucherCode);
+      if (order.manualVoucherCode) userUsedCodes.add(order.manualVoucherCode);
+    }
+
     // Aturan voucher (lihat CLAUDE.md):
     // - Maks 1 voucher CUSTOMER + 1 voucher SELLER_MANUAL
     // - SELLER_MANUAL hanya boleh di slot manual
@@ -203,14 +250,24 @@ export async function POST(request: Request) {
         where: { code: code.trim().toUpperCase() },
       });
       if (!voucher || !voucher.isActive) return null;
+      if (userUsedCodes.has(voucher.code)) {
+        throw new VoucherValidationError("Kode voucher sudah pernah digunakan");
+      }
       if (voucher.sourceType !== expectedType) {
         // Routing salah — kode customer di slot manual atau sebaliknya.
         // Backend MENOLAK alih-alih auto-route, supaya frontend explicit.
-        throw new Error(
+        throw new VoucherValidationError(
           expectedType === "CUSTOMER"
             ? "Kode ini adalah voucher manual penjual. Masukkan lewat input kode manual."
             : "Kode ini bukan voucher manual penjual.",
         );
+      }
+      if (
+        expectedType === "CUSTOMER" &&
+        voucher.userId !== null &&
+        voucher.userId !== voucherSession?.sub
+      ) {
+        return null;
       }
       const isValid =
         subtotal >= voucher.minimumOrder &&
@@ -261,25 +318,6 @@ export async function POST(request: Request) {
         ? Math.floor(100 + Math.random() * 900)
         : null;
     const earnedPoints = Math.floor(total / 20000);
-
-    let user = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { phone: input.customerPhone },
-          input.customerEmail ? { email: input.customerEmail } : undefined,
-        ].filter(Boolean) as { phone?: string; email?: string }[],
-      },
-    });
-
-    if (!user) {
-      user = await prisma.user.create({
-        data: {
-          name: input.customerName,
-          phone: input.customerPhone,
-          email: input.customerEmail || null,
-        },
-      });
-    }
 
     const order = await prisma.$transaction(async (tx) => {
       // Track produk varian yang stoknya berubah → perlu re-sync Product.stock
@@ -518,6 +556,9 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error(error);
     if (error instanceof StockConflictError) {
+      return NextResponse.json({ message: error.message }, { status: error.status });
+    }
+    if (error instanceof VoucherValidationError) {
       return NextResponse.json({ message: error.message }, { status: error.status });
     }
     return NextResponse.json({ message: error instanceof Error ? error.message : "Gagal membuat order." }, { status: 500 });
