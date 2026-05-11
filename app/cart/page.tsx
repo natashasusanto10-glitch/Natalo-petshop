@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatRupiah } from "@/lib/format";
@@ -9,8 +10,20 @@ import { EmptyCart } from "@/components/LoadingEmptyStates";
 import { loadCart, saveCart, type CartItem } from "@/lib/cart";
 import type { CartStockIssue } from "@/lib/cart-stock";
 import { VoucherClaimBar } from "@/components/cart/VoucherClaimBar";
-import { CartVoucherSheet } from "@/components/cart/CartVoucherSheet";
-import { ConfirmDeleteModal } from "@/components/ConfirmDeleteModal";
+import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
+import { hapticSuccess, hapticTap, hapticWarning } from "@/lib/native/haptics";
+
+// Voucher sheet & delete modal hanya muncul setelah user interaksi —
+// lazy-load JS-nya supaya initial bundle cart page lebih ringan.
+const CartVoucherSheet = dynamic(
+  () => import("@/components/cart/CartVoucherSheet").then((m) => m.CartVoucherSheet),
+  { ssr: false },
+);
+
+const ConfirmDeleteModal = dynamic(
+  () => import("@/components/ConfirmDeleteModal").then((m) => m.ConfirmDeleteModal),
+  { ssr: false },
+);
 
 const CHECKOUT_SELECTION_KEY = "checkout:selectedCartItems";
 // Voucher pre-selection di cart, di-pickup oleh /checkout/page.tsx saat
@@ -283,6 +296,7 @@ export default function CartPage() {
 
   async function handleConfirmDelete() {
     setIsDeleting(true);
+    hapticSuccess();
     try {
       if (deleteMode === "single" && targetItem) {
         // Hapus item single — pakai cartKey + remove via filter (sama
@@ -310,11 +324,15 @@ export default function CartPage() {
 
   async function checkoutSelected() {
     if (selectedItems.length === 0) return;
+    hapticTap();
     const result = await refreshCartStock(items);
     const selectedKeySet = new Set(selectedKeys);
     const nextSelectedItems = result.items.filter((item) => selectedKeySet.has(cartKey(item)));
     const selectedHasIssue = result.issues.some((issue) => selectedKeySet.has(issue.key));
-    if (!result.ok || selectedHasIssue || nextSelectedItems.length === 0) return;
+    if (!result.ok || selectedHasIssue || nextSelectedItems.length === 0) {
+      hapticWarning();
+      return;
+    }
 
     sessionStorage.setItem(CHECKOUT_SELECTION_KEY, JSON.stringify(nextSelectedItems));
     const ids = nextSelectedItems.map(cartKey).map(encodeURIComponent).join(",");
@@ -413,6 +431,8 @@ export default function CartPage() {
                             alt={item.name}
                             fill
                             sizes="80px"
+                            placeholder="blur"
+                            blurDataURL={IMAGE_BLUR_GRAY}
                             className="object-cover"
                           />
                         ) : (

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ExternalLink } from "@/components/ExternalLink";
+import { hapticTap } from "@/lib/native/haptics";
 
 type PdpState = {
   hasVariants: boolean;
@@ -29,6 +30,7 @@ export function ProductPurchaseButtons({ initialState, waHref }: Props) {
 
   function handleCommerceClick(action: "cart" | "buy") {
     if (state.outOfStock) return;
+    hapticTap();
     if (state.hasVariants && !state.canAdd) {
       document.getElementById("beli")?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;

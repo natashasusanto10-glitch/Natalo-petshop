@@ -17,8 +17,9 @@
  */
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
+import { hapticTap } from "@/lib/native/haptics";
 
 export type FilterSection = "kategori" | "produk-baru" | "populer";
 
@@ -79,6 +80,7 @@ export function ProductFilterTopDrawer({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [expanded, setExpanded] = useState<FilterSection | null>(defaultSection ?? null);
+  const [, startTransition] = useTransition();
 
   // Sync expanded section dgn trigger source
   useEffect(() => {
@@ -106,10 +108,13 @@ export function ProductFilterTopDrawer({
     const params = new URLSearchParams(searchParams.toString());
     updater(params);
     params.delete("page");
-    router.push(`/products${params.toString() ? `?${params}` : ""}`, {
-      scroll: false,
-    });
+    hapticTap();
     onClose();
+    startTransition(() => {
+      router.push(`/products${params.toString() ? `?${params}` : ""}`, {
+        scroll: false,
+      });
+    });
   }
 
   function handleResetAll() {

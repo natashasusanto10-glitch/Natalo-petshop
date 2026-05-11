@@ -14,12 +14,13 @@
  */
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import {
   ProductFilterTopDrawer,
   type CategoryOption,
   type FilterSection,
 } from "./ProductFilterTopDrawer";
+import { hapticTap } from "@/lib/native/haptics";
 
 const NEW_LABELS: Record<string, string> = {
   today: "Hari Ini",
@@ -69,32 +70,44 @@ export function ProductFilterChips({
   const searchParams = useSearchParams();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [defaultSection, setDefaultSection] = useState<FilterSection | null>(null);
+  // useTransition supaya navigasi filter (router.push) jadi non-urgent —
+  // isPending = true selama server re-render produk grid. Kita pakai itu
+  // untuk dim chip row & disable interaksi biar user dapat feedback visual
+  // instan, bukan UI freeze.
+  const [isPending, startTransition] = useTransition();
 
   const hasNoFilter = !activeCategory && !activeNewFilter && !activePopularFilter;
 
   function openDrawerAt(section: FilterSection) {
+    hapticTap();
     setDefaultSection(section);
     setDrawerOpen(true);
   }
 
   function clearOne(key: "kategori" | "new" | "popular") {
+    hapticTap();
     const params = new URLSearchParams(searchParams.toString());
     params.delete(key);
     params.delete("page");
-    router.push(`/products${params.toString() ? `?${params}` : ""}`, {
-      scroll: false,
+    startTransition(() => {
+      router.push(`/products${params.toString() ? `?${params}` : ""}`, {
+        scroll: false,
+      });
     });
   }
 
   function resetAll() {
+    hapticTap();
     const params = new URLSearchParams(searchParams.toString());
     params.delete("kategori");
     params.delete("category");
     params.delete("new");
     params.delete("popular");
     params.delete("page");
-    router.push(`/products${params.toString() ? `?${params}` : ""}`, {
-      scroll: false,
+    startTransition(() => {
+      router.push(`/products${params.toString() ? `?${params}` : ""}`, {
+        scroll: false,
+      });
     });
   }
 
@@ -108,7 +121,12 @@ export function ProductFilterChips({
 
   return (
     <>
-      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div
+        aria-busy={isPending}
+        className={`-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 transition-opacity duration-150 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
+          isPending ? "pointer-events-none opacity-60" : ""
+        }`}
+      >
         {/* Semua */}
         <button
           type="button"

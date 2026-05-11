@@ -7,15 +7,10 @@ import { PWARegister } from "@/components/PWARegister";
 import { NativeSwipeBackController } from "@/components/NativeSwipeBackController";
 import { SwipeBackProvider } from "@/components/SwipeBackProvider";
 import IOSSwipeBack from "@/components/IOSSwipeBack";
-import dynamic from "next/dynamic";
-
-// Lazy load InstallPrompt — banner promote "Add to Home Screen" yang cuma
-// muncul setelah delay + cek beforeinstallprompt event. Defer load supaya
-// gak ganggu LCP halaman utama.
-const InstallPrompt = dynamic(
-  () => import("@/components/InstallPrompt").then((m) => m.InstallPrompt),
-  { ssr: false },
-);
+// InstallPromptLazy is a client-side dynamic wrapper — call ke next/dynamic
+// dengan ssr:false hanya boleh di dalam Client Component (Next 14+), jadi
+// kita wrap di components/InstallPromptLazy.tsx.
+import { InstallPromptLazy as InstallPrompt } from "@/components/InstallPromptLazy";
 import { StoreOnly } from "@/components/StoreOnly";
 import { BottomNavigation } from "@/components/BottomNavigation";
 import { WhatsAppFloat } from "@/components/WhatsAppFloat";

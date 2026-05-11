@@ -7,6 +7,8 @@ import { cartSuccessToast } from "@/components/Toast";
 import { addItemToCart, showAddToCartErrorToast } from "@/lib/cart-actions";
 import type { CartItem } from "@/lib/cart";
 import { formatRupiah } from "@/lib/format";
+import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
+import { hapticError, hapticSuccess, hapticTap } from "@/lib/native/haptics";
 
 type AddToCartSheetItem = Omit<CartItem, "quantity" | "subtotal"> & {
   minimumQuantity?: number | null;
@@ -41,13 +43,19 @@ export function AddToCartBottomSheet({ open, item, onClose, onAdded }: Props) {
   const canSubmit = !!item && !outOfStock && !belowMinimum;
 
   function decrease() {
-    setQuantity((value) => Math.max(1, value - 1));
+    setQuantity((value) => {
+      if (value <= 1) return value;
+      hapticTap();
+      return value - 1;
+    });
   }
 
   function increase() {
     setQuantity((value) => {
       const next = value + 1;
-      return maxQuantity !== null ? Math.min(maxQuantity, next) : next;
+      const capped = maxQuantity !== null ? Math.min(maxQuantity, next) : next;
+      if (capped !== value) hapticTap();
+      return capped;
     });
   }
 
@@ -64,10 +72,12 @@ export function AddToCartBottomSheet({ open, item, onClose, onAdded }: Props) {
     );
 
     if (!result.ok) {
+      hapticError();
       showAddToCartErrorToast();
       return;
     }
 
+    hapticSuccess();
     onClose();
     onAdded?.();
     cartSuccessToast();
@@ -99,6 +109,8 @@ export function AddToCartBottomSheet({ open, item, onClose, onAdded }: Props) {
                   alt={item.name}
                   fill
                   sizes="96px"
+                  placeholder="blur"
+                  blurDataURL={IMAGE_BLUR_GRAY}
                   className="object-cover"
                 />
               ) : (

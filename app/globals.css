@@ -151,6 +151,11 @@ body.product-image-viewer-open .nat-bottom-nav {
   pointer-events: none;
 }
 
+body.nat-modal-open .nat-whatsapp-float {
+  display: none !important;
+  pointer-events: none;
+}
+
 .product-image-viewer .swiper,
 .product-image-viewer .swiper-wrapper,
 .product-image-viewer .swiper-slide,
@@ -223,6 +228,10 @@ body.top-drawer-open .nat-whatsapp-float {
   bottom: calc(var(--natalo-bottom-nav-height) + env(safe-area-inset-bottom) + 10px);
 }
 
+.nat-whatsapp-float--search {
+  bottom: calc(var(--natalo-bottom-nav-height) + env(safe-area-inset-bottom) + 5rem);
+}
+
 @media (max-width: 360px) {
   :root {
     --natalo-bottom-nav-height: 68px;
@@ -231,6 +240,10 @@ body.top-drawer-open .nat-whatsapp-float {
 }
 
 @media (min-width: 768px) {
+  .nat-whatsapp-float--search {
+    bottom: max(1.25rem, env(safe-area-inset-bottom));
+  }
+
   .mobile-header-row {
     height: auto;
     min-height: var(--natalo-mobile-header-min-height);

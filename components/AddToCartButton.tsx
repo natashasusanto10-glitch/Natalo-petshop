@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { StoreProduct } from "@/lib/products";
 import { AddToCartBottomSheet } from "@/components/AddToCartBottomSheet";
+import { hapticTap } from "@/lib/native/haptics";
 
 export function AddToCartButton({ product }: { product: StoreProduct }) {
   const [added, setAdded] = useState(false);
@@ -36,7 +37,10 @@ export function AddToCartButton({ product }: { product: StoreProduct }) {
     <>
       <button
         type="button"
-        onClick={() => setSheetOpen(true)}
+        onClick={() => {
+          hapticTap();
+          setSheetOpen(true);
+        }}
         disabled={product.stock <= 0}
         className={`w-full rounded-full px-6 py-4 text-sm font-bold text-white transition ${
           product.stock <= 0
