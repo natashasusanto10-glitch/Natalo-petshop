@@ -1,12 +1,15 @@
 /**
  * Apple App Site Association (AASA) — required oleh iOS untuk Universal Links.
  *
- * URL harus tepat: https://natalo-petshop.vercel.app/.well-known/apple-app-site-association
+ * URL harus tepat:
+ * - https://www.natalopetshop.com/.well-known/apple-app-site-association
+ * - https://natalopetshop.com/.well-known/apple-app-site-association
+ * - https://natalo-petshop.vercel.app/.well-known/apple-app-site-association
  * Apple validate file ini saat user pertama install app + periodically refresh.
  *
  * Tanpa file ini, link ke domain Natalo akan buka di Safari (default behavior),
  * bukan langsung ke app native. Dengan AASA + entitlement valid:
- * - User klik link "natalo-petshop.vercel.app/products/royal-canin" di WhatsApp
+ * - User klik link "www.natalopetshop.com/products/royal-canin" di WhatsApp
  * - iOS check apakah ada app yang claim domain ini → ya, Natalo
  * - iOS open Natalo app, pass URL → app navigate ke product detail
  *
@@ -27,6 +30,7 @@ const aasa = {
         components: [
           // Halaman yang harus dibuka di app native (bukan Safari)
           { "/": "/products/*", comment: "Product detail pages" },
+          { "/": "/produk/*", comment: "Product detail aliases" },
           { "/": "/kategori/*", comment: "Category pages" },
           { "/": "/pesanan/*", comment: "Order detail / tracking" },
           { "/": "/order-status/*", comment: "Order status lookup" },

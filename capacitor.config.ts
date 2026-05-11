@@ -27,6 +27,9 @@ const config: CapacitorConfig = {
     allowNavigation: [
       "natalo-petshop.vercel.app",
       "*.natalo-petshop.vercel.app",
+      "www.natalopetshop.com",
+      "natalopetshop.com",
+      "*.natalopetshop.com",
     ],
   },
 

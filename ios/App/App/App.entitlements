@@ -13,7 +13,11 @@
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<string>applinks:natalo-petshop.vercel.app</string>
+		<string>applinks:www.natalopetshop.com</string>
+		<string>applinks:natalopetshop.com</string>
 		<string>webcredentials:natalo-petshop.vercel.app</string>
+		<string>webcredentials:www.natalopetshop.com</string>
+		<string>webcredentials:natalopetshop.com</string>
 	</array>
 	<!--
 	  APNs environment — "development" untuk Xcode debug builds (sandbox APNs),

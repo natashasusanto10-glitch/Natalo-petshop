@@ -32,15 +32,32 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" />
-                <data android:host="www.natalopetshop.com" />
-                <data android:host="natalopetshop.com" />
-                <!-- Root + key paths yg di-iklankan di WhatsApp/Instagram bio -->
-                <data android:pathPattern="/" />
-                <data android:pathPattern="/products" />
-                <data android:pathPrefix="/products/" />
-                <data android:pathPattern="/cart" />
-                <data android:pathPrefix="/member/" />
+
+                <!-- Product URLs, including shared product detail links. -->
+                <data android:scheme="https" android:host="www.natalopetshop.com" android:path="/products" />
+                <data android:scheme="https" android:host="www.natalopetshop.com" android:pathPrefix="/products/" />
+                <data android:scheme="https" android:host="natalopetshop.com" android:path="/products" />
+                <data android:scheme="https" android:host="natalopetshop.com" android:pathPrefix="/products/" />
+                <data android:scheme="https" android:host="www.natalopetshop.com" android:path="/produk" />
+                <data android:scheme="https" android:host="www.natalopetshop.com" android:pathPrefix="/produk/" />
+                <data android:scheme="https" android:host="natalopetshop.com" android:path="/produk" />
+                <data android:scheme="https" android:host="natalopetshop.com" android:pathPrefix="/produk/" />
+
+                <!-- Other customer-facing URLs that should stay inside the app. -->
+                <data android:scheme="https" android:host="www.natalopetshop.com" android:path="/" />
+                <data android:scheme="https" android:host="natalopetshop.com" android:path="/" />
+                <data android:scheme="https" android:host="www.natalopetshop.com" android:path="/cart" />
+                <data android:scheme="https" android:host="natalopetshop.com" android:path="/cart" />
+                <data android:scheme="https" android:host="www.natalopetshop.com" android:path="/wishlist" />
+                <data android:scheme="https" android:host="natalopetshop.com" android:path="/wishlist" />
+                <data android:scheme="https" android:host="www.natalopetshop.com" android:path="/order-status" />
+                <data android:scheme="https" android:host="natalopetshop.com" android:path="/order-status" />
+                <data android:scheme="https" android:host="www.natalopetshop.com" android:pathPrefix="/pesanan/" />
+                <data android:scheme="https" android:host="natalopetshop.com" android:pathPrefix="/pesanan/" />
+                <data android:scheme="https" android:host="www.natalopetshop.com" android:pathPrefix="/kategori/" />
+                <data android:scheme="https" android:host="natalopetshop.com" android:pathPrefix="/kategori/" />
+                <data android:scheme="https" android:host="www.natalopetshop.com" android:pathPrefix="/member/" />
+                <data android:scheme="https" android:host="natalopetshop.com" android:pathPrefix="/member/" />
             </intent-filter>
         </activity>
 
