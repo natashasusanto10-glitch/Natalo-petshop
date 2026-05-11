@@ -27,8 +27,8 @@ type Props = {
  *
  * Apa yang di-update:
  * - iOS native (TestFlight / .ipa): UIStatusBar style via @capacitor/status-bar.
- *   Style.Dark = darkContent (icon hitam, untuk light bg).
- *   Style.Light = lightContent (icon putih, untuk dark bg).
+ *   Capacitor Style.Light = darkContent (icon hitam, untuk light bg).
+ *   Capacitor Style.Dark = lightContent (icon putih, untuk dark bg).
  * - PWA standalone & browser: meta theme-color tag — update semua existing
  *   meta theme-color (termasuk variant light/dark media query).
  *
@@ -56,6 +56,7 @@ export function PageStatusBar({ iconColor = "dark", themeColor = "#ffffff" }: Pr
     // (penting kalau component di-mount nested — mis. di splash overlay).
     let cancelled = false;
     let previousNativeStyle: string | null = null;
+    let previousNativeColor: string | null = null;
     (async () => {
       try {
         const { StatusBar, Style } = await import("@capacitor/status-bar");
@@ -63,12 +64,15 @@ export function PageStatusBar({ iconColor = "dark", themeColor = "#ffffff" }: Pr
         try {
           const info = await StatusBar.getInfo();
           previousNativeStyle = info.style;
+          previousNativeColor = info.color;
         } catch {
           // getInfo bisa fail di simulator, biarkan
         }
         if (cancelled) return;
+        await StatusBar.setBackgroundColor({ color: themeColor });
+        if (cancelled) return;
         await StatusBar.setStyle({
-          style: iconColor === "dark" ? Style.Dark : Style.Light,
+          style: iconColor === "dark" ? Style.Light : Style.Dark,
         });
       } catch {
         // Web / browser tanpa Capacitor — silent no-op
@@ -100,6 +104,9 @@ export function PageStatusBar({ iconColor = "dark", themeColor = "#ffffff" }: Pr
                 : previousNativeStyle === "DARK"
                   ? Style.Dark
                   : Style.Default;
+            if (previousNativeColor) {
+              await StatusBar.setBackgroundColor({ color: previousNativeColor });
+            }
             await StatusBar.setStyle({ style: restored });
           } catch {}
         })();

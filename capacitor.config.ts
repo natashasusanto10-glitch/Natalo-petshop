@@ -41,8 +41,8 @@ const config: CapacitorConfig = {
     // biarkan WebView pakai shared cookie store iOS.
     limitsNavigationsToAppBoundDomains: false,
     // WebView container background — terlihat di safe area top/bottom
-    // sebelum WebView paint penuh. Selaras dgn body bg web (#f8f8f8).
-    backgroundColor: "#f8f8f8",
+    // sebelum WebView paint penuh. Selaras dgn root/status bar putih.
+    backgroundColor: "#ffffff",
   },
 
   plugins: {
@@ -61,8 +61,8 @@ const config: CapacitorConfig = {
       androidScaleType: "CENTER_CROP",
     },
     StatusBar: {
-      // Style.DARK = darkContent = ikon hitam, untuk bg terang (header putih).
-      style: "DARK",
+      // Capacitor Style.LIGHT = darkContent = ikon hitam, untuk bg terang.
+      style: "LIGHT",
       backgroundColor: "#ffffff",
       overlaysWebView: false,
     },

@@ -19,8 +19,8 @@ const config: CapacitorConfig = {
   },
 
   android: {
-    // Splash screen pakai theme color dari website Anda
-    backgroundColor: '#1E5FBF',
+    // WebView container/safe-area background mengikuti root PWA putih.
+    backgroundColor: '#ffffff',
     allowMixedContent: false,
     captureInput: true,
     webContentsDebuggingEnabled: false, // true saat development, false untuk release
@@ -47,10 +47,9 @@ const config: CapacitorConfig = {
       splashImmersive: true,
     },
     StatusBar: {
-      // LIGHT supaya ikon putih di atas brand blue saat splash & header app.
-      // (Sebelumnya DARK — tidak konsisten dengan iOS dan kurang terbaca.)
+      // Capacitor Style.LIGHT = ikon gelap di atas background terang.
       style: 'LIGHT',
-      backgroundColor: '#1E5FBF',
+      backgroundColor: '#ffffff',
       overlaysWebView: false,
     },
   },
