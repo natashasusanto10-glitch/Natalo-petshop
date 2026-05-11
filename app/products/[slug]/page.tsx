@@ -213,7 +213,7 @@ export default async function ProductDetailPage({
             {product.hasVariants && product.variantAttrs && product.variants ? (
               <div id="beli" className="mt-4 scroll-mt-20 rounded-2xl border border-gray-100 p-4">
                 <VariantSelector
-                  product={{ id: product.id, name: product.name, imageUrl: product.imageUrl }}
+                  product={{ id: product.id, slug: product.slug, name: product.name, imageUrl: product.imageUrl }}
                   attrs={product.variantAttrs}
                   variants={product.variants}
                 />

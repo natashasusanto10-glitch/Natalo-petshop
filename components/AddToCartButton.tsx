@@ -15,6 +15,7 @@ export function AddToCartButton({ product }: { product: StoreProduct }) {
 
   const item = {
     productId: product.id,
+    slug: product.slug,
     variantId: null,
     variantLabel: null,
     name: product.name,

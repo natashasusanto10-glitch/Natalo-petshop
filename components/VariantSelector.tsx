@@ -8,7 +8,7 @@ import { AddToCartBottomSheet } from "@/components/AddToCartBottomSheet";
 
 // Props
 interface Props {
-  product: { id: string; name: string; imageUrl: string | null };
+  product: { id: string; slug?: string; name: string; imageUrl: string | null };
   attrs: StoreVariantAttribute[];
   variants: StoreProductVariant[];
   /** callback agar foto utama halaman bisa ganti saat varian dipilih */
@@ -85,6 +85,7 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
 
     return {
       productId: product.id,
+      slug: product.slug,
       variantId: currentVariant.id,
       variantLabel: selectedLabel,
       name: product.name,
@@ -93,7 +94,7 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
       stock: currentVariant.stock,
       imageUrl: currentVariant.imageUrl ?? product.imageUrl,
     };
-  }, [allSelected, currentVariant, outOfStock, product.id, product.imageUrl, product.name, selectedLabel]);
+  }, [allSelected, currentVariant, outOfStock, product.id, product.imageUrl, product.name, product.slug, selectedLabel]);
 
   // Broadcast state ke StickyAddToCartBar
   const minPrice = useMemo(() => {
@@ -186,6 +187,7 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
     const result = addItemToCart(
       {
         productId: product.id,
+        slug: product.slug,
         variantId: currentVariant.id,
         variantLabel: selectedLabel,
         name: product.name,

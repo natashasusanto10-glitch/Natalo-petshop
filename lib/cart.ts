@@ -13,6 +13,9 @@
 
 export type CartItem = {
   productId: string;
+  /** Slug produk — dipakai untuk link "klik di cart kembali ke PDP".
+   *  Optional supaya legacy cart items (sebelum field ini ada) tidak break. */
+  slug?: string;
   variantId?: string | null;
   variantLabel?: string | null;
   name: string;

@@ -162,10 +162,19 @@ export async function getProductsCount(opts?: {
 
 export async function getProductBySlug(slug: string): Promise<StoreProduct | null> {
   try {
-    const p = await prisma.product.findUnique({
+    // Cari by slug dulu — kalau tidak ada, fallback by id. Berguna untuk
+    // legacy cart items yang belum punya slug (tersimpan productId only),
+    // atau deep-link by id.
+    let p = await prisma.product.findUnique({
       where: { slug },
       include: { ...variantInclude, category: { select: { slug: true } } },
     });
+    if (!p) {
+      p = await prisma.product.findUnique({
+        where: { id: slug },
+        include: { ...variantInclude, category: { select: { slug: true } } },
+      });
+    }
     if (!p) return sampleProducts.find((item) => item.slug === slug) ?? null;
 
     if (p.hasVariants && p.variants.length > 0) {

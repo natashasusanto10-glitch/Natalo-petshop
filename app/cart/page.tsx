@@ -402,7 +402,11 @@ export default function CartPage() {
                         aria-label={`Pilih ${item.name}`}
                         className="mt-6 h-5 w-5 shrink-0 rounded border-gray-300 accent-blue-600"
                       />
-                      <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-gray-100">
+                      <Link
+                        href={`/products/${item.slug ?? item.productId}`}
+                        aria-label={`Lihat detail produk ${item.name}`}
+                        className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-gray-100"
+                      >
                         {item.imageUrl ? (
                           <Image
                             src={item.imageUrl}
@@ -414,13 +418,16 @@ export default function CartPage() {
                         ) : (
                           <div className="flex h-full w-full items-center justify-center text-2xl">🐾</div>
                         )}
-                      </div>
+                      </Link>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
-                            <p className="line-clamp-2 text-sm font-bold leading-snug text-gray-900">
+                            <Link
+                              href={`/products/${item.slug ?? item.productId}`}
+                              className="line-clamp-2 text-sm font-bold leading-snug text-gray-900"
+                            >
                               {item.name}
-                            </p>
+                            </Link>
                             {item.variantLabel && (
                               <p className="mt-1 inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-600">
                                 {item.variantLabel}

@@ -72,6 +72,7 @@ export function QuickAddToCart({ product, className }: Props) {
 
     return {
       productId: product.id,
+      slug: product.slug,
       variantId: null,
       variantLabel: null,
       name: product.name,
