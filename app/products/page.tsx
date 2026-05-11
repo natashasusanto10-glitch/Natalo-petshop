@@ -123,7 +123,7 @@ export default async function ProductsPage({
               <ProductCard
                 key={product.id}
                 product={product}
-                priority={index === 0}
+                priority={index < 4}
               />
             ))}
           </div>
