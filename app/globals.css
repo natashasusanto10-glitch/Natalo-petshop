@@ -155,7 +155,6 @@ body.voucher-modal-open .nat-bottom-nav {
 }
 
 .voucher-safe-area {
-  --nat-voucher-bottom-inset: max(env(safe-area-inset-bottom), var(--nat-keyboard-inset, 0px));
   position: fixed;
   inset: 0;
   z-index: 2001;
@@ -164,20 +163,26 @@ body.voucher-modal-open .nat-bottom-nav {
   background: transparent;
   padding-top: env(safe-area-inset-top);
   padding-right: env(safe-area-inset-right);
-  padding-bottom: var(--nat-voucher-bottom-inset);
+  /* padding-bottom HANYA untuk keyboard — bukan safe-area-bottom. Tanpa
+     keyboard, sheet extend ke bottom screen supaya bg-white menutupi
+     home indicator area (tidak transparan). Footer button-nya sendiri
+     yg pakai [padding-bottom:calc(12px+env(safe-area-inset-bottom))]. */
+  padding-bottom: var(--nat-keyboard-inset, 0px);
   padding-left: env(safe-area-inset-left);
   pointer-events: none;
 }
 
 .voucher-safe-area--manual {
-  --nat-voucher-bottom-inset: max(env(safe-area-inset-bottom), var(--nat-keyboard-inset, min(42vh, 380px)));
+  /* Manual mode (input kode) — pre-shift sheet ke atas assumed keyboard
+     height supaya transition snappier sebelum visualViewport fire. */
+  padding-bottom: var(--nat-keyboard-inset, min(42vh, 380px));
 }
 
 .voucher-sheet {
   display: flex;
   flex-direction: column;
   width: 100%;
-  max-height: min(80vh, calc(100dvh - env(safe-area-inset-top) - var(--nat-voucher-bottom-inset)));
+  max-height: min(85dvh, calc(100dvh - env(safe-area-inset-top) - var(--nat-keyboard-inset, 0px)));
   /* overflow:hidden, BUKAN auto. Scroll terjadi di flex-1 child supaya
      sticky header & sticky footer (Apply button) tetap on-screen saat
      content panjang atau keyboard naik. */

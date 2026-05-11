@@ -286,10 +286,6 @@ export function CartVoucherSheet({
                 </>
               )}
             </section>
-
-            <p className="mt-6 text-center text-[11px] text-zinc-400">
-              Voucher khusus dari penjual dimasukkan di halaman checkout.
-            </p>
           </div>
 
           {/* Sticky footer — Terapkan */}

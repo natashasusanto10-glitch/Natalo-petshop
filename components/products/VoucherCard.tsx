@@ -186,9 +186,6 @@ export function VoucherCard({ vouchers }: Props) {
                       })}
                     </ul>
                   )}
-                  <p className="mt-4 text-center text-[11px] text-gray-400">
-                    Voucher member dipilih dari keranjang atau checkout.
-                  </p>
                 </div>
               </div>
             </div>
