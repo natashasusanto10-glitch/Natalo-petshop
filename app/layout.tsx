@@ -6,6 +6,7 @@ import { Footer } from "@/components/Footer";
 import { PWARegister } from "@/components/PWARegister";
 import { NativeSwipeBackController } from "@/components/NativeSwipeBackController";
 import { SwipeBackProvider } from "@/components/SwipeBackProvider";
+import IOSSwipeBack from "@/components/IOSSwipeBack";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import { StoreOnly } from "@/components/StoreOnly";
 import { BottomNavigation } from "@/components/BottomNavigation";
@@ -155,6 +156,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body>
         <PWARegister />
         <NativeSwipeBackController />
+        <IOSSwipeBack />
         <StoreOnly>
           <AppSplashOverlay />
           <PullToRefresh />

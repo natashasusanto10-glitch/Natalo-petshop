@@ -42,21 +42,14 @@ const EDGE_SIZE = 30;
 const SWIPE_THRESHOLD = 80;
 const MAX_VERTICAL_MOVE = 40;
 
-function isIOSCapacitorNative(): boolean {
+function isIOSDevice(): boolean {
   if (typeof window === "undefined") return false;
-  // @ts-expect-error — Capacitor global injected at runtime di iOS WebView
-  const cap = window.Capacitor;
-  if (!cap) return false;
-  try {
-    return (
-      typeof cap.isNativePlatform === "function" &&
-      cap.isNativePlatform() &&
-      typeof cap.getPlatform === "function" &&
-      cap.getPlatform() === "ios"
-    );
-  } catch {
-    return false;
-  }
+  const ua = window.navigator.userAgent;
+  const platform = window.navigator.platform;
+  return (
+    /iPad|iPhone|iPod/.test(ua) ||
+    (platform === "MacIntel" && window.navigator.maxTouchPoints > 1)
+  );
 }
 
 function shouldIgnoreSwipe(target: EventTarget | null): boolean {
@@ -95,10 +88,12 @@ export function SwipeBackProvider({ children }: Props) {
     "Data yang belum disimpan mungkin hilang.",
   );
 
-  // Native iOS Capacitor cek sekali saat mount — gesture handled native
+  // Skip semua iOS — handled by <IOSSwipeBack /> (JS handler khusus iOS
+  // Capacitor + iOS PWA standalone, atau native browser swipe utk iOS
+  // Safari). Provider ini handle Android + non-iOS browsers saja.
   const skipGesture = useRef(false);
   useEffect(() => {
-    skipGesture.current = isIOSCapacitorNative();
+    skipGesture.current = isIOSDevice();
   }, []);
 
   function performBack() {
