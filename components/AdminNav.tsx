@@ -54,6 +54,11 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Brand",
         icon: <Glyph d="M12 2 2 7l10 5 10-5-10-5ZM2 17l10 5 10-5M2 12l10 5 10-5" />,
       },
+      {
+        href: "/admin/broadcast",
+        label: "Broadcast",
+        icon: <Glyph d="M3 11l18-8-5 18-4-9-9-1zM13 12l8-9" />,
+      },
     ],
   },
   {
