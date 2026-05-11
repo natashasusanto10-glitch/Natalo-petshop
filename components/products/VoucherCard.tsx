@@ -23,7 +23,12 @@ export type VoucherItem = {
 };
 
 type Props = {
-  vouchers: VoucherItem[];
+  /** Voucher list. Kalau di-pass dari server, langsung render.
+   *  Kalau tidak (server tidak load voucher supaya HTML cacheable), VoucherCard
+   *  akan fetch sendiri di client mount via /api/products/[slug]/vouchers. */
+  vouchers?: VoucherItem[];
+  /** Product slug — wajib kalau vouchers tidak di-pass (untuk client fetch). */
+  productSlug?: string;
 };
 
 function formatRupiahShort(n: number) {
@@ -59,9 +64,38 @@ function describeExpiry(iso: string | null) {
   return `s/d ${d.toLocaleDateString("id-ID", { day: "numeric", month: "short" })}`;
 }
 
-export function VoucherCard({ vouchers }: Props) {
+export function VoucherCard({ vouchers: vouchersProp, productSlug }: Props) {
   const [open, setOpen] = useState(false);
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  // Kalau vouchers tidak di-pass server-side, fetch sendiri client-side
+  // dari /api/products/[slug]/vouchers. Pattern ini supaya halaman produk
+  // bisa cacheable di Vercel CDN (HTML static) tanpa breaking voucher
+  // display per-user.
+  const [fetchedVouchers, setFetchedVouchers] = useState<VoucherItem[] | null>(null);
+  const vouchers = vouchersProp ?? fetchedVouchers ?? [];
+
+  useEffect(() => {
+    // Skip kalau sudah dapat dari props
+    if (vouchersProp || !productSlug) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/products/${productSlug}/vouchers`, {
+          credentials: "include", // cookie session ikut → personalized list
+        });
+        if (!res.ok) return;
+        const data = await res.json().catch(() => null);
+        if (cancelled || !data?.vouchers) return;
+        setFetchedVouchers(data.vouchers as VoucherItem[]);
+      } catch {
+        // ignore network/CORS errors — silent degrade ke "tidak ada voucher"
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [vouchersProp, productSlug]);
+
   const visibleProductVouchers = vouchers.filter((voucher) => {
     return (
       voucher.type === "member" &&
@@ -73,6 +107,9 @@ export function VoucherCard({ vouchers }: Props) {
       !voucher.isExpired
     );
   });
+
+  // Jangan render kalau belum ada voucher (fetch belum balik atau memang kosong)
+  if (visibleProductVouchers.length === 0) return null;
 
   function closeVoucher() {
     setOpen(false);

@@ -12,8 +12,6 @@ import { TrustInfoCard } from "@/components/products/TrustInfoCard";
 import { VoucherCard } from "@/components/products/VoucherCard";
 import { ProductTabs } from "@/components/products/ProductTabs";
 import { formatRupiah } from "@/lib/format";
-import { getSession } from "@/lib/auth";
-import { loadVisibleProductVouchers } from "@/lib/product-vouchers";
 import { getProductBySlug, getProducts } from "@/lib/products";
 import { prisma } from "@/lib/prisma";
 import { ReviewForm } from "@/components/ReviewForm";
@@ -23,7 +21,10 @@ import { PageStatusBar } from "@/components/PageStatusBar";
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 const brand = process.env.NEXT_PUBLIC_BRAND_NAME || "Natalo Petshop";
 
-export const dynamic = "force-dynamic";
+// Cache HTML 60 detik di Vercel CDN — page lebih dingin & cepat. Voucher
+// member yang per-user di-load client-side oleh <VoucherCard /> via fetch
+// /api/products/[slug]/vouchers (session cookie ikut).
+export const revalidate = 60;
 
 function discountPercent(price: number, discountPrice: number | null) {
   if (discountPrice === null || discountPrice >= price) return null;
@@ -75,11 +76,12 @@ export default async function ProductDetailPage({
   const product = await getProductBySlug(slug);
   if (!product) return notFound();
 
-  const session = await getSession("CUSTOMER");
-  const [productWithCategory, allProducts, vouchers] = await Promise.all([
+  // Voucher load di-pindah ke client-side (VoucherCard fetch sendiri)
+  // supaya halaman ini bisa cacheable di Vercel CDN. getSession() yg dulu
+  // dipakai utk filter voucher per-user juga tidak diperlukan di server.
+  const [productWithCategory, allProducts] = await Promise.all([
     prisma.product.findUnique({ where: { slug }, include: { category: true } }).catch(() => null),
     getProducts({ category: product.categorySlug ?? undefined, take: 12 }),
-    loadVisibleProductVouchers(session?.sub ?? null),
   ]);
   const favoriteIds: string[] = [];
 
@@ -204,7 +206,7 @@ export default async function ProductDetailPage({
             />
 
             {/* 4. Voucher card */}
-            {vouchers.length > 0 && <VoucherCard vouchers={vouchers} />}
+            <VoucherCard productSlug={slug} />
 
             {/* 5. Trust info — garansi + stok */}
             <TrustInfoCard stock={product.stock} outOfStock={outOfStock} />
