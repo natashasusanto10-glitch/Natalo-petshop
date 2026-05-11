@@ -107,7 +107,7 @@ export default function HeroBanner({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={finishPointerDrag}
-        className="relative aspect-[16/9] touch-pan-y overflow-hidden rounded-2xl shadow-sm"
+        className="hero-banner relative aspect-[16/9] w-full touch-pan-y overflow-hidden rounded-[20px] shadow-sm"
       >
         <div
           className={`flex h-full ${isDragging ? "" : "transition-transform duration-700 ease-out"}`}
@@ -156,7 +156,7 @@ function SlideContent({ slide }: { slide: HeroSlide }) {
     );
 
     return (
-      <div className="relative w-full shrink-0">
+      <div className="relative h-full w-full shrink-0">
         {slide.href ? (
           <Link href={slide.href} className="relative block h-full w-full">
             {image}

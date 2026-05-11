@@ -412,6 +412,16 @@ export default async function HomePage() {
       .catch(() => []),
   ]);
 
+  const fallbackPopularCategories = [
+    { name: "Makanan Kucing", slug: "makanan-kucing", products: [], _count: { products: 0 } },
+    { name: "Makanan Anjing", slug: "makanan-anjing", products: [], _count: { products: 0 } },
+    { name: "Aquarium & Ikan", slug: "aquarium-kolam", products: [], _count: { products: 0 } },
+    { name: "Kandang & Carrier", slug: "kandang-carrier", products: [], _count: { products: 0 } },
+    { name: "Grooming Tools", slug: "grooming-tools", products: [], _count: { products: 0 } },
+    { name: "Snack & Treat", slug: "snack-treat-kucing", products: [], _count: { products: 0 } },
+  ];
+  const homeCategories = popularCategories.length > 0 ? popularCategories : fallbackPopularCategories;
+
   const flashSaleProducts = products
     .filter((p) => p.discountPrice !== null && p.discountPrice < p.price)
     .slice(0, 6);
@@ -422,7 +432,7 @@ export default async function HomePage() {
   const flashSaleEnd = getJakartaMidnight();
 
   return (
-    <div className="bg-[#FAFAFA] pb-8">
+    <div className="min-h-screen overflow-x-hidden bg-[#FAFAFA] pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-10">
       <TrustMarquee items={trustItems} />
 
       {/* ── 2. BANNER CAROUSEL UTAMA ── */}
@@ -431,7 +441,7 @@ export default async function HomePage() {
       </section>
 
       {/* ── 4. HASHTAG CAMPAIGN + SHORTCUT GRID ── */}
-      <section className="mt-6 px-4">
+      <section className="mt-4 px-4">
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
           {SHORTCUT_ITEMS.map((s) => {
             const content = (
@@ -474,7 +484,7 @@ export default async function HomePage() {
 
       {/* ── 5. FLASH SALE ── */}
       {flashSaleProducts.length > 0 && (
-        <section className="mt-6">
+        <section className="mt-5">
           <div className="flex items-center justify-between gap-2 px-4">
             <div>
               <h2 className="text-lg font-black text-zinc-900">⚡ Flash Sale</h2>
@@ -482,7 +492,7 @@ export default async function HomePage() {
             </div>
             <FlashSaleCountdown endsAt={flashSaleEnd} />
           </div>
-          <div className="mt-3 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="mt-3 flex snap-x snap-mandatory gap-2.5 overflow-x-auto px-4 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {flashSaleProducts.map((p) => {
               const finalPrice = p.discountPrice ?? p.price;
               const off = Math.max(1, Math.round(((p.price - finalPrice) / p.price) * 100));
@@ -490,17 +500,17 @@ export default async function HomePage() {
                 <Link
                   key={p.id}
                   href={`/products/${p.slug}`}
-                  className="w-[140px] shrink-0 snap-start overflow-hidden rounded-xl border border-[#f5f5f5] bg-white shadow-sm active:opacity-90"
+                  className="w-[42vw] min-w-[124px] max-w-[150px] shrink-0 snap-start overflow-hidden rounded-2xl border border-[#eef3fb] bg-white shadow-sm active:opacity-90"
                 >
-                  <div className="relative aspect-square w-full bg-zinc-50">
+                  <div className="relative aspect-square w-full bg-white p-2">
                     {p.imageUrl ? (
                       <Image
                         src={p.imageUrl}
                         alt={p.name}
                         fill
                         loading="lazy"
-                        sizes="140px"
-                        className="object-cover"
+                        sizes="(max-width: 640px) 42vw, 150px"
+                        className="object-contain p-2"
                       />
                     ) : (
                       <div className="flex h-full items-center justify-center text-zinc-300">
@@ -513,9 +523,14 @@ export default async function HomePage() {
                   </div>
                   <div className="p-2">
                     <p className="line-clamp-2 text-[11px] font-bold text-zinc-700">{p.name}</p>
-                    <p className="mt-1 text-sm font-black text-[#1E5FBF]">
-                      {formatRupiah(finalPrice)}
-                    </p>
+                    <div className="mt-1 flex items-center justify-between gap-1">
+                      <p className="min-w-0 truncate text-[13px] font-black leading-tight text-[#1E5FBF]">
+                        {formatRupiah(finalPrice)}
+                      </p>
+                      {p.avgRating > 0 && (
+                        <span className="shrink-0 text-[10px] font-bold text-amber-500">★ {p.avgRating.toFixed(1)}</span>
+                      )}
+                    </div>
                     <p className="text-[10px] text-zinc-400 line-through">
                       {formatRupiah(p.price)}
                     </p>
@@ -527,47 +542,8 @@ export default async function HomePage() {
         </section>
       )}
 
-      {/* ── 6. KATEGORI POPULER ── */}
-      {popularCategories.length > 0 && (
-        <section className="mt-6">
-          <h2 className="px-4 text-base font-black text-zinc-900 sm:text-lg">📈 Kategori Populer</h2>
-          <div className="mt-2 flex snap-x snap-mandatory gap-2 overflow-x-auto px-4 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {popularCategories.map((cat) => (
-              <Link
-                key={cat.slug}
-                href={`/products?kategori=${cat.slug}`}
-                className="w-[108px] shrink-0 snap-start overflow-hidden rounded-xl border border-[#f0f0f0] bg-white shadow-sm active:opacity-90 sm:w-[128px]"
-              >
-                <div className="relative aspect-[4/3] w-full bg-zinc-50">
-                  {cat.products[0]?.imageUrl ? (
-                    <Image
-                      src={cat.products[0].imageUrl}
-                      alt={cat.name}
-                      fill
-                      loading="lazy"
-                      sizes="(max-width: 640px) 108px, 128px"
-                      className="object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-blue-300">
-                      <HomeIcon name={categoryIconFor(cat.name)} className="h-8 w-8" />
-                    </div>
-                  )}
-                </div>
-                <div className="px-2 py-1.5">
-                  <p className="line-clamp-1 text-xs font-bold text-zinc-900">{cat.name}</p>
-                  <p className="mt-0.5 text-[10px] text-zinc-500">
-                    {cat._count.products} produk
-                  </p>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
       {/* ── 11. PRODUK TERLARIS ── */}
-      <section className="mt-6">
+      <section className="mt-5">
         <div className="flex items-end justify-between px-4">
           <h2 className="text-base font-black text-zinc-900 sm:text-lg">🏆 Produk Terlaris</h2>
           <Link href="/products?sort=popular" className="text-xs font-bold text-blue-600">
@@ -584,7 +560,7 @@ export default async function HomePage() {
               <Link
                 key={p.id}
                 href={`/products/${p.slug}`}
-                className="relative w-[140px] shrink-0 snap-start overflow-hidden rounded-xl border border-[#f0f0f0] bg-white shadow-sm active:opacity-90 sm:w-[150px]"
+                className="relative w-[42vw] min-w-[124px] max-w-[150px] shrink-0 snap-start overflow-hidden rounded-2xl border border-[#eef3fb] bg-white shadow-sm active:opacity-90"
               >
                 {i < 3 && (
                   <span
@@ -600,15 +576,15 @@ export default async function HomePage() {
                     {i + 1}
                   </span>
                 )}
-                <div className="relative aspect-square w-full bg-zinc-50">
+                <div className="relative aspect-square w-full bg-white p-2">
                   {p.imageUrl ? (
                     <Image
                       src={p.imageUrl}
                       alt={p.name}
                       fill
                       loading="lazy"
-                      sizes="(max-width: 640px) 140px, 150px"
-                      className="object-cover"
+                      sizes="(max-width: 640px) 42vw, 150px"
+                      className="object-contain p-2"
                     />
                   ) : (
                     <div className="flex h-full items-center justify-center text-zinc-300">
@@ -620,9 +596,14 @@ export default async function HomePage() {
                   <p className="line-clamp-2 min-h-[2.1rem] text-[11px] font-bold leading-snug text-zinc-700">
                     {p.name}
                   </p>
-                  <p className="mt-1 text-sm font-black leading-tight text-[#1E5FBF]">
-                    {formatRupiah(finalPrice)}
-                  </p>
+                  <div className="mt-1 flex items-center justify-between gap-1">
+                    <p className="min-w-0 truncate text-[13px] font-black leading-tight text-[#1E5FBF]">
+                      {formatRupiah(finalPrice)}
+                    </p>
+                    {p.avgRating > 0 && (
+                      <span className="shrink-0 text-[10px] font-bold text-amber-500">★ {p.avgRating.toFixed(1)}</span>
+                    )}
+                  </div>
                   {hasMarkdown && (
                     <p className="text-[10px] text-zinc-400 line-through">
                       {formatRupiah(p.price)}
@@ -634,6 +615,44 @@ export default async function HomePage() {
           })}
         </div>
       </section>
+
+      {homeCategories.length > 0 && (
+        <section className="mt-5">
+          <h2 className="px-4 text-base font-black text-zinc-900 sm:text-lg">Kategori Populer</h2>
+          <div className="mt-2 flex snap-x snap-mandatory gap-2.5 overflow-x-auto px-4 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {homeCategories.map((cat) => (
+              <Link
+                key={cat.slug}
+                href={`/products?kategori=${cat.slug}`}
+                className="w-[31vw] min-w-[106px] max-w-[130px] shrink-0 snap-start overflow-hidden rounded-2xl border border-[#eef3fb] bg-white shadow-sm active:opacity-90"
+              >
+                <div className="relative aspect-[4/3] w-full bg-white p-2">
+                  {cat.products[0]?.imageUrl ? (
+                    <Image
+                      src={cat.products[0].imageUrl}
+                      alt={cat.name}
+                      fill
+                      loading="lazy"
+                      sizes="(max-width: 640px) 31vw, 130px"
+                      className="object-contain p-2"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-blue-300">
+                      <HomeIcon name={categoryIconFor(cat.name)} className="h-8 w-8" />
+                    </div>
+                  )}
+                </div>
+                <div className="px-2 py-2">
+                  <p className="line-clamp-2 min-h-[2rem] text-[11px] font-bold leading-tight text-zinc-900">{cat.name}</p>
+                  <p className="mt-1 text-[10px] text-zinc-500">
+                    {cat._count.products > 0 ? `${cat._count.products} produk` : "Lihat produk"}
+                  </p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
     </div>
   );

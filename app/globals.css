@@ -34,28 +34,29 @@
 
 :root {
   color-scheme: light;
-  /* Body & safe-area bg = pale gray (design token).
-     Cards/header/sheets tetap pure white untuk kontras subtle. */
-  --background: #f8f8f8;
+  /* App chrome/root/safe-area harus pure white agar PWA status bar tidak biru. */
+  --background: #ffffff;
+  --page-background: #f8f8f8;
   --foreground: #111111;
   --natalo-bottom-nav-height: 68px;
   --natalo-mobile-header-min-height: 60px;
 }
 
 /* Lock light mode di seluruh app — iOS dark mode tidak boleh invert UI.
-   Background pale gray supaya overscroll bounce di iOS Safari + safe area
-   (status bar top, home indicator bottom) tampil konsisten, bukan biru
-   atau hitam dari splash/PWA chrome. */
+   Root background pure white supaya overscroll bounce di iOS Safari + safe area
+   (status bar top, home indicator bottom) tampil konsisten, bukan biru. */
 html,
 body,
+#__next,
 #root {
   margin: 0;
-  background: var(--background);
+  background: #ffffff;
+  overflow-x: hidden;
 }
 
 html {
   color-scheme: light;
-  background-color: var(--background);
+  background-color: #ffffff;
 }
 
 body {
@@ -63,7 +64,7 @@ body {
   padding: 0;
   min-height: 100vh;
   min-height: 100dvh;
-  background: var(--background);
+  background: #ffffff;
   color: var(--foreground);
   font-family: var(--font-sans);
 }
@@ -79,6 +80,7 @@ input, textarea, select, button {
 
 .nat-site-header {
   top: 0;
+  background: #ffffff;
   padding-top: constant(safe-area-inset-top);
   padding-top: env(safe-area-inset-top);
 }
@@ -98,7 +100,7 @@ input, textarea, select, button {
 
 .mobile-header-row {
   display: flex;
-  height: 64px;
+  height: 60px;
   align-items: center;
   justify-content: space-between;
   padding-left: max(1rem, env(safe-area-inset-left));
@@ -107,10 +109,11 @@ input, textarea, select, button {
 
 .mobile-search-wrapper {
   background: #ffffff;
-  padding: 0 max(1rem, env(safe-area-inset-right)) 12px max(1rem, env(safe-area-inset-left));
+  padding: 0 max(1rem, env(safe-area-inset-right)) 10px max(1rem, env(safe-area-inset-left));
 }
 
 .nat-main-shell {
+  background: #ffffff;
   padding-bottom: calc(var(--natalo-bottom-nav-height) + env(safe-area-inset-bottom));
 }
 
@@ -245,6 +248,10 @@ body.top-drawer-open .nat-whatsapp-float {
   bottom: calc(var(--natalo-bottom-nav-height) + env(safe-area-inset-bottom) + 5rem);
 }
 
+.nat-whatsapp-float--home {
+  bottom: calc(var(--natalo-bottom-nav-height) + env(safe-area-inset-bottom) + 11rem);
+}
+
 @media (max-width: 360px) {
   :root {
     --natalo-bottom-nav-height: 68px;
@@ -270,6 +277,10 @@ body.top-drawer-open .nat-whatsapp-float {
 
   .nat-whatsapp-float {
     right: 1.5rem;
+    bottom: 1.5rem;
+  }
+
+  .nat-whatsapp-float--home {
     bottom: 1.5rem;
   }
 

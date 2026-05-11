@@ -51,6 +51,7 @@ export function WhatsAppFloat() {
     hideOn.some((p) => pathname === p || pathname.startsWith(`${p}/`)) ||
     pathname.startsWith("/products/");
   const isSearchSurface = pathname === "/search" || pathname.startsWith("/search/");
+  const isHomeSurface = pathname === "/";
 
   if (shouldHide || !PHONE) return null;
 
@@ -60,9 +61,11 @@ export function WhatsAppFloat() {
     <div
       className={`nat-whatsapp-float fixed z-40 flex flex-col items-end gap-2 ${
         isSearchSurface ? "nat-whatsapp-float--search" : ""
+      } ${
+        isHomeSurface ? "nat-whatsapp-float--home" : ""
       }`}
     >
-      {showTooltip && !tooltipDismissed && (
+      {showTooltip && !tooltipDismissed && !isHomeSurface && (
         <div className="relative max-w-[170px] rounded-xl bg-white px-2.5 py-1.5 shadow-md ring-1 ring-zinc-200 animate-in slide-in-from-bottom-2 fade-in duration-300">
           <button
             type="button"
@@ -86,7 +89,7 @@ export function WhatsAppFloat() {
         aria-label="Chat via WhatsApp"
         onClick={dismissTooltip}
         className={`group relative flex items-center justify-center rounded-full bg-[#25D366] text-white shadow-md transition hover:scale-105 hover:bg-[#1ebe57] hover:shadow-lg active:scale-95 ${
-          isSearchSurface ? "h-10 w-10 md:h-12 md:w-12" : "h-11 w-11 md:h-12 md:w-12"
+          isSearchSurface || isHomeSurface ? "h-10 w-10 md:h-12 md:w-12" : "h-11 w-11 md:h-12 md:w-12"
         }`}
       >
         <span className="absolute inset-0 rounded-full bg-[#25D366] opacity-60 group-hover:animate-none animate-ping-slow" />
