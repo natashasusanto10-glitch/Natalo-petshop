@@ -5,6 +5,7 @@ import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { PWARegister } from "@/components/PWARegister";
 import { NativeSwipeBackController } from "@/components/NativeSwipeBackController";
+import { SwipeBackProvider } from "@/components/SwipeBackProvider";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import { StoreOnly } from "@/components/StoreOnly";
 import { BottomNavigation } from "@/components/BottomNavigation";
@@ -167,7 +168,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <PageStatusBar iconColor="dark" themeColor="#ffffff" />
           <Header />
         </StoreOnly>
-        <main className="nat-main-shell">{children}</main>
+        <main className="nat-main-shell">
+          <SwipeBackProvider>{children}</SwipeBackProvider>
+        </main>
         <StoreOnly>
           <Footer />
           <WhatsAppFloat />

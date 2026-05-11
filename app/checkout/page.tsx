@@ -711,6 +711,44 @@ export default function CheckoutPage() {
     paymentMethod,
   ]);
 
+  // Opt-in confirmation modal saat swipe-back / back-button kalau ada data
+  // checkout berisiko hilang. SwipeBackProvider baca body dataset ini
+  // untuk trigger modal "Keluar dari checkout?".
+  useEffect(() => {
+    const hasRiskyData = Boolean(
+      form.shippingAddress?.trim() ||
+        form.voucherCode ||
+        form.manualVoucherCode ||
+        form.notes?.trim() ||
+        selectedRate ||
+        payment,
+    );
+    if (hasRiskyData) {
+      document.body.dataset.swipeBackConfirm = "true";
+      document.body.dataset.swipeBackConfirmTitle = "Keluar dari checkout?";
+      document.body.dataset.swipeBackConfirmMessage =
+        "Data checkout yang belum disimpan mungkin hilang.";
+    } else {
+      delete document.body.dataset.swipeBackConfirm;
+      delete document.body.dataset.swipeBackConfirmTitle;
+      delete document.body.dataset.swipeBackConfirmMessage;
+    }
+    return () => {
+      // Cleanup saat unmount (user navigate keluar) supaya tidak nyangkut
+      // di halaman lain.
+      delete document.body.dataset.swipeBackConfirm;
+      delete document.body.dataset.swipeBackConfirmTitle;
+      delete document.body.dataset.swipeBackConfirmMessage;
+    };
+  }, [
+    form.shippingAddress,
+    form.voucherCode,
+    form.manualVoucherCode,
+    form.notes,
+    selectedRate,
+    payment,
+  ]);
+
   // Bersihkan pesan invalidated saat user pilih voucher baru
   function applyVoucherFromList(
     code: string,
