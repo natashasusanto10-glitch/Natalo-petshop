@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Pre-Android 12 backup config (referenced by android:fullBackupContent).
+  Walaupun android:allowBackup="false" sudah set di Manifest, file ini
+  TETAP perlu ada supaya AAPT tidak error saat allowBackup di-toggle
+  on/off di future.
+
+  Default behavior: exclude semua. Cookie/session/cart state TIDAK
+  boleh di-backup oleh Google Auto Backup karena bisa restore ke device
+  lain & corrupt session.
+-->
+<full-backup-content>
+    <exclude domain="root" path="." />
+    <exclude domain="file" path="." />
+    <exclude domain="database" path="." />
+    <exclude domain="sharedpref" path="." />
+</full-backup-content>

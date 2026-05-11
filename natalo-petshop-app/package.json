@@ -1,0 +1,31 @@
+{
+  "name": "natalo-petshop-app",
+  "version": "1.0.0",
+  "description": "Natalo Petshop & Aquarium - Native Android App (Hybrid Mode)",
+  "private": true,
+  "scripts": {
+    "sync": "npx cap sync",
+    "open:android": "npx cap open android",
+    "build:android": "npx cap sync android && cd android && ./gradlew assembleDebug",
+    "build:release": "npx cap sync android && cd android && ./gradlew assembleRelease",
+    "build:bundle": "npx cap sync android && cd android && ./gradlew bundleRelease",
+    "run:android": "npx cap run android",
+    "icons": "npx @capacitor/assets generate --android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/app": "^6.0.1",
+    "@capacitor/browser": "^6.0.3",
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/network": "^6.0.3",
+    "@capacitor/preferences": "^6.0.3",
+    "@capacitor/share": "^6.0.3",
+    "@capacitor/splash-screen": "^6.0.2",
+    "@capacitor/status-bar": "^6.0.1"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^6.1.2",
+    "typescript": "^5.4.5"
+  }
+}
