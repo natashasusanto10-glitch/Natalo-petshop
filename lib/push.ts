@@ -10,8 +10,20 @@ function getVapidConfig() {
   return { publicKey, privateKey, subject };
 }
 
-export async function sendPushToUser(userId: string, payload: { title: string; body: string; url?: string }) {
-  const { publicKey, privateKey, subject } = getVapidConfig();
+export type PushPayload = {
+  title: string;
+  body: string;
+  url?: string;
+  /** Group key — notification dgn tag sama akan replace existing, bukan stack */
+  tag?: string;
+  /** Action buttons (Android only — iOS Safari ignore) */
+  actions?: Array<{ action: string; title: string }>;
+  /** Require user interaction sebelum auto-dismiss */
+  requireInteraction?: boolean;
+};
+
+export async function sendPushToUser(userId: string, payload: PushPayload) {
+  const { publicKey, privateKey } = getVapidConfig();
   if (!publicKey || !privateKey) return;
 
   webpush.setVapidDetails(`mailto:admin@toko.com`, publicKey, privateKey);
@@ -30,7 +42,7 @@ export async function sendPushToUser(userId: string, payload: { title: string; b
       try {
         await webpush.sendNotification(
           { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-          data
+          data,
         );
       } catch (err: unknown) {
         // Remove expired/invalid subscriptions
@@ -38,30 +50,97 @@ export async function sendPushToUser(userId: string, payload: { title: string; b
           await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => {});
         }
       }
-    })
+    }),
   );
 }
 
+const STATUS_TITLES: Record<string, string> = {
+  PAID: "💰 Pembayaran Diterima",
+  PROCESSING: "📦 Pesanan Disiapkan",
+  SHIPPED: "🚚 Pesanan Dikirim",
+  DELIVERED: "✅ Pesanan Sampai",
+  CANCELLED: "❌ Pesanan Dibatalkan",
+  REFUNDED: "💸 Refund Diproses",
+};
+
+/**
+ * Push notification untuk update status order. Fire-and-forget — caller
+ * wrap dgn .catch() supaya tidak block flow.
+ *
+ * Format body custom per status:
+ * - PAID: konfirmasi simple
+ * - PROCESSING: simple
+ * - SHIPPED: include nomor AWB + kurir (kalau tersedia)
+ * - DELIVERED: include CTA review
+ * - CANCELLED / REFUNDED: simple
+ *
+ * Tag konsisten per orderNumber → notification baru replace lama
+ * (tidak stack 5 notif untuk 1 order yg status-nya berubah-ubah).
+ */
 export async function sendOrderStatusPush(orderId: string, orderNumber: string, status: string) {
-  const order = await prisma.order.findUnique({ where: { id: orderId }, select: { userId: true, trackingToken: true } }).catch(() => null);
+  const order = await prisma.order
+    .findUnique({
+      where: { id: orderId },
+      select: {
+        userId: true,
+        trackingToken: true,
+        trackingNumber: true,
+        courierCode: true,
+        courierService: true,
+      },
+    })
+    .catch(() => null);
   if (!order?.userId) return;
 
-  const statusMessages: Record<string, string> = {
-    PAID: "Pembayaranmu sudah dikonfirmasi! Pesanan sedang disiapkan.",
-    PROCESSING: "Pesananmu sedang dipacking oleh tim kami.",
-    SHIPPED: "Pesananmu sudah dikirim! Cek nomor resi di halaman order.",
-    DELIVERED: "Pesananmu sudah sampai! Terima kasih sudah belanja.",
-    CANCELLED: "Pesananmu dibatalkan.",
-  };
-
-  const body = statusMessages[status];
-  if (!body) return;
-
   const url = buildOrderDetailPath(orderNumber, order.trackingToken);
-  const payload = {
-    title: "Update Pesanan 🛍️",
+  const title = STATUS_TITLES[status];
+  if (!title) return;
+
+  // Body construction per status
+  let body = "";
+  let actions: PushPayload["actions"] | undefined;
+  let requireInteraction = false;
+
+  switch (status) {
+    case "PAID":
+      body = `Pembayaran ${orderNumber} dikonfirmasi. Pesanan sedang disiapkan.`;
+      break;
+    case "PROCESSING":
+      body = `Pesanan ${orderNumber} sedang dipacking tim kami.`;
+      break;
+    case "SHIPPED": {
+      const parts: string[] = [];
+      const courier = (order.courierService || order.courierCode || "").trim();
+      if (courier) parts.push(courier.toUpperCase());
+      if (order.trackingNumber) parts.push(`AWB ${order.trackingNumber}`);
+      body = parts.length
+        ? `${orderNumber} dikirim via ${parts.join(" · ")}. Tap untuk tracking.`
+        : `Pesanan ${orderNumber} sudah dikirim. Tap untuk lihat detail.`;
+      actions = [{ action: "track", title: "Lacak Paket" }];
+      requireInteraction = true;
+      break;
+    }
+    case "DELIVERED":
+      body = `Pesanan ${orderNumber} sudah sampai. Bantu beri rating untuk produk yang kamu beli 🌟`;
+      actions = [{ action: "review", title: "Beri Review" }];
+      break;
+    case "CANCELLED":
+      body = `Pesanan ${orderNumber} dibatalkan. Hubungi admin kalau ada pertanyaan.`;
+      break;
+    case "REFUNDED":
+      body = `Refund untuk ${orderNumber} sudah diproses. Dana akan masuk dalam 3-5 hari kerja.`;
+      break;
+    default:
+      return;
+  }
+
+  const payload: PushPayload = {
+    title,
     body,
     url,
+    tag: `order-${orderNumber}`, // konsisten per order — replace existing
+    actions,
+    requireInteraction,
   };
 
   // Kirim ke 2 channel paralel:
@@ -69,8 +148,6 @@ export async function sendOrderStatusPush(orderId: string, orderNumber: string, 
   // - APNs (iOS native app via TestFlight/App Store) via @parse/node-apn
   // Subs disimpan di table sama (PushSubscription), dibedakan dari endpoint
   // prefix: "apns:..." → APNs, "https://..." → Web Push.
-  // Existing sendPushToUser() filter ke endpoint Web Push. sendApnsToUser()
-  // filter ke endpoint apns:.
   await Promise.all([
     sendPushToUser(order.userId, payload),
     sendApnsToUser(order.userId, payload),

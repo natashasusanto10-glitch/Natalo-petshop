@@ -1,4 +1,4 @@
-const CACHE = "natalo-v14";
+const CACHE = "natalo-v15";
 
 const PRECACHE = [
   "/",
@@ -46,6 +46,13 @@ self.addEventListener("push", (e) => {
       body: payload.body,
       icon: "/icon.svg",
       badge: "/icon.svg",
+      // tag = grouping key. Notification dgn tag sama akan REPLACE existing
+      // (mis. order yg status berubah-ubah tidak stack 5 notif).
+      tag: payload.tag,
+      // Action buttons (Android only — iOS Safari ignore silently)
+      actions: payload.actions ?? undefined,
+      // SHIPPED status set true supaya user tidak miss notif "paket dikirim"
+      requireInteraction: payload.requireInteraction === true,
       data: { url: payload.url },
     })
   );
