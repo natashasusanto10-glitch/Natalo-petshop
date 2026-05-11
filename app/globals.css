@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "swiper/css";
+@import "swiper/css/zoom";
 
 /* ── Custom breakpoint untuk HP kecil (iPhone SE 375px, dll) ── */
 @theme {
@@ -142,9 +144,25 @@ input, textarea, select, button {
 body.nat-modal-open .bottom-nav,
 body.nat-modal-open .nat-bottom-nav,
 body.voucher-modal-open .bottom-nav,
-body.voucher-modal-open .nat-bottom-nav {
+body.voucher-modal-open .nat-bottom-nav,
+body.product-image-viewer-open .bottom-nav,
+body.product-image-viewer-open .nat-bottom-nav {
   display: none !important;
   pointer-events: none;
+}
+
+.product-image-viewer .swiper,
+.product-image-viewer .swiper-wrapper,
+.product-image-viewer .swiper-slide,
+.product-image-viewer .swiper-zoom-container {
+  height: 100%;
+}
+
+.product-image-viewer .swiper-slide,
+.product-image-viewer .swiper-zoom-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Top-drawer (filter produk Netflix-style) — saat open, sembunyikan
@@ -270,6 +288,12 @@ body.top-drawer-open .nat-whatsapp-float {
   .print-hidden {
     display: none !important;
   }
+}
+
+/* ── Skeleton shimmer (used by components/Skeleton.tsx) ── */
+@keyframes nat-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 /* ── Toast slide-up (used by components/Toast.tsx) ── */
