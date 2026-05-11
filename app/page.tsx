@@ -6,6 +6,7 @@ import { getProducts } from "@/lib/products";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
 import { FlashSaleCountdown } from "@/components/home/FlashSaleCountdown";
+import { BrandChoiceSection, type BrandChoiceItem } from "@/components/home/BrandChoiceSection";
 import HeroBanner from "@/components/home/HeroBanner";
 import TrustMarquee from "@/components/home/TrustMarquee";
 import type { TrustItem } from "@/data/trustItems";
@@ -78,6 +79,21 @@ const SHORTCUT_ITEMS: {
     color: "text-violet-600",
     external: true,
   },
+];
+
+const FEATURED_BRANDS: BrandChoiceItem[] = [
+  { id: "royal-canin", name: "Royal Canin", slug: "royal-canin", logo: "/images/brands/royal-canin.png" },
+  { id: "whiskas", name: "Whiskas", slug: "whiskas", logo: "/images/brands/whiskas.png" },
+  { id: "me-o", name: "Me-O", slug: "me-o", logo: "/images/brands/me-o.png" },
+  { id: "happy-dog", name: "Happy Dog", slug: "happy-dog", logo: "/images/brands/happy-dog.png" },
+  { id: "pro-plan", name: "Pro Plan", slug: "pro-plan", logo: "/images/brands/pro-plan.png" },
+  { id: "bolt", name: "Bolt", slug: "bolt", logo: "/images/brands/bolt.png" },
+  { id: "reflex", name: "Reflex", slug: "reflex", logo: "/images/brands/reflex.png" },
+  { id: "life-cat", name: "Life Cat", slug: "life-cat", logo: "/images/brands/life-cat.png" },
+  { id: "vitaplus", name: "Vitaplus", slug: "vitaplus", logo: "/images/brands/vitaplus.png" },
+  { id: "amara", name: "Amara", slug: "amara", logo: "/images/brands/amara.png" },
+  { id: "yukari", name: "Yukari", slug: "yukari", logo: "/images/brands/yukari.png" },
+  { id: "kitty-kiss", name: "Kitty Kiss", slug: "kitty-kiss", logo: "/images/brands/kitty-kiss.png" },
 ];
 
 function getJakartaMidnight() {
@@ -391,7 +407,7 @@ export default async function HomePage() {
     },
   ];
 
-  const [products, popularCategories] = await Promise.all([
+  const [products, popularCategories, dbFeaturedBrands] = await Promise.all([
     getProducts({ take: 24 }),
     prisma.category
       .findMany({
@@ -407,6 +423,19 @@ export default async function HomePage() {
             select: { imageUrl: true },
           },
           _count: { select: { products: { where: { isActive: true } } } },
+        },
+      })
+      .catch(() => []),
+    prisma.brand
+      .findMany({
+        where: { products: { some: { isActive: true } } },
+        take: 12,
+        orderBy: { products: { _count: "desc" } },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          logoUrl: true,
         },
       })
       .catch(() => []),
@@ -428,6 +457,34 @@ export default async function HomePage() {
   const bestSellers = [...products]
     .sort((a, b) => b.reviewCount - a.reviewCount || b.avgRating - a.avgRating)
     .slice(0, 6);
+
+  const dbBrandBySlug = new Map(
+    dbFeaturedBrands.map((item) => [
+      item.slug,
+      {
+        id: item.id,
+        name: item.name,
+        slug: item.slug,
+        logo: item.logoUrl,
+      } satisfies BrandChoiceItem,
+    ]),
+  );
+  const defaultFeaturedBrands = FEATURED_BRANDS.map((brand) => ({
+    ...brand,
+    ...(dbBrandBySlug.get(brand.slug) ?? {}),
+  }));
+  const extraFeaturedBrands = dbFeaturedBrands
+    .filter((brand) => !FEATURED_BRANDS.some((item) => item.slug === brand.slug))
+    .map(
+      (brand) =>
+        ({
+          id: brand.id,
+          name: brand.name,
+          slug: brand.slug,
+          logo: brand.logoUrl,
+        }) satisfies BrandChoiceItem,
+    );
+  const featuredBrands = [...defaultFeaturedBrands, ...extraFeaturedBrands].slice(0, 12);
 
   const flashSaleEnd = getJakartaMidnight();
 
@@ -689,6 +746,8 @@ export default async function HomePage() {
           })}
         </div>
       </section>
+
+      <BrandChoiceSection brands={featuredBrands} />
 
       {homeCategories.length > 0 && (
         <section className="mt-5">
