@@ -431,8 +431,82 @@ export default async function HomePage() {
 
   const flashSaleEnd = getJakartaMidnight();
 
+  // JSON-LD structured data — Organization + LocalBusiness + WebSite untuk
+  // Google Knowledge Panel + Sitelinks search box. Single @graph supaya
+  // multiple schema bisa di-emit dalam 1 script tag.
+  const phoneRaw = process.env.NEXT_PUBLIC_WA_NUMBER ?? process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ?? "+6281289997113";
+  const phone = phoneRaw.startsWith("+") ? phoneRaw : `+${phoneRaw.replace(/^0/, "62")}`;
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": `${siteUrl}#organization`,
+        name: brand,
+        url: siteUrl,
+        logo: `${siteUrl}/icons/icon-512x512.png`,
+        sameAs: [
+          "https://www.instagram.com/natalopetshop/",
+          "https://www.tiktok.com/@natalopetshop",
+        ],
+        contactPoint: {
+          "@type": "ContactPoint",
+          telephone: phone,
+          contactType: "customer service",
+          areaServed: "ID",
+          availableLanguage: ["Indonesian"],
+        },
+      },
+      {
+        "@type": "Store",
+        "@id": `${siteUrl}#store`,
+        name: brand,
+        image: `${siteUrl}/icons/icon-512x512.png`,
+        url: siteUrl,
+        telephone: phone,
+        priceRange: "Rp",
+        address: {
+          "@type": "PostalAddress",
+          streetAddress: "Jl. MT. Haryono No. 103 BCD",
+          addressLocality: "Medan",
+          addressRegion: "Sumatera Utara",
+          addressCountry: "ID",
+        },
+        openingHoursSpecification: [
+          {
+            "@type": "OpeningHoursSpecification",
+            dayOfWeek: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+            opens: "09:00",
+            closes: "18:00",
+          },
+        ],
+      },
+      {
+        "@type": "WebSite",
+        "@id": `${siteUrl}#website`,
+        url: siteUrl,
+        name: brand,
+        inLanguage: "id-ID",
+        publisher: { "@id": `${siteUrl}#organization` },
+        potentialAction: {
+          "@type": "SearchAction",
+          target: {
+            "@type": "EntryPoint",
+            urlTemplate: `${siteUrl}/search?q={search_term_string}`,
+          },
+          "query-input": "required name=search_term_string",
+        },
+      },
+    ],
+  };
+
   return (
     <div className="min-h-screen overflow-x-hidden bg-[#FAFAFA] pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-10">
+      <script
+        type="application/ld+json"
+        // eslint-disable-next-line react/no-danger
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <TrustMarquee items={trustItems} />
 
       {/* ── 2. BANNER CAROUSEL UTAMA ── */}
