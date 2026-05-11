@@ -258,10 +258,22 @@ export function Header() {
 
         {/* Right actions */}
         <div className="flex shrink-0 items-center gap-1 xs:gap-1.5 md:gap-2">
+          {/* Search */}
+          <Link
+            href="/search"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-gray-600 transition hover:bg-gray-100 xs:h-10 xs:w-10"
+            aria-label="Cari produk"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} className="h-5 w-5">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" strokeLinecap="round" />
+            </svg>
+          </Link>
+
           {/* Wishlist */}
           <Link
             href="/wishlist"
-            className="relative hidden h-9 w-9 items-center justify-center rounded-full text-gray-600 transition hover:bg-gray-100 xs:h-10 xs:w-10 md:flex"
+            className="relative flex h-9 w-9 items-center justify-center rounded-full text-gray-600 transition hover:bg-gray-100 xs:h-10 xs:w-10"
             aria-label="Wishlist"
           >
             <svg
@@ -279,6 +291,11 @@ export function Header() {
             </svg>
             <WishlistCount />
           </Link>
+
+          {/* Cart: desktop header only; mobile already has bottom navigation. */}
+          <div className="hidden h-10 w-10 items-center justify-center rounded-full text-gray-600 transition hover:bg-gray-100 md:flex [&_span.hidden]:!hidden [&_svg]:!h-5 [&_svg]:!w-5">
+            <CartCount />
+          </div>
 
           {/* Member area */}
           {member?.name ? (

@@ -3,20 +3,17 @@
 import { useEffect, useState } from "react";
 
 /**
- * Banner offline status — tampil di top of screen saat hp gak ada koneksi.
- * Auto-hide saat reconnect.
+ * Offline status banner for PWA and Capacitor builds.
  *
- * Listen ke 2 source:
- * 1. @capacitor/network (iOS native): paling akurat, native reachability check
- * 2. window.addEventListener("online" | "offline"): browser/PWA fallback
- *
- * Penting untuk daerah dengan 4G spotty. User dapat feedback visual yang
- * jelas kenapa request mereka gagal.
+ * Sources:
+ * 1. Browser online/offline events for web/PWA fallback.
+ * 2. @capacitor/network for native reachability.
+ * 3. Periodic native status polling, so the UI recovers even if an event is missed.
  */
 
 type ConnectionState = {
   connected: boolean;
-  type?: string; // "wifi" | "cellular" | "none" | "unknown"
+  type?: string;
 };
 
 export function NetworkStatusBanner() {
@@ -26,62 +23,84 @@ export function NetworkStatusBanner() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
+    let cancelled = false;
     let unsubscribe: (() => void) | null = null;
+    let pollId: number | null = null;
+    let reconnectedTimer: number | null = null;
 
-    // 1. Browser online/offline events (works for PWA/web)
-    function handleOnline() {
+    function showReconnectedBriefly() {
+      if (reconnectedTimer) window.clearTimeout(reconnectedTimer);
+      setShowReconnected(true);
+      reconnectedTimer = window.setTimeout(() => setShowReconnected(false), 2500);
+    }
+
+    function applyStatus(next: ConnectionState) {
       setState((prev) => {
-        if (!prev.connected) {
-          // Was offline, now back online — show "Reconnected" briefly
-          setShowReconnected(true);
-          setTimeout(() => setShowReconnected(false), 2500);
+        if (next.connected && !prev.connected) {
+          showReconnectedBriefly();
         }
-        return { connected: true };
+        if (!next.connected) {
+          if (reconnectedTimer) window.clearTimeout(reconnectedTimer);
+          setShowReconnected(false);
+        }
+        return next;
       });
     }
+
+    function handleOnline() {
+      applyStatus({ connected: true });
+    }
+
     function handleOffline() {
-      setState({ connected: false });
-      setShowReconnected(false);
+      applyStatus({ connected: false, type: "none" });
     }
 
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
 
-    // Initial state from browser
-    setState({ connected: navigator.onLine });
+    applyStatus({ connected: navigator.onLine });
 
-    // 2. Capacitor Network plugin (iOS native — more accurate)
     (async () => {
       try {
         const { Network } = await import("@capacitor/network");
 
-        const status = await Network.getStatus();
-        setState({ connected: status.connected, type: status.connectionType });
+        async function checkConnection() {
+          const status = await Network.getStatus();
+          if (!cancelled) {
+            applyStatus({ connected: status.connected, type: status.connectionType });
+          }
+        }
+
+        await checkConnection();
 
         const handle = await Network.addListener("networkStatusChange", (status) => {
-          setState((prev) => {
-            if (status.connected && !prev.connected) {
-              setShowReconnected(true);
-              setTimeout(() => setShowReconnected(false), 2500);
-            }
-            return { connected: status.connected, type: status.connectionType };
-          });
+          applyStatus({ connected: status.connected, type: status.connectionType });
         });
 
-        unsubscribe = () => handle.remove();
+        if (cancelled) {
+          await handle.remove();
+          return;
+        }
+
+        pollId = window.setInterval(checkConnection, 15000);
+        unsubscribe = () => {
+          void handle.remove();
+        };
       } catch {
-        // Web / non-Capacitor — fallback to browser events only
+        // Non-Capacitor web build: browser events above remain active.
       }
     })();
 
     return () => {
+      cancelled = true;
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
+      if (pollId) window.clearInterval(pollId);
+      if (reconnectedTimer) window.clearTimeout(reconnectedTimer);
       unsubscribe?.();
     };
   }, []);
 
-  // Render: banner offline (kuning) atau "Reconnected" (hijau brief)
   if (state.connected && !showReconnected) return null;
 
   return (
@@ -107,7 +126,7 @@ export function NetworkStatusBanner() {
           <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
             <path d="M1 1l22 22M16.72 11.06A10.94 10.94 0 0 1 19 12.55M5 12.55a10.94 10.94 0 0 1 5.17-2.39M10.71 5.05A16 16 0 0 1 22.58 9M1.42 9a15.91 15.91 0 0 1 4.7-2.88M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          <span>Kamu sedang offline — beberapa fitur tidak tersedia</span>
+          <span>Kamu sedang offline - beberapa fitur tidak tersedia</span>
         </>
       )}
     </div>
