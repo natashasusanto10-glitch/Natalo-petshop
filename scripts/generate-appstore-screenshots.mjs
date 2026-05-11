@@ -18,16 +18,43 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
-const OUT_DIR = resolve(ROOT, "screenshots/appstore-67");
 
 const BASE_URL = process.env.BASE_URL || "https://natalo-petshop.vercel.app";
 
-// iPhone 14 Pro Max viewport (430×932 logical × 3 DPR = 1290×2796 native).
-// Apple Required size untuk iPhone 6.7" Display.
-const VIEWPORT = { width: 430, height: 932 };
-const DPR = 3;
-const FINAL_WIDTH = VIEWPORT.width * DPR; // 1290
-const FINAL_HEIGHT = VIEWPORT.height * DPR; // 2796
+// Apple App Store screenshot device size matrix:
+// - 6.7" Display: 1290×2796 (iPhone 14 Pro Max, 15+, 16+) — REQUIRED
+// - 6.5" Display: 1242×2688 (iPhone XS Max, 11 Pro Max, 11) — older fallback
+//
+// Spec: BASE_URL env var atau argv override.
+// Spec: DEVICE_SIZE env var "67" (default) atau "65".
+const DEVICE_SIZE = process.env.DEVICE_SIZE || "67";
+
+const DEVICE_CONFIGS = {
+  "67": {
+    label: 'iPhone 6.7"',
+    viewport: { width: 430, height: 932 },
+    dpr: 3,
+    outDir: "appstore-67",
+  },
+  "65": {
+    label: 'iPhone 6.5"',
+    viewport: { width: 414, height: 896 },
+    dpr: 3,
+    outDir: "appstore-65",
+  },
+};
+
+const device = DEVICE_CONFIGS[DEVICE_SIZE];
+if (!device) {
+  console.error(`Unknown DEVICE_SIZE: ${DEVICE_SIZE}. Use "67" or "65".`);
+  process.exit(1);
+}
+
+const OUT_DIR = resolve(ROOT, "screenshots", device.outDir);
+const VIEWPORT = device.viewport;
+const DPR = device.dpr;
+const FINAL_WIDTH = VIEWPORT.width * DPR;
+const FINAL_HEIGHT = VIEWPORT.height * DPR;
 
 const BRAND_BLUE = "#1E5FBF";
 const BRAND_BLUE_DARK = "#0F2D5C";
@@ -205,7 +232,7 @@ async function generateOne(browser, config) {
 async function main() {
   if (!existsSync(OUT_DIR)) mkdirSync(OUT_DIR, { recursive: true });
 
-  console.log(`📦 Generating App Store screenshots for iPhone 6.7"`);
+  console.log(`📦 Generating App Store screenshots for ${device.label}`);
   console.log(`   Viewport: ${VIEWPORT.width}×${VIEWPORT.height} @ DPR ${DPR}`);
   console.log(`   Output: ${FINAL_WIDTH}×${FINAL_HEIGHT} px`);
   console.log(`   Base URL: ${BASE_URL}`);
