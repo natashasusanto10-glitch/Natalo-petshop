@@ -43,6 +43,37 @@ ios/**/xcuserdata/
 ios/App/App.xcodeproj/xcuserdata/
 ios/App/App.xcodeproj/project.xcworkspace/xcuserdata/
 
+# Capacitor Android scaffold di repo root — regen via `npx cap add android`
+# / `cap sync android`. Slash di depan = anchor ke root saja, JANGAN match
+# `natalo-petshop-app/android/` (yg punya hand-edited MainActivity, manifest,
+# offline.html, dll → tracked terpisah untuk Play Store v1.0.7).
+/android/
+
+# Generic Android / Gradle build outputs (untuk natalo-petshop-app/android/).
+# Pakai **/ supaya match di sub-tree manapun (gradle build numpuk MB-an).
+**/android/app/build/
+**/android/build/
+**/android/.gradle/
+**/android/local.properties
+**/android/.idea/
+**/android/captures/
+**/android/app/release/
+**/android/app/debug/
+**/android/key.properties
+**/android/keystore.properties
+
+# Signing keys & build outputs — sensitive / heavy, never commit.
+*.keystore
+*.jks
+*.aab
+*.apk
+
+# Firebase service-account / API config — sensitive, jangan masuk repo.
+# Tiap dev/CI generate sendiri dari Firebase Console.
+**/google-services.json
+**/GoogleService-Info.plist
+**/firebase-adminsdk-*.json
+
 # Capacitor generated assets (regen via `npm run cap:assets`)
 # Note: ios/App/App/Assets.xcassets is committed; only DerivedData ignored.
 
