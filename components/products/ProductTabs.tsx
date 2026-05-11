@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import Image from "next/image";
 import { useMemo, useState } from "react";
+import { PrefetchOnView } from "@/components/PrefetchOnView";
 
 type RelatedProduct = {
   id: string;
@@ -94,10 +94,10 @@ function RelatedGrid({ related }: { related: RelatedProduct[] }) {
       {related.map((p) => {
         const price = p.discountPrice && p.discountPrice < p.price ? p.discountPrice : p.price;
         return (
-          <Link
+          <PrefetchOnView
             key={p.id}
             href={`/products/${p.slug}`}
-            className="group flex flex-col overflow-hidden rounded-xl border border-gray-100 bg-white transition active:bg-gray-50"
+            className="group flex flex-col overflow-hidden rounded-xl border border-gray-100 bg-white transition-transform duration-100 active:scale-95 active:bg-gray-50"
           >
             <div className="relative aspect-square w-full bg-gray-100">
               {p.imageUrl ? (
@@ -122,7 +122,7 @@ function RelatedGrid({ related }: { related: RelatedProduct[] }) {
                 {formatRupiahShort(price)}
               </p>
             </div>
-          </Link>
+          </PrefetchOnView>
         );
       })}
     </div>

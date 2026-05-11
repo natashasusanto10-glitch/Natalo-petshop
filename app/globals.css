@@ -443,16 +443,19 @@ body.top-drawer-open .nat-whatsapp-float {
       kelihatan saat hybrid mode di Capacitor WebView Android).
    2. touch-action: manipulation di tap target → disable 300ms
       double-tap-zoom delay yang bikin tap terasa lag.
+   Wrapped @layer base biar Tailwind v4 process & ga di-stripped.
    Active state + haptic dari Batch 1+2 sudah handle feedback. */
-a,
-button,
-[role="button"],
-input[type="button"],
-input[type="submit"],
-input[type="reset"],
-label[for] {
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
+@layer base {
+  a,
+  button,
+  [role="button"],
+  input[type="button"],
+  input[type="submit"],
+  input[type="reset"],
+  label[for] {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
 }
 
 /* ── Overscroll containment on scrollable overlays ──────────────
