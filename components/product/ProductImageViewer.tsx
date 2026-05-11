@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Swiper as SwiperType } from "swiper";
@@ -15,6 +14,16 @@ type ProductImageViewerProps = {
 };
 
 const CLOSE_ANIMATION_MS = 180;
+
+function getOriginalImageSrc(src: string) {
+  try {
+    const url = new URL(src, window.location.origin);
+    const optimizedUrl = url.pathname === "/_next/image" ? url.searchParams.get("url") : null;
+    return optimizedUrl ? decodeURIComponent(optimizedUrl) : src;
+  } catch {
+    return src;
+  }
+}
 
 export function ProductImageViewer({
   images,
@@ -105,7 +114,7 @@ export function ProductImageViewer({
       role="dialog"
       aria-modal="true"
       aria-label="Galeri foto produk"
-      className={`product-image-viewer fixed inset-0 z-[9999] flex h-[100dvh] min-h-screen flex-col overflow-hidden bg-black text-white transition duration-200 ${
+      className={`product-image-viewer fixed inset-0 z-[9999] flex h-[100dvh] min-h-screen w-screen flex-col overflow-hidden bg-black text-white transition duration-200 ${
         isClosing ? "opacity-0" : "opacity-100"
       }`}
       style={{
@@ -206,21 +215,18 @@ export function ProductImageViewer({
           }}
         >
           {safeImages.map((src, index) => (
-            <SwiperSlide key={`${src}-${index}`}>
+            <SwiperSlide key={`${src}-${index}`} className="!flex !items-center !justify-center">
               <div className="swiper-zoom-container">
                 {errored[index] ? (
                   <div className="flex h-full w-full items-center justify-center text-5xl font-black text-white/25">
                     NP
                   </div>
                 ) : (
-                  <Image
-                    src={src}
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={getOriginalImageSrc(src)}
                     alt={`Foto produk ${index + 1}`}
-                    width={1400}
-                    height={1400}
-                    sizes="100vw"
-                    className="max-h-[calc(100dvh-96px)] w-auto max-w-full select-none object-contain"
-                    priority={index === safeInitialIndex}
+                    className="block h-full w-full select-none object-contain"
                     draggable={false}
                     onError={() =>
                       setErrored((prev) => ({ ...prev, [index]: true }))

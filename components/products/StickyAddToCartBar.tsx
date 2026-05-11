@@ -53,7 +53,7 @@ export function StickyAddToCartBar({ initialState, waHref }: Props) {
       <div className="grid grid-cols-[0.9fr_1.15fr_1.35fr] gap-2">
         <ExternalLink
           href={waHref}
-          className="flex h-11 items-center justify-center rounded-xl border border-green-200 bg-green-50 px-2 text-xs font-extrabold text-green-700 active:bg-green-100"
+          className="flex h-11 items-center justify-center rounded-xl border border-green-200 bg-green-50 px-2 text-xs font-extrabold text-green-700 transition-transform duration-100 active:scale-95 active:bg-green-100"
         >
           Chat WA
         </ExternalLink>
@@ -61,7 +61,7 @@ export function StickyAddToCartBar({ initialState, waHref }: Props) {
           type="button"
           onClick={(event) => handleCommerceClick(event, "cart")}
           disabled={state.outOfStock}
-          className="flex h-11 items-center justify-center rounded-xl border border-natalo-500 bg-white px-2 text-xs font-extrabold text-natalo-600 active:bg-natalo-50 disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-300"
+          className="flex h-11 items-center justify-center rounded-xl border border-natalo-500 bg-white px-2 text-xs font-extrabold text-natalo-600 transition-transform duration-100 active:scale-95 active:bg-natalo-50 disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-300 disabled:active:scale-100"
         >
           + Keranjang
         </button>
@@ -69,8 +69,8 @@ export function StickyAddToCartBar({ initialState, waHref }: Props) {
           type="button"
           onClick={(event) => handleCommerceClick(event, "buy")}
           disabled={state.outOfStock}
-          className={`flex h-11 items-center justify-center rounded-xl px-2 text-xs font-extrabold text-white active:opacity-90 ${
-            state.outOfStock ? "cursor-not-allowed bg-gray-300" : "bg-natalo-600"
+          className={`flex h-11 items-center justify-center rounded-xl px-2 text-xs font-extrabold text-white transition-transform duration-100 active:scale-95 active:opacity-90 ${
+            state.outOfStock ? "cursor-not-allowed bg-gray-300 active:scale-100" : "bg-natalo-600"
           }`}
         >
           {buyLabel}

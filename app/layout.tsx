@@ -21,6 +21,7 @@ import { PageStatusBar } from "@/components/PageStatusBar";
 import { KeyboardManager } from "@/components/KeyboardManager";
 import { NetworkStatusBanner } from "@/components/NetworkStatusBanner";
 import { DeepLinkHandler } from "@/components/DeepLinkHandler";
+import { ViewTransitionsProvider } from "@/components/ViewTransitionsProvider";
 
 const nunito = Nunito({
   subsets: ["latin"],
@@ -160,6 +161,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <PWARegister />
         <NativeSwipeBackController />
         <IOSSwipeBack />
+        <ViewTransitionsProvider />
         <StoreOnly>
           <AppSplashOverlay />
           <PullToRefresh />

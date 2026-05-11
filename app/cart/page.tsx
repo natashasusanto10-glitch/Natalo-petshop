@@ -481,7 +481,7 @@ export default function CartPage() {
                             <button
                               type="button"
                               onClick={() => updateQty(key, item.quantity - 1)}
-                              className="flex h-9 w-9 items-center justify-center rounded-full text-lg font-bold text-gray-600 transition hover:text-blue-600"
+                              className="flex h-9 w-9 items-center justify-center rounded-full text-lg font-bold text-gray-600 transition-all duration-75 hover:text-blue-600 active:scale-90"
                               aria-label="Kurangi"
                             >
                               {item.quantity <= 1 ? <TrashIcon className="h-3.5 w-3.5" /> : "−"}
@@ -491,7 +491,7 @@ export default function CartPage() {
                               type="button"
                               onClick={() => updateQty(key, item.quantity + 1)}
                               disabled={item.stock != null && item.quantity >= item.stock}
-                              className="flex h-9 w-9 items-center justify-center rounded-full text-lg font-bold text-gray-600 transition hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
+                              className="flex h-9 w-9 items-center justify-center rounded-full text-lg font-bold text-gray-600 transition-all duration-75 hover:text-blue-600 active:scale-90 disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
                               aria-label="Tambah"
                             >
                               +
@@ -528,7 +528,7 @@ export default function CartPage() {
               type="button"
               onClick={checkoutSelected}
               disabled={selectedCount === 0 || stockRefreshing}
-              className="mt-5 flex w-full items-center justify-center rounded-full bg-blue-500 py-4 text-sm font-bold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-gray-300"
+              className="mt-5 flex w-full items-center justify-center rounded-full bg-blue-500 py-4 text-sm font-bold text-white transition-all duration-100 hover:bg-blue-600 active:scale-95 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:active:scale-100"
             >
               {stockRefreshing ? "Cek stok..." : `Checkout (${selectedCount})`}
             </button>
@@ -596,7 +596,7 @@ export default function CartPage() {
               type="button"
               onClick={checkoutSelected}
               disabled={selectedCount === 0 || stockRefreshing}
-              className="flex h-12 shrink-0 items-center justify-center rounded-full bg-blue-500 px-5 text-sm font-black text-white active:opacity-90 disabled:cursor-not-allowed disabled:bg-gray-300"
+              className="flex h-12 shrink-0 items-center justify-center rounded-full bg-blue-500 px-5 text-sm font-black text-white transition-transform duration-100 active:scale-95 active:opacity-90 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:active:scale-100"
             >
               {stockRefreshing ? "Cek stok..." : `Checkout (${selectedCount})`}
             </button>

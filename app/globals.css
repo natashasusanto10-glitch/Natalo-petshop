@@ -156,10 +156,17 @@ body.nat-modal-open .nat-whatsapp-float {
   pointer-events: none;
 }
 
+.product-image-viewer {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+}
+
 .product-image-viewer .swiper,
 .product-image-viewer .swiper-wrapper,
 .product-image-viewer .swiper-slide,
 .product-image-viewer .swiper-zoom-container {
+  width: 100%;
   height: 100%;
 }
 
@@ -168,6 +175,12 @@ body.nat-modal-open .nat-whatsapp-float {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.product-image-viewer .swiper-zoom-container > img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 /* Top-drawer (filter produk Netflix-style) — saat open, sembunyikan
@@ -385,4 +398,78 @@ body.top-drawer-open .nat-whatsapp-float {
   .cart-success-toast__text {
     font-size: 15px;
   }
+}
+
+/* ── View Transitions API ───────────────────────────────────────
+   Cross-fade halus antar halaman saat navigasi (Chrome 111+ / WebView
+   Android modern). Next.js wrap router.push() dengan
+   document.startViewTransition() saat experimental.viewTransition: true.
+
+   Browser yang belum support → fallback ke instant nav (no regression).
+   Reduced-motion → fade durasi 0 supaya hormat preferensi accessibility. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 220ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+::view-transition-old(root) {
+  animation-name: fade-out;
+}
+
+::view-transition-new(root) {
+  animation-name: fade-in;
+}
+
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 0ms;
+  }
+}
+
+/* ── Tap polish (native-feel) ───────────────────────────────────
+   1. Hilangkan tap-highlight flash biru di iOS Safari (sangat
+      kelihatan saat hybrid mode di Capacitor WebView Android).
+   2. touch-action: manipulation di tap target → disable 300ms
+      double-tap-zoom delay yang bikin tap terasa lag.
+   Active state + haptic dari Batch 1+2 sudah handle feedback. */
+a,
+button,
+[role="button"],
+input[type="button"],
+input[type="submit"],
+input[type="reset"],
+label[for] {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* ── Overscroll containment on scrollable overlays ──────────────
+   Bottom sheet, drawer, modal: scroll dalam container tidak boleh
+   "leak" ke body. Tanpa `overscroll-behavior: contain`, swipe
+   sampai end-of-content menyebabkan body ikut scroll (rubber-band
+   ke modal background) — terasa nggak native. */
+.voucher-sheet,
+[role="dialog"] [class*="overflow-y-auto"],
+[role="dialog"] [class*="overflow-auto"] {
+  overscroll-behavior: contain;
+}
+
+/* ── Horizontal carousel scroll inertia di iOS ──────────────────
+   Modern WebView default udah smooth, tapi `-webkit-overflow-scrolling: touch`
+   masih perlu untuk iOS Safari < 13 yang occasionally muncul.
+   Plus `scroll-snap-type` sudah dikonfigurasi di komponen masing-masing. */
+.snap-x {
+  -webkit-overflow-scrolling: touch;
 }

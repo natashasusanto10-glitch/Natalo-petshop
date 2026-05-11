@@ -93,7 +93,7 @@ export function AddToCartBottomSheet({ open, item, onClose, onAdded }: Props) {
           type="button"
           onClick={submit}
           disabled={!canSubmit}
-          className="w-full rounded-full bg-natalo-600 py-3 text-sm font-black text-white transition hover:bg-natalo-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+          className="w-full rounded-full bg-natalo-600 py-3 text-sm font-black text-white transition-all duration-100 hover:bg-natalo-700 active:scale-95 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:active:scale-100"
         >
           Tambah ke Keranjang
         </button>
@@ -152,7 +152,7 @@ export function AddToCartBottomSheet({ open, item, onClose, onAdded }: Props) {
                 onClick={decrease}
                 disabled={quantity <= 1}
                 aria-label="Kurangi jumlah"
-                className="grid h-11 w-11 place-items-center text-lg font-black text-natalo-600 disabled:text-gray-300"
+                className="grid h-11 w-11 place-items-center text-lg font-black text-natalo-600 transition-transform duration-75 active:scale-90 disabled:text-gray-300 disabled:active:scale-100"
               >
                 -
               </button>
@@ -164,7 +164,7 @@ export function AddToCartBottomSheet({ open, item, onClose, onAdded }: Props) {
                 onClick={increase}
                 disabled={!canIncrease}
                 aria-label="Tambah jumlah"
-                className="grid h-11 w-11 place-items-center text-lg font-black text-natalo-600 disabled:text-gray-300"
+                className="grid h-11 w-11 place-items-center text-lg font-black text-natalo-600 transition-transform duration-75 active:scale-90 disabled:text-gray-300 disabled:active:scale-100"
               >
                 +
               </button>

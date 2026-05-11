@@ -9,6 +9,10 @@ const withBundleAnalyzer = bundleAnalyzer({
 const nextConfig: NextConfig = {
   // Bundle optimization
   experimental: {
+    // View Transitions API — enable browser-level cross-fade between
+    // route navigations. Works di Chrome 126+ (Capacitor WebView modern OK).
+    // Browser yang belum support fallback ke instant nav, no regression.
+    viewTransition: true,
     // Optimize CSS chunks — extract critical CSS, defer rest
     optimizePackageImports: [
       "lucide-react",

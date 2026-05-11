@@ -42,7 +42,7 @@ export function ProductPurchaseButtons({ initialState, waHref }: Props) {
     <div className="mt-4 hidden grid-cols-3 gap-2 md:grid">
       <ExternalLink
         href={waHref}
-        className="flex h-12 items-center justify-center rounded-xl border border-green-200 bg-green-50 text-sm font-extrabold text-green-700"
+        className="flex h-12 items-center justify-center rounded-xl border border-green-200 bg-green-50 text-sm font-extrabold text-green-700 transition-transform duration-100 active:scale-95"
       >
         Chat WA
       </ExternalLink>
@@ -50,7 +50,7 @@ export function ProductPurchaseButtons({ initialState, waHref }: Props) {
         type="button"
         onClick={() => handleCommerceClick("cart")}
         disabled={state.outOfStock}
-        className="h-12 rounded-xl border border-natalo-500 text-sm font-extrabold text-natalo-600 disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-300"
+        className="h-12 rounded-xl border border-natalo-500 text-sm font-extrabold text-natalo-600 transition-transform duration-100 active:scale-95 disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-300 disabled:active:scale-100"
       >
         + Keranjang
       </button>
@@ -58,7 +58,7 @@ export function ProductPurchaseButtons({ initialState, waHref }: Props) {
         type="button"
         onClick={() => handleCommerceClick("buy")}
         disabled={state.outOfStock}
-        className="h-12 rounded-xl bg-natalo-600 text-sm font-extrabold text-white disabled:cursor-not-allowed disabled:bg-gray-300"
+        className="h-12 rounded-xl bg-natalo-600 text-sm font-extrabold text-white transition-transform duration-100 active:scale-95 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:active:scale-100"
       >
         {state.outOfStock ? "Stok Habis" : "Beli Sekarang"}
       </button>

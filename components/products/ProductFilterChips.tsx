@@ -131,7 +131,7 @@ export function ProductFilterChips({
         <button
           type="button"
           onClick={resetAll}
-          className={`shrink-0 rounded-full border px-4 py-1.5 text-sm font-semibold transition ${
+          className={`shrink-0 rounded-full border px-4 py-1.5 text-sm font-semibold transition-all duration-75 active:scale-95 ${
             hasNoFilter
               ? "border-blue-500 bg-blue-500 text-white"
               : "border-slate-200 bg-white text-slate-700 active:bg-slate-50"
@@ -191,7 +191,7 @@ function ChipWithDropdown({
 }) {
   return (
     <span
-      className={`flex shrink-0 items-center gap-1.5 rounded-full border pl-3 pr-3 py-1.5 text-sm font-semibold transition ${
+      className={`flex shrink-0 items-center gap-1.5 rounded-full border pl-3 pr-3 py-1.5 text-sm font-semibold transition-all duration-75 active:scale-95 ${
         active
           ? "border-blue-500 bg-blue-500 text-white"
           : "border-slate-200 bg-white text-slate-700"

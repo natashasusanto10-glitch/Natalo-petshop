@@ -64,19 +64,15 @@ export default async function ProductsPage({
   const newFilter = asNewFilter(newParam);
   const popularFilter = asPopularFilter(popularParam);
 
-  const [filteredProducts, total, categories] = await Promise.all([
-    getProducts({
-      category: kategori,
-      search: q,
-      newFilter,
-      popularFilter,
-      take: PAGE_SIZE,
-      skip: (page - 1) * PAGE_SIZE,
-    }),
-    getProductsCount({ category: kategori, search: q, newFilter }),
-    prisma.category.findMany({ orderBy: { name: "asc" } }).catch(() => []),
-  ]);
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // Categories di-fetch di luar Suspense — tidak berubah saat filter, jadi
+  // chip row bisa render langsung tanpa re-fetch.
+  const categories = await prisma.category
+    .findMany({ orderBy: { name: "asc" } })
+    .catch(() => []);
+
+  // Key Suspense gabungan dari semua filter — saat berubah, Suspense
+  // re-mount → fallback (GridSkeleton) tampil sambil server re-fetch.
+  const gridKey = [kategori ?? "", q ?? "", page, newFilter ?? "", popularFilter ?? ""].join("|");
 
   return (
     <div className="mx-auto max-w-6xl px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-4 md:py-10">
@@ -107,50 +103,108 @@ export default async function ProductsPage({
         </Suspense>
       </div>
 
-      {/* Result count */}
-      {filteredProducts.length > 0 && (
-        <p className="mb-3 text-xs text-gray-500">
-          Menampilkan {(page - 1) * PAGE_SIZE + 1}–
-          {(page - 1) * PAGE_SIZE + filteredProducts.length} dari {total} produk
-        </p>
-      )}
-
-      {/* Products grid */}
-      {filteredProducts.length > 0 ? (
-        <>
-          <div className="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4">
-            {filteredProducts.map((product, index) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-                priority={index < 4}
-              />
-            ))}
-          </div>
-          {totalPages > 1 && (
-            <Pagination
-              page={page}
-              totalPages={totalPages}
-              kategori={kategori}
-              q={q}
-              newFilter={newFilter}
-              popularFilter={popularFilter}
-            />
-          )}
-        </>
-      ) : (
-        <div className="rounded-2xl bg-gray-50 p-12 text-center">
-          <span className="text-5xl">🐾</span>
-          <p className="mt-4 text-gray-500">Belum ada produk yang sesuai dengan filter.</p>
-          <Link
-            href="/products"
-            className="mt-4 inline-flex rounded-full bg-blue-500 px-6 py-3 text-sm font-bold text-white"
-          >
-            Lihat semua produk
-          </Link>
-        </div>
-      )}
+      {/* Grid dibungkus Suspense + key supaya filter change kasih skeleton
+          fade-in saat server re-fetch — bukan freeze old grid. */}
+      <Suspense key={gridKey} fallback={<ProductsGridSkeleton />}>
+        <ProductsGrid
+          kategori={kategori}
+          q={q}
+          page={page}
+          newFilter={newFilter}
+          popularFilter={popularFilter}
+        />
+      </Suspense>
     </div>
+  );
+}
+
+async function ProductsGrid({
+  kategori,
+  q,
+  page,
+  newFilter,
+  popularFilter,
+}: {
+  kategori?: string;
+  q?: string;
+  page: number;
+  newFilter?: NewProductFilter;
+  popularFilter?: PopularFilter;
+}) {
+  const [filteredProducts, total] = await Promise.all([
+    getProducts({
+      category: kategori,
+      search: q,
+      newFilter,
+      popularFilter,
+      take: PAGE_SIZE,
+      skip: (page - 1) * PAGE_SIZE,
+    }),
+    getProductsCount({ category: kategori, search: q, newFilter }),
+  ]);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  if (filteredProducts.length === 0) {
+    return (
+      <div className="rounded-2xl bg-gray-50 p-12 text-center">
+        <span className="text-5xl">🐾</span>
+        <p className="mt-4 text-gray-500">Belum ada produk yang sesuai dengan filter.</p>
+        <Link
+          href="/products"
+          className="mt-4 inline-flex rounded-full bg-blue-500 px-6 py-3 text-sm font-bold text-white transition-transform duration-100 active:scale-95"
+        >
+          Lihat semua produk
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <p className="mb-3 text-xs text-gray-500">
+        Menampilkan {(page - 1) * PAGE_SIZE + 1}–
+        {(page - 1) * PAGE_SIZE + filteredProducts.length} dari {total} produk
+      </p>
+      <div className="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4">
+        {filteredProducts.map((product, index) => (
+          <ProductCard
+            key={product.id}
+            product={product}
+            priority={index < 4}
+          />
+        ))}
+      </div>
+      {totalPages > 1 && (
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          kategori={kategori}
+          q={q}
+          newFilter={newFilter}
+          popularFilter={popularFilter}
+        />
+      )}
+    </>
+  );
+}
+
+function ProductsGridSkeleton() {
+  return (
+    <>
+      <div className="mb-3 h-3 w-40 animate-pulse rounded bg-gray-100" />
+      <div className="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4">
+        {[...Array(8)].map((_, i) => (
+          <div key={i} className="overflow-hidden rounded-2xl border border-gray-100 bg-white">
+            <div className="aspect-square animate-pulse bg-gray-100" />
+            <div className="space-y-2 p-3 md:p-4">
+              <div className="h-4 w-3/4 animate-pulse rounded-lg bg-gray-100" />
+              <div className="h-3 w-1/2 animate-pulse rounded-lg bg-gray-100" />
+              <div className="mt-3 h-5 w-1/3 animate-pulse rounded-lg bg-gray-100" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 
