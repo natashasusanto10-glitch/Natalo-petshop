@@ -35,6 +35,21 @@ export function BroadcastForm() {
 
   const canSubmit = title.trim().length > 0 && body.trim().length > 0 && !loading;
 
+  // Helper: parse response defensively. Kalau server return HTML (timeout
+  // page / crash) bukan JSON, surface info status code supaya errornya useful.
+  async function readResponseSafely(res: Response): Promise<Result> {
+    const text = await res.text().catch(() => "");
+    try {
+      return JSON.parse(text) as Result;
+    } catch {
+      const snippet = text.slice(0, 120).replace(/\s+/g, " ").trim();
+      return {
+        ok: false,
+        error: `HTTP ${res.status} non-JSON response${snippet ? ` — ${snippet}` : ""}`,
+      };
+    }
+  }
+
   async function checkRecipientCount() {
     setError("");
     setLoading(true);
@@ -44,14 +59,15 @@ export function BroadcastForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: title || "preview", body: body || "preview", url, segment, dryRun: true }),
       });
-      const data: Result = await res.json();
+      const data = await readResponseSafely(res);
       if (!res.ok) {
-        setError(data.error ?? "Gagal cek recipient");
+        setError(data.error ?? `Gagal cek recipient (HTTP ${res.status})`);
         return;
       }
       setRecipientCount(data.recipientCount ?? 0);
-    } catch {
-      setError("Gagal cek recipient (network)");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "network";
+      setError(`Gagal cek recipient (${msg})`);
     } finally {
       setLoading(false);
     }
@@ -67,15 +83,16 @@ export function BroadcastForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title, body, url, segment }),
       });
-      const data: Result = await res.json();
+      const data = await readResponseSafely(res);
       if (!res.ok) {
-        setError(data.error ?? "Gagal kirim broadcast");
+        setError(data.error ?? `Gagal kirim broadcast (HTTP ${res.status})`);
         return;
       }
       setResult(data);
       setConfirming(false);
-    } catch {
-      setError("Gagal kirim broadcast (network)");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "network";
+      setError(`Gagal kirim broadcast (${msg})`);
     } finally {
       setLoading(false);
     }

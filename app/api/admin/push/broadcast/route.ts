@@ -46,6 +46,21 @@ const BATCH_SIZE = 50;
 export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
+  try {
+    return await handle(request);
+  } catch (err) {
+    // Guarantee JSON response even pada Prisma / runtime crash — supaya
+    // client gak nyangkut di `await res.json()` yg lempar "(network)".
+    const message = err instanceof Error ? err.message : "Internal error";
+    console.error("[broadcast] crashed:", err);
+    return NextResponse.json(
+      { error: `Broadcast gagal: ${message}` },
+      { status: 500 },
+    );
+  }
+}
+
+async function handle(request: NextRequest) {
   const session = await getSession("ADMIN");
   if (!session || session.role !== "ADMIN") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
