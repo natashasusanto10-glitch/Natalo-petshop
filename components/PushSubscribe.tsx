@@ -28,6 +28,85 @@ type PushState = "loading" | "unsupported" | "denied" | "subscribed" | "idle";
  */
 type NativePlatform = "ios" | "android" | null;
 
+/**
+ * Trigger `PushNotifications.register()` lalu POST token yang baru
+ * di-receive ke /subscribe-apns atau /subscribe-fcm sesuai platform.
+ *
+ * Idempotent di sisi backend (upsert by endpoint). Aman dipanggil setiap
+ * mount kalau permission sudah granted — fixes case di mana user dapat
+ * permission tapi tokennya gak pernah ke-register ke server.
+ *
+ * Resolve ketika token sudah POST atau error (timeout 8 detik supaya
+ * gak block UI selamanya kalau ada masalah Capacitor bridge).
+ */
+async function ensureNativeRegistered(platform: NativePlatform): Promise<void> {
+  const { PushNotifications } = await import("@capacitor/push-notifications");
+
+  const subscribeUrl =
+    platform === "android"
+      ? "/api/push/subscribe-fcm"
+      : "/api/push/subscribe-apns";
+
+  return new Promise<void>((resolve) => {
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+
+    let tokenHandle: { remove: () => Promise<void> } | null = null;
+    let errorHandle: { remove: () => Promise<void> } | null = null;
+
+    const cleanup = () => {
+      tokenHandle?.remove().catch(() => {});
+      errorHandle?.remove().catch(() => {});
+    };
+
+    // Safety: max 8 detik supaya gak gantung kalau token gak datang.
+    const timeoutId = setTimeout(() => {
+      cleanup();
+      done();
+    }, 8000);
+
+    void PushNotifications.addListener("registration", async (token) => {
+      try {
+        await fetch(subscribeUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            token: token.value,
+            platform: platform ?? "ios",
+          }),
+        });
+      } catch {
+        // Network error — silent. User akan retry next visit (mount lagi).
+      }
+      clearTimeout(timeoutId);
+      cleanup();
+      done();
+    }).then((h) => {
+      tokenHandle = h;
+    });
+
+    void PushNotifications.addListener("registrationError", () => {
+      clearTimeout(timeoutId);
+      cleanup();
+      done();
+    }).then((h) => {
+      errorHandle = h;
+    });
+
+    // Kick off — kalau perm sudah granted, register() resolve cepat dgn
+    // token existing tanpa prompt user.
+    void PushNotifications.register().catch(() => {
+      clearTimeout(timeoutId);
+      cleanup();
+      done();
+    });
+  });
+}
+
 export function PushSubscribe() {
   const [state, setState] = useState<PushState>("loading");
   const [isNative, setIsNative] = useState(false);
@@ -64,6 +143,13 @@ export function PushSubscribe() {
           const perm = await PushNotifications.checkPermissions();
           if (cancelled) return;
           if (perm.receive === "granted") {
+            // PENTING: "granted" di OS != "token sudah ke-POST ke server".
+            // User bisa granted dari install lama / TestFlight auto-grant,
+            // tapi DB tetap kosong kalau register() belum pernah dipanggil.
+            // Auto-trigger register() — idempotent (gak re-prompt), tokennya
+            // akan datang via "registration" listener → POST upsert ke DB.
+            await ensureNativeRegistered(platform);
+            if (cancelled) return;
             setState("subscribed");
           } else if (perm.receive === "denied") {
             setState("denied");
@@ -94,50 +180,13 @@ export function PushSubscribe() {
   async function subscribeNative() {
     try {
       const { PushNotifications } = await import("@capacitor/push-notifications");
-
-      // Request permission
       const perm = await PushNotifications.requestPermissions();
       if (perm.receive !== "granted") {
         setState("denied");
         return;
       }
-
-      // Plugin returns APNs token di iOS, FCM token di Android. Routing
-      // berdasarkan platform: APNs → /subscribe-apns, FCM → /subscribe-fcm.
-      const subscribeUrl =
-        nativePlatform === "android"
-          ? "/api/push/subscribe-fcm"
-          : "/api/push/subscribe-apns";
-
-      // Setup token listener BEFORE register, so we catch the token event
-      const tokenHandle = await PushNotifications.addListener(
-        "registration",
-        async (token) => {
-          await fetch(subscribeUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              token: token.value,
-              platform: nativePlatform ?? "ios",
-            }),
-          });
-          setState("subscribed");
-          // Cleanup listener setelah token diterima (stable, gak perlu listen lagi)
-          tokenHandle.remove();
-        },
-      );
-
-      const errorHandle = await PushNotifications.addListener(
-        "registrationError",
-        (err) => {
-          console.warn("Native push registration failed:", err);
-          setState("denied");
-          errorHandle.remove();
-        },
-      );
-
-      // Trigger registration — OS push server akan kasih token via listener
-      await PushNotifications.register();
+      await ensureNativeRegistered(nativePlatform);
+      setState("subscribed");
     } catch (err) {
       console.warn("Push subscribe (native) failed:", err);
       setState("denied");
