@@ -117,6 +117,23 @@ input, textarea, select, button {
   padding-bottom: calc(var(--natalo-bottom-nav-height) + env(safe-area-inset-bottom));
 }
 
+.natalo-splash-overlay {
+  animation: natalo-splash-auto-hide 2.2s ease forwards;
+}
+
+@keyframes natalo-splash-auto-hide {
+  0%,
+  78% {
+    opacity: 1;
+    visibility: visible;
+  }
+  100% {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+}
+
 .bottom-nav,
 .nat-bottom-nav {
   position: fixed;

@@ -25,12 +25,17 @@ export function AppSplashOverlay() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    // Repeat visit (sessionStorage seen) — dismiss langsung tanpa flash terlalu lama
-    if (sessionStorage.getItem(SEEN_KEY)) {
-      setPhase("done");
-      return;
+    // Repeat visit (sessionStorage seen) — dismiss langsung tanpa flash terlalu lama.
+    // Beberapa WebView/PWA mode bisa menolak storage; splash tetap harus selesai.
+    try {
+      if (sessionStorage.getItem(SEEN_KEY)) {
+        setPhase("done");
+        return;
+      }
+      sessionStorage.setItem(SEEN_KEY, "1");
+    } catch {
+      // Storage unavailable: lanjut animasi normal, jangan biarkan overlay stuck.
     }
-    sessionStorage.setItem(SEEN_KEY, "1");
 
     // "N" sudah visible dari initial state — langsung lanjut ke reveal phases
     const timers: ReturnType<typeof setTimeout>[] = [
@@ -53,7 +58,7 @@ export function AppSplashOverlay() {
   return (
     <div
       aria-hidden="true"
-      className={`fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-natalo-500 transition-opacity duration-500 ${
+      className={`natalo-splash-overlay fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-natalo-500 transition-opacity duration-500 ${
         isVisible ? "opacity-100" : "opacity-0 pointer-events-none"
       }`}
     >
