@@ -47,31 +47,37 @@ async function ensureNativeRegistered(platform: NativePlatform): Promise<void> {
       ? "/api/push/subscribe-fcm"
       : "/api/push/subscribe-apns";
 
-  return new Promise<void>((resolve) => {
-    let settled = false;
-    const done = () => {
-      if (settled) return;
-      settled = true;
-      resolve();
-    };
+  // Urutan kritis: listener HARUS attached SEBELUM register() dipanggil.
+  // Kalau register() fire duluan, event "registration" dispatch ke listener
+  // yang belum ada → token terbuang dan POST gak pernah terjadi.
+  let resolveDone: () => void = () => {};
+  const done = new Promise<void>((r) => {
+    resolveDone = r;
+  });
+  let settled = false;
+  const finish = () => {
+    if (settled) return;
+    settled = true;
+    resolveDone();
+  };
 
-    let tokenHandle: { remove: () => Promise<void> } | null = null;
-    let errorHandle: { remove: () => Promise<void> } | null = null;
+  // Untuk debugging dari prod: dispatch custom event "native-push-debug"
+  // dengan info — caller di UI bisa surface ke admin kalau perlu.
+  const debugLog = (stage: string, extra?: Record<string, unknown>) => {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(
+      new CustomEvent("native-push-debug", { detail: { stage, ...extra } }),
+    );
+  };
 
-    const cleanup = () => {
-      tokenHandle?.remove().catch(() => {});
-      errorHandle?.remove().catch(() => {});
-    };
+  debugLog("attach-listeners");
 
-    // Safety: max 8 detik supaya gak gantung kalau token gak datang.
-    const timeoutId = setTimeout(() => {
-      cleanup();
-      done();
-    }, 8000);
-
-    void PushNotifications.addListener("registration", async (token) => {
+  const tokenHandle = await PushNotifications.addListener(
+    "registration",
+    async (token) => {
+      debugLog("token-received", { tokenLen: token.value?.length ?? 0 });
       try {
-        await fetch(subscribeUrl, {
+        const res = await fetch(subscribeUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -79,32 +85,40 @@ async function ensureNativeRegistered(platform: NativePlatform): Promise<void> {
             platform: platform ?? "ios",
           }),
         });
-      } catch {
-        // Network error — silent. User akan retry next visit (mount lagi).
+        debugLog("token-posted", { status: res.status });
+      } catch (err) {
+        debugLog("token-post-failed", { error: err instanceof Error ? err.message : String(err) });
       }
-      clearTimeout(timeoutId);
-      cleanup();
-      done();
-    }).then((h) => {
-      tokenHandle = h;
-    });
+      finish();
+    },
+  );
 
-    void PushNotifications.addListener("registrationError", () => {
-      clearTimeout(timeoutId);
-      cleanup();
-      done();
-    }).then((h) => {
-      errorHandle = h;
-    });
+  const errorHandle = await PushNotifications.addListener(
+    "registrationError",
+    (err) => {
+      debugLog("registration-error", { error: JSON.stringify(err) });
+      finish();
+    },
+  );
 
-    // Kick off — kalau perm sudah granted, register() resolve cepat dgn
-    // token existing tanpa prompt user.
-    void PushNotifications.register().catch(() => {
-      clearTimeout(timeoutId);
-      cleanup();
-      done();
-    });
+  // Sekarang aman call register() — kedua listener pasti sudah attached.
+  debugLog("calling-register");
+  PushNotifications.register().catch((err) => {
+    debugLog("register-rejected", { error: err instanceof Error ? err.message : String(err) });
+    finish();
   });
+
+  // Safety timeout: max 8 detik.
+  await Promise.race([
+    done,
+    new Promise<void>((r) => setTimeout(r, 8000)).then(() => {
+      debugLog("timeout-8s");
+      finish();
+    }),
+  ]);
+
+  await tokenHandle.remove().catch(() => {});
+  await errorHandle.remove().catch(() => {});
 }
 
 export function PushSubscribe() {
