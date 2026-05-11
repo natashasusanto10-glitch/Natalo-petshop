@@ -2,6 +2,7 @@ import webpush from "web-push";
 import { prisma } from "./prisma";
 import { buildOrderDetailPath } from "./order-detail";
 import { sendApnsToUser } from "./apns";
+import { sendFcmToUser } from "./fcm";
 
 function getVapidConfig() {
   const publicKey = process.env.VAPID_PUBLIC_KEY;
@@ -29,10 +30,14 @@ export async function sendPushToUser(userId: string, payload: PushPayload) {
   webpush.setVapidDetails(`mailto:admin@toko.com`, publicKey, privateKey);
 
   // Filter: cuma Web Push subscriptions (HTTPS endpoint).
-  // APNs tokens (endpoint "apns:...") di-handle sendApnsToUser() di lib/apns.ts.
+  // - APNs tokens ("apns:...") → sendApnsToUser() di lib/apns.ts
+  // - FCM tokens ("fcm:...")  → sendFcmToUser() di lib/fcm.ts
   const subs = await prisma.pushSubscription
     .findMany({
-      where: { userId, NOT: { endpoint: { startsWith: "apns:" } } },
+      where: {
+        userId,
+        endpoint: { startsWith: "https://" },
+      },
     })
     .catch(() => []);
   const data = JSON.stringify(payload);
@@ -143,13 +148,15 @@ export async function sendOrderStatusPush(orderId: string, orderNumber: string, 
     requireInteraction,
   };
 
-  // Kirim ke 2 channel paralel:
-  // - Web Push (PWA Safari, Chrome Android, dll) via VAPID
-  // - APNs (iOS native app via TestFlight/App Store) via @parse/node-apn
-  // Subs disimpan di table sama (PushSubscription), dibedakan dari endpoint
-  // prefix: "apns:..." → APNs, "https://..." → Web Push.
+  // Kirim ke 3 channel paralel:
+  // - Web Push (PWA Safari, Chrome Android, desktop browsers) via VAPID
+  // - APNs   (iOS native app via TestFlight/App Store) via @parse/node-apn
+  // - FCM    (Android native app via Play Store) via firebase-admin
+  // Subs disimpan di table sama (PushSubscription), dibedakan endpoint prefix:
+  //   "https://..." → Web Push, "apns:..." → APNs, "fcm:..." → FCM.
   await Promise.all([
     sendPushToUser(order.userId, payload),
     sendApnsToUser(order.userId, payload),
+    sendFcmToUser(order.userId, payload),
   ]);
 }

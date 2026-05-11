@@ -32,6 +32,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { sendPushToUser, type PushPayload } from "@/lib/push";
 import { sendApnsToUser } from "@/lib/apns";
+import { sendFcmToUser } from "@/lib/fcm";
 
 const broadcastSchema = z.object({
   title: z.string().trim().min(1).max(60),
@@ -137,20 +138,27 @@ export async function POST(request: NextRequest) {
   let sent = 0;
   let failed = 0;
 
+  const CHANNELS_PER_USER = 3; // web + apns + fcm
   for (let i = 0; i < targetUserIds.length; i += BATCH_SIZE) {
     const batch = targetUserIds.slice(i, i + BATCH_SIZE);
     const results = await Promise.allSettled(
       batch.flatMap((userId) => [
         sendPushToUser(userId, payload),
         sendApnsToUser(userId, payload),
+        sendFcmToUser(userId, payload),
       ]),
     );
-    // Hitung per user (2 channel — anggap success kalau salah satu sukses)
+    // Hitung per user (3 channel — anggap success kalau salah satu sukses).
+    // User yg gak punya subscription di channel tertentu tetap "fulfilled"
+    // dgn return undefined — channel resolver skip silently jika no subs.
     for (let j = 0; j < batch.length; j++) {
-      const webResult = results[j * 2];
-      const apnsResult = results[j * 2 + 1];
+      const webResult = results[j * CHANNELS_PER_USER];
+      const apnsResult = results[j * CHANNELS_PER_USER + 1];
+      const fcmResult = results[j * CHANNELS_PER_USER + 2];
       const userOk =
-        webResult.status === "fulfilled" || apnsResult.status === "fulfilled";
+        webResult.status === "fulfilled" ||
+        apnsResult.status === "fulfilled" ||
+        fcmResult.status === "fulfilled";
       if (userOk) sent++;
       else failed++;
     }

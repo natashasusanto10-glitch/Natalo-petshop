@@ -14,16 +14,24 @@ type PushState = "loading" | "unsupported" | "denied" | "subscribed" | "idle";
 /**
  * Push notification subscribe component — works di:
  * - iOS native (TestFlight/.ipa) → @capacitor/push-notifications + APNs
+ * - Android native (.apk Play Store) → @capacitor/push-notifications + FCM
  * - PWA/Browser → Web Push (VAPID) via service worker (existing flow)
  *
- * Auto-detect platform pakai Capacitor.isNativePlatform() check via dynamic
- * import. Kalau native, register APNs token via plugin, kirim ke backend
- * /api/push/subscribe-apns (endpoint: "apns:" + token). Kalau web, fallback
- * ke PushManager.subscribe() dengan VAPID key (kayak sebelumnya).
+ * Auto-detect platform pakai Capacitor.isNativePlatform() + getPlatform().
+ * Plugin yang sama (@capacitor/push-notifications) handle iOS (APNs token)
+ * dan Android (FCM token); kita branch berdasarkan platform untuk POST ke
+ * route yang tepat dan simpan dgn prefix yang berbeda:
+ * - iOS  → /api/push/subscribe-apns  (endpoint: "apns:<token>")
+ * - Android → /api/push/subscribe-fcm (endpoint: "fcm:<token>")
+ *
+ * Web fallback: PushManager.subscribe() dengan VAPID key (existing flow).
  */
+type NativePlatform = "ios" | "android" | null;
+
 export function PushSubscribe() {
   const [state, setState] = useState<PushState>("loading");
   const [isNative, setIsNative] = useState(false);
+  const [nativePlatform, setNativePlatform] = useState<NativePlatform>(null);
   const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 
   useEffect(() => {
@@ -32,17 +40,25 @@ export function PushSubscribe() {
     (async () => {
       // Detect Capacitor native platform
       let nativeDetected = false;
+      let platform: NativePlatform = null;
       try {
         const { Capacitor } = await import("@capacitor/core");
         nativeDetected = Capacitor.isNativePlatform();
+        if (nativeDetected) {
+          const p = Capacitor.getPlatform();
+          if (p === "ios" || p === "android") platform = p;
+        }
       } catch {
         // Web-only environment
       }
       if (cancelled) return;
       setIsNative(nativeDetected);
+      setNativePlatform(platform);
 
       if (nativeDetected) {
-        // Native iOS: check APNs permission status
+        // Native iOS/Android: check OS-level push permission status.
+        // Plugin sama untuk kedua platform — beda backend channel (APNs vs FCM)
+        // di-handle saat subscribe via routing per platform.
         try {
           const { PushNotifications } = await import("@capacitor/push-notifications");
           const perm = await PushNotifications.checkPermissions();
@@ -86,17 +102,23 @@ export function PushSubscribe() {
         return;
       }
 
+      // Plugin returns APNs token di iOS, FCM token di Android. Routing
+      // berdasarkan platform: APNs → /subscribe-apns, FCM → /subscribe-fcm.
+      const subscribeUrl =
+        nativePlatform === "android"
+          ? "/api/push/subscribe-fcm"
+          : "/api/push/subscribe-apns";
+
       // Setup token listener BEFORE register, so we catch the token event
       const tokenHandle = await PushNotifications.addListener(
         "registration",
         async (token) => {
-          // Send APNs token ke backend, simpan di PushSubscription dengan prefix "apns:"
-          await fetch("/api/push/subscribe-apns", {
+          await fetch(subscribeUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               token: token.value,
-              platform: "ios",
+              platform: nativePlatform ?? "ios",
             }),
           });
           setState("subscribed");
@@ -108,13 +130,13 @@ export function PushSubscribe() {
       const errorHandle = await PushNotifications.addListener(
         "registrationError",
         (err) => {
-          console.warn("APNs registration failed:", err);
+          console.warn("Native push registration failed:", err);
           setState("denied");
           errorHandle.remove();
         },
       );
 
-      // Trigger registration — APNs server akan kasih token via "registration" listener
+      // Trigger registration — OS push server akan kasih token via listener
       await PushNotifications.register();
     } catch (err) {
       console.warn("Push subscribe (native) failed:", err);
@@ -151,11 +173,14 @@ export function PushSubscribe() {
 
   async function unsubscribe() {
     if (isNative) {
-      // iOS user can disable di Settings; kita gak bisa programmatically
-      // remove APNs token. Kasih instruksi.
-      alert(
-        "Untuk matikan notifikasi, buka Settings iPhone → Natalo Petshop → Notifications → matikan toggle 'Allow Notifications'.",
-      );
+      // Native user (iOS/Android) disable di OS Settings; kita gak bisa
+      // programmatically revoke APNs/FCM token dari plugin. Kasih instruksi
+      // sesuai platform.
+      const msg =
+        nativePlatform === "android"
+          ? "Untuk matikan notifikasi, buka Settings Android → Apps → Natalo Petshop → Notifications → matikan."
+          : "Untuk matikan notifikasi, buka Settings iPhone → Natalo Petshop → Notifications → matikan toggle 'Allow Notifications'.";
+      alert(msg);
       return;
     }
     const reg = await navigator.serviceWorker.ready;
@@ -185,13 +210,12 @@ export function PushSubscribe() {
   }
 
   if (state === "denied") {
-    return (
-      <p className="text-sm text-red-500">
-        {isNative
-          ? "Notifikasi diblokir. Aktifkan di Settings iPhone → Natalo Petshop → Notifications."
-          : "Notifikasi diblokir. Aktifkan di pengaturan browser."}
-      </p>
-    );
+    const deniedMsg = isNative
+      ? nativePlatform === "android"
+        ? "Notifikasi diblokir. Aktifkan di Settings Android → Apps → Natalo Petshop → Notifications."
+        : "Notifikasi diblokir. Aktifkan di Settings iPhone → Natalo Petshop → Notifications."
+      : "Notifikasi diblokir. Aktifkan di pengaturan browser.";
+    return <p className="text-sm text-red-500">{deniedMsg}</p>;
   }
 
   return (
