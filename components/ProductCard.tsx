@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { StoreProduct } from "@/lib/products";
 import { formatRupiah } from "@/lib/format";
+import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
 import { WishlistButton } from "./WishlistButton";
 
 type Props = {
@@ -41,6 +42,8 @@ export function ProductCard({
                 alt={product.name}
                 fill
                 priority={priority}
+                placeholder="blur"
+                blurDataURL={IMAGE_BLUR_GRAY}
                 sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
                 className="object-cover transition group-hover:scale-105"
               />
@@ -130,6 +133,8 @@ export function ProductCard({
               alt={product.name}
               fill
               priority={priority}
+              placeholder="blur"
+              blurDataURL={IMAGE_BLUR_GRAY}
               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
               className="object-cover transition group-hover:scale-105"
             />
