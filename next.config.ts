@@ -1,6 +1,30 @@
 import type { NextConfig } from "next";
+import bundleAnalyzer from "@next/bundle-analyzer";
+
+const withBundleAnalyzer = bundleAnalyzer({
+  enabled: process.env.ANALYZE === "true",
+  openAnalyzer: false,
+});
 
 const nextConfig: NextConfig = {
+  // Bundle optimization
+  experimental: {
+    // Optimize CSS chunks — extract critical CSS, defer rest
+    optimizePackageImports: [
+      "lucide-react",
+      "@capacitor/core",
+      "@capacitor/app",
+      "@capacitor/browser",
+      "@capacitor/share",
+      "@capacitor/haptics",
+      "@capacitor/network",
+      "@capacitor/keyboard",
+      "@capacitor/status-bar",
+      "@capacitor/camera",
+      "@capacitor/push-notifications",
+      "@capacitor-community/in-app-review",
+    ],
+  },
   images: {
     formats: ["image/avif", "image/webp"],
     minimumCacheTTL: 60 * 60 * 24 * 30,
@@ -40,4 +64,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withBundleAnalyzer(nextConfig);

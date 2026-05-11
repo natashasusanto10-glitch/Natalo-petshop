@@ -1,7 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { SearchOverlay } from "@/components/SearchOverlay";
+import dynamic from "next/dynamic";
+
+// Lazy load SearchOverlay — modal full-screen yang baru di-render saat user
+// tap search bar. Tanpa dynamic, search logic (debounce, MeiliSearch client
+// API call, dll) masuk bundle awal home page yang gak perlu.
+const SearchOverlay = dynamic(
+  () => import("@/components/SearchOverlay").then((m) => m.SearchOverlay),
+  { ssr: false },
+);
 
 // `waUrl` masih diterima supaya pemanggil lama tetap aman. Tombol customer-service
 // WhatsApp di samping search bar sudah dihapus; FAB WhatsApp tetap aktif.
