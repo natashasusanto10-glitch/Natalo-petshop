@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Capacitor
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/captures/
+android/app/release/
+android/app/debug/
+*.iml
+
+# Build outputs
+android/app/src/main/assets/public/
+*.apk
+*.aab
+
+# Keystore (JANGAN commit ke git!)
+*.keystore
+*.jks
+keystore.properties
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
+  <meta name="theme-color" content="#1E5FBF">
+  <title>Natalo Petshop &amp; Aquarium</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      background: #1E5FBF;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+    }
+    .container {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 2rem;
+    }
+    .logo {
+      font-size: 4rem;
+      margin-bottom: 1rem;
+      animation: bounce 1.6s ease-in-out infinite;
+    }
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-12px); }
+    }
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+    p {
+      font-size: 0.95rem;
+      opacity: 0.9;
+      margin-bottom: 2rem;
+    }
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .offline {
+      display: none;
+      max-width: 320px;
+    }
+    .offline.show { display: block; }
+    .loading.hide { display: none; }
+    button {
+      margin-top: 1.5rem;
+      padding: 0.75rem 2rem;
+      background: #fff;
+      color: #1E5FBF;
+      border: none;
+      border-radius: 999px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">🐾</div>
+    <div class="loading" id="loading">
+      <h1>Natalo Petshop &amp; Aquarium</h1>
+      <p>Memuat aplikasi...</p>
+      <div class="spinner"></div>
+    </div>
+    <div class="offline" id="offline">
+      <h1>Tidak ada koneksi</h1>
+      <p>Periksa koneksi internet Anda dan coba lagi.</p>
+      <button onclick="retry()">Coba Lagi</button>
+    </div>
+  </div>
+  <script>
+    function retry() {
+      window.location.href = 'https://www.natalopetshop.com';
+    }
+    // Show offline UI if no network after 8s
+    setTimeout(function() {
+      if (!navigator.onLine) {
+        document.getElementById('loading').classList.add('hide');
+        document.getElementById('offline').classList.add('show');
+      }
+    }, 8000);
+  </script>
+</body>
+</html>
