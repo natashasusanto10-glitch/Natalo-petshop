@@ -65,21 +65,74 @@ const variantInclude = {
   },
 };
 
+/**
+ * Filter "Produk Baru" → window createdAt sejak titik waktu tertentu.
+ * Helper untuk konvert ke Date threshold.
+ */
+function newProductCutoff(filter: NewProductFilter | undefined): Date | null {
+  if (!filter || filter === "newest") return null;
+  const now = new Date();
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  if (filter === "today") return start;
+  if (filter === "this-week") {
+    start.setDate(start.getDate() - 7);
+    return start;
+  }
+  if (filter === "this-month") {
+    start.setDate(1);
+    return start;
+  }
+  return null;
+}
+
+export type NewProductFilter = "today" | "this-week" | "this-month" | "newest";
+export type PopularFilter =
+  | "best-seller"
+  | "most-searched"
+  | "highest-rating"
+  | "most-bought";
+
+function buildOrderBy(
+  newFilter?: NewProductFilter,
+  popularFilter?: PopularFilter,
+): { createdAt: "desc" } | { reviewCount: "desc" } | { avgRating: "desc" } | Array<{ avgRating: "desc" } | { reviewCount: "desc" }> {
+  // Popular filter has priority over new filter for ordering
+  if (popularFilter === "highest-rating") {
+    return [{ avgRating: "desc" }, { reviewCount: "desc" }];
+  }
+  if (
+    popularFilter === "best-seller" ||
+    popularFilter === "most-bought" ||
+    popularFilter === "most-searched"
+  ) {
+    // Pakai reviewCount sebagai proxy popularitas — produk dgn review
+    // banyak biasanya = sering dibeli.
+    return { reviewCount: "desc" };
+  }
+  // Default & new filter sort
+  return { createdAt: "desc" };
+}
+
 export async function getProducts(opts?: {
   category?: string;
   search?: string;
   take?: number;
   skip?: number;
+  newFilter?: NewProductFilter;
+  popularFilter?: PopularFilter;
 }): Promise<StoreProduct[]> {
-  const { category, search, take, skip } = opts ?? {};
+  const { category, search, take, skip, newFilter, popularFilter } = opts ?? {};
+  const createdAtCutoff = newProductCutoff(newFilter);
   try {
     const products = await prisma.product.findMany({
       where: {
         isActive: true,
         ...(category ? { category: { slug: category } } : {}),
         ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
+        ...(createdAtCutoff ? { createdAt: { gte: createdAtCutoff } } : {}),
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: buildOrderBy(newFilter, popularFilter),
       take,
       skip,
       include: {
@@ -145,14 +198,17 @@ export async function getProducts(opts?: {
 export async function getProductsCount(opts?: {
   category?: string;
   search?: string;
+  newFilter?: NewProductFilter;
 }): Promise<number> {
-  const { category, search } = opts ?? {};
+  const { category, search, newFilter } = opts ?? {};
+  const createdAtCutoff = newProductCutoff(newFilter);
   try {
     return await prisma.product.count({
       where: {
         isActive: true,
         ...(category ? { category: { slug: category } } : {}),
         ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
+        ...(createdAtCutoff ? { createdAt: { gte: createdAtCutoff } } : {}),
       },
     });
   } catch {

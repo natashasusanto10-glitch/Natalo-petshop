@@ -147,6 +147,13 @@ body.voucher-modal-open .nat-bottom-nav {
   pointer-events: none;
 }
 
+/* Top-drawer (filter produk Netflix-style) — saat open, sembunyikan
+   floating WhatsApp supaya tidak overlap drawer/overlay. */
+body.top-drawer-open .nat-whatsapp-float {
+  display: none !important;
+  pointer-events: none;
+}
+
 .voucher-backdrop {
   position: fixed;
   inset: 0;
