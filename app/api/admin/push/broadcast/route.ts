@@ -131,17 +131,36 @@ async function handle(request: NextRequest) {
     });
   }
 
+  // ── 2. Simpan Announcement (in-app notification bell)  ───────────
+  // Untuk segment "test", skip — tidak relevan jadi pengumuman publik.
+  // Untuk segment lain, selalu insert (bahkan kalau targetUserIds kosong),
+  // supaya user yg login nanti (atau yg activate notifikasi nanti) masih
+  // bisa lihat pengumuman ini di bell icon.
+  let announcementId: string | null = null;
+  if (segment !== "test") {
+    const announcement = await prisma.announcement.create({
+      data: {
+        title,
+        body,
+        url: url?.trim() || null,
+        segment,
+      },
+    });
+    announcementId = announcement.id;
+  }
+
   if (targetUserIds.length === 0) {
     return NextResponse.json({
       ok: true,
       recipientCount: 0,
       sent: 0,
       failed: 0,
+      announcementId,
       elapsed_ms: Date.now() - startedAt,
     });
   }
 
-  // ── 2. Build payload ───────────────────────────────────────────
+  // ── 3. Build payload ───────────────────────────────────────────
   const payload: PushPayload = {
     title,
     body,
@@ -182,6 +201,7 @@ async function handle(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     segment,
+    announcementId,
     recipientCount: targetUserIds.length,
     sent,
     failed,

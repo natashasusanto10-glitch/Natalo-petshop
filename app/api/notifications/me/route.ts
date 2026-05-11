@@ -1,0 +1,116 @@
+/**
+ * GET /api/notifications/me
+ *
+ * Return list pengumuman (Announcement) yang relevan untuk user yang
+ * sedang login, plus unread count. Anonymous user (belum login) tetap
+ * dilayani — dapat list segment "all" saja, tanpa unread tracking.
+ *
+ * Segment filter:
+ *   - "all"       → semua user (login & anonymous)
+ *   - "members"   → user yang pernah ada Order paymentStatus=PAID
+ *   - "active30d" → user yang punya Order dalam 30 hari terakhir
+ *
+ * Response:
+ *   {
+ *     ok: true,
+ *     loggedIn: boolean,
+ *     unreadCount: number,                // 0 kalau anonymous
+ *     items: Array<{
+ *       id, title, body, url, segment, createdAt, read (boolean)
+ *     }>
+ *   }
+ */
+import { NextResponse } from "next/server";
+import { getSession } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+
+const MAX_ITEMS = 50;
+
+export async function GET() {
+  try {
+    const session = await getSession("CUSTOMER");
+    const userId = session?.sub ?? null;
+
+    // Untuk anonymous: cuma announcement segment "all", tanpa read tracking.
+    if (!userId) {
+      const items = await prisma.announcement.findMany({
+        where: { segment: "all" },
+        orderBy: { createdAt: "desc" },
+        take: MAX_ITEMS,
+      });
+      return NextResponse.json({
+        ok: true,
+        loggedIn: false,
+        unreadCount: 0,
+        items: items.map((a) => ({
+          id: a.id,
+          title: a.title,
+          body: a.body,
+          url: a.url,
+          segment: a.segment,
+          createdAt: a.createdAt.toISOString(),
+          read: false,
+        })),
+      });
+    }
+
+    // Untuk logged-in: cek profile user — apakah qualified jadi "member"
+    // (punya order PAID) dan "active30d" (order dalam 30 hari terakhir).
+    // 1 query gabungan supaya cepat — pakai Promise.all.
+    const since30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const [hasPaidOrder, hasRecentOrder] = await Promise.all([
+      prisma.order.findFirst({
+        where: { userId, paymentStatus: "PAID" },
+        select: { id: true },
+      }),
+      prisma.order.findFirst({
+        where: { userId, createdAt: { gte: since30d } },
+        select: { id: true },
+      }),
+    ]);
+
+    const allowedSegments: string[] = ["all"];
+    if (hasPaidOrder) allowedSegments.push("members");
+    if (hasRecentOrder) allowedSegments.push("active30d");
+
+    // Pull announcements + per-row read state via LEFT JOIN equivalent.
+    // Prisma gak punya LEFT JOIN literal, jadi pakai include reads filtered
+    // by userId — kalau ada row reads-nya berarti sudah dibaca.
+    const items = await prisma.announcement.findMany({
+      where: { segment: { in: allowedSegments } },
+      orderBy: { createdAt: "desc" },
+      take: MAX_ITEMS,
+      include: {
+        reads: {
+          where: { userId },
+          select: { readAt: true },
+        },
+      },
+    });
+
+    const mapped = items.map((a) => ({
+      id: a.id,
+      title: a.title,
+      body: a.body,
+      url: a.url,
+      segment: a.segment,
+      createdAt: a.createdAt.toISOString(),
+      read: a.reads.length > 0,
+    }));
+    const unreadCount = mapped.filter((i) => !i.read).length;
+
+    return NextResponse.json({
+      ok: true,
+      loggedIn: true,
+      unreadCount,
+      items: mapped,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal error";
+    console.error("[notifications/me] crashed:", err);
+    return NextResponse.json(
+      { ok: false, error: `Gagal load notifikasi: ${message}` },
+      { status: 500 },
+    );
+  }
+}

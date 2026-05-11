@@ -63,6 +63,7 @@ model User {
   chatThreads         ChatThread[]     @relation("CustomerChatThreads")
   chatMessages        ChatMessage[]    @relation("ChatSender")
   cartItems           CartItem[]
+  announcementReads   AnnouncementRead[]
   createdAt           DateTime        @default(now())
   updatedAt           DateTime        @updatedAt
 }
@@ -469,4 +470,39 @@ model Pet {
   updatedAt           DateTime  @updatedAt
 
   @@index([userId])
+}
+
+/// Pengumuman/broadcast yang muncul di notification center (bell icon).
+/// Dibuat oleh admin lewat dashboard broadcast; muncul ke user yang
+/// match `segment` saat mereka buka /notifications.
+///
+/// Channel push (web/APNs/FCM) tetap dikirim paralel — Announcement
+/// adalah lapis "in-app fallback" supaya user yg gak opt-in push masih
+/// dapat info saat buka app.
+model Announcement {
+  id        String             @id @default(cuid())
+  title     String
+  body      String
+  url       String?            // deep link (default "/")
+  segment   String             @default("all")  // "all" | "members" | "active30d"
+  createdAt DateTime           @default(now())
+  reads     AnnouncementRead[]
+
+  @@index([createdAt])
+  @@index([segment])
+}
+
+/// Track baca per user per announcement. Tidak ada read → unread.
+/// Composite PK = (userId, announcementId) → idempotent INSERT,
+/// gak perlu upsert.
+model AnnouncementRead {
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  announcementId String
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  readAt         DateTime     @default(now())
+
+  @@id([userId, announcementId])
+  @@index([userId])
+  @@index([announcementId])
 }
