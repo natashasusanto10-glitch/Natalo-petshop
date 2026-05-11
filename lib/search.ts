@@ -38,6 +38,8 @@ export type ProductSearchDoc = {
   sku_codes: string[];
   price_min: number;
   price_max: number;
+  discount_price: number | null;
+  stock: number;
   total_stock: number;
   weight_grams: number;
   avg_rating: number;
@@ -45,6 +47,7 @@ export type ProductSearchDoc = {
   created_at: number; // unix seconds
   image_url: string | null;
   is_active: boolean;
+  has_variants: boolean;
 };
 
 const SYNONYMS: Record<string, string[]> = {
@@ -174,6 +177,8 @@ export async function buildProductDoc(productId: string): Promise<ProductSearchD
     sku_codes: skuCodes,
     price_min: priceMin,
     price_max: priceMax,
+    discount_price: p.discountPrice,
+    stock: p.stock,
     total_stock: totalStock,
     weight_grams: p.weightGram,
     avg_rating: p.avgRating,
@@ -181,6 +186,7 @@ export async function buildProductDoc(productId: string): Promise<ProductSearchD
     created_at: Math.floor(p.createdAt.getTime() / 1000),
     image_url: p.imageUrl,
     is_active: p.isActive,
+    has_variants: p.hasVariants,
   };
 }
 
@@ -223,7 +229,8 @@ export type SearchSort =
   | "price_asc"
   | "price_desc"
   | "newest"
-  | "rating_desc";
+  | "rating_desc"
+  | "best_seller";
 
 export interface SearchOptions {
   q?: string;
@@ -244,6 +251,7 @@ const SORT_MAP: Record<SearchSort, string[] | undefined> = {
   price_desc: ["price_min:desc"],
   newest: ["created_at:desc"],
   rating_desc: ["avg_rating:desc", "review_count:desc"],
+  best_seller: ["review_count:desc"],
 };
 
 type ProductForSearchDoc = NonNullable<Awaited<ReturnType<typeof prisma.product.findFirst>>> & {
@@ -290,6 +298,8 @@ function productToSearchDoc(p: ProductForSearchDoc): ProductSearchDoc {
     sku_codes: p.variants.map((variant) => variant.sku).filter((sku): sku is string => Boolean(sku)),
     price_min: priceMin,
     price_max: priceMax,
+    discount_price: p.discountPrice,
+    stock: p.stock,
     total_stock: totalStock,
     weight_grams: p.weightGram,
     avg_rating: p.avgRating,
@@ -297,30 +307,143 @@ function productToSearchDoc(p: ProductForSearchDoc): ProductSearchDoc {
     created_at: Math.floor(p.createdAt.getTime() / 1000),
     image_url: p.imageUrl,
     is_active: p.isActive,
+    has_variants: p.hasVariants,
   };
+}
+
+function normalizeSearchText(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function tokenizeSearchQuery(query: string) {
+  return normalizeSearchText(query)
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2);
+}
+
+function levenshtein(a: string, b: string) {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+
+  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  const current = new Array<number>(b.length + 1);
+
+  for (let i = 1; i <= a.length; i++) {
+    current[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      current[j] = Math.min(
+        current[j - 1] + 1,
+        previous[j] + 1,
+        previous[j - 1] + cost,
+      );
+    }
+    for (let j = 0; j <= b.length; j++) previous[j] = current[j];
+  }
+
+  return previous[b.length];
+}
+
+function tokenMatchesWord(token: string, word: string) {
+  if (word.includes(token) || token.includes(word)) return true;
+  if (token.length < 3 || word.length < 3) return false;
+
+  const maxDistance = token.length <= 4 ? 1 : 2;
+  return (
+    Math.abs(word.length - token.length) <= maxDistance &&
+    levenshtein(token, word) <= maxDistance
+  );
+}
+
+function searchFields(item: ProductSearchDoc) {
+  return [
+    item.name,
+    item.description,
+    item.category_name,
+    item.brand_name,
+    ...item.variant_names,
+    ...item.sku_codes,
+  ].filter((value): value is string => Boolean(value));
+}
+
+function matchesSearchQuery(item: ProductSearchDoc, query: string) {
+  const tokens = tokenizeSearchQuery(query);
+  if (tokens.length === 0) return true;
+
+  const normalizedFields = searchFields(item).map(normalizeSearchText);
+  const haystack = normalizedFields.join(" ");
+  const words = haystack.split(/\s+/).filter(Boolean);
+
+  return tokens.every(
+    (token) =>
+      haystack.includes(token) ||
+      words.some((word) => tokenMatchesWord(token, word)),
+  );
+}
+
+function relevanceScore(item: ProductSearchDoc, query: string) {
+  const normalizedQuery = normalizeSearchText(query);
+  const tokens = tokenizeSearchQuery(query);
+  if (!normalizedQuery || tokens.length === 0) return 0;
+
+  const name = normalizeSearchText(item.name);
+  const brand = normalizeSearchText(item.brand_name ?? "");
+  const category = normalizeSearchText(item.category_name ?? "");
+  const fields = searchFields(item).map(normalizeSearchText).join(" ");
+
+  let score = 0;
+  if (name === normalizedQuery) score += 120;
+  if (name.startsWith(normalizedQuery)) score += 90;
+  if (name.includes(normalizedQuery)) score += 70;
+  if (brand === normalizedQuery) score += 80;
+  if (brand.includes(normalizedQuery)) score += 55;
+  if (category.includes(normalizedQuery)) score += 35;
+
+  for (const token of tokens) {
+    if (name.includes(token)) score += 18;
+    else if (brand.includes(token)) score += 14;
+    else if (category.includes(token)) score += 10;
+    else if (fields.includes(token)) score += 4;
+  }
+
+  return score;
 }
 
 async function searchProductsFromDb(opts: Required<Pick<SearchOptions, "q" | "categorySlug" | "brandSlug" | "sort" | "page" | "perPage">> &
   Pick<SearchOptions, "minPrice" | "maxPrice" | "inStock" | "minRating">) {
   const start = Date.now();
   const q = opts.q.trim();
-  const qLower = q.toLowerCase();
+  const queryTokens = tokenizeSearchQuery(q);
+  const searchOr = q
+    ? [
+        { name: { contains: q, mode: "insensitive" as const } },
+        { description: { contains: q, mode: "insensitive" as const } },
+        { category: { name: { contains: q, mode: "insensitive" as const } } },
+        { brand: { name: { contains: q, mode: "insensitive" as const } } },
+        { variants: { some: { sku: { contains: q, mode: "insensitive" as const } } } },
+        ...queryTokens.flatMap((token) => [
+          { name: { contains: token, mode: "insensitive" as const } },
+          { description: { contains: token, mode: "insensitive" as const } },
+          { category: { name: { contains: token, mode: "insensitive" as const } } },
+          { brand: { name: { contains: token, mode: "insensitive" as const } } },
+          { variants: { some: { sku: { contains: token, mode: "insensitive" as const } } } },
+        ]),
+      ]
+    : undefined;
+
   const products = await prisma.product.findMany({
     where: {
       isActive: true,
       ...(opts.categorySlug.length > 0 ? { category: { slug: { in: opts.categorySlug } } } : {}),
       ...(opts.brandSlug.length > 0 ? { brand: { slug: { in: opts.brandSlug } } } : {}),
-      ...(q
-        ? {
-            OR: [
-              { name: { contains: q, mode: "insensitive" } },
-              { description: { contains: q, mode: "insensitive" } },
-              { category: { name: { contains: q, mode: "insensitive" } } },
-              { brand: { name: { contains: q, mode: "insensitive" } } },
-              { variants: { some: { sku: { contains: q, mode: "insensitive" } } } },
-            ],
-          }
-        : {}),
+      ...(searchOr ? { OR: searchOr } : {}),
     },
     include: {
       category: { select: { id: true, name: true, slug: true } },
@@ -338,19 +461,8 @@ async function searchProductsFromDb(opts: Required<Pick<SearchOptions, "q" | "ca
 
   let items = products.map((product) => productToSearchDoc(product as ProductForSearchDoc));
 
-  if (qLower) {
-    items = items.filter((item) =>
-      [
-        item.name,
-        item.description,
-        item.category_name,
-        item.brand_name,
-        ...item.variant_names,
-        ...item.sku_codes,
-      ]
-        .filter(Boolean)
-        .some((value) => value!.toLowerCase().includes(qLower))
-    );
+  if (q) {
+    items = items.filter((item) => matchesSearchQuery(item, q));
   }
   if (opts.minPrice !== undefined && Number.isFinite(opts.minPrice)) {
     items = items.filter((item) => item.price_min >= Math.max(0, opts.minPrice!));
@@ -370,7 +482,8 @@ async function searchProductsFromDb(opts: Required<Pick<SearchOptions, "q" | "ca
     if (opts.sort === "price_desc") return b.price_min - a.price_min;
     if (opts.sort === "newest") return b.created_at - a.created_at;
     if (opts.sort === "rating_desc") return b.avg_rating - a.avg_rating || b.review_count - a.review_count;
-    return 0;
+    if (opts.sort === "best_seller") return b.review_count - a.review_count;
+    return relevanceScore(b, q) - relevanceScore(a, q);
   });
 
   const limit = Math.max(1, Math.min(60, opts.perPage));

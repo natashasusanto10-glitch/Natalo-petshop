@@ -9,6 +9,136 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { productIndex } from "@/lib/search";
+import { prisma } from "@/lib/prisma";
+
+export const dynamic = "force-dynamic";
+
+function normalizeSearchText(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function tokensFor(query: string) {
+  return normalizeSearchText(query)
+    .split(/\s+/)
+    .filter((token) => token.length >= 2);
+}
+
+function productSearchOr(query: string) {
+  if (!query) return undefined;
+  const tokens = tokensFor(query);
+  return [
+    { name: { contains: query, mode: "insensitive" as const } },
+    { description: { contains: query, mode: "insensitive" as const } },
+    { category: { name: { contains: query, mode: "insensitive" as const } } },
+    { brand: { name: { contains: query, mode: "insensitive" as const } } },
+    ...tokens.flatMap((token) => [
+      { name: { contains: token, mode: "insensitive" as const } },
+      { description: { contains: token, mode: "insensitive" as const } },
+      { category: { name: { contains: token, mode: "insensitive" as const } } },
+      { brand: { name: { contains: token, mode: "insensitive" as const } } },
+    ]),
+  ];
+}
+
+async function facetsFromDb(request: NextRequest) {
+  const sp = request.nextUrl.searchParams;
+  const q = (sp.get("q") ?? "").trim().slice(0, 100);
+  const categorySlug = sp.getAll("category");
+  const brandSlug = sp.getAll("brand");
+  const minPrice = sp.get("min_price") ? Number(sp.get("min_price")) : undefined;
+  const maxPrice = sp.get("max_price") ? Number(sp.get("max_price")) : undefined;
+  const inStock = sp.get("in_stock") === "true";
+  const minRating = sp.get("min_rating") ? Number(sp.get("min_rating")) : undefined;
+  const searchOr = productSearchOr(q);
+
+  const products = await prisma.product.findMany({
+    where: {
+      isActive: true,
+      ...(searchOr ? { OR: searchOr } : {}),
+      ...(categorySlug.length > 0 ? { category: { slug: { in: categorySlug } } } : {}),
+      ...(brandSlug.length > 0 ? { brand: { slug: { in: brandSlug } } } : {}),
+      ...(minPrice !== undefined && Number.isFinite(minPrice)
+        ? { price: { gte: Math.max(0, minPrice) } }
+        : {}),
+      ...(maxPrice !== undefined && Number.isFinite(maxPrice)
+        ? { price: { lte: Math.max(0, maxPrice) } }
+        : {}),
+      ...(inStock ? { stock: { gt: 0 } } : {}),
+      ...(minRating !== undefined && Number.isFinite(minRating)
+        ? { avgRating: { gte: minRating } }
+        : {}),
+    },
+    include: {
+      category: { select: { slug: true, name: true } },
+      brand: { select: { slug: true, name: true } },
+      variants: {
+        where: { deletedAt: null, isActive: true },
+        select: { price: true, stock: true, weightGram: true },
+      },
+    },
+  });
+
+  const categoryMap = new Map<string, { slug: string; name: string; count: number }>();
+  const brandMap = new Map<string, { slug: string; name: string; count: number }>();
+  const prices: number[] = [];
+  const weights: number[] = [];
+
+  for (const product of products) {
+    if (product.category) {
+      const prev = categoryMap.get(product.category.slug);
+      categoryMap.set(product.category.slug, {
+        slug: product.category.slug,
+        name: product.category.name,
+        count: (prev?.count ?? 0) + 1,
+      });
+    }
+    if (product.brand) {
+      const prev = brandMap.get(product.brand.slug);
+      brandMap.set(product.brand.slug, {
+        slug: product.brand.slug,
+        name: product.brand.name,
+        count: (prev?.count ?? 0) + 1,
+      });
+    }
+
+    if (product.hasVariants && product.variants.length) {
+      prices.push(...product.variants.map((variant) => variant.price));
+      weights.push(...product.variants.map((variant) => variant.weightGram));
+    } else {
+      prices.push(product.discountPrice && product.discountPrice < product.price
+        ? product.discountPrice
+        : product.price);
+      weights.push(product.weightGram);
+    }
+  }
+
+  const countWeights = (predicate: (weight: number) => boolean) =>
+    weights.filter(predicate).length;
+
+  return {
+    categories: Array.from(categoryMap.values()).sort((a, b) => b.count - a.count),
+    brands: Array.from(brandMap.values()).sort((a, b) => b.count - a.count),
+    price_range: {
+      min: prices.length ? Math.min(...prices) : 0,
+      max: prices.length ? Math.max(...prices) : 10000000,
+    },
+    weights: [
+      { label: "< 1 KG", min: 0, max: 999, count: countWeights((weight) => weight < 1000) },
+      {
+        label: "1 - 5 KG",
+        min: 1000,
+        max: 5000,
+        count: countWeights((weight) => weight >= 1000 && weight <= 5000),
+      },
+      { label: "> 5 KG", min: 5001, max: 999999, count: countWeights((weight) => weight > 5000) },
+    ],
+  };
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -73,7 +203,7 @@ export async function GET(request: NextRequest) {
       }),
       productIndex.search(q, {
         filter: fullFilter.join(" AND "),
-        facets: ["weight_grams"],
+        facets: ["price_min", "weight_grams"],
         limit: 0,
         sort: ["price_min:asc"],
       }),
@@ -147,15 +277,16 @@ export async function GET(request: NextRequest) {
       weights: weightBuckets,
     });
   } catch (error) {
-    return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : "Facets failed",
-        categories: [],
-        brands: [],
-        price_range: { min: 0, max: 10000000 },
-        weights: [],
-      },
-      { status: 200 }
-    );
+    const fallback = await facetsFromDb(request).catch(() => ({
+      categories: [],
+      brands: [],
+      price_range: { min: 0, max: 10000000 },
+      weights: [],
+    }));
+    return NextResponse.json({
+      ...fallback,
+      degraded: true,
+      error: error instanceof Error ? error.message : "Facets failed",
+    });
   }
 }

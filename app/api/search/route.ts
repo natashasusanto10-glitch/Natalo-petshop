@@ -15,7 +15,10 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { searchProducts, type SearchSort } from "@/lib/search";
+import { searchProducts, type ProductSearchDoc, type SearchSort } from "@/lib/search";
+import { prisma } from "@/lib/prisma";
+
+export const dynamic = "force-dynamic";
 
 const VALID_SORT: SearchSort[] = [
   "relevance",
@@ -23,7 +26,40 @@ const VALID_SORT: SearchSort[] = [
   "price_desc",
   "newest",
   "rating_desc",
+  "best_seller",
 ];
+
+async function enrichSearchItems(items: ProductSearchDoc[]) {
+  if (items.length === 0) return items;
+
+  const products = await prisma.product.findMany({
+    where: { id: { in: items.map((item) => item.id) } },
+    select: {
+      id: true,
+      discountPrice: true,
+      stock: true,
+      weightGram: true,
+      imageUrl: true,
+      isActive: true,
+      hasVariants: true,
+    },
+  });
+
+  const byId = new Map(products.map((product) => [product.id, product]));
+
+  return items.map((item) => {
+    const product = byId.get(item.id);
+    return {
+      ...item,
+      discount_price: product?.discountPrice ?? item.discount_price ?? null,
+      stock: product?.stock ?? item.stock ?? item.total_stock,
+      weight_grams: product?.weightGram ?? item.weight_grams,
+      image_url: product?.imageUrl ?? item.image_url,
+      is_active: product?.isActive ?? item.is_active ?? true,
+      has_variants: product?.hasVariants ?? item.has_variants ?? false,
+    };
+  });
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -60,7 +96,10 @@ export async function GET(request: NextRequest) {
       perPage: Math.min(60, Math.max(1, Number(sp.get("per_page") ?? 24))),
     });
 
-    return NextResponse.json(result);
+    return NextResponse.json({
+      ...result,
+      items: await enrichSearchItems(result.items as ProductSearchDoc[]),
+    });
   } catch (error) {
     return NextResponse.json(
       {
