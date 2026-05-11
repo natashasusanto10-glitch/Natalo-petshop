@@ -24,7 +24,8 @@
     "cap:open:ios": "npx cap open ios",
     "cap:assets": "npx capacitor-assets generate --ios --iconBackgroundColor \"#1E5FBF\" --splashBackgroundColor \"#1E5FBF\"",
     "gen:splash": "node scripts/generate-ios-splash.mjs",
-    "gen:cap-splash": "node scripts/generate-capacitor-splash.mjs"
+    "gen:cap-splash": "node scripts/generate-capacitor-splash.mjs",
+    "gen:appstore-screenshots": "node scripts/generate-appstore-screenshots.mjs"
   },
   "dependencies": {
     "@capacitor-community/in-app-review": "^8.0.0",
@@ -52,6 +53,7 @@
     "react": "latest",
     "react-dom": "latest",
     "resend": "^6.12.3",
+    "swiper": "^12.1.4",
     "uploadthing": "^7.7.4",
     "web-push": "^3.6.7",
     "zod": "latest"
@@ -68,6 +70,7 @@
     "@types/react-dom": "latest",
     "@types/web-push": "^3.6.4",
     "dotenv-cli": "^7.4.4",
+    "playwright-core": "^1.59.1",
     "prisma": "6.19.0",
     "tailwindcss": "latest",
     "tsx": "latest",

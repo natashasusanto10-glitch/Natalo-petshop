@@ -27,6 +27,10 @@ splash-preview.png
 # TypeScript build cache
 tsconfig.tsbuildinfo
 
+# App Store screenshots are large artifacts — generated via npm run gen:appstore-screenshots
+# Komment-out kalau mau commit ke repo (untuk versioning per release):
+# screenshots/
+
 # Capacitor iOS build artifacts (everything except hand-edited project files)
 ios/App/Pods/
 ios/App/Podfile.lock
