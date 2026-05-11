@@ -33,8 +33,10 @@ export async function GET() {
 
     // Untuk anonymous: cuma announcement segment "all", tanpa read tracking.
     if (!userId) {
+      // Anonymous: cuma announcement broadcast segment "all", tidak punya
+      // personal (targetUserId required login).
       const items = await prisma.announcement.findMany({
-        where: { segment: "all" },
+        where: { segment: "all", targetUserId: null },
         orderBy: { createdAt: "desc" },
         take: MAX_ITEMS,
       });
@@ -76,8 +78,17 @@ export async function GET() {
     // Pull announcements + per-row read state via LEFT JOIN equivalent.
     // Prisma gak punya LEFT JOIN literal, jadi pakai include reads filtered
     // by userId — kalau ada row reads-nya berarti sudah dibaca.
+    //
+    // Filter: ambil DUA bucket lalu union:
+    // 1. BROADCAST — targetUserId NULL, segment match `allowedSegments`
+    // 2. PERSONAL — targetUserId = user ini (mis. order status update)
     const items = await prisma.announcement.findMany({
-      where: { segment: { in: allowedSegments } },
+      where: {
+        OR: [
+          { targetUserId: null, segment: { in: allowedSegments } },
+          { targetUserId: userId },
+        ],
+      },
       orderBy: { createdAt: "desc" },
       take: MAX_ITEMS,
       include: {

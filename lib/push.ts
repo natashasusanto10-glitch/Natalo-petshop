@@ -148,15 +148,32 @@ export async function sendOrderStatusPush(orderId: string, orderNumber: string, 
     requireInteraction,
   };
 
-  // Kirim ke 3 channel paralel:
+  // Kirim ke 3 channel push paralel + insert Announcement personal:
   // - Web Push (PWA Safari, Chrome Android, desktop browsers) via VAPID
   // - APNs   (iOS native app via TestFlight/App Store) via @parse/node-apn
   // - FCM    (Android native app via Play Store) via firebase-admin
-  // Subs disimpan di table sama (PushSubscription), dibedakan endpoint prefix:
-  //   "https://..." → Web Push, "apns:..." → APNs, "fcm:..." → FCM.
+  // - Announcement (in-app notification center / bell icon) — targetUserId
+  //   = order.userId supaya CUMA user ini yg lihat (bukan broadcast).
+  //
+  // Tujuan Announcement: backstop kalau user belum opt-in push — mereka
+  // tetap bisa lihat update status di /notifications saat buka app.
   await Promise.all([
     sendPushToUser(order.userId, payload),
     sendApnsToUser(order.userId, payload),
     sendFcmToUser(order.userId, payload),
+    prisma.announcement
+      .create({
+        data: {
+          title,
+          body,
+          url,
+          segment: "all", // tidak relevan saat targetUserId set, default aja
+          targetUserId: order.userId,
+        },
+      })
+      .catch((err) => {
+        // Jangan biarin gagal insert announcement merusak flow push.
+        console.warn("[push] failed to create Announcement:", err);
+      }),
   ]);
 }

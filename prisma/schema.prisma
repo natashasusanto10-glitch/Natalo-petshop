@@ -472,24 +472,34 @@ model Pet {
   @@index([userId])
 }
 
-/// Pengumuman/broadcast yang muncul di notification center (bell icon).
-/// Dibuat oleh admin lewat dashboard broadcast; muncul ke user yang
-/// match `segment` saat mereka buka /notifications.
+/// Pengumuman yang muncul di notification center (bell icon). 2 jenis:
+///
+/// 1. BROADCAST — `targetUserId == null`, `segment` menentukan reach
+///    ("all" | "members" | "active30d"). Dibuat oleh admin via dashboard.
+///
+/// 2. PERSONAL — `targetUserId == <userId>`, cuma user ybs yang lihat.
+///    Auto-generated oleh sistem (mis. order status update "Pesanan
+///    Dikirim", "Pembayaran Diterima") — dipasangkan dgn push channel
+///    delivery di lib/push.ts.
 ///
 /// Channel push (web/APNs/FCM) tetap dikirim paralel — Announcement
 /// adalah lapis "in-app fallback" supaya user yg gak opt-in push masih
 /// dapat info saat buka app.
 model Announcement {
-  id        String             @id @default(cuid())
-  title     String
-  body      String
-  url       String?            // deep link (default "/")
-  segment   String             @default("all")  // "all" | "members" | "active30d"
-  createdAt DateTime           @default(now())
-  reads     AnnouncementRead[]
+  id           String             @id @default(cuid())
+  title        String
+  body         String
+  url          String?            // deep link (default "/")
+  segment      String             @default("all")  // "all" | "members" | "active30d"
+  /// Kalau di-set, override segment — cuma user ini yang lihat di bell.
+  /// Dipakai untuk personal notification (order status, dll).
+  targetUserId String?
+  createdAt    DateTime           @default(now())
+  reads        AnnouncementRead[]
 
   @@index([createdAt])
   @@index([segment])
+  @@index([targetUserId])
 }
 
 /// Track baca per user per announcement. Tidak ada read → unread.
