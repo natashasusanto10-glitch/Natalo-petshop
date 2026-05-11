@@ -21,6 +21,25 @@ type PushStats = {
   distinctUsersWithSub: number;
   anonymousRows: number;
   byChannel: { web: ChannelStats; apns: ChannelStats; fcm: ChannelStats; unknown: ChannelStats };
+  env?: {
+    vapid: { publicKey: boolean; privateKey: boolean; publicNext: boolean };
+    apns: { keyId: boolean; teamId: boolean; keyContent: boolean; bundleId: string | null; production: string | null };
+    fcm: { projectId: boolean; clientEmail: boolean; privateKey: boolean };
+  };
+};
+
+type TestSelfResult = {
+  ok: boolean;
+  adminUserId?: string;
+  subscriptionCount?: { web: number; apns: number; fcm: number; total: number };
+  anonymousCount?: { web: number; apns: number; fcm: number };
+  results?: {
+    web: Array<{ endpointHint: string; status: "ok" | "error"; error?: string; statusCode?: number }>;
+    apns: Array<{ tokenHint: string; status: "ok" | "error"; reason?: string; statusCode?: number }>;
+    fcm: Array<{ tokenHint: string; status: "ok" | "error"; errorCode?: string; errorMsg?: string }>;
+  };
+  hint?: string;
+  error?: string;
 };
 
 const SEGMENT_OPTIONS: Array<{ id: Segment; label: string; desc: string }> = [
@@ -41,8 +60,34 @@ export function BroadcastForm() {
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState("");
   const [stats, setStats] = useState<PushStats | null>(null);
+  const [testRunning, setTestRunning] = useState(false);
+  const [testResult, setTestResult] = useState<TestSelfResult | null>(null);
 
   const canSubmit = title.trim().length > 0 && body.trim().length > 0 && !loading;
+
+  async function runTestPush() {
+    setTestRunning(true);
+    setTestResult(null);
+    try {
+      const res = await fetch("/api/admin/push/test-self", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const text = await res.text();
+      let data: TestSelfResult;
+      try {
+        data = JSON.parse(text) as TestSelfResult;
+      } catch {
+        data = { ok: false, error: `HTTP ${res.status} non-JSON: ${text.slice(0, 200)}` };
+      }
+      setTestResult(data);
+    } catch (err) {
+      setTestResult({ ok: false, error: err instanceof Error ? err.message : "Network error" });
+    } finally {
+      setTestRunning(false);
+    }
+  }
 
   // Auto-fetch breakdown subscriber pada mount — supaya admin langsung tahu
   // berapa device subscribed (per channel + with/without userId), tanpa
@@ -146,6 +191,125 @@ export function BroadcastForm() {
               karena query filter <code>userId IS NOT NULL</code>. Subscriber subscribe push sebelum
               login, jadi gak ke-link ke akun mereka.
             </p>
+          )}
+
+          {stats.env && (
+            <div className="mt-3 border-t border-blue-200 pt-2">
+              <p className="text-xs font-bold uppercase tracking-wide text-blue-800">Env config (Vercel)</p>
+              <div className="mt-1 grid grid-cols-1 gap-x-4 gap-y-0.5 text-xs sm:grid-cols-3">
+                <span>
+                  VAPID:{" "}
+                  <strong>
+                    {stats.env.vapid.publicKey && stats.env.vapid.privateKey && stats.env.vapid.publicNext
+                      ? "✓ lengkap"
+                      : "⚠ kurang"}
+                  </strong>
+                </span>
+                <span>
+                  APNs:{" "}
+                  <strong>
+                    {stats.env.apns.keyId && stats.env.apns.teamId && stats.env.apns.keyContent
+                      ? "✓ lengkap"
+                      : "⚠ kurang"}
+                  </strong>
+                </span>
+                <span>
+                  FCM:{" "}
+                  <strong>
+                    {stats.env.fcm.projectId && stats.env.fcm.clientEmail && stats.env.fcm.privateKey
+                      ? "✓ lengkap"
+                      : "⚠ kurang"}
+                  </strong>
+                </span>
+                <span className="col-span-1 sm:col-span-3">
+                  APNS_PRODUCTION: <strong>{stats.env.apns.production ?? "(unset)"}</strong>
+                  {stats.env.apns.production !== "true" && (
+                    <span className="ml-1 font-semibold text-amber-700">
+                      — TestFlight pakai PRODUCTION! Set ke &quot;true&quot;.
+                    </span>
+                  )}
+                </span>
+                <span className="col-span-1 sm:col-span-3">
+                  APNS_BUNDLE_ID: <strong>{stats.env.apns.bundleId ?? "(default com.natalo.petshop)"}</strong>
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-3 border-t border-blue-200 pt-2">
+            <button
+              type="button"
+              onClick={runTestPush}
+              disabled={testRunning}
+              className="rounded-full border border-blue-300 bg-white px-4 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-100 disabled:opacity-50"
+            >
+              {testRunning ? "Mengirim test..." : "🧪 Test push ke device admin (debug)"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {testResult && (
+        <div
+          className={`rounded-xl border px-4 py-3 text-sm ${
+            testResult.ok ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-red-200 bg-red-50 text-red-900"
+          }`}
+        >
+          <p className="font-bold">{testResult.ok ? "🧪 Test push hasil" : "❌ Test push gagal"}</p>
+          {testResult.error && <p className="mt-1 text-xs">{testResult.error}</p>}
+          {testResult.hint && <p className="mt-1 text-xs italic">{testResult.hint}</p>}
+          {testResult.subscriptionCount && (
+            <p className="mt-2 text-xs">
+              Subscription admin: <strong>{testResult.subscriptionCount.total}</strong>{" "}
+              (web {testResult.subscriptionCount.web} · apns {testResult.subscriptionCount.apns} · fcm{" "}
+              {testResult.subscriptionCount.fcm})
+            </p>
+          )}
+          {testResult.anonymousCount && (
+            <p className="mt-1 text-xs">
+              Anonymous di DB: web {testResult.anonymousCount.web} · apns {testResult.anonymousCount.apns} · fcm{" "}
+              {testResult.anonymousCount.fcm}
+            </p>
+          )}
+          {testResult.results && (
+            <div className="mt-2 space-y-1.5 text-xs">
+              {testResult.results.apns.length > 0 && (
+                <div>
+                  <p className="font-bold">APNs:</p>
+                  {testResult.results.apns.map((r, i) => (
+                    <p key={i} className="font-mono">
+                      {r.status === "ok" ? "✓" : "✗"} {r.tokenHint}
+                      {r.reason && <> — {r.reason}</>}
+                      {typeof r.statusCode === "number" && <> (HTTP {r.statusCode})</>}
+                    </p>
+                  ))}
+                </div>
+              )}
+              {testResult.results.web.length > 0 && (
+                <div>
+                  <p className="font-bold">Web Push:</p>
+                  {testResult.results.web.map((r, i) => (
+                    <p key={i} className="font-mono">
+                      {r.status === "ok" ? "✓" : "✗"} {r.endpointHint}
+                      {r.error && <> — {r.error}</>}
+                      {typeof r.statusCode === "number" && <> (HTTP {r.statusCode})</>}
+                    </p>
+                  ))}
+                </div>
+              )}
+              {testResult.results.fcm.length > 0 && (
+                <div>
+                  <p className="font-bold">FCM:</p>
+                  {testResult.results.fcm.map((r, i) => (
+                    <p key={i} className="font-mono">
+                      {r.status === "ok" ? "✓" : "✗"} {r.tokenHint}
+                      {r.errorCode && <> — {r.errorCode}</>}
+                      {r.errorMsg && <>: {r.errorMsg}</>}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}

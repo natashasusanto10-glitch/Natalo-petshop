@@ -53,12 +53,37 @@ export async function GET() {
       distinct: ["userId"],
     });
 
+    // Env check — boolean presence saja, JANGAN return value-nya supaya
+    // gak bocor secret ke client. Khusus APNS_PRODUCTION return value
+    // ("true"/"false"/null) karena ini menentukan apakah TestFlight token
+    // bisa di-deliver (TestFlight = production endpoint).
+    const env = {
+      vapid: {
+        publicKey: Boolean(process.env.VAPID_PUBLIC_KEY),
+        privateKey: Boolean(process.env.VAPID_PRIVATE_KEY),
+        publicNext: Boolean(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY),
+      },
+      apns: {
+        keyId: Boolean(process.env.APNS_KEY_ID),
+        teamId: Boolean(process.env.APNS_TEAM_ID),
+        keyContent: Boolean(process.env.APNS_KEY_CONTENT),
+        bundleId: process.env.APNS_BUNDLE_ID || null,
+        production: process.env.APNS_PRODUCTION ?? null,
+      },
+      fcm: {
+        projectId: Boolean(process.env.FCM_PROJECT_ID),
+        clientEmail: Boolean(process.env.FCM_CLIENT_EMAIL),
+        privateKey: Boolean(process.env.FCM_PRIVATE_KEY),
+      },
+    };
+
     return NextResponse.json({
       ok: true,
       totalRows: rows.length,
       distinctUsersWithSub: distinctUserIds.length,
       anonymousRows: rows.filter((r) => !r.userId).length,
       byChannel,
+      env,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal error";
