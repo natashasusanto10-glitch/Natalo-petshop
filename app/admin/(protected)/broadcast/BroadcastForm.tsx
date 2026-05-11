@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type Segment = "all" | "members" | "active30d" | "test";
 
@@ -13,6 +13,14 @@ type Result = {
   elapsed_ms?: number;
   dryRun?: boolean;
   error?: string;
+};
+
+type ChannelStats = { total: number; withUser: number; anonymous: number };
+type PushStats = {
+  totalRows: number;
+  distinctUsersWithSub: number;
+  anonymousRows: number;
+  byChannel: { web: ChannelStats; apns: ChannelStats; fcm: ChannelStats; unknown: ChannelStats };
 };
 
 const SEGMENT_OPTIONS: Array<{ id: Segment; label: string; desc: string }> = [
@@ -32,8 +40,29 @@ export function BroadcastForm() {
   const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState("");
+  const [stats, setStats] = useState<PushStats | null>(null);
 
   const canSubmit = title.trim().length > 0 && body.trim().length > 0 && !loading;
+
+  // Auto-fetch breakdown subscriber pada mount — supaya admin langsung tahu
+  // berapa device subscribed (per channel + with/without userId), tanpa
+  // perlu klik "Cek jumlah" dulu. Bantu diagnose kalau "Semua user" return 0.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/admin/push/stats");
+        if (!res.ok) return;
+        const data = (await res.json()) as PushStats & { ok: boolean };
+        if (!cancelled && data.ok) setStats(data);
+      } catch {
+        // silent — stats panel cuma diagnostic, gak boleh block form
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Helper: parse response defensively. Kalau server return HTML (timeout
   // page / crash) bukan JSON, surface info status code supaya errornya useful.
@@ -100,6 +129,27 @@ export function BroadcastForm() {
 
   return (
     <div className="space-y-5">
+      {stats && (
+        <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+          <p className="font-bold">📊 Subscriber di DB</p>
+          <div className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs sm:grid-cols-4">
+            <span>Total: <strong>{stats.totalRows}</strong></span>
+            <span>Web: <strong>{stats.byChannel.web.total}</strong></span>
+            <span>APNs (iOS): <strong>{stats.byChannel.apns.total}</strong></span>
+            <span>FCM (Android): <strong>{stats.byChannel.fcm.total}</strong></span>
+            <span className="col-span-2">User unique (login): <strong>{stats.distinctUsersWithSub}</strong></span>
+            <span className="col-span-2">Anonymous (belum login): <strong>{stats.anonymousRows}</strong></span>
+          </div>
+          {stats.totalRows > 0 && stats.distinctUsersWithSub === 0 && (
+            <p className="mt-2 text-xs font-semibold text-amber-700">
+              ⚠️ Semua subscription anonymous (userId null). Segment &quot;Semua user&quot; akan return 0
+              karena query filter <code>userId IS NOT NULL</code>. Subscriber subscribe push sebelum
+              login, jadi gak ke-link ke akun mereka.
+            </p>
+          )}
+        </div>
+      )}
+
       <div>
         <label className="block text-sm font-bold text-zinc-700">Title</label>
         <input
