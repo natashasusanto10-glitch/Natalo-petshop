@@ -178,7 +178,7 @@ export async function buildProductDoc(productId: string): Promise<ProductSearchD
     price_min: priceMin,
     price_max: priceMax,
     discount_price: p.discountPrice,
-    stock: p.stock,
+    stock: totalStock,
     total_stock: totalStock,
     weight_grams: p.weightGram,
     avg_rating: p.avgRating,
@@ -245,14 +245,17 @@ export interface SearchOptions {
   perPage?: number;
 }
 
-const SORT_MAP: Record<SearchSort, string[] | undefined> = {
-  relevance: undefined,
-  price_asc: ["price_min:asc"],
-  price_desc: ["price_min:desc"],
-  newest: ["created_at:desc"],
-  rating_desc: ["avg_rating:desc", "review_count:desc"],
-  best_seller: ["review_count:desc"],
+export type SearchFacets = {
+  categories: Array<{ slug: string; name: string; count: number }>;
+  brands: Array<{ slug: string; name: string; count: number }>;
+  price_range: { min: number; max: number };
+  weights: Array<{ label: string; min: number; max: number; count: number }>;
 };
+
+type NormalizedSearchOptions = Required<
+  Pick<SearchOptions, "q" | "categorySlug" | "brandSlug" | "sort" | "page" | "perPage">
+> &
+  Pick<SearchOptions, "minPrice" | "maxPrice" | "inStock" | "minRating">;
 
 type ProductForSearchDoc = NonNullable<Awaited<ReturnType<typeof prisma.product.findFirst>>> & {
   category: { id: string; name: string; slug: string } | null;
@@ -299,7 +302,7 @@ function productToSearchDoc(p: ProductForSearchDoc): ProductSearchDoc {
     price_min: priceMin,
     price_max: priceMax,
     discount_price: p.discountPrice,
-    stock: p.stock,
+    stock: totalStock,
     total_stock: totalStock,
     weight_grams: p.weightGram,
     avg_rating: p.avgRating,
@@ -416,51 +419,95 @@ function relevanceScore(item: ProductSearchDoc, query: string) {
   return score;
 }
 
-async function searchProductsFromDb(opts: Required<Pick<SearchOptions, "q" | "categorySlug" | "brandSlug" | "sort" | "page" | "perPage">> &
-  Pick<SearchOptions, "minPrice" | "maxPrice" | "inStock" | "minRating">) {
-  const start = Date.now();
-  const q = opts.q.trim();
-  const queryTokens = tokenizeSearchQuery(q);
-  const searchOr = q
-    ? [
-        { name: { contains: q, mode: "insensitive" as const } },
-        { description: { contains: q, mode: "insensitive" as const } },
-        { category: { name: { contains: q, mode: "insensitive" as const } } },
-        { brand: { name: { contains: q, mode: "insensitive" as const } } },
-        { variants: { some: { sku: { contains: q, mode: "insensitive" as const } } } },
-        ...queryTokens.flatMap((token) => [
-          { name: { contains: token, mode: "insensitive" as const } },
-          { description: { contains: token, mode: "insensitive" as const } },
-          { category: { name: { contains: token, mode: "insensitive" as const } } },
-          { brand: { name: { contains: token, mode: "insensitive" as const } } },
-          { variants: { some: { sku: { contains: token, mode: "insensitive" as const } } } },
-        ]),
-      ]
-    : undefined;
+function buildSearchFacets(items: ProductSearchDoc[]): SearchFacets {
+  const categoryMap = new Map<string, { slug: string; name: string; count: number }>();
+  const brandMap = new Map<string, { slug: string; name: string; count: number }>();
+  const priceMins: number[] = [];
+  const priceMaxes: number[] = [];
 
-  const products = await prisma.product.findMany({
-    where: {
-      isActive: true,
-      ...(opts.categorySlug.length > 0 ? { category: { slug: { in: opts.categorySlug } } } : {}),
-      ...(opts.brandSlug.length > 0 ? { brand: { slug: { in: opts.brandSlug } } } : {}),
-      ...(searchOr ? { OR: searchOr } : {}),
+  for (const item of items) {
+    if (item.category_slug && item.category_name) {
+      const prev = categoryMap.get(item.category_slug);
+      categoryMap.set(item.category_slug, {
+        slug: item.category_slug,
+        name: item.category_name,
+        count: (prev?.count ?? 0) + 1,
+      });
+    }
+
+    if (item.brand_slug && item.brand_name) {
+      const prev = brandMap.get(item.brand_slug);
+      brandMap.set(item.brand_slug, {
+        slug: item.brand_slug,
+        name: item.brand_name,
+        count: (prev?.count ?? 0) + 1,
+      });
+    }
+
+    priceMins.push(item.price_min);
+    priceMaxes.push(item.price_max);
+  }
+
+  const weightCount = (predicate: (weight: number) => boolean) =>
+    items.filter((item) => predicate(item.weight_grams)).length;
+
+  return {
+    categories: Array.from(categoryMap.values()).sort((a, b) => b.count - a.count),
+    brands: Array.from(brandMap.values()).sort((a, b) => b.count - a.count),
+    price_range: {
+      min: priceMins.length ? Math.min(...priceMins) : 0,
+      max: priceMaxes.length ? Math.max(...priceMaxes) : 0,
     },
-    include: {
-      category: { select: { id: true, name: true, slug: true } },
-      brand: { select: { id: true, name: true, slug: true } },
-      variants: {
-        where: { deletedAt: null, isActive: true },
-        include: {
-          options: {
-            include: { option: { select: { value: true } } },
-          },
-        },
+    weights: [
+      { label: "< 1 KG", min: 0, max: 999, count: weightCount((weight) => weight < 1000) },
+      {
+        label: "1 - 5 KG",
+        min: 1000,
+        max: 5000,
+        count: weightCount((weight) => weight >= 1000 && weight <= 5000),
       },
-    },
-  });
+      { label: "> 5 KG", min: 5001, max: 999999, count: weightCount((weight) => weight > 5000) },
+    ],
+  };
+}
 
-  let items = products.map((product) => productToSearchDoc(product as ProductForSearchDoc));
+function compareSearchItems(sort: SearchSort, query: string) {
+  return (a: ProductSearchDoc, b: ProductSearchDoc) => {
+    if (sort === "price_asc") return a.price_min - b.price_min || a.name.localeCompare(b.name);
+    if (sort === "price_desc") return b.price_min - a.price_min || a.name.localeCompare(b.name);
+    if (sort === "newest") return b.created_at - a.created_at || a.name.localeCompare(b.name);
+    if (sort === "rating_desc") {
+      return (
+        b.avg_rating - a.avg_rating ||
+        b.review_count - a.review_count ||
+        a.name.localeCompare(b.name)
+      );
+    }
+    if (sort === "best_seller") {
+      return b.review_count - a.review_count || b.avg_rating - a.avg_rating || a.name.localeCompare(b.name);
+    }
 
+    return (
+      relevanceScore(b, query) - relevanceScore(a, query) ||
+      b.created_at - a.created_at ||
+      a.name.localeCompare(b.name)
+    );
+  };
+}
+
+export function filterSortPaginateSearchDocs(
+  docs: ProductSearchDoc[],
+  opts: NormalizedSearchOptions,
+) {
+  const q = opts.q.trim();
+  let items = docs.filter((item) => item.is_active);
+
+  if (opts.categorySlug.length > 0) {
+    items = items.filter((item) => item.category_slug !== null && opts.categorySlug.includes(item.category_slug));
+  }
+  if (opts.brandSlug.length > 0) {
+    items = items.filter((item) => item.brand_slug !== null && opts.brandSlug.includes(item.brand_slug));
+  }
   if (q) {
     items = items.filter((item) => matchesSearchQuery(item, q));
   }
@@ -477,26 +524,53 @@ async function searchProductsFromDb(opts: Required<Pick<SearchOptions, "q" | "ca
     items = items.filter((item) => item.avg_rating >= opts.minRating!);
   }
 
-  items.sort((a, b) => {
-    if (opts.sort === "price_asc") return a.price_min - b.price_min;
-    if (opts.sort === "price_desc") return b.price_min - a.price_min;
-    if (opts.sort === "newest") return b.created_at - a.created_at;
-    if (opts.sort === "rating_desc") return b.avg_rating - a.avg_rating || b.review_count - a.review_count;
-    if (opts.sort === "best_seller") return b.review_count - a.review_count;
-    return relevanceScore(b, q) - relevanceScore(a, q);
-  });
+  items = [...items].sort(compareSearchItems(opts.sort, q));
 
+  const total = items.length;
+  const facets = buildSearchFacets(items);
   const limit = Math.max(1, Math.min(60, opts.perPage));
-  const offset = Math.max(0, (opts.page - 1) * limit);
-  const paged = items.slice(offset, offset + limit);
+  const page = Math.max(1, opts.page);
+  const offset = Math.max(0, (page - 1) * limit);
 
   return {
-    items: paged,
-    total: items.length,
-    page: opts.page,
+    items: items.slice(offset, offset + limit),
+    total,
+    page,
     per_page: limit,
+    facets,
+  };
+}
+
+async function searchProductsFromDb(opts: NormalizedSearchOptions) {
+  const start = Date.now();
+
+  const products = await prisma.product.findMany({
+    where: {
+      isActive: true,
+      ...(opts.categorySlug.length > 0 ? { category: { slug: { in: opts.categorySlug } } } : {}),
+      ...(opts.brandSlug.length > 0 ? { brand: { slug: { in: opts.brandSlug } } } : {}),
+    },
+    include: {
+      category: { select: { id: true, name: true, slug: true } },
+      brand: { select: { id: true, name: true, slug: true } },
+      variants: {
+        where: { deletedAt: null, isActive: true },
+        include: {
+          options: {
+            include: { option: { select: { value: true } } },
+          },
+        },
+      },
+    },
+  });
+
+  return {
+    ...filterSortPaginateSearchDocs(
+      products.map((product) => productToSearchDoc(product as ProductForSearchDoc)),
+      opts,
+    ),
     took_ms: Date.now() - start,
-    degraded: true,
+    source: "database" as const,
   };
 }
 
@@ -518,61 +592,18 @@ export async function searchProducts(opts: SearchOptions) {
     perPage = 24,
   } = opts;
 
-  const filters: string[] = ["is_active = true"];
-
-  if (categorySlug.length > 0) {
-    const escaped = categorySlug.map((c) => `category_slug = "${c.replace(/"/g, '\\"')}"`);
-    filters.push(`(${escaped.join(" OR ")})`);
-  }
-  if (brandSlug.length > 0) {
-    const escaped = brandSlug.map((b) => `brand_slug = "${b.replace(/"/g, '\\"')}"`);
-    filters.push(`(${escaped.join(" OR ")})`);
-  }
-  if (minPrice !== undefined && Number.isFinite(minPrice)) {
-    filters.push(`price_min >= ${Math.max(0, minPrice)}`);
-  }
-  if (maxPrice !== undefined && Number.isFinite(maxPrice)) {
-    filters.push(`price_min <= ${Math.max(0, maxPrice)}`);
-  }
-  if (inStock) {
-    filters.push("total_stock > 0");
-  }
-  if (minRating !== undefined && Number.isFinite(minRating)) {
-    filters.push(`avg_rating >= ${minRating}`);
-  }
-
   const limit = Math.max(1, Math.min(60, perPage));
-  const offset = Math.max(0, (page - 1) * limit);
 
-  const start = Date.now();
-  try {
-    const result = await productIndex.search<ProductSearchDoc>(q, {
-      filter: filters.join(" AND "),
-      sort: SORT_MAP[sort],
-      limit,
-      offset,
-    });
-
-    return {
-      items: result.hits,
-      total: result.estimatedTotalHits ?? result.hits.length,
-      page,
-      per_page: limit,
-      took_ms: Date.now() - start,
-    };
-  } catch (error) {
-    console.warn("[searchProducts] Meilisearch unavailable, falling back to database:", error);
-    return searchProductsFromDb({
-      q,
-      categorySlug,
-      brandSlug,
-      minPrice,
-      maxPrice,
-      inStock,
-      minRating,
-      sort,
-      page,
-      perPage: limit,
-    });
-  }
+  return searchProductsFromDb({
+    q,
+    categorySlug,
+    brandSlug,
+    minPrice,
+    maxPrice,
+    inStock,
+    minRating,
+    sort,
+    page,
+    perPage: limit,
+  });
 }

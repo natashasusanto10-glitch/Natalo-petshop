@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { BottomSheet } from "@/components/BottomSheet";
 import { QuickAddToCart } from "@/components/QuickAddToCart";
@@ -12,6 +12,7 @@ import {
   type Facets,
 } from "@/components/SearchFilters";
 import { formatRupiah } from "@/lib/format";
+import { buildKeywordOnlySearchHref, buildKeywordOnlySearchParams } from "@/lib/search-url";
 
 type SearchItem = {
   id: string;
@@ -38,6 +39,7 @@ type SearchResult = {
   total: number;
   page: number;
   per_page: number;
+  facets: Facets;
   took_ms?: number;
 };
 
@@ -71,6 +73,13 @@ const EMPTY_SUGGEST: Suggest = {
   total: 0,
 };
 
+const EMPTY_FACETS: Facets = {
+  categories: [],
+  brands: [],
+  price_range: { min: 0, max: 0 },
+  weights: [],
+};
+
 const SORT_OPTIONS: { value: Sort; label: string }[] = [
   { value: "relevance", label: "Relevansi" },
   { value: "price_asc", label: "Harga terendah" },
@@ -79,12 +88,22 @@ const SORT_OPTIONS: { value: Sort; label: string }[] = [
   { value: "best_seller", label: "Terlaris" },
 ];
 
+const NON_SELECTABLE_TOUCH_STYLE = {
+  userSelect: "none",
+  WebkitTouchCallout: "none",
+} as CSSProperties;
+
+function isSupportedSort(value: string | null): value is Sort {
+  return SORT_OPTIONS.some((option) => option.value === value);
+}
+
 function SearchPageContent() {
   const router = useRouter();
   const sp = useSearchParams();
   const q = sp.get("q") ?? "";
   const page = Math.max(1, Number(sp.get("page")) || 1);
-  const sort = (sp.get("sort") ?? "relevance") as Sort;
+  const sortParam = sp.get("sort");
+  const sort: Sort = isSupportedSort(sortParam) ? sortParam : "relevance";
   const categorySlugs = sp.getAll("category");
   const brandSlugs = sp.getAll("brand");
   const minPrice = sp.get("min_price") ? Number(sp.get("min_price")) : undefined;
@@ -112,8 +131,8 @@ function SearchPageContent() {
   );
 
   const [data, setData] = useState<SearchResult | null>(null);
-  const [facets, setFacets] = useState<Facets | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sortOpen, setSortOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
 
   function buildSearchParams(includePage = true) {
@@ -138,19 +157,18 @@ function SearchPageContent() {
     setLoading(true);
 
     const searchParams = buildSearchParams(true);
-    const facetsParams = buildSearchParams(false);
 
-    Promise.all([
-      fetch(`/api/search?${searchParams}`, { signal: controller.signal }).then((r) => r.json()),
-      fetch(`/api/search/facets?${facetsParams}`, { signal: controller.signal }).then((r) => r.json()),
-    ])
-      .then(([searchData, facetsData]) => {
-        setData(searchData);
-        setFacets(facetsData);
+    fetch(`/api/search?${searchParams}`, { signal: controller.signal })
+      .then((response) => response.json())
+      .then((searchData) => {
+        setData({
+          ...searchData,
+          facets: searchData.facets ?? EMPTY_FACETS,
+        });
       })
       .catch((error) => {
         if (error instanceof Error && error.name === "AbortError") return;
-        setData({ items: [], total: 0, page: 1, per_page: 24 });
+        setData({ items: [], total: 0, page: 1, per_page: 24, facets: EMPTY_FACETS });
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
@@ -184,10 +202,7 @@ function SearchPageContent() {
   }
 
   function resetFilters() {
-    const params = new URLSearchParams();
-    if (q) params.set("q", q);
-    if (sort !== "relevance") params.set("sort", sort);
-    router.push(`/search?${params}`);
+    router.push(buildKeywordOnlySearchHref(q));
   }
 
   function updateParam(key: string, value: string | null) {
@@ -210,6 +225,7 @@ function SearchPageContent() {
   }
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.per_page)) : 1;
+  const facets = data?.facets ?? null;
   const hasActiveFilters =
     categorySlugs.length > 0 ||
     brandSlugs.length > 0 ||
@@ -223,6 +239,8 @@ function SearchPageContent() {
     (minPrice !== undefined || maxPrice !== undefined ? 1 : 0) +
     (inStock ? 1 : 0) +
     (minRating !== undefined ? 1 : 0);
+  const activeSortOption = SORT_OPTIONS.find((option) => option.value === sort) ?? SORT_OPTIONS[0];
+  const canResetSearchControls = hasActiveFilters || sort !== "relevance" || page !== 1;
 
   return (
     <div className="min-h-screen bg-gray-50 pb-[calc(6rem+env(safe-area-inset-bottom))] md:bg-white md:pb-12">
@@ -242,26 +260,24 @@ function SearchPageContent() {
           </div>
 
           <div className="mt-3 flex items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <label className="relative shrink-0">
-              <span className="sr-only">Urutkan</span>
-              <select
-                value={sort}
-                onChange={(event) => updateParam("sort", event.target.value)}
-                className="h-9 appearance-none rounded-full border border-gray-200 bg-white py-0 pl-3 pr-9 text-xs font-extrabold text-gray-800 outline-none focus:border-natalo-500 focus:ring-2 focus:ring-natalo-100"
-              >
-                {SORT_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    Urut: {option.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDownIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            </label>
+            <button
+              type="button"
+              onClick={() => setSortOpen(true)}
+              aria-haspopup="dialog"
+              aria-expanded={sortOpen}
+              aria-label={`Urutkan produk, saat ini ${activeSortOption.label}`}
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 text-xs font-extrabold text-gray-800 outline-none active:bg-gray-50 focus:border-natalo-500 focus:ring-2 focus:ring-natalo-100"
+              style={NON_SELECTABLE_TOUCH_STYLE}
+            >
+              Urut: {activeSortOption.label}
+              <ChevronDownIcon className="h-4 w-4 text-gray-400" />
+            </button>
 
             <button
               type="button"
               onClick={() => setFilterOpen(true)}
               className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 text-xs font-extrabold text-gray-800 active:bg-gray-50 md:hidden"
+              style={NON_SELECTABLE_TOUCH_STYLE}
             >
               <FilterIcon className="h-4 w-4 text-natalo-600" />
               Filter
@@ -274,7 +290,7 @@ function SearchPageContent() {
           </div>
         </div>
 
-        {hasActiveFilters && (
+        {canResetSearchControls && (
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {categorySlugs.map((slug) => {
               const category = facets?.categories.find((item) => item.slug === slug);
@@ -321,7 +337,7 @@ function SearchPageContent() {
               onClick={resetFilters}
               className="h-7 rounded-full px-2 text-xs font-extrabold text-red-500 active:bg-red-50"
             >
-              Reset
+              Reset semua filter
             </button>
           </div>
         )}
@@ -344,7 +360,11 @@ function SearchPageContent() {
               <SearchGridSkeleton />
             ) : data && data.items.length === 0 ? (
               <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white">
-                <SearchEmptyState query={q} onReset={resetFilters} />
+                <SearchEmptyState
+                  query={q}
+                  hasActiveFilters={hasActiveFilters}
+                  onReset={resetFilters}
+                />
               </div>
             ) : data ? (
               <>
@@ -366,6 +386,36 @@ function SearchPageContent() {
           </section>
         </div>
       </div>
+
+      <BottomSheet
+        open={sortOpen}
+        onClose={() => setSortOpen(false)}
+        title="Urutkan Produk"
+      >
+        <div className="-mx-1 space-y-1">
+          {SORT_OPTIONS.map((option) => {
+            const selected = option.value === sort;
+
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => {
+                  updateParam("sort", option.value === "relevance" ? null : option.value);
+                  setSortOpen(false);
+                }}
+                className={`flex h-12 w-full items-center justify-between rounded-2xl px-4 text-left text-sm font-extrabold transition active:bg-natalo-50 ${
+                  selected ? "bg-natalo-50 text-natalo-700" : "text-gray-800"
+                }`}
+                style={NON_SELECTABLE_TOUCH_STYLE}
+              >
+                <span>{option.label}</span>
+                {selected && <CheckIcon className="h-5 w-5 text-natalo-600" />}
+              </button>
+            );
+          })}
+        </div>
+      </BottomSheet>
 
       <BottomSheet
         open={filterOpen}
@@ -449,7 +499,8 @@ function SearchResultHeader({ query }: { query: string }) {
 
   function submitSearch(keyword = draft) {
     const trimmed = keyword.trim();
-    const next = new URLSearchParams(sp);
+    const keywordChanged = trimmed !== query.trim();
+    const next = keywordChanged ? buildKeywordOnlySearchParams(trimmed) : new URLSearchParams(sp);
     if (trimmed) next.set("q", trimmed);
     else next.delete("q");
     next.delete("page");
@@ -720,7 +771,15 @@ function SearchGridSkeleton() {
   );
 }
 
-function SearchEmptyState({ query, onReset }: { query: string; onReset: () => void }) {
+function SearchEmptyState({
+  query,
+  hasActiveFilters,
+  onReset,
+}: {
+  query: string;
+  hasActiveFilters: boolean;
+  onReset: () => void;
+}) {
   const suggestions = ["royal canin", "kandang besi", "makanan kucing", "filter aquarium"];
 
   return (
@@ -728,29 +787,36 @@ function SearchEmptyState({ query, onReset }: { query: string; onReset: () => vo
       <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-natalo-50 text-lg font-black text-natalo-600">
         NP
       </div>
-      <h2 className="mt-4 text-base font-black text-gray-950">Produk tidak ditemukan</h2>
+      <h2 className="mt-4 text-base font-black text-gray-950">
+        {hasActiveFilters ? "Produk tidak ditemukan karena filter aktif" : "Produk tidak ditemukan"}
+      </h2>
       <p className="mt-1 max-w-xs text-sm leading-6 text-gray-500">
-        {query
-          ? `Tidak ada produk untuk "${query}". Coba gunakan kata kunci lain atau cek kategori produk.`
-          : "Coba gunakan kata kunci lain atau cek kategori produk."}
+        {hasActiveFilters
+          ? "Hapus beberapa filter atau reset semua filter untuk melihat produk yang cocok."
+          : query
+            ? `Tidak ada produk untuk "${query}". Coba gunakan kata kunci lain atau cek kategori produk.`
+            : "Coba gunakan kata kunci lain atau cek kategori produk."}
       </p>
       <div className="mt-5 flex flex-wrap justify-center gap-2">
-        <button
-          type="button"
-          onClick={onReset}
-          className="rounded-full bg-natalo-600 px-4 py-2 text-xs font-black text-white active:bg-natalo-700"
-        >
-          Reset filter
-        </button>
-        {suggestions.map((suggestion) => (
-          <Link
-            key={suggestion}
-            href={`/search?q=${encodeURIComponent(suggestion)}`}
-            className="rounded-full border border-gray-200 bg-white px-3 py-2 text-xs font-black text-gray-700 active:bg-gray-50"
+        {hasActiveFilters ? (
+          <button
+            type="button"
+            onClick={onReset}
+            className="rounded-full bg-natalo-600 px-4 py-2 text-xs font-black text-white active:bg-natalo-700"
           >
-            {suggestion}
-          </Link>
-        ))}
+            Reset semua filter
+          </button>
+        ) : (
+          suggestions.map((suggestion) => (
+            <Link
+              key={suggestion}
+              href={`/search?q=${encodeURIComponent(suggestion)}`}
+              className="rounded-full border border-gray-200 bg-white px-3 py-2 text-xs font-black text-gray-700 active:bg-gray-50"
+            >
+              {suggestion}
+            </Link>
+          ))
+        )}
       </div>
     </div>
   );
@@ -843,6 +909,14 @@ function ChevronDownIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden>
       <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function CheckIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className={className} aria-hidden>
+      <path d="m5 12 4 4 10-10" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

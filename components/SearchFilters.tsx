@@ -36,6 +36,11 @@ export function SearchFilters({ facets, filters, onFiltersChange, onReset }: Pro
     filters.maxPrice?.toString() ?? ""
   );
 
+  useEffect(() => {
+    setMinPriceInput(filters.minPrice?.toString() ?? "");
+    setMaxPriceInput(filters.maxPrice?.toString() ?? "");
+  }, [filters.minPrice, filters.maxPrice]);
+
   // Sync ke parent saat input idle 600ms
   useEffect(() => {
     const t = setTimeout(() => {
