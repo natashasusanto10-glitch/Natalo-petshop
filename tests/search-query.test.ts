@@ -36,6 +36,7 @@ test("Meilisearch search params push filter, sort, and pagination into the index
   assert.equal(params.q, "royal canin");
   assert.equal(params.limit, 12);
   assert.equal(params.offset, 24);
+  assert.equal(params.candidateLimit >= params.offset + params.limit, true);
   assert.deepEqual(params.sort, ["price_min:asc"]);
   assert.match(params.filter, /is_active = true/);
   assert.match(params.filter, /category_slug = "cat-food"/);

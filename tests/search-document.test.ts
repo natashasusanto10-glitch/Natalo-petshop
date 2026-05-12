@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { productToSearchDoc } from "@/lib/search-document.mjs";
+import { SEARCHABLE_ATTRIBUTES, productToSearchDoc } from "@/lib/search-document.mjs";
 
 function product(overrides = {}) {
   return {
@@ -59,6 +59,15 @@ test("product search mapper emits the full runtime ProductSearchDoc schema", () 
   assert.equal(doc.discount_price, 99000);
   assert.equal(doc.stock, 5);
   assert.equal(doc.has_variants, false);
+});
+
+test("main product search excludes category and description fields", () => {
+  assert.deepEqual(SEARCHABLE_ATTRIBUTES, [
+    "name",
+    "brand_name",
+    "variant_names",
+    "sku_codes",
+  ]);
 });
 
 test("product search mapper derives variant price, stock, names, and sku from active variants", () => {

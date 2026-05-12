@@ -3,7 +3,7 @@
  *
  * Strategy:
  *   - 1 index: "products"
- *   - Searchable: name, brand_name, category_name, variant_names, sku_codes, description
+ *   - Searchable: name, brand_name, variant_names, sku_codes
  *   - Filterable: category_slug, brand_slug, price_min, total_stock, avg_rating, is_active
  *   - Sortable: price_min, created_at, avg_rating, review_count
  *   - Synonyms: anjing↔dog, kucing↔cat, pakan↔makanan↔food, dst.
@@ -20,7 +20,6 @@ import {
   applyProductIndexSettings,
   productToSearchDoc as mapProductToSearchDoc,
 } from "@/lib/search-document.mjs";
-import { buildWeightBuckets, hydrateFacetDistribution } from "@/lib/search-facets";
 
 const HOST = process.env.MEILISEARCH_HOST ?? "http://localhost:7700";
 const KEY = process.env.MEILISEARCH_API_KEY ?? "";
@@ -161,7 +160,7 @@ export function buildMeiliSearchParams(opts: NormalizedSearchOptions) {
     filter: filters.join(" AND "),
     limit,
     offset,
-    candidateLimit: Math.min(180, limit * 3),
+    candidateLimit: Math.min(1000, Math.max(offset + limit * 8, limit * 10)),
     sort: meiliSortFor(opts.sort),
   };
 }
@@ -200,21 +199,31 @@ function productSearchWhere(query: string): Prisma.ProductWhereInput | undefined
   const q = query.trim();
   if (!q) return undefined;
   const tokens = tokenizeSearchQuery(q);
-  return {
+  if (tokens.length === 0) return undefined;
+
+  const tokenWhere = (token: string): Prisma.ProductWhereInput => ({
     OR: [
-      { name: { contains: q, mode: "insensitive" as const } },
-      { description: { contains: q, mode: "insensitive" as const } },
-      { category: { name: { contains: q, mode: "insensitive" as const } } },
-      { brand: { name: { contains: q, mode: "insensitive" as const } } },
-      { variants: { some: { sku: { contains: q, mode: "insensitive" as const } } } },
-      ...tokens.flatMap((token) => [
-        { name: { contains: token, mode: "insensitive" as const } },
-        { description: { contains: token, mode: "insensitive" as const } },
-        { category: { name: { contains: token, mode: "insensitive" as const } } },
-        { brand: { name: { contains: token, mode: "insensitive" as const } } },
-        { variants: { some: { sku: { contains: token, mode: "insensitive" as const } } } },
-      ]),
+      { name: { contains: token, mode: "insensitive" as const } },
+      { brand: { name: { contains: token, mode: "insensitive" as const } } },
+      { variants: { some: { sku: { contains: token, mode: "insensitive" as const } } } },
+      {
+        variants: {
+          some: {
+            options: {
+              some: {
+                option: {
+                  value: { contains: token, mode: "insensitive" as const },
+                },
+              },
+            },
+          },
+        },
+      },
     ],
+  });
+
+  return {
+    AND: tokens.map(tokenWhere),
   };
 }
 
@@ -448,7 +457,7 @@ function tokenMatchesWord(token: string, word: string) {
   if (word.includes(token) || token.includes(word)) return true;
   if (token.length < 3 || word.length < 3) return false;
 
-  const maxDistance = token.length <= 4 ? 1 : 2;
+  const maxDistance = token.length <= 5 ? 1 : 2;
   return (
     Math.abs(word.length - token.length) <= maxDistance &&
     levenshtein(token, word) <= maxDistance
@@ -458,8 +467,6 @@ function tokenMatchesWord(token: string, word: string) {
 function searchFields(item: ProductSearchDoc) {
   return [
     item.name,
-    item.description,
-    item.category_name,
     item.brand_name,
     ...item.variant_names,
     ...item.sku_codes,
@@ -488,7 +495,6 @@ function relevanceScore(item: ProductSearchDoc, query: string) {
 
   const name = normalizeSearchText(item.name);
   const brand = normalizeSearchText(item.brand_name ?? "");
-  const category = normalizeSearchText(item.category_name ?? "");
   const fields = searchFields(item).map(normalizeSearchText).join(" ");
 
   let score = 0;
@@ -497,12 +503,10 @@ function relevanceScore(item: ProductSearchDoc, query: string) {
   if (name.includes(normalizedQuery)) score += 70;
   if (brand === normalizedQuery) score += 80;
   if (brand.includes(normalizedQuery)) score += 55;
-  if (category.includes(normalizedQuery)) score += 35;
 
   for (const token of tokens) {
     if (name.includes(token)) score += 18;
     else if (brand.includes(token)) score += 14;
-    else if (category.includes(token)) score += 10;
     else if (fields.includes(token)) score += 4;
   }
 
@@ -641,64 +645,32 @@ export function filterSortPaginateSearchDocs(
   };
 }
 
-async function hydrateFacetLabels(
-  categoryDistribution: Record<string, number>,
-  brandDistribution: Record<string, number>,
-) {
-  const [categories, brands] = await Promise.all([
-    prisma.category.findMany({
-      where: { slug: { in: Object.keys(categoryDistribution) } },
-      select: { slug: true, name: true },
-    }),
-    prisma.brand.findMany({
-      where: { slug: { in: Object.keys(brandDistribution) } },
-      select: { slug: true, name: true },
-    }),
-  ]);
-
-  return {
-    categoryNames: new Map(categories.map((category) => [category.slug, category.name])),
-    brandNames: new Map(brands.map((brand) => [brand.slug, brand.name])),
-  };
-}
-
 async function searchProductsFromMeili(opts: NormalizedSearchOptions) {
   const start = Date.now();
   const params = buildMeiliSearchParams(opts);
   const result = await productIndex.search(params.q, {
     filter: params.filter,
     limit: params.candidateLimit,
-    offset: params.offset,
+    offset: 0,
     attributesToRetrieve: ["id"],
+    attributesToSearchOn: ["name", "brand_name", "variant_names", "sku_codes"],
+    matchingStrategy: "all",
     facets: ["category_slug", "brand_slug", "price_min", "weight_grams"],
     ...(params.sort ? { sort: params.sort } : {}),
   });
 
   const hits = result.hits as Array<{ id?: string }>;
   const candidateIds = hits.map((hit) => hit.id).filter((id): id is string => Boolean(id));
-  const hydratedDocs = filterSearchDocs(await hydrateProductDocsById(candidateIds), opts)
-    .slice(0, params.limit);
-  const categoryDistribution = result.facetDistribution?.category_slug ?? {};
-  const brandDistribution = result.facetDistribution?.brand_slug ?? {};
-  const { categoryNames, brandNames } = await hydrateFacetLabels(
-    categoryDistribution,
-    brandDistribution,
-  );
-  const priceStats = result.facetStats?.price_min;
+  const filteredDocs = filterSearchDocs(await hydrateProductDocsById(candidateIds), opts);
+  const hydratedDocs = filteredDocs.slice(params.offset, params.offset + params.limit);
+  const facets = buildSearchFacets(filteredDocs);
 
   return {
     items: hydratedDocs,
-    total: result.estimatedTotalHits ?? hydratedDocs.length,
+    total: filteredDocs.length,
     page: Math.max(1, opts.page),
     per_page: params.limit,
-    facets: {
-      categories: hydrateFacetDistribution(categoryDistribution, categoryNames),
-      brands: hydrateFacetDistribution(brandDistribution, brandNames),
-      price_range: priceStats
-        ? { min: Math.floor(priceStats.min ?? 0), max: Math.ceil(priceStats.max ?? 0) }
-        : { min: 0, max: 0 },
-      weights: buildWeightBuckets(result.facetDistribution?.weight_grams),
-    },
+    facets,
     took_ms: Date.now() - start,
     source: "meilisearch" as const,
   };

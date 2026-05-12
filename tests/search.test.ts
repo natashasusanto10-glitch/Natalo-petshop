@@ -82,6 +82,38 @@ const docs: ProductSearchDoc[] = [
     created_at: 1_700_000_400,
   }),
   doc({
+    id: "happy-cat-adult",
+    slug: "happy-cat-adult",
+    name: "Happy Cat Adult Atlantik Lachs",
+    brand_id: "happy-cat",
+    brand_slug: "happy-cat",
+    brand_name: "Happy Cat",
+    category_id: "cat-food",
+    category_slug: "makanan-kucing",
+    category_name: "Makanan Kucing",
+    price_min: 99000,
+    price_max: 99000,
+    stock: 10,
+    total_stock: 10,
+    created_at: 1_700_000_450,
+  }),
+  doc({
+    id: "snappy-tom-cat-food",
+    slug: "snappy-tom-cat-food",
+    name: "Snappy Tom Cat Food Tuna",
+    brand_id: "snappy-tom",
+    brand_slug: "snappy-tom",
+    brand_name: "Snappy Tom",
+    category_id: "cat-food",
+    category_slug: "makanan-kucing",
+    category_name: "Makanan Kucing",
+    price_min: 18500,
+    price_max: 18500,
+    stock: 20,
+    total_stock: 20,
+    created_at: 1_700_000_460,
+  }),
+  doc({
     id: "kandang-besi",
     slug: "kandang-besi",
     name: "Kandang Besi Lipat Kucing",
@@ -120,6 +152,17 @@ test("search only returns matching products and matching count", () => {
     result.items.map((item) => item.id),
     ["royal-persian-empty", "royal-persian-kitten", "royal-persian-adult"],
   );
+});
+
+test("multi-word search requires every keyword across primary product fields", () => {
+  const result = search({ q: "Happy cat" });
+
+  assert.equal(result.total, 1);
+  assert.deepEqual(
+    result.items.map((item) => item.id),
+    ["happy-cat-adult"],
+  );
+  assert.equal(result.items.some((item) => item.id === "snappy-tom-cat-food"), false);
 });
 
 test("search plus brand filter uses the same filtered count and items", () => {

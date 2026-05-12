@@ -69,6 +69,7 @@ export function Header() {
   const pathname = usePathname();
   const currentPath = normalizePathname(pathname);
   const isHome = currentPath === "/";
+  const isSearchPage = currentPath === "/search";
   const isProductDetail = /^\/products\/[^/]+$/.test(currentPath);
   const isMainTab = isMainTabPath(currentPath);
   const authTitle = AUTH_PATHS[currentPath];
@@ -160,6 +161,8 @@ export function Header() {
     // method "native" / "web-share" / "cancelled" — gak perlu toast
     // karena UI sheet Apple/browser sudah kasih feedback sendiri
   }
+
+  if (isSearchPage) return null;
 
   // Auth pages — render minimal header: back button + title saja. Bottom nav,
   // bell, profile, login button semua di-hide untuk fokus ke flow auth.
