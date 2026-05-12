@@ -43,6 +43,7 @@ function buildItems(items: OrderItem[]): BiteshipItem[] {
 function getCreateOrderPayload(order: OrderWithItems) {
   const originLatitude = envNumber("SHOP_ORIGIN_LATITUDE");
   const originLongitude = envNumber("SHOP_ORIGIN_LONGITUDE");
+  const originAreaId = (process.env.WAREHOUSE_AREA_ID || process.env.SHOP_ORIGIN_AREA_ID || "").trim();
   const destinationLatitude = order.shippingLatitude;
   const destinationLongitude = order.shippingLongitude;
   const instant = isInstantCourier(order);
@@ -52,6 +53,12 @@ function getCreateOrderPayload(order: OrderWithItems) {
   }
   if (!order.courierCode || !order.courierService) {
     throw new Error("Kurir belum dipilih.");
+  }
+  if (!instant && !originAreaId) {
+    throw new Error("SHOP_ORIGIN_AREA_ID/WAREHOUSE_AREA_ID wajib diisi untuk kurir reguler.");
+  }
+  if (!instant && !order.shippingAreaId) {
+    throw new Error("Area Biteship tujuan belum dipilih.");
   }
   if (instant && (originLatitude === null || originLongitude === null)) {
     throw new Error("Koordinat pickup toko wajib diisi untuk kurir instant.");
@@ -69,6 +76,7 @@ function getCreateOrderPayload(order: OrderWithItems) {
     origin_contact_phone: process.env.SHOP_ORIGIN_CONTACT_PHONE || process.env.NEXT_PUBLIC_WA_NUMBER || "",
     origin_address: process.env.SHOP_ORIGIN_ADDRESS || process.env.NEXT_PUBLIC_STORE_ADDRESS || "",
     origin_note: process.env.SHOP_ORIGIN_NOTE || undefined,
+    origin_area_id: instant ? undefined : originAreaId,
     origin_postal_code: instant ? undefined : Number(process.env.SHOP_ORIGIN_POSTAL_CODE || 0) || undefined,
     origin_coordinate:
       originLatitude !== null && originLongitude !== null
@@ -79,7 +87,8 @@ function getCreateOrderPayload(order: OrderWithItems) {
     destination_contact_email: order.customerEmail || undefined,
     destination_address: order.shippingAddress,
     destination_note: order.shippingPinpointAddress || order.notes || undefined,
-    destination_postal_code: instant ? undefined : Number(order.shippingPostalCode || 0) || undefined,
+    destination_area_id: instant ? undefined : order.shippingAreaId || undefined,
+    destination_postal_code: Number(order.shippingPostalCode || 0) || undefined,
     destination_coordinate:
       destinationLatitude !== null && destinationLongitude !== null
         ? { latitude: destinationLatitude, longitude: destinationLongitude }

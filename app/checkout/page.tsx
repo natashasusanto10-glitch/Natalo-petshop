@@ -19,6 +19,7 @@ import {
 } from "@/components/MetodePembayaran";
 import { loadCart, saveCart, clearCartEverywhere, type CartItem } from "@/lib/cart";
 import type { CartStockIssue } from "@/lib/cart-stock";
+import { BiteshipAreaCombobox, type ShippingArea } from "@/components/BiteshipAreaCombobox";
 
 type RateOption = {
   courier_name: string;
@@ -123,6 +124,10 @@ export default function CheckoutPage() {
     shippingLatitude: null as number | null,
     shippingLongitude: null as number | null,
     shippingPinpointAddress: null as string | null,
+    shippingAreaId: "",
+    shippingAreaLabel: "",
+    shippingProvinceName: "",
+    shippingDistrictName: "",
     voucherCode: "",
     manualVoucherCode: "",
     notes: "",
@@ -131,6 +136,7 @@ export default function CheckoutPage() {
   type SavedAddress = {
     id: string; label: string; recipientName: string; phone: string;
     address: string; city: string; postalCode: string; isMain: boolean;
+    areaId?: string | null; areaLabel?: string | null; provinceName?: string | null; cityName?: string | null; districtName?: string | null;
     latitude?: number | null; longitude?: number | null; pinpointAddress?: string | null; streetName?: string | null;
   };
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
@@ -278,6 +284,7 @@ export default function CheckoutPage() {
         const mapped: SavedAddress[] = list.map((a: {
           id: string; label: string | null; recipient: string; phone: string;
           address: string; city: string | null; postalCode: string | null;
+          areaId: string | null; areaLabel: string | null; provinceName: string | null; cityName: string | null; districtName: string | null;
           isMain: boolean; latitude: number | null; longitude: number | null;
           pinpointAddress: string | null; streetName: string | null;
         }) => {
@@ -290,6 +297,11 @@ export default function CheckoutPage() {
             address: a.address,
             city: a.city ?? "",
             postalCode: a.postalCode ?? "",
+            areaId: a.areaId,
+            areaLabel: a.areaLabel,
+            provinceName: a.provinceName,
+            cityName: a.cityName,
+            districtName: a.districtName,
             isMain: a.isMain,
             latitude: hasPinpoint ? a.latitude : null,
             longitude: hasPinpoint ? a.longitude : null,
@@ -382,6 +394,11 @@ export default function CheckoutPage() {
     address: string;
     city: string;
     postalCode: string;
+    areaId?: string | null;
+    areaLabel?: string | null;
+    provinceName?: string | null;
+    cityName?: string | null;
+    districtName?: string | null;
     latitude?: number | null;
     longitude?: number | null;
     pinpointAddress?: string | null;
@@ -392,8 +409,12 @@ export default function CheckoutPage() {
       customerName: addr.recipientName || f.customerName,
       customerPhone: addr.phone || f.customerPhone,
       shippingAddress: addr.address,
-      shippingCity: addr.city,
+      shippingCity: addr.cityName || addr.city,
       shippingPostalCode: addr.postalCode,
+      shippingAreaId: addr.areaId || "",
+      shippingAreaLabel: addr.areaLabel || addr.city || "",
+      shippingProvinceName: addr.provinceName || "",
+      shippingDistrictName: addr.districtName || "",
       shippingLatitude: hasPinpoint ? addr.latitude ?? null : null,
       shippingLongitude: hasPinpoint ? addr.longitude ?? null : null,
       shippingPinpointAddress: hasPinpoint ? addr.pinpointAddress ?? null : null,
@@ -402,6 +423,39 @@ export default function CheckoutPage() {
     setPayment(null);
     setRates([]);
     setShippingError("");
+  }
+
+  function resetShippingSelection() {
+    setSelectedRate(null);
+    setPayment(null);
+    setRates([]);
+  }
+
+  function selectShippingArea(area: ShippingArea) {
+    setForm((current) => ({
+      ...current,
+      shippingAreaId: area.area_id,
+      shippingAreaLabel: area.label,
+      shippingProvinceName: area.province_name,
+      shippingCity: area.city_name,
+      shippingDistrictName: area.district_name,
+      shippingPostalCode: area.postal_code,
+    }));
+    resetShippingSelection();
+    setShippingError("");
+  }
+
+  function clearShippingArea() {
+    setForm((current) => ({
+      ...current,
+      shippingAreaId: "",
+      shippingAreaLabel: "",
+      shippingProvinceName: "",
+      shippingCity: "",
+      shippingDistrictName: "",
+      shippingPostalCode: "",
+    }));
+    resetShippingSelection();
   }
 
   function persistValidatedCheckoutItems(
@@ -501,6 +555,24 @@ export default function CheckoutPage() {
     () => savedAddresses.find((addr) => addr.id === selectedAddressId) ?? null,
     [savedAddresses, selectedAddressId]
   );
+  const selectedShippingArea = useMemo<ShippingArea | null>(() => {
+    if (!form.shippingAreaId) return null;
+    return {
+      area_id: form.shippingAreaId,
+      label: form.shippingAreaLabel || `${form.shippingDistrictName || form.shippingCity}, ${form.shippingCity}. ${form.shippingPostalCode}`,
+      province_name: form.shippingProvinceName,
+      city_name: form.shippingCity,
+      district_name: form.shippingDistrictName,
+      postal_code: form.shippingPostalCode,
+    };
+  }, [
+    form.shippingAreaId,
+    form.shippingAreaLabel,
+    form.shippingProvinceName,
+    form.shippingCity,
+    form.shippingDistrictName,
+    form.shippingPostalCode,
+  ]);
   const usingSavedAddress = addressMode === "saved" && Boolean(selectedAddress);
   const showManualAddressForm =
     !addressBookLoading && (addressMode === "manual" || savedAddresses.length === 0);
@@ -508,8 +580,10 @@ export default function CheckoutPage() {
     form.customerName.trim() &&
       form.customerPhone.trim() &&
       form.shippingAddress.trim() &&
-      form.shippingPostalCode.trim()
+      form.shippingPostalCode.trim() &&
+      form.shippingAreaId.trim()
   );
+  const addressAreaMissing = Boolean(form.shippingAddress.trim() && !form.shippingAreaId.trim());
   const canPlaceOrder = Boolean(
     items.length > 0 &&
       addressValid &&
@@ -548,6 +622,7 @@ export default function CheckoutPage() {
       manualVoucherCode,
       autoApply,
       address: {
+        areaId: form.shippingAreaId,
         postalCode: form.shippingPostalCode,
         latitude: form.shippingLatitude,
         longitude: form.shippingLongitude,
@@ -812,8 +887,8 @@ export default function CheckoutPage() {
       setShippingError("Pilih atau lengkapi alamat pengiriman terlebih dahulu.");
       return;
     }
-    if (!form.shippingPostalCode) {
-      setShippingError("Isi kode pos dulu untuk cek ongkir.");
+    if (!form.shippingAreaId) {
+      setShippingError("Alamat pengiriman belum valid. Mohon pilih ulang kota/kecamatan dari daftar alamat.");
       return;
     }
     if (items.length === 0) {
@@ -837,6 +912,7 @@ export default function CheckoutPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          destinationAreaId: form.shippingAreaId,
           destinationPostalCode: form.shippingPostalCode,
           destinationLatitude: form.shippingLatitude,
           destinationLongitude: form.shippingLongitude,
@@ -895,6 +971,11 @@ export default function CheckoutPage() {
       return;
     }
 
+    if (!form.shippingAreaId) {
+      setError("Alamat pengiriman belum valid. Mohon pilih ulang kota/kecamatan dari daftar alamat.");
+      return;
+    }
+
     if (!selectedRate) {
       setError("Pilih kurir pengiriman terlebih dahulu. Klik \"Cek Ongkir\" dan pilih salah satu layanan.");
       return;
@@ -949,6 +1030,11 @@ export default function CheckoutPage() {
           address: form.shippingAddress,
           city: form.shippingCity || null,
           postalCode: form.shippingPostalCode || "",
+          areaId: form.shippingAreaId,
+          areaLabel: form.shippingAreaLabel,
+          provinceName: form.shippingProvinceName,
+          cityName: form.shippingCity,
+          districtName: form.shippingDistrictName,
           latitude: form.shippingLatitude,
           longitude: form.shippingLongitude,
           pinpointAddress: form.shippingPinpointAddress,
@@ -996,7 +1082,11 @@ export default function CheckoutPage() {
       key === "shippingPostalCode" ||
       key === "shippingLatitude" ||
       key === "shippingLongitude" ||
-      key === "shippingPinpointAddress";
+      key === "shippingPinpointAddress" ||
+      key === "shippingAreaId" ||
+      key === "shippingAreaLabel" ||
+      key === "shippingProvinceName" ||
+      key === "shippingDistrictName";
     function updateField(value: string) {
       setForm({ ...form, [key]: value });
       if (shouldResetCheckout) {
@@ -1082,6 +1172,9 @@ export default function CheckoutPage() {
                     <p className="mt-0.5 truncate text-xs text-zinc-500">
                       {selectedAddress.address}
                     </p>
+                    <p className="mt-0.5 truncate text-xs font-semibold text-zinc-500">
+                      {selectedAddress.areaLabel || `${selectedAddress.city} ${selectedAddress.postalCode}`}
+                    </p>
                   </div>
                   <span className="shrink-0 self-center text-xs font-black text-natalo-600">
                     Ubah ›
@@ -1111,6 +1204,20 @@ export default function CheckoutPage() {
               {addressBookError && (
                 <div className="border-t border-zinc-100 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-700">
                   {addressBookError}
+                </div>
+              )}
+              {usingSavedAddress && addressAreaMissing && (
+                <div className="border-t border-amber-100 bg-amber-50 px-4 py-3">
+                  <p className="text-xs font-bold text-amber-800">
+                    Alamat tersimpan belum punya Area ID Biteship. Mohon ubah alamat dan pilih kota/kecamatan dari daftar.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={openCheckoutAddressList}
+                    className="mt-2 rounded-full bg-amber-600 px-4 py-2 text-xs font-black text-white"
+                  >
+                    Ubah Alamat
+                  </button>
                 </div>
               )}
             </section>
@@ -1217,9 +1324,29 @@ export default function CheckoutPage() {
                   textarea: true,
                 })}
 
-                <div className="grid gap-4 sm:grid-cols-2">
-                  {field("Kota / Kecamatan", "shippingCity", { placeholder: "Contoh: Jakarta Selatan" })}
-                  {field("Kode pos", "shippingPostalCode", { type: "tel", placeholder: "12345" })}
+                <div className="space-y-3">
+                  <BiteshipAreaCombobox
+                    selectedArea={selectedShippingArea}
+                    onSelect={selectShippingArea}
+                    onClear={clearShippingArea}
+                    label="Kota / Kecamatan"
+                    error={addressAreaMissing ? "Mohon pilih kota/kecamatan dari daftar alamat." : undefined}
+                    help="Pilih hasil dari Biteship agar kota/kecamatan dan kode pos cocok."
+                  />
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+                      <p className="text-xs font-bold text-zinc-500">Kota / Kabupaten</p>
+                      <p className="mt-1 text-sm font-black text-zinc-900">
+                        {form.shippingCity || "Belum dipilih"}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+                      <p className="text-xs font-bold text-zinc-500">Kode pos</p>
+                      <p className="mt-1 text-sm font-black text-zinc-900">
+                        {form.shippingPostalCode || "Belum dipilih"}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </>
             )}
@@ -1360,7 +1487,9 @@ export default function CheckoutPage() {
                     {ratesLoading
                       ? "Memuat ongkir..."
                       : !addressValid
-                      ? "Pilih atau lengkapi alamat dulu"
+                      ? addressAreaMissing
+                        ? "Pilih ulang area alamat dulu"
+                        : "Pilih atau lengkapi alamat dulu"
                       : "Pilih metode pengiriman"}
                   </span>
                   {!ratesLoading && addressValid && (

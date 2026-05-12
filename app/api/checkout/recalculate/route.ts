@@ -26,6 +26,7 @@ const recalculateSchema = z.object({
   autoApply: z.boolean().default(true),
   address: z
     .object({
+      areaId: z.string().optional().nullable(),
       postalCode: z.string().optional().nullable(),
       latitude: z.number().nullable().optional(),
       longitude: z.number().nullable().optional(),

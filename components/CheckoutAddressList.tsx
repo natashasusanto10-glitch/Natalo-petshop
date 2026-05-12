@@ -16,6 +16,8 @@ type CheckoutAddress = {
   address: string;
   city: string | null;
   postalCode: string | null;
+  areaId: string | null;
+  areaLabel: string | null;
   isMain: boolean;
   latitude: number | null;
   longitude: number | null;
@@ -123,6 +125,7 @@ export function CheckoutAddressList({ addresses, returnTo }: Props) {
             addresses.map((address) => {
               const selected = selectedId === address.id;
               const hasPinpoint = hasUsablePinpoint(address.latitude, address.longitude);
+              const hasArea = Boolean(address.areaId);
               return (
                 <section
                   key={address.id}
@@ -156,13 +159,20 @@ export function CheckoutAddressList({ addresses, returnTo }: Props) {
                           >
                             {hasPinpoint ? "Pinpoint OK" : "Perlu pinpoint"}
                           </span>
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-xs font-black ${
+                              hasArea ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
+                            }`}
+                          >
+                            {hasArea ? "Area Biteship OK" : "Perlu pilih area"}
+                          </span>
                         </div>
                         <p className="mt-2 text-sm font-bold text-zinc-800">
                           {address.recipient} - {address.phone}
                         </p>
                         <p className="mt-1 text-sm leading-6 text-zinc-600">{address.address}</p>
                         <p className="mt-1 text-sm text-zinc-500">
-                          {[address.city].filter(Boolean).join(", ")}
+                          {[address.areaLabel || address.city].filter(Boolean).join(", ")}
                           {address.postalCode ? ` ${address.postalCode}` : ""}
                         </p>
                         {address.streetName && (
@@ -176,6 +186,11 @@ export function CheckoutAddressList({ addresses, returnTo }: Props) {
                         {!hasPinpoint && (
                           <p className="mt-2 rounded-2xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
                             Tambahkan pinpoint agar pengiriman lebih akurat.
+                          </p>
+                        )}
+                        {!hasArea && (
+                          <p className="mt-2 rounded-2xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                            Alamat lama perlu diperbarui. Pilih kota/kecamatan dari daftar Biteship agar ongkir valid.
                           </p>
                         )}
                       </div>
@@ -195,7 +210,7 @@ export function CheckoutAddressList({ addresses, returnTo }: Props) {
                       href={`/akun/alamat/edit/${address.id}?source=checkout&return=${encodedListReturn}&checkoutReturn=${encodedReturnTo}`}
                       className="rounded-full border border-zinc-200 px-4 py-2 text-xs font-black text-zinc-700 transition hover:border-natalo-300 hover:text-natalo-700"
                     >
-                      {hasPinpoint ? "Edit" : "Tambah Pinpoint"}
+                      {hasArea && hasPinpoint ? "Edit" : "Lengkapi Alamat"}
                     </Link>
                   </div>
                 </section>

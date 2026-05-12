@@ -154,6 +154,10 @@ model Order {
   shippingLatitude     Float?
   shippingLongitude    Float?
   shippingPinpointAddress String?
+  shippingAreaId       String?
+  shippingAreaLabel    String?
+  shippingProvinceName String?
+  shippingDistrictName String?
   courierCode          String?
   courierService       String?
   trackingNumber       String?
@@ -432,6 +436,11 @@ model Address {
   address         String
   city            String?
   postalCode      String?
+  areaId          String?
+  areaLabel       String?
+  provinceName    String?
+  cityName        String?
+  districtName    String?
   isMain          Boolean  @default(false)
   latitude        Float?
   longitude       Float?

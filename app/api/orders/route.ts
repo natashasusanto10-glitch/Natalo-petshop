@@ -96,6 +96,15 @@ export async function POST(request: Request) {
   const parsed = createOrderSchema.safeParse(json);
 
   if (!parsed.success) {
+    if (parsed.error.flatten().fieldErrors.shippingAreaId) {
+      return NextResponse.json(
+        {
+          message:
+            "Alamat pengiriman belum valid. Mohon pilih ulang kota/kecamatan dari daftar alamat.",
+        },
+        { status: 400 },
+      );
+    }
     return NextResponse.json({ message: "Data checkout tidak valid.", errors: parsed.error.flatten() }, { status: 400 });
   }
 
@@ -406,6 +415,10 @@ export async function POST(request: Request) {
           shippingLatitude: input.shippingLatitude ?? null,
           shippingLongitude: input.shippingLongitude ?? null,
           shippingPinpointAddress: input.shippingPinpointAddress || null,
+          shippingAreaId: input.shippingAreaId,
+          shippingAreaLabel: input.shippingAreaLabel || null,
+          shippingProvinceName: input.shippingProvinceName || null,
+          shippingDistrictName: input.shippingDistrictName || null,
           courierCode: input.courierCode,
           courierService: input.courierService,
           subtotal,

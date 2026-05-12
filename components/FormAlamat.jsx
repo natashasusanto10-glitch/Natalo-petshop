@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AddressPinpointPicker } from "@/components/AddressPinpointPicker";
+import { BiteshipAreaCombobox } from "@/components/BiteshipAreaCombobox";
 
 const LABELS = ["Rumah", "Kantor", "Toko", "Lainnya"];
 const KODEPOS_API = "https://kodepos.vercel.app/search";
@@ -493,6 +494,11 @@ export default function FormAlamat({ mode = "create", initialAddress = null }) {
     address: initialAddress?.address ?? "",
     city: initialAddress?.city ?? "",
     postalCode: initialAddress?.postalCode ?? "",
+    areaId: initialAddress?.areaId ?? "",
+    areaLabel: initialAddress?.areaLabel ?? "",
+    provinceName: initialAddress?.provinceName ?? "",
+    cityName: initialAddress?.cityName ?? "",
+    districtName: initialAddress?.districtName ?? "",
     label: initialAddress?.label ?? "Rumah",
     isMain: Boolean(initialAddress?.isMain),
     latitude: initialHasPinpoint ? initialLatitude : null,
@@ -525,6 +531,50 @@ export default function FormAlamat({ mode = "create", initialAddress = null }) {
       delete next[field];
       return next;
     });
+  }
+
+  const selectedShippingArea = useMemo(() => {
+    if (!form.areaId) return null;
+    return {
+      area_id: form.areaId,
+      label: form.areaLabel || `${form.districtName || form.city}, ${form.city}. ${form.postalCode}`,
+      province_name: form.provinceName,
+      city_name: form.cityName || form.city,
+      district_name: form.districtName,
+      postal_code: form.postalCode,
+    };
+  }, [form.areaId, form.areaLabel, form.provinceName, form.cityName, form.city, form.districtName, form.postalCode]);
+
+  function selectShippingArea(area) {
+    setForm((current) => ({
+      ...current,
+      areaId: area.area_id,
+      areaLabel: area.label,
+      provinceName: area.province_name,
+      cityName: area.city_name,
+      districtName: area.district_name,
+      city: area.city_name,
+      postalCode: area.postal_code,
+    }));
+    setFieldErrors((current) => {
+      const next = { ...current };
+      delete next.areaId;
+      delete next.postalCode;
+      return next;
+    });
+  }
+
+  function clearShippingArea() {
+    setForm((current) => ({
+      ...current,
+      areaId: "",
+      areaLabel: "",
+      provinceName: "",
+      cityName: "",
+      districtName: "",
+      city: "",
+      postalCode: "",
+    }));
   }
 
   useEffect(() => {
@@ -671,6 +721,7 @@ export default function FormAlamat({ mode = "create", initialAddress = null }) {
 
   const addressContext = useMemo(
     () =>
+      form.areaLabel ||
       [
         selectedNames.village,
         selectedNames.district,
@@ -679,7 +730,7 @@ export default function FormAlamat({ mode = "create", initialAddress = null }) {
       ]
         .filter(Boolean)
         .join(", "),
-    [selectedNames]
+    [form.areaLabel, selectedNames]
   );
   const pinpointSearchHint = useMemo(
     () => [form.address, addressContext || form.city].filter(Boolean).join(", "),
@@ -688,42 +739,28 @@ export default function FormAlamat({ mode = "create", initialAddress = null }) {
   const hasPinpoint = hasUsablePinpoint(form.latitude, form.longitude);
 
   const requiredComplete = useMemo(() => {
-    const hasSavedRegion = mode === "edit" && Boolean(form.city);
-    const regionComplete =
-      hasSavedRegion ||
-      Boolean(selectedProvinsi && selectedKota && selectedKecamatan && selectedKelurahan);
-
     return Boolean(
       form.recipient.trim() &&
         form.phone.trim() &&
         form.address.trim() &&
         form.postalCode.trim() &&
-        regionComplete
+        form.areaId.trim()
     );
   }, [
     form.recipient,
     form.phone,
     form.address,
     form.postalCode,
-    form.city,
-    mode,
-    selectedProvinsi,
-    selectedKota,
-    selectedKecamatan,
-    selectedKelurahan,
+    form.areaId,
   ]);
 
   function validateForm() {
     const nextErrors = {};
-    const hasSavedRegion = mode === "edit" && Boolean(form.city);
 
     if (!form.recipient.trim()) nextErrors.recipient = "Nama penerima wajib diisi.";
     if (!form.phone.trim()) nextErrors.phone = "No. HP penerima wajib diisi.";
     if (!form.address.trim()) nextErrors.address = "Alamat lengkap wajib diisi.";
-    if (!hasSavedRegion && !selectedProvinsi) nextErrors.province = "Provinsi wajib dipilih.";
-    if (!hasSavedRegion && !selectedKota) nextErrors.regency = "Kota/kabupaten wajib dipilih.";
-    if (!hasSavedRegion && !selectedKecamatan) nextErrors.district = "Kecamatan wajib dipilih.";
-    if (!hasSavedRegion && !selectedKelurahan) nextErrors.village = "Kelurahan wajib dipilih.";
+    if (!form.areaId.trim()) nextErrors.areaId = "Mohon pilih kota/kecamatan dari daftar alamat.";
     if (!form.postalCode.trim()) nextErrors.postalCode = "Kode pos wajib diisi.";
 
     setFieldErrors(nextErrors);
@@ -823,86 +860,45 @@ export default function FormAlamat({ mode = "create", initialAddress = null }) {
         />
       </Field>
 
-      {initialAddress?.city && mode === "edit" && (
+      {initialAddress?.city && mode === "edit" && !initialAddress?.areaId && (
         <div className="rounded-2xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
           Wilayah tersimpan: <span className="font-semibold">{initialAddress.city}</span>
           <p className="mt-1 text-xs text-zinc-500">
-            Pilih ulang wilayah jika ingin memperbarui provinsi sampai kelurahan.
+            Alamat lama perlu pilih ulang kota/kecamatan dari daftar Biteship agar ongkir valid.
           </p>
         </div>
       )}
 
-      <SelectFieldWithError
-        label="Provinsi"
-        value={selectedProvinsi}
-        onChange={(value) => {
-          setSelectedProvinsi(value);
-          setFieldErrors((current) => ({ ...current, province: undefined }));
-        }}
-        options={provinsi}
-        placeholder="Pilih provinsi"
-        loading={loadingProvinsi}
-        required={mode !== "edit" || !form.city}
-        error={fieldErrors.province}
+      <BiteshipAreaCombobox
+        selectedArea={selectedShippingArea}
+        onSelect={selectShippingArea}
+        onClear={clearShippingArea}
+        label="Kota / Kecamatan"
+        error={fieldErrors.areaId}
+        help="Pilih hasil dari Biteship agar kode pos dan kecamatan cocok dengan sistem ongkir."
       />
 
-      <SelectFieldWithError
-        label="Kota / Kabupaten"
-        value={selectedKota}
-        onChange={(value) => {
-          setSelectedKota(value);
-          setFieldErrors((current) => ({ ...current, regency: undefined }));
-        }}
-        options={kota}
-        placeholder="Pilih kota/kabupaten"
-        disabled={!selectedProvinsi}
-        loading={loadingKota}
-        required={mode !== "edit" || !form.city}
-        error={fieldErrors.regency}
-      />
-
-      <SelectFieldWithError
-        label="Kecamatan"
-        value={selectedKecamatan}
-        onChange={(value) => {
-          setSelectedKecamatan(value);
-          setFieldErrors((current) => ({ ...current, district: undefined }));
-        }}
-        options={kecamatan}
-        placeholder="Pilih kecamatan"
-        disabled={!selectedKota}
-        loading={loadingKecamatan}
-        required={mode !== "edit" || !form.city}
-        error={fieldErrors.district}
-      />
-
-      <SelectFieldWithError
-        label="Kelurahan"
-        value={selectedKelurahan}
-        onChange={(value) => {
-          setSelectedKelurahan(value);
-          setFieldErrors((current) => ({ ...current, village: undefined }));
-        }}
-        options={kelurahan}
-        placeholder="Pilih kelurahan"
-        disabled={!selectedKecamatan}
-        loading={loadingKelurahan}
-        required={mode !== "edit" || !form.city}
-        error={fieldErrors.village}
-      />
-
-      <Field
-        label="Kode Pos"
-        name="postalCode"
-        value={form.postalCode}
-        onChange={(event) => updateForm("postalCode", event.target.value)}
-        placeholder="Terisi otomatis setelah pilih kelurahan"
-        inputMode="numeric"
-        help="Kode pos terisi otomatis setelah kelurahan dipilih, tetapi masih bisa diedit jika diperlukan."
-        error={fieldErrors.postalCode}
-      />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+          <p className="text-xs font-bold text-zinc-500">Kota / Kabupaten</p>
+          <p className="mt-1 text-sm font-black text-zinc-900">
+            {form.city || "Belum dipilih"}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+          <p className="text-xs font-bold text-zinc-500">Kode pos</p>
+          <p className="mt-1 text-sm font-black text-zinc-900">
+            {form.postalCode || "Belum dipilih"}
+          </p>
+          {fieldErrors.postalCode && (
+            <p className="mt-1 text-xs font-semibold text-red-500">{fieldErrors.postalCode}</p>
+          )}
+        </div>
+      </div>
 
       <input type="hidden" name="city" value={form.city} />
+      <input type="hidden" name="areaId" value={form.areaId} />
+      <input type="hidden" name="areaLabel" value={form.areaLabel} />
       <input type="hidden" name="latitude" value={form.latitude ?? ""} />
       <input type="hidden" name="longitude" value={form.longitude ?? ""} />
       <input type="hidden" name="pinpointAddress" value={form.pinpointAddress ?? ""} />

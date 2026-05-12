@@ -66,6 +66,7 @@ function hasUsablePinpoint(latitude, longitude) {
 
 function AddressCard({ address }) {
   const hasPinpoint = hasUsablePinpoint(address.latitude, address.longitude);
+  const hasArea = Boolean(address.areaId);
 
   return (
     <section className="rounded-3xl border border-zinc-100 bg-white p-5 shadow-sm">
@@ -85,13 +86,20 @@ function AddressCard({ address }) {
             >
               {hasPinpoint ? "Pinpoint OK" : "Perlu pinpoint"}
             </span>
+            <span
+              className={`rounded-full px-2.5 py-1 text-xs font-black ${
+                hasArea ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
+              }`}
+            >
+              {hasArea ? "Area Biteship OK" : "Perlu pilih area"}
+            </span>
           </div>
           <p className="mt-2 text-sm font-bold text-zinc-800">
             {address.recipient} - {address.phone}
           </p>
           <p className="mt-1 text-sm leading-6 text-zinc-600">{address.address}</p>
           <p className="mt-1 text-sm text-zinc-500">
-            {[address.city].filter(Boolean).join(", ")}
+            {[address.areaLabel || address.city].filter(Boolean).join(", ")}
             {address.postalCode ? ` ${address.postalCode}` : ""}
           </p>
           {hasPinpoint && address.pinpointAddress && (
@@ -102,13 +110,18 @@ function AddressCard({ address }) {
               Tambahkan pinpoint supaya alamat lebih akurat saat checkout.
             </p>
           )}
+          {!hasArea && (
+            <p className="mt-2 rounded-2xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+              Pilih ulang kota/kecamatan dari daftar Biteship agar ongkir checkout valid.
+            </p>
+          )}
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
           <Link
             href={`/akun/alamat/edit/${address.id}`}
             className="rounded-full border border-zinc-200 px-4 py-2 text-xs font-black text-zinc-700 transition hover:border-zinc-400"
           >
-            {hasPinpoint ? "Edit" : "Tambah Pinpoint"}
+            {hasArea && hasPinpoint ? "Edit" : "Lengkapi Alamat"}
           </Link>
           <DeleteAlamatButton id={address.id} />
         </div>

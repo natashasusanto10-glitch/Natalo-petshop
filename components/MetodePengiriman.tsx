@@ -113,7 +113,7 @@ export function MetodePengiriman({
             Tidak ada kurir yang tersedia untuk alamat ini.
           </p>
           <p className="mt-1 text-xs text-zinc-500">
-            Coba periksa kode pos atau alamat tujuan.
+            Coba pilih ulang kota/kecamatan dari daftar alamat.
           </p>
         </div>
       )}

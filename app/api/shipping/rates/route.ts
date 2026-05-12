@@ -2,7 +2,8 @@
  * POST /api/shipping/rates
  *
  * Body: {
- *   destinationPostalCode: string,
+ *   destinationAreaId: string,
+ *   destinationPostalCode?: string,
  *   destinationLatitude?: number,
  *   destinationLongitude?: number,
  *   items: Array<{ name: string, price: number, weightGram: number, quantity: number }>
@@ -37,7 +38,7 @@ export type RateOption = {
   description?: string;
 };
 
-const COURIERS = "jne,jnt,gojek,grab";
+const COURIERS = "jne,jnt,sicepat,anteraja";
 
 function numberOrNull(value: unknown) {
   const n = Number(value);
@@ -47,7 +48,7 @@ function numberOrNull(value: unknown) {
 export async function POST(request: Request) {
   const body = await request.json();
   const apiKey = process.env.BITESHIP_API_KEY;
-  const originPostal = process.env.SHOP_ORIGIN_POSTAL_CODE;
+  const originAreaId = (process.env.WAREHOUSE_AREA_ID || process.env.SHOP_ORIGIN_AREA_ID || "").trim();
   const originLatitude = numberOrNull(process.env.SHOP_ORIGIN_LATITUDE);
   const originLongitude = numberOrNull(process.env.SHOP_ORIGIN_LONGITUDE);
 
@@ -64,9 +65,9 @@ export async function POST(request: Request) {
       message: "BITESHIP_API_KEY belum diisi — pakai data dummy (dev only).",
     });
   }
-  if (!originPostal) {
+  if (!originAreaId) {
     return NextResponse.json(
-      { message: "SHOP_ORIGIN_POSTAL_CODE belum di-set di .env" },
+      { message: "Area asal toko belum dikonfigurasi. Isi SHOP_ORIGIN_AREA_ID atau WAREHOUSE_AREA_ID." },
       { status: 500 }
     );
   }
@@ -80,14 +81,13 @@ export async function POST(request: Request) {
   }
 
   const destinationPostal = String(body.destinationPostalCode ?? "").trim();
+  const destinationAreaId = String(body.destinationAreaId ?? "").trim();
   const destinationLatitude = numberOrNull(body.destinationLatitude);
   const destinationLongitude = numberOrNull(body.destinationLongitude);
-  const hasOriginCoordinate = originLatitude !== null && originLongitude !== null;
-  const hasDestinationCoordinate = destinationLatitude !== null && destinationLongitude !== null;
 
-  if (!destinationPostal && !hasDestinationCoordinate) {
+  if (!destinationAreaId) {
     return NextResponse.json(
-      { message: "Kode pos atau titik koordinat tujuan harus diisi." },
+      { message: "Alamat pengiriman belum valid. Mohon pilih ulang kota/kecamatan dari daftar alamat." },
       { status: 400 }
     );
   }
@@ -109,12 +109,15 @@ export async function POST(request: Request) {
         Authorization: apiKey,
       },
       body: JSON.stringify({
-        ...(hasOriginCoordinate
+        origin_area_id: originAreaId,
+        destination_area_id: destinationAreaId,
+        ...(destinationPostal ? { destination_postal_code: Number(destinationPostal) } : {}),
+        ...(originLatitude !== null && originLongitude !== null
           ? { origin_latitude: originLatitude, origin_longitude: originLongitude }
-          : { origin_postal_code: Number(originPostal) }),
-        ...(hasDestinationCoordinate
+          : {}),
+        ...(destinationLatitude !== null && destinationLongitude !== null
           ? { destination_latitude: destinationLatitude, destination_longitude: destinationLongitude }
-          : { destination_postal_code: Number(destinationPostal) }),
+          : {}),
         couriers: COURIERS,
         items: biteshipItems,
       }),
@@ -122,9 +125,14 @@ export async function POST(request: Request) {
 
     if (!res.ok) {
       const text = await res.text();
+      console.error("[shipping] Biteship rates error:", text);
       return NextResponse.json(
-        { message: `Biteship error: ${text}`, rates: [] },
-        { status: 500 }
+        {
+          message:
+            "Alamat pengiriman belum valid. Mohon pilih ulang kota/kecamatan dari daftar alamat.",
+          rates: [],
+        },
+        { status: 400 }
       );
     }
 
@@ -147,11 +155,6 @@ export async function POST(request: Request) {
           price > 0 ? undefined : "Tidak tersedia untuk rute / berat ini.",
         description: p.description,
       };
-    }).filter((rate) => {
-      if (["gojek", "grab"].includes(rate.courier_code.toLowerCase())) {
-        return hasOriginCoordinate && hasDestinationCoordinate;
-      }
-      return true;
     });
 
     return NextResponse.json({ rates });

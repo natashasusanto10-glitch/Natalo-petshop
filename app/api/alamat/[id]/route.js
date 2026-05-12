@@ -26,6 +26,11 @@ function normalizePayload(body) {
     address: String(body.address || "").trim(),
     city: cityName,
     postalCode: String(body.postalCode || "").trim(),
+    areaId: String(body.areaId || body.area_id || "").trim(),
+    areaLabel: String(body.areaLabel || body.area_label || "").trim(),
+    provinceName: String(body.provinceName || body.province_name || "").trim(),
+    cityName: String(body.cityName || body.city_name || "").trim(),
+    districtName: String(body.districtName || body.district_name || "").trim(),
     isMain: Boolean(body.isMain),
     latitude: lat,
     longitude: lng,
@@ -37,6 +42,10 @@ function normalizePayload(body) {
 function validateAddress(payload) {
   if (!payload.recipient || !payload.phone || !payload.address || !payload.postalCode) {
     return "Semua field wajib diisi.";
+  }
+
+  if (!payload.areaId) {
+    return "Mohon pilih kota/kecamatan dari daftar alamat.";
   }
 
   if (!PHONE_RE.test(payload.phone.replace(/\s/g, ""))) {
@@ -87,6 +96,11 @@ export async function PUT(request, { params }) {
         address: payload.address,
         city: payload.city || null,
         postalCode: payload.postalCode,
+        areaId: payload.areaId,
+        areaLabel: payload.areaLabel || payload.city || null,
+        provinceName: payload.provinceName || null,
+        cityName: payload.cityName || payload.city || null,
+        districtName: payload.districtName || null,
         latitude: payload.latitude,
         longitude: payload.longitude,
         pinpointAddress: payload.pinpointAddress,
