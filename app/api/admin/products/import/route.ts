@@ -16,8 +16,10 @@
  *   - Untuk produk dengan varian, upsert VariantAttribute, VariantOption,
  *     ProductVariant, ProductVariantOption
  *
- * Setelah batch terakhir, halaman /products & /products/[slug] di-revalidate
- * agar harga & stok terbaru tampil tanpa harus tunggu cache 60s.
+ * Setiap batch juga sync produk yang berubah ke Meilisearch agar suggestion
+ * tidak memakai index lama setelah import massal. Setelah batch terakhir,
+ * halaman /products & /products/[slug] di-revalidate agar harga & stok terbaru
+ * tampil tanpa harus tunggu cache 60s.
  *
  * Body: { offset?: number; batchSize?: number }
  * Response: {
@@ -27,13 +29,20 @@
  *   processedSoFar: number,
  *   nextOffset: number,
  *   done: boolean,
- *   summary?: { categories, brands, productsUpserted, variantsUpserted, skipped }
+ *   summary?: { categories, brands, productsUpserted, variantsUpserted, skipped, searchIndex, staleDeactivated }
  * }
+ *
+ * Pada batch terakhir (done=true), produk DB yang aktif tapi slug-nya tidak
+ * ada di import JSON akan di-deactivate (isActive=false) — supaya produk yang
+ * sudah dilepas dari catalog (mis. discontinued) hilang dari halaman public.
+ * Safeguard: deactivation hanya jalan kalau import JSON >= 50 produk supaya
+ * tidak nuke catalog kalau admin upload JSON partial/test.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { syncProductsToSearchIndex } from "@/lib/search";
 import importData from "@/prisma/products_import.json";
 
 interface VariantData {
@@ -127,6 +136,7 @@ export async function POST(request: NextRequest) {
   let productsUpserted = 0;
   let variantsUpserted = 0;
   let skipped = 0;
+  const changedProductIds = new Set<string>();
 
   for (const prod of slice) {
     if (!prod.name || !prod.slug) {
@@ -166,6 +176,7 @@ export async function POST(request: NextRequest) {
           brandAutoAssigned: true,
         },
       });
+      changedProductIds.add(product.id);
 
       if (prod.hasVariants && prod.variants.length > 0) {
         let attr = await prisma.variantAttribute.findFirst({
@@ -241,6 +252,72 @@ export async function POST(request: NextRequest) {
   const processedSoFar = offset + slice.length;
   const done = processedSoFar >= totalProducts;
   const nextOffset = done ? processedSoFar : processedSoFar;
+  const searchIndex = await syncProductsToSearchIndex([...changedProductIds]);
+  if (searchIndex.failed > 0) {
+    console.error("[admin products import] search index sync failed", searchIndex);
+  }
+
+  // Deactivation pass — produk DB yang slug-nya tidak ada di import JSON
+  // di-set isActive=false supaya hilang dari halaman public (kayak
+  // discontinued). Hanya jalan pada batch terakhir + ada safeguard supaya
+  // tidak wipe catalog kalau admin upload JSON kecil/test.
+  const MIN_IMPORT_FOR_DEACTIVATION = 50;
+  let staleDeactivated: {
+    count: number;
+    skipped: boolean;
+    skippedReason?: string;
+    searchSync?: { synced: number; deleted: number; failed: number };
+  } = { count: 0, skipped: !done };
+
+  if (done) {
+    if (data.products.length < MIN_IMPORT_FOR_DEACTIVATION) {
+      staleDeactivated = {
+        count: 0,
+        skipped: true,
+        skippedReason: `Import hanya ${data.products.length} produk (< ${MIN_IMPORT_FOR_DEACTIVATION}) — skip deactivation untuk hindari accidental wipe`,
+      };
+      console.warn(
+        `[admin products import] ${staleDeactivated.skippedReason}`,
+      );
+    } else {
+      const importedSlugs = new Set(data.products.map((p) => p.slug));
+      const activeDbProducts = await prisma.product.findMany({
+        where: { isActive: true },
+        select: { id: true, slug: true },
+      });
+      const staleIds = activeDbProducts
+        .filter((p) => !importedSlugs.has(p.slug))
+        .map((p) => p.id);
+
+      if (staleIds.length > 0) {
+        await prisma.product.updateMany({
+          where: { id: { in: staleIds } },
+          data: { isActive: false },
+        });
+        const staleSync = await syncProductsToSearchIndex(staleIds);
+        if (staleSync.failed > 0) {
+          console.error(
+            "[admin products import] stale product search sync failed",
+            staleSync,
+          );
+        }
+        staleDeactivated = {
+          count: staleIds.length,
+          skipped: false,
+          searchSync: {
+            synced: staleSync.synced,
+            deleted: staleSync.deleted,
+            failed: staleSync.failed,
+          },
+        };
+        console.log(
+          `[admin products import] deactivated ${staleIds.length} produk yang tidak ada di import JSON`,
+        );
+      } else {
+        staleDeactivated = { count: 0, skipped: false };
+      }
+    }
+  }
 
   // Revalidate halaman public setelah batch terakhir agar harga/stok baru
   // langsung muncul tanpa nunggu ISR cache 60s.
@@ -262,6 +339,8 @@ export async function POST(request: NextRequest) {
       productsUpserted,
       variantsUpserted,
       skipped,
+      searchIndex,
+      staleDeactivated,
     },
   });
 }
