@@ -10,8 +10,10 @@ import { EmptyCart } from "@/components/LoadingEmptyStates";
 import { loadCart, saveCart, type CartItem } from "@/lib/cart";
 import type { CartStockIssue } from "@/lib/cart-stock";
 import { VoucherClaimBar } from "@/components/cart/VoucherClaimBar";
+import { SwipeableCartRow } from "@/components/cart/SwipeableCartRow";
 import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
 import { hapticSuccess, hapticTap, hapticWarning } from "@/lib/native/haptics";
+import { natToast } from "@/components/Toast";
 
 // Voucher sheet & delete modal hanya muncul setelah user interaksi —
 // lazy-load JS-nya supaya initial bundle cart page lebih ringan.
@@ -276,6 +278,50 @@ export default function CartPage() {
     persist(next);
   }
 
+  // Swipe-to-delete dengan undo toast — pattern iOS Mail / Tokopedia.
+  // Optimistic remove langsung, lalu kasih 5 detik window untuk URUNGKAN.
+  // Karena cart Natalo localStorage-based, tidak perlu defer commit ke server
+  // (undo = re-insert ke posisi awal + saveCart ulang).
+  function handleSwipeDelete(item: CartItem) {
+    const targetKey = cartKey(item);
+    const originalIndex = items.findIndex((i) => cartKey(i) === targetKey);
+    if (originalIndex === -1) return;
+
+    hapticTap();
+    const nextItems = items.filter((i) => cartKey(i) !== targetKey);
+    setSelectedKeys((current) => {
+      const nextSelected = new Set(current);
+      nextSelected.delete(targetKey);
+      return nextSelected;
+    });
+    persist(nextItems);
+
+    natToast(`"${item.name.slice(0, 30)}${item.name.length > 30 ? "…" : ""}" dihapus`, {
+      kind: "default",
+      action: {
+        label: "URUNGKAN",
+        onClick: () => {
+          // Re-insert at original index berdasarkan SNAPSHOT saat swipe.
+          // Pakai functional update supaya pakai latest items state (user
+          // bisa edit lain selama 5s window).
+          setItems((current) => {
+            const restored = [...current];
+            const insertAt = Math.min(originalIndex, restored.length);
+            restored.splice(insertAt, 0, item);
+            saveCart(restored);
+            return restored;
+          });
+          setSelectedKeys((current) => {
+            const nextSelected = new Set(current);
+            nextSelected.add(targetKey);
+            return nextSelected;
+          });
+          hapticSuccess();
+        },
+      },
+    });
+  }
+
   // ── Delete confirmation flow ─────────────────────────────────
   // Buka modal — TIDAK langsung hapus. User harus konfirmasi.
 
@@ -416,7 +462,8 @@ export default function CartPage() {
                 const lineTotal = item.price * item.quantity;
 
                 return (
-                  <article key={key} className="bg-white px-4 py-4">
+                  <SwipeableCartRow key={key} onDelete={() => handleSwipeDelete(item)}>
+                  <article className="bg-white px-4 py-4">
                     <div className="flex gap-3">
                       <input
                         type="checkbox"
@@ -506,6 +553,7 @@ export default function CartPage() {
                       </div>
                     </div>
                   </article>
+                  </SwipeableCartRow>
                 );
               })}
             </div>
