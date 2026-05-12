@@ -1,6 +1,5 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -107,7 +106,7 @@ function isActiveItem(pathname: string, item: NavItem) {
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
-function NavList({ onNavigate }: { onNavigate?: () => void }) {
+function NavList() {
   const pathname = usePathname();
 
   return (
@@ -124,7 +123,6 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
                 <li key={item.href}>
                   <Link
                     href={item.href}
-                    onClick={onNavigate}
                     className={`flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-semibold transition-colors ${
                       active
                         ? "bg-natalo-500 text-white shadow-[0_4px_14px_rgba(30,95,191,0.4)]"
@@ -174,86 +172,15 @@ function FooterUser() {
 }
 
 export function AdminNav({ children }: { children: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const pathname = usePathname();
-
-  useEffect(() => {
-    setOpen(false);
-  }, [pathname]);
-
-  useEffect(() => {
-    if (open) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [open]);
-
-  const currentLabel =
-    NAV_GROUPS.flatMap((g) => g.items).find((item) => isActiveItem(pathname, item))?.label ?? "Admin";
-
   return (
     <div className="flex min-h-screen bg-slate-50">
-      {/* Desktop sidebar — dark navy, sticky full-height */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col bg-[#0c2a52] lg:flex">
+      <aside className="fixed inset-y-0 left-0 z-30 flex w-60 flex-col bg-[#0c2a52]">
         <BrandHeader />
         <NavList />
         <FooterUser />
       </aside>
 
-      {/* Mobile overlay */}
-      {open && (
-        <div
-          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
-          onClick={() => setOpen(false)}
-          aria-hidden
-        />
-      )}
-
-      {/* Mobile drawer */}
-      <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col bg-[#0c2a52] shadow-2xl transition-transform duration-300 ease-out lg:hidden ${
-          open ? "translate-x-0" : "-translate-x-full"
-        }`}
-      >
-        <div className="flex items-center justify-between border-b border-white/10">
-          <BrandHeader />
-          <button
-            onClick={() => setOpen(false)}
-            className="mr-3 rounded-lg p-2 text-slate-400 hover:bg-white/5 hover:text-white"
-            aria-label="Tutup menu"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
-        <NavList onNavigate={() => setOpen(false)} />
-        <FooterUser />
-      </aside>
-
-      {/* Main content */}
-      <div className="flex min-w-0 flex-1 flex-col lg:pl-60">
-        {/* Mobile top bar */}
-        <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-zinc-200 bg-white px-4 lg:hidden">
-          <button
-            onClick={() => setOpen(true)}
-            className="-ml-2 rounded-lg p-2 text-zinc-600 hover:bg-zinc-100"
-            aria-label="Buka menu"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5">
-              <line x1="3" y1="6" x2="21" y2="6" />
-              <line x1="3" y1="12" x2="21" y2="12" />
-              <line x1="3" y1="18" x2="21" y2="18" />
-            </svg>
-          </button>
-          <span className="text-sm font-extrabold text-zinc-800">{currentLabel}</span>
-        </header>
-
+      <div className="flex min-w-0 flex-1 flex-col pl-60">
         <div className="flex-1">{children}</div>
       </div>
     </div>

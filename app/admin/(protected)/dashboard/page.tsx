@@ -2,7 +2,6 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah, jakartaTodayRange } from "@/lib/format";
 import { getSession } from "@/lib/auth";
-import { LogoutButton } from "@/components/LogoutButton";
 import { AdminInstallPrompt } from "@/components/AdminInstallPrompt";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -242,23 +241,13 @@ export default async function AdminDashboardPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-black tracking-tight text-zinc-950">
-            Dashboard Admin
-          </h1>
-          <p className="mt-2 text-sm text-zinc-600">
-            Masuk sebagai {session?.name ?? "Admin"}. Fokus utama: order masuk dan stok kritis.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <AdminNavLink href="/admin/orders">Order</AdminNavLink>
-          <AdminNavLink href="/admin/products">Produk</AdminNavLink>
-          <AdminNavLink href="/admin/vouchers">Voucher</AdminNavLink>
-          <AdminNavLink href="/admin/reviews">Review</AdminNavLink>
-          <LogoutButton redirectTo="/admin/login" />
-        </div>
+      <div>
+        <h1 className="text-3xl font-black tracking-tight text-zinc-950">
+          Dashboard Admin
+        </h1>
+        <p className="mt-2 text-sm text-zinc-600">
+          Masuk sebagai {session?.name ?? "Admin"}. Fokus utama: order masuk dan stok kritis.
+        </p>
       </div>
 
       {paidUnshippedCount > 0 && (
@@ -366,17 +355,6 @@ export default async function AdminDashboardPage() {
         </aside>
       </div>
     </div>
-  );
-}
-
-function AdminNavLink({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <Link
-      href={href}
-      className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-bold text-zinc-700 hover:border-zinc-500"
-    >
-      {children}
-    </Link>
   );
 }
 
