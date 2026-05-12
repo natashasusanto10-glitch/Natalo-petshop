@@ -142,13 +142,15 @@ export function BottomNavigation() {
 
   return (
     <nav className="bottom-nav nat-bottom-nav md:hidden" aria-label="Navigasi utama">
-      {/* Safe-area shield — gradient putih solid di bawah pill supaya content
-          yang scroll di safe-area zone (home indicator iPhone) tidak terlihat
-          bocor. Posisi absolute supaya tidak mengganggu pointer event pill.
-          Top-edge gradient ke transparent supaya floating look tetap natural. */}
+      {/* Full-width backdrop edge-fade — gradient putih dari transparent di
+          atas → solid putih di bawah. Cover ENTIRE nav zone (pill height +
+          margin + safe-area), bukan cuma safe-area. Tujuan: content scroll
+          fade lembut ke putih sebelum hilang di belakang pill, side strips
+          (di kiri/kanan pill mx-3) tidak lagi expose product card. Pill
+          tetap floating di atas via z-stacking + shadow. */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-[calc(env(safe-area-inset-bottom)+12px)] bg-gradient-to-t from-white via-white/95 to-white/0"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-[calc(env(safe-area-inset-bottom)+100px)] bg-gradient-to-t from-white from-72% to-white/0"
       />
       <div className="pointer-events-auto relative mx-3 mb-2">
         <div className="relative grid h-[60px] grid-cols-4 overflow-hidden rounded-full border border-black/[0.06] bg-white/95 shadow-[0_10px_32px_rgba(15,40,80,0.16)] backdrop-blur-xl backdrop-saturate-150">
