@@ -193,10 +193,22 @@ export default function BantuanPage() {
             Tentang Natalo
           </Link>
           <Link
+            href="/syarat-ketentuan"
+            className="rounded-xl border border-natalo-200 bg-white px-4 py-3 text-sm font-bold text-natalo-800 hover:bg-natalo-100"
+          >
+            Syarat & Ketentuan
+          </Link>
+          <Link
             href="/kebijakan-privasi"
             className="rounded-xl border border-natalo-200 bg-white px-4 py-3 text-sm font-bold text-natalo-800 hover:bg-natalo-100"
           >
             Kebijakan Privasi
+          </Link>
+          <Link
+            href="/kebijakan-pengembalian"
+            className="rounded-xl border border-natalo-200 bg-white px-4 py-3 text-sm font-bold text-natalo-800 hover:bg-natalo-100"
+          >
+            Kebijakan Pengembalian
           </Link>
         </div>
       </div>

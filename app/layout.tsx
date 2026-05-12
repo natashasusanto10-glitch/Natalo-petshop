@@ -3,6 +3,7 @@ import { Nunito } from "next/font/google";
 import "./globals.css";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
+import { WebOnlyFooter } from "@/components/WebOnlyFooter";
 import { PWARegister } from "@/components/PWARegister";
 import { NativeSwipeBackController } from "@/components/NativeSwipeBackController";
 import { SwipeBackProvider } from "@/components/SwipeBackProvider";
@@ -179,7 +180,13 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <SwipeBackProvider>{children}</SwipeBackProvider>
         </main>
         <StoreOnly>
-          <Footer />
+          {/* Footer hanya tampil di web/PWA. Di Capacitor native shell (iOS
+              .ipa / Android APK), bottom navigation + halaman /bantuan sudah
+              cukup — footer besar redundant. Cegah footer + bottom nav muncul
+              bersamaan di app. */}
+          <WebOnlyFooter>
+            <Footer />
+          </WebOnlyFooter>
           <WhatsAppFloat />
           <BottomNavigation />
           <InstallPrompt />

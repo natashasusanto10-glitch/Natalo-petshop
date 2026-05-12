@@ -1,22 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-
-/**
- * Cek apakah app jalan di dalam Capacitor native WebView (TestFlight .ipa /
- * Android APK). Capacitor inject `window.Capacitor` global runtime.
- */
-function isCapacitorNative(): boolean {
-  if (typeof window === "undefined") return false;
-  // @ts-expect-error — runtime global, no type
-  const cap = window.Capacitor;
-  if (!cap) return false;
-  try {
-    return typeof cap.isNativePlatform === "function" && cap.isNativePlatform();
-  } catch {
-    return false;
-  }
-}
+import { isCapacitorNative } from "@/lib/native-platform";
 
 export function PWARegister() {
   useEffect(() => {
