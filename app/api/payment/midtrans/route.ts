@@ -15,7 +15,10 @@ type MidtransNotification = {
   payment_type?: string;
 };
 
-function verifySignature(notification: MidtransNotification, serverKey: string) {
+function verifySignature(
+  notification: MidtransNotification,
+  serverKey: string
+) {
   const raw = `${notification.order_id}${notification.status_code}${notification.gross_amount}${serverKey}`;
   const expected = createHash("sha512").update(raw).digest("hex");
   return expected === notification.signature_key;
@@ -27,7 +30,12 @@ function resolvePaymentStatus(transactionStatus: string, fraudStatus?: string) {
   }
   if (transactionStatus === "settlement") return "PAID";
   if (transactionStatus === "pending") return "PENDING";
-  if (transactionStatus === "deny" || transactionStatus === "cancel" || transactionStatus === "expire") return "FAILED";
+  if (
+    transactionStatus === "deny" ||
+    transactionStatus === "cancel" ||
+    transactionStatus === "expire"
+  )
+    return "FAILED";
   if (transactionStatus === "refund") return "REFUNDED";
   return "PENDING";
 }
@@ -35,13 +43,19 @@ function resolvePaymentStatus(transactionStatus: string, fraudStatus?: string) {
 export async function POST(request: NextRequest) {
   const serverKey = process.env.MIDTRANS_SERVER_KEY;
   if (!serverKey) {
-    return NextResponse.json({ message: "Server key tidak dikonfigurasi" }, { status: 500 });
+    return NextResponse.json(
+      { message: "Server key tidak dikonfigurasi" },
+      { status: 500 }
+    );
   }
 
   const notification: MidtransNotification = await request.json();
 
   if (!verifySignature(notification, serverKey)) {
-    return NextResponse.json({ message: "Signature tidak valid" }, { status: 403 });
+    return NextResponse.json(
+      { message: "Signature tidak valid" },
+      { status: 403 }
+    );
   }
 
   const paymentStatus = resolvePaymentStatus(
@@ -54,23 +68,43 @@ export async function POST(request: NextRequest) {
   });
 
   if (!order) {
-    return NextResponse.json({ message: "Order tidak ditemukan" }, { status: 404 });
+    return NextResponse.json(
+      { message: "Order tidak ditemukan" },
+      { status: 404 }
+    );
   }
 
   const updatedOrder = await prisma.order.update({
     where: { orderNumber: notification.order_id },
     data: {
       paymentStatus,
-      status: paymentStatus === "PAID" && order.status === "PENDING" ? "PAID" : undefined,
+      status:
+        paymentStatus === "PAID" && order.status === "PENDING"
+          ? "PAID"
+          : paymentStatus === "REFUNDED"
+          ? "REFUNDED"
+          : undefined,
     },
   });
 
   if (paymentStatus === "PAID" && order.paymentStatus !== "PAID") {
     createBiteshipShipmentIfReady(updatedOrder.id).catch(() => {});
-    sendOrderStatusPush(updatedOrder.id, updatedOrder.orderNumber, "PAID").catch(() => {});
+    sendOrderStatusPush(
+      updatedOrder.id,
+      updatedOrder.orderNumber,
+      "PAID"
+    ).catch(() => {});
     sendPaymentConfirmed(updatedOrder).catch((error) => {
       console.error("[whatsapp] payment confirmed notification failed", error);
     });
+  }
+
+  if (paymentStatus === "REFUNDED" && order.paymentStatus !== "REFUNDED") {
+    sendOrderStatusPush(
+      updatedOrder.id,
+      updatedOrder.orderNumber,
+      "REFUNDED"
+    ).catch(() => {});
   }
 
   return NextResponse.json({ message: "OK" });
