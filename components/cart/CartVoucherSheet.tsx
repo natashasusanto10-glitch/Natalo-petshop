@@ -326,29 +326,28 @@ function MemberVoucherRow({
         disabled
           ? "cursor-not-allowed border-zinc-200 bg-zinc-50/60 opacity-70"
           : selected
-          ? "border-natalo-400 bg-natalo-50 ring-1 ring-natalo-300"
-          : "border-zinc-200 bg-white active:bg-zinc-50"
+          ? "border-amber-400 bg-amber-50 ring-1 ring-amber-300"
+          : "border-amber-200 bg-amber-50 active:bg-amber-100"
       }`}
     >
+      <div className={`w-2 shrink-0 ${disabled ? "bg-zinc-200" : "bg-amber-400"}`} />
       <div className="flex flex-1 flex-col justify-center px-3 py-3">
         <p className={`text-sm font-extrabold ${disabled ? "text-zinc-500" : "text-zinc-950"}`}>
-          {voucher.discount > 0
-            ? `Hemat Rp${new Intl.NumberFormat("id-ID").format(voucher.discount)}`
-            : "Voucher Member Natalo"}
+          {voucher.discount > 0 ? `Diskon ${formatRupiah(voucher.discount)}` : "Voucher Member Natalo"}
         </p>
         <p className="mt-0.5 text-xs text-zinc-500">
           {voucher.minimumOrder > 0
-            ? `Min. belanja Rp${new Intl.NumberFormat("id-ID").format(voucher.minimumOrder)}`
+            ? `Min. belanja ${formatRupiah(voucher.minimumOrder)}`
             : "Tanpa minimum belanja"}
         </p>
-        <p className="mt-0.5 text-[11px] font-bold text-blue-700">Eksklusif member</p>
+        <p className="mt-0.5 text-[11px] font-bold text-amber-700">Eksklusif member Natalo</p>
         {disabled && voucher.disabledReason && (
           <p className="mt-1 text-[11px] font-bold text-amber-700">
             {voucher.disabledReason}
           </p>
         )}
       </div>
-      <div className={`flex shrink-0 items-center px-4 ${disabled ? "text-zinc-400" : "text-natalo-700"}`}>
+      <div className={`flex shrink-0 items-center px-4 ${disabled ? "text-zinc-400" : "text-amber-700"}`}>
         <span className="text-sm font-extrabold">
           {voucher.discount > 0
             ? `Rp${new Intl.NumberFormat("id-ID").format(voucher.discount)}`

@@ -13,26 +13,35 @@ import { formatRupiah } from "@/lib/format";
 type Props = {
   isLoggedIn: boolean;
   memberVoucher: { code: string; discount: number } | null;
+  previewVoucher?: { discount: number; minimumOrder: number } | null;
   onClick: () => void;
 };
 
 export function VoucherClaimBar({
   isLoggedIn,
   memberVoucher,
+  previewVoucher,
   onClick,
 }: Props) {
   const summary = memberVoucher
     ? `Voucher member dipakai · Hemat ${formatRupiah(memberVoucher.discount)}`
     : null;
+  const preview = previewVoucher?.discount
+    ? `Diskon ${formatRupiah(previewVoucher.discount)}`
+    : "Voucher Member Natalo";
+  const previewMinOrder =
+    previewVoucher && previewVoucher.minimumOrder > 0
+      ? `Min. belanja ${formatRupiah(previewVoucher.minimumOrder)}`
+      : "Eksklusif khusus member Natalo";
 
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center gap-3 rounded-2xl border border-blue-100 bg-blue-50/70 px-4 py-3 text-left transition active:bg-blue-100/80"
+      className="flex w-full items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left shadow-sm transition active:bg-amber-100"
       aria-label="Buka pilihan voucher"
     >
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-blue-600">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-amber-600 shadow-sm">
         <svg
           aria-hidden
           viewBox="0 0 24 24"
@@ -54,24 +63,24 @@ export function VoucherClaimBar({
             <span className="block text-sm font-extrabold text-blue-900">
               1 voucher dipakai
             </span>
-            <span className="mt-0.5 block truncate text-xs font-semibold text-blue-700">
+            <span className="mt-0.5 block truncate text-xs font-semibold text-amber-700">
               {summary}
             </span>
           </>
         ) : (
           <>
-            <span className="block text-sm font-extrabold text-blue-900">
-              Voucher Member Natalo
+            <span className="block text-sm font-extrabold text-amber-950">
+              {isLoggedIn ? preview : "Voucher Member Natalo"}
             </span>
-            <span className="mt-0.5 block text-xs text-blue-700">
+            <span className="mt-0.5 block text-xs font-semibold text-amber-700">
               {isLoggedIn
-                ? "Eksklusif khusus member Natalo"
+                ? previewMinOrder
                 : "Login dulu untuk klaim voucher member"}
             </span>
           </>
         )}
       </span>
-      <span className="flex shrink-0 items-center gap-1 text-xs font-extrabold text-blue-700">
+      <span className="flex shrink-0 items-center gap-1 text-xs font-extrabold text-amber-700">
         {summary ? "Ubah" : "Klaim"}
         <svg
           aria-hidden

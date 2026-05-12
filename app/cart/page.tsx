@@ -33,9 +33,15 @@ const CHECKOUT_SELECTION_KEY = "checkout:selectedCartItems";
 const CART_VOUCHER_KEY = "cart:voucher";
 
 type CartAppliedMember = { code: string; discount: number; description: string };
+type CartVoucherPreview = { discount: number; minimumOrder: number };
 
 function cartKey(item: CartItem) {
   return `${item.productId}:${item.variantId ?? ""}`;
+}
+
+function itemSelectionLabel(kindCount: number, quantityCount: number) {
+  if (kindCount <= 0) return "Belum ada produk dipilih";
+  return `${kindCount} jenis produk (${quantityCount} item)`;
 }
 
 function TrashIcon({ className = "h-4 w-4" }: { className?: string }) {
@@ -72,6 +78,7 @@ export default function CartPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [voucherSheetOpen, setVoucherSheetOpen] = useState(false);
   const [memberVoucher, setMemberVoucher] = useState<CartAppliedMember | null>(null);
+  const [memberVoucherPreview, setMemberVoucherPreview] = useState<CartVoucherPreview | null>(null);
 
   // Delete confirmation modal state
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -172,6 +179,34 @@ export default function CartPage() {
   );
   const selectedTotal = Math.max(selectedSubtotal - voucherDiscount, 0);
   const allSelected = items.length > 0 && selectedKeys.size === items.length;
+  const selectionLabel = itemSelectionLabel(selectedCount, selectedQuantity);
+
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setMemberVoucherPreview(null);
+      return;
+    }
+
+    let active = true;
+    fetch(`/api/cart/vouchers?subtotal=${selectedSubtotal}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!active) return;
+        const vouchers = [
+          ...((Array.isArray(data?.available) ? data.available : []) as CartVoucherPreview[]),
+          ...((Array.isArray(data?.unavailable) ? data.unavailable : []) as CartVoucherPreview[]),
+        ].filter((voucher) => voucher.discount > 0);
+        vouchers.sort((a, b) => b.discount - a.discount);
+        setMemberVoucherPreview(vouchers[0] ?? null);
+      })
+      .catch(() => {
+        if (active) setMemberVoucherPreview(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isLoggedIn, selectedSubtotal]);
 
   function persist(next: CartItem[]) {
     setItems(next);
@@ -391,12 +426,12 @@ export default function CartPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-4 pb-[calc(150px+env(safe-area-inset-bottom))] md:py-10 md:pb-10">
+    <div className="mx-auto max-w-3xl px-4 py-4 pb-[calc(104px+env(safe-area-inset-bottom))] md:py-10 md:pb-10">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-black tracking-tight text-gray-900 md:text-3xl">Keranjang</h1>
           <p className="mt-1 text-sm font-semibold text-gray-500">
-            {selectedCount > 0 ? `${selectedCount} produk terpilih` : "Belum ada produk dipilih"}
+            {selectionLabel}
           </p>
         </div>
         {items.length > 0 && (
@@ -430,7 +465,7 @@ export default function CartPage() {
                 Pilih Semua
               </label>
               <span className="shrink-0 text-xs font-semibold text-gray-500">
-                {selectedQuantity} item
+                {selectionLabel}
               </span>
             </div>
 
@@ -438,6 +473,7 @@ export default function CartPage() {
               <VoucherClaimBar
                 isLoggedIn={isLoggedIn}
                 memberVoucher={memberVoucher}
+                previewVoucher={memberVoucherPreview}
                 onClick={() => setVoucherSheetOpen(true)}
               />
             </div>
@@ -460,6 +496,10 @@ export default function CartPage() {
                 const key = cartKey(item);
                 const checked = selectedKeys.has(key);
                 const lineTotal = item.price * item.quantity;
+                const showStockWarning =
+                  item.stock != null && item.stock > 0 && item.quantity >= item.stock * 0.5;
+                const remainingStock =
+                  item.stock != null ? Math.max(item.stock - item.quantity, 0) : null;
 
                 return (
                   <SwipeableCartRow key={key} onDelete={() => handleSwipeDelete(item)}>
@@ -527,6 +567,11 @@ export default function CartPage() {
                                 Stok {item.stock}
                               </p>
                             )}
+                            {showStockWarning && remainingStock !== null && (
+                              <p className="mt-1 inline-flex rounded-full bg-amber-50 px-2 py-1 text-[11px] font-black text-amber-700 ring-1 ring-amber-100">
+                                Tersisa {remainingStock} dari {item.stock} stok
+                              </p>
+                            )}
                           </div>
 
                           <div className="flex shrink-0 items-center rounded-full border border-gray-200 bg-white">
@@ -566,8 +611,10 @@ export default function CartPage() {
                 <span className="font-semibold text-gray-700">{formatRupiah(selectedSubtotal)}</span>
               </div>
               {voucherDiscount > 0 && (
-                <div className="flex items-center justify-between text-sm text-natalo-700">
-                  <span>Diskon voucher</span>
+                <div className="flex items-center justify-between text-sm text-amber-700">
+                  <span className="inline-flex rounded-full bg-amber-50 px-2 py-1 text-xs font-black ring-1 ring-amber-100">
+                    Hemat {formatRupiah(voucherDiscount)} dgn voucher
+                  </span>
                   <span className="font-semibold">−{formatRupiah(voucherDiscount)}</span>
                 </div>
               )}
@@ -583,7 +630,7 @@ export default function CartPage() {
               disabled={selectedCount === 0 || stockRefreshing}
               className="mt-5 flex w-full items-center justify-center rounded-full bg-blue-500 py-4 text-sm font-bold text-white transition-all duration-100 hover:bg-blue-600 active:scale-95 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:active:scale-100"
             >
-              {stockRefreshing ? "Cek stok..." : `Checkout (${selectedCount})`}
+              {stockRefreshing ? "Cek stok..." : `Checkout (${selectedQuantity})`}
             </button>
             <Link
               href="/products"
@@ -628,7 +675,7 @@ export default function CartPage() {
       />
 
       {items.length > 0 && (
-        <div className="fixed inset-x-0 z-40 border-t border-gray-100 bg-white px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] md:hidden [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom))]">
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-100 bg-white px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] md:hidden [padding-bottom:calc(12px+env(safe-area-inset-bottom))]">
           <div className="mx-auto flex max-w-3xl items-center gap-3">
             <label className="flex shrink-0 items-center gap-2 text-xs font-bold text-gray-600">
               <input
@@ -641,7 +688,7 @@ export default function CartPage() {
             </label>
             <div className="min-w-0 flex-1 text-right">
               <p className="text-[11px] font-semibold text-gray-500">
-                {voucherDiscount > 0 ? `Total (hemat ${formatRupiah(voucherDiscount)})` : "Total"}
+                {voucherDiscount > 0 ? `Hemat ${formatRupiah(voucherDiscount)} dgn voucher` : "Total"}
               </p>
               <p className="truncate text-base font-black text-gray-900">{formatRupiah(selectedTotal)}</p>
             </div>
@@ -651,7 +698,7 @@ export default function CartPage() {
               disabled={selectedCount === 0 || stockRefreshing}
               className="flex h-12 shrink-0 items-center justify-center rounded-full bg-blue-500 px-5 text-sm font-black text-white transition-transform duration-100 active:scale-95 active:opacity-90 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:active:scale-100"
             >
-              {stockRefreshing ? "Cek stok..." : `Checkout (${selectedCount})`}
+              {stockRefreshing ? "Cek stok..." : `Checkout (${selectedQuantity})`}
             </button>
           </div>
         </div>

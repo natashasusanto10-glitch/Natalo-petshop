@@ -25,7 +25,6 @@ const MAIN_TAB_PATHS = new Set([
   "/products",
   "/produk",
   "/kategori",
-  "/cart",
   "/member",
   "/akun",
 ]);

@@ -14,6 +14,9 @@ export const HIDDEN_BOTTOM_NAV_PATTERNS: RegExp[] = [
   // Detail produk — fokus konversi, diganti sticky bottom CTA
   /^\/products\/[^/]+$/,
 
+  // Keranjang — task-focused flow menuju checkout, tanpa bottom tab distraction
+  /^\/cart$/,
+
   // Checkout & sub-pages — fokus selesaikan transaksi
   /^\/checkout(\/|$)/,
 
