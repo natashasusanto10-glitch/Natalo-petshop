@@ -19,6 +19,11 @@ function safeRedirect(value: string | null) {
   return value;
 }
 
+// Cooldown sebelum "Kirim ulang OTP" boleh ditekan ulang. Fonnte Free plan
+// delay 30-60 detik antara queue → delivered, jadi user perlu sabar dulu
+// sebelum minta resend. Mencegah double-send + impatient user spam.
+const RESEND_COOLDOWN_SEC = 60;
+
 export default function MemberRegisterPage() {
   const [redirectTo, setRedirectTo] = useState("/");
   const [name, setName] = useState("");
@@ -31,11 +36,18 @@ export default function MemberRegisterPage() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   useEffect(() => {
     const url = new URL(window.location.href);
     setRedirectTo(safeRedirect(url.searchParams.get("redirect")));
   }, []);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const id = window.setTimeout(() => setResendCooldown((s) => s - 1), 1000);
+    return () => window.clearTimeout(id);
+  }, [resendCooldown]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -77,6 +89,7 @@ export default function MemberRegisterPage() {
 
     if (data.otpRequired) {
       setOtpSent(true);
+      setResendCooldown(RESEND_COOLDOWN_SEC);
       setNotice(data.message || "Kode OTP sudah dikirim.");
       return;
     }
@@ -87,6 +100,7 @@ export default function MemberRegisterPage() {
   }
 
   async function handleResendOtp() {
+    if (resendCooldown > 0) return;
     setOtp("");
     setOtpSent(false);
     setNotice("");
@@ -165,8 +179,11 @@ export default function MemberRegisterPage() {
           </div>
 
           <div className="rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-xs text-blue-800">
-            <p className="font-semibold">Kode OTP akan dikirim ke email <span className="underline">dan</span> WhatsApp kamu.</p>
-            <p className="mt-1 text-blue-700/80">Pastikan keduanya aktif — kamu cukup masukkan satu kode yang sama.</p>
+            <p className="font-semibold">Kode OTP dikirim ke email <span className="underline">dan</span> WhatsApp kamu.</p>
+            <p className="mt-1 text-blue-700/80">
+              Email biasanya masuk dalam beberapa detik. WhatsApp bisa butuh
+              30–60 detik. Cukup masukkan satu kode yang sama.
+            </p>
           </div>
 
           <div>
@@ -216,11 +233,20 @@ export default function MemberRegisterPage() {
                 placeholder="000000"
               />
               <p className="mt-2 text-xs text-gray-600">
-                Kode berlaku 10 menit. Cek inbox email atau WhatsApp kamu — gunakan salah satunya.
+                Kode berlaku 10 menit. WhatsApp bisa butuh{" "}
+                <span className="font-semibold">30–60 detik</span> — kalau cepat, cek inbox email
+                kamu dulu. Gunakan salah satu kode yang masuk.
               </p>
               <div className="mt-3 flex flex-wrap gap-3 text-xs font-bold">
-                <button type="button" onClick={handleResendOtp} className="text-blue-700 hover:underline">
-                  Kirim ulang OTP
+                <button
+                  type="button"
+                  onClick={handleResendOtp}
+                  disabled={resendCooldown > 0}
+                  className="text-blue-700 hover:underline disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline"
+                >
+                  {resendCooldown > 0
+                    ? `Kirim ulang OTP (${resendCooldown}s)`
+                    : "Kirim ulang OTP"}
                 </button>
                 <button type="button" onClick={unlockEdit} className="text-gray-600 hover:underline">
                   Ubah data

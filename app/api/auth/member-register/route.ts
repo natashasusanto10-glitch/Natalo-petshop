@@ -260,13 +260,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Pesan jujur tentang delay Fonnte Free plan (WA bisa pending 30-60s di
+  // queue). Email biasanya jauh lebih cepat, jadi arahkan user cek email dulu.
   let message: string;
   if (emailOk && waOk) {
-    message = "Kode OTP sudah dikirim ke email & WhatsApp kamu.";
+    message =
+      "OTP dikirim. WhatsApp bisa butuh 30–60 detik — sementara cek email kamu dulu.";
   } else if (emailOk) {
     message = "Kode OTP dikirim ke email (pengiriman WhatsApp gagal). Cek inbox email kamu.";
   } else {
-    message = "Kode OTP dikirim ke WhatsApp (pengiriman email gagal). Cek WhatsApp kamu.";
+    message =
+      "Kode OTP dikirim ke WhatsApp (pengiriman email gagal). Tunggu 30–60 detik atau cek folder spam.";
   }
 
   return NextResponse.json({
