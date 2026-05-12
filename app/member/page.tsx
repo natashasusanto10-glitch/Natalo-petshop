@@ -164,6 +164,11 @@ export default async function MemberPage() {
           { href: "#voucher-member", icon: "🎟️", label: "Voucher Member" },
           { href: "/member/profile", icon: "👤", label: "Pengaturan Akun" },
           { href: "/bantuan", icon: "💬", label: "Bantuan" },
+          {
+            href: "/akun/pengaturan/notifikasi",
+            icon: "🔔",
+            label: "Notifikasi",
+          },
         ].map((item) => (
           <Link
             key={item.href}
@@ -245,15 +250,18 @@ export default async function MemberPage() {
             </p>
           )}
         </div>
-        <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5">
+        <Link
+          href="/akun/pengaturan/notifikasi"
+          className="block rounded-2xl border border-blue-100 bg-blue-50 p-5 transition hover:border-blue-200 hover:bg-blue-100/70"
+        >
           <p className="text-sm font-semibold text-blue-700">
-            Notifikasi Order
+            Pengaturan Notifikasi
           </p>
           <p className="mt-2 font-bold text-gray-900">Pantau pesananmu</p>
           <p className="mt-1 text-sm text-gray-500">
-            Detail pesanan lengkap tersedia di menu Pesanan Saya.
+            Kelola notifikasi pesanan, promo, chat toko, dan produk favorit.
           </p>
-        </div>
+        </Link>
       </div>
 
       <div className="mt-8 border-t border-zinc-100 pt-6 text-center text-xs">

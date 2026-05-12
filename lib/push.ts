@@ -15,6 +15,7 @@ export type PushPayload = {
   title: string;
   body: string;
   url?: string;
+  data?: Record<string, string>;
   /** Group key — notification dgn tag sama akan replace existing, bukan stack */
   tag?: string;
   /** Action buttons (Android only — iOS Safari ignore) */
@@ -46,16 +47,26 @@ export async function sendPushToUser(userId: string, payload: PushPayload) {
     subs.map(async (sub) => {
       try {
         await webpush.sendNotification(
-          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-          data,
+          {
+            endpoint: sub.endpoint,
+            keys: { p256dh: sub.p256dh, auth: sub.auth },
+          },
+          data
         );
       } catch (err: unknown) {
         // Remove expired/invalid subscriptions
-        if (err && typeof err === "object" && "statusCode" in err && (err.statusCode === 404 || err.statusCode === 410)) {
-          await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => {});
+        if (
+          err &&
+          typeof err === "object" &&
+          "statusCode" in err &&
+          (err.statusCode === 404 || err.statusCode === 410)
+        ) {
+          await prisma.pushSubscription
+            .delete({ where: { id: sub.id } })
+            .catch(() => {});
         }
       }
-    }),
+    })
   );
 }
 
@@ -67,6 +78,96 @@ const STATUS_TITLES: Record<string, string> = {
   CANCELLED: "❌ Pesanan Dibatalkan",
   REFUNDED: "💸 Refund Diproses",
 };
+
+export const ORDER_PUSH_EVENT_TYPE = "order_status_update";
+
+function appendQueryParam(path: string, key: string, value: string) {
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}${encodeURIComponent(key)}=${encodeURIComponent(
+    value
+  )}`;
+}
+
+export function buildOrderStatusPushPayload(params: {
+  orderId: string;
+  orderNumber: string;
+  status: string;
+  trackingToken?: string | null;
+  trackingNumber?: string | null;
+  courierCode?: string | null;
+  courierService?: string | null;
+}): PushPayload | null {
+  const title = STATUS_TITLES[params.status];
+  if (!title) return null;
+
+  const detailPath = buildOrderDetailPath(
+    params.orderNumber,
+    params.trackingToken
+  );
+  const url =
+    params.status === "DELIVERED"
+      ? appendQueryParam(detailPath, "review", "1")
+      : detailPath;
+
+  let body = "";
+  let actions: PushPayload["actions"] | undefined;
+  let requireInteraction = false;
+
+  switch (params.status) {
+    case "PAID":
+      body = `Pembayaran ${params.orderNumber} dikonfirmasi. Pesanan sedang disiapkan.`;
+      break;
+    case "PROCESSING":
+      body = `Pesanan ${params.orderNumber} sedang dipacking tim kami.`;
+      break;
+    case "SHIPPED": {
+      const parts: string[] = [];
+      const courier = (
+        params.courierService ||
+        params.courierCode ||
+        ""
+      ).trim();
+      if (courier) parts.push(courier.toUpperCase());
+      if (params.trackingNumber) parts.push(`AWB ${params.trackingNumber}`);
+      body = parts.length
+        ? `${params.orderNumber} dikirim via ${parts.join(
+            " - "
+          )}. Tap untuk tracking.`
+        : `Pesanan ${params.orderNumber} sudah dikirim. Tap untuk lihat detail.`;
+      actions = [{ action: "track", title: "Lacak Paket" }];
+      requireInteraction = true;
+      break;
+    }
+    case "DELIVERED":
+      body = `Pesanan ${params.orderNumber} sudah sampai. Bantu beri rating untuk produk yang kamu beli.`;
+      actions = [{ action: "review", title: "Beri Review" }];
+      break;
+    case "CANCELLED":
+      body = `Pesanan ${params.orderNumber} dibatalkan. Hubungi admin kalau ada pertanyaan.`;
+      break;
+    case "REFUNDED":
+      body = `Refund untuk ${params.orderNumber} sudah diproses. Dana akan masuk dalam 3-5 hari kerja.`;
+      break;
+    default:
+      return null;
+  }
+
+  return {
+    title,
+    body,
+    url,
+    tag: `order-${params.orderNumber}`,
+    actions,
+    requireInteraction,
+    data: {
+      type: ORDER_PUSH_EVENT_TYPE,
+      order_id: params.orderId,
+      order_number: params.orderNumber,
+      order_status: params.status,
+      url,
+    },
+  };
+}
 
 /**
  * Push notification untuk update status order. Fire-and-forget — caller
@@ -82,7 +183,11 @@ const STATUS_TITLES: Record<string, string> = {
  * Tag konsisten per orderNumber → notification baru replace lama
  * (tidak stack 5 notif untuk 1 order yg status-nya berubah-ubah).
  */
-export async function sendOrderStatusPush(orderId: string, orderNumber: string, status: string) {
+export async function sendOrderStatusPush(
+  orderId: string,
+  orderNumber: string,
+  status: string
+) {
   const order = await prisma.order
     .findUnique({
       where: { id: orderId },
@@ -97,7 +202,11 @@ export async function sendOrderStatusPush(orderId: string, orderNumber: string, 
     .catch(() => null);
   if (!order?.userId) return;
 
-  const url = buildOrderDetailPath(orderNumber, order.trackingToken);
+  const detailPath = buildOrderDetailPath(orderNumber, order.trackingToken);
+  const url =
+    status === "DELIVERED"
+      ? appendQueryParam(detailPath, "review", "1")
+      : detailPath;
   const title = STATUS_TITLES[status];
   if (!title) return;
 
@@ -146,6 +255,13 @@ export async function sendOrderStatusPush(orderId: string, orderNumber: string, 
     tag: `order-${orderNumber}`, // konsisten per order — replace existing
     actions,
     requireInteraction,
+    data: {
+      type: ORDER_PUSH_EVENT_TYPE,
+      order_id: orderId,
+      order_number: orderNumber,
+      order_status: status,
+      url,
+    },
   };
 
   // Kirim ke 3 channel push paralel + insert Announcement personal:

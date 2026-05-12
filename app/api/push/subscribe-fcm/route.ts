@@ -3,8 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 
 /**
- * FCM token registration — dipanggil dari PushSubscribe.tsx saat user
- * di-Android-native subscribe ke push.
+ * FCM token registration — dipanggil dari app-level push manager/settings
+ * saat user Android native subscribe ke push.
  *
  * FCM token disimpan di table PushSubscription yang sama dengan Web Push
  * & APNs, dengan format `endpoint = "fcm:<token>"` untuk dedup. Backend
@@ -17,6 +17,9 @@ export async function POST(req: NextRequest) {
   }
 
   const session = await getSession("CUSTOMER");
+  if (!session || session.role !== "CUSTOMER") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   const endpoint = `fcm:${body.token}`;
 
   await prisma.pushSubscription.upsert({
@@ -26,13 +29,13 @@ export async function POST(req: NextRequest) {
       // bukan VAPID keys). Schema field NOT NULL jadi pakai string kosong.
       p256dh: "",
       auth: "",
-      userId: session?.sub ?? null,
+      userId: session.sub,
     },
     create: {
       endpoint,
       p256dh: "",
       auth: "",
-      userId: session?.sub ?? null,
+      userId: session.sub,
     },
   });
 

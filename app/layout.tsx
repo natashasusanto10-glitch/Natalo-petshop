@@ -23,6 +23,7 @@ import { KeyboardManager } from "@/components/KeyboardManager";
 import { NetworkStatusBanner } from "@/components/NetworkStatusBanner";
 import { DeepLinkHandler } from "@/components/DeepLinkHandler";
 import { ViewTransitionsProvider } from "@/components/ViewTransitionsProvider";
+import { PushNotificationManager } from "@/components/PushNotificationManager";
 
 const nunito = Nunito({
   subsets: ["latin"],
@@ -92,30 +93,118 @@ export const metadata: Metadata = {
     // satupun media query di atas.
     startupImage: [
       // Light mode + size-specific
-      { url: "/splash/iphone-16-pro-max-portrait.png", media: "(prefers-color-scheme: light) and (device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" },
-      { url: "/splash/iphone-16-pro-portrait.png", media: "(prefers-color-scheme: light) and (device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" },
-      { url: "/splash/iphone-15-pro-max-portrait.png", media: "(prefers-color-scheme: light) and (device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" },
-      { url: "/splash/iphone-15-portrait.png", media: "(prefers-color-scheme: light) and (device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" },
-      { url: "/splash/iphone-14-pro-max-portrait.png", media: "(prefers-color-scheme: light) and (device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" },
-      { url: "/splash/iphone-14-portrait.png", media: "(prefers-color-scheme: light) and (device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" },
-      { url: "/splash/iphone-12-mini-portrait.png", media: "(prefers-color-scheme: light) and (device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" },
-      { url: "/splash/iphone-xs-max-portrait.png", media: "(prefers-color-scheme: light) and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" },
-      { url: "/splash/iphone-xr-portrait.png", media: "(prefers-color-scheme: light) and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" },
-      { url: "/splash/iphone-8-plus-portrait.png", media: "(prefers-color-scheme: light) and (device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" },
-      { url: "/splash/iphone-se-portrait.png", media: "(prefers-color-scheme: light) and (device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" },
+      {
+        url: "/splash/iphone-16-pro-max-portrait.png",
+        media:
+          "(prefers-color-scheme: light) and (device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
+      },
+      {
+        url: "/splash/iphone-16-pro-portrait.png",
+        media:
+          "(prefers-color-scheme: light) and (device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
+      },
+      {
+        url: "/splash/iphone-15-pro-max-portrait.png",
+        media:
+          "(prefers-color-scheme: light) and (device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
+      },
+      {
+        url: "/splash/iphone-15-portrait.png",
+        media:
+          "(prefers-color-scheme: light) and (device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
+      },
+      {
+        url: "/splash/iphone-14-pro-max-portrait.png",
+        media:
+          "(prefers-color-scheme: light) and (device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
+      },
+      {
+        url: "/splash/iphone-14-portrait.png",
+        media:
+          "(prefers-color-scheme: light) and (device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
+      },
+      {
+        url: "/splash/iphone-12-mini-portrait.png",
+        media:
+          "(prefers-color-scheme: light) and (device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
+      },
+      {
+        url: "/splash/iphone-xs-max-portrait.png",
+        media:
+          "(prefers-color-scheme: light) and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
+      },
+      {
+        url: "/splash/iphone-xr-portrait.png",
+        media:
+          "(prefers-color-scheme: light) and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)",
+      },
+      {
+        url: "/splash/iphone-8-plus-portrait.png",
+        media:
+          "(prefers-color-scheme: light) and (device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
+      },
+      {
+        url: "/splash/iphone-se-portrait.png",
+        media:
+          "(prefers-color-scheme: light) and (device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)",
+      },
 
       // Dark mode + size-specific (PNG sama — brand blue tetap konsisten gelap/terang)
-      { url: "/splash/iphone-16-pro-max-portrait.png", media: "(prefers-color-scheme: dark) and (device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" },
-      { url: "/splash/iphone-16-pro-portrait.png", media: "(prefers-color-scheme: dark) and (device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" },
-      { url: "/splash/iphone-15-pro-max-portrait.png", media: "(prefers-color-scheme: dark) and (device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" },
-      { url: "/splash/iphone-15-portrait.png", media: "(prefers-color-scheme: dark) and (device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" },
-      { url: "/splash/iphone-14-pro-max-portrait.png", media: "(prefers-color-scheme: dark) and (device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" },
-      { url: "/splash/iphone-14-portrait.png", media: "(prefers-color-scheme: dark) and (device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" },
-      { url: "/splash/iphone-12-mini-portrait.png", media: "(prefers-color-scheme: dark) and (device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" },
-      { url: "/splash/iphone-xs-max-portrait.png", media: "(prefers-color-scheme: dark) and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" },
-      { url: "/splash/iphone-xr-portrait.png", media: "(prefers-color-scheme: dark) and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" },
-      { url: "/splash/iphone-8-plus-portrait.png", media: "(prefers-color-scheme: dark) and (device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" },
-      { url: "/splash/iphone-se-portrait.png", media: "(prefers-color-scheme: dark) and (device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" },
+      {
+        url: "/splash/iphone-16-pro-max-portrait.png",
+        media:
+          "(prefers-color-scheme: dark) and (device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
+      },
+      {
+        url: "/splash/iphone-16-pro-portrait.png",
+        media:
+          "(prefers-color-scheme: dark) and (device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
+      },
+      {
+        url: "/splash/iphone-15-pro-max-portrait.png",
+        media:
+          "(prefers-color-scheme: dark) and (device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
+      },
+      {
+        url: "/splash/iphone-15-portrait.png",
+        media:
+          "(prefers-color-scheme: dark) and (device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
+      },
+      {
+        url: "/splash/iphone-14-pro-max-portrait.png",
+        media:
+          "(prefers-color-scheme: dark) and (device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
+      },
+      {
+        url: "/splash/iphone-14-portrait.png",
+        media:
+          "(prefers-color-scheme: dark) and (device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
+      },
+      {
+        url: "/splash/iphone-12-mini-portrait.png",
+        media:
+          "(prefers-color-scheme: dark) and (device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
+      },
+      {
+        url: "/splash/iphone-xs-max-portrait.png",
+        media:
+          "(prefers-color-scheme: dark) and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
+      },
+      {
+        url: "/splash/iphone-xr-portrait.png",
+        media:
+          "(prefers-color-scheme: dark) and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)",
+      },
+      {
+        url: "/splash/iphone-8-plus-portrait.png",
+        media:
+          "(prefers-color-scheme: dark) and (device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
+      },
+      {
+        url: "/splash/iphone-se-portrait.png",
+        media:
+          "(prefers-color-scheme: dark) and (device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)",
+      },
 
       // Universal fallback (no media query) — ditemui kalau dua kategori di atas tidak match
       { url: "/splash/fallback.png" },
@@ -151,7 +240,9 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="id" className={nunito.variable}>
       <head>
@@ -169,6 +260,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <KeyboardManager />
           <NetworkStatusBanner />
           <DeepLinkHandler />
+          <PushNotificationManager />
           {/* App-wide default status bar — dark icons (black) untuk halaman
               dengan header putih (kebanyakan). Per-page override bisa mount
               <PageStatusBar iconColor="light" themeColor="#1E5FBF" /> di page

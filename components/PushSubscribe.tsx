@@ -66,7 +66,7 @@ async function ensureNativeRegistered(platform: NativePlatform): Promise<void> {
   const debugLog = (stage: string, extra?: Record<string, unknown>) => {
     if (typeof window === "undefined") return;
     window.dispatchEvent(
-      new CustomEvent("native-push-debug", { detail: { stage, ...extra } }),
+      new CustomEvent("native-push-debug", { detail: { stage, ...extra } })
     );
   };
 
@@ -87,10 +87,12 @@ async function ensureNativeRegistered(platform: NativePlatform): Promise<void> {
         });
         debugLog("token-posted", { status: res.status });
       } catch (err) {
-        debugLog("token-post-failed", { error: err instanceof Error ? err.message : String(err) });
+        debugLog("token-post-failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
       finish();
-    },
+    }
   );
 
   const errorHandle = await PushNotifications.addListener(
@@ -98,13 +100,15 @@ async function ensureNativeRegistered(platform: NativePlatform): Promise<void> {
     (err) => {
       debugLog("registration-error", { error: JSON.stringify(err) });
       finish();
-    },
+    }
   );
 
   // Sekarang aman call register() — kedua listener pasti sudah attached.
   debugLog("calling-register");
   PushNotifications.register().catch((err) => {
-    debugLog("register-rejected", { error: err instanceof Error ? err.message : String(err) });
+    debugLog("register-rejected", {
+      error: err instanceof Error ? err.message : String(err),
+    });
     finish();
   });
 
@@ -153,7 +157,9 @@ export function PushSubscribe() {
         // Plugin sama untuk kedua platform — beda backend channel (APNs vs FCM)
         // di-handle saat subscribe via routing per platform.
         try {
-          const { PushNotifications } = await import("@capacitor/push-notifications");
+          const { PushNotifications } = await import(
+            "@capacitor/push-notifications"
+          );
           const perm = await PushNotifications.checkPermissions();
           if (cancelled) return;
           if (perm.receive === "granted") {
@@ -175,7 +181,11 @@ export function PushSubscribe() {
         }
       } else {
         // Web: check Web Push subscription
-        if (!("serviceWorker" in navigator) || !("PushManager" in window) || !vapidKey) {
+        if (
+          !("serviceWorker" in navigator) ||
+          !("PushManager" in window) ||
+          !vapidKey
+        ) {
           setState("unsupported");
           return;
         }
@@ -193,7 +203,9 @@ export function PushSubscribe() {
 
   async function subscribeNative() {
     try {
-      const { PushNotifications } = await import("@capacitor/push-notifications");
+      const { PushNotifications } = await import(
+        "@capacitor/push-notifications"
+      );
       const perm = await PushNotifications.requestPermissions();
       if (perm.receive !== "granted") {
         setState("denied");
@@ -264,9 +276,14 @@ export function PushSubscribe() {
   if (state === "subscribed") {
     return (
       <div className="flex items-center justify-between rounded-2xl bg-green-50 px-4 py-3 text-sm">
-        <span className="font-semibold text-green-700">🔔 Notifikasi order aktif</span>
-        <button onClick={unsubscribe} className="text-xs text-gray-400 hover:text-red-500">
-          Matikan
+        <span className="font-semibold text-green-700">
+          Notifikasi aplikasi aktif
+        </span>
+        <button
+          onClick={unsubscribe}
+          className="text-xs text-gray-400 hover:text-red-500"
+        >
+          Settings HP
         </button>
       </div>
     );
@@ -286,7 +303,7 @@ export function PushSubscribe() {
       onClick={subscribe}
       className="flex w-full items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-600 transition hover:bg-blue-100"
     >
-      🔔 Aktifkan notifikasi update pesanan
+      Aktifkan notifikasi aplikasi
     </button>
   );
 }

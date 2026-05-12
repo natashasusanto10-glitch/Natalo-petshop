@@ -3,8 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 
 /**
- * APNs token registration — dipanggil dari PushSubscribe.tsx saat user
- * di-iOS-native subscribe ke push.
+ * APNs token registration — dipanggil dari app-level push manager/settings
+ * saat user iOS native subscribe ke push.
  *
  * APNs token disimpan di table PushSubscription yang sama dengan Web Push,
  * dengan format `endpoint = "apns:<token>"` untuk dedup. Backend
@@ -18,6 +18,9 @@ export async function POST(req: NextRequest) {
   }
 
   const session = await getSession("CUSTOMER");
+  if (!session || session.role !== "CUSTOMER") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   const endpoint = `apns:${body.token}`;
 
   await prisma.pushSubscription.upsert({
@@ -27,13 +30,13 @@ export async function POST(req: NextRequest) {
       // tapi field di schema NOT NULL jadi kita pakai placeholder.
       p256dh: "",
       auth: "",
-      userId: session?.sub ?? null,
+      userId: session.sub,
     },
     create: {
       endpoint,
       p256dh: "",
       auth: "",
-      userId: session?.sub ?? null,
+      userId: session.sub,
     },
   });
 

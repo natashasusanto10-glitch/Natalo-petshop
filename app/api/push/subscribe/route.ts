@@ -5,19 +5,29 @@ import { getSession } from "@/lib/auth";
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   if (!body?.endpoint || !body?.keys?.p256dh || !body?.keys?.auth) {
-    return NextResponse.json({ error: "Invalid subscription" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid subscription" },
+      { status: 400 }
+    );
   }
 
   const session = await getSession("CUSTOMER");
+  if (!session || session.role !== "CUSTOMER") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   await prisma.pushSubscription.upsert({
     where: { endpoint: body.endpoint },
-    update: { p256dh: body.keys.p256dh, auth: body.keys.auth, userId: session?.sub ?? null },
+    update: {
+      p256dh: body.keys.p256dh,
+      auth: body.keys.auth,
+      userId: session.sub,
+    },
     create: {
       endpoint: body.endpoint,
       p256dh: body.keys.p256dh,
       auth: body.keys.auth,
-      userId: session?.sub ?? null,
+      userId: session.sub,
     },
   });
 
@@ -26,7 +36,10 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   const body = await req.json().catch(() => null);
-  if (!body?.endpoint) return NextResponse.json({ error: "endpoint required" }, { status: 400 });
-  await prisma.pushSubscription.delete({ where: { endpoint: body.endpoint } }).catch(() => {});
+  if (!body?.endpoint)
+    return NextResponse.json({ error: "endpoint required" }, { status: 400 });
+  await prisma.pushSubscription
+    .delete({ where: { endpoint: body.endpoint } })
+    .catch(() => {});
   return NextResponse.json({ ok: true });
 }

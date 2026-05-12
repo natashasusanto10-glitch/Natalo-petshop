@@ -60,8 +60,12 @@ function isSensitiveUrl(url) {
   const isSensitivePath = SENSITIVE_PATH_PREFIXES.some(
     (path) => pathname === path || pathname.startsWith(`${path}/`)
   );
-  const queryKeys = Array.from(url.searchParams.keys()).map((key) => key.toLowerCase());
-  const hasSensitiveParam = SENSITIVE_QUERY_PARAMS.some((param) => queryKeys.includes(param));
+  const queryKeys = Array.from(url.searchParams.keys()).map((key) =>
+    key.toLowerCase()
+  );
+  const hasSensitiveParam = SENSITIVE_QUERY_PARAMS.some((param) =>
+    queryKeys.includes(param)
+  );
 
   return isSensitivePath || hasSensitiveParam;
 }
@@ -74,7 +78,8 @@ function isSensitivePageRequest(request) {
 function shouldCacheResponse(response) {
   if (!response || response.status !== 200 || response.redirected) return false;
 
-  const cacheControl = response.headers.get("Cache-Control")?.toLowerCase() ?? "";
+  const cacheControl =
+    response.headers.get("Cache-Control")?.toLowerCase() ?? "";
   return !(
     cacheControl.includes("no-store") ||
     cacheControl.includes("private") ||
@@ -98,25 +103,39 @@ async function cleanupSensitiveEntries(cacheName) {
 
 self.addEventListener("install", (e) => {
   e.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(PRECACHE)).then(() => self.skipWaiting())
+    caches
+      .open(CACHE)
+      .then((c) => c.addAll(PRECACHE))
+      .then(() => self.skipWaiting())
   );
 });
 
 self.addEventListener("activate", (e) => {
   e.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys.map((k) => (k === CACHE ? cleanupSensitiveEntries(k) : caches.delete(k)))
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(
+          keys.map((k) =>
+            k === CACHE ? cleanupSensitiveEntries(k) : caches.delete(k)
+          )
+        )
       )
-    ).then(() => self.clients.claim())
+      .then(() => self.clients.claim())
   );
 });
 
 // Push notification handler
 self.addEventListener("push", (e) => {
   if (!e.data) return;
-  let payload = { title: "Natalo Petshop", body: "Ada update pesanan kamu!", url: "/order-status" };
-  try { payload = { ...payload, ...e.data.json() }; } catch {}
+  let payload = {
+    title: "Natalo Petshop",
+    body: "Ada update pesanan kamu!",
+    url: "/order-status",
+  };
+  try {
+    payload = { ...payload, ...e.data.json() };
+  } catch {}
   e.waitUntil(
     self.registration.showNotification(payload.title, {
       body: payload.body,
@@ -129,7 +148,7 @@ self.addEventListener("push", (e) => {
       actions: payload.actions ?? undefined,
       // SHIPPED status set true supaya user tidak miss notif "paket dikirim"
       requireInteraction: payload.requireInteraction === true,
-      data: { url: payload.url },
+      data: { ...(payload.data ?? {}), url: payload.url },
     })
   );
 });
@@ -138,11 +157,13 @@ self.addEventListener("notificationclick", (e) => {
   e.notification.close();
   const url = e.notification.data?.url || "/";
   e.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
-      const existing = clients.find((c) => c.url.includes(url));
-      if (existing) return existing.focus();
-      return self.clients.openWindow(url);
-    })
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((clients) => {
+        const existing = clients.find((c) => c.url.includes(url));
+        if (existing) return existing.focus();
+        return self.clients.openWindow(url);
+      })
   );
 });
 
@@ -168,7 +189,11 @@ self.addEventListener("fetch", (e) => {
   }
 
   if (isSensitivePageRequest(request)) {
-    e.respondWith(fetch(request).catch(() => caches.match("/offline").then((res) => res ?? Response.error())));
+    e.respondWith(
+      fetch(request).catch(() =>
+        caches.match("/offline").then((res) => res ?? Response.error())
+      )
+    );
     return;
   }
 
@@ -185,14 +210,16 @@ self.addEventListener("fetch", (e) => {
 
   if (/\.(png|jpg|jpeg|svg|webp|ico|woff2?)$/.test(url.pathname)) {
     e.respondWith(
-      caches.match(request).then((cached) =>
-        cached ?? fetch(request).then((res) => {
-          if (shouldCacheResponse(res)) {
-            const clone = res.clone();
-            caches.open(CACHE).then((c) => c.put(request, clone));
-          }
-          return res;
-        })
+      caches.match(request).then(
+        (cached) =>
+          cached ??
+          fetch(request).then((res) => {
+            if (shouldCacheResponse(res)) {
+              const clone = res.clone();
+              caches.open(CACHE).then((c) => c.put(request, clone));
+            }
+            return res;
+          })
       )
     );
     return;
@@ -208,7 +235,9 @@ self.addEventListener("fetch", (e) => {
         return res;
       })
       .catch(() =>
-        caches.match(request).then((cached) => cached ?? caches.match("/offline"))
+        caches
+          .match(request)
+          .then((cached) => cached ?? caches.match("/offline"))
       )
   );
 });
