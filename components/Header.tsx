@@ -61,6 +61,14 @@ export function Header() {
   // Back button universal: tampil di mobile untuk semua halaman selain main tab
   // & product detail (yang punya header sendiri dengan back + search + share + cart).
   const showBackButton = Boolean(pathname) && !isMainTab && !isProductDetail;
+  // Hide search icon di header pada halaman yg sudah punya search bar besar
+  // di body (home punya HomeSearchBar dalam header, /products + /search punya
+  // search bar dedicated). Tujuan: header lebih lega, tidak redundant.
+  const hasInPageSearch =
+    isHome ||
+    currentPath === "/products" ||
+    currentPath === "/produk" ||
+    currentPath.startsWith("/search");
 
   function handleBack() {
     // Fallback ke home kalau buka deep link langsung (no history) — biar back gak
@@ -277,17 +285,22 @@ export function Header() {
 
         {/* Right actions */}
         <div className="flex shrink-0 items-center gap-1 xs:gap-1.5 md:gap-2">
-          {/* Search */}
-          <Link
-            href="/search"
-            className="flex h-9 w-9 items-center justify-center rounded-full text-gray-600 transition hover:bg-gray-100 xs:h-10 xs:w-10"
-            aria-label="Cari produk"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} className="h-5 w-5">
-              <circle cx="11" cy="11" r="7" />
-              <path d="m20 20-3.5-3.5" strokeLinecap="round" />
-            </svg>
-          </Link>
+          {/* Search icon — hanya tampil di halaman yang TIDAK punya search bar
+              besar di body (mis. /cart, /member). Halaman dgn HomeSearchBar /
+              ProductSearchBar tidak butuh icon ini supaya header lega +
+              profile chip tidak terdesak. */}
+          {!hasInPageSearch && (
+            <Link
+              href="/search"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-gray-600 transition hover:bg-gray-100 xs:h-10 xs:w-10"
+              aria-label="Cari produk"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} className="h-5 w-5">
+                <circle cx="11" cy="11" r="7" />
+                <path d="m20 20-3.5-3.5" strokeLinecap="round" />
+              </svg>
+            </Link>
+          )}
 
           {/* Notifikasi — ganti dari Wishlist. Wishlist tetap diakses dari
               heart di kartu produk + dropdown menu member di bawah. */}
