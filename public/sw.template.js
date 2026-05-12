@@ -1,4 +1,9 @@
-const CACHE = "natalo-v16";
+// CACHE name di-inject oleh scripts/bump-sw-version.mjs saat build:
+// - Vercel build → "natalo-v-<commit-sha7>"   (traceable ke commit)
+// - Local build  → "natalo-v-<sha7>-local"
+// - Dev fallback → "natalo-vdev-<timestamp>"  (always unique, bust cache)
+// Placeholder string ini WAJIB ada — script error keras kalau tidak match.
+const CACHE = "__SW_CACHE_VERSION__";
 
 const PRECACHE = [
   "/",
