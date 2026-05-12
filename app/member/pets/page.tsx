@@ -5,6 +5,7 @@ import { MemberNav } from "@/components/MemberNav";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
+import { requireCustomerSession } from "@/lib/session-guards";
 
 const PET_TYPES = ["Kucing", "Anjing", "Ikan", "Burung", "Reptil", "Lainnya"];
 
@@ -47,15 +48,13 @@ export default async function MemberPetsPage({
 }: {
   searchParams: Promise<{ added?: string }>;
 }) {
-  const session = await getSession("CUSTOMER");
+  const session = await requireCustomerSession();
   const { added } = await searchParams;
 
-  const pets = session
-    ? await prisma.pet.findMany({
-        where: { userId: session.sub },
-        orderBy: { createdAt: "asc" },
-      })
-    : [];
+  const pets = await prisma.pet.findMany({
+    where: { userId: session.sub },
+    orderBy: { createdAt: "asc" },
+  });
 
   // Rekomendasi produk berdasarkan jenis hewan
   const petTypes = [...new Set(pets.map((p) => p.type))];
@@ -131,7 +130,15 @@ export default async function MemberPetsPage({
 
     await prisma.pet.updateMany({
       where: { id: petId, userId: sess.sub },
-      data: { name, type, breed, birthDate, vaccineReminderAt, groomingReminderAt, notes },
+      data: {
+        name,
+        type,
+        breed,
+        birthDate,
+        vaccineReminderAt,
+        groomingReminderAt,
+        notes,
+      },
     });
     revalidatePath("/member/pets");
   }
@@ -158,17 +165,21 @@ export default async function MemberPetsPage({
               </div>
               <div>
                 <p className="text-xs text-natalo-100">Member resmi</p>
-                <p className="text-lg font-black text-white">Halo, {session?.name}!</p>
+                <p className="text-lg font-black text-white">
+                  Halo, {session?.name}!
+                </p>
               </div>
             </div>
-            <LogoutButton redirectTo="/member/login" className="border-white/30 text-white hover:border-white/60" />
+            <LogoutButton
+              redirectTo="/member/login"
+              className="border-white/30 text-white hover:border-white/60"
+            />
           </div>
           <MemberNav />
         </div>
       </div>
 
       <main className="mx-auto max-w-4xl px-4 py-8">
-
         {added && (
           <div className="mb-6 rounded-2xl bg-green-50 p-4 text-sm font-semibold text-green-700">
             ✅ Hewan berhasil ditambahkan.
@@ -182,29 +193,47 @@ export default async function MemberPetsPage({
           {pets.length === 0 && (
             <div className="rounded-2xl border border-gray-100 bg-white p-10 text-center">
               <span className="text-5xl">🐾</span>
-              <p className="mt-3 font-semibold text-gray-700">Belum ada hewan terdaftar</p>
-              <p className="mt-1 text-sm text-gray-500">Tambahkan hewan peliharaanmu di bawah ini.</p>
+              <p className="mt-3 font-semibold text-gray-700">
+                Belum ada hewan terdaftar
+              </p>
+              <p className="mt-1 text-sm text-gray-500">
+                Tambahkan hewan peliharaanmu di bawah ini.
+              </p>
             </div>
           )}
 
           {pets.map((pet) => {
-            const vaccDays = pet.vaccineReminderAt ? daysUntil(pet.vaccineReminderAt) : null;
-            const groomDays = pet.groomingReminderAt ? daysUntil(pet.groomingReminderAt) : null;
+            const vaccDays = pet.vaccineReminderAt
+              ? daysUntil(pet.vaccineReminderAt)
+              : null;
+            const groomDays = pet.groomingReminderAt
+              ? daysUntil(pet.groomingReminderAt)
+              : null;
             const birthStr = pet.birthDate
-              ? pet.birthDate.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })
+              ? pet.birthDate.toLocaleDateString("id-ID", {
+                  day: "numeric",
+                  month: "long",
+                  year: "numeric",
+                })
               : null;
 
             return (
-              <div key={pet.id} className="overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-sm">
+              <div
+                key={pet.id}
+                className="overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-sm"
+              >
                 {/* Pet header */}
                 <div className="flex items-center gap-4 p-5">
                   <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-natalo-100 text-3xl">
                     {PET_EMOJI[pet.type] ?? "🐾"}
                   </div>
                   <div className="flex-1">
-                    <p className="font-black text-gray-900 text-lg">{pet.name}</p>
+                    <p className="font-black text-gray-900 text-lg">
+                      {pet.name}
+                    </p>
                     <p className="text-sm text-gray-500">
-                      {pet.type}{pet.breed ? ` · ${pet.breed}` : ""}
+                      {pet.type}
+                      {pet.breed ? ` · ${pet.breed}` : ""}
                       {pet.birthDate ? ` · ${petAge(pet.birthDate)}` : ""}
                     </p>
                   </div>
@@ -231,9 +260,14 @@ export default async function MemberPetsPage({
                             ? "hari ini!"
                             : `${vaccDays} hari lagi`}
                           <p className="mt-0.5 text-xs opacity-70">
-                            {pet.vaccineReminderAt!.toLocaleDateString("id-ID", {
-                              day: "numeric", month: "short", year: "numeric",
-                            })}
+                            {pet.vaccineReminderAt!.toLocaleDateString(
+                              "id-ID",
+                              {
+                                day: "numeric",
+                                month: "short",
+                                year: "numeric",
+                              }
+                            )}
                           </p>
                         </div>
                       )}
@@ -254,9 +288,14 @@ export default async function MemberPetsPage({
                             ? "hari ini!"
                             : `${groomDays} hari lagi`}
                           <p className="mt-0.5 text-xs opacity-70">
-                            {pet.groomingReminderAt!.toLocaleDateString("id-ID", {
-                              day: "numeric", month: "short", year: "numeric",
-                            })}
+                            {pet.groomingReminderAt!.toLocaleDateString(
+                              "id-ID",
+                              {
+                                day: "numeric",
+                                month: "short",
+                                year: "numeric",
+                              }
+                            )}
                           </p>
                         </div>
                       )}
@@ -267,7 +306,9 @@ export default async function MemberPetsPage({
                       )}
                     </div>
                     {pet.notes && (
-                      <p className="mt-3 text-sm text-gray-500 italic">{pet.notes}</p>
+                      <p className="mt-3 text-sm text-gray-500 italic">
+                        {pet.notes}
+                      </p>
                     )}
                   </div>
                 )}
@@ -278,35 +319,89 @@ export default async function MemberPetsPage({
                     <summary className="flex cursor-pointer list-none items-center gap-2 px-5 py-3 text-sm font-semibold text-gray-500 hover:text-gray-900">
                       ✏️ Edit
                     </summary>
-                    <form action={updatePet} className="border-t border-gray-50 p-5 space-y-4">
+                    <form
+                      action={updatePet}
+                      className="border-t border-gray-50 p-5 space-y-4"
+                    >
                       <input type="hidden" name="petId" value={pet.id} />
                       <div className="grid gap-4 sm:grid-cols-2">
-                        <PetField label="Nama" name="name" required defaultValue={pet.name} />
+                        <PetField
+                          label="Nama"
+                          name="name"
+                          required
+                          defaultValue={pet.name}
+                        />
                         <div>
-                          <label className="block text-sm font-medium text-gray-700">Jenis hewan</label>
+                          <label className="block text-sm font-medium text-gray-700">
+                            Jenis hewan
+                          </label>
                           <select
                             name="type"
                             defaultValue={pet.type}
                             className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-natalo-400"
                           >
-                            {PET_TYPES.map((t) => <option key={t}>{t}</option>)}
+                            {PET_TYPES.map((t) => (
+                              <option key={t}>{t}</option>
+                            ))}
                           </select>
                         </div>
                       </div>
-                      <PetField label="Ras / Breed" name="breed" defaultValue={pet.breed ?? ""} placeholder="Opsional" />
+                      <PetField
+                        label="Ras / Breed"
+                        name="breed"
+                        defaultValue={pet.breed ?? ""}
+                        placeholder="Opsional"
+                      />
                       <div className="grid gap-4 sm:grid-cols-2">
-                        <PetField label="Tanggal lahir" name="birthDate" type="date"
-                          defaultValue={pet.birthDate ? pet.birthDate.toISOString().substring(0, 10) : ""} />
+                        <PetField
+                          label="Tanggal lahir"
+                          name="birthDate"
+                          type="date"
+                          defaultValue={
+                            pet.birthDate
+                              ? pet.birthDate.toISOString().substring(0, 10)
+                              : ""
+                          }
+                        />
                       </div>
                       <div className="grid gap-4 sm:grid-cols-2">
-                        <PetField label="Reminder vaksin" name="vaccineReminderAt" type="date"
-                          defaultValue={pet.vaccineReminderAt ? pet.vaccineReminderAt.toISOString().substring(0, 10) : ""} />
-                        <PetField label="Reminder grooming" name="groomingReminderAt" type="date"
-                          defaultValue={pet.groomingReminderAt ? pet.groomingReminderAt.toISOString().substring(0, 10) : ""} />
+                        <PetField
+                          label="Reminder vaksin"
+                          name="vaccineReminderAt"
+                          type="date"
+                          defaultValue={
+                            pet.vaccineReminderAt
+                              ? pet.vaccineReminderAt
+                                  .toISOString()
+                                  .substring(0, 10)
+                              : ""
+                          }
+                        />
+                        <PetField
+                          label="Reminder grooming"
+                          name="groomingReminderAt"
+                          type="date"
+                          defaultValue={
+                            pet.groomingReminderAt
+                              ? pet.groomingReminderAt
+                                  .toISOString()
+                                  .substring(0, 10)
+                              : ""
+                          }
+                        />
                       </div>
-                      <PetField label="Catatan" name="notes" defaultValue={pet.notes ?? ""} placeholder="Opsional" textarea />
+                      <PetField
+                        label="Catatan"
+                        name="notes"
+                        defaultValue={pet.notes ?? ""}
+                        placeholder="Opsional"
+                        textarea
+                      />
                       <div className="flex gap-3">
-                        <button type="submit" className="rounded-full bg-natalo-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-natalo-700">
+                        <button
+                          type="submit"
+                          className="rounded-full bg-natalo-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-natalo-700"
+                        >
                           Simpan
                         </button>
                       </div>
@@ -331,12 +426,21 @@ export default async function MemberPetsPage({
         <section className="mt-6 overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
           <details>
             <summary className="flex cursor-pointer list-none items-center gap-2 px-6 py-4 font-bold text-gray-700 hover:bg-gray-50">
-              <span className="text-natalo-600">＋</span> Tambah Hewan Peliharaan
+              <span className="text-natalo-600">＋</span> Tambah Hewan
+              Peliharaan
             </summary>
 
-            <form action={addPet} className="border-t border-gray-100 p-6 space-y-4">
+            <form
+              action={addPet}
+              className="border-t border-gray-100 p-6 space-y-4"
+            >
               <div className="grid gap-4 sm:grid-cols-2">
-                <PetField label="Nama hewan" name="name" required placeholder="Contoh: Mochi" />
+                <PetField
+                  label="Nama hewan"
+                  name="name"
+                  required
+                  placeholder="Contoh: Mochi"
+                />
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
                     Jenis hewan <span className="text-red-500">*</span>
@@ -352,7 +456,11 @@ export default async function MemberPetsPage({
                 </div>
               </div>
 
-              <PetField label="Ras / Breed" name="breed" placeholder="Opsional, contoh: Persian" />
+              <PetField
+                label="Ras / Breed"
+                name="breed"
+                placeholder="Opsional, contoh: Persian"
+              />
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <PetField label="Tanggal lahir" name="birthDate" type="date" />
@@ -360,16 +468,33 @@ export default async function MemberPetsPage({
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <PetField label="Reminder vaksin berikutnya" name="vaccineReminderAt" type="date" />
-                  <p className="mt-1 text-xs text-gray-400">💉 Kamu akan diingatkan melalui halaman ini</p>
+                  <PetField
+                    label="Reminder vaksin berikutnya"
+                    name="vaccineReminderAt"
+                    type="date"
+                  />
+                  <p className="mt-1 text-xs text-gray-400">
+                    💉 Kamu akan diingatkan melalui halaman ini
+                  </p>
                 </div>
                 <div>
-                  <PetField label="Reminder grooming berikutnya" name="groomingReminderAt" type="date" />
-                  <p className="mt-1 text-xs text-gray-400">✂️ Untuk kucing & anjing</p>
+                  <PetField
+                    label="Reminder grooming berikutnya"
+                    name="groomingReminderAt"
+                    type="date"
+                  />
+                  <p className="mt-1 text-xs text-gray-400">
+                    ✂️ Untuk kucing & anjing
+                  </p>
                 </div>
               </div>
 
-              <PetField label="Catatan" name="notes" placeholder="Opsional, contoh: alergi makanan tertentu" textarea />
+              <PetField
+                label="Catatan"
+                name="notes"
+                placeholder="Opsional, contoh: alergi makanan tertentu"
+                textarea
+              />
 
               <button
                 type="submit"
@@ -384,7 +509,9 @@ export default async function MemberPetsPage({
         {/* ── Rekomendasi Produk ── */}
         {recommendedProducts.length > 0 && (
           <section className="mt-8">
-            <h2 className="text-lg font-black text-gray-900">Rekomendasi untuk Hewanmu</h2>
+            <h2 className="text-lg font-black text-gray-900">
+              Rekomendasi untuk Hewanmu
+            </h2>
             <p className="mt-1 text-sm text-gray-500">
               Produk yang sesuai untuk {petTypes.join(", ")} kamu.
             </p>
@@ -399,7 +526,11 @@ export default async function MemberPetsPage({
                   <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gray-50">
                     {product.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover" />
+                      <img
+                        src={product.imageUrl}
+                        alt={product.name}
+                        className="h-full w-full object-cover"
+                      />
                     ) : (
                       <span className="text-2xl">🐾</span>
                     )}
@@ -409,10 +540,15 @@ export default async function MemberPetsPage({
                       {product.name}
                     </p>
                     {product.category && (
-                      <p className="mt-0.5 text-xs text-gray-400">{product.category.name}</p>
+                      <p className="mt-0.5 text-xs text-gray-400">
+                        {product.category.name}
+                      </p>
                     )}
                     <p className="mt-1 text-sm font-bold text-natalo-600">
-                      Rp{(product.memberPrice ?? product.price).toLocaleString("id-ID")}
+                      Rp
+                      {(product.memberPrice ?? product.price).toLocaleString(
+                        "id-ID"
+                      )}
                     </p>
                   </div>
                 </Link>
@@ -442,7 +578,8 @@ function PetField({
   defaultValue?: string;
   textarea?: boolean;
 }) {
-  const cls = "mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-natalo-400";
+  const cls =
+    "mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-natalo-400";
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700">
@@ -450,9 +587,22 @@ function PetField({
         {required && <span className="ml-1 text-red-500">*</span>}
       </label>
       {textarea ? (
-        <textarea name={name} placeholder={placeholder} defaultValue={defaultValue} rows={2} className={cls} />
+        <textarea
+          name={name}
+          placeholder={placeholder}
+          defaultValue={defaultValue}
+          rows={2}
+          className={cls}
+        />
       ) : (
-        <input type={type} name={name} required={required} placeholder={placeholder} defaultValue={defaultValue} className={cls} />
+        <input
+          type={type}
+          name={name}
+          required={required}
+          placeholder={placeholder}
+          defaultValue={defaultValue}
+          className={cls}
+        />
       )}
     </div>
   );

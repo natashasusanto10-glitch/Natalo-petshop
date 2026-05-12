@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { reconcileCartItemsWithStock, type CartStockSnapshot } from "@/lib/cart-stock";
+import {
+  buildCartStockSnapshots,
+  reconcileCartItemsWithStock,
+  type CartStockSnapshot,
+} from "@/lib/cart-stock";
 import type { CartItem } from "@/lib/cart";
 
 function item(overrides: Partial<CartItem>): CartItem {
@@ -121,4 +125,107 @@ test("current implementation uses global product or variant stock; no branch/sto
 
   assert.equal(result.items[0].stock, 8);
   assert.equal(result.snapshots[0].source, "product");
+});
+
+test("cart validation allows product stock fallback only for products without variants", () => {
+  const snapshots = buildCartStockSnapshots({
+    requestedItems: [
+      {
+        productId: "plain-product",
+        variantId: null,
+        variantLabel: null,
+        name: "Royal Canin Kitten",
+        quantity: 2,
+      },
+    ],
+    products: [
+      {
+        id: "plain-product",
+        name: "Royal Canin Kitten",
+        stock: 5,
+        isActive: true,
+        hasVariants: false,
+      },
+    ],
+    variants: [],
+  });
+
+  assert.equal(snapshots[0].isAvailable, true);
+  assert.equal(snapshots[0].availableStock, 5);
+  assert.equal(snapshots[0].source, "product");
+});
+
+test("cart validation rejects variant products without a selected variant", () => {
+  const snapshots = buildCartStockSnapshots({
+    requestedItems: [
+      {
+        productId: "variant-product",
+        variantId: null,
+        variantLabel: null,
+        name: "Friskies Party Mix",
+        quantity: 1,
+      },
+      {
+        productId: "variant-product",
+        variantId: "",
+        variantLabel: null,
+        name: "Friskies Party Mix",
+        quantity: 1,
+      },
+    ],
+    products: [
+      {
+        id: "variant-product",
+        name: "Friskies Party Mix",
+        stock: 99,
+        isActive: true,
+        hasVariants: true,
+      },
+    ],
+    variants: [],
+  });
+
+  assert.equal(snapshots[0].isAvailable, false);
+  assert.equal(snapshots[0].availableStock, 0);
+  assert.equal(snapshots[0].variantId, null);
+  assert.match(snapshots[0].message ?? "", /pilih varian/i);
+  assert.equal(snapshots[1].isAvailable, false);
+  assert.equal(snapshots[1].availableStock, 0);
+  assert.equal(snapshots[1].variantId, null);
+});
+
+test("cart validation uses variant stock when variantId is selected", () => {
+  const snapshots = buildCartStockSnapshots({
+    requestedItems: [
+      {
+        productId: "variant-product",
+        variantId: "variant-beachside",
+        variantLabel: "Beachside",
+        name: "Friskies Party Mix",
+        quantity: 2,
+      },
+    ],
+    products: [
+      {
+        id: "variant-product",
+        name: "Friskies Party Mix",
+        stock: 99,
+        isActive: true,
+        hasVariants: true,
+      },
+    ],
+    variants: [
+      {
+        id: "variant-beachside",
+        productId: "variant-product",
+        stock: 3,
+        isActive: true,
+        deletedAt: null,
+      },
+    ],
+  });
+
+  assert.equal(snapshots[0].isAvailable, true);
+  assert.equal(snapshots[0].availableStock, 3);
+  assert.equal(snapshots[0].source, "variant");
 });

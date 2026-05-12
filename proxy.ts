@@ -15,11 +15,12 @@ async function getSessionPayload(
   request: NextRequest,
   expectedRole?: "ADMIN" | "CUSTOMER"
 ) {
-  const cookieNames = expectedRole === "ADMIN"
-    ? [ADMIN_SESSION_COOKIE, LEGACY_SESSION_COOKIE]
-    : expectedRole === "CUSTOMER"
-    ? [MEMBER_SESSION_COOKIE, LEGACY_SESSION_COOKIE]
-    : [MEMBER_SESSION_COOKIE, ADMIN_SESSION_COOKIE, LEGACY_SESSION_COOKIE];
+  const cookieNames =
+    expectedRole === "ADMIN"
+      ? [ADMIN_SESSION_COOKIE, LEGACY_SESSION_COOKIE]
+      : expectedRole === "CUSTOMER"
+      ? [MEMBER_SESSION_COOKIE, LEGACY_SESSION_COOKIE]
+      : [MEMBER_SESSION_COOKIE, ADMIN_SESSION_COOKIE, LEGACY_SESSION_COOKIE];
   const secret = getSecret();
   if (!secret) return null;
 
@@ -92,6 +93,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/member") ||
     pathname.startsWith("/akun") ||
     pathname.startsWith("/checkout") ||
+    pathname.startsWith("/notifications") ||
     pathname === "/wishlist"
   ) {
     const session = await getSessionPayload(request, "CUSTOMER");
@@ -100,7 +102,10 @@ export async function proxy(request: NextRequest) {
     if (pathname === "/member/login" || pathname === "/member/register") {
       if (session?.role === "CUSTOMER") {
         return NextResponse.redirect(
-          new URL(safeCustomerRedirect(request.nextUrl.searchParams.get("redirect")), request.url)
+          new URL(
+            safeCustomerRedirect(request.nextUrl.searchParams.get("redirect")),
+            request.url
+          )
         );
       }
       return NextResponse.next();
@@ -131,6 +136,7 @@ export const config = {
     "/member/:path*",
     "/akun/:path*",
     "/checkout/:path*",
+    "/notifications/:path*",
     "/wishlist",
   ],
 };

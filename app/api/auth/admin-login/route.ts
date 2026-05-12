@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ADMIN_SESSION_COOKIE, createSessionToken, getSessionCookieOptions } from "@/lib/auth";
+import {
+  ADMIN_SESSION_COOKIE,
+  createSessionToken,
+  getSessionCookieOptions,
+} from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { createHash, timingSafeEqual } from "crypto";
 
@@ -66,7 +70,10 @@ export async function POST(request: NextRequest) {
   const adminPassword = process.env.ADMIN_PASSWORD;
 
   if (!adminEmail || !adminPassword) {
-    return NextResponse.json({ error: "Admin belum dikonfigurasi di .env" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Admin belum dikonfigurasi di .env" },
+      { status: 500 }
+    );
   }
 
   const emailOk = safeCompare(identifier, adminEmail);
@@ -74,7 +81,10 @@ export async function POST(request: NextRequest) {
 
   if (!emailOk || !passOk) {
     recordFailure(rateLimitKey);
-    return NextResponse.json({ error: "Username/email/no. HP atau password salah" }, { status: 401 });
+    return NextResponse.json(
+      { error: "Username/email/no. HP atau password salah" },
+      { status: 401 }
+    );
   }
 
   const admin = await prisma.user.upsert({
@@ -92,10 +102,19 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  const token = await createSessionToken({ sub: admin.id, role: "ADMIN", name: admin.name });
+  const token = await createSessionToken({
+    sub: admin.id,
+    role: "ADMIN",
+    name: admin.name,
+    tv: admin.tokenVersion,
+  });
   buckets.delete(rateLimitKey);
 
   const response = NextResponse.json({ ok: true });
-  response.cookies.set(ADMIN_SESSION_COOKIE, token, getSessionCookieOptions(request));
+  response.cookies.set(
+    ADMIN_SESSION_COOKIE,
+    token,
+    getSessionCookieOptions(request)
+  );
   return response;
 }

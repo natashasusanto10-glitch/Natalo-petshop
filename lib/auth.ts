@@ -23,7 +23,9 @@ export const MEMBER_SESSION_COOKIE = "member_session";
 function getSecret() {
   const s = process.env.SESSION_SECRET;
   if (!s || s.length < 32) {
-    throw new Error("SESSION_SECRET wajib di-set (min 32 char). Tidak ada fallback.");
+    throw new Error(
+      "SESSION_SECRET wajib di-set (min 32 char). Tidak ada fallback."
+    );
   }
   return new TextEncoder().encode(s);
 }
@@ -36,7 +38,9 @@ export async function createSessionToken(payload: SessionPayload) {
     .sign(getSecret());
 }
 
-export async function verifySessionToken(token: string): Promise<SessionPayload | null> {
+export async function verifySessionToken(
+  token: string
+): Promise<SessionPayload | null> {
   const s = process.env.SESSION_SECRET;
   if (!s || s.length < 32) return null;
 
@@ -74,26 +78,32 @@ export async function getSession(
   return null;
 }
 
+export function isTokenVersionFresh(
+  session: Pick<SessionPayload, "tv">,
+  currentTokenVersion: number
+) {
+  return (session.tv ?? 0) >= currentTokenVersion;
+}
+
 /**
- * Untuk member session, cek `tv` claim di JWT >= User.tokenVersion di DB.
+ * Cek `tv` claim di JWT >= User.tokenVersion di DB.
  * Kalau user pernah klik "logout dari semua perangkat", tokenVersion DB
  * naik 1, JWT lama dgn tv lebih kecil dianggap invalid.
  *
  * Kalau JWT tidak punya tv (issued sebelum fitur ada), default 0 — match
  * default DB (0) sehingga session lama tetap valid sampai user revoke.
  */
-async function isTokenVersionCurrent(session: SessionPayload): Promise<boolean> {
-  if (session.role !== "CUSTOMER") return true;
-
-  const tokenTv = session.tv ?? 0;
-
+async function isTokenVersionCurrent(
+  session: SessionPayload
+): Promise<boolean> {
   try {
     const user = await prisma.user.findUnique({
       where: { id: session.sub },
-      select: { tokenVersion: true },
+      select: { role: true, tokenVersion: true },
     });
     if (!user) return false;
-    return tokenTv >= user.tokenVersion;
+    if (user.role !== session.role) return false;
+    return isTokenVersionFresh(session, user.tokenVersion);
   } catch {
     /* Kalau DB unreachable, fail-open supaya storefront tidak total down. */
     return true;
@@ -110,7 +120,8 @@ export const SESSION_COOKIE_OPTIONS = {
 
 export function getSessionCookieOptions(request?: NextRequest) {
   const forwardedProto = request?.headers.get("x-forwarded-proto");
-  const isHttps = request?.nextUrl.protocol === "https:" || forwardedProto === "https";
+  const isHttps =
+    request?.nextUrl.protocol === "https:" || forwardedProto === "https";
 
   return {
     ...SESSION_COOKIE_OPTIONS,

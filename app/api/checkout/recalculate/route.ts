@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { cartItemSchema } from "@/lib/validation";
+import { buildCheckoutItemsFromInventory } from "@/lib/checkout-items";
 
 /**
  * Aturan voucher checkout (lihat CLAUDE.md - Voucher business rules):
@@ -177,6 +178,7 @@ export async function POST(request: NextRequest) {
         stock: true,
         weightGram: true,
         isActive: true,
+        hasVariants: true,
       },
     }),
     variantIds.length
@@ -187,43 +189,11 @@ export async function POST(request: NextRequest) {
       : Promise.resolve([]),
   ]);
 
-  const checkoutItems: Array<{ price: number; quantity: number }> = [];
-  const stockErrors: string[] = [];
-
-  for (const requested of requestedMap.values()) {
-    const product = products.find((row) => row.id === requested.productId);
-    if (!product || !product.isActive) {
-      stockErrors.push("Produk di keranjang sudah tidak tersedia.");
-      continue;
-    }
-
-    if (requested.variantId) {
-      const variant = variants.find((row) => row.id === requested.variantId);
-      if (!variant) {
-        stockErrors.push(`Varian produk "${product.name}" sudah tidak tersedia.`);
-        continue;
-      }
-      if (variant.stock < requested.quantity) {
-        stockErrors.push(`"${product.name} (${requested.variantLabel ?? ""})" hanya tersedia ${variant.stock} unit.`);
-        continue;
-      }
-      checkoutItems.push({ price: variant.price, quantity: requested.quantity });
-      continue;
-    }
-
-    if (product.stock < requested.quantity) {
-      stockErrors.push(`${product.name} hanya tersedia ${product.stock}, sedangkan keranjang berisi ${requested.quantity}.`);
-      continue;
-    }
-
-    checkoutItems.push({
-      price:
-        product.discountPrice !== null && product.discountPrice < product.price
-          ? product.discountPrice
-          : product.price,
-      quantity: requested.quantity,
-    });
-  }
+  const { checkoutItems, stockErrors } = buildCheckoutItemsFromInventory({
+    requestedItems: requestedMap.values(),
+    products,
+    variants,
+  });
 
   if (stockErrors.length > 0) {
     return NextResponse.json({ message: stockErrors.join(" ") }, { status: 409 });

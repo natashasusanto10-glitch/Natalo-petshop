@@ -4,18 +4,10 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { createOrderNumber } from "@/lib/format";
 import { createOrderSchema } from "@/lib/validation";
+import type { CheckedOutItem } from "@/lib/checkout-items";
+import { InvalidCustomerSessionError, resolveOrderIdentity } from "@/lib/order-identity";
 import { buildOrderDetailPath, buildOrderDetailUrl, createTrackingToken } from "@/lib/order-detail";
 import { sendAdminOrderCreated, sendOrderCreated } from "@/lib/whatsapp";
-
-type CheckedOutItem = {
-  productId: string;
-  variantId?: string | null;
-  variantLabel?: string | null;
-  name: string;
-  price: number;
-  quantity: number;
-  weightGram: number;
-};
 
 class StockConflictError extends Error {
   status = 409;
@@ -149,8 +141,14 @@ export async function POST(request: Request) {
     }
 
     if (requested.variantId) {
+      if (!product.hasVariants) {
+        stockErrors.push(`Produk "${product.name}" tidak memakai varian.`);
+        continue;
+      }
       // ── Produk dengan varian ────────────────────────────────
-      const variant = variants.find((v) => v.id === requested.variantId);
+      const variant = variants.find(
+        (v) => v.id === requested.variantId && v.productId === requested.productId,
+      );
       if (!variant) {
         stockErrors.push(`Varian produk "${product.name}" sudah tidak tersedia.`);
         continue;
@@ -170,6 +168,10 @@ export async function POST(request: Request) {
       });
     } else {
       // ── Produk tanpa varian ─────────────────────────────────
+      if (product.hasVariants) {
+        stockErrors.push(`Pilih varian untuk produk "${product.name}" sebelum checkout.`);
+        continue;
+      }
       if (product.stock < requested.quantity) {
         stockErrors.push(`${product.name} hanya tersedia ${product.stock}, sedangkan keranjang berisi ${requested.quantity}.`);
         continue;
@@ -195,35 +197,53 @@ export async function POST(request: Request) {
   const subtotal = checkoutItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   let discount = 0;
 
-  let user = await prisma.user.findFirst({
-    where: {
-      OR: [
-        { phone: input.customerPhone },
-        input.customerEmail ? { email: input.customerEmail } : undefined,
-      ].filter(Boolean) as { phone?: string; email?: string }[],
-    },
-  });
-
-  if (!user) {
-    user = await prisma.user.create({
-      data: {
-        name: input.customerName,
-        phone: input.customerPhone,
-        email: input.customerEmail || null,
+  try {
+    const customerSession = await getSession("CUSTOMER");
+    const sessionUserId = customerSession?.sub ?? null;
+    const { effectiveUserId } = await resolveOrderIdentity({
+      sessionUserId,
+      checkout: {
+        customerName: input.customerName,
+        customerPhone: input.customerPhone,
+        customerEmail: input.customerEmail || null,
+      },
+      findSessionUser(userId) {
+        return prisma.user.findUnique({
+          where: { id: userId },
+          select: { id: true },
+        });
+      },
+      findGuestUser({ phone, email }) {
+        return prisma.user.findFirst({
+          where: {
+            OR: [
+              { phone },
+              email ? { email } : undefined,
+            ].filter(Boolean) as { phone?: string; email?: string }[],
+          },
+          select: { id: true },
+        });
+      },
+      createGuestUser(checkout) {
+        return prisma.user.create({
+          data: {
+            name: checkout.customerName,
+            phone: checkout.customerPhone,
+            email: checkout.customerEmail || null,
+          },
+          select: { id: true },
+        });
       },
     });
-  }
 
-  try {
-    const voucherSession = await getSession("CUSTOMER");
-    if (input.voucherCode?.trim() && !voucherSession) {
+    if (input.voucherCode?.trim() && !customerSession) {
       throw new VoucherValidationError("Login dulu untuk menggunakan voucher member.", 401);
     }
 
     const userUsedCodes = new Set<string>();
     const userUsedOrders = await prisma.order.findMany({
       where: {
-        userId: user.id,
+        userId: effectiveUserId,
         OR: [{ voucherCode: { not: null } }, { manualVoucherCode: { not: null } }],
       },
       select: { voucherCode: true, manualVoucherCode: true },
@@ -265,7 +285,7 @@ export async function POST(request: Request) {
       if (
         expectedType === "CUSTOMER" &&
         voucher.userId !== null &&
-        voucher.userId !== voucherSession?.sub
+        voucher.userId !== effectiveUserId
       ) {
         return null;
       }
@@ -376,7 +396,7 @@ export async function POST(request: Request) {
         data: {
           orderNumber,
           trackingToken,
-          userId: user.id,
+          userId: effectiveUserId,
           customerName: input.customerName,
           customerPhone: input.customerPhone,
           customerEmail: input.customerEmail || null,
@@ -416,7 +436,7 @@ export async function POST(request: Request) {
       if (earnedPoints > 0) {
         await tx.customerPoint.create({
           data: {
-            userId: user.id,
+            userId: effectiveUserId,
             points: earnedPoints,
             source: `ORDER:${orderNumber}`,
           },
@@ -560,6 +580,9 @@ export async function POST(request: Request) {
     }
     if (error instanceof VoucherValidationError) {
       return NextResponse.json({ message: error.message }, { status: error.status });
+    }
+    if (error instanceof InvalidCustomerSessionError) {
+      return NextResponse.json({ message: error.message }, { status: 401 });
     }
     return NextResponse.json({ message: error instanceof Error ? error.message : "Gagal membuat order." }, { status: 500 });
   }

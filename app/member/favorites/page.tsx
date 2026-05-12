@@ -1,4 +1,3 @@
-import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
 import { LogoutButton } from "@/components/LogoutButton";
@@ -6,22 +5,21 @@ import { MemberNav } from "@/components/MemberNav";
 import { FavoriteButton } from "@/components/FavoriteButton";
 import { QuickAddToCart } from "@/components/QuickAddToCart";
 import { EmptyWishlist } from "@/components/LoadingEmptyStates";
+import { requireCustomerSession } from "@/lib/session-guards";
 import Link from "next/link";
 
 export default async function MemberFavoritesPage() {
-  const session = await getSession("CUSTOMER");
+  const session = await requireCustomerSession();
 
-  const favorites = session
-    ? await prisma.favorite.findMany({
-        where: { userId: session.sub },
-        orderBy: { createdAt: "desc" },
-        include: {
-          product: {
-            include: { category: true },
-          },
-        },
-      })
-    : [];
+  const favorites = await prisma.favorite.findMany({
+    where: { userId: session.sub },
+    orderBy: { createdAt: "desc" },
+    include: {
+      product: {
+        include: { category: true },
+      },
+    },
+  });
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -35,10 +33,15 @@ export default async function MemberFavoritesPage() {
               </div>
               <div>
                 <p className="text-xs text-blue-100">Member resmi</p>
-                <p className="text-base font-black text-white md:text-lg">Halo, {session?.name}!</p>
+                <p className="text-base font-black text-white md:text-lg">
+                  Halo, {session?.name}!
+                </p>
               </div>
             </div>
-            <LogoutButton redirectTo="/member/login" className="border-white/30 text-white hover:border-white/60" />
+            <LogoutButton
+              redirectTo="/member/login"
+              className="border-white/30 text-white hover:border-white/60"
+            />
           </div>
           <MemberNav />
         </div>
@@ -46,7 +49,9 @@ export default async function MemberFavoritesPage() {
 
       <main className="mx-auto max-w-4xl px-4 py-8">
         <h2 className="text-xl font-black text-gray-900">Produk Favorit</h2>
-        <p className="mt-1 text-sm text-gray-500">{favorites.length} produk tersimpan</p>
+        <p className="mt-1 text-sm text-gray-500">
+          {favorites.length} produk tersimpan
+        </p>
 
         {favorites.length === 0 ? (
           <div className="mt-6 rounded-2xl border border-gray-100 bg-white">
@@ -56,8 +61,11 @@ export default async function MemberFavoritesPage() {
           <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {favorites.map(({ product }) => {
               const hasDiscount =
-                product.discountPrice !== null && product.discountPrice < product.price;
-              const displayPrice = hasDiscount ? product.discountPrice! : product.price;
+                product.discountPrice !== null &&
+                product.discountPrice < product.price;
+              const displayPrice = hasDiscount
+                ? product.discountPrice!
+                : product.price;
               const isUnavailable = !product.isActive;
 
               return (
@@ -75,7 +83,9 @@ export default async function MemberFavoritesPage() {
                           src={product.imageUrl}
                           alt={product.name}
                           className={`h-full w-full object-cover transition ${
-                            isUnavailable ? "grayscale" : "group-hover:scale-105"
+                            isUnavailable
+                              ? "grayscale"
+                              : "group-hover:scale-105"
                           }`}
                         />
                       ) : (
@@ -121,7 +131,11 @@ export default async function MemberFavoritesPage() {
                           </p>
                         )}
                       </div>
-                      <FavoriteButton productId={product.id} initialFavorited={true} size="sm" />
+                      <FavoriteButton
+                        productId={product.id}
+                        initialFavorited={true}
+                        size="sm"
+                      />
                     </div>
 
                     <div className="mt-3">

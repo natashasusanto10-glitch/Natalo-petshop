@@ -18,6 +18,28 @@ export type CartStockSnapshot = {
   message?: string;
 };
 
+export type AggregatedCartStockInput = CartStockInput & {
+  quantity: number;
+  variantId: string | null;
+  variantLabel: string | null;
+};
+
+export type CartStockProductRow = {
+  id: string;
+  name: string;
+  stock: number;
+  isActive: boolean;
+  hasVariants: boolean;
+};
+
+export type CartStockVariantRow = {
+  id: string;
+  productId: string;
+  stock: number;
+  isActive: boolean;
+  deletedAt: Date | null;
+};
+
 export type CartStockIssue = {
   key: string;
   productId: string;
@@ -40,6 +62,89 @@ export type CartStockReconcileResult = {
 
 export function cartStockKey(item: Pick<CartStockInput, "productId" | "variantId">) {
   return `${item.productId}:${item.variantId ?? ""}`;
+}
+
+export function normalizeCartStockVariantId(variantId: CartStockInput["variantId"]) {
+  return typeof variantId === "string" && variantId.length > 0 ? variantId : null;
+}
+
+export function buildCartStockSnapshots({
+  requestedItems,
+  products,
+  variants,
+}: {
+  requestedItems: AggregatedCartStockInput[];
+  products: CartStockProductRow[];
+  variants: CartStockVariantRow[];
+}): CartStockSnapshot[] {
+  return requestedItems.map((requested) => {
+    const key = cartStockKey(requested);
+    const product = products.find((item) => item.id === requested.productId);
+    const displayName = requested.name || product?.name || "Produk";
+
+    if (!product || !product.isActive) {
+      return {
+        key,
+        productId: requested.productId,
+        variantId: requested.variantId ?? null,
+        variantLabel: requested.variantLabel ?? null,
+        name: displayName,
+        requestedQuantity: requested.quantity,
+        availableStock: 0,
+        isAvailable: false,
+        source: requested.variantId ? "variant" : "product",
+        message: `${displayName} sudah tidak tersedia.`,
+      };
+    }
+
+    if (requested.variantId) {
+      const variant = variants.find(
+        (item) => item.id === requested.variantId && item.productId === requested.productId,
+      );
+      const isAvailable = Boolean(variant && variant.isActive && !variant.deletedAt);
+      return {
+        key,
+        productId: requested.productId,
+        variantId: requested.variantId,
+        variantLabel: requested.variantLabel ?? null,
+        name: displayName,
+        requestedQuantity: requested.quantity,
+        availableStock: isAvailable ? variant?.stock ?? 0 : 0,
+        isAvailable,
+        source: "variant",
+        message: isAvailable
+          ? undefined
+          : `Varian ${displayName}${requested.variantLabel ? ` (${requested.variantLabel})` : ""} sudah tidak tersedia.`,
+      };
+    }
+
+    if (product.hasVariants) {
+      return {
+        key,
+        productId: requested.productId,
+        variantId: null,
+        variantLabel: requested.variantLabel ?? null,
+        name: displayName,
+        requestedQuantity: requested.quantity,
+        availableStock: 0,
+        isAvailable: false,
+        source: "variant",
+        message: "Produk ini memiliki varian, pilih varian terlebih dahulu.",
+      };
+    }
+
+    return {
+      key,
+      productId: requested.productId,
+      variantId: null,
+      variantLabel: null,
+      name: displayName,
+      requestedQuantity: requested.quantity,
+      availableStock: product.stock,
+      isAvailable: true,
+      source: "product",
+    };
+  });
 }
 
 export function reconcileCartItemsWithStock(

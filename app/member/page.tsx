@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { ClaimVoucherButton } from "@/components/ClaimVoucherButton";
 import { LogoutButton } from "@/components/LogoutButton";
-import { getSession } from "@/lib/auth";
 import { formatRupiah } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
+import { requireCustomerSession } from "@/lib/session-guards";
 
 function formatDate(date: Date | null) {
   if (!date) return "Tanpa batas waktu";
@@ -25,77 +25,74 @@ function formatVoucherValue(voucher: {
 }
 
 export default async function MemberPage() {
-  const session = await getSession("CUSTOMER");
+  const session = await requireCustomerSession();
 
-  const totalPoints = session
-    ? await prisma.customerPoint.aggregate({
-        where: { userId: session.sub },
-        _sum: { points: true },
-      })
-    : null;
+  const totalPoints = await prisma.customerPoint.aggregate({
+    where: { userId: session.sub },
+    _sum: { points: true },
+  });
 
   const points = totalPoints?._sum.points ?? 0;
   const now = new Date();
 
-  const vouchers = session
-    ? (
-        await prisma.voucher.findMany({
-          where: {
-            userId: session.sub,
-            isActive: true,
-            startsAt: { lte: now },
-            OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-          },
-          orderBy: [{ expiresAt: "asc" }, { createdAt: "desc" }],
-          take: 5,
-        })
-      ).filter((voucher) => voucher.maxUsage === null || voucher.usedCount < voucher.maxUsage)
-    : [];
+  const vouchers = (
+    await prisma.voucher.findMany({
+      where: {
+        userId: session.sub,
+        isActive: true,
+        startsAt: { lte: now },
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      orderBy: [{ expiresAt: "asc" }, { createdAt: "desc" }],
+      take: 5,
+    })
+  ).filter(
+    (voucher) =>
+      voucher.maxUsage === null || voucher.usedCount < voucher.maxUsage
+  );
 
   let birthdayVoucherCode: string | null = null;
-  if (session) {
-    const user = await prisma.user.findUnique({
-      where: { id: session.sub },
-      select: { birthDate: true, birthdayVoucherYear: true },
-    });
+  const user = await prisma.user.findUnique({
+    where: { id: session.sub },
+    select: { birthDate: true, birthdayVoucherYear: true },
+  });
 
-    if (user?.birthDate) {
-      const today = new Date();
-      const birthDate = user.birthDate;
-      const isBirthday =
-        birthDate.getDate() === today.getDate() &&
-        birthDate.getMonth() === today.getMonth();
-      const currentYear = today.getFullYear();
-      const alreadyClaimedThisYear = user.birthdayVoucherYear === currentYear;
+  if (user?.birthDate) {
+    const today = new Date();
+    const birthDate = user.birthDate;
+    const isBirthday =
+      birthDate.getDate() === today.getDate() &&
+      birthDate.getMonth() === today.getMonth();
+    const currentYear = today.getFullYear();
+    const alreadyClaimedThisYear = user.birthdayVoucherYear === currentYear;
 
-      if (isBirthday) {
-        const code = `BDAY-${session.sub.slice(-6).toUpperCase()}-${currentYear}`;
-        if (!alreadyClaimedThisYear) {
-          const expiresAt = new Date(today);
-          expiresAt.setDate(expiresAt.getDate() + 7);
-          await prisma.$transaction([
-            prisma.voucher.upsert({
-              where: { code },
-              create: {
-                code,
-                description: `Voucher ulang tahun ${currentYear}`,
-                discountPercent: 15,
-                minimumOrder: 0,
-                maxUsage: 1,
-                expiresAt,
-                isActive: true,
-                userId: session.sub,
-              },
-              update: { userId: session.sub },
-            }),
-            prisma.user.update({
-              where: { id: session.sub },
-              data: { birthdayVoucherYear: currentYear },
-            }),
-          ]);
-        }
-        birthdayVoucherCode = code;
+    if (isBirthday) {
+      const code = `BDAY-${session.sub.slice(-6).toUpperCase()}-${currentYear}`;
+      if (!alreadyClaimedThisYear) {
+        const expiresAt = new Date(today);
+        expiresAt.setDate(expiresAt.getDate() + 7);
+        await prisma.$transaction([
+          prisma.voucher.upsert({
+            where: { code },
+            create: {
+              code,
+              description: `Voucher ulang tahun ${currentYear}`,
+              discountPercent: 15,
+              minimumOrder: 0,
+              maxUsage: 1,
+              expiresAt,
+              isActive: true,
+              userId: session.sub,
+            },
+            update: { userId: session.sub },
+          }),
+          prisma.user.update({
+            where: { id: session.sub },
+            data: { birthdayVoucherYear: currentYear },
+          }),
+        ]);
       }
+      birthdayVoucherCode = code;
     }
   }
 
@@ -139,7 +136,9 @@ export default async function MemberPage() {
       <div className="mt-6 rounded-2xl border border-blue-100 bg-blue-50 p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold text-blue-700">⭐ Loyalty Poin</p>
+            <p className="text-sm font-semibold text-blue-700">
+              ⭐ Loyalty Poin
+            </p>
             <p className="mt-2 text-3xl font-black text-gray-900">
               {points.toLocaleString("id-ID")}
             </p>
@@ -180,7 +179,10 @@ export default async function MemberPage() {
       </div>
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
-        <div id="voucher-member" className="scroll-mt-24 rounded-2xl border border-blue-100 bg-blue-50 p-5">
+        <div
+          id="voucher-member"
+          className="scroll-mt-24 rounded-2xl border border-blue-100 bg-blue-50 p-5"
+        >
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-blue-700">
@@ -213,7 +215,9 @@ export default async function MemberPage() {
                       <p className="mt-1 text-xs font-semibold text-gray-700">
                         {formatVoucherValue(voucher)}
                         {voucher.minimumOrder > 0
-                          ? ` - min. belanja ${formatRupiah(voucher.minimumOrder)}`
+                          ? ` - min. belanja ${formatRupiah(
+                              voucher.minimumOrder
+                            )}`
                           : ""}
                       </p>
                     </div>
@@ -240,7 +244,9 @@ export default async function MemberPage() {
           )}
         </div>
         <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5">
-          <p className="text-sm font-semibold text-blue-700">Notifikasi Order</p>
+          <p className="text-sm font-semibold text-blue-700">
+            Notifikasi Order
+          </p>
           <p className="mt-2 font-bold text-gray-900">Pantau pesananmu</p>
           <p className="mt-1 text-sm text-gray-500">
             Detail pesanan lengkap tersedia di menu Pesanan Saya.

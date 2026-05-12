@@ -20,7 +20,25 @@ const NAV_LINKS = [
 
 // Halaman yang ada di BottomNavigation — gak perlu tombol back karena
 // user bisa pindah via tab.
-const MAIN_TABS = ["/", "/products", "/cart", "/member"];
+const MAIN_TAB_PATHS = new Set([
+  "/",
+  "/products",
+  "/produk",
+  "/kategori",
+  "/cart",
+  "/member",
+  "/member/login",
+  "/akun",
+]);
+
+function normalizePathname(pathname: string | null) {
+  if (!pathname || pathname === "/") return "/";
+  return pathname.replace(/\/+$/, "");
+}
+
+function isMainTabPath(pathname: string) {
+  return MAIN_TAB_PATHS.has(pathname);
+}
 
 type MemberProfile = {
   id?: string;
@@ -35,13 +53,14 @@ export function Header() {
   const [memberMenuOpen, setMemberMenuOpen] = useState(false);
   const [member, setMember] = useState<MemberProfile | null>(null);
   const pathname = usePathname();
+  const currentPath = normalizePathname(pathname);
   const memberMenuRef = useRef<HTMLDivElement>(null);
-  const isHome = pathname === "/";
-  const isProductDetail = /^\/products\/[^/]+$/.test(pathname ?? "");
-  const isMainTab = MAIN_TABS.includes(pathname ?? "");
+  const isHome = currentPath === "/";
+  const isProductDetail = /^\/products\/[^/]+$/.test(currentPath);
+  const isMainTab = isMainTabPath(currentPath);
   // Back button universal: tampil di mobile untuk semua halaman selain main tab
   // & product detail (yang punya header sendiri dengan back + search + share + cart).
-  const showBackButton = !isMainTab && !isProductDetail;
+  const showBackButton = Boolean(pathname) && !isMainTab && !isProductDetail;
 
   function handleBack() {
     // Fallback ke home kalau buka deep link langsung (no history) — biar back gak
@@ -248,7 +267,7 @@ export function Header() {
               key={link.href}
               href={link.href}
               className={`transition hover:text-blue-500 ${
-                pathname === link.href ? "font-semibold text-blue-500" : ""
+                currentPath === link.href ? "font-semibold text-blue-500" : ""
               }`}
             >
               {link.label}

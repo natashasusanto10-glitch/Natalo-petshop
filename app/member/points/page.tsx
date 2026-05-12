@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { requireCustomerSession } from "@/lib/session-guards";
 
 export const metadata: Metadata = { title: "Loyalty Poin" };
 
@@ -26,8 +25,7 @@ const SOURCE_LABEL: Record<string, string> = {
 };
 
 export default async function MemberPointsPage() {
-  const session = await getSession("CUSTOMER");
-  if (!session) redirect("/member/login");
+  const session = await requireCustomerSession();
 
   const [aggregate, history] = await Promise.all([
     prisma.customerPoint.aggregate({
@@ -42,13 +40,19 @@ export default async function MemberPointsPage() {
   ]);
 
   const total = aggregate?._sum.points ?? 0;
-  const earned = history.filter((h) => h.points > 0).reduce((s, h) => s + h.points, 0);
-  const redeemed = history.filter((h) => h.points < 0).reduce((s, h) => s + h.points, 0);
+  const earned = history
+    .filter((h) => h.points > 0)
+    .reduce((s, h) => s + h.points, 0);
+  const redeemed = history
+    .filter((h) => h.points < 0)
+    .reduce((s, h) => s + h.points, 0);
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-4 md:py-10">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-black text-gray-900 md:text-2xl">Loyalty Poin</h1>
+        <h1 className="text-xl font-black text-gray-900 md:text-2xl">
+          Loyalty Poin
+        </h1>
         <Link
           href="/member"
           className="text-sm font-semibold text-blue-500 hover:underline"
@@ -59,8 +63,12 @@ export default async function MemberPointsPage() {
 
       {/* Total balance card */}
       <div className="mt-4 overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 p-5 text-white shadow-sm md:mt-6 md:p-6">
-        <p className="text-xs uppercase tracking-wider text-blue-100">Total Saldo Poin</p>
-        <p className="mt-2 text-4xl font-black md:text-5xl">{total.toLocaleString("id-ID")}</p>
+        <p className="text-xs uppercase tracking-wider text-blue-100">
+          Total Saldo Poin
+        </p>
+        <p className="mt-2 text-4xl font-black md:text-5xl">
+          {total.toLocaleString("id-ID")}
+        </p>
         <p className="mt-1 text-xs text-blue-100">
           1 poin setiap Rp20.000 belanja · 1 poin = Rp100 voucher
         </p>
@@ -72,7 +80,9 @@ export default async function MemberPointsPage() {
           </div>
           <div>
             <p className="text-xs text-blue-100">Total Ditukar</p>
-            <p className="mt-1 font-black">{redeemed.toLocaleString("id-ID")}</p>
+            <p className="mt-1 font-black">
+              {redeemed.toLocaleString("id-ID")}
+            </p>
           </div>
         </div>
       </div>
@@ -84,7 +94,9 @@ export default async function MemberPointsPage() {
           className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 transition hover:border-blue-300"
         >
           <div>
-            <p className="text-sm font-bold text-blue-700">🎁 Tukar jadi voucher</p>
+            <p className="text-sm font-bold text-blue-700">
+              🎁 Tukar jadi voucher
+            </p>
             <p className="mt-0.5 text-xs text-blue-600">
               Min. 50 poin (= Rp5.000 diskon). Klaim di halaman member.
             </p>

@@ -1,21 +1,13 @@
-import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { LogoutButton } from "@/components/LogoutButton";
 import { MemberNav } from "@/components/MemberNav";
 import { Stars } from "@/components/StarRating";
 import { ReviewableItemCard } from "@/components/ReviewableItemCard";
+import { requireCustomerSession } from "@/lib/session-guards";
 import Link from "next/link";
 
 export default async function MemberReviewsPage() {
-  const session = await getSession("CUSTOMER");
-  if (!session) {
-    return (
-      <div className="p-8 text-center">
-        <p>Silakan login dulu.</p>
-        <Link href="/member/login" className="text-natalo-600 underline">Login</Link>
-      </div>
-    );
-  }
+  const session = await requireCustomerSession();
 
   // Item yang BELUM direview (status order = DELIVERED, no aktif review)
   const reviewableItems = await prisma.orderItem.findMany({
@@ -58,10 +50,15 @@ export default async function MemberReviewsPage() {
               </div>
               <div>
                 <p className="text-xs text-natalo-100">Member resmi</p>
-                <p className="text-lg font-black text-white">Halo, {session.name}!</p>
+                <p className="text-lg font-black text-white">
+                  Halo, {session.name}!
+                </p>
               </div>
             </div>
-            <LogoutButton redirectTo="/member/login" className="border-white/30 text-white hover:border-white/60" />
+            <LogoutButton
+              redirectTo="/member/login"
+              className="border-white/30 text-white hover:border-white/60"
+            />
           </div>
           <MemberNav />
         </div>
@@ -74,14 +71,16 @@ export default async function MemberReviewsPage() {
             Yang menunggu review ({reviewableItems.length})
           </h2>
           <p className="mt-1 text-sm text-gray-500">
-            Bagikan pengalaman kamu — bantu pembeli lain memilih produk yang tepat.
+            Bagikan pengalaman kamu — bantu pembeli lain memilih produk yang
+            tepat.
           </p>
 
           {reviewableItems.length === 0 ? (
             <div className="mt-5 rounded-2xl border border-gray-100 bg-white p-8 text-center">
               <span className="text-4xl">✨</span>
               <p className="mt-3 text-sm text-gray-500">
-                Tidak ada produk yang menunggu review. Pesanan yang sudah selesai akan muncul di sini.
+                Tidak ada produk yang menunggu review. Pesanan yang sudah
+                selesai akan muncul di sini.
               </p>
             </div>
           ) : (
@@ -124,9 +123,15 @@ export default async function MemberReviewsPage() {
                     <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-gray-100">
                       {r.product.imageUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={r.product.imageUrl} alt={r.product.name} className="h-full w-full object-cover" />
+                        <img
+                          src={r.product.imageUrl}
+                          alt={r.product.name}
+                          className="h-full w-full object-cover"
+                        />
                       ) : (
-                        <div className="flex h-full items-center justify-center text-2xl">🐾</div>
+                        <div className="flex h-full items-center justify-center text-2xl">
+                          🐾
+                        </div>
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
@@ -137,7 +142,9 @@ export default async function MemberReviewsPage() {
                         {r.product.name}
                       </Link>
                       {r.variantLabel && (
-                        <p className="text-xs text-natalo-600">{r.variantLabel}</p>
+                        <p className="text-xs text-natalo-600">
+                          {r.variantLabel}
+                        </p>
                       )}
                       <div className="mt-1 flex items-center gap-2">
                         <Stars rating={r.rating} size="sm" />
@@ -153,9 +160,15 @@ export default async function MemberReviewsPage() {
                     </div>
                   </div>
 
-                  {r.title && <p className="mt-3 text-sm font-semibold text-gray-900">{r.title}</p>}
+                  {r.title && (
+                    <p className="mt-3 text-sm font-semibold text-gray-900">
+                      {r.title}
+                    </p>
+                  )}
                   {r.content && (
-                    <p className="mt-1 text-sm text-gray-700 whitespace-pre-line">{r.content}</p>
+                    <p className="mt-1 text-sm text-gray-700 whitespace-pre-line">
+                      {r.content}
+                    </p>
                   )}
 
                   {r.images.length > 0 && (
@@ -174,8 +187,12 @@ export default async function MemberReviewsPage() {
 
                   {r.reply && (
                     <div className="mt-3 rounded-lg bg-natalo-50 p-3">
-                      <p className="text-xs font-bold text-natalo-800">💬 Balasan Penjual</p>
-                      <p className="mt-0.5 text-sm text-gray-700 whitespace-pre-line">{r.reply.content}</p>
+                      <p className="text-xs font-bold text-natalo-800">
+                        💬 Balasan Penjual
+                      </p>
+                      <p className="mt-0.5 text-sm text-gray-700 whitespace-pre-line">
+                        {r.reply.content}
+                      </p>
                     </div>
                   )}
                 </div>

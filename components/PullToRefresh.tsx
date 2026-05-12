@@ -70,6 +70,7 @@ export function PullToRefresh({ disabled = false }: { disabled?: boolean }) {
 
     function handleTouchStart(e: TouchEvent) {
       if (refreshingRef.current) return;
+      if (document.body.classList.contains("nat-modal-open")) return;
       if (!isAtTop()) return;
       // Skip kalau gesture origin di element scrollable (mis. carousel)
       const target = e.target as HTMLElement;
@@ -81,6 +82,11 @@ export function PullToRefresh({ disabled = false }: { disabled?: boolean }) {
 
     function handleTouchMove(e: TouchEvent) {
       if (!isPullingRef.current || refreshingRef.current) return;
+      if (document.body.classList.contains("nat-modal-open")) {
+        isPullingRef.current = false;
+        setPullDistance(0);
+        return;
+      }
 
       const delta = e.touches[0].clientY - startYRef.current;
       if (delta <= 0) {

@@ -1,14 +1,22 @@
 import { prisma } from "@/lib/prisma";
-import { cartStockKey, type CartStockInput, type CartStockSnapshot } from "@/lib/cart-stock";
+import {
+  buildCartStockSnapshots,
+  cartStockKey,
+  normalizeCartStockVariantId,
+  type AggregatedCartStockInput,
+  type CartStockInput,
+  type CartStockSnapshot,
+} from "@/lib/cart-stock";
 
 export async function getCartStockSnapshots(items: CartStockInput[]): Promise<CartStockSnapshot[]> {
-  const requestedMap = new Map<string, CartStockInput & { quantity: number }>();
+  const requestedMap = new Map<string, AggregatedCartStockInput>();
   for (const item of items) {
-    const key = cartStockKey(item);
+    const variantId = normalizeCartStockVariantId(item.variantId);
+    const key = cartStockKey({ productId: item.productId, variantId });
     const current = requestedMap.get(key);
     requestedMap.set(key, {
       ...item,
-      variantId: item.variantId ?? null,
+      variantId,
       variantLabel: item.variantLabel ?? null,
       quantity: (current?.quantity ?? 0) + item.quantity,
     });
@@ -24,7 +32,7 @@ export async function getCartStockSnapshots(items: CartStockInput[]): Promise<Ca
     productIds.length
       ? prisma.product.findMany({
           where: { id: { in: productIds } },
-          select: { id: true, name: true, stock: true, isActive: true },
+          select: { id: true, name: true, stock: true, isActive: true, hasVariants: true },
         })
       : Promise.resolve([]),
     variantIds.length
@@ -41,57 +49,5 @@ export async function getCartStockSnapshots(items: CartStockInput[]): Promise<Ca
       : Promise.resolve([]),
   ]);
 
-  return requestedItems.map((requested) => {
-    const key = cartStockKey(requested);
-    const product = products.find((item) => item.id === requested.productId);
-    const displayName = requested.name || product?.name || "Produk";
-
-    if (!product || !product.isActive) {
-      return {
-        key,
-        productId: requested.productId,
-        variantId: requested.variantId ?? null,
-        variantLabel: requested.variantLabel ?? null,
-        name: displayName,
-        requestedQuantity: requested.quantity,
-        availableStock: 0,
-        isAvailable: false,
-        source: requested.variantId ? "variant" : "product",
-        message: `${displayName} sudah tidak tersedia.`,
-      };
-    }
-
-    if (requested.variantId) {
-      const variant = variants.find(
-        (item) => item.id === requested.variantId && item.productId === requested.productId,
-      );
-      const isAvailable = Boolean(variant && variant.isActive && !variant.deletedAt);
-      return {
-        key,
-        productId: requested.productId,
-        variantId: requested.variantId,
-        variantLabel: requested.variantLabel ?? null,
-        name: displayName,
-        requestedQuantity: requested.quantity,
-        availableStock: isAvailable ? variant?.stock ?? 0 : 0,
-        isAvailable,
-        source: "variant",
-        message: isAvailable
-          ? undefined
-          : `Varian ${displayName}${requested.variantLabel ? ` (${requested.variantLabel})` : ""} sudah tidak tersedia.`,
-      };
-    }
-
-    return {
-      key,
-      productId: requested.productId,
-      variantId: null,
-      variantLabel: null,
-      name: displayName,
-      requestedQuantity: requested.quantity,
-      availableStock: product.stock,
-      isAvailable: true,
-      source: "product",
-    };
-  });
+  return buildCartStockSnapshots({ requestedItems, products, variants });
 }

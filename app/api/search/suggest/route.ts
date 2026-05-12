@@ -1,39 +1,21 @@
 /**
  * GET /api/search/suggest?q=...&limit=8
  *
- * Auto-suggest untuk dropdown search. Data berasal dari Meilisearch bila
- * tersedia, lalu dilengkapi fallback database agar UI tetap hidup saat search
- * engine lokal/offline.
+ * Auto-suggest untuk dropdown search. Meilisearch dipakai sebagai sumber
+ * kandidat/ranking bila tersedia, tetapi data final produk selalu di-hydrate
+ * ulang dari database agar harga, stok, status aktif, dan varian tetap fresh.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { productIndex } from "@/lib/search";
+import {
+  EMPTY_SUGGEST_RESPONSE as EMPTY,
+  mergeSuggestionProducts,
+  type SuggestProduct,
+  type SuggestResponse,
+} from "@/lib/search-suggest";
 
 export const dynamic = "force-dynamic";
-
-type SuggestProduct = {
-  id: string;
-  slug: string;
-  name: string;
-  image_url: string | null;
-  price_min: number;
-  price_max: number;
-  brand_name: string | null;
-};
-
-type SuggestResponse = {
-  products: SuggestProduct[];
-  categories: Array<{ slug: string; name: string; count: number }>;
-  brands: Array<{ slug: string; name: string; count: number }>;
-  total: number;
-};
-
-const EMPTY: SuggestResponse = {
-  products: [],
-  categories: [],
-  brands: [],
-  total: 0,
-};
 
 function normalizeSearchText(value: string) {
   return value
@@ -60,6 +42,11 @@ function tokenWhere(token: string) {
   ];
 }
 
+const suggestableProductState = [
+  { hasVariants: false },
+  { variants: { some: { deletedAt: null, isActive: true } } },
+];
+
 function scoreLabel(label: string, query: string) {
   const normalizedLabel = normalizeSearchText(label);
   const normalizedQuery = normalizeSearchText(query);
@@ -73,25 +60,6 @@ function scoreLabel(label: string, query: string) {
     if (normalizedLabel.includes(token)) score += 10;
   }
   return score;
-}
-
-function mergeUnique<T extends { slug?: string; id?: string }>(
-  first: T[],
-  second: T[],
-  limit: number,
-) {
-  const seen = new Set<string>();
-  const merged: T[] = [];
-
-  for (const item of [...first, ...second]) {
-    const key = item.id ?? item.slug;
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    merged.push(item);
-    if (merged.length >= limit) break;
-  }
-
-  return merged;
 }
 
 async function suggestFromMeili(q: string, limit: number): Promise<SuggestResponse> {
@@ -110,7 +78,6 @@ async function suggestFromMeili(q: string, limit: number): Promise<SuggestRespon
       "category_name",
       "category_slug",
     ],
-    facets: ["category_slug", "category_name", "brand_slug", "brand_name"],
   });
 
   type Hit = SuggestProduct & {
@@ -150,6 +117,59 @@ async function suggestFromMeili(q: string, limit: number): Promise<SuggestRespon
   };
 }
 
+function productToSuggestion(product: {
+  id: string;
+  slug: string;
+  name: string;
+  imageUrl: string | null;
+  price: number;
+  discountPrice: number | null;
+  hasVariants: boolean;
+  brand: { name: string } | null;
+  variants: Array<{ price: number; stock: number }>;
+}): SuggestProduct {
+  const prices = product.hasVariants && product.variants.length
+    ? product.variants.map((variant) => variant.price)
+    : [product.discountPrice && product.discountPrice < product.price
+        ? product.discountPrice
+        : product.price];
+
+  return {
+    id: product.id,
+    slug: product.slug,
+    name: product.name,
+    image_url: product.imageUrl,
+    price_min: Math.min(...prices),
+    price_max: Math.max(...prices),
+    brand_name: product.brand?.name ?? null,
+  };
+}
+
+async function hydrateMeiliProductsFromDb(
+  meiliProducts: SuggestProduct[],
+): Promise<SuggestProduct[]> {
+  const ids = meiliProducts.map((product) => product.id).filter(Boolean);
+  if (ids.length === 0) return [];
+
+  const products = await prisma.product.findMany({
+    where: {
+      id: { in: ids },
+      isActive: true,
+      OR: suggestableProductState,
+    },
+    include: {
+      brand: { select: { name: true } },
+      variants: {
+        where: { deletedAt: null, isActive: true },
+        select: { price: true, stock: true },
+      },
+    },
+  });
+
+  const byId = new Map(products.map((product) => [product.id, productToSuggestion(product)]));
+  return ids.map((id) => byId.get(id)).filter((product): product is SuggestProduct => Boolean(product));
+}
+
 async function suggestFromDb(q: string, limit: number): Promise<SuggestResponse> {
   const tokens = tokensFor(q);
   const productOr = [
@@ -166,7 +186,13 @@ async function suggestFromDb(q: string, limit: number): Promise<SuggestResponse>
 
   const [products, categories, brands] = await Promise.all([
     prisma.product.findMany({
-      where: { isActive: true, OR: productOr },
+      where: {
+        isActive: true,
+        AND: [
+          { OR: productOr },
+          { OR: suggestableProductState },
+        ],
+      },
       include: {
         brand: { select: { name: true } },
         variants: {
@@ -191,23 +217,7 @@ async function suggestFromDb(q: string, limit: number): Promise<SuggestResponse>
   const productSuggestions = products
     .sort((a, b) => scoreLabel(b.name, q) - scoreLabel(a.name, q))
     .slice(0, 5)
-    .map((product) => {
-      const prices = product.hasVariants && product.variants.length
-        ? product.variants.map((variant) => variant.price)
-        : [product.discountPrice && product.discountPrice < product.price
-            ? product.discountPrice
-            : product.price];
-
-      return {
-        id: product.id,
-        slug: product.slug,
-        name: product.name,
-        image_url: product.imageUrl,
-        price_min: Math.min(...prices),
-        price_max: Math.max(...prices),
-        brand_name: product.brand?.name ?? null,
-      };
-    });
+    .map(productToSuggestion);
 
   return {
     products: productSuggestions,
@@ -243,12 +253,20 @@ export async function GET(request: NextRequest) {
       suggestFromMeili(q, limit).catch(() => EMPTY),
       suggestFromDb(q, limit).catch(() => EMPTY),
     ]);
+    const hydratedMeiliProducts = await hydrateMeiliProductsFromDb(meiliResult.products).catch(
+      () => [],
+    );
+    const products = mergeSuggestionProducts({
+      dbProducts: dbResult.products,
+      meiliProducts: hydratedMeiliProducts,
+      limit: 5,
+    });
 
     return NextResponse.json({
-      products: mergeUnique(meiliResult.products, dbResult.products, 5),
-      categories: mergeUnique(meiliResult.categories, dbResult.categories, 5),
-      brands: mergeUnique(meiliResult.brands, dbResult.brands, 5),
-      total: Math.max(meiliResult.total, dbResult.total),
+      products,
+      categories: dbResult.categories,
+      brands: dbResult.brands,
+      total: Math.max(dbResult.total, products.length),
     });
   } catch (error) {
     return NextResponse.json(

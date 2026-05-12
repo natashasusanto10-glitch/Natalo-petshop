@@ -27,6 +27,75 @@ const PRECACHE = [
   "/icons/mstile-150x150.png",
 ];
 
+const SENSITIVE_PATH_PREFIXES = [
+  "/admin",
+  "/checkout",
+  "/member",
+  "/akun",
+  "/account",
+  "/profile",
+  "/pesanan",
+  "/orders",
+  "/order",
+  "/invoice",
+  "/login",
+  "/logout",
+  "/auth",
+  "/payment",
+];
+
+const SENSITIVE_QUERY_PARAMS = [
+  "token",
+  "access_token",
+  "order_token",
+  "ordertoken",
+  "session",
+  "session_id",
+  "code",
+  "auth",
+];
+
+function isSensitiveUrl(url) {
+  const pathname = url.pathname.replace(/\/+$/, "") || "/";
+  const isSensitivePath = SENSITIVE_PATH_PREFIXES.some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`)
+  );
+  const queryKeys = Array.from(url.searchParams.keys()).map((key) => key.toLowerCase());
+  const hasSensitiveParam = SENSITIVE_QUERY_PARAMS.some((param) => queryKeys.includes(param));
+
+  return isSensitivePath || hasSensitiveParam;
+}
+
+function isSensitivePageRequest(request) {
+  const url = new URL(request.url);
+  return url.origin === self.location.origin && isSensitiveUrl(url);
+}
+
+function shouldCacheResponse(response) {
+  if (!response || response.status !== 200 || response.redirected) return false;
+
+  const cacheControl = response.headers.get("Cache-Control")?.toLowerCase() ?? "";
+  return !(
+    cacheControl.includes("no-store") ||
+    cacheControl.includes("private") ||
+    cacheControl.includes("no-cache")
+  );
+}
+
+async function cleanupSensitiveEntries(cacheName) {
+  const cache = await caches.open(cacheName);
+  const requests = await cache.keys();
+
+  await Promise.all(
+    requests
+      .filter((request) => {
+        const url = new URL(request.url);
+        return url.origin === self.location.origin && isSensitiveUrl(url);
+      })
+      .map((request) => cache.delete(request))
+  );
+}
+
 self.addEventListener("install", (e) => {
   e.waitUntil(
     caches.open(CACHE).then((c) => c.addAll(PRECACHE)).then(() => self.skipWaiting())
@@ -36,7 +105,9 @@ self.addEventListener("install", (e) => {
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
+      Promise.all(
+        keys.map((k) => (k === CACHE ? cleanupSensitiveEntries(k) : caches.delete(k)))
+      )
     ).then(() => self.clients.claim())
   );
 });
@@ -96,6 +167,11 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
+  if (isSensitivePageRequest(request)) {
+    e.respondWith(fetch(request).catch(() => caches.match("/offline").then((res) => res ?? Response.error())));
+    return;
+  }
+
   if (url.pathname.startsWith("/admin")) {
     e.respondWith(fetch(request).catch(() => caches.match("/offline")));
     return;
@@ -111,8 +187,10 @@ self.addEventListener("fetch", (e) => {
     e.respondWith(
       caches.match(request).then((cached) =>
         cached ?? fetch(request).then((res) => {
-          const clone = res.clone();
-          caches.open(CACHE).then((c) => c.put(request, clone));
+          if (shouldCacheResponse(res)) {
+            const clone = res.clone();
+            caches.open(CACHE).then((c) => c.put(request, clone));
+          }
           return res;
         })
       )
@@ -123,8 +201,10 @@ self.addEventListener("fetch", (e) => {
   e.respondWith(
     fetch(request)
       .then((res) => {
-        const clone = res.clone();
-        caches.open(CACHE).then((c) => c.put(request, clone));
+        if (shouldCacheResponse(res)) {
+          const clone = res.clone();
+          caches.open(CACHE).then((c) => c.put(request, clone));
+        }
         return res;
       })
       .catch(() =>

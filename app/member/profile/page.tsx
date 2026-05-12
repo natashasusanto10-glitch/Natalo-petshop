@@ -1,20 +1,26 @@
 import type { Metadata } from "next";
-import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { EditProfileForm } from "@/components/EditProfileForm";
+import { requireCustomerSession } from "@/lib/session-guards";
 
 export const metadata: Metadata = { title: "Profil Saya" };
 
 export default async function MemberProfilePage() {
-  const session = await getSession("CUSTOMER");
-  if (!session) redirect("/member/login");
+  const session = await requireCustomerSession();
 
   const [user, totalPoints] = await Promise.all([
     prisma.user.findUnique({
       where: { id: session.sub },
-      select: { id: true, name: true, email: true, phone: true, birthDate: true, createdAt: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        birthDate: true,
+        createdAt: true,
+      },
     }),
     prisma.customerPoint.aggregate({
       where: { userId: session.sub },
@@ -32,8 +38,13 @@ export default async function MemberProfilePage() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-4 md:py-10">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-black text-gray-900 md:text-2xl">Profil Saya</h1>
-        <Link href="/member" className="text-sm font-semibold text-blue-500 hover:underline">
+        <h1 className="text-xl font-black text-gray-900 md:text-2xl">
+          Profil Saya
+        </h1>
+        <Link
+          href="/member"
+          className="text-sm font-semibold text-blue-500 hover:underline"
+        >
           ← Kembali
         </Link>
       </div>
@@ -63,10 +74,14 @@ export default async function MemberProfilePage() {
             <span className="text-xl">⭐</span>
             <div>
               <p className="text-xs text-blue-100">Loyalty Poin</p>
-              <p className="text-base font-black">{points.toLocaleString("id-ID")} poin</p>
+              <p className="text-base font-black">
+                {points.toLocaleString("id-ID")} poin
+              </p>
             </div>
           </div>
-          <span className="text-xs font-bold text-white/90">Lihat history →</span>
+          <span className="text-xs font-bold text-white/90">
+            Lihat history →
+          </span>
         </Link>
       </div>
 

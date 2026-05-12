@@ -1,19 +1,29 @@
-export default function AdminSettingsPage() {
+import { requireAdminSession } from "@/lib/session-guards";
+
+export default async function AdminSettingsPage() {
+  await requireAdminSession();
+
   const brand = process.env.NEXT_PUBLIC_BRAND_NAME || "Natalo Petshop";
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "-";
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-6 lg:py-10">
       <div>
-        <h1 className="text-2xl font-black tracking-tight text-zinc-950 lg:text-3xl">Pengaturan Toko</h1>
-        <p className="mt-1 text-sm text-zinc-500">Konfigurasi umum toko kamu.</p>
+        <h1 className="text-2xl font-black tracking-tight text-zinc-950 lg:text-3xl">
+          Pengaturan Toko
+        </h1>
+        <p className="mt-1 text-sm text-zinc-500">
+          Konfigurasi umum toko kamu.
+        </p>
       </div>
 
       {/* Current config (read-only display) */}
       <section className="mt-6 rounded-3xl border border-zinc-200 bg-white p-6">
         <h2 className="font-bold text-zinc-950">Informasi Toko</h2>
         <p className="mt-1 text-xs text-zinc-400">
-          Ubah nilai ini melalui file <code className="rounded bg-zinc-100 px-1 py-0.5">.env</code> di server.
+          Ubah nilai ini melalui file{" "}
+          <code className="rounded bg-zinc-100 px-1 py-0.5">.env</code> di
+          server.
         </p>
 
         <div className="mt-5 space-y-4">
@@ -35,9 +45,16 @@ export default function AdminSettingsPage() {
         <h2 className="font-bold text-zinc-950">Payment Gateway</h2>
         <div className="mt-5 space-y-3">
           {[
-            { name: "Midtrans", key: "MIDTRANS_SERVER_KEY", desc: "Kartu kredit, transfer, e-wallet" },
+            {
+              name: "Midtrans",
+              key: "MIDTRANS_SERVER_KEY",
+              desc: "Kartu kredit, transfer, e-wallet",
+            },
           ].map((gw) => (
-            <div key={gw.name} className="flex items-center justify-between rounded-2xl bg-zinc-50 px-4 py-3">
+            <div
+              key={gw.name}
+              className="flex items-center justify-between rounded-2xl bg-zinc-50 px-4 py-3"
+            >
               <div>
                 <p className="font-semibold text-zinc-900">{gw.name}</p>
                 <p className="text-xs text-zinc-400">{gw.desc}</p>
@@ -55,9 +72,16 @@ export default function AdminSettingsPage() {
         <h2 className="font-bold text-zinc-950">Pengiriman</h2>
         <div className="mt-5 space-y-3">
           {[
-            { name: "RajaOngkir", key: "RAJAONGKIR_API_KEY", desc: "Kalkulasi ongkos kirim" },
+            {
+              name: "RajaOngkir",
+              key: "RAJAONGKIR_API_KEY",
+              desc: "Kalkulasi ongkos kirim",
+            },
           ].map((svc) => (
-            <div key={svc.name} className="flex items-center justify-between rounded-2xl bg-zinc-50 px-4 py-3">
+            <div
+              key={svc.name}
+              className="flex items-center justify-between rounded-2xl bg-zinc-50 px-4 py-3"
+            >
               <div>
                 <p className="font-semibold text-zinc-900">{svc.name}</p>
                 <p className="text-xs text-zinc-400">{svc.desc}</p>

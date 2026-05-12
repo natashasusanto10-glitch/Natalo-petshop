@@ -1,15 +1,11 @@
-import { redirect } from "next/navigation";
-import { getSession } from "@/lib/auth";
+import { requireAdminSession } from "@/lib/session-guards";
 
 export default async function ProtectedAdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const session = await getSession("ADMIN");
-
-  if (!session) redirect("/admin/login");
-  if (session.role === "CUSTOMER") redirect("/member/dashboard");
+  await requireAdminSession();
 
   return children;
 }
