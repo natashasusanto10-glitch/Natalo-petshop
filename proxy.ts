@@ -40,6 +40,17 @@ async function getSessionPayload(
 
 function safeCustomerRedirect(value: string | null) {
   if (!value || !value.startsWith("/") || value.startsWith("//")) return "/";
+  // Bare account hub → home (lihat MemberLoginForm.safeRedirect, harus
+  // konsisten antar client + proxy).
+  if (
+    value === "/member" ||
+    value === "/member/" ||
+    value === "/member/dashboard" ||
+    value === "/akun" ||
+    value === "/akun/"
+  ) {
+    return "/";
+  }
   if (
     value.startsWith("/api") ||
     value.startsWith("/admin") ||

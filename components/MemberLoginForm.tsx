@@ -7,6 +7,19 @@ import { PasswordInput } from "@/components/PasswordInput";
 
 function safeRedirect(value: string | null) {
   if (!value || !value.startsWith("/") || value.startsWith("//")) return "/";
+  // Bare account hub → home. User yg ditolak proxy saat tap "Akun" tab
+  // tidak butuh balik ke account dashboard yg minim konten; home lebih
+  // welcoming. Sub-pages (mis. /member/orders, /member/favorites) tetap
+  // respected supaya task-flow tidak putus.
+  if (
+    value === "/member" ||
+    value === "/member/" ||
+    value === "/member/dashboard" ||
+    value === "/akun" ||
+    value === "/akun/"
+  ) {
+    return "/";
+  }
   if (
     value.startsWith("/api") ||
     value.startsWith("/admin") ||
