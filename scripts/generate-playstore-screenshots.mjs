@@ -32,15 +32,50 @@ const ROOT = resolve(__dirname, "..");
 
 const BASE_URL = process.env.BASE_URL || "https://www.natalopetshop.com";
 
-// Android phone reference: Pixel 7 logical 412×915 / DPR ~2.6.
-// Untuk Play Store, 360×640 × DPR 3 = 1080×1920 — standar HDPI phone,
-// match aspect ratio Play Store 9:16 portrait yang ideal.
-const VIEWPORT = { width: 360, height: 640 };
-const DPR = 3;
-const FINAL_WIDTH = VIEWPORT.width * DPR; // 1080
-const FINAL_HEIGHT = VIEWPORT.height * DPR; // 1920
+// Device size matrix — pilih via SIZE env var:
+// - "phone"     → 1080×1920 (default, 9:16 portrait)
+// - "tablet-7"  → 1200×1920 (7-inch tablet, 9:16)
+// - "tablet-10" → 1600×2560 (10-inch tablet, 9:16)
+//
+// Spec Play Store:
+// - Phone: each side 320-3840 px
+// - 7-inch tablet: each side 320-3840 px
+// - 10-inch tablet: each side 1080-7680 px (minimum NAIK ke 1080)
+const SIZE = process.env.SIZE || "phone";
 
-const OUT_DIR = resolve(ROOT, "screenshots/playstore-phone");
+const DEVICE_CONFIGS = {
+  phone: {
+    viewport: { width: 360, height: 640 },
+    dpr: 3,
+    outDir: "playstore-phone",
+    label: "Phone (1080×1920)",
+  },
+  "tablet-7": {
+    viewport: { width: 600, height: 960 },
+    dpr: 2,
+    outDir: "playstore-tablet-7",
+    label: '7" Tablet (1200×1920)',
+  },
+  "tablet-10": {
+    viewport: { width: 800, height: 1280 },
+    dpr: 2,
+    outDir: "playstore-tablet-10",
+    label: '10" Tablet (1600×2560)',
+  },
+};
+
+const device = DEVICE_CONFIGS[SIZE];
+if (!device) {
+  console.error(`Unknown SIZE: ${SIZE}. Use phone, tablet-7, or tablet-10.`);
+  process.exit(1);
+}
+
+const VIEWPORT = device.viewport;
+const DPR = device.dpr;
+const FINAL_WIDTH = VIEWPORT.width * DPR;
+const FINAL_HEIGHT = VIEWPORT.height * DPR;
+
+const OUT_DIR = resolve(ROOT, `screenshots/${device.outDir}`);
 
 const BRAND_BLUE = "#1E5FBF";
 const BRAND_BLUE_DARK = "#0F2D5C";
@@ -206,7 +241,7 @@ async function generateOne(browser, config) {
 async function main() {
   if (!existsSync(OUT_DIR)) mkdirSync(OUT_DIR, { recursive: true });
 
-  console.log(`📦 Generating Play Store phone screenshots`);
+  console.log(`📦 Generating Play Store ${device.label} screenshots`);
   console.log(`   Viewport: ${VIEWPORT.width}×${VIEWPORT.height} @ DPR ${DPR}`);
   console.log(`   Output: ${FINAL_WIDTH}×${FINAL_HEIGHT} px`);
   console.log(`   Base URL: ${BASE_URL}`);
