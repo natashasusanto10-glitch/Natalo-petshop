@@ -8,6 +8,7 @@ import { formatRupiah } from "@/lib/format";
 import { addItemToCart } from "@/lib/cart-actions";
 import { getWishlistItems, WishlistButton } from "@/components/WishlistButton";
 import { AddToCartBottomSheet } from "@/components/AddToCartBottomSheet";
+import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
 
 type WishlistItem = {
   id: string;
@@ -152,6 +153,8 @@ export default function WishlistPage() {
                         alt={item.name}
                         fill
                         sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 220px"
+                        placeholder="blur"
+                        blurDataURL={IMAGE_BLUR_GRAY}
                         className="object-cover transition group-hover:scale-105"
                       />
                     ) : (
@@ -229,7 +232,14 @@ export default function WishlistPage() {
             <div className="flex gap-3">
               <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-gray-100">
                 {variantItem.imageUrl ? (
-                  <Image src={variantItem.imageUrl} alt={variantItem.name} fill className="object-cover" />
+                  <Image
+                    src={variantItem.imageUrl}
+                    alt={variantItem.name}
+                    fill
+                    placeholder="blur"
+                    blurDataURL={IMAGE_BLUR_GRAY}
+                    className="object-cover"
+                  />
                 ) : (
                   <div className="flex h-full items-center justify-center text-sm font-black text-gray-300">
                     NP

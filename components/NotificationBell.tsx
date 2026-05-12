@@ -1,19 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Bell icon untuk header — link ke /notifications dgn badge unread count.
  *
- * Polling sederhana: fetch /api/notifications/me on mount + saat event
- * "notifications-updated" dispatched (mis. setelah tap notif → mark read).
+ * Fetch /api/notifications/me on mount + saat tab kembali fokus +
+ * saat event "notifications-updated" dispatched (broadcast / new notif).
  *
- * Anonymous user: tetap render bell (link tetap kerja), tapi unreadCount
- * selalu 0 — server return 0 untuk anonymous karena gak ada track read.
+ * Optimistic decrement: tap notif di /notifications dispatch
+ * "notification-read" → bell langsung kurangi count tanpa refetch.
+ * Set juga readIds buat dedup kalau event yg sama fire 2x.
+ *
+ * Anonymous user: tetap render bell, count selalu 0 (server gak track read).
  */
 export function NotificationBell() {
   const [count, setCount] = useState(0);
+  const readIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -24,6 +28,7 @@ export function NotificationBell() {
         if (!res.ok || cancelled) return;
         const data = await res.json();
         if (!cancelled && typeof data.unreadCount === "number") {
+          readIdsRef.current.clear();
           setCount(data.unreadCount);
         }
       } catch {
@@ -32,16 +37,29 @@ export function NotificationBell() {
     }
 
     void fetchCount();
-    function onUpdate() { void fetchCount(); }
-    window.addEventListener("notifications-updated", onUpdate);
 
-    // Refresh saat tab kembali fokus (user switch dari tab lain).
+    function onUpdate() { void fetchCount(); }
+    function onRead(e: Event) {
+      const detail = (e as CustomEvent<{ id?: string }>).detail;
+      const id = detail?.id;
+      if (!id) {
+        setCount((c) => Math.max(0, c - 1));
+        return;
+      }
+      if (readIdsRef.current.has(id)) return;
+      readIdsRef.current.add(id);
+      setCount((c) => Math.max(0, c - 1));
+    }
+    window.addEventListener("notifications-updated", onUpdate);
+    window.addEventListener("notification-read", onRead as EventListener);
+
     function onVisible() { if (!document.hidden) void fetchCount(); }
     document.addEventListener("visibilitychange", onVisible);
 
     return () => {
       cancelled = true;
       window.removeEventListener("notifications-updated", onUpdate);
+      window.removeEventListener("notification-read", onRead as EventListener);
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
@@ -49,7 +67,7 @@ export function NotificationBell() {
   return (
     <Link
       href="/notifications"
-      className="relative flex h-9 w-9 items-center justify-center rounded-full text-gray-600 transition hover:bg-gray-100 xs:h-10 xs:w-10"
+      className="relative flex h-9 w-9 items-center justify-center rounded-full text-gray-600 transition hover:bg-gray-100 active:scale-90 xs:h-10 xs:w-10"
       aria-label={count > 0 ? `Notifikasi (${count} belum dibaca)` : "Notifikasi"}
     >
       <svg

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
 import { getProducts } from "@/lib/products";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
@@ -641,6 +642,8 @@ export default async function HomePage() {
                         fill
                         loading="lazy"
                         sizes="(max-width: 640px) 42vw, 150px"
+                        placeholder="blur"
+                        blurDataURL={IMAGE_BLUR_GRAY}
                         className="object-contain p-2"
                       />
                     ) : (
@@ -715,6 +718,8 @@ export default async function HomePage() {
                       fill
                       loading="lazy"
                       sizes="(max-width: 640px) 42vw, 150px"
+                      placeholder="blur"
+                      blurDataURL={IMAGE_BLUR_GRAY}
                       className="object-contain p-2"
                     />
                   ) : (
@@ -767,6 +772,8 @@ export default async function HomePage() {
                       fill
                       loading="lazy"
                       sizes="(max-width: 640px) 31vw, 130px"
+                      placeholder="blur"
+                      blurDataURL={IMAGE_BLUR_GRAY}
                       className="object-contain p-2"
                     />
                   ) : (

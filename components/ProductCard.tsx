@@ -35,7 +35,10 @@ export function ProductCard({
     return (
       <div className="group relative flex min-w-0 flex-col overflow-hidden rounded-2xl border border-[#f0f0f0] bg-white p-3 transition active:opacity-90 sm:hover:shadow-lg">
         <Link href={productHref} className="flex min-w-0 flex-1 flex-col">
-          <div className="relative aspect-square max-h-[160px] w-full overflow-hidden rounded-t-xl bg-gray-100">
+          <div
+            className="relative aspect-square max-h-[160px] w-full overflow-hidden rounded-t-xl bg-gray-100"
+            style={{ viewTransitionName: `nat-prod-${product.slug}` }}
+          >
             {product.imageUrl ? (
               <Image
                 src={product.imageUrl}
@@ -126,7 +129,10 @@ export function ProductCard({
     <div className="group relative flex flex-col overflow-hidden rounded-2xl bg-gray-50 transition hover:shadow-md">
       <Link href={`/products/${product.slug}`} className="flex flex-1 flex-col">
         {/* Image area */}
-        <div className="relative aspect-square bg-gray-100">
+        <div
+          className="relative aspect-square bg-gray-100"
+          style={{ viewTransitionName: `nat-prod-${product.slug}` }}
+        >
           {product.imageUrl ? (
             <Image
               src={product.imageUrl}

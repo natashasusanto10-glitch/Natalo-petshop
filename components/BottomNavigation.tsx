@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { bootstrapCartSync, loadCart } from "@/lib/cart";
 import { prefetchCategories } from "@/lib/client-performance";
+import { hapticTap } from "@/lib/native/haptics";
 
 type NavIconName = "home" | "catalog" | "bag" | "person";
 
@@ -69,16 +70,10 @@ function NavIcon({ name, active }: { name: NavIconName; active: boolean }) {
 
   return (
     <span
-      className={`relative flex h-7 w-10 items-center justify-center transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
-        active ? "-translate-y-0.5 scale-105" : ""
+      className={`flex h-6 w-6 items-center justify-center transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
+        active ? "-translate-y-0.5 scale-110" : ""
       }`}
     >
-      <span
-        aria-hidden
-        className={`absolute inset-0 rounded-xl transition-colors ${
-          active ? "bg-[#EFF6FF]" : "bg-transparent"
-        }`}
-      />
       <svg
         aria-hidden="true"
         viewBox="0 0 32 32"
@@ -87,7 +82,7 @@ function NavIcon({ name, active }: { name: NavIconName; active: boolean }) {
         strokeWidth="1.8"
         strokeLinecap="round"
         strokeLinejoin="round"
-        className="relative h-6 w-6"
+        className="h-6 w-6"
       >
         {paths[name]}
       </svg>
@@ -136,40 +131,55 @@ export function BottomNavigation() {
     return () => window.clearTimeout(id);
   }, [router]);
 
+  const activeIndex = useMemo(() => {
+    const i = ITEMS.findIndex((item) =>
+      optimisticHref ? item.href === optimisticHref : isActive(pathname, item.href),
+    );
+    return i === -1 ? 0 : i;
+  }, [pathname, optimisticHref]);
+
   if (pathname === "/checkout" || pathname?.startsWith("/checkout/")) return null;
 
   return (
-    <nav className="bottom-nav nat-bottom-nav inset-x-0 border-t border-[#eeeeee] bg-white shadow-[0_-2px_12px_rgba(0,0,0,0.05)] md:hidden">
-      <div className="grid h-[var(--natalo-bottom-nav-height)] grid-cols-4">
-        {ITEMS.map((item) => {
-          const active = optimisticHref === item.href || (!optimisticHref && isActive(pathname, item.href));
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              prefetch
-              onClick={() => setOptimisticHref(item.href)}
-              onMouseEnter={() => router.prefetch(item.href)}
-              onTouchStart={() => router.prefetch(item.href)}
-              className={`bottom-nav-item relative flex h-full flex-col items-center justify-center gap-0.5 px-1 pb-1.5 font-bold leading-none transition active:opacity-90 ${
-                active ? "text-[#1E5FBF]" : "text-[#9ca3af]"
-              }`}
-            >
-              <NavIcon name={item.icon} active={active} />
-              <span>{item.label}</span>
-              <span
-                className={`mt-0.5 h-[3px] w-4 rounded-full transition-colors ${
-                  active ? "bg-[#1E5FBF]" : "bg-transparent"
+    <nav className="bottom-nav nat-bottom-nav md:hidden" aria-label="Navigasi utama">
+      <div className="pointer-events-auto mx-3 mb-2">
+        <div className="relative grid h-[60px] grid-cols-4 overflow-hidden rounded-full border border-black/[0.04] bg-white/85 shadow-[0_8px_28px_rgba(15,40,80,0.12)] backdrop-blur-xl backdrop-saturate-150">
+          <span
+            aria-hidden
+            className="pointer-events-none absolute left-0 top-1.5 bottom-1.5 w-1/4 rounded-full bg-natalo-50 transition-transform duration-[450ms] ease-[cubic-bezier(0.34,1.56,0.64,1)]"
+            style={{ transform: `translateX(${activeIndex * 100}%)` }}
+          />
+          {ITEMS.map((item, i) => {
+            const active = i === activeIndex;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                prefetch
+                onClick={() => {
+                  if (!active) hapticTap();
+                  setOptimisticHref(item.href);
+                }}
+                onMouseEnter={() => router.prefetch(item.href)}
+                onTouchStart={() => router.prefetch(item.href)}
+                aria-current={active ? "page" : undefined}
+                className={`relative z-[1] flex h-full flex-col items-center justify-center gap-1 px-1 text-[11px] leading-none transition-colors duration-200 active:opacity-90 ${
+                  active ? "font-extrabold text-[#1E5FBF]" : "font-semibold text-[#9ca3af]"
                 }`}
-              />
-              {item.href === "/cart" && cartCount > 0 && (
-                <span className="absolute right-[23%] top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-white bg-[#1E5FBF] px-1 text-[9px] font-black leading-none text-white">
-                  {cartCount > 99 ? "99+" : cartCount}
+              >
+                <span className="relative">
+                  <NavIcon name={item.icon} active={active} />
+                  {item.href === "/cart" && cartCount > 0 && (
+                    <span className="absolute -right-2.5 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-white bg-[#1E5FBF] px-1 text-[9px] font-black leading-none text-white">
+                      {cartCount > 99 ? "99+" : cartCount}
+                    </span>
+                  )}
                 </span>
-              )}
-            </Link>
-          );
-        })}
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
+        </div>
       </div>
     </nav>
   );

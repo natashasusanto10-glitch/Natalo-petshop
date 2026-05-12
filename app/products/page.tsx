@@ -165,7 +165,7 @@ async function ProductsGrid({
         Menampilkan {(page - 1) * PAGE_SIZE + 1}–
         {(page - 1) * PAGE_SIZE + filteredProducts.length} dari {total} produk
       </p>
-      <div className="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="nat-content-fade-in nat-content-fade-in--stagger grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4">
         {filteredProducts.map((product, index) => (
           <ProductCard
             key={product.id}

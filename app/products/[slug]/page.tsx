@@ -182,7 +182,11 @@ export default async function ProductDetailPage({
 
       <div className="mx-auto max-w-6xl pb-40 md:px-4 md:py-10 md:pb-10">
         <div className="grid gap-2 bg-gray-50 md:grid-cols-2 md:gap-10 md:bg-white">
-          <ProductImageCarousel images={productImages} alt={product.name} />
+          <ProductImageCarousel
+            images={productImages}
+            alt={product.name}
+            transitionName={`nat-prod-${product.slug}`}
+          />
 
           <section className="bg-white px-4 py-4 md:rounded-3xl md:border md:border-gray-100 md:p-6">
             {/* 1. Blok harga jangkar */}
