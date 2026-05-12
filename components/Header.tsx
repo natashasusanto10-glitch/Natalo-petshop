@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { CartCount } from "./CartCount";
 import { NotificationBell } from "./NotificationBell";
 import { HomeSearchBar } from "@/components/home/HomeSearchBar";
-import { bootstrapCartSync, clearLocalCart, switchToGuestCart } from "@/lib/cart";
+import { bootstrapCartSync, switchToGuestCart } from "@/lib/cart";
 import { prefetchCategories } from "@/lib/client-performance";
 import { shareContent } from "@/lib/share";
 import { natToast } from "@/components/Toast";
@@ -27,9 +27,18 @@ const MAIN_TAB_PATHS = new Set([
   "/kategori",
   "/cart",
   "/member",
-  "/member/login",
   "/akun",
 ]);
+
+// Halaman auth (login / daftar / OTP / lupa-reset password) — header dirender
+// dalam variant minimal: back + title saja. Search/bell/profile/login button
+// di-hide untuk fokus pada auth flow.
+const AUTH_PATHS: Record<string, string> = {
+  "/member/login": "Masuk",
+  "/member/register": "Daftar Member",
+  "/member/forgot-password": "Lupa Password",
+  "/member/reset-password": "Reset Password",
+};
 
 function normalizePathname(pathname: string | null) {
   if (!pathname || pathname === "/") return "/";
@@ -38,6 +47,13 @@ function normalizePathname(pathname: string | null) {
 
 function isMainTabPath(pathname: string) {
   return MAIN_TAB_PATHS.has(pathname);
+}
+
+function isAccountArea(pathname: string) {
+  // /member dan sub-page-nya (orders, profile, points, dll) + /akun/* (settings
+  // sub-pages) dianggap "account section" — profile chip di header disembunyikan
+  // karena user sudah berada di area akun.
+  return pathname === "/member" || pathname.startsWith("/member/") || pathname.startsWith("/akun");
 }
 
 type MemberProfile = {
@@ -50,25 +66,25 @@ type MemberProfile = {
 export function Header() {
   const brand = process.env.NEXT_PUBLIC_BRAND_NAME || "Pet Shop";
   const router = useRouter();
-  const [memberMenuOpen, setMemberMenuOpen] = useState(false);
   const [member, setMember] = useState<MemberProfile | null>(null);
   const pathname = usePathname();
   const currentPath = normalizePathname(pathname);
-  const memberMenuRef = useRef<HTMLDivElement>(null);
   const isHome = currentPath === "/";
   const isProductDetail = /^\/products\/[^/]+$/.test(currentPath);
   const isMainTab = isMainTabPath(currentPath);
+  const authTitle = AUTH_PATHS[currentPath];
+  const isAuthPage = authTitle !== undefined;
+  const isInAccountArea = isAccountArea(currentPath);
+  const isLoggedIn = Boolean(member?.name);
+  // Contextual flags — header dirender berbeda berdasar auth state + page type.
+  // Search icon kecil di header sengaja dihilangkan total: search hanya via
+  // search bar besar di /, /products. Lebih clean + native (HIG).
+  const showBell = isLoggedIn && !isAuthPage;
+  const showProfileChip = isLoggedIn && !isAuthPage && !isInAccountArea;
+  const showLoginButton = !isLoggedIn && !isAuthPage;
   // Back button universal: tampil di mobile untuk semua halaman selain main tab
   // & product detail (yang punya header sendiri dengan back + search + share + cart).
   const showBackButton = Boolean(pathname) && !isMainTab && !isProductDetail;
-  // Hide search icon di header pada halaman yg sudah punya search bar besar
-  // di body (home punya HomeSearchBar dalam header, /products + /search punya
-  // search bar dedicated). Tujuan: header lebih lega, tidak redundant.
-  const hasInPageSearch =
-    isHome ||
-    currentPath === "/products" ||
-    currentPath === "/produk" ||
-    currentPath.startsWith("/search");
 
   function handleBack() {
     // Fallback ke home kalau buka deep link langsung (no history) — biar back gak
@@ -124,36 +140,6 @@ export function Header() {
     return () => window.clearTimeout(id);
   }, [router]);
 
-  // Close on route change
-  useEffect(() => {
-    setMemberMenuOpen(false);
-  }, [pathname]);
-
-  // Click outside to close member dropdown
-  useEffect(() => {
-    function onClick(e: MouseEvent) {
-      if (!memberMenuOpen) return;
-      if (memberMenuRef.current && !memberMenuRef.current.contains(e.target as Node)) {
-        setMemberMenuOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, [memberMenuOpen]);
-
-  async function handleLogout() {
-    setMemberMenuOpen(false);
-    await fetch("/api/auth/logout", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scope: "CUSTOMER" }),
-    }).catch(() => {});
-    clearLocalCart();
-    setMember(null);
-    router.push("/");
-    router.refresh();
-  }
-
   async function handleShare() {
     // Universal share via lib/share.ts:
     // 1. iOS native (.ipa) → UIActivityView dengan semua app installed
@@ -174,6 +160,32 @@ export function Header() {
     }
     // method "native" / "web-share" / "cancelled" — gak perlu toast
     // karena UI sheet Apple/browser sudah kasih feedback sendiri
+  }
+
+  // Auth pages — render minimal header: back button + title saja. Bottom nav,
+  // bell, profile, login button semua di-hide untuk fokus ke flow auth.
+  if (isAuthPage) {
+    return (
+      <header className="nat-site-header z-50 bg-white shadow-sm md:sticky">
+        <div className="nat-header-inner nat-safe-x mx-auto flex max-w-6xl items-center justify-between gap-2 py-1.5 md:py-3">
+          <button
+            type="button"
+            onClick={handleBack}
+            className="-ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-800 active:bg-gray-100"
+            aria-label="Kembali ke halaman sebelumnya"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} className="h-5 w-5">
+              <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <h1 className="flex-1 truncate text-center text-base font-bold text-gray-900">
+            {authTitle}
+          </h1>
+          {/* Spacer simetris untuk visual balance dengan back button di kiri. */}
+          <span aria-hidden className="h-10 w-10 shrink-0" />
+        </div>
+      </header>
+    );
   }
 
   return (
@@ -283,110 +295,39 @@ export function Header() {
           ))}
         </nav>
 
-        {/* Right actions */}
+        {/* Right actions — contextual:
+            - Guest: tombol "Masuk" saja (no bell, no profile chip).
+            - Member: bell + profile chip (kecuali di /member & /akun area
+              dimana user sudah di akun → chip disembunyikan).
+            - Search icon kecil dihapus total: pakai search bar besar di
+              / dan /products saja (lebih native, lebih mudah tap di mobile). */}
         <div className="flex shrink-0 items-center gap-1 xs:gap-1.5 md:gap-2">
-          {/* Search icon — hanya tampil di halaman yang TIDAK punya search bar
-              besar di body (mis. /cart, /member). Halaman dgn HomeSearchBar /
-              ProductSearchBar tidak butuh icon ini supaya header lega +
-              profile chip tidak terdesak. */}
-          {!hasInPageSearch && (
-            <Link
-              href="/search"
-              className="flex h-9 w-9 items-center justify-center rounded-full text-gray-600 transition hover:bg-gray-100 xs:h-10 xs:w-10"
-              aria-label="Cari produk"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} className="h-5 w-5">
-                <circle cx="11" cy="11" r="7" />
-                <path d="m20 20-3.5-3.5" strokeLinecap="round" />
-              </svg>
-            </Link>
-          )}
-
-          {/* Notifikasi — ganti dari Wishlist. Wishlist tetap diakses dari
-              heart di kartu produk + dropdown menu member di bawah. */}
-          <NotificationBell />
+          {/* Notifikasi — hanya untuk logged-in user. Guest tidak punya
+              konteks notif (order, voucher, point) jadi bell dihide. */}
+          {showBell && <NotificationBell />}
 
           {/* Cart: desktop header only; mobile already has bottom navigation. */}
           <div className="hidden h-10 w-10 items-center justify-center rounded-full text-gray-600 transition hover:bg-gray-100 md:flex [&_span.hidden]:!hidden [&_svg]:!h-5 [&_svg]:!w-5">
             <CartCount />
           </div>
 
-          {/* Member area */}
-          {member?.name ? (
-            <div className="relative" ref={memberMenuRef}>
-              <button
-                type="button"
-                onClick={() => setMemberMenuOpen((v) => !v)}
-                className="flex h-9 items-center gap-1.5 rounded-full border border-blue-100 bg-blue-50 px-1.5 text-sm font-semibold text-blue-700 transition hover:border-blue-200 hover:bg-blue-100 xs:h-10 xs:gap-2 xs:px-2 md:px-3"
-                aria-expanded={memberMenuOpen}
-                aria-haspopup="menu"
-              >
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-500 text-xs font-black text-white">
-                  {member.name.charAt(0).toUpperCase()}
-                </span>
-                <span className="max-w-[82px] truncate xs:max-w-[100px]">
-                  {member.name.split(" ")[0]}
-                </span>
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={2.5}
-                  className={`h-3 w-3 transition-transform ${memberMenuOpen ? "rotate-180" : ""}`}
-                >
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              </button>
+          {/* Member avatar — bulat, inisial user. Tap → Member Center (/member).
+              Tap area 44x44 (h-11 w-11) sesuai HIG; visual circle 40px (h-10 w-10).
+              Disembunyikan saat user sudah di /member atau /akun (tidak perlu
+              shortcut ke tempat yang sedang dibuka). */}
+          {showProfileChip && member?.name && (
+            <Link
+              href="/member"
+              aria-label={`Member Center — ${member.name}`}
+              className="flex h-11 w-11 items-center justify-center rounded-full text-blue-700 transition active:scale-95"
+            >
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500 text-sm font-black text-white shadow-sm transition hover:bg-blue-600">
+                {member.name.charAt(0).toUpperCase()}
+              </span>
+            </Link>
+          )}
 
-              {memberMenuOpen && (
-                <div
-                  role="menu"
-                  className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-lg"
-                >
-                  <div className="border-b border-gray-100 px-4 py-3">
-                    <p className="truncate text-sm font-bold text-gray-900">
-                      {member.name}
-                    </p>
-                    {member.email && (
-                      <p className="mt-0.5 truncate text-xs text-gray-500">
-                        {member.email}
-                      </p>
-                    )}
-                  </div>
-                  <ul className="py-1.5">
-                    {[
-                      { href: "/member/profile", icon: "👤", label: "Profil Saya" },
-                      { href: "/member/orders", icon: "📦", label: "Riwayat Pesanan" },
-                      { href: "/wishlist", icon: "❤️", label: "Wishlist" },
-                      { href: "/member/points", icon: "⭐", label: "Loyalty Point" },
-                      { href: "/order-status", icon: "📍", label: "Lacak Pesanan" },
-                    ].map((item) => (
-                      <li key={item.href}>
-                        <Link
-                          href={item.href}
-                          onClick={() => setMemberMenuOpen(false)}
-                          className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 transition hover:bg-blue-50 hover:text-blue-600"
-                        >
-                          <span className="text-base">{item.icon}</span>
-                          <span>{item.label}</span>
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="border-t border-gray-100">
-                    <button
-                      type="button"
-                      onClick={handleLogout}
-                      className="flex w-full items-center gap-3 px-4 py-3 text-sm font-semibold text-red-500 transition hover:bg-red-50"
-                    >
-                      <span className="text-base">🚪</span>
-                      <span>Keluar</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
+          {showLoginButton && (
             <Link
               href="/member/login?redirect=%2F"
               className="rounded-full bg-blue-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-600 xs:px-4 md:px-5 md:text-sm"

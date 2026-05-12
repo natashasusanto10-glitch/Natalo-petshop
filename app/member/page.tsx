@@ -159,9 +159,11 @@ export default async function MemberPage() {
       <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
           { href: "/member/orders", icon: "📦", label: "Pesanan Saya" },
-          { href: "/member/profile", icon: "👤", label: "Profil" },
+          { href: "/akun/alamat", icon: "📍", label: "Alamat" },
           { href: "/wishlist", icon: "❤️", label: "Wishlist" },
           { href: "#voucher-member", icon: "🎟️", label: "Voucher Member" },
+          { href: "/member/profile", icon: "👤", label: "Pengaturan Akun" },
+          { href: "/bantuan", icon: "💬", label: "Bantuan" },
         ].map((item) => (
           <Link
             key={item.href}

@@ -139,6 +139,17 @@ export function BottomNavigation() {
   }, [pathname, optimisticHref]);
 
   if (pathname === "/checkout" || pathname?.startsWith("/checkout/")) return null;
+  // Hide bottom nav pada auth flow — user harus fokus mengisi form login/daftar/
+  // OTP/reset password tanpa godaan pindah tab. Setelah berhasil auth, user
+  // kembali ke main tab dan nav muncul lagi.
+  if (
+    pathname === "/member/login" ||
+    pathname === "/member/register" ||
+    pathname === "/member/forgot-password" ||
+    pathname === "/member/reset-password"
+  ) {
+    return null;
+  }
 
   return (
     <nav className="bottom-nav nat-bottom-nav md:hidden" aria-label="Navigasi utama">
