@@ -5,26 +5,36 @@ import { useRouter } from "next/navigation";
 
 /**
  * Intercept klik <a> internal + wrap navigasi dengan
- * `document.startViewTransition()` supaya cross-fade halus muncul antar
+ * `document.startViewTransition()` supaya transisi iOS-style muncul antar
  * halaman (Chrome 111+ / Capacitor WebView modern).
  *
- * Pakai capture phase supaya kita dapat event SEBELUM Next.js Link handler.
+ * Direksional:
+ * - Klik link (forward) → set <html data-nav-direction="push"> → CSS
+ *   apply slide-in-from-right (lihat globals.css ::view-transition-*).
+ * - popstate (router.back / swipe-back / browser back) → set
+ *   data-nav-direction="pop" → slide-out-to-right.
+ *
+ * Capture phase supaya kita dapat event SEBELUM Next.js Link handler.
  * Browser non-support → langsung router.push (no-op fallback).
  *
  * Catatan:
  * - Hanya intercept link internal (start dgn /) tanpa target=_blank dan
  *   tanpa modifier key (cmd/ctrl/shift).
  * - rel="external" / download attribute → biarkan default browser handle.
- * - <ViewTransition> dari React belum di stable React 19.2 (still canary).
- *   Pendekatan event-listener ini lebih portable dan bekerja tanpa
- *   modifikasi setiap Link.
+ * - Atribut data-nav-direction tetap di DOM sampai navigasi berikutnya
+ *   meng-overwrite. Aman karena selector `::view-transition-*` hanya
+ *   aktif saat transisi sedang berjalan.
  */
 export function ViewTransitionsProvider() {
   const router = useRouter();
 
   useEffect(() => {
+    if (typeof document === "undefined") return;
     if (typeof document.startViewTransition !== "function") return;
-    if (typeof window === "undefined") return;
+
+    function setDirection(direction: "push" | "pop") {
+      document.documentElement.dataset.navDirection = direction;
+    }
 
     function shouldIntercept(target: HTMLAnchorElement, event: MouseEvent): string | null {
       if (event.defaultPrevented) return null;
@@ -35,9 +45,7 @@ export function ViewTransitionsProvider() {
       if (target.getAttribute("rel")?.includes("external")) return null;
       const href = target.getAttribute("href");
       if (!href) return null;
-      // Hanya internal navigation — link yg start dgn / dan bukan //
       if (!href.startsWith("/") || href.startsWith("//")) return null;
-      // Skip anchor jump dalam halaman
       if (href.startsWith("/#")) return null;
       return href;
     }
@@ -49,15 +57,26 @@ export function ViewTransitionsProvider() {
       if (!href) return;
 
       event.preventDefault();
-      // startViewTransition snapshot DOM saat ini, jalankan callback,
-      // lalu snapshot DOM baru → cross-fade antar dua snapshot.
+      setDirection("push");
       document.startViewTransition(() => {
         router.push(href);
       });
     }
 
+    function handlePopState() {
+      // router.back / swipe back / browser back / hardware back semua
+      // trigger popstate. Next.js 16 (experimental.viewTransition: true)
+      // auto-wrap route change dalam startViewTransition — kita hanya
+      // perlu set direction sebelum animasi mulai.
+      setDirection("pop");
+    }
+
     document.addEventListener("click", handleClick, true);
-    return () => document.removeEventListener("click", handleClick, true);
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      document.removeEventListener("click", handleClick, true);
+      window.removeEventListener("popstate", handlePopState);
+    };
   }, [router]);
 
   return null;

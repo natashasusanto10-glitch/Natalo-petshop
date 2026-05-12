@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useOptimisticToggle } from "@/lib/hooks/useOptimisticToggle";
+import { hapticTap } from "@/lib/native/haptics";
 
 interface Props {
   productId: string;
@@ -9,52 +10,48 @@ interface Props {
 }
 
 export function FavoriteButton({ productId, initialFavorited = false, size = "md" }: Props) {
-  const [favorited, setFavorited] = useState(initialFavorited);
-  const [loading, setLoading] = useState(false);
-
-  async function toggle(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    if (loading) return;
-
-    setLoading(true);
-    const next = !favorited;
-    setFavorited(next); // optimistic update
-
-    try {
-      if (next) {
-        await fetch("/api/member/favorites", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ productId }),
-        });
-      } else {
-        await fetch(`/api/member/favorites/${productId}`, { method: "DELETE" });
-      }
-    } catch {
-      setFavorited(!next); // revert on error
-    } finally {
-      setLoading(false);
-    }
-  }
+  const { value: favorited, toggle } = useOptimisticToggle({
+    initial: initialFavorited,
+    sync: async (desired, signal) => {
+      const res = desired
+        ? await fetch("/api/member/favorites", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ productId }),
+            signal,
+          })
+        : await fetch(`/api/member/favorites/${productId}`, {
+            method: "DELETE",
+            signal,
+          });
+      if (!res.ok) throw new Error("Favorite sync failed");
+    },
+  });
 
   const iconSize = size === "sm" ? "h-4 w-4" : "h-5 w-5";
   const btnSize = size === "sm" ? "p-1.5" : "p-2";
 
+  function handleClick(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    hapticTap();
+    toggle();
+  }
+
   return (
     <button
       type="button"
-      onClick={toggle}
-      disabled={loading}
+      onClick={handleClick}
       aria-label={favorited ? "Hapus dari favorit" : "Simpan ke favorit"}
-      className={`${btnSize} rounded-full transition ${
+      aria-pressed={favorited}
+      className={`${btnSize} rounded-full transition-all duration-150 active:scale-90 ${
         favorited
           ? "bg-red-50 text-red-500 hover:bg-red-100"
           : "bg-white/80 text-gray-400 hover:bg-white hover:text-red-400"
-      } ${loading ? "opacity-50" : ""}`}
+      }`}
     >
       <svg
-        className={iconSize}
+        className={`${iconSize} transition-transform duration-200 ${favorited ? "scale-110" : "scale-100"}`}
         viewBox="0 0 24 24"
         fill={favorited ? "currentColor" : "none"}
         stroke="currentColor"

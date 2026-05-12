@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useMemo, useState } from "react";
 import { PrefetchOnView } from "@/components/PrefetchOnView";
+import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
 
 type RelatedProduct = {
   id: string;
@@ -106,6 +107,8 @@ function RelatedGrid({ related }: { related: RelatedProduct[] }) {
                   alt={p.name}
                   fill
                   sizes="(min-width: 768px) 33vw, 50vw"
+                  placeholder="blur"
+                  blurDataURL={IMAGE_BLUR_GRAY}
                   className="object-cover"
                 />
               ) : (

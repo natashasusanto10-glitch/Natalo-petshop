@@ -246,20 +246,25 @@ export default function CartPage() {
   }
 
   function updateQty(key: string, quantity: number) {
+    const existing = items.find((item) => cartKey(item) === key);
+    const max = existing?.stock ?? Infinity;
+    const clamped = Math.min(quantity, max);
+    const noChange = existing && existing.quantity === clamped && quantity > 0;
+    if (noChange) return;
+
     const next = items
-      .map((item) => {
-        if (cartKey(item) !== key) return item;
-        const max = item.stock ?? Infinity;
-        return { ...item, quantity: Math.min(quantity, max) };
-      })
+      .map((item) => (cartKey(item) !== key ? item : { ...item, quantity: clamped }))
       .filter((item) => item.quantity > 0);
 
     if (quantity <= 0) {
+      hapticWarning();
       setSelectedKeys((current) => {
         const nextSelected = new Set(current);
         nextSelected.delete(key);
         return nextSelected;
       });
+    } else {
+      hapticTap();
     }
     persist(next);
   }

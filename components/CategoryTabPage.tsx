@@ -8,6 +8,7 @@ import {
   readCategoryCache,
   writeCategoryCache,
 } from "@/lib/client-performance";
+import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
 
 export type CategorySummary = {
   id: string;
@@ -133,6 +134,8 @@ export function CategoryTabPage({ initialCategories }: Props) {
                       fill
                       loading={index < 4 ? "eager" : "lazy"}
                       sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                      placeholder="blur"
+                      blurDataURL={IMAGE_BLUR_GRAY}
                       className="object-cover transition group-hover:scale-105"
                     />
                   ) : (

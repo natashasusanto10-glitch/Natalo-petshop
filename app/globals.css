@@ -134,6 +134,10 @@ input, textarea, select, button {
   }
 }
 
+/* Floating island nav — wrapper transparent + pointer-events:none, only
+   the inner pill (.nat-bottom-nav__pill) is opaque/interactive. Height
+   tetap = var bottom-nav-height supaya .nat-main-shell padding-bottom
+   match dan tidak ada layout shift di component lain (WhatsApp float dll). */
 .bottom-nav,
 .nat-bottom-nav {
   position: fixed;
@@ -142,23 +146,9 @@ input, textarea, select, button {
   bottom: 0;
   z-index: 100;
   box-sizing: border-box;
-  height: calc(var(--natalo-bottom-nav-height) + env(safe-area-inset-bottom));
-  min-height: calc(var(--natalo-bottom-nav-height) + env(safe-area-inset-bottom));
-  padding-top: 0;
   padding-bottom: env(safe-area-inset-bottom);
-  border-top: 1px solid #eeeeee;
-  background: #ffffff;
-}
-
-.bottom-nav-item {
-  padding-top: 6px;
-  font-size: 12px;
-}
-
-.bottom-nav-item svg,
-.bottom-nav-item img {
-  width: 24px;
-  height: 24px;
+  background: transparent;
+  pointer-events: none;
 }
 
 body.nat-modal-open .bottom-nav,
@@ -174,6 +164,41 @@ body.product-image-viewer-open .nat-bottom-nav {
 body.nat-modal-open .nat-whatsapp-float {
   display: none !important;
   pointer-events: none;
+}
+
+html.nat-scroll-locked,
+body.nat-scroll-locked {
+  overscroll-behavior: none;
+}
+
+.nat-bottom-sheet-overlay {
+  min-height: 100vh;
+  min-height: 100dvh;
+  overscroll-behavior: none;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.nat-bottom-sheet {
+  overscroll-behavior: contain;
+}
+
+.nat-bottom-sheet-drag-zone {
+  cursor: grab;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.nat-bottom-sheet-drag-zone:active {
+  cursor: grabbing;
+}
+
+.nat-bottom-sheet-scroll {
+  overscroll-behavior: contain;
+  padding-bottom: calc(1.25rem + env(safe-area-inset-bottom));
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 .product-image-viewer {
@@ -350,6 +375,35 @@ body.top-drawer-open .nat-whatsapp-float {
   100% { background-position: -200% 0; }
 }
 
+/* ── Content fade-in saat real data replace skeleton ──
+   Apply via className="nat-content-fade-in" pada container yang muncul
+   setelah loading state. 180ms ease-out — cukup smooth tanpa lag.
+   Pakai will-change: opacity supaya GPU-composited & tidak re-paint. */
+@keyframes nat-content-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.nat-content-fade-in {
+  animation: nat-content-fade-in 180ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  will-change: opacity, transform;
+}
+.nat-content-fade-in--stagger > * {
+  animation: nat-content-fade-in 220ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+.nat-content-fade-in--stagger > *:nth-child(1) { animation-delay: 0ms; }
+.nat-content-fade-in--stagger > *:nth-child(2) { animation-delay: 30ms; }
+.nat-content-fade-in--stagger > *:nth-child(3) { animation-delay: 60ms; }
+.nat-content-fade-in--stagger > *:nth-child(4) { animation-delay: 90ms; }
+.nat-content-fade-in--stagger > *:nth-child(5) { animation-delay: 120ms; }
+.nat-content-fade-in--stagger > *:nth-child(n+6) { animation-delay: 150ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .nat-content-fade-in,
+  .nat-content-fade-in--stagger > * {
+    animation-duration: 1ms;
+  }
+}
+
 /* ── Toast slide-up (used by components/Toast.tsx) ── */
 @keyframes nat-toast-slide-in {
   from { transform: translateY(20px); opacity: 0; }
@@ -429,39 +483,90 @@ body.top-drawer-open .nat-whatsapp-float {
 }
 
 /* ── View Transitions API ───────────────────────────────────────
-   Cross-fade halus antar halaman saat navigasi (Chrome 111+ / WebView
-   Android modern). Next.js wrap router.push() dengan
-   document.startViewTransition() saat experimental.viewTransition: true.
+   Direksional transition iOS-style:
+   - PUSH (klik link forward): page baru slide in dari KANAN, page lama
+     slide ke kiri 25% + slight dim (iOS parallax depth cue)
+   - POP (router.back / swipe back / browser back): kebalikan — page baru
+     slide in dari kiri 25%, page lama slide ke kanan keluar layar
+   - Default (no direction set, mis. initial nav atau hard refresh):
+     cross-fade halus
 
-   Browser yang belum support → fallback ke instant nav (no regression).
-   Reduced-motion → fade durasi 0 supaya hormat preferensi accessibility. */
+   Direction di-set lewat data-nav-direction di <html> oleh
+   ViewTransitionsProvider berdasarkan event source (click vs popstate).
+
+   Easing pakai cubic-bezier(0.32, 0.72, 0, 1) — iOS Core Animation
+   decelerate curve. Lebih natural daripada ease-out default. */
 ::view-transition-old(root),
 ::view-transition-new(root) {
-  animation-duration: 220ms;
-  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  animation-duration: 280ms;
+  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+  /* Disable mix-blend default supaya tidak ada flicker saat slide overlap */
+  mix-blend-mode: normal;
 }
 
 ::view-transition-old(root) {
-  animation-name: fade-out;
+  animation-name: nat-fade-out;
 }
 
 ::view-transition-new(root) {
-  animation-name: fade-in;
+  animation-name: nat-fade-in;
 }
 
-@keyframes fade-out {
+@keyframes nat-fade-out {
   from { opacity: 1; }
   to { opacity: 0; }
 }
 
-@keyframes fade-in {
+@keyframes nat-fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
+/* PUSH — forward navigation */
+html[data-nav-direction="push"]::view-transition-old(root) {
+  animation-name: nat-push-out;
+}
+html[data-nav-direction="push"]::view-transition-new(root) {
+  animation-name: nat-push-in;
+}
+
+@keyframes nat-push-out {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(-25%); opacity: 0.6; }
+}
+@keyframes nat-push-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+/* POP — backward navigation (router.back / swipe back / browser back) */
+html[data-nav-direction="pop"]::view-transition-old(root) {
+  animation-name: nat-pop-out;
+}
+html[data-nav-direction="pop"]::view-transition-new(root) {
+  animation-name: nat-pop-in;
+}
+
+@keyframes nat-pop-out {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(100%); opacity: 1; }
+}
+@keyframes nat-pop-in {
+  from { transform: translateX(-25%); opacity: 0.6; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* Shared element morph (product card → product detail hero).
+   Pakai timing yg sama supaya hero image morph nempel ke page slide. */
+::view-transition-group(*) {
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-old(root),
-  ::view-transition-new(root) {
+  ::view-transition-new(root),
+  ::view-transition-group(*) {
     animation-duration: 0ms;
   }
 }
@@ -471,8 +576,13 @@ body.top-drawer-open .nat-whatsapp-float {
       kelihatan saat hybrid mode di Capacitor WebView Android).
    2. touch-action: manipulation di tap target → disable 300ms
       double-tap-zoom delay yang bikin tap terasa lag.
-   Wrapped @layer base biar Tailwind v4 process & ga di-stripped.
-   Active state + haptic dari Batch 1+2 sudah handle feedback. */
+   3. Universal tap-response scale-down — setiap interactive element
+      dapat instant visual feedback saat tap (scale 0.97). Pakai
+      :where() supaya specificity 0 → Tailwind `active:scale-95` /
+      `active:scale-90` di komponen tetap override seamlessly.
+      Transition transform-only (80ms) supaya tidak conflict dengan
+      transition-colors / transition-all dari Tailwind classes.
+   Wrapped @layer base biar Tailwind v4 process & ga di-stripped. */
 @layer base {
   a,
   button,
@@ -484,6 +594,35 @@ body.top-drawer-open .nat-whatsapp-float {
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
   }
+
+  :where(
+    button:not(:disabled),
+    a[href],
+    [role="button"]:not([aria-disabled="true"]),
+    input[type="button"]:not(:disabled),
+    input[type="submit"]:not(:disabled),
+    input[type="reset"]:not(:disabled)
+  ) {
+    transition: transform 80ms ease-out;
+  }
+  :where(
+    button:not(:disabled),
+    a[href],
+    [role="button"]:not([aria-disabled="true"]),
+    input[type="button"]:not(:disabled),
+    input[type="submit"]:not(:disabled),
+    input[type="reset"]:not(:disabled)
+  ):active {
+    transform: scale(0.97);
+  }
+
+  /* Opt-out: elemen yg layout/transform-nya kritis (mis. carousel
+     swiper slides, react-google-maps, draggable bottom-sheet) bisa
+     tambah data-no-tap-press="true" supaya scale tidak apply. */
+  :where([data-no-tap-press="true"]):active,
+  :where([data-no-tap-press="true"] *):active {
+    transform: none !important;
+  }
 }
 
 /* ── Overscroll containment on scrollable overlays ──────────────
@@ -492,6 +631,8 @@ body.top-drawer-open .nat-whatsapp-float {
    sampai end-of-content menyebabkan body ikut scroll (rubber-band
    ke modal background) — terasa nggak native. */
 .voucher-sheet,
+.nat-bottom-sheet,
+.nat-bottom-sheet-scroll,
 [role="dialog"] [class*="overflow-y-auto"],
 [role="dialog"] [class*="overflow-auto"] {
   overscroll-behavior: contain;

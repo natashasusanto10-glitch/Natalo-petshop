@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { heroSlides as defaultSlides, type HeroSlide, type HeroSlideIcon } from "@/data/heroSlides";
 import { filterActiveSlides } from "@/lib/filterActiveSlides";
+import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
 
 const ROTATE_INTERVAL_MS = 3000;
 const SWIPE_THRESHOLD_PX = 48;
@@ -152,6 +153,8 @@ function SlideContent({ slide }: { slide: HeroSlide }) {
         className="object-cover"
         sizes="(max-width: 768px) 100vw, 768px"
         priority={slide.priority}
+        placeholder="blur"
+        blurDataURL={IMAGE_BLUR_GRAY}
       />
     );
 
