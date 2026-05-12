@@ -108,14 +108,15 @@ export function VoucherCard({ vouchers: vouchersProp, productSlug }: Props) {
     );
   });
 
-  // Jangan render kalau belum ada voucher (fetch belum balik atau memang kosong)
-  if (visibleProductVouchers.length === 0) return null;
-
   function closeVoucher() {
     setOpen(false);
   }
 
   // Tutup dengan tombol Esc untuk aksesibilitas keyboard.
+  // PENTING: hook ini harus declare SEBELUM early return supaya hooks count
+  // konsisten antar render. Dulu return di atas → bug "Rendered more hooks
+  // than during the previous render" muncul saat user login + fetch return
+  // vouchers (render pertama 2 hooks, render kedua 4 hooks).
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
@@ -136,6 +137,10 @@ export function VoucherCard({ vouchers: vouchersProp, productSlug }: Props) {
       document.body.classList.remove("voucher-modal-open");
     };
   }, [open]);
+
+  // Jangan render kalau belum ada voucher (fetch belum balik atau memang
+  // kosong). Early return WAJIB setelah semua hooks di-declare di atas.
+  if (visibleProductVouchers.length === 0) return null;
 
   function handleUse() {
     closeVoucher();
