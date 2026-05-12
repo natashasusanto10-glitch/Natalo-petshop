@@ -28,7 +28,8 @@
     "cap:add:android": "npx cap add android",
     "cap:sync:android": "npx cap sync android",
     "cap:open:android": "npx cap open android",
-    "cap:assets": "npx capacitor-assets generate --ios --android --iconBackgroundColor \"#1E5FBF\" --splashBackgroundColor \"#1E5FBF\"",
+    "cap:assets": "npx capacitor-assets generate --ios --android --iconBackgroundColor \"#1E5FBF\" --splashBackgroundColor \"#ffffff\"",
+    "cap:assets:legacy-blue": "npx capacitor-assets generate --ios --android --iconBackgroundColor \"#1E5FBF\" --splashBackgroundColor \"#1E5FBF\"",
     "gen:splash": "node scripts/generate-ios-splash.mjs",
     "gen:cap-splash": "node scripts/generate-capacitor-splash.mjs",
     "gen:appstore-screenshots": "node scripts/generate-appstore-screenshots.mjs"
