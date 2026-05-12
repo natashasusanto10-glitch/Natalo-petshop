@@ -156,7 +156,7 @@ export default async function ProductDetailPage({
   };
 
   return (
-    <div className="bg-gray-50 md:bg-white">
+    <div className="product-detail-page bg-gray-50 md:bg-white">
       {/* Status bar override per-product. Default app-wide = dark icons + white
           themeColor. Untuk produk dengan hero photo gelap atau brand-themed
           card di top, ganti ke iconColor="light" themeColor="#1E5FBF" supaya
@@ -180,7 +180,7 @@ export default async function ProductDetailPage({
         </div>
       </div>
 
-      <div className="mx-auto max-w-6xl pb-40 md:px-4 md:py-10 md:pb-10">
+      <main className="product-detail-content mx-auto max-w-6xl md:px-4 md:py-10 md:pb-10">
         <div className="grid gap-2 bg-gray-50 md:grid-cols-2 md:gap-10 md:bg-white">
           <ProductImageCarousel
             images={productImages}
@@ -262,7 +262,7 @@ export default async function ProductDetailPage({
             </div>
           </div>
         </section>
-      </div>
+      </main>
 
       {/* Sticky bottom bar — selalu terlihat di mobile */}
       <StickyAddToCartBar

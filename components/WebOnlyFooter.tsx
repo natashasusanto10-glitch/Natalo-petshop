@@ -20,7 +20,13 @@ export function WebOnlyFooter({ children }: { children: React.ReactNode }) {
   const [isNative, setIsNative] = useState<boolean | null>(null);
 
   useEffect(() => {
-    setIsNative(isCapacitorNative());
+    const native = isCapacitorNative();
+    setIsNative(native);
+    document.body.classList.toggle("capacitor-app", native);
+
+    return () => {
+      document.body.classList.remove("capacitor-app");
+    };
   }, []);
 
   if (isNative !== false) return null;

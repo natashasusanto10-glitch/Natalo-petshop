@@ -190,13 +190,15 @@ export function Header() {
   return (
     <header
       className={
-        isHome
+        isProductDetail
+          ? "product-detail-header nat-site-header bg-white md:sticky md:z-50 md:shadow-sm"
+          : isHome
           ? "nat-site-header mobile-sticky-header md:sticky"
           : "nat-site-header z-50 bg-white shadow-sm md:sticky"
       }
     >
       {isProductDetail && (
-        <div className="nat-header-inner nat-safe-x mx-auto flex max-w-6xl items-center justify-between gap-1.5 py-1.5 md:hidden">
+        <div className="product-detail-header-inner nat-safe-x mx-auto flex max-w-6xl items-center justify-between gap-1.5 md:hidden">
           <button
             type="button"
             onClick={handleBack}

@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PrefetchOnView } from "@/components/PrefetchOnView";
 import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
 
@@ -133,29 +133,112 @@ function RelatedGrid({ related }: { related: RelatedProduct[] }) {
 }
 
 export function ProductTabs({ description, related }: Props) {
-  const [tab, setTab] = useState<"deskripsi" | "rekomendasi">("deskripsi");
+  const [activeTab, setActiveTab] = useState<"deskripsi" | "rekomendasi">("deskripsi");
   const [expanded, setExpanded] = useState(false);
   const summary = useMemo(() => stripMarkdown(description), [description]);
   const isLong = summary.length > 280;
 
+  function getStickyOffset() {
+    const header = document.querySelector(".product-detail-header");
+    const tabs = document.querySelector(".product-tabs");
+    const headerHeight = header?.getBoundingClientRect().height ?? 56;
+    const tabsHeight = tabs?.getBoundingClientRect().height ?? 48;
+    return headerHeight + tabsHeight;
+  }
+
+  function scrollToSection(sectionId: "deskripsi" | "rekomendasi") {
+    const target = document.getElementById(`product-section-${sectionId}`);
+    if (!target) return;
+
+    setActiveTab(sectionId);
+    const top = target.getBoundingClientRect().top + window.scrollY - getStickyOffset();
+    window.scrollTo({ top, behavior: "smooth" });
+  }
+
+  useEffect(() => {
+    const descriptionSection = document.getElementById("product-section-deskripsi");
+    const recommendationSection = document.getElementById("product-section-rekomendasi");
+    if (!descriptionSection || !recommendationSection) return;
+    let ticking = false;
+
+    const updateActiveSection = () => {
+      const offset = getStickyOffset() + 16;
+      const recommendationTop = recommendationSection.getBoundingClientRect().top;
+      setActiveTab(recommendationTop <= offset ? "rekomendasi" : "deskripsi");
+    };
+
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      window.requestAnimationFrame(() => {
+        updateActiveSection();
+        ticking = false;
+      });
+    };
+
+    const makeObserver = () => {
+      const topOffset = getStickyOffset() + 8;
+      const observer = new IntersectionObserver(
+        (entries) => {
+          const visible = entries
+            .filter((entry) => entry.isIntersecting)
+            .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+          const current = visible[0]?.target.id;
+          if (current === "product-section-rekomendasi") {
+            setActiveTab("rekomendasi");
+          } else if (current === "product-section-deskripsi") {
+            setActiveTab("deskripsi");
+          }
+          updateActiveSection();
+        },
+        {
+          root: null,
+          rootMargin: `-${topOffset}px 0px -55% 0px`,
+          threshold: [0.01, 0.2, 0.5],
+        },
+      );
+
+      observer.observe(descriptionSection);
+      observer.observe(recommendationSection);
+      return observer;
+    };
+
+    let observer = makeObserver();
+    const refreshObserver = () => {
+      observer.disconnect();
+      observer = makeObserver();
+      updateActiveSection();
+    };
+    updateActiveSection();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", refreshObserver);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", refreshObserver);
+    };
+  }, []);
+
   return (
     <div className="bg-white">
       {/* Tab strip */}
-      <div className="relative flex border-b border-gray-100">
+      <div className="product-tabs">
+        <div className="product-tabs-inner">
         <TabButton
           label="Deskripsi"
-          active={tab === "deskripsi"}
-          onClick={() => setTab("deskripsi")}
+          active={activeTab === "deskripsi"}
+          onClick={() => scrollToSection("deskripsi")}
         />
         <TabButton
           label="Rekomendasi"
-          active={tab === "rekomendasi"}
-          onClick={() => setTab("rekomendasi")}
+          active={activeTab === "rekomendasi"}
+          onClick={() => scrollToSection("rekomendasi")}
         />
+        </div>
       </div>
 
       <div className="px-4 py-4 md:px-6 md:py-6">
-        {tab === "deskripsi" ? (
+        <section id="product-section-deskripsi" className="product-tab-section">
           <>
             {expanded || !isLong ? (
               <MarkdownBody body={description} />
@@ -175,9 +258,14 @@ export function ProductTabs({ description, related }: Props) {
               </button>
             )}
           </>
-        ) : (
+        </section>
+
+        <section id="product-section-rekomendasi" className="product-tab-section mt-8 border-t border-gray-100 pt-5 md:mt-10 md:pt-6">
+          <h2 className="mb-3 text-base font-black text-gray-900 md:text-lg">
+            Rekomendasi Produk
+          </h2>
           <RelatedGrid related={related} />
-        )}
+        </section>
       </div>
     </div>
   );
@@ -196,18 +284,10 @@ function TabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`relative flex-1 py-3 text-sm font-extrabold transition ${
-        active ? "text-natalo-600" : "text-gray-400"
-      }`}
-      aria-pressed={active}
+      className={`product-tab ${active ? "active" : ""}`}
+      aria-current={active ? "true" : undefined}
     >
       {label}
-      <span
-        aria-hidden
-        className={`absolute inset-x-6 -bottom-px h-[3px] rounded-full transition-all ${
-          active ? "bg-natalo-600" : "bg-transparent"
-        }`}
-      />
     </button>
   );
 }

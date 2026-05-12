@@ -52,7 +52,7 @@ export function Footer() {
   ];
 
   return (
-    <footer className="mt-12 border-t border-zinc-100 bg-zinc-50">
+    <footer className="site-footer mt-12 border-t border-zinc-100 bg-zinc-50">
       <div className="mx-auto max-w-6xl px-4 py-8">
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-[1.4fr_0.8fr_0.8fr_1fr]">
           <div>
