@@ -117,6 +117,14 @@ input, textarea, select, button {
   padding-bottom: calc(var(--natalo-bottom-nav-height) + env(safe-area-inset-bottom));
 }
 
+/* Saat bottom nav hidden (route detail produk/checkout/payment/auth/order
+   detail — lihat lib/navigation.ts), buang reserved-space-nya supaya konten
+   tidak ada gap kosong di bawah. Safe-area iPhone tetap dihormati. Body
+   data attribute disetel oleh BottomNavigation.tsx (single source of truth). */
+body[data-bottom-nav="hidden"] .nat-main-shell {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
 .natalo-splash-overlay {
   animation: natalo-splash-auto-hide 2.2s ease forwards;
 }

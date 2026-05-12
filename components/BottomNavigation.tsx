@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import { bootstrapCartSync, loadCart } from "@/lib/cart";
 import { prefetchCategories } from "@/lib/client-performance";
 import { hapticTap } from "@/lib/native/haptics";
+import { shouldHideBottomNav } from "@/lib/navigation";
 
 type NavIconName = "home" | "catalog" | "bag" | "person";
 
@@ -138,18 +139,27 @@ export function BottomNavigation() {
     return i === -1 ? 0 : i;
   }, [pathname, optimisticHref]);
 
-  if (pathname === "/checkout" || pathname?.startsWith("/checkout/")) return null;
-  // Hide bottom nav pada auth flow — user harus fokus mengisi form login/daftar/
-  // OTP/reset password tanpa godaan pindah tab. Setelah berhasil auth, user
-  // kembali ke main tab dan nav muncul lagi.
-  if (
-    pathname === "/member/login" ||
-    pathname === "/member/register" ||
-    pathname === "/member/forgot-password" ||
-    pathname === "/member/reset-password"
-  ) {
-    return null;
-  }
+  const hideNav = shouldHideBottomNav(pathname);
+
+  // Sync body data attribute supaya CSS bisa adjust .nat-main-shell
+  // padding-bottom (tanpa space kosong saat nav hidden). Pakai useEffect
+  // hanya untuk side-effect ini — render utama tetap kontrolled lewat
+  // conditional return di bawah.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (hideNav) {
+      document.body.dataset.bottomNav = "hidden";
+    } else {
+      delete document.body.dataset.bottomNav;
+    }
+    return () => {
+      if (typeof document !== "undefined") {
+        delete document.body.dataset.bottomNav;
+      }
+    };
+  }, [hideNav]);
+
+  if (hideNav) return null;
 
   return (
     <nav className="bottom-nav nat-bottom-nav md:hidden" aria-label="Navigasi utama">
