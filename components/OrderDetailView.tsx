@@ -3,9 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { formatRupiah } from "@/lib/format";
-import type { SerializedOrderDetail } from "@/lib/order-detail";
+import {
+  getFirstReviewableOrderItem,
+  type SerializedOrderDetail,
+} from "@/lib/order-detail";
 import { PaymentProofUpload } from "@/components/PaymentProofUpload";
-import { PushSubscribe } from "@/components/PushSubscribe";
 import { ExternalLink } from "@/components/ExternalLink";
 import { trackSuccessfulOrder } from "@/lib/app-rating";
 import { PageStatusBar } from "@/components/PageStatusBar";
@@ -189,6 +191,71 @@ function CourierTracking({ order }: { order: SerializedOrderDetail }) {
   );
 }
 
+function OrderFollowUpCard({
+  order,
+  canReview,
+  reviewableItem,
+  onReview,
+}: {
+  order: SerializedOrderDetail;
+  canReview: boolean;
+  reviewableItem: SerializedOrderDetail["items"][number] | null;
+  onReview: (item: SerializedOrderDetail["items"][number]) => void;
+}) {
+  if (order.status === "DELIVERED") {
+    return (
+      <div className="rounded-3xl border border-green-100 bg-green-50 p-5">
+        <p className="text-sm font-black text-green-800">Pesanan Selesai</p>
+        <p className="mt-2 text-sm leading-6 text-green-700">
+          {reviewableItem
+            ? "Yuk beri ulasan untuk produk di pesanan ini."
+            : canReview
+            ? "Terima kasih, semua produk di pesanan ini sudah direview."
+            : "Terima kasih sudah berbelanja di Natalo Petshop."}
+        </p>
+        {reviewableItem && (
+          <button
+            type="button"
+            onClick={() => onReview(reviewableItem)}
+            className="mt-4 inline-flex w-full items-center justify-center rounded-full bg-green-700 px-5 py-3 text-sm font-black text-white hover:bg-green-800"
+          >
+            Beri Ulasan Produk
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  if (order.status === "CANCELLED") {
+    return (
+      <div className="rounded-3xl border border-red-100 bg-red-50 p-5">
+        <p className="text-sm font-black text-red-800">Pesanan Dibatalkan</p>
+        <p className="mt-2 text-sm leading-6 text-red-700">
+          Hubungi admin Natalo jika kamu membutuhkan bantuan lanjutan.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-3xl border border-blue-100 bg-blue-50 p-5">
+      <p className="text-sm font-black text-blue-900">
+        {STATUS_LABEL[order.status] ?? "Status pesanan"}
+      </p>
+      <p className="mt-2 text-sm leading-6 text-blue-800">
+        Pesanan sedang diproses. Kami akan mengirim update melalui notifikasi
+        aplikasi.
+      </p>
+      {order.trackingNumber && (
+        <div className="mt-4 rounded-2xl bg-white/80 px-4 py-3 text-sm text-blue-900">
+          <p className="font-semibold">Nomor resi</p>
+          <p className="mt-1 font-mono font-black">{order.trackingNumber}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function OrderDetailView({
   initialOrder,
   token,
@@ -283,6 +350,11 @@ export function OrderDetailView({
       : `Halo Natalo Petshop, saya ingin bertanya tentang pesanan ${order.orderNumber}.`
   );
   const showReviewActions = canReview && order.status === "DELIVERED";
+  const firstReviewableItem = getFirstReviewableOrderItem({
+    status: order.status,
+    canReview,
+    items: order.items,
+  });
 
   return (
     <div
@@ -564,7 +636,12 @@ export function OrderDetailView({
               </a>
             )}
 
-            <PushSubscribe />
+            <OrderFollowUpCard
+              order={order}
+              canReview={canReview}
+              reviewableItem={firstReviewableItem}
+              onReview={setReviewItem}
+            />
           </div>
         </div>
       </div>

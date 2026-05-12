@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { serializeOrderDetail } from "@/lib/order-detail";
+import {
+  getFirstReviewableOrderItem,
+  serializeOrderDetail,
+} from "@/lib/order-detail";
 import { shouldHideBottomNav } from "@/lib/navigation";
 
 test("order detail serialization exposes product metadata and review state", () => {
@@ -57,4 +60,41 @@ test("order detail serialization exposes product metadata and review state", () 
 
 test("order detail page hides bottom navigation for focused mobile flow", () => {
   assert.equal(shouldHideBottomNav("/pesanan/INV-1"), true);
+});
+
+test("order detail review CTA targets the first unreviewed delivered item", () => {
+  const items = [
+    { id: "item-reviewed", reviewed: true },
+    { id: "item-open", reviewed: false },
+    { id: "item-later", reviewed: false },
+  ];
+
+  const item = getFirstReviewableOrderItem({
+    status: "DELIVERED",
+    canReview: true,
+    items,
+  });
+
+  assert.equal(item?.id, "item-open");
+});
+
+test("order detail review CTA is unavailable before delivery or without owner access", () => {
+  const items = [{ id: "item-open", reviewed: false }];
+
+  assert.equal(
+    getFirstReviewableOrderItem({
+      status: "SHIPPED",
+      canReview: true,
+      items,
+    }),
+    null
+  );
+  assert.equal(
+    getFirstReviewableOrderItem({
+      status: "DELIVERED",
+      canReview: false,
+      items,
+    }),
+    null
+  );
 });

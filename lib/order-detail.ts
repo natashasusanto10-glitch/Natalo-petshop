@@ -121,3 +121,14 @@ export function serializeOrderDetail(order: OrderDetailRecord) {
 }
 
 export type SerializedOrderDetail = ReturnType<typeof serializeOrderDetail>;
+
+export function getFirstReviewableOrderItem<
+  T extends { reviewed: boolean }
+>(params: {
+  status: string;
+  canReview: boolean;
+  items: readonly T[];
+}): T | null {
+  if (!params.canReview || params.status !== "DELIVERED") return null;
+  return params.items.find((item) => !item.reviewed) ?? null;
+}
