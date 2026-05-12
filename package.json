@@ -8,7 +8,8 @@
     "prebuild": "node scripts/bump-sw-version.mjs",
     "build": "prisma generate && prisma migrate deploy && next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
+    "lint:hooks": "eslint . --rule \"react-hooks/rules-of-hooks: error\"",
     "analyze": "dotenv -e .env -- cross-env ANALYZE=true next build",
     "test": "tsx --test tests/*.test.ts",
     "postinstall": "prisma generate",
@@ -72,6 +73,7 @@
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^8.3.3",
+    "@eslint/eslintrc": "^3.3.5",
     "@next/bundle-analyzer": "^16.2.6",
     "@tailwindcss/postcss": "latest",
     "@types/node": "latest",
@@ -79,10 +81,13 @@
     "@types/react-dom": "latest",
     "@types/web-push": "^3.6.4",
     "dotenv-cli": "^7.4.4",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.6",
     "playwright-core": "^1.59.1",
     "prisma": "6.19.0",
     "tailwindcss": "latest",
     "tsx": "latest",
-    "typescript": "latest"
+    "typescript": "latest",
+    "typescript-eslint": "^8.59.3"
   }
 }
