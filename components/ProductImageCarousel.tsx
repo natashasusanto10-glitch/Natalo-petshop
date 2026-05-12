@@ -17,12 +17,6 @@ const ProductImageViewer = dynamic(
 type Props = {
   images: string[];
   alt: string;
-  /**
-   * Optional view-transition-name untuk slide pertama. Match dengan
-   * ProductCard.tsx (`nat-prod-${slug}`) → browser morph thumbnail card
-   * jadi hero image saat navigasi list → detail.
-   */
-  transitionName?: string;
 };
 
 /**
@@ -35,7 +29,7 @@ type Props = {
  * - Per gambar punya onError fallback (placeholder "NP")
  * - Slide pertama = images[0] = thumbnail "Utama" yg diatur admin
  */
-export function ProductImageCarousel({ images, alt, transitionName }: Props) {
+export function ProductImageCarousel({ images, alt }: Props) {
   const safeImages = images.filter(Boolean);
   const hasImages = safeImages.length > 0;
   const showIndicators = safeImages.length > 1;
@@ -115,7 +109,6 @@ export function ProductImageCarousel({ images, alt, transitionName }: Props) {
               }}
               data-index={index}
               className="relative h-full w-full shrink-0 snap-start bg-white"
-              style={index === 0 && transitionName ? { viewTransitionName: transitionName } : undefined}
             >
               <button
                 type="button"

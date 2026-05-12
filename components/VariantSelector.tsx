@@ -5,7 +5,6 @@ import { formatRupiah } from "@/lib/format";
 import type { StoreVariantAttribute, StoreProductVariant } from "@/lib/products";
 import { addItemToCart } from "@/lib/cart-actions";
 import { AddToCartBottomSheet } from "@/components/AddToCartBottomSheet";
-import { hapticTap } from "@/lib/native/haptics";
 
 // Props
 interface Props {
@@ -135,7 +134,6 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
 
   // Pilih opsi
   function selectOption(attrId: string, optionId: string, attrIdx: number) {
-    hapticTap();
     setSelected((prev) => {
       const next = { ...prev, [attrId]: optionId };
       // Reset pilihan atribut SETELAH yang ini kalau tidak kompatibel

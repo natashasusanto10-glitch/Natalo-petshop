@@ -73,16 +73,15 @@ export function NotificationsList() {
 
   // Optimistic mark-as-read — update UI dulu sebelum API balas. Kalau API
   // gagal, fire-and-forget; user akan lihat status terkini next refresh.
-  // Bell decrement instant via "notification-read" event (no refetch).
+  // Dispatch event "notifications-updated" supaya bell di header sync
+  // (unread count berkurang).
   async function handleTap(notif: Notification) {
     if (!loggedIn || notif.read) return;
     setItems((prev) =>
       prev ? prev.map((i) => (i.id === notif.id ? { ...i, read: true } : i)) : prev,
     );
     if (typeof window !== "undefined") {
-      window.dispatchEvent(
-        new CustomEvent("notification-read", { detail: { id: notif.id } }),
-      );
+      window.dispatchEvent(new Event("notifications-updated"));
     }
     void fetch(`/api/notifications/${notif.id}/read`, { method: "POST" }).catch(() => {});
   }
@@ -126,7 +125,7 @@ export function NotificationsList() {
   }
 
   return (
-    <ul className="nat-content-fade-in nat-content-fade-in--stagger space-y-2">
+    <ul className="space-y-2">
       {items.map((notif) => {
         const content = (
           <div

@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
 import Link from "next/link";
 import { Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -696,8 +695,6 @@ function SearchProductCard({ item, priority }: { item: SearchItem; priority?: bo
               fill
               priority={priority}
               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-              placeholder="blur"
-              blurDataURL={IMAGE_BLUR_GRAY}
               className="object-cover transition duration-300 group-hover:scale-105"
             />
           ) : (
