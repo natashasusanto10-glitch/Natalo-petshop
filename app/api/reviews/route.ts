@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { createReview } from "@/lib/reviews";
 
 export async function GET(req: NextRequest) {
   const productId = req.nextUrl.searchParams.get("productId");
-  if (!productId) return NextResponse.json({ error: "productId required" }, { status: 400 });
+  if (!productId)
+    return NextResponse.json({ error: "productId required" }, { status: 400 });
 
   const reviews = await prisma.review.findMany({
     where: { productId, status: "VISIBLE" },
@@ -25,13 +27,17 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await getSession("CUSTOMER");
   if (!session) {
-    return NextResponse.json({ error: "Login dulu untuk ulasan." }, { status: 401 });
+    return NextResponse.json(
+      { error: "Login dulu untuk ulasan." },
+      { status: 401 }
+    );
   }
 
   const body = await req.json().catch(() => null);
-  if (!body) return NextResponse.json({ error: "Invalid body" }, { status: 400 });
+  if (!body)
+    return NextResponse.json({ error: "Invalid body" }, { status: 400 });
 
-  const { productId, orderItemId, rating, title, content } = body;
+  const { productId, orderItemId, rating, title, content, imageUrls } = body;
   if (!productId || !orderItemId || !rating) {
     return NextResponse.json(
       { error: "productId, orderItemId, rating wajib diisi" },
@@ -42,33 +48,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Rating harus 1–5" }, { status: 400 });
   }
 
-  // Verifikasi: order item ini milik user yang login & sudah selesai
-  const orderItem = await prisma.orderItem.findUnique({
-    where: { id: orderItemId },
-    include: { order: { select: { userId: true, status: true } } },
-  });
-  if (!orderItem || orderItem.order.userId !== session.sub) {
-    return NextResponse.json({ error: "Order item tidak ditemukan." }, { status: 404 });
-  }
-  if (orderItem.order.status !== "DELIVERED") {
-    return NextResponse.json(
-      { error: "Hanya order yang sudah diterima bisa direview." },
-      { status: 400 }
-    );
-  }
-
-  const review = await prisma.review.create({
-    data: {
-      productId,
-      orderItemId,
+  try {
+    const review = await createReview({
       userId: session.sub,
-      variantId: orderItem.variantId,
-      variantLabel: orderItem.variantLabel,
+      orderItemId,
       rating: Math.round(rating),
       title: title ? String(title).slice(0, 120) : null,
       content: content ? String(content).slice(0, 2000) : null,
-    },
-  });
+      imageUrls: Array.isArray(imageUrls) ? imageUrls.map(String) : [],
+    });
 
-  return NextResponse.json({ id: review.id }, { status: 201 });
+    return NextResponse.json({ id: review.id }, { status: 201 });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Gagal mengirim review.",
+      },
+      { status: 400 }
+    );
+  }
 }

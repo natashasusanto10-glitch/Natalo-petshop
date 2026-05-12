@@ -11,6 +11,17 @@ export const orderDetailInclude = {
       variantLabel: true,
       productId: true,
       variantId: true,
+      product: {
+        select: {
+          slug: true,
+          imageUrl: true,
+        },
+      },
+      reviews: {
+        where: { status: { not: "DELETED" } },
+        select: { id: true },
+        take: 1,
+      },
     },
   },
 } satisfies Prisma.OrderInclude;
@@ -23,25 +34,43 @@ export function createTrackingToken() {
   return randomBytes(24).toString("hex");
 }
 
-export function buildOrderDetailPath(orderNumber: string, trackingToken?: string | null) {
+export function buildOrderDetailPath(
+  orderNumber: string,
+  trackingToken?: string | null
+) {
   const path = `/pesanan/${encodeURIComponent(orderNumber)}`;
-  return trackingToken ? `${path}?token=${encodeURIComponent(trackingToken)}` : path;
+  return trackingToken
+    ? `${path}?token=${encodeURIComponent(trackingToken)}`
+    : path;
 }
 
-export function buildOrderDetailUrl(orderNumber: string, trackingToken?: string | null) {
+export function buildOrderDetailUrl(
+  orderNumber: string,
+  trackingToken?: string | null
+) {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
   return `${siteUrl}${buildOrderDetailPath(orderNumber, trackingToken)}`;
 }
 
-export function isOrderContactMatch(order: { customerEmail?: string | null; customerPhone: string }, contact: string) {
+export function isOrderContactMatch(
+  order: { customerEmail?: string | null; customerPhone: string },
+  contact: string
+) {
   const raw = contact.trim().toLowerCase();
   const email = order.customerEmail?.trim().toLowerCase();
   const digits = raw.replace(/\D/g, "");
   const phoneDigits = order.customerPhone.replace(/\D/g, "");
-  const normalizedInput = digits.startsWith("0") ? `62${digits.slice(1)}` : digits;
-  const normalizedPhone = phoneDigits.startsWith("0") ? `62${phoneDigits.slice(1)}` : phoneDigits;
+  const normalizedInput = digits.startsWith("0")
+    ? `62${digits.slice(1)}`
+    : digits;
+  const normalizedPhone = phoneDigits.startsWith("0")
+    ? `62${phoneDigits.slice(1)}`
+    : phoneDigits;
 
-  return Boolean((email && email === raw) || (normalizedInput && normalizedInput === normalizedPhone));
+  return Boolean(
+    (email && email === raw) ||
+      (normalizedInput && normalizedInput === normalizedPhone)
+  );
 }
 
 export function serializeOrderDetail(order: OrderDetailRecord) {
@@ -84,6 +113,9 @@ export function serializeOrderDetail(order: OrderDetailRecord) {
       variantLabel: item.variantLabel,
       productId: item.productId,
       variantId: item.variantId,
+      productSlug: item.product.slug,
+      productImage: item.product.imageUrl,
+      reviewed: item.reviews.length > 0,
     })),
   };
 }

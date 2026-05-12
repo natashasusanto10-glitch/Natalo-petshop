@@ -7,6 +7,7 @@ import { pickPhoto } from "@/lib/photo-picker";
 
 interface Props {
   orderItemId: string;
+  productId: string;
   productName: string;
   productImage: string | null;
   variantLabel: string | null;
@@ -15,6 +16,7 @@ interface Props {
 
 export function ReviewModal({
   orderItemId,
+  productId,
   productName,
   productImage,
   variantLabel,
@@ -60,7 +62,10 @@ export function ReviewModal({
       const ext = result.format === "jpeg" ? "jpg" : result.format;
       fd.append("file", result.blob, `review-photo.${ext}`);
 
-      const res = await fetch("/api/reviews/upload", { method: "POST", body: fd });
+      const res = await fetch("/api/reviews/upload", {
+        method: "POST",
+        body: fd,
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Upload gagal");
       setImageUrls((prev) => [...prev, data.url]);
@@ -88,6 +93,7 @@ export function ReviewModal({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          productId,
           orderItemId,
           rating,
           title: title.trim() || null,
@@ -117,13 +123,21 @@ export function ReviewModal({
             <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-gray-100">
               {productImage ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={productImage} alt={productName} className="h-full w-full object-cover" />
+                <img
+                  src={productImage}
+                  alt={productName}
+                  className="h-full w-full object-cover"
+                />
               ) : (
-                <div className="flex h-full items-center justify-center text-2xl">🐾</div>
+                <div className="flex h-full items-center justify-center text-2xl">
+                  🐾
+                </div>
               )}
             </div>
             <div className="min-w-0">
-              <p className="line-clamp-2 text-sm font-semibold text-gray-900">{productName}</p>
+              <p className="line-clamp-2 text-sm font-semibold text-gray-900">
+                {productName}
+              </p>
               {variantLabel && (
                 <p className="text-xs text-natalo-600">{variantLabel}</p>
               )}
@@ -143,7 +157,9 @@ export function ReviewModal({
 
           {/* Title */}
           <div>
-            <p className="mb-2 text-sm font-medium text-gray-700">Judul (opsional)</p>
+            <p className="mb-2 text-sm font-medium text-gray-700">
+              Judul (opsional)
+            </p>
             <input
               type="text"
               value={title}
@@ -156,7 +172,9 @@ export function ReviewModal({
 
           {/* Content */}
           <div>
-            <p className="mb-2 text-sm font-medium text-gray-700">Cerita (opsional)</p>
+            <p className="mb-2 text-sm font-medium text-gray-700">
+              Cerita (opsional)
+            </p>
             <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
@@ -177,9 +195,16 @@ export function ReviewModal({
             </p>
             <div className="flex flex-wrap gap-2">
               {imageUrls.map((url, i) => (
-                <div key={i} className="relative h-20 w-20 overflow-hidden rounded-lg border">
+                <div
+                  key={i}
+                  className="relative h-20 w-20 overflow-hidden rounded-lg border"
+                >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={url} alt="" className="h-full w-full object-cover" />
+                  <img
+                    src={url}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
                   <button
                     type="button"
                     onClick={() => removeImage(i)}
@@ -208,7 +233,9 @@ export function ReviewModal({
           </div>
 
           {error && (
-            <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>
+            <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">
+              {error}
+            </p>
           )}
         </div>
 

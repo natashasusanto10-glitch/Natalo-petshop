@@ -100,13 +100,20 @@ const config: CapacitorConfig = {
       // Capacitor Style.LIGHT = darkContent = ikon hitam, untuk bg terang.
       style: "LIGHT",
       backgroundColor: "#ffffff",
-      // overlaysWebView: true → WebView extend ke top edge layar, status bar
-      // jadi transparent overlay. Sebelumnya false bikin iOS render hairline
-      // separator (system tintColor = biru) di bawah status bar UIView,
-      // visible sebagai garis biru tipis di top area TestFlight build.
-      // Header sudah punya `padding-top: env(safe-area-inset-top)` di
-      // .nat-site-header, jadi content tidak ke-cover status bar text.
-      overlaysWebView: true,
+      // overlaysWebView: false → WebView NOT extend ke area status bar.
+      // Native OS handle status bar dengan solid white bg (backgroundColor
+      // di atas). Trade-off vs `true`:
+      //   true  = WebView fullscreen, butuh CSS padding-top safe-area di
+      //           setiap sticky header. Konten bisa overlap status bar saat
+      //           non-sticky header scroll-away (mis. detail pesanan
+      //           menampilkan alamat masuk ke bawah status bar).
+      //   false = WebView start dari bawah status bar, tidak ada overlap
+      //           kemungkinan. Sebelumnya pernah show hairline separator
+      //           biru di iOS — sekarang sudah di-fix via backgroundColor
+      //           putih + LaunchScreen storyboard white.
+      // Pilih false untuk safety: content NEVER tertimpa status bar regardless
+      // of header sticky / non-sticky behavior. Apply setelah `npx cap sync`.
+      overlaysWebView: false,
     },
     Keyboard: {
       // resize Native → iOS WebView TIDAK resize saat keyboard muncul,

@@ -30,7 +30,9 @@ export function ReviewableItemCard({ item }: { item: Item }) {
               className="h-full w-full object-cover"
             />
           ) : (
-            <div className="flex h-full items-center justify-center text-2xl">🐾</div>
+            <div className="flex h-full items-center justify-center text-2xl">
+              🐾
+            </div>
           )}
         </div>
         <div className="min-w-0 flex-1">
@@ -44,7 +46,8 @@ export function ReviewableItemCard({ item }: { item: Item }) {
             <p className="text-xs text-natalo-600">{item.variantLabel}</p>
           )}
           <p className="text-xs text-gray-400">
-            {formatRupiah(item.price)} × {item.quantity} · Order {item.order.orderNumber}
+            {formatRupiah(item.price)} × {item.quantity} · Order{" "}
+            {item.order.orderNumber}
           </p>
         </div>
         <button
@@ -58,6 +61,7 @@ export function ReviewableItemCard({ item }: { item: Item }) {
       {open && (
         <ReviewModal
           orderItemId={item.id}
+          productId={item.product.id}
           productName={item.name}
           productImage={item.product.imageUrl}
           variantLabel={item.variantLabel}

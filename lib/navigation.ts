@@ -30,9 +30,12 @@ export const HIDDEN_BOTTOM_NAV_PATTERNS: RegExp[] = [
   // Detail pesanan (tracking) — fokus pada status & info pengiriman
   /^\/member\/orders\/[^/]+$/,
   /^\/order-status\/[^/]+$/,
+  /^\/pesanan\/[^/]+$/,
 ];
 
-export function shouldHideBottomNav(pathname: string | null | undefined): boolean {
+export function shouldHideBottomNav(
+  pathname: string | null | undefined
+): boolean {
   if (!pathname) return false;
   return HIDDEN_BOTTOM_NAV_PATTERNS.some((pattern) => pattern.test(pathname));
 }

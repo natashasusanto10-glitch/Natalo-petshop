@@ -36,10 +36,18 @@ export function ViewTransitionsProvider() {
       document.documentElement.dataset.navDirection = direction;
     }
 
-    function shouldIntercept(target: HTMLAnchorElement, event: MouseEvent): string | null {
+    function isAdminPath(path: string) {
+      return path === "/admin" || path.startsWith("/admin/");
+    }
+
+    function shouldIntercept(
+      target: HTMLAnchorElement,
+      event: MouseEvent
+    ): string | null {
       if (event.defaultPrevented) return null;
       if (event.button !== 0) return null; // hanya left-click
-      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return null;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+        return null;
       if (target.target && target.target !== "_self") return null;
       if (target.hasAttribute("download")) return null;
       if (target.getAttribute("rel")?.includes("external")) return null;
@@ -51,10 +59,27 @@ export function ViewTransitionsProvider() {
     }
 
     function handleClick(event: MouseEvent) {
+      // Admin dashboard adalah PC-only context. Navigasi yang masuk/keluar
+      // admin dibuat instant, sementara route customer tetap pakai transition.
       const anchor = (event.target as HTMLElement | null)?.closest?.("a");
       if (!anchor || !(anchor instanceof HTMLAnchorElement)) return;
       const href = shouldIntercept(anchor, event);
       if (!href) return;
+
+      const targetUrl = new URL(href, window.location.origin);
+      const isAdminNavigation =
+        isAdminPath(window.location.pathname) ||
+        isAdminPath(targetUrl.pathname);
+
+      if (isAdminNavigation) {
+        // Set data-admin before router.push so Next's auto viewTransition also
+        // gets disabled by the CSS opt-out for admin routes.
+        event.preventDefault();
+        delete document.documentElement.dataset.navDirection;
+        document.documentElement.dataset.admin = "true";
+        router.push(href);
+        return;
+      }
 
       event.preventDefault();
       setDirection("push");
@@ -64,6 +89,12 @@ export function ViewTransitionsProvider() {
     }
 
     function handlePopState() {
+      if (isAdminPath(window.location.pathname)) {
+        delete document.documentElement.dataset.navDirection;
+        document.documentElement.dataset.admin = "true";
+        return;
+      }
+
       // router.back / swipe back / browser back / hardware back semua
       // trigger popstate. Next.js 16 (experimental.viewTransition: true)
       // auto-wrap route change dalam startViewTransition — kita hanya

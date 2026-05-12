@@ -579,6 +579,14 @@ html[data-nav-direction="pop"]::view-transition-new(root) {
   }
 }
 
+/* Admin dashboard PC-only → instant nav, tanpa slide iOS-style.
+   data-admin di-set oleh AdminLayout selama user di route /admin/*. */
+html[data-admin]::view-transition-old(root),
+html[data-admin]::view-transition-new(root),
+html[data-admin]::view-transition-group(*) {
+  animation: none !important;
+}
+
 /* ── Tap polish (native-feel) ───────────────────────────────────
    1. Hilangkan tap-highlight flash biru di iOS Safari (sangat
       kelihatan saat hybrid mode di Capacitor WebView Android).

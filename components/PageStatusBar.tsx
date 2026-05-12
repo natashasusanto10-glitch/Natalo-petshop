@@ -34,10 +34,15 @@ type Props = {
  *
  * Web non-Capacitor: plugin import gagal silently, theme-color tetap update.
  */
-export function PageStatusBar({ iconColor = "dark", themeColor = "#ffffff" }: Props) {
+export function PageStatusBar({
+  iconColor = "dark",
+  themeColor = "#ffffff",
+}: Props) {
   useEffect(() => {
     // 1. Update theme-color meta (semua existing tag)
-    const metas = document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]');
+    const metas = document.querySelectorAll<HTMLMetaElement>(
+      'meta[name="theme-color"]'
+    );
     const previousContents: string[] = Array.from(metas).map((m) => m.content);
     metas.forEach((m) => {
       m.content = themeColor;
@@ -69,6 +74,8 @@ export function PageStatusBar({ iconColor = "dark", themeColor = "#ffffff" }: Pr
           // getInfo bisa fail di simulator, biarkan
         }
         if (cancelled) return;
+        await StatusBar.setOverlaysWebView({ overlay: false });
+        if (cancelled) return;
         await StatusBar.setBackgroundColor({ color: themeColor });
         if (cancelled) return;
         await StatusBar.setStyle({
@@ -82,7 +89,9 @@ export function PageStatusBar({ iconColor = "dark", themeColor = "#ffffff" }: Pr
     return () => {
       cancelled = true;
       // Restore theme-color meta state sebelumnya (penting saat navigate antar page)
-      const currentMetas = document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]');
+      const currentMetas = document.querySelectorAll<HTMLMetaElement>(
+        'meta[name="theme-color"]'
+      );
       currentMetas.forEach((m, i) => {
         if (previousContents[i] !== undefined) {
           m.content = previousContents[i];
@@ -102,10 +111,12 @@ export function PageStatusBar({ iconColor = "dark", themeColor = "#ffffff" }: Pr
               previousNativeStyle === "LIGHT"
                 ? Style.Light
                 : previousNativeStyle === "DARK"
-                  ? Style.Dark
-                  : Style.Default;
+                ? Style.Dark
+                : Style.Default;
             if (previousNativeColor) {
-              await StatusBar.setBackgroundColor({ color: previousNativeColor });
+              await StatusBar.setBackgroundColor({
+                color: previousNativeColor,
+              });
             }
             await StatusBar.setStyle({ style: restored });
           } catch {}
