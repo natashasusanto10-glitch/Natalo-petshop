@@ -18,9 +18,9 @@
  */
 import { NextResponse } from "next/server";
 import {
-  getOriginAreaId,
   logMissingOriginArea,
   ORIGIN_AREA_NOT_CONFIGURED_CODE,
+  resolveOriginAreaId,
   SHIPPING_ORIGIN_UNAVAILABLE_MESSAGE,
 } from "@/lib/shipping-origin";
 
@@ -54,7 +54,7 @@ function numberOrNull(value: unknown) {
 export async function POST(request: Request) {
   const body = await request.json();
   const apiKey = process.env.BITESHIP_API_KEY;
-  const originAreaId = getOriginAreaId();
+  const originAreaId = await resolveOriginAreaId();
   const originLatitude = numberOrNull(process.env.SHOP_ORIGIN_LATITUDE);
   const originLongitude = numberOrNull(process.env.SHOP_ORIGIN_LONGITUDE);
 

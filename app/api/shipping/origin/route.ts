@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import {
-  getOriginAreaId,
   logMissingOriginArea,
   ORIGIN_AREA_NOT_CONFIGURED_CODE,
+  resolveOriginAreaId,
   SHIPPING_ORIGIN_UNAVAILABLE_MESSAGE,
 } from "@/lib/shipping-origin";
 
 export async function GET() {
-  const originAreaId = getOriginAreaId();
+  const originAreaId = await resolveOriginAreaId();
 
   if (!originAreaId) {
     logMissingOriginArea();

@@ -1,8 +1,8 @@
 import type { Order, OrderItem } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
-  getOriginAreaId,
   logMissingOriginArea,
+  resolveOriginAreaId,
   SHIPPING_ORIGIN_UNAVAILABLE_MESSAGE,
 } from "@/lib/shipping-origin";
 
@@ -45,10 +45,10 @@ function buildItems(items: OrderItem[]): BiteshipItem[] {
   }));
 }
 
-function getCreateOrderPayload(order: OrderWithItems) {
+async function getCreateOrderPayload(order: OrderWithItems) {
   const originLatitude = envNumber("SHOP_ORIGIN_LATITUDE");
   const originLongitude = envNumber("SHOP_ORIGIN_LONGITUDE");
-  const originAreaId = getOriginAreaId();
+  const originAreaId = await resolveOriginAreaId();
   const destinationLatitude = order.shippingLatitude;
   const destinationLongitude = order.shippingLongitude;
   const instant = isInstantCourier(order);
@@ -128,7 +128,7 @@ export async function createBiteshipShipment(orderId: string) {
     throw new Error("Order sudah dibatalkan/refund.");
   }
 
-  const payload = getCreateOrderPayload(order);
+  const payload = await getCreateOrderPayload(order);
 
   try {
     await prisma.order.update({
