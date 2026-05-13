@@ -84,8 +84,12 @@ const SHORTCUT_ITEMS: {
 
 const FEATURED_BRANDS: BrandChoiceItem[] = [
   { id: "royal-canin", name: "Royal Canin", slug: "royal-canin", logo: "/brands/royal-canin.png", imageClass: "max-h-[42px] max-w-[100px]" },
+  { id: "amara", name: "Amara", slug: "amara", logo: "/brands/amara.png", imageClass: "max-h-[46px] max-w-[104px]" },
+  { id: "sakkai", name: "Sakkai", slug: "sakkai", logo: "/brands/sakkai.png", imageClass: "max-h-[46px] max-w-[104px]" },
+  { id: "angels", name: "Angels", slug: "angels", logo: "/brands/angels.png", imageClass: "max-h-[46px] max-w-[104px]" },
   { id: "whiskas", name: "Whiskas", slug: "whiskas", logo: "/brands/whiskas.png", imageClass: "max-h-[46px] max-w-[98px]" },
   { id: "me-o", name: "Me-O", slug: "me-o", logo: "/brands/me-o.png", imageClass: "max-h-[42px] max-w-[88px]" },
+  { id: "amori", name: "Amori", slug: "amori", logo: "/brands/amori.png", imageClass: "max-h-[46px] max-w-[104px]" },
   { id: "pedigree", name: "Pedigree", slug: "pedigree", logo: "/brands/pedigree.png", imageClass: "max-h-[48px] max-w-[100px]" },
   { id: "nature-bridge", name: "Nature Bridge", slug: "nature-bridge", logo: "/brands/nature-bridge.png", imageClass: "max-h-[42px] max-w-[104px]" },
   { id: "kitchen-flavour", name: "Kitchen Flavor", slug: "kitchen-flavour", logo: "/brands/kitchen-flavor.png", imageClass: "max-h-[48px] max-w-[96px]" },
@@ -94,6 +98,10 @@ const FEATURED_BRANDS: BrandChoiceItem[] = [
   { id: "happy-dog", name: "Happy Dog", slug: "happy-dog", logo: "/brands/happy-dog.png", imageClass: "max-h-[42px] max-w-[104px]" },
   { id: "reflex", name: "Reflex", slug: "reflex", logo: "/brands/reflex.png", imageClass: "max-h-[46px] max-w-[104px]" },
 ];
+
+const LOCAL_BRAND_LOGOS = new Map(
+  FEATURED_BRANDS.filter((brand) => brand.logo).map((brand) => [brand.slug, brand.logo ?? null]),
+);
 
 function getJakartaMidnight() {
   const now = new Date();
@@ -464,7 +472,7 @@ export default async function HomePage() {
         id: item.id,
         name: item.name,
         slug: item.slug,
-        logo: item.logoUrl,
+        logo: item.logoUrl ?? LOCAL_BRAND_LOGOS.get(item.slug) ?? null,
       } satisfies BrandChoiceItem,
     ]),
   );
@@ -484,10 +492,10 @@ export default async function HomePage() {
           id: brand.id,
           name: brand.name,
           slug: brand.slug,
-          logo: brand.logoUrl,
+          logo: brand.logoUrl ?? LOCAL_BRAND_LOGOS.get(brand.slug) ?? null,
         }) satisfies BrandChoiceItem,
     );
-  const featuredBrands = [...defaultFeaturedBrands, ...extraFeaturedBrands].slice(0, 12);
+  const featuredBrands = [...defaultFeaturedBrands, ...extraFeaturedBrands].slice(0, 16);
 
   const flashSaleEnd = getJakartaMidnight();
 
