@@ -20,6 +20,15 @@ export const HIDDEN_BOTTOM_NAV_PATTERNS: RegExp[] = [
   // Checkout & sub-pages — fokus selesaikan transaksi
   /^\/checkout(\/|$)/,
 
+  // Inner pages — navigasi balik ada di sticky page title, bukan bottom tab
+  /^\/notifications(\/|$)/,
+  /^\/bantuan(\/|$)/,
+  /^\/help(\/|$)/,
+  /^\/wishlist(\/|$)/,
+  /^\/akun\/alamat(\/|$)/,
+  /^\/addresses(\/|$)/,
+  /^\/brands(\/|$)/,
+
   // Payment gateway — cegah user keluar dari flow bayar
   /^\/payment(\/|$)/,
   /^\/pembayaran(\/|$)/,

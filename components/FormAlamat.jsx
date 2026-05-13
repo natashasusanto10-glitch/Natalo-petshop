@@ -53,7 +53,7 @@ function isValidLabel(label) {
 function mapInitialAddress(address) {
   const lat = normalizeCoordinate(address?.latitude);
   const lng = normalizeCoordinate(address?.longitude);
-  const label = address?.label === "Rumah" || address?.label === "Kantor" ? address.label : "";
+  const label = address?.label === "Rumah" || address?.label === "Kantor" ? address.label : "Rumah";
 
   return {
     nama: address?.recipient ?? "",
@@ -96,9 +96,16 @@ function validateField(name, value, form) {
     if (!value.trim()) return "Mohon lengkapi Nama Jalan";
     if (value.trim().length < 5) return "Nama Jalan minimal 5 karakter";
   }
-  if (name === "label" && !isValidLabel(value)) return "Label hanya boleh Rumah atau Kantor";
+  if (name === "detail" && !value.trim()) return "Mohon lengkapi Detail Lainnya / Patokan";
+  if (name === "label") {
+    if (!value) return "Mohon pilih Label Alamat";
+    if (!isValidLabel(value)) return "Label hanya boleh Rumah atau Kantor";
+  }
+  if (name === "pinpoint" && !hasUsablePinpoint(form.lat, form.lng)) {
+    return "Mohon konfirmasi titik peta";
+  }
   if (name === "all") {
-    const fields = ["nama", "phone", "provinsi", "kota", "kecamatan", "kodePos", "jalan"];
+    const fields = ["nama", "phone", "provinsi", "kota", "kecamatan", "kodePos", "jalan", "detail", "label", "pinpoint"];
     const errors = {};
     fields.forEach((field) => {
       const error = validateField(field, form[field], form);
@@ -141,7 +148,7 @@ function Field({
               rows={3}
               readOnly={readOnly}
               disabled={disabled}
-              className={`${inputClass} min-h-[118px] resize-y ${borderClass}`}
+              className={`${inputClass} min-h-[118px] resize-y placeholder:text-slate-400 ${borderClass}`}
             />
           ) : (
             <input
@@ -219,52 +226,34 @@ function LabelSelector({ value, onChange }) {
   );
 }
 
-function SmartPasteBox({ onApply }) {
-  const [text, setText] = useState("");
-  const [message, setMessage] = useState("");
-
-  function parse() {
-    const raw = text.trim();
-    if (!raw) return;
-    const match = raw.match(/(\+62|62|0)8[1-9]\d{6,11}/);
-    if (!match) {
-      onApply({ jalan: raw });
-      setMessage("Nomor HP belum terbaca. Teks dimasukkan ke Nama Jalan agar bisa diedit.");
-      return;
-    }
-    const phone = match[0];
-    const before = raw.slice(0, match.index).trim();
-    const after = raw.slice((match.index ?? 0) + phone.length).trim();
-    onApply({ nama: before, phone, jalan: after });
-    setMessage("Nama, nomor HP, dan alamat yang terbaca sudah diisi.");
-  }
-
+function AddressAutocompleteInput({ value, hasPinpoint, onOpen }) {
   return (
-    <section className="rounded-3xl border border-natalo-100 bg-natalo-50/70 p-4">
-      <div className="flex items-start gap-3">
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-white text-natalo-700 shadow-sm">
-          <FiSearch aria-hidden="true" />
+    <section className="rounded-3xl border border-natalo-100 bg-natalo-50/70 p-4 shadow-sm">
+      <p className="text-xs font-black uppercase tracking-wide text-natalo-700">Cari Alamat</p>
+      <button
+        type="button"
+        onClick={onOpen}
+        className="mt-3 flex w-full items-start gap-3 rounded-3xl border border-natalo-100 bg-white p-4 text-left shadow-sm transition hover:border-natalo-300 active:scale-[0.99]"
+      >
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-natalo-50 text-natalo-700">
+          <FiMapPin className="h-5 w-5" aria-hidden="true" />
         </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-black text-slate-950">Smart Paste Alamat</p>
-          <textarea
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            rows={3}
-            placeholder="Budi Santoso 081234567890 Jalan Bintang No. 5, Kota Medan 20232"
-            className="mt-2 w-full resize-y rounded-2xl border border-natalo-100 bg-white px-4 py-3 text-sm font-semibold text-slate-900 outline-none focus:border-natalo-500 focus:ring-4 focus:ring-natalo-100"
-          />
-          {message && <p className="mt-2 text-xs font-bold text-natalo-700">{message}</p>}
-          <button
-            type="button"
-            onClick={parse}
-            disabled={!text.trim()}
-            className="mt-3 rounded-2xl bg-natalo-600 px-4 py-2.5 text-xs font-black text-white transition hover:bg-natalo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-          >
-            Isi Otomatis
-          </button>
+        <span className="min-w-0 flex-1">
+          <span className={`block text-sm font-black ${value ? "text-slate-950" : "text-slate-400"}`}>
+            {value || "Cari alamat / nama jalan / gedung"}
+          </span>
+          <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500">
+            Mulai ketik alamat lalu pilih rekomendasi alamat.
+          </span>
+        </span>
+        <FiSearch className="mt-1 h-5 w-5 shrink-0 text-natalo-600" aria-hidden="true" />
+      </button>
+      {hasPinpoint && (
+        <div className="mt-3 flex items-center gap-2 rounded-2xl bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700">
+          <FiCheck className="h-4 w-4" aria-hidden="true" />
+          Alamat ditemukan
         </div>
-      </div>
+      )}
     </section>
   );
 }
@@ -864,15 +853,6 @@ export default function FormAlamat({ mode = "create", initialAddress = null }) {
     setTouched((current) => ({ ...current, [field]: true }));
   }
 
-  function applySmartPaste(parsed) {
-    setForm((current) => ({
-      ...current,
-      nama: parsed.nama || current.nama,
-      phone: parsed.phone || current.phone,
-      jalan: parsed.jalan || current.jalan,
-    }));
-  }
-
   function applyMapResult(result) {
     setForm((current) => ({
       ...current,
@@ -960,12 +940,16 @@ export default function FormAlamat({ mode = "create", initialAddress = null }) {
     <>
       <form onSubmit={handleSubmit} className="space-y-5">
         {submitError && (
-          <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-bold text-red-600">
+        <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-bold text-red-600">
             {submitError}
           </div>
         )}
 
-        <SmartPasteBox onApply={applySmartPaste} />
+        <AddressAutocompleteInput
+          value={form.jalan}
+          hasPinpoint={hasPinpoint}
+          onOpen={() => setScreen("autocomplete")}
+        />
 
         <div className="grid gap-4">
           <Field
@@ -1032,10 +1016,10 @@ export default function FormAlamat({ mode = "create", initialAddress = null }) {
               <span className="min-w-0 flex-1">
                 <span className="text-xs font-black uppercase tracking-wide text-slate-500">Nama Jalan</span>
                 <span className={`mt-1 block text-sm font-black ${form.jalan ? "text-slate-950" : "text-slate-400"}`}>
-                  {form.jalan || "Cari nama tempat atau jalan"}
+                  {form.jalan || "Pilih alamat terlebih dahulu"}
                 </span>
                 <span className="mt-1 block text-xs font-semibold text-slate-500">
-                  Autocomplete akan membuka konfirmasi peta.
+                  Dipilih dari autocomplete.
                 </span>
               </span>
             </div>
@@ -1049,15 +1033,34 @@ export default function FormAlamat({ mode = "create", initialAddress = null }) {
             as="textarea"
             onChange={(event) => update("detail", event.target.value)}
             onBlur={() => blur("detail")}
+            error={visibleErrors.detail}
+            placeholder="Contoh: Rumah cat putih, dekat Sinar Aquarium"
           />
         </div>
 
-        {hasPinpoint && (
+        {hasPinpoint ? (
           <MiniMapPreview
             lat={form.lat}
             lng={form.lng}
             address={form.pinpointAddress || [form.jalan, form.kecamatan, form.kota].filter(Boolean).join(", ")}
           />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setScreen("autocomplete")}
+            className={`block w-full rounded-3xl border bg-white p-4 text-left shadow-sm transition ${
+              visibleErrors.pinpoint ? "border-red-200" : "border-slate-100 hover:border-natalo-200"
+            }`}
+          >
+            <p className="text-xs font-black uppercase tracking-wide text-slate-500">Konfirmasi Titik Peta</p>
+            <p className="mt-1 text-sm font-black text-slate-950">Preview map akan tampil setelah alamat dipilih</p>
+            <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+              Pilih alamat dari rekomendasi, lalu konfirmasi pin lokasi pengiriman.
+            </p>
+            {visibleErrors.pinpoint && (
+              <p className="mt-2 text-xs font-bold text-red-500">{visibleErrors.pinpoint}</p>
+            )}
+          </button>
         )}
 
         <section className="rounded-3xl border border-slate-100 bg-white p-4 shadow-sm">
@@ -1072,9 +1075,12 @@ export default function FormAlamat({ mode = "create", initialAddress = null }) {
           </div>
         </section>
 
-        <LabelSelector value={form.label} onChange={(value) => update("label", value)} />
+        <div>
+          <LabelSelector value={form.label} onChange={(value) => update("label", value)} />
+          {visibleErrors.label && <p className="mt-1.5 text-xs font-bold text-red-500">{visibleErrors.label}</p>}
+        </div>
 
-        <div className="sticky bottom-0 z-20 -mx-4 border-t border-slate-100 bg-white/95 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0">
+        <div className="sticky bottom-0 z-50 -mx-4 border-t border-slate-100 bg-white px-4 pb-[calc(12px+env(safe-area-inset-bottom))] pt-3 shadow-[0_-10px_28px_rgba(15,23,42,0.08)] sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none">
           <button
             type="submit"
             disabled={submitting || !isValid}

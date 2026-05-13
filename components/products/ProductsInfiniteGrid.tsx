@@ -28,12 +28,14 @@ export function ProductsInfiniteGrid() {
   const searchParams = useSearchParams();
   const search = searchParams.get("q") ?? "";
   const category = searchParams.get("kategori") ?? searchParams.get("category") ?? "";
+  const brand = searchParams.get("brand") ?? "";
   const newFilter = searchParams.get("new") ?? "";
   const popularFilter = searchParams.get("popular") ?? "";
   const { products, loading, initialLoading, hasMore, total, error, loaderRef } =
     useInfiniteProducts({
       search,
       category,
+      brand,
       newFilter,
       popularFilter,
       limit: PAGE_SIZE,

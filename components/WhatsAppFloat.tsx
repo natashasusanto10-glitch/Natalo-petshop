@@ -52,6 +52,9 @@ export function WhatsAppFloat() {
     pathname.startsWith("/products/");
   const isSearchSurface = pathname === "/search" || pathname.startsWith("/search/");
   const isHomeSurface = pathname === "/";
+  const isMemberSurface = pathname === "/member";
+  const isRaisedCtaSurface =
+    pathname.startsWith("/akun/alamat/edit") || pathname.startsWith("/akun/alamat/tambah");
 
   if (shouldHide || !PHONE) return null;
 
@@ -63,6 +66,10 @@ export function WhatsAppFloat() {
         isSearchSurface ? "nat-whatsapp-float--search" : ""
       } ${
         isHomeSurface ? "nat-whatsapp-float--home" : ""
+      } ${
+        isMemberSurface ? "nat-whatsapp-float--account" : ""
+      } ${
+        isRaisedCtaSurface ? "nat-whatsapp-float--raised-cta" : ""
       }`}
     >
       {showTooltip && !tooltipDismissed && !isHomeSurface && (

@@ -8,6 +8,7 @@ import { formatRupiah } from "@/lib/format";
 import { addItemToCart } from "@/lib/cart-actions";
 import { getWishlistItems, WishlistButton } from "@/components/WishlistButton";
 import { AddToCartBottomSheet } from "@/components/AddToCartBottomSheet";
+import { StickyBackTitle } from "@/components/StickyBackTitle";
 import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
 
 type WishlistItem = {
@@ -109,20 +110,21 @@ export default function WishlistPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-3 py-4 pb-36 md:px-4 md:py-10 md:pb-10">
-      <div className="flex items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-black text-gray-900 md:text-3xl">Wishlist</h1>
-          <p className="mt-0.5 text-xs font-semibold text-gray-500 md:text-sm">
-            {items.length} produk disimpan
-          </p>
-        </div>
-        {items.length > 0 && (
-          <Link href="/products" className="text-xs font-extrabold text-natalo-600">
-            Belanja Lagi
-          </Link>
-        )}
-      </div>
+    <div className="min-h-screen bg-slate-50">
+      <StickyBackTitle
+        label="Wishlist"
+        subtitle={`${items.length} produk disimpan`}
+        fallbackHref="/member"
+        rightAction={
+          items.length > 0 ? (
+            <Link href="/products" className="text-xs font-extrabold text-natalo-600">
+              Belanja Lagi
+            </Link>
+          ) : null
+        }
+      />
+
+      <div className="mx-auto max-w-4xl px-3 py-4 pb-36 md:px-4 md:py-8 md:pb-10">
 
       {items.length === 0 ? (
         <div className="mt-8 rounded-2xl border border-dashed border-gray-200 bg-white p-8 text-center md:p-16">
@@ -283,6 +285,7 @@ export default function WishlistPage() {
           if (sheetItem) handleAddedToCart(sheetItem.productId);
         }}
       />
+      </div>
     </div>
   );
 }

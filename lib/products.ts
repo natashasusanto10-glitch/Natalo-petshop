@@ -116,19 +116,21 @@ function buildOrderBy(
 
 export async function getProducts(opts?: {
   category?: string;
+  brand?: string;
   search?: string;
   take?: number;
   skip?: number;
   newFilter?: NewProductFilter;
   popularFilter?: PopularFilter;
 }): Promise<StoreProduct[]> {
-  const { category, search, take, skip, newFilter, popularFilter } = opts ?? {};
+  const { category, brand, search, take, skip, newFilter, popularFilter } = opts ?? {};
   const createdAtCutoff = newProductCutoff(newFilter);
   try {
     const products = await prisma.product.findMany({
       where: {
         isActive: true,
         ...(category ? { category: { slug: category } } : {}),
+        ...(brand ? { brand: { slug: brand } } : {}),
         ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
         ...(createdAtCutoff ? { createdAt: { gte: createdAtCutoff } } : {}),
       },
@@ -145,7 +147,7 @@ export async function getProducts(opts?: {
     });
 
     if (!products.length) {
-      if (category || search) return [];
+      if (category || brand || search) return [];
       return sampleProducts;
     }
 
@@ -190,23 +192,25 @@ export async function getProducts(opts?: {
       };
     });
   } catch {
-    if (category || search) return [];
+    if (category || brand || search) return [];
     return sampleProducts;
   }
 }
 
 export async function getProductsCount(opts?: {
   category?: string;
+  brand?: string;
   search?: string;
   newFilter?: NewProductFilter;
 }): Promise<number> {
-  const { category, search, newFilter } = opts ?? {};
+  const { category, brand, search, newFilter } = opts ?? {};
   const createdAtCutoff = newProductCutoff(newFilter);
   try {
     return await prisma.product.count({
       where: {
         isActive: true,
         ...(category ? { category: { slug: category } } : {}),
+        ...(brand ? { brand: { slug: brand } } : {}),
         ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
         ...(createdAtCutoff ? { createdAt: { gte: createdAtCutoff } } : {}),
       },

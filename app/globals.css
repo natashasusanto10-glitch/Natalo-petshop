@@ -130,6 +130,20 @@ input, textarea, select, button {
   padding: 0 max(1rem, env(safe-area-inset-right)) 10px max(1rem, env(safe-area-inset-left));
 }
 
+.sticky-back-title {
+  position: sticky;
+  top: calc(var(--natalo-mobile-header-min-height) + env(safe-area-inset-top));
+  z-index: 40;
+  background: #ffffff;
+  padding: 16px max(1rem, env(safe-area-inset-right)) 12px max(1rem, env(safe-area-inset-left));
+  border-bottom: 1px solid rgba(226, 232, 240, 0.7);
+  transition: box-shadow 180ms ease;
+}
+
+.sticky-back-title--scrolled {
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+}
+
 @media (max-width: 767.98px) {
   .product-detail-header {
     position: fixed;
@@ -422,6 +436,14 @@ body.top-drawer-open .nat-whatsapp-float {
   bottom: calc(var(--natalo-bottom-nav-height) + env(safe-area-inset-bottom) + 11rem);
 }
 
+.nat-whatsapp-float--account {
+  bottom: calc(110px + env(safe-area-inset-bottom));
+}
+
+.nat-whatsapp-float--raised-cta {
+  bottom: calc(8.75rem + env(safe-area-inset-bottom));
+}
+
 @media (max-width: 360px) {
   :root {
     --natalo-bottom-nav-height: 68px;
@@ -460,6 +482,18 @@ body.top-drawer-open .nat-whatsapp-float {
 
   .nat-whatsapp-float--home {
     bottom: 1.5rem;
+  }
+
+  .nat-whatsapp-float--account {
+    bottom: 1.5rem;
+  }
+
+  .nat-whatsapp-float--raised-cta {
+    bottom: 1.5rem;
+  }
+
+  .sticky-back-title {
+    top: 84px;
   }
 
   .voucher-safe-area {

@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import DeleteAlamatButton from "@/components/DeleteAlamatButton";
 import SetPrimaryAddressButton from "@/components/SetPrimaryAddressButton";
+import { StickyBackTitle } from "@/components/StickyBackTitle";
 
 export default async function AddressListPage() {
   const session = await getSession("CUSTOMER");
@@ -15,14 +16,12 @@ export default async function AddressListPage() {
   });
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-6 pb-24 sm:py-8">
-      <div className="mx-auto max-w-md">
+    <main className="min-h-screen bg-slate-50 pb-24">
+      <StickyBackTitle label="Kembali ke akun" href="/member" variant="textBack" />
+      <div className="mx-auto max-w-md px-4 py-6 sm:py-8">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <Link href="/member" className="text-sm font-bold text-natalo-700 hover:text-natalo-800">
-              Kembali ke akun
-            </Link>
-            <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950">Daftar Alamat</h1>
+            <h1 className="text-2xl font-black tracking-tight text-slate-950">Daftar Alamat</h1>
             <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">
               Kelola alamat pengiriman Natalo Petshop.
             </p>
@@ -134,7 +133,7 @@ function AddressCard({ address }) {
         </div>
       </div>
       <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
-        <SetPrimaryAddressButton id={address.id} disabled={address.isMain} />
+        {!address.isMain && <SetPrimaryAddressButton id={address.id} disabled={false} />}
         <Link
           href={`/akun/alamat/edit/${address.id}`}
           className="rounded-full border border-slate-200 px-4 py-2 text-xs font-black text-slate-700 transition hover:border-natalo-300 hover:text-natalo-700"

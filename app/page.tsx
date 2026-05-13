@@ -7,11 +7,12 @@ import { getProducts } from "@/lib/products";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
 import { FlashSaleCountdown } from "@/components/home/FlashSaleCountdown";
-import { BrandChoiceSection, type BrandChoiceItem } from "@/components/home/BrandChoiceSection";
+import { BrandChoiceSection } from "@/components/home/BrandChoiceSection";
 import HeroBanner from "@/components/home/HeroBanner";
 import TrustMarquee from "@/components/home/TrustMarquee";
 import type { TrustItem } from "@/data/trustItems";
 import { ExternalLink } from "@/components/ExternalLink";
+import { FALLBACK_BRANDS, mergeBrandsWithFallback } from "@/lib/brand-catalog";
 
 const brand = process.env.NEXT_PUBLIC_BRAND_NAME || "Natalo Petshop";
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -81,27 +82,6 @@ const SHORTCUT_ITEMS: {
     external: true,
   },
 ];
-
-const FEATURED_BRANDS: BrandChoiceItem[] = [
-  { id: "royal-canin", name: "Royal Canin", slug: "royal-canin", logo: "/brands/royal-canin.png", imageClass: "max-h-[42px] max-w-[100px]" },
-  { id: "amara", name: "Amara", slug: "amara", logo: "/brands/amara.png", imageClass: "max-h-[46px] max-w-[104px]" },
-  { id: "sakkai", name: "Sakkai", slug: "sakkai", logo: "/brands/sakkai.png", imageClass: "max-h-[46px] max-w-[104px]" },
-  { id: "angels", name: "Angels", slug: "angels", logo: "/brands/angels.png", imageClass: "max-h-[46px] max-w-[104px]" },
-  { id: "whiskas", name: "Whiskas", slug: "whiskas", logo: "/brands/whiskas.png", imageClass: "max-h-[46px] max-w-[98px]" },
-  { id: "me-o", name: "Me-O", slug: "me-o", logo: "/brands/me-o.png", imageClass: "max-h-[42px] max-w-[88px]" },
-  { id: "amori", name: "Amori", slug: "amori", logo: "/brands/amori.png", imageClass: "max-h-[46px] max-w-[104px]" },
-  { id: "pedigree", name: "Pedigree", slug: "pedigree", logo: "/brands/pedigree.png", imageClass: "max-h-[48px] max-w-[100px]" },
-  { id: "nature-bridge", name: "Nature Bridge", slug: "nature-bridge", logo: "/brands/nature-bridge.png", imageClass: "max-h-[42px] max-w-[104px]" },
-  { id: "kitchen-flavour", name: "Kitchen Flavor", slug: "kitchen-flavour", logo: "/brands/kitchen-flavor.png", imageClass: "max-h-[48px] max-w-[96px]" },
-  { id: "pro-plan", name: "Pro Plan", slug: "pro-plan", logo: "/brands/pro-plan.png", imageClass: "max-h-[44px] max-w-[104px]" },
-  { id: "happy-cat", name: "Happy Cat", slug: "happy-cat", logo: "/brands/happy-cat.png", imageClass: "max-h-[40px] max-w-[102px]" },
-  { id: "happy-dog", name: "Happy Dog", slug: "happy-dog", logo: "/brands/happy-dog.png", imageClass: "max-h-[42px] max-w-[104px]" },
-  { id: "reflex", name: "Reflex", slug: "reflex", logo: "/brands/reflex.png", imageClass: "max-h-[46px] max-w-[104px]" },
-];
-
-const LOCAL_BRAND_LOGOS = new Map(
-  FEATURED_BRANDS.filter((brand) => brand.logo).map((brand) => [brand.slug, brand.logo ?? null]),
-);
 
 function getJakartaMidnight() {
   const now = new Date();
@@ -465,37 +445,12 @@ export default async function HomePage() {
     .sort((a, b) => b.reviewCount - a.reviewCount || b.avgRating - a.avgRating)
     .slice(0, 6);
 
-  const dbBrandBySlug = new Map(
-    dbFeaturedBrands.map((item) => [
-      item.slug,
-      {
-        id: item.id,
-        name: item.name,
-        slug: item.slug,
-        logo: item.logoUrl ?? LOCAL_BRAND_LOGOS.get(item.slug) ?? null,
-      } satisfies BrandChoiceItem,
-    ]),
-  );
-  const defaultFeaturedBrands = FEATURED_BRANDS.map((brand) => {
-    const dbBrand = dbBrandBySlug.get(brand.slug);
-    return {
-      ...brand,
-      ...(dbBrand ?? {}),
-      logo: dbBrand?.logo ?? brand.logo,
-    };
-  });
-  const extraFeaturedBrands = dbFeaturedBrands
-    .filter((brand) => !FEATURED_BRANDS.some((item) => item.slug === brand.slug))
-    .map(
-      (brand) =>
-        ({
-          id: brand.id,
-          name: brand.name,
-          slug: brand.slug,
-          logo: brand.logoUrl ?? LOCAL_BRAND_LOGOS.get(brand.slug) ?? null,
-        }) satisfies BrandChoiceItem,
-    );
-  const featuredBrands = [...defaultFeaturedBrands, ...extraFeaturedBrands].slice(0, 16);
+  const allBrands = mergeBrandsWithFallback(dbFeaturedBrands);
+  const featuredSlugs = new Set(FALLBACK_BRANDS.slice(0, 18).map((brand) => brand.slug));
+  const featuredBrands = [
+    ...FALLBACK_BRANDS.slice(0, 18).map((brand) => allBrands.find((item) => item.slug === brand.slug) ?? brand),
+    ...allBrands.filter((brand) => !featuredSlugs.has(brand.slug)),
+  ].slice(0, 18);
 
   const flashSaleEnd = getJakartaMidnight();
 

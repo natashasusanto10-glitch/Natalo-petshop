@@ -19,18 +19,6 @@ const NAV_LINKS = [
   { href: "/tentang-kami", label: "Tentang Kami" },
 ];
 
-// Halaman yang ada di BottomNavigation — gak perlu tombol back karena
-// user bisa pindah via tab.
-const MAIN_TAB_PATHS = new Set([
-  "/",
-  "/products",
-  "/feed",
-  "/produk",
-  "/kategori",
-  "/member",
-  "/akun",
-]);
-
 // Halaman auth (login / daftar / OTP / lupa-reset password) — header dirender
 // dalam variant minimal: back + title saja. Search/bell/profile/login button
 // di-hide untuk fokus pada auth flow.
@@ -44,17 +32,6 @@ const AUTH_PATHS: Record<string, string> = {
 function normalizePathname(pathname: string | null) {
   if (!pathname || pathname === "/") return "/";
   return pathname.replace(/\/+$/, "");
-}
-
-function isMainTabPath(pathname: string) {
-  return MAIN_TAB_PATHS.has(pathname);
-}
-
-function isAccountArea(pathname: string) {
-  // /member dan sub-page-nya (orders, profile, points, dll) + /akun/* (settings
-  // sub-pages) dianggap "account section" — profile chip di header disembunyikan
-  // karena user sudah berada di area akun.
-  return pathname === "/member" || pathname.startsWith("/member/") || pathname.startsWith("/akun");
 }
 
 type MemberProfile = {
@@ -75,9 +52,9 @@ export function Header() {
     currentPath === "/products" || currentPath === "/produk" || currentPath === "/kategori";
   const isSearchPage = currentPath === "/search";
   const isCartPage = currentPath === "/cart";
+  const isBrandsDirectory = currentPath === "/brands";
   const isProductDetail = /^\/products\/[^/]+$/.test(currentPath);
   const isCheckoutAddressPicker = currentPath === "/checkout/addresses";
-  const isMainTab = isMainTabPath(currentPath);
   const authTitle = AUTH_PATHS[currentPath];
   const isAuthPage = authTitle !== undefined;
   const isLoggedIn = Boolean(member?.name);
@@ -87,10 +64,6 @@ export function Header() {
   const showBell = !isAuthPage;
   const showProfileChip = false;
   const showLoginButton = !isLoggedIn && !isAuthPage;
-  // Back button universal: tampil di mobile untuk semua halaman selain main tab
-  // & product detail (yang punya header sendiri dengan back + search + share + cart).
-  const showBackButton = Boolean(pathname) && !isMainTab && !isProductDetail && !isCheckoutAddressPicker;
-
   function handleBack() {
     // Fallback ke home kalau buka deep link langsung (no history) — biar back gak
     // exit out of app di iOS native (yang bikin pengalaman jelek).
@@ -168,7 +141,7 @@ export function Header() {
     // karena UI sheet Apple/browser sudah kasih feedback sendiri
   }
 
-  if (isSearchPage || isCartPage) return null;
+  if (isSearchPage || isCartPage || isBrandsDirectory) return null;
 
   // Auth pages — render minimal header: back button + title saja. Bottom nav,
   // bell, profile, login button semua di-hide untuk fokus ke flow auth.
@@ -203,7 +176,7 @@ export function Header() {
           ? "product-detail-header nat-site-header bg-white md:sticky md:z-50 md:shadow-sm"
           : isHome || isProductsCatalog
           ? "nat-site-header mobile-sticky-header md:sticky"
-          : "nat-site-header z-50 bg-white shadow-sm md:sticky"
+          : "nat-site-header mobile-sticky-header md:sticky"
       }
     >
       {isProductDetail && (
@@ -261,24 +234,6 @@ export function Header() {
       >
         {/* Back button — hanya tampil di mobile untuk halaman non-main-tab.
             Memberikan fallback navigasi yang jelas selain swipe gesture iOS. */}
-        {showBackButton && (
-          <button
-            type="button"
-            onClick={handleBack}
-            className="-ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-700 active:bg-gray-100 md:hidden"
-            aria-label="Kembali ke halaman sebelumnya"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2.2}
-              className="h-5 w-5"
-            >
-              <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-        )}
         {isCheckoutAddressPicker && <span aria-hidden className="h-10 w-10 md:hidden" />}
         {/* Logo */}
         <Link

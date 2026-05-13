@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { NotificationsList } from "@/components/NotificationsList";
+import { StickyBackTitle } from "@/components/StickyBackTitle";
 
 export const metadata: Metadata = {
   title: "Notifikasi",
@@ -9,13 +10,12 @@ export const metadata: Metadata = {
 
 export default function NotificationsPage() {
   return (
-    <div className="mx-auto w-full max-w-2xl px-4 py-6 sm:py-10">
-      <h1 className="text-2xl font-black text-zinc-900">Notifikasi</h1>
-      <p className="mt-1 text-sm text-zinc-500">
-        Update pesanan, promo, dan pengumuman dari Natalo Petshop.
-      </p>
-      <div className="mt-6">
-        <NotificationsList />
+    <div className="min-h-screen bg-slate-50">
+      <StickyBackTitle label="Notifikasi" fallbackHref="/" />
+      <div className="mx-auto w-full max-w-2xl px-4 py-6 sm:py-8">
+        <div className="rounded-3xl border border-slate-100 bg-white p-4 shadow-sm sm:p-5">
+          <NotificationsList />
+        </div>
       </div>
     </div>
   );

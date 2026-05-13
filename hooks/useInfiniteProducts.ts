@@ -6,6 +6,7 @@ import type { StoreProduct } from "@/lib/products";
 type UseInfiniteProductsOptions = {
   search?: string;
   category?: string;
+  brand?: string;
   newFilter?: string;
   popularFilter?: string;
   limit?: number;
@@ -21,6 +22,7 @@ type ProductsResponse = {
 export function useInfiniteProducts({
   search = "",
   category = "",
+  brand = "",
   newFilter = "",
   popularFilter = "",
   limit = 24,
@@ -57,6 +59,7 @@ export function useInfiniteProducts({
         if (!reset && cursorRef.current) params.set("cursor", cursorRef.current);
         if (search.trim()) params.set("search", search.trim());
         if (category && category !== "all") params.set("category", category);
+        if (brand) params.set("brand", brand);
         if (newFilter) params.set("new", newFilter);
         if (popularFilter) params.set("popular", popularFilter);
 
@@ -86,7 +89,7 @@ export function useInfiniteProducts({
         }
       }
     },
-    [category, limit, newFilter, popularFilter, search],
+    [brand, category, limit, newFilter, popularFilter, search],
   );
 
   useEffect(() => {

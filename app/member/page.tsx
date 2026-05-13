@@ -1,61 +1,178 @@
 import Link from "next/link";
-import { ClaimVoucherButton } from "@/components/ClaimVoucherButton";
+import {
+  FiBell,
+  FiCheckCircle,
+  FiChevronRight,
+  FiCreditCard,
+  FiGift,
+  FiHeart,
+  FiHelpCircle,
+  FiHome,
+  FiLogOut,
+  FiMapPin,
+  FiPackage,
+  FiShield,
+  FiShoppingBag,
+  FiTruck,
+  FiUser,
+} from "react-icons/fi";
 import { LogoutButton } from "@/components/LogoutButton";
-import { formatRupiah } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { requireCustomerSession } from "@/lib/session-guards";
 
-function formatDate(date: Date | null) {
-  if (!date) return "Tanpa batas waktu";
+function formatMemberSince(date: Date | null | undefined) {
+  if (!date) return "-";
   return new Intl.DateTimeFormat("id-ID", {
-    day: "numeric",
     month: "short",
     year: "numeric",
+    timeZone: "Asia/Jakarta",
   }).format(date);
 }
 
-function formatVoucherValue(voucher: {
-  discountPercent: number | null;
-  discountAmount: number | null;
+function orderCount(
+  groups: Array<{ status: string; _count: { _all: number } }>,
+  statuses: string[],
+) {
+  return groups
+    .filter((group) => statuses.includes(group.status))
+    .reduce((total, group) => total + group._count._all, 0);
+}
+
+function CountBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span className="absolute right-3 top-3 grid h-5 min-w-5 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-black leading-none text-white">
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
+
+function OrderStatusItem({
+  href,
+  icon: Icon,
+  label,
+  count,
+}: {
+  href: string;
+  icon: typeof FiPackage;
+  label: string;
+  count: number;
 }) {
-  const values: string[] = [];
-  if (voucher.discountPercent) values.push(`${voucher.discountPercent}%`);
-  if (voucher.discountAmount) values.push(formatRupiah(voucher.discountAmount));
-  return values.length > 0 ? values.join(" + ") : "Diskon";
+  return (
+    <Link
+      href={href}
+      className="relative flex min-w-0 flex-col items-center gap-2 rounded-[18px] bg-slate-50 px-2 py-3 text-center transition active:scale-[0.98]"
+    >
+      <CountBadge count={count} />
+      <span className="grid h-10 w-10 place-items-center rounded-2xl bg-white text-natalo-600 shadow-sm">
+        <Icon className="h-5 w-5" aria-hidden="true" />
+      </span>
+      <span className="text-[12px] font-extrabold leading-tight text-slate-700">{label}</span>
+    </Link>
+  );
+}
+
+function MenuCard({
+  href,
+  icon: Icon,
+  title,
+  description,
+}: {
+  href: string;
+  icon: typeof FiPackage;
+  title: string;
+  description: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="flex min-h-[108px] flex-col justify-between rounded-[18px] border border-slate-100 bg-white p-4 shadow-[0_8px_24px_rgba(16,24,40,0.06)] transition active:scale-[0.98]"
+    >
+      <span className="grid h-10 w-10 place-items-center rounded-2xl bg-[#EEF5FF] text-[#1677FF]">
+        <Icon className="h-5 w-5" aria-hidden="true" />
+      </span>
+      <span>
+        <span className="block text-sm font-black text-[#101A33]">{title}</span>
+        <span className="mt-0.5 block text-xs font-semibold leading-4 text-slate-500">
+          {description}
+        </span>
+      </span>
+    </Link>
+  );
+}
+
+function SettingsRow({
+  href,
+  icon: Icon,
+  title,
+  description,
+}: {
+  href: string;
+  icon: typeof FiBell;
+  title: string;
+  description: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="flex items-center gap-3 px-4 py-4 transition active:bg-slate-50"
+    >
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-slate-50 text-natalo-600">
+        <Icon className="h-5 w-5" aria-hidden="true" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-black text-slate-950">{title}</span>
+        <span className="mt-0.5 block text-xs font-semibold leading-4 text-slate-500">
+          {description}
+        </span>
+      </span>
+      <FiChevronRight className="h-5 w-5 shrink-0 text-slate-300" aria-hidden="true" />
+    </Link>
+  );
 }
 
 export default async function MemberPage() {
   const session = await requireCustomerSession();
-
-  const totalPoints = await prisma.customerPoint.aggregate({
-    where: { userId: session.sub },
-    _sum: { points: true },
-  });
-
-  const points = totalPoints?._sum.points ?? 0;
   const now = new Date();
 
-  const vouchers = (
-    await prisma.voucher.findMany({
+  const [totalPoints, orderGroups, voucherCandidates, user] = await Promise.all([
+    prisma.customerPoint.aggregate({
+      where: { userId: session.sub },
+      _sum: { points: true },
+    }),
+    prisma.order.groupBy({
+      by: ["status"],
+      where: { userId: session.sub },
+      _count: { _all: true },
+    }),
+    prisma.voucher.findMany({
       where: {
         userId: session.sub,
         isActive: true,
         startsAt: { lte: now },
         OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       },
-      orderBy: [{ expiresAt: "asc" }, { createdAt: "desc" }],
-      take: 5,
-    })
-  ).filter(
-    (voucher) =>
-      voucher.maxUsage === null || voucher.usedCount < voucher.maxUsage
-  );
+      select: { maxUsage: true, usedCount: true },
+    }),
+    prisma.user.findUnique({
+      where: { id: session.sub },
+      select: { birthDate: true, birthdayVoucherYear: true, createdAt: true, name: true },
+    }),
+  ]);
+
+  const points = totalPoints?._sum.points ?? 0;
+  const activeVoucherCount = voucherCandidates.filter(
+    (voucher) => voucher.maxUsage === null || voucher.usedCount < voucher.maxUsage,
+  ).length;
+  const unpaidCount = orderCount(orderGroups, ["PENDING"]);
+  const processingCount = orderCount(orderGroups, ["PAID", "PROCESSING"]);
+  const shippedCount = orderCount(orderGroups, ["SHIPPED"]);
+  const doneCount = orderCount(orderGroups, ["DELIVERED"]);
+  const displayName = user?.name ?? session.name ?? "Member";
+  const initial = displayName.charAt(0).toUpperCase() || "N";
+  const memberSince = formatMemberSince(user?.createdAt);
 
   let birthdayVoucherCode: string | null = null;
-  const user = await prisma.user.findUnique({
-    where: { id: session.sub },
-    select: { birthDate: true, birthdayVoucherYear: true },
-  });
 
   if (user?.birthDate) {
     const today = new Date();
@@ -97,195 +214,127 @@ export default async function MemberPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-4 md:py-10">
-      <div className="overflow-hidden rounded-3xl bg-blue-500 p-5 text-white md:p-8">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex items-center gap-3 md:gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-2xl font-black md:h-16 md:w-16 md:text-3xl">
-              {session?.name?.charAt(0)?.toUpperCase() ?? "N"}
+    <main className="min-h-screen bg-slate-50 px-4 pb-[calc(120px+env(safe-area-inset-bottom))] pt-4">
+      <div className="mx-auto max-w-4xl space-y-5">
+        <section className="overflow-hidden rounded-[24px] bg-gradient-to-br from-[#1677FF] to-[#0F4EAF] p-5 text-white shadow-[0_8px_24px_rgba(16,24,40,0.08)]">
+          <div className="flex items-start gap-4">
+            <div className="relative grid h-16 w-16 shrink-0 place-items-center rounded-full bg-white/18 text-2xl font-black ring-1 ring-white/20">
+              {initial}
+              <span className="absolute -right-1 -top-1 grid h-7 w-7 place-items-center rounded-full bg-white text-sm text-[#1677FF] shadow-sm">
+                <FiCheckCircle className="h-4 w-4" aria-hidden="true" />
+              </span>
             </div>
-            <div>
-              <p className="text-xs text-blue-100 md:text-sm">Member resmi</p>
-              <h1 className="mt-0.5 text-xl font-black md:text-2xl">
-                Halo, {session?.name ?? "Member"}!
+            <div className="min-w-0 flex-1">
+              <span className="inline-flex rounded-full bg-white/16 px-3 py-1 text-xs font-black text-white ring-1 ring-white/20">
+                Member Resmi
+              </span>
+              <h1 className="mt-2 text-2xl font-black leading-tight tracking-tight">
+                Halo, {displayName}!
               </h1>
+              <p className="mt-1 text-sm font-semibold leading-5 text-blue-50">
+                Senang melihatmu kembali di Natalo 🐾
+              </p>
+              <Link
+                href="/member/profile"
+                className="mt-4 inline-flex rounded-2xl bg-white px-4 py-2 text-sm font-black text-[#1677FF] shadow-sm transition active:scale-[0.98]"
+              >
+                Edit Profil
+              </Link>
             </div>
           </div>
-          <LogoutButton
-            redirectTo="/member/login"
-            className="border-white/30 text-white hover:border-white hover:text-white"
-          />
-        </div>
-      </div>
 
-      {birthdayVoucherCode && (
-        <div className="mt-6 rounded-2xl border border-pink-200 bg-pink-50 p-5">
-          <p className="text-sm font-semibold text-pink-700">
-            Selamat ulang tahun!
-          </p>
-          <p className="mt-1 text-sm text-gray-700">
-            Voucher khusus untukmu:{" "}
-            <span className="font-mono font-bold text-pink-700">
-              {birthdayVoucherCode}
-            </span>{" "}
-            - diskon 15%, berlaku 7 hari.
-          </p>
-        </div>
-      )}
-
-      <div className="mt-6 rounded-2xl border border-blue-100 bg-blue-50 p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold text-blue-700">
-              ⭐ Loyalty Poin
-            </p>
-            <p className="mt-2 text-3xl font-black text-gray-900">
-              {points.toLocaleString("id-ID")}
-            </p>
-            <p className="mt-1 text-sm text-gray-500">
-              1 poin setiap Rp20.000 belanja.
-            </p>
-          </div>
-          <Link
-            href="/member/points"
-            className="shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-blue-600 ring-1 ring-blue-200 transition hover:ring-blue-300"
-          >
-            History →
-          </Link>
-        </div>
-        <ClaimVoucherButton totalPoints={points} />
-      </div>
-
-      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {[
-          { href: "/member/orders", icon: "📦", label: "Pesanan Saya" },
-          { href: "/akun/alamat", icon: "📍", label: "Alamat" },
-          { href: "/wishlist", icon: "❤️", label: "Wishlist" },
-          { href: "#voucher-member", icon: "🎟️", label: "Voucher Member" },
-          { href: "/member/profile", icon: "👤", label: "Pengaturan Akun" },
-          { href: "/bantuan", icon: "💬", label: "Bantuan" },
-          {
-            href: "/akun/pengaturan/notifikasi",
-            icon: "🔔",
-            label: "Notifikasi",
-          },
-        ].map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className="flex flex-col items-center gap-2 rounded-2xl border border-gray-100 bg-white p-4 text-center shadow-sm transition hover:border-blue-200 hover:shadow-md"
-          >
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-sm font-black text-blue-600">
-              {item.icon}
-            </span>
-            <span className="text-xs font-semibold text-gray-700">
-              {item.label}
-            </span>
-          </Link>
-        ))}
-      </div>
-
-      <div className="mt-6 grid gap-4 sm:grid-cols-2">
-        <div
-          id="voucher-member"
-          className="scroll-mt-24 rounded-2xl border border-blue-100 bg-blue-50 p-5"
-        >
-          <div className="flex items-start justify-between gap-3">
+          <div className="mt-5 grid grid-cols-3 gap-2 border-t border-white/18 pt-4">
             <div>
-              <p className="text-sm font-semibold text-blue-700">
-                Voucher Member
-              </p>
-              <p className="mt-2 font-bold text-gray-900">
-                Voucher yang bisa dipakai
-              </p>
+              <p className="text-2xl font-black leading-none">{points.toLocaleString("id-ID")}</p>
+              <p className="mt-1 text-[11px] font-bold text-blue-50">Loyalty Point</p>
+            </div>
+            <div>
+              <p className="text-sm font-black leading-tight">{memberSince}</p>
+              <p className="mt-1 text-[11px] font-bold text-blue-50">Member sejak</p>
             </div>
             <Link
-              href="/checkout"
-              className="rounded-full bg-white px-3 py-1 text-xs font-bold text-blue-600 ring-1 ring-blue-100 hover:ring-blue-200"
+              href="/member/points"
+              className="flex items-center justify-between gap-1 rounded-2xl bg-white/12 px-3 py-2 text-left ring-1 ring-white/16"
             >
-              Pakai
+              <span>
+                <span className="block text-sm font-black leading-tight">Riwayat</span>
+                <span className="block text-[11px] font-bold text-blue-50">Poin</span>
+              </span>
+              <FiChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />
             </Link>
           </div>
+        </section>
 
-          {vouchers.length > 0 ? (
-            <div className="mt-4 space-y-2">
-              {vouchers.map((voucher) => (
-                <div
-                  key={voucher.id}
-                  className="rounded-2xl bg-white p-3 ring-1 ring-blue-100"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate font-mono text-sm font-black text-blue-600">
-                        {voucher.code}
-                      </p>
-                      <p className="mt-1 text-xs font-semibold text-gray-700">
-                        {formatVoucherValue(voucher)}
-                        {voucher.minimumOrder > 0
-                          ? ` - min. belanja ${formatRupiah(
-                              voucher.minimumOrder
-                            )}`
-                          : ""}
-                      </p>
-                    </div>
-                    <span className="shrink-0 rounded-full bg-blue-100 px-2 py-1 text-[11px] font-bold text-blue-700">
-                      Aktif
-                    </span>
-                  </div>
-                  <p className="mt-2 text-xs text-gray-500">
-                    Expired: {formatDate(voucher.expiresAt)}
-                  </p>
-                  {voucher.description && (
-                    <p className="mt-1 line-clamp-2 text-xs text-gray-400">
-                      {voucher.description}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="mt-3 text-sm text-gray-500">
-              Belum ada voucher aktif. Tukar loyalty poin untuk membuat voucher
-              baru.
+        {birthdayVoucherCode && (
+          <section className="rounded-[20px] border border-pink-200 bg-pink-50 p-4">
+            <p className="text-sm font-black text-pink-700">Voucher ulang tahun aktif</p>
+            <p className="mt-1 text-sm font-semibold leading-5 text-pink-900">
+              Kode {birthdayVoucherCode} memberi diskon 15% dan berlaku 7 hari.
             </p>
-          )}
-        </div>
-        <Link
-          href="/akun/pengaturan/notifikasi"
-          className="block rounded-2xl border border-blue-100 bg-blue-50 p-5 transition hover:border-blue-200 hover:bg-blue-100/70"
-        >
-          <p className="text-sm font-semibold text-blue-700">
-            Pengaturan Notifikasi
-          </p>
-          <p className="mt-2 font-bold text-gray-900">Pantau pesananmu</p>
-          <p className="mt-1 text-sm text-gray-500">
-            Kelola notifikasi pesanan, promo, chat toko, dan produk favorit.
-          </p>
-        </Link>
-      </div>
+          </section>
+        )}
 
-      <div className="mt-8 border-t border-zinc-100 pt-6 text-center text-xs">
-        <Link
-          href="/akun/sesi-aktif"
-          className="font-semibold text-blue-600 hover:underline"
+        <section className="rounded-[20px] border border-slate-100 bg-white p-4 shadow-[0_8px_24px_rgba(16,24,40,0.06)]">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-black text-[#101A33]">Pesanan Saya</h2>
+            <Link href="/member/orders" className="inline-flex items-center gap-1 text-sm font-black text-natalo-600">
+              Lihat Semua
+              <FiChevronRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
+          </div>
+          <div className="mt-4 grid grid-cols-4 gap-2">
+            <OrderStatusItem href="/member/orders" icon={FiCreditCard} label="Belum Bayar" count={unpaidCount} />
+            <OrderStatusItem href="/member/orders" icon={FiPackage} label="Diproses" count={processingCount} />
+            <OrderStatusItem href="/member/orders" icon={FiTruck} label="Dikirim" count={shippedCount} />
+            <OrderStatusItem href="/member/orders" icon={FiCheckCircle} label="Selesai" count={doneCount} />
+          </div>
+        </section>
+
+        <section>
+          <h2 className="px-1 text-lg font-black text-[#101A33]">Menu Transaksi</h2>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <MenuCard href="/member/orders" icon={FiShoppingBag} title="Pesanan Saya" description="Lihat riwayat pesanan" />
+            <MenuCard href="/wishlist" icon={FiHeart} title="Wishlist" description="Produk yang kamu favoritkan" />
+            <MenuCard
+              href="/cart"
+              icon={FiGift}
+              title="Voucher Member"
+              description={
+                activeVoucherCount > 0
+                  ? `${activeVoucherCount} voucher aktif`
+                  : "Voucher & promo khusus member"
+              }
+            />
+            <MenuCard href="/akun/alamat" icon={FiMapPin} title="Alamat" description="Kelola alamat pengiriman" />
+          </div>
+        </section>
+
+        <section>
+          <h2 className="px-1 text-lg font-black text-[#101A33]">Akun & Pengaturan</h2>
+          <div className="mt-3 divide-y divide-slate-100 overflow-hidden rounded-[20px] border border-slate-100 bg-white shadow-[0_8px_24px_rgba(16,24,40,0.06)]">
+            <SettingsRow href="/akun/pengaturan/notifikasi" icon={FiBell} title="Pengaturan Notifikasi" description="Atur preferensi notifikasi" />
+            <SettingsRow href="/bantuan" icon={FiHelpCircle} title="Bantuan" description="Pusat bantuan dan FAQ" />
+            <SettingsRow href="/akun/sesi-aktif" icon={FiShield} title="Keamanan & sesi aktif" description="Kelola keamanan akun dan perangkat aktif" />
+            <SettingsRow href="/tentang-kami" icon={FiHome} title="Tentang Natalo" description="Informasi aplikasi, syarat & ketentuan" />
+          </div>
+        </section>
+
+        <LogoutButton
+          redirectTo="/member/login"
+          className="flex w-full items-center gap-3 rounded-[20px] border border-red-100 bg-white p-4 text-left text-red-600 shadow-[0_8px_24px_rgba(16,24,40,0.06)] hover:border-red-200 hover:bg-red-50 hover:text-red-600"
         >
-          🔐 Keamanan & sesi aktif
-        </Link>
-        <span className="mx-2 text-zinc-300">·</span>
-        <Link
-          href="/akun/hapus-akun"
-          className="font-semibold text-red-600 hover:underline"
-        >
-          🗑️ Hapus akun
-        </Link>
-        <span className="mx-2 text-zinc-300">·</span>
-        <Link
-          href="/tentang-kami"
-          className="font-semibold text-zinc-500 hover:text-blue-600 hover:underline"
-        >
-          Tentang Kami
-        </Link>
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-red-50 text-red-500">
+            <FiLogOut className="h-5 w-5" aria-hidden="true" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-black">Keluar dari akun</span>
+            <span className="mt-0.5 block text-xs font-semibold text-red-400">
+              Logout dari akun Natalo Petshop
+            </span>
+          </span>
+          <FiChevronRight className="h-5 w-5 shrink-0 text-red-300" aria-hidden="true" />
+        </LogoutButton>
       </div>
-    </div>
+    </main>
   );
 }

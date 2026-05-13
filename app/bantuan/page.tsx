@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { StickyBackTitle } from "@/components/StickyBackTitle";
 
 export const metadata: Metadata = {
   title: "Pusat Bantuan",
@@ -135,15 +136,14 @@ const FAQS: FAQ[] = [
 
 export default function BantuanPage() {
   return (
-    <div className="mx-auto max-w-3xl px-6 py-10 pb-20">
-      <div className="mb-8">
-        <h1 className="text-2xl font-black tracking-tight text-zinc-950 sm:text-3xl">
-          Pusat Bantuan
-        </h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          Pertanyaan umum, kontak customer service, dan panduan menggunakan app.
-        </p>
-      </div>
+    <div className="min-h-screen bg-slate-50 pb-20">
+      <StickyBackTitle label="Pusat Bantuan" fallbackHref="/" />
+      <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
+        <div className="mb-6">
+          <p className="mt-1 text-sm text-zinc-500">
+            Pertanyaan umum, kontak customer service, dan panduan menggunakan app.
+          </p>
+        </div>
 
       <section className="space-y-3 text-sm leading-relaxed text-zinc-700 sm:text-base">
         {FAQS.map((item, i) => (
@@ -211,6 +211,7 @@ export default function BantuanPage() {
             Kebijakan Pengembalian
           </Link>
         </div>
+      </div>
       </div>
     </div>
   );

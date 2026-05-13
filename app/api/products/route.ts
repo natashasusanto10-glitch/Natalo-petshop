@@ -39,12 +39,14 @@ export async function GET(request: NextRequest) {
   const cursor = Math.max(0, parsePositiveInt(sp.get("cursor"), 0));
   const search = (sp.get("search") ?? sp.get("q") ?? "").trim();
   const category = (sp.get("category") ?? sp.get("kategori") ?? "").trim();
+  const brand = (sp.get("brand") ?? "").trim();
   const newFilter = asNewFilter(sp.get("new"));
   const popularFilter = asPopularFilter(sp.get("popular"));
 
   const [items, total] = await Promise.all([
     getProducts({
       category: category || undefined,
+      brand: brand || undefined,
       search: search || undefined,
       newFilter,
       popularFilter,
@@ -53,6 +55,7 @@ export async function GET(request: NextRequest) {
     }),
     getProductsCount({
       category: category || undefined,
+      brand: brand || undefined,
       search: search || undefined,
       newFilter,
     }),
