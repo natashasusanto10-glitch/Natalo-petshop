@@ -346,15 +346,6 @@ export function Header() {
         </div>
       </div>
       {isHome && <HomeSearchBar />}
-      {(isHome || isProductsCatalog) && (
-        <div className="nat-safe-x mx-auto flex max-w-6xl items-center gap-3 overflow-x-auto border-y border-slate-100 py-2 text-xs font-semibold text-slate-600 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <span className="whitespace-nowrap">Area Medan</span>
-          <span className="text-blue-300">-</span>
-          <span className="whitespace-nowrap">Produk Original 100%</span>
-          <span className="text-blue-300">-</span>
-          <span className="whitespace-nowrap">Konsultasi via Chat</span>
-        </div>
-      )}
       </div>
     </header>
   );

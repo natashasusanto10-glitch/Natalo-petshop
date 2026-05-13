@@ -60,15 +60,8 @@ export default async function ProductsPage({
     .catch(() => []);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-4 md:py-10">
-      <div className="mb-3 md:mb-5">
-        <h1 className="text-2xl font-black text-gray-900 md:text-3xl">Katalog Produk</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Semua kebutuhan hewan peliharaan kamu tersedia di sini.
-        </p>
-      </div>
-
-      <div className="sticky top-[calc(96px+env(safe-area-inset-top))] z-20 -mx-4 mb-4 bg-white/95 px-4 pb-3 pt-2 backdrop-blur md:static md:mx-0 md:bg-transparent md:px-0 md:pb-0 md:pt-0 md:backdrop-blur-none">
+    <div className="mx-auto max-w-6xl px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] md:py-10">
+      <div className="sticky top-[calc(var(--natalo-mobile-header-min-height)+env(safe-area-inset-top))] z-50 -mx-4 mb-4 rounded-b-3xl bg-white px-4 pb-3 pt-3 shadow-[0_8px_24px_rgba(15,23,42,0.06)] md:static md:mx-0 md:mb-5 md:rounded-none md:bg-transparent md:px-0 md:pb-0 md:pt-0 md:shadow-none">
         <div className="mb-3">
           <Suspense fallback={<div className="h-12 w-full animate-pulse rounded-2xl bg-gray-100" />}>
             <ProductSearchBar defaultValue={q ?? ""} />

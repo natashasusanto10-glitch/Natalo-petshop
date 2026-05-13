@@ -45,7 +45,7 @@ type Props = {
 
 function ChevronDown() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-3.5 w-3.5" aria-hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-3 w-3 md:h-3.5 md:w-3.5" aria-hidden>
       <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
@@ -123,7 +123,7 @@ export function ProductFilterChips({
     <>
       <div
         aria-busy={isPending}
-        className={`-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 transition-opacity duration-150 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
+        className={`-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 transition-opacity duration-150 md:gap-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
           isPending ? "pointer-events-none opacity-60" : ""
         }`}
       >
@@ -131,7 +131,7 @@ export function ProductFilterChips({
         <button
           type="button"
           onClick={resetAll}
-          className={`shrink-0 rounded-full border px-4 py-1.5 text-sm font-semibold transition-all duration-75 active:scale-95 ${
+          className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all duration-75 active:scale-95 md:px-4 md:text-sm ${
             hasNoFilter
               ? "border-blue-500 bg-blue-500 text-white"
               : "border-slate-200 bg-white text-slate-700 active:bg-slate-50"
@@ -143,7 +143,7 @@ export function ProductFilterChips({
         {/* Kategori */}
         <ChipWithDropdown
           active={!!categoryName}
-          label={categoryName ? `Kategori: ${categoryName}` : "Kategori"}
+          label="Kategori"
           onOpen={() => openDrawerAt("kategori")}
           onClear={categoryName ? () => clearOne("kategori") : undefined}
         />
@@ -151,7 +151,7 @@ export function ProductFilterChips({
         {/* Produk Baru */}
         <ChipWithDropdown
           active={!!newLabel}
-          label={newLabel ? `Produk Baru: ${newLabel}` : "Produk Baru"}
+          label="Produk Baru"
           onOpen={() => openDrawerAt("produk-baru")}
           onClear={newLabel ? () => clearOne("new") : undefined}
         />
@@ -159,7 +159,7 @@ export function ProductFilterChips({
         {/* Populer */}
         <ChipWithDropdown
           active={!!popularLabel}
-          label={popularLabel ? `Populer: ${popularLabel}` : "Populer"}
+          label="Populer"
           onOpen={() => openDrawerAt("populer")}
           onClear={popularLabel ? () => clearOne("popular") : undefined}
         />
@@ -191,7 +191,7 @@ function ChipWithDropdown({
 }) {
   return (
     <span
-      className={`flex shrink-0 items-center gap-1.5 rounded-full border pl-3 pr-3 py-1.5 text-sm font-semibold transition-all duration-75 active:scale-95 ${
+      className={`flex shrink-0 items-center gap-1 rounded-full border py-1.5 pl-2.5 pr-2.5 text-xs font-semibold transition-all duration-75 active:scale-95 md:gap-1.5 md:pl-3 md:pr-3 md:text-sm ${
         active
           ? "border-blue-500 bg-blue-500 text-white"
           : "border-slate-200 bg-white text-slate-700"
@@ -203,7 +203,7 @@ function ChipWithDropdown({
         className="flex items-center gap-1.5"
       >
         <span className="whitespace-nowrap">{label}</span>
-        {!onClear && <ChevronDown />}
+        <ChevronDown />
       </button>
       {onClear && (
         <button
