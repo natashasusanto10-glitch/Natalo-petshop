@@ -3,11 +3,13 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
-import { getProducts } from "@/lib/products";
+import { getProducts, getProductsCount, type StoreProduct } from "@/lib/products";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
 import { FlashSaleCountdown } from "@/components/home/FlashSaleCountdown";
 import { BrandChoiceSection } from "@/components/home/BrandChoiceSection";
+import { HomeExploreProducts } from "@/components/home/HomeExploreProducts";
+import { HomeProductCard } from "@/components/home/HomeProductCard";
 import HeroBanner from "@/components/home/HeroBanner";
 import TrustMarquee from "@/components/home/TrustMarquee";
 import type { TrustItem } from "@/data/trustItems";
@@ -356,6 +358,33 @@ function categoryIconFor(name: string): HomeIconName {
   return "paw";
 }
 
+function uniqueProducts(products: StoreProduct[]) {
+  const seen = new Set<string>();
+  return products.filter((product) => {
+    if (seen.has(product.id)) return false;
+    seen.add(product.id);
+    return true;
+  });
+}
+
+function getHomeRecommendations(products: StoreProduct[]) {
+  const promoProducts = products.filter(
+    (product) =>
+      product.discountPrice !== null && product.discountPrice < product.price,
+  );
+  const popularProducts = [...products].sort(
+    (a, b) => b.reviewCount - a.reviewCount || b.avgRating - a.avgRating,
+  );
+
+  return uniqueProducts([...promoProducts, ...popularProducts, ...products]).slice(0, 10);
+}
+
+function homeBadgeFor(product: StoreProduct, index: number) {
+  if (product.discountPrice !== null && product.discountPrice < product.price) return "Promo";
+  if (index < 3 && product.reviewCount > 0) return "Terlaris";
+  return "Original";
+}
+
 export default async function HomePage() {
   const wa =
     process.env.NEXT_PUBLIC_WA_NUMBER ||
@@ -394,7 +423,7 @@ export default async function HomePage() {
     },
   ];
 
-  const [products, popularCategories, dbFeaturedBrands] = await Promise.all([
+  const [products, popularCategories, dbFeaturedBrands, availableHomeProducts] = await Promise.all([
     getProducts({ take: 24 }),
     prisma.category
       .findMany({
@@ -426,6 +455,12 @@ export default async function HomePage() {
         },
       })
       .catch(() => []),
+    getProducts({
+      take: 40,
+      hasPriceOnly: true,
+      inStockOnly: true,
+      withImageOnly: true,
+    }),
   ]);
 
   const fallbackPopularCategories = [
@@ -453,6 +488,22 @@ export default async function HomePage() {
   ].slice(0, 18);
 
   const flashSaleEnd = getJakartaMidnight();
+  const recommendedProducts = getHomeRecommendations(availableHomeProducts);
+  const recommendedIds = recommendedProducts.map((product) => product.id);
+  const exploreExcludeIds =
+    availableHomeProducts.length >= recommendedProducts.length + 10 ? recommendedIds : [];
+  const exploreOptions = {
+    excludeIds: exploreExcludeIds,
+    hasPriceOnly: true,
+    inStockOnly: true,
+    withImageOnly: true,
+  };
+  const [initialExploreProducts, exploreTotal] = await Promise.all([
+    getProducts({ ...exploreOptions, take: 14 }),
+    getProductsCount(exploreOptions),
+  ]);
+  const initialExploreCursor =
+    initialExploreProducts.length < exploreTotal ? String(initialExploreProducts.length) : null;
 
   // JSON-LD structured data — Organization + LocalBusiness + WebSite untuk
   // Google Knowledge Panel + Sitelinks search box. Single @graph supaya
@@ -524,7 +575,7 @@ export default async function HomePage() {
   };
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#FAFAFA] pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-10">
+    <div className="min-h-screen overflow-x-hidden bg-[#FAFAFA] pb-[calc(120px+env(safe-area-inset-bottom))] md:pb-[120px]">
       <script
         type="application/ld+json"
         // eslint-disable-next-line react/no-danger
@@ -758,6 +809,57 @@ export default async function HomePage() {
           </div>
         </section>
       )}
+
+      <section className="mt-6 px-4">
+        <div>
+          <h2 className="text-base font-black text-zinc-900 sm:text-lg">
+            Rekomendasi Untuk Kamu
+          </h2>
+          <p className="mt-1 text-xs font-medium text-zinc-500 sm:text-sm">
+            Produk pilihan berdasarkan minat dan aktivitas belanjamu
+          </p>
+        </div>
+
+        {recommendedProducts.length > 0 ? (
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            {recommendedProducts.map((product, index) => (
+              <HomeProductCard
+                key={product.id}
+                product={product}
+                badge={homeBadgeFor(product, index)}
+                priority={index < 4}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="mt-3 rounded-[18px] border border-dashed border-zinc-200 bg-white px-6 py-10 text-center">
+            <h3 className="text-base font-black text-zinc-900">Produk belum tersedia</h3>
+            <p className="mt-1 text-sm font-medium text-zinc-500">
+              Coba cek kembali nanti atau pilih kategori lainnya.
+            </p>
+          </div>
+        )}
+      </section>
+
+      <section className="mt-7 px-4">
+        <div>
+          <h2 className="text-base font-black text-zinc-900 sm:text-lg">
+            Jelajahi Produk Natalo
+          </h2>
+          <p className="mt-1 text-xs font-medium text-zinc-500 sm:text-sm">
+            Temukan berbagai kebutuhan hewan kesayanganmu di Natalo
+          </p>
+        </div>
+
+        <div className="mt-3">
+          <HomeExploreProducts
+            initialProducts={initialExploreProducts}
+            initialCursor={initialExploreCursor}
+            initialHasMore={initialExploreCursor !== null}
+            excludeIds={exploreExcludeIds}
+          />
+        </div>
+      </section>
 
     </div>
   );

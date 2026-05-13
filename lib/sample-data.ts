@@ -24,7 +24,7 @@ Kandungan Nutrisi:
   hasVariants: false,
   avgRating: 0,
   reviewCount: 0,
-  imageUrl: "/products/angels-creamy-tuna.jpg",
+  imageUrl: "/products/angels-creamy-tuna.png",
   gallery: [],
 },
   {

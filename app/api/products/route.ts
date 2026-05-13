@@ -33,6 +33,18 @@ function parsePositiveInt(value: string | null, fallback: number) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
 
+function parseBooleanFlag(value: string | null) {
+  return value === "1" || value === "true";
+}
+
+function parseIdList(value: string | null) {
+  return (value ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean)
+    .slice(0, 100);
+}
+
 export async function GET(request: NextRequest) {
   const sp = request.nextUrl.searchParams;
   const limit = Math.min(48, parsePositiveInt(sp.get("limit"), 24));
@@ -42,6 +54,10 @@ export async function GET(request: NextRequest) {
   const brand = (sp.get("brand") ?? "").trim();
   const newFilter = asNewFilter(sp.get("new"));
   const popularFilter = asPopularFilter(sp.get("popular"));
+  const excludeIds = parseIdList(sp.get("exclude"));
+  const inStockOnly = parseBooleanFlag(sp.get("inStock"));
+  const withImageOnly = parseBooleanFlag(sp.get("withImage"));
+  const hasPriceOnly = parseBooleanFlag(sp.get("hasPrice"));
 
   const [items, total] = await Promise.all([
     getProducts({
@@ -52,12 +68,20 @@ export async function GET(request: NextRequest) {
       popularFilter,
       take: limit,
       skip: cursor,
+      excludeIds,
+      hasPriceOnly,
+      inStockOnly,
+      withImageOnly,
     }),
     getProductsCount({
       category: category || undefined,
       brand: brand || undefined,
       search: search || undefined,
       newFilter,
+      excludeIds,
+      hasPriceOnly,
+      inStockOnly,
+      withImageOnly,
     }),
   ]);
 

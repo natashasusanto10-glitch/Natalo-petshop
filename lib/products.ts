@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { sampleProducts } from "@/lib/sample-data";
+import type { Prisma } from "@prisma/client";
 
 export type StoreVariantOption = {
   id: string;
@@ -122,18 +123,39 @@ export async function getProducts(opts?: {
   skip?: number;
   newFilter?: NewProductFilter;
   popularFilter?: PopularFilter;
+  excludeIds?: string[];
+  hasPriceOnly?: boolean;
+  inStockOnly?: boolean;
+  withImageOnly?: boolean;
 }): Promise<StoreProduct[]> {
-  const { category, brand, search, take, skip, newFilter, popularFilter } = opts ?? {};
+  const {
+    category,
+    brand,
+    search,
+    take,
+    skip,
+    newFilter,
+    popularFilter,
+    excludeIds,
+    hasPriceOnly,
+    inStockOnly,
+    withImageOnly,
+  } = opts ?? {};
   const createdAtCutoff = newProductCutoff(newFilter);
+  const where = buildProductWhere({
+    category,
+    brand,
+    search,
+    createdAtCutoff,
+    excludeIds,
+    hasPriceOnly,
+    inStockOnly,
+    withImageOnly,
+  });
+
   try {
     const products = await prisma.product.findMany({
-      where: {
-        isActive: true,
-        ...(category ? { category: { slug: category } } : {}),
-        ...(brand ? { brand: { slug: brand } } : {}),
-        ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
-        ...(createdAtCutoff ? { createdAt: { gte: createdAtCutoff } } : {}),
-      },
+      where,
       orderBy: buildOrderBy(newFilter, popularFilter),
       take,
       skip,
@@ -202,22 +224,104 @@ export async function getProductsCount(opts?: {
   brand?: string;
   search?: string;
   newFilter?: NewProductFilter;
+  excludeIds?: string[];
+  hasPriceOnly?: boolean;
+  inStockOnly?: boolean;
+  withImageOnly?: boolean;
 }): Promise<number> {
-  const { category, brand, search, newFilter } = opts ?? {};
+  const {
+    category,
+    brand,
+    search,
+    newFilter,
+    excludeIds,
+    hasPriceOnly,
+    inStockOnly,
+    withImageOnly,
+  } = opts ?? {};
   const createdAtCutoff = newProductCutoff(newFilter);
+  const where = buildProductWhere({
+    category,
+    brand,
+    search,
+    createdAtCutoff,
+    excludeIds,
+    hasPriceOnly,
+    inStockOnly,
+    withImageOnly,
+  });
+
   try {
     return await prisma.product.count({
-      where: {
-        isActive: true,
-        ...(category ? { category: { slug: category } } : {}),
-        ...(brand ? { brand: { slug: brand } } : {}),
-        ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
-        ...(createdAtCutoff ? { createdAt: { gte: createdAtCutoff } } : {}),
-      },
+      where,
     });
   } catch {
     return 0;
   }
+}
+
+function buildProductWhere({
+  category,
+  brand,
+  search,
+  createdAtCutoff,
+  excludeIds,
+  hasPriceOnly,
+  inStockOnly,
+  withImageOnly,
+}: {
+  category?: string;
+  brand?: string;
+  search?: string;
+  createdAtCutoff?: Date | null;
+  excludeIds?: string[];
+  hasPriceOnly?: boolean;
+  inStockOnly?: boolean;
+  withImageOnly?: boolean;
+}): Prisma.ProductWhereInput {
+  const and: Prisma.ProductWhereInput[] = [];
+
+  if (withImageOnly) {
+    and.push({ imageUrl: { not: null } }, { imageUrl: { not: "" } });
+  }
+
+  if (inStockOnly) {
+    and.push({
+      OR: [
+        { hasVariants: false, stock: { gt: 0 } },
+        {
+          hasVariants: true,
+          variants: {
+            some: { deletedAt: null, isActive: true, stock: { gt: 0 } },
+          },
+        },
+      ],
+    });
+  }
+
+  if (hasPriceOnly) {
+    and.push({
+      OR: [
+        { hasVariants: false, price: { gt: 0 } },
+        {
+          hasVariants: true,
+          variants: {
+            some: { deletedAt: null, isActive: true, price: { gt: 0 } },
+          },
+        },
+      ],
+    });
+  }
+
+  return {
+    isActive: true,
+    ...(category ? { category: { slug: category } } : {}),
+    ...(brand ? { brand: { slug: brand } } : {}),
+    ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
+    ...(createdAtCutoff ? { createdAt: { gte: createdAtCutoff } } : {}),
+    ...(excludeIds?.length ? { id: { notIn: excludeIds } } : {}),
+    ...(and.length ? { AND: and } : {}),
+  };
 }
 
 export async function getProductBySlug(slug: string): Promise<StoreProduct | null> {
