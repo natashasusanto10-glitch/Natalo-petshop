@@ -12,7 +12,7 @@ const SearchOverlay = dynamic(
 );
 
 // `waUrl` masih diterima supaya pemanggil lama tetap aman. Tombol customer-service
-// WhatsApp di samping search bar sudah dihapus; FAB WhatsApp tetap aktif.
+// WhatsApp di samping search bar sudah dihapus.
 export function HomeSearchBar({
   waUrl: _waUrl,
   className = "mobile-search-wrapper md:hidden",

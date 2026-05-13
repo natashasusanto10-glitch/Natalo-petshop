@@ -284,6 +284,9 @@ export async function sendOrderStatusPush(
           body,
           url,
           segment: "all", // tidak relevan saat targetUserId set, default aja
+          type: "order",
+          ctaLabel: "Lihat Pesanan",
+          publishedAt: new Date(),
           targetUserId: order.userId,
         },
       })

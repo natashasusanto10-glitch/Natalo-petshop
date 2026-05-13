@@ -55,7 +55,7 @@ const NAV_GROUPS: NavGroup[] = [
       },
       {
         href: "/admin/broadcast",
-        label: "Broadcast",
+        label: "Broadcast Notifikasi",
         icon: <Glyph d="M3 11l18-8-5 18-4-9-9-1zM13 12l8-9" />,
       },
     ],

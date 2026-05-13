@@ -38,6 +38,12 @@ const broadcastSchema = z.object({
   title: z.string().trim().min(1).max(60),
   body: z.string().trim().min(1).max(180),
   url: z.string().trim().optional().nullable(),
+  type: z.enum(["promo", "announcement"]).default("announcement"),
+  ctaLabel: z.string().trim().max(32).optional().nullable(),
+  startsAt: z.string().trim().optional().nullable(),
+  endsAt: z.string().trim().optional().nullable(),
+  publishedAt: z.string().trim().optional().nullable(),
+  status: z.enum(["PUBLISHED", "DRAFT"]).default("PUBLISHED"),
   segment: z.enum(["all", "members", "active30d", "test"]).default("all"),
   dryRun: z.boolean().default(false),
 });
@@ -75,8 +81,18 @@ async function handle(request: NextRequest) {
     );
   }
 
-  const { title, body, url, segment, dryRun } = parsed.data;
+  const { title, body, url, type, ctaLabel, startsAt, endsAt, publishedAt, status, segment, dryRun } = parsed.data;
   const startedAt = Date.now();
+  const normalizedUrl = url?.trim() || (type === "promo" ? "/products" : "/notifications");
+  const normalizedCta = ctaLabel?.trim() || (type === "promo" ? "Lihat Promo" : "Lihat Detail");
+  const parseDate = (value?: string | null) => {
+    if (!value) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  };
+  const startsAtDate = parseDate(startsAt);
+  const endsAtDate = parseDate(endsAt);
+  const publishedAtDate = parseDate(publishedAt) ?? new Date();
 
   // ── 1. Resolve userIds berdasarkan segment ─────────────────────
   let targetUserIds: string[] = [];
@@ -142,11 +158,29 @@ async function handle(request: NextRequest) {
       data: {
         title,
         body,
-        url: url?.trim() || null,
+        url: normalizedUrl,
         segment,
+        type,
+        ctaLabel: normalizedCta,
+        startsAt: startsAtDate,
+        endsAt: endsAtDate,
+        publishedAt: status === "PUBLISHED" ? publishedAtDate : null,
+        status,
       },
     });
     announcementId = announcement.id;
+  }
+
+  if (status === "DRAFT") {
+    return NextResponse.json({
+      ok: true,
+      segment,
+      announcementId,
+      recipientCount: 0,
+      sent: 0,
+      failed: 0,
+      elapsed_ms: Date.now() - startedAt,
+    });
   }
 
   if (targetUserIds.length === 0) {
@@ -164,7 +198,7 @@ async function handle(request: NextRequest) {
   const payload: PushPayload = {
     title,
     body,
-    url: url?.trim() || "/",
+    url: normalizedUrl,
     tag: `broadcast-${Date.now()}`, // unique per broadcast
   };
 

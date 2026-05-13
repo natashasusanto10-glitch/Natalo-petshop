@@ -30,13 +30,23 @@ export async function GET() {
   try {
     const session = await getSession("CUSTOMER");
     const userId = session?.sub ?? null;
+    const now = new Date();
+    const activeDateFilters = [
+      { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+      { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
+    ];
 
     // Untuk anonymous: cuma announcement segment "all", tanpa read tracking.
     if (!userId) {
       // Anonymous: cuma announcement broadcast segment "all", tidak punya
       // personal (targetUserId required login).
       const items = await prisma.announcement.findMany({
-        where: { segment: "all", targetUserId: null },
+        where: {
+          status: "PUBLISHED",
+          AND: activeDateFilters,
+          segment: "all",
+          targetUserId: null,
+        },
         orderBy: { createdAt: "desc" },
         take: MAX_ITEMS,
       });
@@ -50,6 +60,8 @@ export async function GET() {
           body: a.body,
           url: a.url,
           segment: a.segment,
+          type: a.type,
+          ctaLabel: a.ctaLabel,
           createdAt: a.createdAt.toISOString(),
           read: false,
         })),
@@ -84,9 +96,15 @@ export async function GET() {
     // 2. PERSONAL — targetUserId = user ini (mis. order status update)
     const items = await prisma.announcement.findMany({
       where: {
-        OR: [
-          { targetUserId: null, segment: { in: allowedSegments } },
-          { targetUserId: userId },
+        status: "PUBLISHED",
+        AND: [
+          ...activeDateFilters,
+          {
+            OR: [
+              { targetUserId: null, segment: { in: allowedSegments } },
+              { targetUserId: userId },
+            ],
+          },
         ],
       },
       orderBy: { createdAt: "desc" },
@@ -105,6 +123,8 @@ export async function GET() {
       body: a.body,
       url: a.url,
       segment: a.segment,
+      type: a.targetUserId ? "order" : a.type,
+      ctaLabel: a.ctaLabel,
       createdAt: a.createdAt.toISOString(),
       read: a.reads.length > 0,
     }));

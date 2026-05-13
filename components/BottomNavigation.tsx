@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import type { IconType } from "react-icons";
 import {
@@ -56,6 +56,7 @@ function NavIcon({ icon, active }: { icon: NavIconType; active: boolean }) {
 
 export function BottomNavigation() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const [optimisticHref, setOptimisticHref] = useState<string | null>(null);
 
@@ -83,7 +84,7 @@ export function BottomNavigation() {
     return i === -1 ? 0 : i;
   }, [pathname, optimisticHref]);
 
-  const hideNav = shouldHideBottomNav(pathname);
+  const hideNav = shouldHideBottomNav(pathname) || (pathname === "/products" && Boolean(searchParams.get("q")?.trim()));
 
   // Sync body data attribute supaya CSS bisa adjust .nat-main-shell
   // padding-bottom (tanpa space kosong saat nav hidden). Pakai useEffect

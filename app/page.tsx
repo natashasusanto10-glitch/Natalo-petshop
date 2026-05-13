@@ -379,12 +379,6 @@ function getHomeRecommendations(products: StoreProduct[]) {
   return uniqueProducts([...promoProducts, ...popularProducts, ...products]).slice(0, 10);
 }
 
-function homeBadgeFor(product: StoreProduct, index: number) {
-  if (product.discountPrice !== null && product.discountPrice < product.price) return "Promo";
-  if (index < 3 && product.reviewCount > 0) return "Terlaris";
-  return "Original";
-}
-
 export default async function HomePage() {
   const wa =
     process.env.NEXT_PUBLIC_WA_NUMBER ||
@@ -826,7 +820,6 @@ export default async function HomePage() {
               <HomeProductCard
                 key={product.id}
                 product={product}
-                badge={homeBadgeFor(product, index)}
                 priority={index < 4}
               />
             ))}

@@ -14,7 +14,13 @@ import { useEffect, useRef, useState } from "react";
 
 const DEBOUNCE_MS = 400;
 
-export function ProductSearchBar({ defaultValue = "" }: { defaultValue?: string }) {
+export function ProductSearchBar({
+  defaultValue = "",
+  showBackButton = false,
+}: {
+  defaultValue?: string;
+  showBackButton?: boolean;
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [value, setValue] = useState(defaultValue);
@@ -68,8 +74,36 @@ export function ProductSearchBar({ defaultValue = "" }: { defaultValue?: string 
     });
   }
 
+  function handleBack() {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+    } else {
+      router.push("/products");
+    }
+  }
+
   return (
-    <form onSubmit={handleSubmit} className="w-full">
+    <div className={showBackButton ? "flex w-full items-center gap-2" : "w-full"}>
+      {showBackButton && (
+        <button
+          type="button"
+          onClick={handleBack}
+          aria-label="Kembali"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-800 transition active:bg-slate-100"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2.2}
+            className="h-5 w-5"
+            aria-hidden
+          >
+            <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      )}
+      <form onSubmit={handleSubmit} className="min-w-0 flex-1">
       <div className="flex h-12 w-full items-center rounded-2xl border border-slate-200 bg-white px-4 shadow-sm">
         <svg
           viewBox="0 0 24 24"
@@ -111,6 +145,7 @@ export function ProductSearchBar({ defaultValue = "" }: { defaultValue?: string 
           </button>
         )}
       </div>
-    </form>
+      </form>
+    </div>
   );
 }

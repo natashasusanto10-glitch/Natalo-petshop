@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { CartCount } from "./CartCount";
 import { NotificationBell } from "./NotificationBell";
 import { HomeSearchBar } from "@/components/home/HomeSearchBar";
@@ -44,15 +44,19 @@ type MemberProfile = {
 export function Header() {
   const brand = process.env.NEXT_PUBLIC_BRAND_NAME || "Pet Shop";
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [member, setMember] = useState<MemberProfile | null>(null);
   const pathname = usePathname();
   const currentPath = normalizePathname(pathname);
   const isHome = currentPath === "/";
   const isProductsCatalog =
     currentPath === "/products" || currentPath === "/produk" || currentPath === "/kategori";
+  const isProductSearchResult =
+    currentPath === "/products" && Boolean(searchParams.get("q")?.trim());
   const isSearchPage = currentPath === "/search";
   const isCartPage = currentPath === "/cart";
   const isBrandsDirectory = currentPath === "/brands";
+  const isNotificationCenter = currentPath === "/notifications";
   const isFocusedAccountPage = currentPath === "/member/orders" || currentPath === "/member/profile";
   const isProductDetail = /^\/products\/[^/]+$/.test(currentPath);
   const isCheckoutAddressPicker = currentPath === "/checkout/addresses";
@@ -142,7 +146,7 @@ export function Header() {
     // karena UI sheet Apple/browser sudah kasih feedback sendiri
   }
 
-  if (isSearchPage || isCartPage || isBrandsDirectory || isFocusedAccountPage) return null;
+  if (isSearchPage || isProductSearchResult || isCartPage || isBrandsDirectory || isNotificationCenter || isFocusedAccountPage) return null;
 
   // Auth pages — render minimal header: back button + title saja. Bottom nav,
   // bell, profile, login button semua di-hide untuk fokus ke flow auth.

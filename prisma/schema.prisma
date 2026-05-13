@@ -500,6 +500,12 @@ model Announcement {
   body         String
   url          String?            // deep link (default "/")
   segment      String             @default("all")  // "all" | "members" | "active30d"
+  type         String             @default("announcement") // "order" | "promo" | "announcement"
+  ctaLabel     String?
+  startsAt     DateTime?
+  endsAt       DateTime?
+  publishedAt  DateTime?
+  status       String             @default("PUBLISHED") // "PUBLISHED" | "DRAFT"
   /// Kalau di-set, override segment — cuma user ini yang lihat di bell.
   /// Dipakai untuk personal notification (order status, dll).
   targetUserId String?
@@ -508,6 +514,8 @@ model Announcement {
 
   @@index([createdAt])
   @@index([segment])
+  @@index([type])
+  @@index([status])
   @@index([targetUserId])
 }
 

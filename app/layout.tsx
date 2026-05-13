@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Suspense } from "react";
 import { Nunito } from "next/font/google";
 import "./globals.css";
 import { Header } from "@/components/Header";
@@ -14,7 +15,6 @@ import IOSSwipeBack from "@/components/IOSSwipeBack";
 import { InstallPromptLazy as InstallPrompt } from "@/components/InstallPromptLazy";
 import { StoreOnly } from "@/components/StoreOnly";
 import { BottomNavigation } from "@/components/BottomNavigation";
-import { WhatsAppFloat } from "@/components/WhatsAppFloat";
 import { ToastProvider } from "@/components/Toast";
 import { AppSplashOverlay } from "@/components/AppSplashOverlay";
 import { PullToRefresh } from "@/components/PullToRefresh";
@@ -266,7 +266,9 @@ export default function RootLayout({
               <PageStatusBar iconColor="light" themeColor="#1E5FBF" /> di page
               dengan dark hero / brand blue full background. */}
           <PageStatusBar iconColor="dark" themeColor="#ffffff" />
-          <Header />
+          <Suspense fallback={null}>
+            <Header />
+          </Suspense>
         </StoreOnly>
         <main className="nat-main-shell">
           <SwipeBackProvider>{children}</SwipeBackProvider>
@@ -279,8 +281,9 @@ export default function RootLayout({
           <WebOnlyFooter>
             <Footer />
           </WebOnlyFooter>
-          <WhatsAppFloat />
-          <BottomNavigation />
+          <Suspense fallback={null}>
+            <BottomNavigation />
+          </Suspense>
           <InstallPrompt />
         </StoreOnly>
         <ToastProvider />

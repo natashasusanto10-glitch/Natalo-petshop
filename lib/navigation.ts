@@ -13,6 +13,7 @@
 export const HIDDEN_BOTTOM_NAV_PATTERNS: RegExp[] = [
   // Detail produk — fokus konversi, diganti sticky bottom CTA
   /^\/products\/[^/]+$/,
+  /^\/search(\/|$)/,
 
   // Keranjang — task-focused flow menuju checkout, tanpa bottom tab distraction
   /^\/cart$/,
@@ -24,7 +25,10 @@ export const HIDDEN_BOTTOM_NAV_PATTERNS: RegExp[] = [
   /^\/bantuan(\/|$)/,
   /^\/help(\/|$)/,
   /^\/wishlist(\/|$)/,
+  /^\/member\/favorites(\/|$)/,
+  /^\/notifications(\/|$)/,
   /^\/akun\/alamat(\/|$)/,
+  /^\/akun\/pengaturan\/notifikasi(\/|$)/,
   /^\/addresses(\/|$)/,
   /^\/brands(\/|$)/,
 
@@ -42,7 +46,7 @@ export const HIDDEN_BOTTOM_NAV_PATTERNS: RegExp[] = [
   /^\/member\/orders$/,
   /^\/member\/orders\/[^/]+$/,
   /^\/member\/profile$/,
-  /^\/order-status\/[^/]+$/,
+  /^\/order-status(\/|$)/,
   /^\/pesanan\/[^/]+$/,
 ];
 
