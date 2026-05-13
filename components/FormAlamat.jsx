@@ -521,9 +521,16 @@ function StreetAutocomplete({ initialQuery, onBack, onManual, onSelect }) {
           }),
         });
         const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "Autocomplete belum bisa dipakai.");
+        }
         const next = Array.isArray(data.predictions) ? data.predictions : [];
         setSuggestions(next);
-        setStatus(next.length === 0 ? "Alamat belum ditemukan. Kamu tetap bisa isi manual." : "");
+        setStatus(
+          next.length === 0
+            ? data.error || "Alamat belum ditemukan. Kamu tetap bisa isi manual."
+            : ""
+        );
       } catch {
         setSuggestions([]);
         setStatus("Autocomplete belum bisa dipakai. Kamu tetap bisa isi manual.");

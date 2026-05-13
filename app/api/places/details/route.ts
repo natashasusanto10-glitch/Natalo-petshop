@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { mapGoogleAddress } from "@/lib/google-address";
-
-function getGoogleMapsKey() {
-  return process.env.GOOGLE_MAPS_KEY || process.env.GOOGLE_MAPS_API_KEY || "";
-}
+import { getGoogleMapsServerKey } from "@/lib/google-maps-key";
 
 export async function POST(request: NextRequest) {
-  const apiKey = getGoogleMapsKey();
+  const apiKey = getGoogleMapsServerKey();
   if (!apiKey) {
-    return NextResponse.json({ error: "GOOGLE_MAPS_KEY belum dikonfigurasi." }, { status: 500 });
+    return NextResponse.json(
+      { error: "GOOGLE_MAPS_KEY atau NEXT_PUBLIC_GOOGLE_MAPS_KEY belum dikonfigurasi." },
+      { status: 500 },
+    );
   }
 
   const body = await request.json().catch(() => ({}));
