@@ -76,6 +76,7 @@ export function Header() {
   const isSearchPage = currentPath === "/search";
   const isCartPage = currentPath === "/cart";
   const isProductDetail = /^\/products\/[^/]+$/.test(currentPath);
+  const isCheckoutAddressPicker = currentPath === "/checkout/addresses";
   const isMainTab = isMainTabPath(currentPath);
   const authTitle = AUTH_PATHS[currentPath];
   const isAuthPage = authTitle !== undefined;
@@ -88,7 +89,7 @@ export function Header() {
   const showLoginButton = !isLoggedIn && !isAuthPage;
   // Back button universal: tampil di mobile untuk semua halaman selain main tab
   // & product detail (yang punya header sendiri dengan back + search + share + cart).
-  const showBackButton = Boolean(pathname) && !isMainTab && !isProductDetail;
+  const showBackButton = Boolean(pathname) && !isMainTab && !isProductDetail && !isCheckoutAddressPicker;
 
   function handleBack() {
     // Fallback ke home kalau buka deep link langsung (no history) — biar back gak
@@ -253,7 +254,9 @@ export function Header() {
         className={
           isHome
             ? "mobile-header-row mx-auto max-w-6xl gap-1.5 xs:gap-2"
-            : "nat-header-inner nat-safe-x mx-auto flex max-w-6xl items-center justify-between gap-1.5 py-1.5 xs:gap-2 md:py-3"
+            : isCheckoutAddressPicker
+              ? "nat-header-inner nat-safe-x mx-auto grid max-w-6xl grid-cols-[1fr_auto_1fr] items-center gap-1.5 py-1.5 xs:gap-2 md:flex md:justify-between md:py-3"
+              : "nat-header-inner nat-safe-x mx-auto flex max-w-6xl items-center justify-between gap-1.5 py-1.5 xs:gap-2 md:py-3"
         }
       >
         {/* Back button — hanya tampil di mobile untuk halaman non-main-tab.
@@ -276,8 +279,13 @@ export function Header() {
             </svg>
           </button>
         )}
+        {isCheckoutAddressPicker && <span aria-hidden className="h-10 w-10 md:hidden" />}
         {/* Logo */}
-        <Link href="/" aria-label={brand} className="flex min-w-0 shrink-0 items-center">
+        <Link
+          href="/"
+          aria-label={brand}
+          className={`flex min-w-0 shrink-0 items-center ${isCheckoutAddressPicker ? "justify-center md:justify-start" : ""}`}
+        >
           <Image
             src="/logo.png"
             alt={brand}
@@ -310,7 +318,7 @@ export function Header() {
               dimana user sudah di akun → chip disembunyikan).
             - Search icon kecil dihapus total: pakai search bar besar di
               / dan /products saja (lebih native, lebih mudah tap di mobile). */}
-        <div className="flex shrink-0 items-center gap-1 xs:gap-1.5 md:gap-2">
+        <div className={`flex shrink-0 items-center gap-1 xs:gap-1.5 md:gap-2 ${isCheckoutAddressPicker ? "justify-end" : ""}`}>
           {/* Notifikasi — hanya untuk logged-in user. Guest tidak punya
               konteks notif (order, voucher, point) jadi bell dihide. */}
           {showBell && <NotificationBell compact />}
