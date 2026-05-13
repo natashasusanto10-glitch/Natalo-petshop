@@ -1,85 +1,272 @@
 "use client";
 
+import { GoogleMap, Marker, useJsApiLoader } from "@react-google-maps/api";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AddressPinpointPicker } from "@/components/AddressPinpointPicker";
-import { BiteshipAreaCombobox } from "@/components/BiteshipAreaCombobox";
+import {
+  FiArrowLeft,
+  FiBriefcase,
+  FiCheck,
+  FiChevronDown,
+  FiHome,
+  FiMapPin,
+  FiNavigation,
+  FiSearch,
+  FiX,
+} from "react-icons/fi";
 
-const LABELS = ["Rumah", "Kantor", "Toko", "Lainnya"];
-const KODEPOS_API = "https://kodepos.vercel.app/search";
-const GOOGLE_API_KEY =
-  process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ??
-  process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY ??
-  "";
-const INPUT_CLASS =
-  "mt-2 block w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-natalo-400 focus:ring-4 focus:ring-natalo-100 disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400";
 const CHECKOUT_SELECTED_ADDRESS_KEY = "checkout:selectedAddressId";
 const CHECKOUT_ADDRESS_FORCE_APPLY_KEY = "checkout:addressForceApply";
+const PHONE_RE = /^(\+62|62|0)8[1-9][0-9]{6,11}$/;
+const GOOGLE_API_KEY =
+  process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY ??
+  process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ??
+  "";
+const googleLibraries = ["places"];
+const fallbackCenter = { lat: -6.2, lng: 106.816666 };
+const inputClass =
+  "peer block w-full rounded-2xl border bg-white px-4 pb-2.5 pt-5 text-sm font-semibold text-slate-900 outline-none transition placeholder:text-transparent focus:ring-4 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400";
 
-let googleMapsPromise = null;
+function safeInternalPath(value, fallback) {
+  return value && value.startsWith("/") && !value.startsWith("//") ? value : fallback;
+}
 
-function hasUsablePinpoint(latitude, longitude) {
+function hasUsablePinpoint(lat, lng) {
   return (
-    typeof latitude === "number" &&
-    Number.isFinite(latitude) &&
-    typeof longitude === "number" &&
-    Number.isFinite(longitude) &&
-    !(latitude === 0 && longitude === 0)
+    typeof lat === "number" &&
+    Number.isFinite(lat) &&
+    typeof lng === "number" &&
+    Number.isFinite(lng) &&
+    !(lat === 0 && lng === 0)
   );
 }
 
-function normalizeInitialCoordinate(value) {
-  const coordinate = value === null || value === undefined || value === "" ? null : Number(value);
-  return Number.isFinite(coordinate) ? coordinate : null;
+function normalizeCoordinate(value) {
+  const next = value === null || value === undefined || value === "" ? null : Number(value);
+  return Number.isFinite(next) ? next : null;
 }
 
-function loadGoogleMaps() {
-  if (typeof window === "undefined") return Promise.reject(new Error("Browser belum tersedia."));
-  if (!GOOGLE_API_KEY) return Promise.reject(new Error("Google Maps API key belum tersedia."));
-  if (googleMapsPromise) return googleMapsPromise;
+function isValidLabel(label) {
+  return label === "" || label === "Rumah" || label === "Kantor";
+}
 
-  googleMapsPromise = new Promise((resolve, reject) => {
-    if (window.google?.maps?.places) {
-      resolve(window.google.maps);
+function mapInitialAddress(address) {
+  const lat = normalizeCoordinate(address?.latitude);
+  const lng = normalizeCoordinate(address?.longitude);
+  const label = address?.label === "Rumah" || address?.label === "Kantor" ? address.label : "";
+
+  return {
+    nama: address?.recipient ?? "",
+    phone: address?.phone ?? "",
+    provinsi: address?.provinceName ?? "",
+    kota: address?.cityName ?? address?.city ?? "",
+    kecamatan: address?.districtName ?? "",
+    kodePos: address?.postalCode ?? "",
+    jalan: address?.address ?? "",
+    detail: address?.streetName ?? "",
+    lat,
+    lng,
+    isUtama: Boolean(address?.isMain),
+    label,
+    pinpointAddress: address?.pinpointAddress ?? "",
+    areaId: address?.areaId ?? "",
+    areaLabel: address?.areaLabel ?? "",
+  };
+}
+
+function validateField(name, value, form) {
+  if (name === "nama") {
+    if (!value.trim()) return "Mohon lengkapi Nama Lengkap";
+    if (value.trim().length < 2) return "Nama Lengkap minimal 2 karakter";
+  }
+  if (name === "phone") {
+    if (!value.trim()) return "Mohon lengkapi Nomor Telepon";
+    if (!PHONE_RE.test(value.replace(/\s/g, ""))) return "Format nomor Indonesia belum sesuai";
+  }
+  if (["provinsi", "kota", "kecamatan", "kodePos"].includes(name) && !value.trim()) {
+    const labels = {
+      provinsi: "Provinsi",
+      kota: "Kota / Kabupaten",
+      kecamatan: "Kecamatan",
+      kodePos: "Kode Pos",
+    };
+    return `Mohon lengkapi ${labels[name]}`;
+  }
+  if (name === "jalan") {
+    if (!value.trim()) return "Mohon lengkapi Nama Jalan";
+    if (value.trim().length < 5) return "Nama Jalan minimal 5 karakter";
+  }
+  if (name === "label" && !isValidLabel(value)) return "Label hanya boleh Rumah atau Kantor";
+  if (name === "all") {
+    const fields = ["nama", "phone", "provinsi", "kota", "kecamatan", "kodePos", "jalan"];
+    const errors = {};
+    fields.forEach((field) => {
+      const error = validateField(field, form[field], form);
+      if (error) errors[field] = error;
+    });
+    return errors;
+  }
+  return "";
+}
+
+function Field({
+  label,
+  name,
+  value,
+  onChange,
+  onBlur,
+  error,
+  type = "text",
+  as = "input",
+  readOnly = false,
+  disabled = false,
+  placeholder = " ",
+  children,
+}) {
+  const borderClass = error
+    ? "border-red-300 focus:border-red-500 focus:ring-red-100"
+    : "border-slate-200 focus:border-natalo-500 focus:ring-natalo-100";
+
+  return (
+    <div>
+      <div className="relative">
+        {children ??
+          (as === "textarea" ? (
+            <textarea
+              name={name}
+              value={value}
+              onChange={onChange}
+              onBlur={onBlur}
+              placeholder={placeholder}
+              rows={3}
+              readOnly={readOnly}
+              disabled={disabled}
+              className={`${inputClass} min-h-[118px] resize-y ${borderClass}`}
+            />
+          ) : (
+            <input
+              name={name}
+              type={type}
+              value={value}
+              onChange={onChange}
+              onBlur={onBlur}
+              placeholder={placeholder}
+              readOnly={readOnly}
+              disabled={disabled}
+              className={`${inputClass} ${borderClass}`}
+            />
+          ))}
+        <label className="pointer-events-none absolute left-4 top-2 text-[11px] font-black uppercase tracking-wide text-slate-500">
+          {label}
+        </label>
+      </div>
+      {error && <p className="mt-1.5 text-xs font-bold text-red-500">{error}</p>}
+    </div>
+  );
+}
+
+function Toggle({ checked, onChange }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={`relative h-7 w-12 rounded-full transition ${
+        checked ? "bg-natalo-600" : "bg-slate-200"
+      }`}
+    >
+      <span
+        className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${
+          checked ? "left-6" : "left-1"
+        }`}
+      />
+    </button>
+  );
+}
+
+function LabelSelector({ value, onChange }) {
+  const labels = [
+    { value: "Rumah", icon: FiHome },
+    { value: "Kantor", icon: FiBriefcase },
+  ];
+
+  return (
+    <div>
+      <p className="text-sm font-black text-slate-900">Label Alamat</p>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        {labels.map((item) => {
+          const Icon = item.icon;
+          const selected = value === item.value;
+          return (
+            <button
+              key={item.value}
+              type="button"
+              onClick={() => onChange(selected ? "" : item.value)}
+              className={`flex h-12 items-center justify-center gap-2 rounded-2xl border text-sm font-black transition ${
+                selected
+                  ? "border-natalo-600 bg-natalo-50 text-natalo-700 ring-4 ring-natalo-100"
+                  : "border-slate-200 bg-white text-slate-600 hover:border-natalo-200"
+              }`}
+            >
+              <Icon aria-hidden="true" />
+              {item.value}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function SmartPasteBox({ onApply }) {
+  const [text, setText] = useState("");
+  const [message, setMessage] = useState("");
+
+  function parse() {
+    const raw = text.trim();
+    if (!raw) return;
+    const match = raw.match(/(\+62|62|0)8[1-9]\d{6,11}/);
+    if (!match) {
+      onApply({ jalan: raw });
+      setMessage("Nomor HP belum terbaca. Teks dimasukkan ke Nama Jalan agar bisa diedit.");
       return;
     }
+    const phone = match[0];
+    const before = raw.slice(0, match.index).trim();
+    const after = raw.slice((match.index ?? 0) + phone.length).trim();
+    onApply({ nama: before, phone, jalan: after });
+    setMessage("Nama, nomor HP, dan alamat yang terbaca sudah diisi.");
+  }
 
-    const existing = document.querySelector("script[data-address-google-maps='true']");
-    if (existing) {
-      existing.addEventListener("load", () => resolve(window.google.maps), { once: true });
-      existing.addEventListener("error", reject, { once: true });
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_API_KEY}&libraries=places&loading=async`;
-    script.async = true;
-    script.defer = true;
-    script.dataset.addressGoogleMaps = "true";
-    script.onload = () => resolve(window.google.maps);
-    script.onerror = reject;
-    document.head.appendChild(script);
-  });
-
-  return googleMapsPromise;
-}
-
-function getRegionCode(item) {
-  return String(item?.code ?? item?.id ?? item?.kode ?? "").trim();
-}
-
-function getRegionName(item) {
-  return String(item?.name ?? item?.nama ?? "").trim();
-}
-
-function getPostalCode(item) {
-  return String(
-    item?.postal_code ?? item?.postalCode ?? item?.kode_pos ?? item?.zip_code ?? ""
-  ).trim();
-}
-
-function toOption(item) {
-  return { value: getRegionCode(item), label: getRegionName(item), postalCode: getPostalCode(item) };
+  return (
+    <section className="rounded-3xl border border-natalo-100 bg-natalo-50/70 p-4">
+      <div className="flex items-start gap-3">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-white text-natalo-700 shadow-sm">
+          <FiSearch aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-black text-slate-950">Smart Paste Alamat</p>
+          <textarea
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            rows={3}
+            placeholder="Budi Santoso 081234567890 Jalan Bintang No. 5, Kota Medan 20232"
+            className="mt-2 w-full resize-y rounded-2xl border border-natalo-100 bg-white px-4 py-3 text-sm font-semibold text-slate-900 outline-none focus:border-natalo-500 focus:ring-4 focus:ring-natalo-100"
+          />
+          {message && <p className="mt-2 text-xs font-bold text-natalo-700">{message}</p>}
+          <button
+            type="button"
+            onClick={parse}
+            disabled={!text.trim()}
+            className="mt-3 rounded-2xl bg-natalo-600 px-4 py-2.5 text-xs font-black text-white transition hover:bg-natalo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            Isi Otomatis
+          </button>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function getData(payload) {
@@ -88,713 +275,672 @@ function getData(payload) {
   return [];
 }
 
-async function fetchWilayah(path) {
-  const response = await fetch(`/api/wilayah/${path}`, { cache: "force-cache" });
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error ?? "Gagal mengambil data wilayah.");
-  return getData(payload);
+function itemId(item) {
+  return String(item?.id ?? item?.code ?? item?.kode ?? "").trim();
 }
 
-function Field({
-  label,
-  name,
-  value,
-  onChange,
-  type = "text",
-  required = true,
-  error,
-  help,
-  children,
-  ...props
-}) {
-  return (
-    <div>
-      <label className="block text-sm font-bold text-zinc-800">
-        {label}
-        {required && <span className="ml-1 text-natalo-600">*</span>}
-      </label>
-      {children ?? (
-        <input
-          name={name}
-          type={type}
-          required={required}
-          value={value}
-          onChange={onChange}
-          className={INPUT_CLASS}
-          {...props}
-        />
-      )}
-      {help && !error && <p className="mt-1 text-xs font-medium text-zinc-500">{help}</p>}
-      {error && <p className="mt-1 text-xs font-semibold text-red-500">{error}</p>}
-    </div>
-  );
+function itemName(item) {
+  return String(item?.name ?? item?.nama ?? "").trim();
 }
 
-function SearchableSelect({ options, value, onChange, placeholder, disabled, loading }) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const wrapperRef = useRef(null);
-  const inputRef = useRef(null);
+function itemPostalCode(item) {
+  return String(item?.postalCode ?? item?.postal_code ?? item?.kode_pos ?? "").trim();
+}
 
-  useEffect(() => {
-    function handler(event) {
-      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
-        setOpen(false);
-        setSearch("");
-      }
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
+function LocationPicker({ open, value, onClose, onApply }) {
+  const [step, setStep] = useState("provinsi");
+  const [loading, setLoading] = useState(false);
+  const [items, setItems] = useState([]);
+  const [selected, setSelected] = useState({
+    provinsi: null,
+    kota: null,
+    kecamatan: null,
+    kodePos: value.kodePos || "",
+  });
+  const [manualPostalCode, setManualPostalCode] = useState(value.kodePos || "");
 
   useEffect(() => {
     if (!open) return;
-    setSearch("");
-    window.setTimeout(() => inputRef.current?.focus(), 0);
-  }, [open]);
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return options;
-    return options.filter((option) => option.label.toLowerCase().includes(q));
-  }, [options, search]);
-
-  return (
-    <div className="relative mt-2" ref={wrapperRef}>
-      <button
-        type="button"
-        disabled={disabled || loading}
-        onClick={() => !(disabled || loading) && setOpen((current) => !current)}
-        className={`flex w-full items-center justify-between rounded-xl border border-zinc-200 bg-white px-4 py-3 text-left text-sm outline-none transition focus:border-natalo-400 focus:ring-4 focus:ring-natalo-100 disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400 ${
-          disabled || loading ? "" : "hover:border-zinc-300"
-        }`}
-      >
-        <span className={value ? "text-zinc-900" : "text-zinc-400"}>
-          {loading ? "Memuat data..." : value?.label || placeholder}
-        </span>
-        <span className="ml-2 text-zinc-400">v</span>
-      </button>
-
-      {open && !(disabled || loading) && (
-        <div className="absolute z-30 mt-1 w-full overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-xl">
-          <div className="border-b border-zinc-100 p-2">
-            <input
-              ref={inputRef}
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Cari..."
-              className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-natalo-400"
-            />
-          </div>
-          <div className="max-h-64 overflow-y-auto">
-            {filtered.length === 0 ? (
-              <div className="px-4 py-5 text-center text-sm text-zinc-500">Tidak ada hasil</div>
-            ) : (
-              filtered.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => {
-                    onChange(option);
-                    setOpen(false);
-                    setSearch("");
-                  }}
-                  className={`block w-full px-4 py-2.5 text-left text-sm hover:bg-natalo-50 ${
-                    value?.value === option.value ? "bg-natalo-50 font-bold text-natalo-700" : "text-zinc-700"
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SelectField({ label, value, onChange, options, placeholder, disabled, loading, required = true }) {
-  const normalizedOptions = useMemo(() => options.map(toOption).filter((option) => option.value), [options]);
-  const selected = normalizedOptions.find((option) => option.value === value) ?? null;
-
-  return (
-    <div>
-      <label className="block text-sm font-bold text-zinc-800">
-        {label}
-        {required && <span className="ml-1 text-natalo-600">*</span>}
-      </label>
-      <SearchableSelect
-        options={normalizedOptions}
-        value={selected}
-        onChange={(option) => onChange(option.value)}
-        placeholder={placeholder}
-        disabled={disabled}
-        loading={loading}
-      />
-    </div>
-  );
-}
-
-function SelectFieldWithError({
-  label,
-  value,
-  onChange,
-  options,
-  placeholder,
-  disabled,
-  loading,
-  required = true,
-  error,
-}) {
-  return (
-    <div>
-      <SelectField
-        label={label}
-        value={value}
-        onChange={onChange}
-        options={options}
-        placeholder={placeholder}
-        disabled={disabled}
-        loading={loading}
-        required={required}
-      />
-      {error && <p className="mt-1 text-xs font-semibold text-red-500">{error}</p>}
-    </div>
-  );
-}
-
-function PlaceAutocompleteField({
-  label,
-  placeholder,
-  value,
-  onChange,
-  biasContext,
-  onSelectPlace,
-  disabled,
-}) {
-  const [suggestions, setSuggestions] = useState([]);
-  const [open, setOpen] = useState(false);
-  const [ready, setReady] = useState(false);
-  const [mapsError, setMapsError] = useState("");
-  const sessionTokenRef = useRef(null);
-  const autocompleteRef = useRef(null);
-  const placesServiceRef = useRef(null);
-  const debounceRef = useRef(null);
+    setStep("provinsi");
+    setSelected({
+      provinsi: value.provinsi ? { name: value.provinsi } : null,
+      kota: value.kota ? { name: value.kota } : null,
+      kecamatan: value.kecamatan ? { name: value.kecamatan } : null,
+      kodePos: value.kodePos || "",
+    });
+    setManualPostalCode(value.kodePos || "");
+  }, [open, value]);
 
   useEffect(() => {
+    if (!open) return;
+    let endpoint = "/api/wilayah/provinsi";
+    if (step === "kota") endpoint = `/api/wilayah/kota?provinsi=${itemId(selected.provinsi)}`;
+    if (step === "kecamatan") endpoint = `/api/wilayah/kecamatan?kota=${itemId(selected.kota)}`;
+    if (step === "kodePos") endpoint = `/api/wilayah/kodepos?kec=${itemId(selected.kecamatan)}`;
+
     let active = true;
-    loadGoogleMaps()
-      .then((maps) => {
-        if (!active) return;
-        autocompleteRef.current = new maps.places.AutocompleteService();
-        placesServiceRef.current = new maps.places.PlacesService(document.createElement("div"));
-        sessionTokenRef.current = new maps.places.AutocompleteSessionToken();
-        setReady(true);
-        setMapsError("");
+    setLoading(true);
+    fetch(endpoint, { cache: "force-cache" })
+      .then((response) => response.json())
+      .then((payload) => {
+        if (active) setItems(getData(payload));
       })
       .catch(() => {
-        if (active) setMapsError("Google Places belum bisa dimuat.");
+        if (active) setItems([]);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
       });
+
     return () => {
       active = false;
     };
-  }, []);
+  }, [open, step, selected.provinsi, selected.kota, selected.kecamatan]);
 
-  useEffect(() => {
-    if (!ready || disabled || !value || value.length < 3) {
-      setSuggestions([]);
+  if (!open) return null;
+
+  function choose(item) {
+    if (step === "provinsi") {
+      setSelected({ provinsi: item, kota: null, kecamatan: null, kodePos: "" });
+      setStep("kota");
       return;
     }
-
-    window.clearTimeout(debounceRef.current);
-    debounceRef.current = window.setTimeout(() => {
-      const query = `${value} ${biasContext}`.trim();
-      autocompleteRef.current?.getPlacePredictions(
-        {
-          input: query,
-          sessionToken: sessionTokenRef.current,
-          componentRestrictions: { country: "id" },
-        },
-        (predictions, status) => {
-          setSuggestions(status === "OK" && predictions ? predictions.slice(0, 5) : []);
-        }
-      );
-    }, 300);
-
-    return () => window.clearTimeout(debounceRef.current);
-  }, [value, biasContext, ready, disabled]);
-
-  function handleSelect(prediction) {
-    placesServiceRef.current?.getDetails(
-      {
-        placeId: prediction.place_id,
-        fields: ["formatted_address", "geometry", "name"],
-        sessionToken: sessionTokenRef.current,
-      },
-      (place, status) => {
-        if (status !== "OK" || !place?.geometry?.location) return;
-        onSelectPlace({
-          mainText: prediction.structured_formatting.main_text,
-          formattedAddress: place.formatted_address,
-          lat: place.geometry.location.lat(),
-          lng: place.geometry.location.lng(),
-        });
-        setOpen(false);
-        setSuggestions([]);
-        sessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
-      }
-    );
+    if (step === "kota") {
+      setSelected((current) => ({ ...current, kota: item, kecamatan: null, kodePos: "" }));
+      setStep("kecamatan");
+      return;
+    }
+    if (step === "kecamatan") {
+      setSelected((current) => ({ ...current, kecamatan: item, kodePos: "" }));
+      setStep("kodePos");
+      return;
+    }
+    const postalCode = itemPostalCode(item);
+    setSelected((current) => ({ ...current, kodePos: postalCode }));
+    setManualPostalCode(postalCode);
   }
 
-  return (
-    <div className="relative">
-      <Field label={label} required>
-        <input
-          className={INPUT_CLASS}
-          placeholder={disabled ? "Pilih kelurahan dulu" : placeholder}
-          value={value}
-          disabled={disabled}
-          onChange={(event) => {
-            onChange(event.target.value);
-            setOpen(true);
-          }}
-          onFocus={() => setOpen(true)}
-          onBlur={() => window.setTimeout(() => setOpen(false), 180)}
-        />
-      </Field>
-      {mapsError && !disabled && <p className="mt-1 text-xs font-semibold text-red-500">{mapsError}</p>}
+  function apply() {
+    onApply({
+      provinsi: itemName(selected.provinsi),
+      kota: itemName(selected.kota),
+      kecamatan: itemName(selected.kecamatan),
+      kodePos: manualPostalCode.trim() || selected.kodePos,
+    });
+    onClose();
+  }
 
-      {open && suggestions.length > 0 && (
-        <div className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-xl border border-zinc-200 bg-white shadow-xl">
-          <div className="border-b border-zinc-100 px-4 py-2 text-xs font-semibold text-zinc-500">
-            Rekomendasi tempat berdasarkan alamatmu
+  const canApply =
+    selected.provinsi &&
+    selected.kota &&
+    selected.kecamatan &&
+    (manualPostalCode.trim() || selected.kodePos);
+
+  return (
+    <div className="fixed inset-0 z-[2100] bg-slate-950/40">
+      <button type="button" aria-label="Tutup picker wilayah" className="absolute inset-0" onClick={onClose} />
+      <section className="absolute inset-x-0 bottom-0 max-h-[86dvh] rounded-t-[28px] bg-white shadow-2xl">
+        <div className="mx-auto h-1.5 w-12 rounded-full bg-slate-200 mt-3" />
+        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-4">
+          <div>
+            <p className="text-base font-black text-slate-950">Pilih Wilayah</p>
+            <p className="text-xs font-semibold text-slate-500">
+              Provinsi, kota, kecamatan, lalu kode pos
+            </p>
           </div>
-          {suggestions.map((suggestion) => (
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-10 w-10 place-items-center rounded-full border border-slate-200 text-slate-600"
+          >
+            <FiX aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="flex gap-2 overflow-x-auto px-4 py-3">
+          {["provinsi", "kota", "kecamatan", "kodePos"].map((item) => (
             <button
-              key={suggestion.place_id}
+              key={item}
               type="button"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => handleSelect(suggestion)}
-              className="flex w-full items-start gap-3 border-b border-zinc-100 px-4 py-3 text-left last:border-0 hover:bg-zinc-50"
+              onClick={() => setStep(item)}
+              className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-black capitalize ${
+                step === item ? "bg-natalo-600 text-white" : "bg-slate-100 text-slate-600"
+              }`}
             >
-              <span className="mt-0.5 text-zinc-400">📍</span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-bold text-zinc-900">
-                  {suggestion.structured_formatting.main_text}
-                </span>
-                <span className="mt-0.5 block text-xs text-zinc-500">
-                  {suggestion.structured_formatting.secondary_text}
-                </span>
-              </span>
+              {item === "kodePos" ? "Kode Pos" : item}
             </button>
           ))}
         </div>
-      )}
+
+        <div className="max-h-[48dvh] overflow-y-auto px-4 pb-4">
+          {loading ? (
+            <p className="rounded-2xl bg-slate-50 px-4 py-5 text-center text-sm font-bold text-slate-500">
+              Memuat data wilayah...
+            </p>
+          ) : step === "kodePos" ? (
+            <div className="space-y-3">
+              {items.map((item) => {
+                const code = itemPostalCode(item);
+                if (!code) return null;
+                const selectedCode = manualPostalCode === code;
+                return (
+                  <button
+                    key={`${itemId(item)}-${code}`}
+                    type="button"
+                    onClick={() => choose(item)}
+                    className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition ${
+                      selectedCode
+                        ? "border-natalo-600 bg-natalo-50 text-natalo-800"
+                        : "border-slate-200 bg-white text-slate-700"
+                    }`}
+                  >
+                    <span>
+                      <span className="block text-sm font-black">{code}</span>
+                      <span className="text-xs font-semibold text-slate-500">{itemName(item)}</span>
+                    </span>
+                    {selectedCode && <FiCheck aria-hidden="true" />}
+                  </button>
+                );
+              })}
+              <Field
+                label="Kode Pos Manual"
+                name="manualPostalCode"
+                value={manualPostalCode}
+                onChange={(event) => setManualPostalCode(event.target.value)}
+                type="tel"
+              />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {items.map((item) => (
+                <button
+                  key={itemId(item)}
+                  type="button"
+                  onClick={() => choose(item)}
+                  className="block w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left text-sm font-black text-slate-800 transition hover:border-natalo-200 hover:bg-natalo-50"
+                >
+                  {itemName(item)}
+                </button>
+              ))}
+              {items.length === 0 && (
+                <p className="rounded-2xl bg-slate-50 px-4 py-5 text-center text-sm font-bold text-slate-500">
+                  Data belum tersedia. Coba isi manual lewat kode pos.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-slate-100 px-4 py-3 [padding-bottom:calc(12px+env(safe-area-inset-bottom))]">
+          <button
+            type="button"
+            disabled={!canApply}
+            onClick={apply}
+            className="h-12 w-full rounded-2xl bg-natalo-600 text-sm font-black text-white transition hover:bg-natalo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            Gunakan Wilayah
+          </button>
+        </div>
+      </section>
     </div>
   );
 }
 
-function MapPreview({ lat, lng, onPinMove }) {
-  const mapContainerRef = useRef(null);
-  const mapRef = useRef(null);
-  const markerRef = useRef(null);
-  const geocoderRef = useRef(null);
+function StreetAutocomplete({ initialQuery, onBack, onManual, onSelect }) {
+  const inputRef = useRef(null);
+  const debounceRef = useRef(null);
+  const [query, setQuery] = useState(initialQuery || "");
+  const [suggestions, setSuggestions] = useState([]);
+  const [status, setStatus] = useState("");
+  const [userLocation, setUserLocation] = useState(null);
 
   useEffect(() => {
-    let cancelled = false;
-    loadGoogleMaps()
-      .then((maps) => {
-        if (cancelled || !mapContainerRef.current) return;
-        const position = { lat, lng };
-        mapRef.current = new maps.Map(mapContainerRef.current, {
-          center: position,
-          zoom: 17,
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: false,
+    window.setTimeout(() => inputRef.current?.focus(), 50);
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setUserLocation({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
         });
-        markerRef.current = new maps.Marker({
-          position,
-          map: mapRef.current,
-          draggable: true,
-          title: "Geser untuk koreksi lokasi",
-        });
-        geocoderRef.current = new maps.Geocoder();
-
-        function updateFromPosition(nextLat, nextLng) {
-          geocoderRef.current.geocode({ location: { lat: nextLat, lng: nextLng } }, (results, status) => {
-            const formatted = status === "OK" && results?.[0] ? results[0].formatted_address : "";
-            onPinMove(nextLat, nextLng, formatted);
-          });
-        }
-
-        markerRef.current.addListener("dragend", () => {
-          const next = markerRef.current.getPosition();
-          updateFromPosition(next.lat(), next.lng());
-        });
-
-        mapRef.current.addListener("click", (event) => {
-          const nextLat = event.latLng.lat();
-          const nextLng = event.latLng.lng();
-          markerRef.current.setPosition({ lat: nextLat, lng: nextLng });
-          updateFromPosition(nextLat, nextLng);
-        });
-      })
-      .catch(() => {});
-
-    return () => {
-      cancelled = true;
-    };
+      },
+      () => setUserLocation(null),
+      { enableHighAccuracy: true, timeout: 6000, maximumAge: 60000 }
+    );
   }, []);
 
   useEffect(() => {
-    if (!mapRef.current || !markerRef.current) return;
-    const nextPosition = { lat, lng };
-    markerRef.current.setPosition(nextPosition);
-    mapRef.current.panTo(nextPosition);
-  }, [lat, lng]);
+    window.clearTimeout(debounceRef.current);
+    const input = query.trim();
+    if (input.length < 3) {
+      setSuggestions([]);
+      setStatus(input ? "Ketik minimal 3 huruf." : "");
+      return;
+    }
+
+    debounceRef.current = window.setTimeout(async () => {
+      setStatus("Mencari alamat...");
+      try {
+        const response = await fetch("/api/places/autocomplete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            input,
+            location: userLocation ? `${userLocation.lat},${userLocation.lng}` : undefined,
+            radius: 2000,
+            components: "country:id",
+          }),
+        });
+        const data = await response.json();
+        const next = Array.isArray(data.predictions) ? data.predictions : [];
+        setSuggestions(next);
+        setStatus(next.length === 0 ? "Alamat belum ditemukan. Kamu tetap bisa isi manual." : "");
+      } catch {
+        setSuggestions([]);
+        setStatus("Autocomplete belum bisa dipakai. Kamu tetap bisa isi manual.");
+      }
+    }, 300);
+
+    return () => window.clearTimeout(debounceRef.current);
+  }, [query, userLocation]);
+
+  async function selectPrediction(prediction) {
+    setStatus("Membuka peta...");
+    try {
+      const response = await fetch("/api/places/details", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ placeId: prediction.place_id }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Alamat belum bisa dibuka.");
+      onSelect({
+        prediction,
+        address: data.address,
+      });
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Alamat belum bisa dibuka.");
+    }
+  }
 
   return (
-    <div
-      ref={mapContainerRef}
-      className="h-72 w-full rounded-xl border border-zinc-200 bg-zinc-100"
-      style={{ minHeight: "288px" }}
-    />
+    <section className="fixed inset-0 z-[2000] bg-slate-50">
+      <div className="mx-auto flex h-dvh max-w-md flex-col bg-slate-50">
+        <div className="border-b border-slate-200 bg-white px-4 pb-3 pt-[calc(12px+env(safe-area-inset-top))]">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onBack}
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-slate-200 text-slate-700"
+            >
+              <FiArrowLeft aria-hidden="true" />
+            </button>
+            <div className="relative flex-1">
+              <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+              <input
+                ref={inputRef}
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Cari nama tempat atau jalan"
+                className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm font-bold text-slate-900 outline-none focus:border-natalo-500 focus:ring-4 focus:ring-natalo-100"
+              />
+            </div>
+          </div>
+          {status && <p className="mt-2 px-1 text-xs font-bold text-slate-500">{status}</p>}
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-4 py-4">
+          <div className="space-y-2">
+            {suggestions.map((item) => (
+              <button
+                key={item.place_id}
+                type="button"
+                onClick={() => selectPrediction(item)}
+                className="flex w-full gap-3 rounded-3xl border border-slate-100 bg-white p-4 text-left shadow-sm transition hover:border-natalo-200"
+              >
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-natalo-50 text-natalo-700">
+                  <FiMapPin aria-hidden="true" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-black text-slate-950">
+                    {item.structured_formatting?.main_text || item.description}
+                  </span>
+                  <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500">
+                    {item.structured_formatting?.secondary_text || item.description}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => onManual(query)}
+            className="mt-4 w-full rounded-2xl border border-natalo-200 bg-white px-4 py-3 text-sm font-black text-natalo-700"
+          >
+            Isi nama jalan manual
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MapConfirm({ selectedPlace, onBack, onApply }) {
+  const initial = selectedPlace?.address ?? {};
+  const initialPosition =
+    hasUsablePinpoint(initial.lat, initial.lng) ? { lat: initial.lat, lng: initial.lng } : fallbackCenter;
+  const [position, setPosition] = useState(initialPosition);
+  const [address, setAddress] = useState(initial);
+  const [status, setStatus] = useState("");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const reverseTimer = useRef(null);
+  const { isLoaded, loadError } = useJsApiLoader({
+    id: "google-maps-address-confirm",
+    googleMapsApiKey: GOOGLE_API_KEY,
+    libraries: googleLibraries,
+  });
+
+  function reverseGeocode(nextPosition) {
+    window.clearTimeout(reverseTimer.current);
+    reverseTimer.current = window.setTimeout(async () => {
+      setStatus("Membaca alamat dari pin...");
+      try {
+        const response = await fetch("/api/places/reverse-geocode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lat: nextPosition.lat, lng: nextPosition.lng }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Alamat belum bisa dibaca.");
+        setAddress((current) => ({
+          ...current,
+          ...data.address,
+          lat: nextPosition.lat,
+          lng: nextPosition.lng,
+        }));
+        setStatus("");
+      } catch (error) {
+        setAddress((current) => ({ ...current, lat: nextPosition.lat, lng: nextPosition.lng }));
+        setStatus(error instanceof Error ? error.message : "Alamat belum bisa dibaca.");
+      }
+    }, 350);
+  }
+
+  function moveToCurrentLocation() {
+    if (!navigator.geolocation) {
+      setStatus("GPS tidak tersedia di perangkat ini.");
+      return;
+    }
+    setStatus("Mendeteksi lokasi...");
+    navigator.geolocation.getCurrentPosition(
+      (location) => {
+        const next = { lat: location.coords.latitude, lng: location.coords.longitude };
+        setPosition(next);
+        reverseGeocode(next);
+      },
+      () => setStatus("GPS ditolak. Kamu tetap bisa geser pin di peta."),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+    );
+  }
+
+  function confirm() {
+    onApply({
+      jalan: address.jalan || selectedPlace?.prediction?.structured_formatting?.main_text || "",
+      provinsi: address.provinsi || "",
+      kota: address.kota || "",
+      kecamatan: address.kecamatan || "",
+      kodePos: address.kodePos || "",
+      lat: position.lat,
+      lng: position.lng,
+      pinpointAddress: address.formattedAddress || "",
+    });
+  }
+
+  return (
+    <section className="fixed inset-0 z-[2050] bg-white">
+      <div className="relative mx-auto h-dvh max-w-md overflow-hidden bg-slate-100">
+        <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-4 pt-[calc(12px+env(safe-area-inset-top))]">
+          <button
+            type="button"
+            onClick={onBack}
+            className="grid h-11 w-11 place-items-center rounded-full bg-white text-slate-700 shadow-lg"
+          >
+            <FiArrowLeft aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={moveToCurrentLocation}
+            className="grid h-11 w-11 place-items-center rounded-full bg-white text-natalo-700 shadow-lg"
+          >
+            <FiNavigation aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="h-full bg-slate-200">
+          {isLoaded && !loadError ? (
+            <GoogleMap
+              mapContainerClassName="h-full w-full"
+              center={position}
+              zoom={17}
+              options={{
+                disableDefaultUI: true,
+                clickableIcons: false,
+                gestureHandling: "greedy",
+              }}
+            >
+              <Marker
+                position={position}
+                draggable
+                onDragEnd={(event) => {
+                  const next = { lat: event.latLng.lat(), lng: event.latLng.lng() };
+                  setPosition(next);
+                  reverseGeocode(next);
+                }}
+              />
+            </GoogleMap>
+          ) : (
+            <div className="flex h-full items-center justify-center px-8 text-center text-sm font-bold text-slate-500">
+              {GOOGLE_API_KEY ? "Memuat Google Maps..." : "Google Maps key belum tersedia. Koordinat tetap bisa disimpan."}
+            </div>
+          )}
+        </div>
+
+        <div className="absolute inset-x-4 bottom-[calc(16px+env(safe-area-inset-bottom))] z-20 rounded-3xl border border-slate-100 bg-white p-4 shadow-2xl">
+          <p className="text-xs font-black uppercase tracking-wide text-natalo-700">Alamat terpilih</p>
+          <p className="mt-1 text-base font-black text-slate-950">
+            {address.jalan || "Geser pin ke titik alamat"}
+          </p>
+          <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-500">
+            {[address.kecamatan, address.kota, address.provinsi, address.kodePos].filter(Boolean).join(", ") ||
+              address.formattedAddress ||
+              "Alamat akan terbaca setelah pin digeser."}
+          </p>
+          <p className="mt-2 font-mono text-[11px] text-slate-500">
+            {position.lat.toFixed(6)}, {position.lng.toFixed(6)}
+          </p>
+          {status && <p className="mt-2 text-xs font-bold text-amber-600">{status}</p>}
+          <button
+            type="button"
+            onClick={() => setDialogOpen(true)}
+            className="mt-4 h-12 w-full rounded-2xl bg-natalo-600 text-sm font-black text-white shadow-sm transition hover:bg-natalo-700"
+          >
+            Konfirmasi
+          </button>
+        </div>
+
+        {dialogOpen && (
+          <div className="absolute inset-0 z-30 grid place-items-center bg-slate-950/40 px-5">
+            <div className="w-full rounded-3xl bg-white p-5 shadow-2xl">
+              <h2 className="text-lg font-black text-slate-950">Mohon konfirmasi lokasimu sesuai peta.</h2>
+              <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">
+                Lokasi peta harus cocok dengan alamat agar pengiriman berhasil.
+              </p>
+              <div className="mt-5 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDialogOpen(false)}
+                  className="h-12 rounded-2xl border border-slate-200 text-sm font-black text-slate-700"
+                >
+                  Ubah
+                </button>
+                <button
+                  type="button"
+                  onClick={confirm}
+                  className="h-12 rounded-2xl bg-natalo-600 text-sm font-black text-white"
+                >
+                  Konfirmasi
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function MiniMapPreview({ lat, lng, address }) {
+  const { isLoaded } = useJsApiLoader({
+    id: "google-maps-address-confirm",
+    googleMapsApiKey: GOOGLE_API_KEY,
+    libraries: googleLibraries,
+  });
+
+  return (
+    <section className="overflow-hidden rounded-3xl border border-natalo-100 bg-white shadow-sm">
+      <div className="h-40 bg-slate-100">
+        {isLoaded && GOOGLE_API_KEY ? (
+          <GoogleMap
+            mapContainerClassName="h-full w-full"
+            center={{ lat, lng }}
+            zoom={16}
+            options={{ disableDefaultUI: true, clickableIcons: false }}
+          >
+            <Marker position={{ lat, lng }} />
+          </GoogleMap>
+        ) : (
+          <div className="flex h-full items-center justify-center text-sm font-bold text-slate-500">
+            Preview lokasi tersimpan
+          </div>
+        )}
+      </div>
+      <div className="p-4">
+        <p className="text-sm font-black text-slate-950">Lokasi sudah dikonfirmasi</p>
+        <p className="mt-1 line-clamp-2 text-xs font-semibold text-slate-500">{address}</p>
+      </div>
+    </section>
   );
 }
 
 export default function FormAlamat({ mode = "create", initialAddress = null }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  // Allow callers (e.g. /checkout) to specify where to return after save/cancel
-  // via ?return=/some/path. Restrict to internal paths only for safety.
-  const rawReturn = searchParams.get("return") || "";
-  const returnUrl =
-    rawReturn.startsWith("/") && !rawReturn.startsWith("//")
-      ? rawReturn
-      : "/akun/alamat";
+  const returnUrl = safeInternalPath(searchParams.get("return") || "", "/akun/alamat");
   const source = searchParams.get("source") || "profile";
-  const rawCheckoutReturn = searchParams.get("checkoutReturn") || "";
-  const checkoutReturnUrl =
-    rawCheckoutReturn.startsWith("/checkout") && !rawCheckoutReturn.startsWith("//")
-      ? rawCheckoutReturn
-      : "/checkout";
+  const checkoutReturnUrl = safeInternalPath(searchParams.get("checkoutReturn") || "", "/checkout");
   const isCheckoutFlow = source === "checkout";
+  const [screen, setScreen] = useState("form");
+  const [selectedPlace, setSelectedPlace] = useState(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
-  const initialLatitude = normalizeInitialCoordinate(initialAddress?.latitude);
-  const initialLongitude = normalizeInitialCoordinate(initialAddress?.longitude);
-  const initialHasPinpoint = hasUsablePinpoint(initialLatitude, initialLongitude);
+  const [submitError, setSubmitError] = useState("");
+  const [touched, setTouched] = useState({});
+  const [form, setForm] = useState(() => mapInitialAddress(initialAddress));
 
-  const [form, setForm] = useState({
-    recipient: initialAddress?.recipient ?? "",
-    phone: initialAddress?.phone ?? "",
-    address: initialAddress?.address ?? "",
-    city: initialAddress?.city ?? "",
-    postalCode: initialAddress?.postalCode ?? "",
-    areaId: initialAddress?.areaId ?? "",
-    areaLabel: initialAddress?.areaLabel ?? "",
-    provinceName: initialAddress?.provinceName ?? "",
-    cityName: initialAddress?.cityName ?? "",
-    districtName: initialAddress?.districtName ?? "",
-    label: initialAddress?.label ?? "Rumah",
-    isMain: Boolean(initialAddress?.isMain),
-    latitude: initialHasPinpoint ? initialLatitude : null,
-    longitude: initialHasPinpoint ? initialLongitude : null,
-    pinpointAddress: initialHasPinpoint ? initialAddress?.pinpointAddress ?? "" : "",
-    streetName: initialAddress?.streetName ?? "",
-  });
+  const errors = useMemo(() => validateField("all", "", form), [form]);
+  const visibleErrors = Object.fromEntries(
+    Object.entries(errors).filter(([field]) => touched[field] || touched.submit)
+  );
+  const isValid = Object.keys(errors).length === 0;
+  const hasPinpoint = hasUsablePinpoint(form.lat, form.lng);
 
-  const [provinsi, setProvinsi] = useState([]);
-  const [kota, setKota] = useState([]);
-  const [kecamatan, setKecamatan] = useState([]);
-  const [kelurahan, setKelurahan] = useState([]);
-
-  const [selectedProvinsi, setSelectedProvinsi] = useState("");
-  const [selectedKota, setSelectedKota] = useState("");
-  const [selectedKecamatan, setSelectedKecamatan] = useState("");
-  const [selectedKelurahan, setSelectedKelurahan] = useState("");
-
-  const [loadingProvinsi, setLoadingProvinsi] = useState(true);
-  const [loadingKota, setLoadingKota] = useState(false);
-  const [loadingKecamatan, setLoadingKecamatan] = useState(false);
-  const [loadingKelurahan, setLoadingKelurahan] = useState(false);
-  const [fieldErrors, setFieldErrors] = useState({});
-
-  function updateForm(field, value) {
+  function update(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
-    setFieldErrors((current) => {
-      if (!current[field]) return current;
-      const next = { ...current };
-      delete next[field];
-      return next;
-    });
   }
 
-  const selectedShippingArea = useMemo(() => {
-    if (!form.areaId) return null;
-    return {
-      area_id: form.areaId,
-      label: form.areaLabel || `${form.districtName || form.city}, ${form.city}. ${form.postalCode}`,
-      province_name: form.provinceName,
-      city_name: form.cityName || form.city,
-      district_name: form.districtName,
-      postal_code: form.postalCode,
-    };
-  }, [form.areaId, form.areaLabel, form.provinceName, form.cityName, form.city, form.districtName, form.postalCode]);
-
-  function selectShippingArea(area) {
-    setForm((current) => ({
-      ...current,
-      areaId: area.area_id,
-      areaLabel: area.label,
-      provinceName: area.province_name,
-      cityName: area.city_name,
-      districtName: area.district_name,
-      city: area.city_name,
-      postalCode: area.postal_code,
-    }));
-    setFieldErrors((current) => {
-      const next = { ...current };
-      delete next.areaId;
-      delete next.postalCode;
-      return next;
-    });
+  function blur(field) {
+    setTouched((current) => ({ ...current, [field]: true }));
   }
 
-  function clearShippingArea() {
+  function applySmartPaste(parsed) {
     setForm((current) => ({
       ...current,
-      areaId: "",
-      areaLabel: "",
-      provinceName: "",
-      cityName: "",
-      districtName: "",
-      city: "",
-      postalCode: "",
+      nama: parsed.nama || current.nama,
+      phone: parsed.phone || current.phone,
+      jalan: parsed.jalan || current.jalan,
     }));
   }
 
-  useEffect(() => {
-    let active = true;
-    setLoadingProvinsi(true);
-    fetchWilayah("provinces.json")
-      .then((items) => {
-        if (active) setProvinsi(items);
-      })
-      .catch((err) => {
-        if (active) setError(err instanceof Error ? err.message : "Gagal memuat provinsi.");
-      })
-      .finally(() => {
-        if (active) setLoadingProvinsi(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    setSelectedKota("");
-    setSelectedKecamatan("");
-    setSelectedKelurahan("");
-    setKota([]);
-    setKecamatan([]);
-    setKelurahan([]);
-
-    if (!selectedProvinsi) return;
-
-    let active = true;
-    setLoadingKota(true);
-    fetchWilayah(`regencies/${selectedProvinsi}.json`)
-      .then((items) => {
-        if (active) setKota(items);
-      })
-      .catch((err) => {
-        if (active) setError(err instanceof Error ? err.message : "Gagal memuat kota/kabupaten.");
-      })
-      .finally(() => {
-        if (active) setLoadingKota(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [selectedProvinsi]);
-
-  useEffect(() => {
-    setSelectedKecamatan("");
-    setSelectedKelurahan("");
-    setKecamatan([]);
-    setKelurahan([]);
-
-    if (!selectedKota) return;
-
-    let active = true;
-    setLoadingKecamatan(true);
-    fetchWilayah(`districts/${selectedKota}.json`)
-      .then((items) => {
-        if (active) setKecamatan(items);
-      })
-      .catch((err) => {
-        if (active) setError(err instanceof Error ? err.message : "Gagal memuat kecamatan.");
-      })
-      .finally(() => {
-        if (active) setLoadingKecamatan(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [selectedKota]);
-
-  useEffect(() => {
-    setSelectedKelurahan("");
-    setKelurahan([]);
-
-    if (!selectedKecamatan) return;
-
-    let active = true;
-    setLoadingKelurahan(true);
-    fetchWilayah(`villages/${selectedKecamatan}.json`)
-      .then((items) => {
-        if (active) setKelurahan(items);
-      })
-      .catch((err) => {
-        if (active) setError(err instanceof Error ? err.message : "Gagal memuat kelurahan.");
-      })
-      .finally(() => {
-        if (active) setLoadingKelurahan(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [selectedKecamatan]);
-
-  const selectedNames = useMemo(() => {
-    const province = provinsi.find((item) => getRegionCode(item) === selectedProvinsi);
-    const regency = kota.find((item) => getRegionCode(item) === selectedKota);
-    const district = kecamatan.find((item) => getRegionCode(item) === selectedKecamatan);
-    const village = kelurahan.find((item) => getRegionCode(item) === selectedKelurahan);
-    return {
-      province: getRegionName(province),
-      regency: getRegionName(regency),
-      district: getRegionName(district),
-      village: getRegionName(village),
-      postalCode: getPostalCode(village),
-    };
-  }, [provinsi, kota, kecamatan, kelurahan, selectedProvinsi, selectedKota, selectedKecamatan, selectedKelurahan]);
-
-  useEffect(() => {
-    if (!selectedKelurahan) return;
-    const parts = [
-      selectedNames.village,
-      selectedNames.district,
-      selectedNames.regency,
-      selectedNames.province,
-    ].filter(Boolean);
-
+  function applyMapResult(result) {
     setForm((current) => ({
       ...current,
-      city: parts.join(", "),
-      postalCode: selectedNames.postalCode || current.postalCode,
+      jalan: result.jalan || current.jalan,
+      provinsi: result.provinsi || current.provinsi,
+      kota: result.kota || current.kota,
+      kecamatan: result.kecamatan || current.kecamatan,
+      kodePos: result.kodePos || current.kodePos,
+      lat: result.lat,
+      lng: result.lng,
+      pinpointAddress: result.pinpointAddress || current.pinpointAddress,
     }));
-  }, [selectedKelurahan, selectedNames]);
-
-  useEffect(() => {
-    if (!selectedKelurahan || form.postalCode) return;
-    const query = [selectedNames.village, selectedNames.regency].filter(Boolean).join(" ");
-    if (!query) return;
-
-    let active = true;
-    fetch(`${KODEPOS_API}?q=${encodeURIComponent(query)}`)
-      .then((response) => response.json())
-      .then((payload) => {
-        const code = payload?.data?.[0]?.code;
-        if (active && code) updateForm("postalCode", String(code));
-      })
-      .catch(() => {});
-
-    return () => {
-      active = false;
-    };
-  }, [selectedKelurahan, selectedNames, form.postalCode]);
-
-  const addressContext = useMemo(
-    () =>
-      form.areaLabel ||
-      [
-        selectedNames.village,
-        selectedNames.district,
-        selectedNames.regency,
-        selectedNames.province,
-      ]
-        .filter(Boolean)
-        .join(", "),
-    [form.areaLabel, selectedNames]
-  );
-  const pinpointSearchHint = useMemo(
-    () => [form.address, addressContext || form.city].filter(Boolean).join(", "),
-    [addressContext, form.address, form.city]
-  );
-  const hasPinpoint = hasUsablePinpoint(form.latitude, form.longitude);
-
-  const requiredComplete = useMemo(() => {
-    return Boolean(
-      form.recipient.trim() &&
-        form.phone.trim() &&
-        form.address.trim() &&
-        form.postalCode.trim() &&
-        form.areaId.trim()
-    );
-  }, [
-    form.recipient,
-    form.phone,
-    form.address,
-    form.postalCode,
-    form.areaId,
-  ]);
-
-  function validateForm() {
-    const nextErrors = {};
-
-    if (!form.recipient.trim()) nextErrors.recipient = "Nama penerima wajib diisi.";
-    if (!form.phone.trim()) nextErrors.phone = "No. HP penerima wajib diisi.";
-    if (!form.address.trim()) nextErrors.address = "Alamat lengkap wajib diisi.";
-    if (!form.areaId.trim()) nextErrors.areaId = "Mohon pilih kota/kecamatan dari daftar alamat.";
-    if (!form.postalCode.trim()) nextErrors.postalCode = "Kode pos wajib diisi.";
-
-    setFieldErrors(nextErrors);
-    return Object.keys(nextErrors).length === 0;
+    setTouched((current) => ({
+      ...current,
+      jalan: true,
+      provinsi: true,
+      kota: true,
+      kecamatan: true,
+      kodePos: true,
+    }));
+    setScreen("form");
   }
 
   async function handleSubmit(event) {
     event.preventDefault();
-    setError("");
-    if (!validateForm()) return;
+    setSubmitError("");
+    setTouched((current) => ({ ...current, submit: true }));
+    if (!isValid) return;
     setSubmitting(true);
 
-    const latitude = form.latitude === null || form.latitude === "" ? null : Number(form.latitude);
-    const longitude = form.longitude === null || form.longitude === "" ? null : Number(form.longitude);
-
     const payload = {
-      ...form,
-      latitude: Number.isFinite(latitude) ? latitude : null,
-      longitude: Number.isFinite(longitude) ? longitude : null,
-      pinpointAddress: String(form.pinpointAddress || "").trim() || null,
-      streetName: String(form.streetName || "").trim() || null,
+      recipient: form.nama,
+      nama: form.nama,
+      phone: form.phone,
+      address: form.jalan,
+      jalan: form.jalan,
+      detail: form.detail,
+      streetName: form.detail,
+      provinceName: form.provinsi,
+      provinsi: form.provinsi,
+      cityName: form.kota,
+      city: form.kota,
+      kota: form.kota,
+      districtName: form.kecamatan,
+      kecamatan: form.kecamatan,
+      postalCode: form.kodePos,
+      kodePos: form.kodePos,
+      latitude: form.lat,
+      longitude: form.lng,
+      lat: form.lat,
+      lng: form.lng,
+      pinpointAddress: form.pinpointAddress,
+      isMain: form.isUtama,
+      isUtama: form.isUtama,
+      label: form.label || null,
+      areaId: form.areaId,
+      areaLabel: form.areaLabel,
     };
 
-    const target = mode === "edit" ? `/api/alamat/${initialAddress.id}` : "/api/alamat";
-    const method = mode === "edit" ? "PUT" : "POST";
-
     try {
+      const target = mode === "edit" ? `/api/alamat/${initialAddress.id}` : "/api/alamat";
       const response = await fetch(target, {
-        method,
+        method: mode === "edit" ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Gagal menyimpan alamat.");
+      if (!response.ok) throw new Error(data.error || "Gagal menyimpan alamat.");
       if (isCheckoutFlow && data?.address?.id) {
         sessionStorage.setItem(CHECKOUT_SELECTED_ADDRESS_KEY, data.address.id);
         sessionStorage.setItem(CHECKOUT_ADDRESS_FORCE_APPLY_KEY, "1");
@@ -803,203 +949,188 @@ export default function FormAlamat({ mode = "create", initialAddress = null }) {
         router.push(returnUrl);
       }
       router.refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal menyimpan alamat.");
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Gagal menyimpan alamat.");
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      {error && (
-        <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
-          {error}
-        </div>
-      )}
-
-      <Field
-        label="Nama Penerima"
-        name="recipient"
-        value={form.recipient}
-        onChange={(event) => updateForm("recipient", event.target.value)}
-        placeholder="Nama penerima paket"
-        error={fieldErrors.recipient}
-      />
-
-      <Field
-        label="No. HP Penerima"
-        name="phone"
-        type="tel"
-        value={form.phone}
-        onChange={(event) => updateForm("phone", event.target.value)}
-        placeholder="Contoh: 081234567890"
-        error={fieldErrors.phone}
-      />
-
-      <Field label="Alamat Lengkap" name="address" error={fieldErrors.address}>
-        <textarea
-          name="address"
-          required
-          rows={3}
-          value={form.address}
-          onChange={(event) => updateForm("address", event.target.value)}
-          placeholder="Nama jalan, nomor rumah, RT/RW"
-          className={`${INPUT_CLASS} min-h-[112px] resize-y`}
-        />
-      </Field>
-
-      <Field label="Detail Alamat / Patokan" name="streetName" required={false}>
-        <input
-          name="streetName"
-          type="text"
-          value={form.streetName}
-          onChange={(event) => updateForm("streetName", event.target.value)}
-          placeholder="Contoh: rumah pagar hitam, dekat Indomaret, blok/unit/lantai"
-          className={INPUT_CLASS}
-        />
-      </Field>
-
-      {initialAddress?.city && mode === "edit" && !initialAddress?.areaId && (
-        <div className="rounded-2xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
-          Wilayah tersimpan: <span className="font-semibold">{initialAddress.city}</span>
-          <p className="mt-1 text-xs text-zinc-500">
-            Alamat lama perlu pilih ulang kota/kecamatan dari daftar Biteship agar ongkir valid.
-          </p>
-        </div>
-      )}
-
-      <BiteshipAreaCombobox
-        selectedArea={selectedShippingArea}
-        onSelect={selectShippingArea}
-        onClear={clearShippingArea}
-        label="Kota / Kecamatan"
-        error={fieldErrors.areaId}
-        help="Pilih hasil dari Biteship agar kode pos dan kecamatan cocok dengan sistem ongkir."
-      />
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
-          <p className="text-xs font-bold text-zinc-500">Kota / Kabupaten</p>
-          <p className="mt-1 text-sm font-black text-zinc-900">
-            {form.city || "Belum dipilih"}
-          </p>
-        </div>
-        <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
-          <p className="text-xs font-bold text-zinc-500">Kode pos</p>
-          <p className="mt-1 text-sm font-black text-zinc-900">
-            {form.postalCode || "Belum dipilih"}
-          </p>
-          {fieldErrors.postalCode && (
-            <p className="mt-1 text-xs font-semibold text-red-500">{fieldErrors.postalCode}</p>
-          )}
-        </div>
-      </div>
-
-      <input type="hidden" name="city" value={form.city} />
-      <input type="hidden" name="areaId" value={form.areaId} />
-      <input type="hidden" name="areaLabel" value={form.areaLabel} />
-      <input type="hidden" name="latitude" value={form.latitude ?? ""} />
-      <input type="hidden" name="longitude" value={form.longitude ?? ""} />
-      <input type="hidden" name="pinpointAddress" value={form.pinpointAddress ?? ""} />
-
-      <div>
-        <p className="text-sm font-bold text-zinc-800">Label Alamat</p>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {LABELS.map((label) => {
-            const selected = form.label === label;
-            return (
-              <button
-                key={label}
-                type="button"
-                onClick={() => updateForm("label", label)}
-                className={`rounded-full border px-4 py-2 text-sm font-bold transition ${
-                  selected
-                    ? "border-natalo-600 bg-natalo-50 text-natalo-700"
-                    : "border-zinc-200 bg-white text-zinc-600 hover:border-natalo-300"
-                }`}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-sm font-black text-zinc-900">Pinpoint Lokasi Pengiriman</p>
-            <p className="mt-1 text-xs font-semibold text-zinc-500">
-              Cari alamat, gunakan lokasi saat ini, lalu geser peta sampai titiknya pas.
-            </p>
+    <>
+      <form onSubmit={handleSubmit} className="space-y-5">
+        {submitError && (
+          <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-bold text-red-600">
+            {submitError}
           </div>
-          <span
-            className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-black ${
-              hasPinpoint ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
+        )}
+
+        <SmartPasteBox onApply={applySmartPaste} />
+
+        <div className="grid gap-4">
+          <Field
+            label="Nama Lengkap"
+            name="nama"
+            value={form.nama}
+            onChange={(event) => update("nama", event.target.value)}
+            onBlur={() => blur("nama")}
+            error={visibleErrors.nama}
+          />
+          <Field
+            label="Nomor Telepon"
+            name="phone"
+            type="tel"
+            value={form.phone}
+            onChange={(event) => update("phone", event.target.value)}
+            onBlur={() => blur("phone")}
+            error={visibleErrors.phone}
+          />
+
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            className={`rounded-3xl border bg-white p-4 text-left shadow-sm transition ${
+              visibleErrors.provinsi || visibleErrors.kota || visibleErrors.kecamatan || visibleErrors.kodePos
+                ? "border-red-200"
+                : "border-slate-100 hover:border-natalo-200"
             }`}
           >
-            {hasPinpoint ? "Tersimpan" : "Disarankan"}
-          </span>
-        </div>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-wide text-slate-500">Wilayah Pengiriman</p>
+                <p className="mt-1 text-sm font-black text-slate-950">
+                  {[form.kecamatan, form.kota, form.provinsi].filter(Boolean).join(", ") || "Pilih wilayah"}
+                </p>
+                <p className="mt-1 text-xs font-semibold text-slate-500">
+                  {form.kodePos ? `Kode Pos ${form.kodePos}` : "Provinsi, Kota / Kabupaten, Kecamatan, Kode Pos"}
+                </p>
+              </div>
+              <FiChevronDown className="shrink-0 text-slate-400" aria-hidden="true" />
+            </div>
+          </button>
+          {(visibleErrors.provinsi ||
+            visibleErrors.kota ||
+            visibleErrors.kecamatan ||
+            visibleErrors.kodePos) && (
+            <p className="-mt-3 text-xs font-bold text-red-500">
+              {visibleErrors.provinsi || visibleErrors.kota || visibleErrors.kecamatan || visibleErrors.kodePos}
+            </p>
+          )}
 
-        <div className="mt-4">
-          <AddressPinpointPicker
-            defaultLatitude={form.latitude}
-            defaultLongitude={form.longitude}
-            defaultAddress={form.pinpointAddress}
-            searchHint={pinpointSearchHint}
-            onChange={(value) => {
-              setForm((current) => ({
-                ...current,
-                latitude: value.latitude,
-                longitude: value.longitude,
-                pinpointAddress: value.pinpointAddress ?? "",
-              }));
-            }}
+          <button
+            type="button"
+            onClick={() => setScreen("autocomplete")}
+            onBlur={() => blur("jalan")}
+            className={`rounded-3xl border bg-white p-4 text-left shadow-sm transition ${
+              visibleErrors.jalan ? "border-red-200" : "border-slate-100 hover:border-natalo-200"
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-natalo-50 text-natalo-700">
+                <FiMapPin aria-hidden="true" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="text-xs font-black uppercase tracking-wide text-slate-500">Nama Jalan</span>
+                <span className={`mt-1 block text-sm font-black ${form.jalan ? "text-slate-950" : "text-slate-400"}`}>
+                  {form.jalan || "Cari nama tempat atau jalan"}
+                </span>
+                <span className="mt-1 block text-xs font-semibold text-slate-500">
+                  Autocomplete akan membuka konfirmasi peta.
+                </span>
+              </span>
+            </div>
+          </button>
+          {visibleErrors.jalan && <p className="-mt-3 text-xs font-bold text-red-500">{visibleErrors.jalan}</p>}
+
+          <Field
+            label="Detail Lainnya / Patokan"
+            name="detail"
+            value={form.detail}
+            as="textarea"
+            onChange={(event) => update("detail", event.target.value)}
+            onBlur={() => blur("detail")}
           />
         </div>
 
-        {!hasPinpoint && (
-          <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
-            Pinpoint membantu kurir menemukan rumah/toko lebih akurat, terutama untuk instant courier.
-          </p>
+        {hasPinpoint && (
+          <MiniMapPreview
+            lat={form.lat}
+            lng={form.lng}
+            address={form.pinpointAddress || [form.jalan, form.kecamatan, form.kota].filter(Boolean).join(", ")}
+          />
         )}
-      </div>
 
-      <label className="flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-zinc-200 bg-white px-4 py-3">
-        <span>
-          <span className="block text-sm font-black text-zinc-900">Jadikan Alamat Utama</span>
-          <span className="mt-0.5 block text-xs font-medium text-zinc-500">
-            {isCheckoutFlow
-              ? "Opsional. Tanpa ini, alamat hanya dipilih untuk pesanan checkout saat ini."
-              : "Pakai alamat ini sebagai default saat checkout."}
-          </span>
-        </span>
-        <input
-          type="checkbox"
-          checked={form.isMain}
-          onChange={(event) => updateForm("isMain", event.target.checked)}
-          className="h-5 w-5 rounded border-natalo-300 text-natalo-600 focus:ring-natalo-400"
+        <section className="rounded-3xl border border-slate-100 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-black text-slate-950">Jadikan Alamat Utama</p>
+              <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+                Satu user hanya punya satu alamat utama.
+              </p>
+            </div>
+            <Toggle checked={form.isUtama} onChange={(value) => update("isUtama", value)} />
+          </div>
+        </section>
+
+        <LabelSelector value={form.label} onChange={(value) => update("label", value)} />
+
+        <div className="sticky bottom-0 z-20 -mx-4 border-t border-slate-100 bg-white/95 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0">
+          <button
+            type="submit"
+            disabled={submitting || !isValid}
+            className="h-13 w-full rounded-2xl bg-natalo-600 px-6 py-4 text-sm font-black text-white shadow-sm transition hover:bg-natalo-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
+          >
+            {submitting ? "Menyimpan..." : mode === "edit" ? "Simpan Perubahan" : "Simpan Alamat"}
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push(returnUrl)}
+            className="mt-2 h-12 w-full rounded-2xl px-6 text-sm font-black text-slate-600 transition hover:bg-slate-50"
+          >
+            Batal
+          </button>
+        </div>
+      </form>
+
+      <LocationPicker
+        open={pickerOpen}
+        value={form}
+        onClose={() => setPickerOpen(false)}
+        onApply={(region) => {
+          setForm((current) => ({ ...current, ...region, areaId: "", areaLabel: "" }));
+          setTouched((current) => ({
+            ...current,
+            provinsi: true,
+            kota: true,
+            kecamatan: true,
+            kodePos: true,
+          }));
+        }}
+      />
+
+      {screen === "autocomplete" && (
+        <StreetAutocomplete
+          initialQuery={form.jalan}
+          onBack={() => setScreen("form")}
+          onManual={(jalan) => {
+            update("jalan", jalan);
+            blur("jalan");
+            setScreen("form");
+          }}
+          onSelect={(place) => {
+            setSelectedPlace(place);
+            setScreen("map");
+          }}
         />
-      </label>
+      )}
 
-      <div className="sticky bottom-0 z-20 -mx-4 border-t border-zinc-100 bg-white/95 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0">
-        <button
-          type="submit"
-          disabled={submitting || !requiredComplete}
-          className="w-full rounded-full bg-natalo-600 px-6 py-3.5 text-sm font-black text-white shadow-sm transition hover:bg-natalo-700 disabled:cursor-not-allowed disabled:bg-zinc-300 disabled:text-zinc-500 disabled:shadow-none"
-        >
-          {submitting ? "Menyimpan..." : mode === "edit" ? "Simpan Perubahan" : "Simpan Alamat"}
-        </button>
-        <button
-          type="button"
-          onClick={() => router.push(returnUrl)}
-          className="mt-2 w-full rounded-full px-6 py-3 text-sm font-bold text-zinc-600 transition hover:bg-zinc-50"
-        >
-          Batal
-        </button>
-      </div>
-    </form>
+      {screen === "map" && selectedPlace && (
+        <MapConfirm
+          selectedPlace={selectedPlace}
+          onBack={() => setScreen("autocomplete")}
+          onApply={applyMapResult}
+        />
+      )}
+    </>
   );
 }

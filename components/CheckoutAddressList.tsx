@@ -18,6 +18,9 @@ type CheckoutAddress = {
   postalCode: string | null;
   areaId: string | null;
   areaLabel: string | null;
+  provinceName: string | null;
+  cityName: string | null;
+  districtName: string | null;
   isMain: boolean;
   latitude: number | null;
   longitude: number | null;
@@ -125,7 +128,13 @@ export function CheckoutAddressList({ addresses, returnTo }: Props) {
             addresses.map((address) => {
               const selected = selectedId === address.id;
               const hasPinpoint = hasUsablePinpoint(address.latitude, address.longitude);
-              const hasArea = Boolean(address.areaId);
+              const hasArea = Boolean(
+                address.areaId ||
+                  (address.provinceName &&
+                    address.cityName &&
+                    address.districtName &&
+                    address.postalCode)
+              );
               return (
                 <section
                   key={address.id}

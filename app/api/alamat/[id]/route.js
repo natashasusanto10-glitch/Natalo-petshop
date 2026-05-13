@@ -1,72 +1,17 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
+import {
+  addressDataFromPayload,
+  normalizeAddressPayload,
+  validateAddressPayload,
+} from "@/lib/address-api";
 import { prisma } from "@/lib/prisma";
-
-const PHONE_RE = /^(\+?62|0)8[1-9][0-9]{6,12}$/;
-
-function coordinateOrNull(value) {
-  if (value === null || value === undefined || value === "") return null;
-  if (typeof value === "string" && !value.trim()) return null;
-  const coordinate = Number(value);
-  return Number.isFinite(coordinate) ? coordinate : null;
-}
-
-function normalizePayload(body) {
-  const lat = coordinateOrNull(body.latitude);
-  const lng = coordinateOrNull(body.longitude);
-
-  const cityName = typeof body.city === "object"
-    ? String(body.city?.name ?? "").trim()
-    : String(body.city || "").trim();
-
-  return {
-    label: String(body.label || "Rumah").trim() || "Rumah",
-    recipient: String(body.recipient || body.recipientName || "").trim(),
-    phone: String(body.phone || "").trim(),
-    address: String(body.address || "").trim(),
-    city: cityName,
-    postalCode: String(body.postalCode || "").trim(),
-    areaId: String(body.areaId || body.area_id || "").trim(),
-    areaLabel: String(body.areaLabel || body.area_label || "").trim(),
-    provinceName: String(body.provinceName || body.province_name || "").trim(),
-    cityName: String(body.cityName || body.city_name || "").trim(),
-    districtName: String(body.districtName || body.district_name || "").trim(),
-    isMain: Boolean(body.isMain),
-    latitude: lat,
-    longitude: lng,
-    pinpointAddress: String(body.pinpointAddress || "").trim() || null,
-    streetName: String(body.streetName || "").trim() || null,
-  };
-}
-
-function validateAddress(payload) {
-  if (!payload.recipient || !payload.phone || !payload.address || !payload.postalCode) {
-    return "Semua field wajib diisi.";
-  }
-
-  if (!payload.areaId) {
-    return "Mohon pilih kota/kecamatan dari daftar alamat.";
-  }
-
-  if (!PHONE_RE.test(payload.phone.replace(/\s/g, ""))) {
-    return "No. HP harus format Indonesia, contoh 08123456789 atau +628123456789.";
-  }
-
-  if (payload.latitude !== null && (payload.latitude < -90 || payload.latitude > 90)) {
-    return "Koordinat latitude tidak valid.";
-  }
-  if (payload.longitude !== null && (payload.longitude < -180 || payload.longitude > 180)) {
-    return "Koordinat longitude tidak valid.";
-  }
-
-  return null;
-}
 
 async function getOwnedAddress(id, userId) {
   return prisma.address.findFirst({ where: { id, userId } });
 }
 
-export async function PUT(request, { params }) {
+export async function GET(_request, { params }) {
   const session = await getSession("CUSTOMER");
   if (!session || session.role !== "CUSTOMER") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -76,8 +21,21 @@ export async function PUT(request, { params }) {
   const existing = await getOwnedAddress(id, session.sub);
   if (!existing) return NextResponse.json({ error: "Alamat tidak ditemukan." }, { status: 404 });
 
-  const payload = normalizePayload(await request.json());
-  const validationError = validateAddress(payload);
+  return NextResponse.json({ address: existing });
+}
+
+async function updateAddress(request, { params }) {
+  const session = await getSession("CUSTOMER");
+  if (!session || session.role !== "CUSTOMER") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await params;
+  const existing = await getOwnedAddress(id, session.sub);
+  if (!existing) return NextResponse.json({ error: "Alamat tidak ditemukan." }, { status: 404 });
+
+  const payload = normalizeAddressPayload(await request.json());
+  const validationError = validateAddressPayload(payload);
   if (validationError) {
     return NextResponse.json({ error: validationError }, { status: 400 });
   }
@@ -90,21 +48,7 @@ export async function PUT(request, { params }) {
     return tx.address.update({
       where: { id },
       data: {
-        label: payload.label,
-        recipient: payload.recipient,
-        phone: payload.phone,
-        address: payload.address,
-        city: payload.city || null,
-        postalCode: payload.postalCode,
-        areaId: payload.areaId,
-        areaLabel: payload.areaLabel || payload.city || null,
-        provinceName: payload.provinceName || null,
-        cityName: payload.cityName || payload.city || null,
-        districtName: payload.districtName || null,
-        latitude: payload.latitude,
-        longitude: payload.longitude,
-        pinpointAddress: payload.pinpointAddress,
-        streetName: payload.streetName,
+        ...addressDataFromPayload(payload),
         isMain: payload.isMain || existing.isMain,
       },
     });
@@ -112,6 +56,9 @@ export async function PUT(request, { params }) {
 
   return NextResponse.json({ address });
 }
+
+export const PUT = updateAddress;
+export const PATCH = updateAddress;
 
 export async function DELETE(_request, { params }) {
   const session = await getSession("CUSTOMER");
@@ -128,7 +75,7 @@ export async function DELETE(_request, { params }) {
     if (existing.isMain) {
       const next = await tx.address.findFirst({
         where: { userId: session.sub },
-        orderBy: { createdAt: "asc" },
+        orderBy: { createdAt: "desc" },
       });
       if (next) await tx.address.update({ where: { id: next.id }, data: { isMain: true } });
     }

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import DeleteAlamatButton from "@/components/DeleteAlamatButton";
+import SetPrimaryAddressButton from "@/components/SetPrimaryAddressButton";
 
 export default async function AddressListPage() {
   const session = await getSession("CUSTOMER");
@@ -14,33 +15,36 @@ export default async function AddressListPage() {
   });
 
   return (
-    <main className="min-h-screen bg-zinc-50 px-4 py-8">
-      <div className="mx-auto max-w-4xl">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+    <main className="min-h-screen bg-slate-50 px-4 py-6 pb-24 sm:py-8">
+      <div className="mx-auto max-w-md">
+        <div className="flex items-start justify-between gap-4">
           <div>
             <Link href="/member" className="text-sm font-bold text-natalo-700 hover:text-natalo-800">
               Kembali ke akun
             </Link>
-            <h1 className="mt-2 text-3xl font-black tracking-tight text-zinc-950">Alamat Pengiriman</h1>
-            <p className="mt-1 text-sm text-zinc-500">
-              Simpan maksimal 3 alamat. Kode pos dipakai otomatis untuk cek ongkir.
+            <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950">Daftar Alamat</h1>
+            <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">
+              Kelola alamat pengiriman Natalo Petshop.
             </p>
           </div>
           <Link
             href="/akun/alamat/tambah"
-            className="rounded-full bg-natalo-600 px-5 py-3 text-sm font-black text-white transition hover:bg-natalo-700"
+            className="shrink-0 rounded-2xl bg-natalo-600 px-4 py-3 text-xs font-black text-white shadow-sm transition hover:bg-natalo-700"
           >
-            Tambah alamat
+            Tambah
           </Link>
         </div>
 
-        <div className="mt-8 space-y-4">
+        <div className="mt-6 space-y-3">
           {addresses.length === 0 ? (
-            <section className="rounded-3xl border border-dashed border-zinc-200 bg-white p-10 text-center">
-              <p className="text-sm font-semibold text-zinc-500">Belum ada alamat tersimpan.</p>
+            <section className="rounded-3xl border border-dashed border-slate-200 bg-white p-8 text-center shadow-sm">
+              <p className="text-sm font-black text-slate-700">Belum ada alamat tersimpan.</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">
+                Tambahkan alamat pertama untuk checkout lebih cepat.
+              </p>
               <Link
                 href="/akun/alamat/tambah"
-                className="mt-4 inline-flex rounded-full bg-natalo-600 px-5 py-3 text-sm font-black text-white"
+                className="mt-4 inline-flex rounded-2xl bg-natalo-600 px-5 py-3 text-sm font-black text-white"
               >
                 Tambah alamat pertama
               </Link>
@@ -66,16 +70,23 @@ function hasUsablePinpoint(latitude, longitude) {
 
 function AddressCard({ address }) {
   const hasPinpoint = hasUsablePinpoint(address.latitude, address.longitude);
-  const hasArea = Boolean(address.areaId);
+  const hasArea = Boolean(
+    address.areaId ||
+      (address.provinceName && address.cityName && address.districtName && address.postalCode)
+  );
 
   return (
-    <section className="rounded-3xl border border-zinc-100 bg-white p-5 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+      <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-black text-zinc-950">{address.label}</span>
+            {address.label && (
+              <span className="rounded-full border border-natalo-200 bg-white px-2.5 py-1 text-xs font-black text-natalo-700">
+                {address.label}
+              </span>
+            )}
             {address.isMain && (
-              <span className="rounded-full bg-natalo-100 px-2.5 py-1 text-xs font-black text-natalo-700">
+              <span className="rounded-full bg-natalo-600 px-2.5 py-1 text-xs font-black text-white">
                 Utama
               </span>
             )}
@@ -94,37 +105,43 @@ function AddressCard({ address }) {
               {hasArea ? "Area Biteship OK" : "Perlu pilih area"}
             </span>
           </div>
-          <p className="mt-2 text-sm font-bold text-zinc-800">
+          <p className="mt-3 text-sm font-black text-slate-950">
             {address.recipient} - {address.phone}
           </p>
-          <p className="mt-1 text-sm leading-6 text-zinc-600">{address.address}</p>
-          <p className="mt-1 text-sm text-zinc-500">
-            {[address.areaLabel || address.city].filter(Boolean).join(", ")}
+          <p className="mt-1 text-sm font-semibold leading-6 text-slate-600">{address.address}</p>
+          {address.streetName && (
+            <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">{address.streetName}</p>
+          )}
+          <p className="mt-2 text-sm font-semibold text-slate-500">
+            {[address.districtName, address.cityName || address.city, address.provinceName].filter(Boolean).join(", ")}
             {address.postalCode ? ` ${address.postalCode}` : ""}
           </p>
           {hasPinpoint && address.pinpointAddress && (
-            <p className="mt-1 text-xs text-zinc-400">Pinpoint: {address.pinpointAddress}</p>
+            <p className="mt-2 rounded-2xl bg-natalo-50 px-3 py-2 text-xs font-semibold leading-5 text-natalo-800">
+              Pinpoint: {address.pinpointAddress}
+            </p>
           )}
           {!hasPinpoint && (
-            <p className="mt-2 rounded-2xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+            <p className="mt-2 rounded-2xl bg-amber-50 px-3 py-2 text-xs font-semibold leading-5 text-amber-700">
               Tambahkan pinpoint supaya alamat lebih akurat saat checkout.
             </p>
           )}
           {!hasArea && (
-            <p className="mt-2 rounded-2xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
-              Pilih ulang kota/kecamatan dari daftar Biteship agar ongkir checkout valid.
+            <p className="mt-2 rounded-2xl bg-slate-50 px-3 py-2 text-xs font-semibold leading-5 text-slate-600">
+              Wilayah manual tersimpan. Ongkir checkout tetap akan memakai data wilayah yang tersedia.
             </p>
           )}
         </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
-          <Link
-            href={`/akun/alamat/edit/${address.id}`}
-            className="rounded-full border border-zinc-200 px-4 py-2 text-xs font-black text-zinc-700 transition hover:border-zinc-400"
-          >
-            {hasArea && hasPinpoint ? "Edit" : "Lengkapi Alamat"}
-          </Link>
-          <DeleteAlamatButton id={address.id} />
-        </div>
+      </div>
+      <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
+        <SetPrimaryAddressButton id={address.id} disabled={address.isMain} />
+        <Link
+          href={`/akun/alamat/edit/${address.id}`}
+          className="rounded-full border border-slate-200 px-4 py-2 text-xs font-black text-slate-700 transition hover:border-natalo-300 hover:text-natalo-700"
+        >
+          Edit
+        </Link>
+        <DeleteAlamatButton id={address.id} />
       </div>
     </section>
   );
