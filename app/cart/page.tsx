@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatRupiah } from "@/lib/format";
 import { EmptyCart } from "@/components/LoadingEmptyStates";
@@ -34,6 +34,13 @@ const CART_VOUCHER_KEY = "cart:voucher";
 
 type CartAppliedMember = { code: string; discount: number; description: string };
 type CartVoucherPreview = { discount: number; minimumOrder: number };
+type ManualQuantityState = {
+  item: CartItem;
+  key: string;
+};
+type QuantityValidationResult =
+  | { valid: false; message: string }
+  | { valid: true; quantity: number; message: "" };
 
 function cartKey(item: CartItem) {
   return `${item.productId}:${item.variantId ?? ""}`;
@@ -42,6 +49,31 @@ function cartKey(item: CartItem) {
 function itemSelectionLabel(kindCount: number, quantityCount: number) {
   if (kindCount <= 0) return "Belum ada produk dipilih";
   return `${kindCount} jenis produk (${quantityCount} item)`;
+}
+
+function validateQuantityInput(input: string, stock?: number | null): QuantityValidationResult {
+  const value = input.trim();
+  const quantity = Number(value);
+
+  if (!value || !Number.isInteger(quantity) || quantity < 1) {
+    return {
+      valid: false,
+      message: "Jumlah minimal pembelian adalah 1 item",
+    };
+  }
+
+  if (stock != null && quantity > stock) {
+    return {
+      valid: false,
+      message: `Stok hanya tersedia ${stock} item`,
+    };
+  }
+
+  return {
+    valid: true,
+    quantity,
+    message: "",
+  };
 }
 
 function TrashIcon({ className = "h-4 w-4" }: { className?: string }) {
@@ -85,6 +117,9 @@ export default function CartPage() {
   const [deleteMode, setDeleteMode] = useState<"single" | "selected" | null>(null);
   const [targetItem, setTargetItem] = useState<CartItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [manualQuantity, setManualQuantity] = useState<ManualQuantityState | null>(null);
+  const [manualQuantityInput, setManualQuantityInput] = useState("");
+  const quantityInputRef = useRef<HTMLInputElement | null>(null);
 
   // Restore voucher pilihan dari sessionStorage saat mount
   useEffect(() => {
@@ -208,6 +243,21 @@ export default function CartPage() {
     };
   }, [isLoggedIn, selectedSubtotal]);
 
+  const manualQuantityValidation = useMemo(
+    () => validateQuantityInput(manualQuantityInput, manualQuantity?.item.stock),
+    [manualQuantityInput, manualQuantity],
+  );
+
+  useEffect(() => {
+    if (!manualQuantity) return;
+    const id = window.setTimeout(() => {
+      quantityInputRef.current?.focus();
+      quantityInputRef.current?.select();
+    }, 120);
+
+    return () => window.clearTimeout(id);
+  }, [manualQuantity]);
+
   function persist(next: CartItem[]) {
     setItems(next);
     saveCart(next);
@@ -304,6 +354,27 @@ export default function CartPage() {
       hapticTap();
     }
     persist(next);
+  }
+
+  function openManualQuantityInput(item: CartItem, key: string) {
+    hapticTap();
+    setManualQuantity({ item, key });
+    setManualQuantityInput(String(item.quantity));
+  }
+
+  function closeManualQuantityInput() {
+    setManualQuantity(null);
+    setManualQuantityInput("");
+  }
+
+  function saveManualQuantity() {
+    if (!manualQuantityValidation.valid || !manualQuantity) {
+      hapticWarning();
+      return;
+    }
+
+    updateQty(manualQuantity.key, manualQuantityValidation.quantity);
+    closeManualQuantityInput();
   }
 
   function removeSelected() {
@@ -522,8 +593,8 @@ export default function CartPage() {
               </div>
             )}
 
-            <div className="divide-y divide-gray-100">
-              {items.map((item) => {
+            <div>
+              {items.map((item, index) => {
                 const key = cartKey(item);
                 const checked = selectedKeys.has(key);
                 const lineTotal = item.price * item.quantity;
@@ -533,7 +604,8 @@ export default function CartPage() {
                   item.stock != null ? Math.max(item.stock - item.quantity, 0) : null;
 
                 return (
-                  <SwipeableCartRow key={key} onDelete={() => handleSwipeDelete(item)}>
+                  <Fragment key={key}>
+                  <SwipeableCartRow onDelete={() => handleSwipeDelete(item)}>
                   <article className="bg-white px-4 py-4">
                     <div className="flex gap-3">
                       <input
@@ -614,7 +686,14 @@ export default function CartPage() {
                             >
                               {item.quantity <= 1 ? <TrashIcon className="h-3.5 w-3.5" /> : "−"}
                             </button>
-                            <span className="w-8 text-center text-sm font-black text-gray-900">{item.quantity}</span>
+                            <button
+                              type="button"
+                              onClick={() => openManualQuantityInput(item, key)}
+                              className="h-9 min-w-8 px-1 text-center text-sm font-black text-gray-900 transition active:scale-95"
+                              aria-label={`Ubah jumlah ${item.name}, sekarang ${item.quantity}`}
+                            >
+                              {item.quantity}
+                            </button>
                             <button
                               type="button"
                               onClick={() => updateQty(key, item.quantity + 1)}
@@ -630,6 +709,10 @@ export default function CartPage() {
                     </div>
                   </article>
                   </SwipeableCartRow>
+                  {index !== items.length - 1 && (
+                    <div aria-hidden="true" className="mx-4 h-px bg-[#EEF0F4]" />
+                  )}
+                  </Fragment>
                 );
               })}
             </div>
@@ -704,6 +787,93 @@ export default function CartPage() {
           router.push("/login?next=/cart");
         }}
       />
+
+      {manualQuantity && (
+        <div
+          className="fixed inset-0 z-[80] flex items-end bg-black/40 px-3 pb-[calc(12px+env(safe-area-inset-bottom))] md:items-center md:justify-center md:p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="manual-quantity-title"
+        >
+          <button
+            type="button"
+            aria-label="Tutup ubah jumlah"
+            className="absolute inset-0 cursor-default"
+            onClick={closeManualQuantityInput}
+          />
+
+          <form
+            className="relative z-[1] w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl md:rounded-2xl"
+            onSubmit={(event) => {
+              event.preventDefault();
+              saveManualQuantity();
+            }}
+          >
+            <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-gray-200 md:hidden" />
+
+            <h2 id="manual-quantity-title" className="text-lg font-black text-gray-950">
+              Ubah Jumlah Barang
+            </h2>
+
+            <div className="mt-4 rounded-2xl bg-gray-50 p-4">
+              <p className="line-clamp-2 text-sm font-black leading-snug text-gray-900">
+                {manualQuantity.item.name}
+              </p>
+              <p className="mt-1 text-xs font-semibold text-gray-500">
+                Stok tersedia: {manualQuantity.item.stock ?? "-"}
+              </p>
+            </div>
+
+            <label htmlFor="manual-quantity-input" className="mt-5 block text-sm font-black text-gray-900">
+              Jumlah
+            </label>
+            <input
+              ref={quantityInputRef}
+              id="manual-quantity-input"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={manualQuantity.item.stock ?? undefined}
+              step={1}
+              value={manualQuantityInput}
+              onChange={(event) => setManualQuantityInput(event.target.value)}
+              className={`mt-2 h-12 w-full rounded-2xl border bg-white px-4 text-base font-black text-gray-950 outline-none transition ${
+                manualQuantityValidation.valid
+                  ? "border-gray-200 focus:border-blue-500"
+                  : "border-red-300 focus:border-red-500"
+              }`}
+            />
+
+            {!manualQuantityValidation.valid ? (
+              <p className="mt-2 text-sm font-bold text-red-500">
+                {manualQuantityValidation.message}
+              </p>
+            ) : manualQuantity.item.stock != null &&
+              manualQuantityValidation.quantity === manualQuantity.item.stock ? (
+              <p className="mt-2 text-sm font-bold text-amber-600">
+                Tersisa 0 dari {manualQuantity.item.stock} stok
+              </p>
+            ) : null}
+
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={closeManualQuantityInput}
+                className="flex h-11 items-center justify-center rounded-full px-5 text-sm font-black text-gray-600 transition active:bg-gray-100"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={!manualQuantityValidation.valid}
+                className="flex h-11 items-center justify-center rounded-full bg-blue-500 px-6 text-sm font-black text-white transition active:scale-95 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:active:scale-100"
+              >
+                Simpan
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {items.length > 0 && (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-100 bg-white px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] md:hidden [padding-bottom:calc(12px+env(safe-area-inset-bottom))]">

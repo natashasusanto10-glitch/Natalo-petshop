@@ -83,16 +83,16 @@ const SHORTCUT_ITEMS: {
 ];
 
 const FEATURED_BRANDS: BrandChoiceItem[] = [
-  { id: "royal-canin", name: "Royal Canin", slug: "royal-canin", logo: "/images/brands/royal-canin.jpg" },
-  { id: "whiskas", name: "Whiskas", slug: "whiskas", logo: "/images/brands/whiskas.jpg" },
-  { id: "me-o", name: "Me-O", slug: "me-o", logo: "/images/brands/me-o.jpg" },
-  { id: "pedigree", name: "Pedigree", slug: "pedigree", logo: "/images/brands/pedigree.jpg" },
-  { id: "nature-bridge", name: "Nature Bridge", slug: "nature-bridge", logo: "/images/brands/nature-bridge.jpg" },
-  { id: "kitchen-flavour", name: "Kitchen Flavour", slug: "kitchen-flavour", logo: "/images/brands/kitchen-flavour.jpg" },
-  { id: "pro-plan", name: "Pro Plan", slug: "pro-plan", logo: "/images/brands/pro-plan.jpg" },
-  { id: "happy-cat", name: "Happy Cat", slug: "happy-cat", logo: "/images/brands/happy-cat.jpg" },
-  { id: "happy-dog", name: "Happy Dog", slug: "happy-dog", logo: "/images/brands/happy-dog.jpg" },
-  { id: "reflex", name: "Reflex", slug: "reflex", logo: "/images/brands/reflex.jpg" },
+  { id: "royal-canin", name: "Royal Canin", slug: "royal-canin", logo: "/brands/royal-canin.png", imageClass: "max-h-[42px] max-w-[100px]" },
+  { id: "whiskas", name: "Whiskas", slug: "whiskas", logo: "/brands/whiskas.png", imageClass: "max-h-[46px] max-w-[98px]" },
+  { id: "me-o", name: "Me-O", slug: "me-o", logo: "/brands/me-o.png", imageClass: "max-h-[42px] max-w-[88px]" },
+  { id: "pedigree", name: "Pedigree", slug: "pedigree", logo: "/brands/pedigree.png", imageClass: "max-h-[48px] max-w-[100px]" },
+  { id: "nature-bridge", name: "Nature Bridge", slug: "nature-bridge", logo: "/brands/nature-bridge.png", imageClass: "max-h-[42px] max-w-[104px]" },
+  { id: "kitchen-flavour", name: "Kitchen Flavor", slug: "kitchen-flavour", logo: "/brands/kitchen-flavor.png", imageClass: "max-h-[48px] max-w-[96px]" },
+  { id: "pro-plan", name: "Pro Plan", slug: "pro-plan", logo: "/brands/pro-plan.png", imageClass: "max-h-[44px] max-w-[104px]" },
+  { id: "happy-cat", name: "Happy Cat", slug: "happy-cat", logo: "/brands/happy-cat.png", imageClass: "max-h-[40px] max-w-[102px]" },
+  { id: "happy-dog", name: "Happy Dog", slug: "happy-dog", logo: "/brands/happy-dog.png", imageClass: "max-h-[42px] max-w-[104px]" },
+  { id: "reflex", name: "Reflex", slug: "reflex", logo: "/brands/reflex.png", imageClass: "max-h-[46px] max-w-[104px]" },
 ];
 
 function getJakartaMidnight() {

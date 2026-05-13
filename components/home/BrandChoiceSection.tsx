@@ -9,6 +9,7 @@ export type BrandChoiceItem = {
   name: string;
   slug: string;
   logo?: string | null;
+  imageClass?: string;
 };
 
 type BrandChoiceSectionProps = {
@@ -24,12 +25,13 @@ function brandHref(brand: BrandChoiceItem) {
 
 function BrandLogo({ brand }: { brand: BrandChoiceItem }) {
   const [failed, setFailed] = useState(false);
+  const imageClass = brand.imageClass ?? "max-h-[44px] max-w-[100px]";
 
   if (!brand.logo || failed) {
     const compactName = brand.name.replace(/\s+/g, " ");
     return (
-      <div className="flex h-full w-full items-center justify-center rounded-xl bg-gradient-to-br from-natalo-50 to-white px-3 text-center">
-        <span className="line-clamp-2 text-[13px] font-black uppercase leading-tight tracking-[0.02em] text-natalo-700">
+      <div className="flex h-full w-full items-center justify-center px-2 text-center">
+        <span className="line-clamp-2 text-[13px] font-black uppercase leading-tight text-natalo-700">
           {compactName}
         </span>
       </div>
@@ -40,10 +42,10 @@ function BrandLogo({ brand }: { brand: BrandChoiceItem }) {
     <Image
       src={brand.logo}
       alt={`Logo ${brand.name}`}
-      width={96}
-      height={48}
-      sizes="96px"
-      className="max-h-10 w-auto max-w-full object-contain"
+      width={120}
+      height={64}
+      sizes="122px"
+      className={`h-auto w-auto object-contain mix-blend-multiply ${imageClass}`}
       onError={() => setFailed(true)}
     />
   );
@@ -53,15 +55,15 @@ export function BrandChoiceSection({ brands }: BrandChoiceSectionProps) {
   if (brands.length === 0) return null;
 
   return (
-    <section className="mt-5" aria-labelledby="brand-choice-title">
+    <section className="mt-8" aria-labelledby="brand-choice-title">
       <div className="flex items-start justify-between gap-3 px-4">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-natalo-50 text-natalo-600">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600">
               <svg
                 aria-hidden="true"
                 viewBox="0 0 24 24"
-                className="h-4 w-4"
+                className="h-5 w-5"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2"
@@ -72,34 +74,35 @@ export function BrandChoiceSection({ brands }: BrandChoiceSectionProps) {
                 <circle cx="7.5" cy="8.5" r="1.5" />
               </svg>
             </span>
-            <h2 id="brand-choice-title" className="text-base font-black text-zinc-900 sm:text-lg">
+            <h2 id="brand-choice-title" className="text-[22px] font-bold tracking-tight text-slate-900">
               Brand Pilihan
             </h2>
           </div>
-          <p className="mt-1 text-xs font-semibold text-zinc-500">
+          <p className="mt-2 text-[15px] text-slate-500">
             Temukan produk dari brand favoritmu
           </p>
         </div>
         <Link
           href="/products"
-          className="shrink-0 pt-1 text-xs font-bold text-blue-600 active:opacity-70"
+          className="mt-2 flex shrink-0 items-center gap-1 text-[15px] font-semibold text-blue-600 active:opacity-70"
         >
           Lihat semua
+          <span className="text-lg leading-none">›</span>
         </Link>
       </div>
 
-      <div className="mt-3 flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth px-4 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="scrollbar-hide mt-3 flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth px-4 pb-2">
         {brands.map((brand) => (
           <Link
             key={brand.id}
             href={brandHref(brand)}
             aria-label={`Lihat produk brand ${brand.name}`}
-            className="flex h-[112px] w-[120px] shrink-0 snap-start flex-col items-center justify-center rounded-2xl border border-[#edf2f7] bg-white p-3 shadow-sm transition active:scale-[0.98] active:opacity-90"
+            className="flex h-[124px] w-[122px] shrink-0 snap-start flex-col items-center justify-center rounded-[22px] border border-slate-100 bg-white px-3 py-4 shadow-sm transition active:scale-[0.97] active:opacity-90"
           >
-            <div className="flex h-14 w-full items-center justify-center rounded-xl bg-slate-50 px-3">
+            <div className="flex h-[62px] w-full items-center justify-center">
               <BrandLogo brand={brand} />
             </div>
-            <span className="mt-3 line-clamp-1 max-w-full text-center text-[11px] font-extrabold leading-tight text-zinc-600">
+            <span className="mt-3 line-clamp-1 max-w-full text-center text-[14px] font-semibold leading-tight text-slate-700">
               {brand.name}
             </span>
           </Link>

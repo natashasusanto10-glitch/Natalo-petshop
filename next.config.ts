@@ -16,6 +16,7 @@ const nextConfig: NextConfig = {
     // Optimize CSS chunks — extract critical CSS, defer rest
     optimizePackageImports: [
       "lucide-react",
+      "react-icons/io5",
       "@capacitor/core",
       "@capacitor/app",
       "@capacitor/browser",
@@ -39,6 +40,7 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "**.supabase.in" },
       { protocol: "https", hostname: "lh3.googleusercontent.com" },
       { protocol: "https", hostname: "cdn.jsdelivr.net" },
+      { protocol: "https", hostname: "placehold.co" },
       // UploadThing CDN
       { protocol: "https", hostname: "utfs.io" },
       { protocol: "https", hostname: "**.ufs.sh" },

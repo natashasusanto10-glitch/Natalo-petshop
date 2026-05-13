@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { IoNotificationsOutline } from "react-icons/io5";
 
 /**
  * Bell icon untuk header — link ke /notifications dgn badge unread count.
@@ -15,7 +16,11 @@ import { useEffect, useRef, useState } from "react";
  *
  * Anonymous user: tetap render bell, count selalu 0 (server gak track read).
  */
-export function NotificationBell() {
+type NotificationBellProps = {
+  compact?: boolean;
+};
+
+export function NotificationBell({ compact = false }: NotificationBellProps) {
   const [count, setCount] = useState(0);
   const readIdsRef = useRef<Set<string>>(new Set());
 
@@ -67,25 +72,22 @@ export function NotificationBell() {
   return (
     <Link
       href="/notifications"
-      className="relative flex h-9 w-9 items-center justify-center rounded-full text-gray-600 transition hover:bg-gray-100 active:scale-90 xs:h-10 xs:w-10"
+      className={
+        compact
+          ? "relative flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-600 shadow-sm ring-1 ring-slate-100 transition active:scale-95"
+          : "relative flex h-9 w-9 items-center justify-center rounded-full text-gray-600 transition hover:bg-gray-100 active:scale-90 xs:h-10 xs:w-10"
+      }
       aria-label={count > 0 ? `Notifikasi (${count} belum dibaca)` : "Notifikasi"}
     >
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={1.8}
-        className="h-5 w-5"
-        aria-hidden="true"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0"
-        />
-      </svg>
+      <IoNotificationsOutline className={compact ? "h-6 w-6" : "h-5 w-5"} aria-hidden="true" />
       {count > 0 && (
-        <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+        <span
+          className={
+            compact
+              ? "absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-black leading-none text-white ring-2 ring-white"
+              : "absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white"
+          }
+        >
           {count > 9 ? "9+" : count}
         </span>
       )}

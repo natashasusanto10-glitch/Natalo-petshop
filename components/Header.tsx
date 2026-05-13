@@ -15,6 +15,7 @@ import { natToast } from "@/components/Toast";
 const NAV_LINKS = [
   { href: "/", label: "Beranda" },
   { href: "/products", label: "Produk" },
+  { href: "/feed", label: "Feed" },
   { href: "/tentang-kami", label: "Tentang Kami" },
 ];
 
@@ -23,6 +24,7 @@ const NAV_LINKS = [
 const MAIN_TAB_PATHS = new Set([
   "/",
   "/products",
+  "/feed",
   "/produk",
   "/kategori",
   "/member",
@@ -69,19 +71,20 @@ export function Header() {
   const pathname = usePathname();
   const currentPath = normalizePathname(pathname);
   const isHome = currentPath === "/";
+  const isProductsCatalog =
+    currentPath === "/products" || currentPath === "/produk" || currentPath === "/kategori";
   const isSearchPage = currentPath === "/search";
   const isCartPage = currentPath === "/cart";
   const isProductDetail = /^\/products\/[^/]+$/.test(currentPath);
   const isMainTab = isMainTabPath(currentPath);
   const authTitle = AUTH_PATHS[currentPath];
   const isAuthPage = authTitle !== undefined;
-  const isInAccountArea = isAccountArea(currentPath);
   const isLoggedIn = Boolean(member?.name);
   // Contextual flags — header dirender berbeda berdasar auth state + page type.
   // Search icon kecil di header sengaja dihilangkan total: search hanya via
   // search bar besar di /, /products. Lebih clean + native (HIG).
-  const showBell = isLoggedIn && !isAuthPage;
-  const showProfileChip = isLoggedIn && !isAuthPage && !isInAccountArea;
+  const showBell = !isAuthPage;
+  const showProfileChip = false;
   const showLoginButton = !isLoggedIn && !isAuthPage;
   // Back button universal: tampil di mobile untuk semua halaman selain main tab
   // & product detail (yang punya header sendiri dengan back + search + share + cart).
@@ -134,6 +137,7 @@ export function Header() {
     const id = window.setTimeout(() => {
       router.prefetch("/products");
       router.prefetch("/cart");
+      router.prefetch("/feed");
       router.prefetch("/member");
       prefetchCategories();
     }, 1000);
@@ -196,7 +200,7 @@ export function Header() {
       className={
         isProductDetail
           ? "product-detail-header nat-site-header bg-white md:sticky md:z-50 md:shadow-sm"
-          : isHome
+          : isHome || isProductsCatalog
           ? "nat-site-header mobile-sticky-header md:sticky"
           : "nat-site-header z-50 bg-white shadow-sm md:sticky"
       }
@@ -239,7 +243,7 @@ export function Header() {
               </svg>
             </button>
             <div className="flex h-10 w-10 items-center justify-center rounded-full text-gray-700 active:bg-gray-100 [&_span.hidden]:hidden [&_svg]:!h-5 [&_svg]:!w-5">
-              <CartCount />
+              <CartCount compact />
             </div>
           </div>
         </div>
@@ -309,12 +313,10 @@ export function Header() {
         <div className="flex shrink-0 items-center gap-1 xs:gap-1.5 md:gap-2">
           {/* Notifikasi — hanya untuk logged-in user. Guest tidak punya
               konteks notif (order, voucher, point) jadi bell dihide. */}
-          {showBell && <NotificationBell />}
+          {showBell && <NotificationBell compact />}
 
           {/* Cart: desktop header only; mobile already has bottom navigation. */}
-          <div className="hidden h-10 w-10 items-center justify-center rounded-full text-gray-600 transition hover:bg-gray-100 md:flex [&_span.hidden]:!hidden [&_svg]:!h-5 [&_svg]:!w-5">
-            <CartCount />
-          </div>
+          <CartCount compact />
 
           {/* Member avatar — bulat, inisial user. Tap → Member Center (/member).
               Tap area 44x44 (h-11 w-11) sesuai HIG; visual circle 40px (h-10 w-10).
@@ -335,7 +337,7 @@ export function Header() {
           {showLoginButton && (
             <Link
               href="/member/login?redirect=%2F"
-              className="rounded-full bg-blue-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-600 xs:px-4 md:px-5 md:text-sm"
+              className="hidden rounded-full bg-blue-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-600 xs:px-4 md:inline-flex md:px-5 md:text-sm"
             >
               Masuk
             </Link>
@@ -344,6 +346,15 @@ export function Header() {
         </div>
       </div>
       {isHome && <HomeSearchBar />}
+      {(isHome || isProductsCatalog) && (
+        <div className="nat-safe-x mx-auto flex max-w-6xl items-center gap-3 overflow-x-auto border-y border-slate-100 py-2 text-xs font-semibold text-slate-600 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <span className="whitespace-nowrap">Area Medan</span>
+          <span className="text-blue-300">-</span>
+          <span className="whitespace-nowrap">Produk Original 100%</span>
+          <span className="text-blue-300">-</span>
+          <span className="whitespace-nowrap">Konsultasi via Chat</span>
+        </div>
+      )}
       </div>
     </header>
   );

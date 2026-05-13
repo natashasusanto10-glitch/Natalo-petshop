@@ -68,7 +68,7 @@ export default async function ProductsPage({
         </p>
       </div>
 
-      <div className="sticky top-0 z-20 -mx-4 mb-4 bg-white/95 px-4 pb-3 pt-2 backdrop-blur md:static md:mx-0 md:bg-transparent md:px-0 md:pb-0 md:pt-0 md:backdrop-blur-none">
+      <div className="sticky top-[calc(96px+env(safe-area-inset-top))] z-20 -mx-4 mb-4 bg-white/95 px-4 pb-3 pt-2 backdrop-blur md:static md:mx-0 md:bg-transparent md:px-0 md:pb-0 md:pt-0 md:backdrop-blur-none">
         <div className="mb-3">
           <Suspense fallback={<div className="h-12 w-full animate-pulse rounded-2xl bg-gray-100" />}>
             <ProductSearchBar defaultValue={q ?? ""} />

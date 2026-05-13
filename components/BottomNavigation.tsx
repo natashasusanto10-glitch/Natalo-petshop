@@ -3,19 +3,34 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
-import { bootstrapCartSync, loadCart } from "@/lib/cart";
+import type { IconType } from "react-icons";
+import {
+  IoGrid,
+  IoGridOutline,
+  IoHome,
+  IoHomeOutline,
+  IoPerson,
+  IoPersonOutline,
+  IoPlayCircle,
+  IoPlayCircleOutline,
+} from "react-icons/io5";
+import { bootstrapCartSync } from "@/lib/cart";
 import { prefetchCategories } from "@/lib/client-performance";
 import { hapticTap } from "@/lib/native/haptics";
 import { shouldHideBottomNav } from "@/lib/navigation";
 
-type NavIconName = "home" | "catalog" | "bag" | "person";
+type NavIconType = IconType;
 
-const ITEMS: { href: string; label: string; icon: NavIconName }[] = [
-  { href: "/", label: "Beranda", icon: "home" },
-  { href: "/products", label: "Produk", icon: "catalog" },
-  { href: "/cart", label: "Keranjang", icon: "bag" },
-  { href: "/member", label: "Akun", icon: "person" },
+const ITEMS: {
+  href: string;
+  label: string;
+  icon: NavIconType;
+  activeIcon: NavIconType;
+}[] = [
+  { href: "/", label: "Beranda", icon: IoHomeOutline, activeIcon: IoHome },
+  { href: "/products", label: "Produk", icon: IoGridOutline, activeIcon: IoGrid },
+  { href: "/feed", label: "Feed", icon: IoPlayCircleOutline, activeIcon: IoPlayCircle },
+  { href: "/member", label: "Akun", icon: IoPersonOutline, activeIcon: IoPerson },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -26,67 +41,15 @@ function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-function NavIcon({ name, active }: { name: NavIconName; active: boolean }) {
-  const paths: Record<NavIconName, ReactNode> = {
-    home: (
-      <>
-        <path
-          d="M5 14 L16 5 L27 14 V25 a2 2 0 0 1-2 2 H7 a2 2 0 0 1-2-2 Z"
-          fill={active ? "#DBEAFE" : "transparent"}
-        />
-        <path d="M5 14 L16 5 L27 14 V25 a2 2 0 0 1-2 2 H7 a2 2 0 0 1-2-2 Z" />
-        <ellipse cx="13" cy="18.5" rx="1.4" ry="1.8" fill="currentColor" stroke="none" />
-        <ellipse cx="19" cy="18.5" rx="1.4" ry="1.8" fill="currentColor" stroke="none" />
-        <ellipse cx="11" cy="22" rx="1.2" ry="1.5" fill="currentColor" stroke="none" />
-        <ellipse cx="21" cy="22" rx="1.2" ry="1.5" fill="currentColor" stroke="none" />
-        <ellipse cx="16" cy="24" rx="2.6" ry="2" fill="currentColor" stroke="none" />
-      </>
-    ),
-    catalog: (
-      <>
-        <path d="M7 7.5 H25 a2 2 0 0 1 2 2 V24.5 a2 2 0 0 1-2 2 H7 a2 2 0 0 1-2-2 V9.5 a2 2 0 0 1 2-2 Z" />
-        <path d="M9 13 H23" />
-        <path d="M9 18 H23" />
-        <path d="M13.5 7.5 V26.5" />
-        <path d="M19 7.5 V26.5" />
-        <path d="M10.5 5.5 H21.5" />
-      </>
-    ),
-    bag: (
-      <>
-        <path d="M11 11 V9 a5 5 0 0 1 10 0 V11" />
-        <path d="M7 11 H25 L23.5 26 a2 2 0 0 1-2 1.8 H10.5 a2 2 0 0 1-2-1.8 Z" />
-        <ellipse cx="14" cy="18" rx="1" ry="1.3" fill="currentColor" stroke="none" />
-        <ellipse cx="18" cy="18" rx="1" ry="1.3" fill="currentColor" stroke="none" />
-        <ellipse cx="16" cy="21" rx="2" ry="1.6" fill="currentColor" stroke="none" />
-      </>
-    ),
-    person: (
-      <>
-        <circle cx="16" cy="11" r="5" />
-        <path d="M5 27 c1.5-5.5 6-8 11-8 s9.5 2.5 11 8" />
-      </>
-    ),
-  };
-
+function NavIcon({ icon, active }: { icon: NavIconType; active: boolean }) {
+  const Icon = icon;
   return (
     <span
       className={`flex h-6 w-6 items-center justify-center transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
         active ? "-translate-y-0.5 scale-110" : ""
       }`}
     >
-      <svg
-        aria-hidden="true"
-        viewBox="0 0 32 32"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="h-6 w-6"
-      >
-        {paths[name]}
-      </svg>
+      <Icon aria-hidden className="h-6 w-6" />
     </span>
   );
 }
@@ -94,26 +57,7 @@ function NavIcon({ name, active }: { name: NavIconName; active: boolean }) {
 export function BottomNavigation() {
   const pathname = usePathname();
   const router = useRouter();
-  const [cartCount, setCartCount] = useState(0);
   const [optimisticHref, setOptimisticHref] = useState<string | null>(null);
-
-  useEffect(() => {
-    function syncCart() {
-      const items = loadCart();
-      setCartCount(items.reduce((sum, item) => sum + Number(item.quantity || 0), 0));
-    }
-
-    function onStorage(e: StorageEvent) {
-      if (e.key?.startsWith("cart")) syncCart();
-    }
-    syncCart();
-    window.addEventListener("cart-updated", syncCart);
-    window.addEventListener("storage", onStorage);
-    return () => {
-      window.removeEventListener("cart-updated", syncCart);
-      window.removeEventListener("storage", onStorage);
-    };
-  }, []);
 
   useEffect(() => {
     setOptimisticHref(null);
@@ -123,7 +67,7 @@ export function BottomNavigation() {
     const id = window.setTimeout(() => {
       router.prefetch("/");
       router.prefetch("/products");
-      router.prefetch("/cart");
+      router.prefetch("/feed");
       router.prefetch("/member");
       prefetchCategories();
       void bootstrapCartSync();
@@ -182,6 +126,7 @@ export function BottomNavigation() {
           />
           {ITEMS.map((item, i) => {
             const active = i === activeIndex;
+            const Icon = active ? item.activeIcon : item.icon;
             return (
               <Link
                 key={item.href}
@@ -199,12 +144,7 @@ export function BottomNavigation() {
                 }`}
               >
                 <span className="relative">
-                  <NavIcon name={item.icon} active={active} />
-                  {item.href === "/cart" && cartCount > 0 && (
-                    <span className="absolute -right-2.5 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-white bg-[#1E5FBF] px-1 text-[9px] font-black leading-none text-white">
-                      {cartCount > 99 ? "99+" : cartCount}
-                    </span>
-                  )}
+                  <NavIcon icon={Icon} active={active} />
                 </span>
                 <span>{item.label}</span>
               </Link>

@@ -9,7 +9,7 @@ const PAGE_SIZE = 24;
 
 function ProductGridSkeleton() {
   return (
-    <div className="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-3 lg:grid-cols-4">
       {[...Array(8)].map((_, i) => (
         <div key={i} className="overflow-hidden rounded-2xl border border-gray-100 bg-white">
           <div className="aspect-square animate-pulse bg-gray-100" />
@@ -76,7 +76,7 @@ export function ProductsInfiniteGrid() {
       <p className="mb-3 text-xs text-gray-500">
         Menampilkan {products.length} dari {total} produk
       </p>
-      <div className="nat-content-fade-in nat-content-fade-in--stagger grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="nat-content-fade-in nat-content-fade-in--stagger grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-3 lg:grid-cols-4">
         {products.map((product, index) => (
           <ProductCard key={product.id} product={product} priority={index < 4} />
         ))}
