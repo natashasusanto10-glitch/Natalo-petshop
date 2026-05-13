@@ -1,3 +1,6 @@
+ALTER TABLE "Address"
+  ALTER COLUMN "label" DROP NOT NULL;
+
 UPDATE "Address"
 SET "label" = NULL
 WHERE "label" IS NOT NULL
