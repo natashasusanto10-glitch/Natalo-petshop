@@ -143,19 +143,19 @@ export function CheckoutAddressList({ addresses, returnTo }: Props) {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 pb-28">
-      <div className="sticky top-0 z-40 border-b border-slate-100 bg-white/95 shadow-[0_8px_20px_rgba(15,23,42,0.06)] backdrop-blur">
+    <main className="min-h-screen bg-slate-50 pb-[calc(104px+env(safe-area-inset-bottom))]">
+      <div className="sticky top-[calc(var(--natalo-mobile-header-min-height)+env(safe-area-inset-top))] z-[900] border-b border-slate-100 bg-white/95 backdrop-blur">
         <div className="mx-auto flex max-w-2xl items-center justify-between gap-3 px-4 py-3">
           <Link
             href={returnTo}
-            className="inline-flex h-11 min-w-0 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-800 transition hover:border-natalo-200 hover:text-natalo-700 active:scale-[0.98]"
+            className="inline-flex min-w-0 items-center gap-2 py-2 text-sm font-black text-slate-800 transition hover:text-natalo-700 active:opacity-70"
           >
             <FiArrowLeft className="h-4 w-4 shrink-0" aria-hidden="true" />
             <span className="truncate">Kembali ke checkout</span>
           </Link>
           <Link
             href={addAddressHref}
-            className="inline-flex h-11 shrink-0 items-center gap-2 rounded-2xl bg-natalo-600 px-4 text-sm font-black text-white shadow-sm transition hover:bg-natalo-700 active:scale-[0.98]"
+            className="inline-flex shrink-0 items-center gap-1.5 py-2 text-sm font-black text-natalo-700 transition hover:text-natalo-800 active:opacity-70"
           >
             <FiPlus className="h-4 w-4" aria-hidden="true" />
             Tambah
@@ -308,27 +308,25 @@ export function CheckoutAddressList({ addresses, returnTo }: Props) {
         </div>
       </div>
 
-      {addresses.length > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-10px_30px_rgba(15,23,42,0.10)] backdrop-blur [padding-bottom:calc(12px+env(safe-area-inset-bottom))]">
-          <div className="mx-auto flex max-w-2xl items-center gap-3">
-            <button
-              type="button"
-              onClick={() => router.push(returnTo)}
-              className="h-12 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50"
-            >
-              Batal
-            </button>
-            <button
-              type="button"
-              onClick={confirmSelection}
-              disabled={!selectedId}
-              className="h-12 flex-1 rounded-2xl bg-natalo-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-natalo-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
-            >
-              Pilih Alamat
-            </button>
-          </div>
+      <div className="fixed inset-x-0 bottom-0 z-[950] border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-10px_30px_rgba(15,23,42,0.10)] backdrop-blur [padding-bottom:calc(12px+env(safe-area-inset-bottom))]">
+        <div className="mx-auto grid max-w-2xl grid-cols-[minmax(92px,0.7fr)_minmax(0,1.3fr)] items-center gap-3">
+          <button
+            type="button"
+            onClick={() => router.push(returnTo)}
+            className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]"
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            onClick={confirmSelection}
+            disabled={!selectedId}
+            className="h-12 rounded-2xl bg-natalo-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-natalo-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
+          >
+            Pilih Alamat
+          </button>
         </div>
-      )}
+      </div>
     </main>
   );
 }

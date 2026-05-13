@@ -228,19 +228,16 @@ export function Header() {
         className={
           isHome
             ? "mobile-header-row mx-auto max-w-6xl gap-1.5 xs:gap-2"
-            : isCheckoutAddressPicker
-              ? "nat-header-inner nat-safe-x mx-auto grid max-w-6xl grid-cols-[1fr_auto_1fr] items-center gap-1.5 py-1.5 xs:gap-2 md:flex md:justify-between md:py-3"
-              : "nat-header-inner nat-safe-x mx-auto flex max-w-6xl items-center justify-between gap-1.5 py-1.5 xs:gap-2 md:py-3"
+            : "nat-header-inner nat-safe-x mx-auto flex max-w-6xl items-center justify-between gap-1.5 py-1.5 xs:gap-2 md:py-3"
         }
       >
         {/* Back button — hanya tampil di mobile untuk halaman non-main-tab.
             Memberikan fallback navigasi yang jelas selain swipe gesture iOS. */}
-        {isCheckoutAddressPicker && <span aria-hidden className="h-10 w-10 md:hidden" />}
         {/* Logo */}
         <Link
           href="/"
           aria-label={brand}
-          className={`flex min-w-0 shrink-0 items-center ${isCheckoutAddressPicker ? "justify-center md:justify-start" : ""}`}
+          className="flex min-w-0 shrink-0 items-center"
         >
           <Image
             src="/logo.png"
