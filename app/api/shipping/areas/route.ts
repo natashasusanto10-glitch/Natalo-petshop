@@ -6,6 +6,7 @@
  * Cache 24 jam.
  */
 import { NextResponse } from "next/server";
+import { searchBiteshipAreas } from "@/lib/biteship-area";
 
 export type ShippingArea = {
   area_id: string;
@@ -14,18 +15,6 @@ export type ShippingArea = {
   city_name: string;
   district_name: string;
   postal_code: string;
-};
-
-type RawBiteshipArea = {
-  id?: string;
-  area_id?: string;
-  name?: string;
-  country_name?: string;
-  administrative_division_level_1_name?: string;
-  administrative_division_level_2_name?: string;
-  administrative_division_level_3_name?: string;
-  administrative_division_level_4_name?: string;
-  postal_code?: string | number;
 };
 
 export async function GET(request: Request) {
@@ -45,28 +34,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const res = await fetch(
-      `https://api.biteship.com/v1/maps/areas?countries=ID&input=${encodeURIComponent(keyword)}&type=single`,
-      {
-        headers: { Authorization: apiKey },
-        next: { revalidate: 86400 }, // cache 24 jam
-      }
-    );
-
-    if (!res.ok) {
-      return NextResponse.json(
-        { areas: [], message: "Gagal kontak Biteship." },
-        { status: 500 }
-      );
-    }
-
-    const data = await res.json();
-    const areas = Array.isArray(data.areas)
-      ? data.areas
-          .map(normalizeArea)
-          .filter((area: ShippingArea | null): area is ShippingArea => Boolean(area))
-      : [];
-
+    const areas = await searchBiteshipAreas(keyword);
     return NextResponse.json({ areas });
   } catch (e) {
     return NextResponse.json(
@@ -74,28 +42,4 @@ export async function GET(request: Request) {
       { status: 500 }
     );
   }
-}
-
-function normalizeArea(area: RawBiteshipArea): ShippingArea | null {
-  const areaId = String(area.area_id ?? area.id ?? "").trim();
-  const province = String(area.administrative_division_level_1_name ?? "").trim();
-  const city = String(area.administrative_division_level_2_name ?? "").trim();
-  const district = String(
-    area.administrative_division_level_3_name ??
-      area.administrative_division_level_4_name ??
-      area.name ??
-      "",
-  ).trim();
-  const postalCode = String(area.postal_code ?? "").trim();
-
-  if (!areaId || !postalCode || !city || !province) return null;
-
-  return {
-    area_id: areaId,
-    label: `${district || city}, ${city}, ${province}. ${postalCode}`,
-    province_name: province,
-    city_name: city,
-    district_name: district || city,
-    postal_code: postalCode,
-  };
 }

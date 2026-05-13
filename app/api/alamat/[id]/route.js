@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import {
   addressDataFromPayload,
+  biteshipAreaPatchForAddress,
+  enrichAddressPayload,
   normalizeAddressPayload,
   validateAddressPayload,
 } from "@/lib/address-api";
@@ -21,7 +23,12 @@ export async function GET(_request, { params }) {
   const existing = await getOwnedAddress(id, session.sub);
   if (!existing) return NextResponse.json({ error: "Alamat tidak ditemukan." }, { status: 404 });
 
-  return NextResponse.json({ address: existing });
+  const patch = await biteshipAreaPatchForAddress(existing).catch(() => null);
+  const address = patch
+    ? await prisma.address.update({ where: { id: existing.id }, data: patch })
+    : existing;
+
+  return NextResponse.json({ address });
 }
 
 async function updateAddress(request, { params }) {
@@ -34,11 +41,12 @@ async function updateAddress(request, { params }) {
   const existing = await getOwnedAddress(id, session.sub);
   if (!existing) return NextResponse.json({ error: "Alamat tidak ditemukan." }, { status: 404 });
 
-  const payload = normalizeAddressPayload(await request.json());
-  const validationError = validateAddressPayload(payload);
+  const normalizedPayload = normalizeAddressPayload(await request.json());
+  const validationError = validateAddressPayload(normalizedPayload);
   if (validationError) {
     return NextResponse.json({ error: validationError }, { status: 400 });
   }
+  const payload = await enrichAddressPayload(normalizedPayload);
 
   const address = await prisma.$transaction(async (tx) => {
     if (payload.isMain) {

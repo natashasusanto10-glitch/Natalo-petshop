@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import {
   addressDataFromPayload,
+  biteshipAreaPatchForAddress,
+  enrichAddressPayload,
   normalizeAddressPayload,
   validateAddressPayload,
 } from "@/lib/address-api";
@@ -18,7 +20,19 @@ export async function GET() {
     orderBy: [{ isMain: "desc" }, { createdAt: "asc" }],
   });
 
-  return NextResponse.json({ addresses });
+  const repairedAddresses = await Promise.all(
+    addresses.map(async (address) => {
+      const patch = await biteshipAreaPatchForAddress(address).catch(() => null);
+      if (!patch) return address;
+
+      return prisma.address.update({
+        where: { id: address.id },
+        data: patch,
+      });
+    }),
+  );
+
+  return NextResponse.json({ addresses: repairedAddresses });
 }
 
 export async function POST(request) {
@@ -27,11 +41,12 @@ export async function POST(request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const payload = normalizeAddressPayload(await request.json());
-  const validationError = validateAddressPayload(payload);
+  const normalizedPayload = normalizeAddressPayload(await request.json());
+  const validationError = validateAddressPayload(normalizedPayload);
   if (validationError) {
     return NextResponse.json({ error: validationError }, { status: 400 });
   }
+  const payload = await enrichAddressPayload(normalizedPayload);
 
   const existingCount = await prisma.address.count({ where: { userId: session.sub } });
   const shouldBeMain = payload.isMain || existingCount === 0;
