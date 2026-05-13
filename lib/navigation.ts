@@ -21,7 +21,6 @@ export const HIDDEN_BOTTOM_NAV_PATTERNS: RegExp[] = [
   /^\/checkout(\/|$)/,
 
   // Inner pages — navigasi balik ada di sticky page title, bukan bottom tab
-  /^\/notifications(\/|$)/,
   /^\/bantuan(\/|$)/,
   /^\/help(\/|$)/,
   /^\/wishlist(\/|$)/,
@@ -40,7 +39,9 @@ export const HIDDEN_BOTTOM_NAV_PATTERNS: RegExp[] = [
   /^\/member\/reset-password(\/|$)/,
 
   // Detail pesanan (tracking) — fokus pada status & info pengiriman
+  /^\/member\/orders$/,
   /^\/member\/orders\/[^/]+$/,
+  /^\/member\/profile$/,
   /^\/order-status\/[^/]+$/,
   /^\/pesanan\/[^/]+$/,
 ];

@@ -53,6 +53,7 @@ export function Header() {
   const isSearchPage = currentPath === "/search";
   const isCartPage = currentPath === "/cart";
   const isBrandsDirectory = currentPath === "/brands";
+  const isFocusedAccountPage = currentPath === "/member/orders" || currentPath === "/member/profile";
   const isProductDetail = /^\/products\/[^/]+$/.test(currentPath);
   const isCheckoutAddressPicker = currentPath === "/checkout/addresses";
   const authTitle = AUTH_PATHS[currentPath];
@@ -141,7 +142,7 @@ export function Header() {
     // karena UI sheet Apple/browser sudah kasih feedback sendiri
   }
 
-  if (isSearchPage || isCartPage || isBrandsDirectory) return null;
+  if (isSearchPage || isCartPage || isBrandsDirectory || isFocusedAccountPage) return null;
 
   // Auth pages — render minimal header: back button + title saja. Bottom nav,
   // bell, profile, login button semua di-hide untuk fokus ke flow auth.

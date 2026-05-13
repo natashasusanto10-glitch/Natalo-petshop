@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { natToast } from "@/components/Toast";
 
 interface Props {
   initialName: string;
@@ -115,6 +116,7 @@ export function EditProfileForm({ initialName, initialPhone, initialBirthDate, e
       setForm(nextForm);
       setInitialForm(nextForm);
       setSuccess(true);
+      natToast("Profil berhasil diperbarui.", { kind: "ok" });
       setSaveState("saved");
       savedTimerRef.current = setTimeout(() => {
         setSaveState("idle");
@@ -136,7 +138,7 @@ export function EditProfileForm({ initialName, initialPhone, initialBirthDate, e
       )}
       {success && (
         <div className="rounded-xl border border-green-100 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
-          Profil berhasil disimpan
+          Profil berhasil diperbarui.
         </div>
       )}
 

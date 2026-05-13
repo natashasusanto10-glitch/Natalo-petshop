@@ -1,22 +1,22 @@
 import type { Metadata } from "next";
-import { NotificationsList } from "@/components/NotificationsList";
-import { StickyBackTitle } from "@/components/StickyBackTitle";
+import { NotificationPreferences } from "@/components/NotificationPreferences";
 
 export const metadata: Metadata = {
-  title: "Notifikasi",
-  // Halaman personalized — jangan di-index search engine.
+  title: "Pengaturan Notifikasi",
   robots: { index: false, follow: false },
 };
 
 export default function NotificationsPage() {
   return (
-    <div className="min-h-screen bg-slate-50">
-      <StickyBackTitle label="Notifikasi" fallbackHref="/" />
-      <div className="mx-auto w-full max-w-2xl px-4 py-6 sm:py-8">
-        <div className="rounded-3xl border border-slate-100 bg-white p-4 shadow-sm sm:p-5">
-          <NotificationsList />
-        </div>
+    <main className="mx-auto w-full max-w-2xl px-4 py-6 pb-[calc(6rem+env(safe-area-inset-bottom))] sm:py-10">
+      <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">
+        Pengaturan
+      </p>
+      <h1 className="mt-1 text-2xl font-black text-zinc-950">Notifikasi</h1>
+
+      <div className="mt-6">
+        <NotificationPreferences />
       </div>
-    </div>
+    </main>
   );
 }

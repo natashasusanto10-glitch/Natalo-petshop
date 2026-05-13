@@ -271,7 +271,29 @@ export function PushSubscribe() {
     setState("idle");
   }
 
-  if (state === "loading" || state === "unsupported") return null;
+  if (state === "loading") {
+    return (
+      <button
+        type="button"
+        disabled
+        className="flex w-full items-center justify-center gap-2 rounded-2xl border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-400"
+      >
+        Memeriksa notifikasi...
+      </button>
+    );
+  }
+
+  if (state === "unsupported") {
+    return (
+      <button
+        type="button"
+        disabled
+        className="flex w-full items-center justify-center gap-2 rounded-2xl border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-400"
+      >
+        Aktifkan notifikasi
+      </button>
+    );
+  }
 
   if (state === "subscribed") {
     return (
