@@ -425,27 +425,58 @@ export default function CartPage() {
     router.push(`/checkout?cart_item_ids=${ids}`);
   }
 
+  function handleBack() {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+    } else {
+      router.push("/products");
+    }
+  }
+
   return (
-    <div className="mx-auto max-w-3xl px-4 py-4 pb-[calc(104px+env(safe-area-inset-bottom))] md:py-10 md:pb-10">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-black tracking-tight text-gray-900 md:text-3xl">Keranjang</h1>
-          <p className="mt-1 text-sm font-semibold text-gray-500">
-            {selectionLabel}
-          </p>
+    <div className="mx-auto max-w-3xl px-4 pb-[calc(104px+env(safe-area-inset-bottom))] md:pb-10">
+      <header className="sticky top-0 z-50 -mx-4 border-b border-gray-100 bg-white px-4 pb-3 [padding-top:calc(12px+env(safe-area-inset-top))]">
+        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              onClick={handleBack}
+              aria-label="Kembali"
+              className="-ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-800 active:bg-gray-100"
+            >
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2.4}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-6 w-6"
+              >
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+            </button>
+            <h1 className="truncate text-2xl font-black tracking-tight text-gray-950 md:text-3xl">
+              Keranjang
+            </h1>
+          </div>
+          {items.length > 0 && (
+            <button
+              type="button"
+              onClick={openDeleteSelectedModal}
+              disabled={selectedCount === 0}
+              className="inline-flex h-10 shrink-0 items-center gap-2 rounded-full px-3 text-sm font-bold text-red-500 transition active:bg-red-50 disabled:cursor-not-allowed disabled:text-gray-300 disabled:active:bg-transparent"
+            >
+              <TrashIcon />
+              Hapus
+            </button>
+          )}
         </div>
-        {items.length > 0 && (
-          <button
-            type="button"
-            onClick={openDeleteSelectedModal}
-            disabled={selectedCount === 0}
-            className="inline-flex h-10 items-center gap-2 rounded-full px-3 text-sm font-bold text-red-500 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:text-gray-300 disabled:hover:bg-transparent"
-          >
-            <TrashIcon />
-            Hapus
-          </button>
-        )}
-      </div>
+        <p className="mx-auto mt-1 max-w-3xl pl-11 text-sm font-semibold text-gray-500">
+          {selectionLabel}
+        </p>
+      </header>
 
       {items.length === 0 ? (
         <div className="mt-6 rounded-2xl border border-gray-100 bg-white md:mt-10">

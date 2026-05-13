@@ -17,7 +17,6 @@ export type ActiveFilters = {
   maxPrice?: number;
   inStock: boolean;
   minRating?: number;
-  weightBucket?: string; // label dari weight bucket yang dipilih
 };
 
 interface Props {
@@ -72,17 +71,6 @@ export function SearchFilters({ facets, filters, onFiltersChange, onReset }: Pro
         ? filters.brandSlugs.filter((s) => s !== slug)
         : [...filters.brandSlugs, slug],
     });
-  }
-
-  function setWeightBucket(label: string | undefined, min?: number, max?: number) {
-    if (filters.weightBucket === label) {
-      // Toggle off
-      onFiltersChange({ ...filters, weightBucket: undefined });
-    } else {
-      onFiltersChange({ ...filters, weightBucket: label });
-    }
-    void min;
-    void max;
   }
 
   return (
@@ -189,40 +177,6 @@ export function SearchFilters({ facets, filters, onFiltersChange, onReset }: Pro
           )}
         </div>
       </FilterSection>
-
-      {/* Berat */}
-      {facets?.weights && facets.weights.length > 0 && (
-        <FilterSection title="Berat">
-          <div className="space-y-1.5">
-            {facets.weights.map((w) => {
-              const checked = filters.weightBucket === w.label;
-              const disabled = w.count === 0 && !checked;
-              return (
-                <label
-                  key={w.label}
-                  className={`flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm transition ${
-                    disabled
-                      ? "opacity-40 cursor-not-allowed"
-                      : "cursor-pointer hover:bg-natalo-50"
-                  }`}
-                >
-                  <div className="flex min-w-0 items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      disabled={disabled}
-                      onChange={() => setWeightBucket(w.label, w.min, w.max)}
-                      className="h-4 w-4 accent-natalo-600"
-                    />
-                    <span className="truncate text-zinc-700">{w.label}</span>
-                  </div>
-                  <span className="shrink-0 text-xs text-zinc-400">{w.count}</span>
-                </label>
-              );
-            })}
-          </div>
-        </FilterSection>
-      )}
 
       {/* Lainnya */}
       <FilterSection title="Lainnya">

@@ -6,16 +6,6 @@ import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
 import { WishlistButton } from "./WishlistButton";
 import { ProductCardCta } from "./ProductCardCta";
 
-function formatWeightShort(gram: number): string | null {
-  if (!gram || gram <= 0) return null;
-  if (gram >= 1000) {
-    const kg = gram / 1000;
-    const text = kg % 1 === 0 ? kg.toFixed(0) : kg.toFixed(1);
-    return `${text.replace(".", ",")} kg`;
-  }
-  return `${gram} g`;
-}
-
 type Props = {
   product: StoreProduct;
   priority?: boolean;
@@ -41,8 +31,6 @@ export function ProductCard({
   const discountPercent = hasMarkdown
     ? Math.max(1, Math.round(((product.price - displayPrice) / product.price) * 100))
     : 0;
-
-  const weightLabel = formatWeightShort(product.weightGram);
 
   if (isCompact) {
     return (
@@ -85,21 +73,12 @@ export function ProductCard({
               {product.name}
             </h3>
 
-            {/* Badge kecil: berat produk. Stok ditandai di image (Tersedia/
-                Habis). Berat kasih konteks ukuran cepat sebelum buka detail. */}
-            {weightLabel && (
-              <div className="mt-1.5 flex flex-wrap items-center gap-1 text-[11px] text-gray-500">
-                <span className="rounded-md bg-[#F5F5F5] px-1.5 py-0.5 font-semibold">
-                  {weightLabel}
-                </span>
-                <span className="inline-flex items-center gap-0.5">
-                  <span className="text-amber-400">★</span>
-                  <span className="font-semibold text-gray-700">
-                    {product.avgRating > 0 ? product.avgRating.toFixed(1) : "Baru"}
-                  </span>
-                </span>
-              </div>
-            )}
+            <div className="mt-1.5 flex items-center gap-0.5 text-[11px] text-gray-500">
+              <span className="text-amber-400">★</span>
+              <span className="font-semibold text-gray-700">
+                {product.avgRating > 0 ? product.avgRating.toFixed(1) : "Baru"}
+              </span>
+            </div>
 
             <div className="mt-2">
               <p className="text-base font-black leading-tight text-[#1E5FBF]">
@@ -186,19 +165,11 @@ export function ProductCard({
         </div>
 
         {/* Info — TANPA deskripsi panjang. Deskripsi lengkap di halaman detail
-            produk. Card cuma: gambar, nama (max 2 baris), berat, harga, CTA. */}
+            produk. Card cuma: gambar, nama (max 2 baris), harga, CTA. */}
         <div className="flex flex-1 flex-col p-4">
           <h3 className="line-clamp-2 font-semibold leading-snug text-gray-900">
             {product.name}
           </h3>
-
-          {/* Badge berat — kasih konteks ukuran cepat. Status stok ditandai di
-              CTA (Habis) + di gambar (Member badge optional). */}
-          {weightLabel && (
-            <span className="mt-1.5 inline-flex w-fit rounded-md bg-[#F5F5F5] px-1.5 py-0.5 text-[11px] font-semibold text-gray-500">
-              {weightLabel}
-            </span>
-          )}
 
           <div className="mt-3">
             <p className="font-bold text-gray-900">{formatRupiah(displayPrice)}</p>

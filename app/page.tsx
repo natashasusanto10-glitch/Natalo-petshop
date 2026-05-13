@@ -83,18 +83,16 @@ const SHORTCUT_ITEMS: {
 ];
 
 const FEATURED_BRANDS: BrandChoiceItem[] = [
-  { id: "royal-canin", name: "Royal Canin", slug: "royal-canin", logo: "/images/brands/royal-canin.png" },
-  { id: "whiskas", name: "Whiskas", slug: "whiskas", logo: "/images/brands/whiskas.png" },
-  { id: "me-o", name: "Me-O", slug: "me-o", logo: "/images/brands/me-o.png" },
-  { id: "happy-dog", name: "Happy Dog", slug: "happy-dog", logo: "/images/brands/happy-dog.png" },
-  { id: "pro-plan", name: "Pro Plan", slug: "pro-plan", logo: "/images/brands/pro-plan.png" },
-  { id: "bolt", name: "Bolt", slug: "bolt", logo: "/images/brands/bolt.png" },
-  { id: "reflex", name: "Reflex", slug: "reflex", logo: "/images/brands/reflex.png" },
-  { id: "life-cat", name: "Life Cat", slug: "life-cat", logo: "/images/brands/life-cat.png" },
-  { id: "vitaplus", name: "Vitaplus", slug: "vitaplus", logo: "/images/brands/vitaplus.png" },
-  { id: "amara", name: "Amara", slug: "amara", logo: "/images/brands/amara.png" },
-  { id: "yukari", name: "Yukari", slug: "yukari", logo: "/images/brands/yukari.png" },
-  { id: "kitty-kiss", name: "Kitty Kiss", slug: "kitty-kiss", logo: "/images/brands/kitty-kiss.png" },
+  { id: "royal-canin", name: "Royal Canin", slug: "royal-canin", logo: "/images/brands/royal-canin.jpg" },
+  { id: "whiskas", name: "Whiskas", slug: "whiskas", logo: "/images/brands/whiskas.jpg" },
+  { id: "me-o", name: "Me-O", slug: "me-o", logo: "/images/brands/me-o.jpg" },
+  { id: "pedigree", name: "Pedigree", slug: "pedigree", logo: "/images/brands/pedigree.jpg" },
+  { id: "nature-bridge", name: "Nature Bridge", slug: "nature-bridge", logo: "/images/brands/nature-bridge.jpg" },
+  { id: "kitchen-flavour", name: "Kitchen Flavour", slug: "kitchen-flavour", logo: "/images/brands/kitchen-flavour.jpg" },
+  { id: "pro-plan", name: "Pro Plan", slug: "pro-plan", logo: "/images/brands/pro-plan.jpg" },
+  { id: "happy-cat", name: "Happy Cat", slug: "happy-cat", logo: "/images/brands/happy-cat.jpg" },
+  { id: "happy-dog", name: "Happy Dog", slug: "happy-dog", logo: "/images/brands/happy-dog.jpg" },
+  { id: "reflex", name: "Reflex", slug: "reflex", logo: "/images/brands/reflex.jpg" },
 ];
 
 function getJakartaMidnight() {
@@ -470,10 +468,14 @@ export default async function HomePage() {
       } satisfies BrandChoiceItem,
     ]),
   );
-  const defaultFeaturedBrands = FEATURED_BRANDS.map((brand) => ({
-    ...brand,
-    ...(dbBrandBySlug.get(brand.slug) ?? {}),
-  }));
+  const defaultFeaturedBrands = FEATURED_BRANDS.map((brand) => {
+    const dbBrand = dbBrandBySlug.get(brand.slug);
+    return {
+      ...brand,
+      ...(dbBrand ?? {}),
+      logo: dbBrand?.logo ?? brand.logo,
+    };
+  });
   const extraFeaturedBrands = dbFeaturedBrands
     .filter((brand) => !FEATURED_BRANDS.some((item) => item.slug === brand.slug))
     .map(

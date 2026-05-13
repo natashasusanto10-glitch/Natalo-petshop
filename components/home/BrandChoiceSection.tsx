@@ -28,7 +28,7 @@ function BrandLogo({ brand }: { brand: BrandChoiceItem }) {
   if (!brand.logo || failed) {
     const compactName = brand.name.replace(/\s+/g, " ");
     return (
-      <div className="flex h-full w-full items-center justify-center rounded-xl bg-gradient-to-br from-natalo-50 to-white px-2 text-center">
+      <div className="flex h-full w-full items-center justify-center rounded-xl bg-gradient-to-br from-natalo-50 to-white px-3 text-center">
         <span className="line-clamp-2 text-[13px] font-black uppercase leading-tight tracking-[0.02em] text-natalo-700">
           {compactName}
         </span>
@@ -40,9 +40,10 @@ function BrandLogo({ brand }: { brand: BrandChoiceItem }) {
     <Image
       src={brand.logo}
       alt={`Logo ${brand.name}`}
-      fill
+      width={96}
+      height={48}
       sizes="96px"
-      className="object-contain"
+      className="max-h-10 w-auto max-w-full object-contain"
       onError={() => setFailed(true)}
     />
   );
@@ -93,12 +94,12 @@ export function BrandChoiceSection({ brands }: BrandChoiceSectionProps) {
             key={brand.id}
             href={brandHref(brand)}
             aria-label={`Lihat produk brand ${brand.name}`}
-            className="flex h-[98px] w-[30vw] min-w-[112px] max-w-[128px] shrink-0 snap-start flex-col items-center justify-center gap-2 rounded-2xl border border-[#edf2f7] bg-white p-3 shadow-sm transition active:scale-[0.98] active:opacity-90"
+            className="flex h-[112px] w-[120px] shrink-0 snap-start flex-col items-center justify-center rounded-2xl border border-[#edf2f7] bg-white p-3 shadow-sm transition active:scale-[0.98] active:opacity-90"
           >
-            <div className="relative flex h-12 w-full items-center justify-center">
+            <div className="flex h-14 w-full items-center justify-center rounded-xl bg-slate-50 px-3">
               <BrandLogo brand={brand} />
             </div>
-            <span className="line-clamp-1 max-w-full text-center text-[10.5px] font-extrabold leading-tight text-zinc-600">
+            <span className="mt-3 line-clamp-1 max-w-full text-center text-[11px] font-extrabold leading-tight text-zinc-600">
               {brand.name}
             </span>
           </Link>
