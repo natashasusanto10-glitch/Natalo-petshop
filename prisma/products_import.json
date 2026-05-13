@@ -99,10 +99,6 @@
       "slug": "animalco"
     },
     {
-      "name": "Anthel",
-      "slug": "anthel"
-    },
-    {
       "name": "Beauty Gold",
       "slug": "beauty-gold"
     },
@@ -177,10 +173,6 @@
     {
       "name": "Dog Choize",
       "slug": "dog-choize"
-    },
-    {
-      "name": "Doris",
-      "slug": "doris"
     },
     {
       "name": "Dormeo's",
@@ -457,6 +449,10 @@
     {
       "name": "YANG",
       "slug": "yang"
+    },
+    {
+      "name": "Kalbe Animal Health",
+      "slug": "kalbe-animal-health"
     }
   ],
   "products": [
@@ -2984,7 +2980,7 @@
       "name": "Anthel Cat 1 Box isi 30 Tablet",
       "original_name": "Anthel Cat 1 Box isi 30 Tablet - Obat Cacing Kucing ORIGINAL dari KALBE",
       "slug": "anthel-cat-1-box-isi-30-tablet",
-      "brand": "Anthel",
+      "brand": "Kalbe Animal Health",
       "category": "kesehatan-vitamin-kucing",
       "price": 364500,
       "stock": 24,
@@ -2999,7 +2995,7 @@
       "name": "Anthel Cat 1 Tablet",
       "original_name": "Anthel Cat 1 Tablet - Obat Cacing Kucing ORIGINAL dari KALBE per 1 PCS 1 BUTIR",
       "slug": "anthel-cat-1-tablet-obat-cacing-kucing-original-dari-kalbe-per-1pcs-1",
-      "brand": "Anthel",
+      "brand": "Kalbe Animal Health",
       "category": "kesehatan-vitamin-kucing",
       "price": 13400,
       "stock": 24,
@@ -3014,7 +3010,7 @@
       "name": "Anthel Dog 1 Tablet",
       "original_name": "Anthel Dog 1 Tablet - Obat Cacing Anjing ORIGINAL KALBE",
       "slug": "anthel-dog-1-tablet",
-      "brand": "Anthel",
+      "brand": "Kalbe Animal Health",
       "category": "kesehatan-vitamin-anjing",
       "price": 16300,
       "stock": 24,
@@ -5594,7 +5590,7 @@
       "name": "Doris Anti Fleas Powder 150g",
       "original_name": "DORIS Anti Fleas Powder - Bedak Pembasmi Kutu Anjing",
       "slug": "doris-anti-fleas-powder",
-      "brand": "Doris",
+      "brand": "Kalbe Animal Health",
       "category": "aksesoris-perlengkapan",
       "price": 19300,
       "stock": 24,
@@ -5609,7 +5605,7 @@
       "name": "Doris Bedak Anjing Harga per Dus/Box isi 24pcs Anti Fleas Kutu/Skin",
       "original_name": "Doris Bedak Anjing Harga per Dus / Box isi 24 pcs Anti Fleas Kutu / Skin Care Jamur / Hijau / Pink - Grosir Karton Kardus 100GR",
       "slug": "doris-bedak-anjing-harga-per-dus-box-isi-24pcs-anti-fleas-kutu-skin",
-      "brand": "Doris",
+      "brand": "Kalbe Animal Health",
       "category": "aksesoris-perlengkapan",
       "price": 437500,
       "stock": 24,
@@ -5624,7 +5620,7 @@
       "name": "Doris Skin Care 150g",
       "original_name": "Doris Skin Care - Bedak Kulit Jamur Gatal Anjing Semua Umur 100Gr",
       "slug": "doris-skin-care",
-      "brand": "Doris",
+      "brand": "Kalbe Animal Health",
       "category": "aksesoris-perlengkapan",
       "price": 20600,
       "stock": 24,
@@ -26579,7 +26575,7 @@
       "name": "Kalvidog by Kalbe 400g",
       "original_name": "Kalvidog by Kalbe - Multivitamin Multimineral Anjing isi 100 Tablet",
       "slug": "kalvidog-by-kalbe",
-      "brand": "DLL",
+      "brand": "Kalbe Animal Health",
       "category": "kesehatan-vitamin-anjing",
       "price": 137500,
       "stock": 24,
@@ -26594,7 +26590,7 @@
       "name": "Kalvidog Junior by Kalbe 150g",
       "original_name": "Kalvidog Junior by Kalbe - Multivitamin Multimineral Anak Anjing/Puppy 60 Tablet",
       "slug": "kalvidog-junior-by-kalbe",
-      "brand": "DLL",
+      "brand": "Kalbe Animal Health",
       "category": "kesehatan-vitamin-anjing",
       "price": 72700,
       "stock": 24,
@@ -26609,7 +26605,7 @@
       "name": "Kalvigel 60g",
       "original_name": "Kalvigel 60Gr - Vitamin Kesehatan Kucing Anjing Hewan KALBE",
       "slug": "kalvigel-60g",
-      "brand": "DLL",
+      "brand": "Kalbe Animal Health",
       "category": "kesehatan-vitamin-kucing",
       "price": 61100,
       "stock": 24,
