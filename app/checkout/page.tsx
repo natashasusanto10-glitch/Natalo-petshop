@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Script from "next/script";
 import { formatRupiah, formatShippingDuration } from "@/lib/format";
+import { toCustomerShippingErrorMessage } from "@/lib/shipping-messages";
 import { MetodePengiriman } from "@/components/MetodePengiriman";
 import {
   CheckoutVoucherCard,
@@ -896,10 +897,25 @@ export default function CheckoutPage() {
       return;
     }
     setShippingError("");
+    setRates([]);
     setRatesLoading(true);
-    setShippingSheetOpen(true);
 
     try {
+      const originRes = await fetch("/api/shipping/origin", {
+        method: "GET",
+        cache: "no-store",
+      });
+      const originData = await originRes.json().catch(() => ({}));
+
+      if (!originRes.ok || originData?.configured === false) {
+        setShippingError(toCustomerShippingErrorMessage(originData?.message));
+        setSelectedRate(null);
+        setPayment(null);
+        return;
+      }
+
+      setShippingSheetOpen(true);
+
       // Format items per spec Biteship: per item dengan name, value, weight, quantity
       const biteshipItems = items.map((it) => ({
         name: it.name,
@@ -922,7 +938,7 @@ export default function CheckoutPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setShippingError(data.message ?? "Gagal memuat ongkir, coba lagi.");
+        setShippingError(toCustomerShippingErrorMessage(data.message));
         setRates([]);
       } else {
         setRates(data.rates || []);

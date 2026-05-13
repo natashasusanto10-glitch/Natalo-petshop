@@ -17,6 +17,12 @@
  *     instant | same_day | next_day | regular | economy | others
  */
 import { NextResponse } from "next/server";
+import {
+  getOriginAreaId,
+  logMissingOriginArea,
+  ORIGIN_AREA_NOT_CONFIGURED_CODE,
+  SHIPPING_ORIGIN_UNAVAILABLE_MESSAGE,
+} from "@/lib/shipping-origin";
 
 export type ShippingItem = {
   name: string;
@@ -48,9 +54,22 @@ function numberOrNull(value: unknown) {
 export async function POST(request: Request) {
   const body = await request.json();
   const apiKey = process.env.BITESHIP_API_KEY;
-  const originAreaId = (process.env.WAREHOUSE_AREA_ID || process.env.SHOP_ORIGIN_AREA_ID || "").trim();
+  const originAreaId = getOriginAreaId();
   const originLatitude = numberOrNull(process.env.SHOP_ORIGIN_LATITUDE);
   const originLongitude = numberOrNull(process.env.SHOP_ORIGIN_LONGITUDE);
+
+  if (!originAreaId) {
+    logMissingOriginArea();
+    return NextResponse.json(
+      {
+        success: false,
+        code: ORIGIN_AREA_NOT_CONFIGURED_CODE,
+        message: SHIPPING_ORIGIN_UNAVAILABLE_MESSAGE,
+        rates: [],
+      },
+      { status: 503 }
+    );
+  }
 
   if (!apiKey) {
     if (process.env.NODE_ENV === "production") {
@@ -65,13 +84,6 @@ export async function POST(request: Request) {
       message: "BITESHIP_API_KEY belum diisi — pakai data dummy (dev only).",
     });
   }
-  if (!originAreaId) {
-    return NextResponse.json(
-      { message: "Area asal toko belum dikonfigurasi. Isi SHOP_ORIGIN_AREA_ID atau WAREHOUSE_AREA_ID." },
-      { status: 500 }
-    );
-  }
-
   const items: ShippingItem[] = Array.isArray(body.items) ? body.items : [];
   if (items.length === 0) {
     return NextResponse.json(

@@ -2,6 +2,7 @@
 
 import { BottomSheet } from "@/components/BottomSheet";
 import { formatRupiah } from "@/lib/format";
+import { SHIPPING_ORIGIN_UNAVAILABLE_DETAIL } from "@/lib/shipping-messages";
 
 export type Rate = {
   courier_name: string;
@@ -99,9 +100,17 @@ export function MetodePengiriman({
 
       {/* Error */}
       {error && !loading && (
-        <div className="rounded-2xl bg-red-50 p-5 text-center">
-          <p className="text-2xl">⚠️</p>
-          <p className="mt-2 text-sm font-semibold text-red-700">{error}</p>
+        <div className="rounded-2xl bg-amber-50 p-5 text-center">
+          <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-lg font-black text-amber-700">
+            !
+          </span>
+          <p className="mt-3 text-sm font-black text-amber-900">
+            Metode pengiriman belum tersedia
+          </p>
+          <p className="mt-1 text-sm font-semibold text-amber-800">{error}</p>
+          <p className="mt-2 text-xs font-medium text-amber-700">
+            {SHIPPING_ORIGIN_UNAVAILABLE_DETAIL}
+          </p>
         </div>
       )}
 

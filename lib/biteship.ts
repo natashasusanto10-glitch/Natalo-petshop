@@ -1,5 +1,10 @@
 import type { Order, OrderItem } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import {
+  getOriginAreaId,
+  logMissingOriginArea,
+  SHIPPING_ORIGIN_UNAVAILABLE_MESSAGE,
+} from "@/lib/shipping-origin";
 
 type BiteshipItem = {
   name: string;
@@ -43,7 +48,7 @@ function buildItems(items: OrderItem[]): BiteshipItem[] {
 function getCreateOrderPayload(order: OrderWithItems) {
   const originLatitude = envNumber("SHOP_ORIGIN_LATITUDE");
   const originLongitude = envNumber("SHOP_ORIGIN_LONGITUDE");
-  const originAreaId = (process.env.WAREHOUSE_AREA_ID || process.env.SHOP_ORIGIN_AREA_ID || "").trim();
+  const originAreaId = getOriginAreaId();
   const destinationLatitude = order.shippingLatitude;
   const destinationLongitude = order.shippingLongitude;
   const instant = isInstantCourier(order);
@@ -55,7 +60,8 @@ function getCreateOrderPayload(order: OrderWithItems) {
     throw new Error("Kurir belum dipilih.");
   }
   if (!instant && !originAreaId) {
-    throw new Error("SHOP_ORIGIN_AREA_ID/WAREHOUSE_AREA_ID wajib diisi untuk kurir reguler.");
+    logMissingOriginArea();
+    throw new Error(SHIPPING_ORIGIN_UNAVAILABLE_MESSAGE);
   }
   if (!instant && !order.shippingAreaId) {
     throw new Error("Area Biteship tujuan belum dipilih.");
