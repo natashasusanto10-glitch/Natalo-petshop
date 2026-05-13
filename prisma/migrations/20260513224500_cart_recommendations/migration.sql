@@ -34,16 +34,37 @@ CREATE INDEX IF NOT EXISTS "product_recommendation_rules_source_product_id_is_ac
 CREATE INDEX IF NOT EXISTS "product_recommendation_rules_recommended_product_id_idx"
   ON "product_recommendation_rules"("recommended_product_id");
 
-ALTER TABLE "user_product_views"
-  ADD CONSTRAINT "user_product_views_user_id_fkey"
-  FOREIGN KEY ("user_id") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "user_product_views"
-  ADD CONSTRAINT "user_product_views_product_id_fkey"
-  FOREIGN KEY ("product_id") REFERENCES "Product"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'user_product_views_user_id_fkey'
+  ) THEN
+    ALTER TABLE "user_product_views"
+      ADD CONSTRAINT "user_product_views_user_id_fkey"
+      FOREIGN KEY ("user_id") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
 
-ALTER TABLE "product_recommendation_rules"
-  ADD CONSTRAINT "product_recommendation_rules_source_product_id_fkey"
-  FOREIGN KEY ("source_product_id") REFERENCES "Product"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "product_recommendation_rules"
-  ADD CONSTRAINT "product_recommendation_rules_recommended_product_id_fkey"
-  FOREIGN KEY ("recommended_product_id") REFERENCES "Product"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'user_product_views_product_id_fkey'
+  ) THEN
+    ALTER TABLE "user_product_views"
+      ADD CONSTRAINT "user_product_views_product_id_fkey"
+      FOREIGN KEY ("product_id") REFERENCES "Product"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'product_recommendation_rules_source_product_id_fkey'
+  ) THEN
+    ALTER TABLE "product_recommendation_rules"
+      ADD CONSTRAINT "product_recommendation_rules_source_product_id_fkey"
+      FOREIGN KEY ("source_product_id") REFERENCES "Product"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'product_recommendation_rules_recommended_product_id_fkey'
+  ) THEN
+    ALTER TABLE "product_recommendation_rules"
+      ADD CONSTRAINT "product_recommendation_rules_recommended_product_id_fkey"
+      FOREIGN KEY ("recommended_product_id") REFERENCES "Product"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
