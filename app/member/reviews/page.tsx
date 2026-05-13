@@ -1,15 +1,12 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { LogoutButton } from "@/components/LogoutButton";
-import { MemberNav } from "@/components/MemberNav";
 import { Stars } from "@/components/StarRating";
 import { ReviewableItemCard } from "@/components/ReviewableItemCard";
 import { requireCustomerSession } from "@/lib/session-guards";
-import Link from "next/link";
 
 export default async function MemberReviewsPage() {
   const session = await requireCustomerSession();
 
-  // Item yang BELUM direview (status order = DELIVERED, no aktif review)
   const reviewableItems = await prisma.orderItem.findMany({
     where: {
       order: { userId: session.sub, status: "DELIVERED" },
@@ -23,7 +20,6 @@ export default async function MemberReviewsPage() {
     take: 50,
   });
 
-  // Review yang sudah dibuat user (VISIBLE/HIDDEN)
   const myReviews = await prisma.review.findMany({
     where: {
       userId: session.sub,
@@ -40,47 +36,32 @@ export default async function MemberReviewsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-natalo-600 px-4 pb-0 pt-8">
-        <div className="mx-auto max-w-4xl">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/20 text-2xl">
-                🐾
-              </div>
-              <div>
-                <p className="text-xs text-natalo-100">Member resmi</p>
-                <p className="text-lg font-black text-white">
-                  Halo, {session.name}!
-                </p>
-              </div>
-            </div>
-            <LogoutButton
-              redirectTo="/member/login"
-              className="border-white/30 text-white hover:border-white/60"
-            />
-          </div>
-          <MemberNav />
+      <main className="mx-auto max-w-4xl space-y-8 px-4 py-5 md:py-8">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-natalo-600">
+            Rating Produk
+          </p>
+          <h1 className="mt-1 text-2xl font-black tracking-tight text-gray-950">
+            Ulasan Produk
+          </h1>
+          <p className="mt-1 max-w-xl text-sm leading-6 text-gray-500">
+            Selesaikan rating dan cerita pengalamanmu untuk produk yang sudah sampai.
+          </p>
         </div>
-      </div>
 
-      <main className="mx-auto max-w-4xl px-4 py-8 space-y-10">
-        {/* Yang menunggu review */}
         <section>
           <h2 className="text-xl font-black text-gray-900">
             Yang menunggu review ({reviewableItems.length})
           </h2>
           <p className="mt-1 text-sm text-gray-500">
-            Bagikan pengalaman kamu — bantu pembeli lain memilih produk yang
-            tepat.
+            Bagikan pengalaman kamu untuk membantu pembeli lain memilih produk yang tepat.
           </p>
 
           {reviewableItems.length === 0 ? (
             <div className="mt-5 rounded-2xl border border-gray-100 bg-white p-8 text-center">
-              <span className="text-4xl">✨</span>
+              <span className="text-4xl" aria-hidden="true">✨</span>
               <p className="mt-3 text-sm text-gray-500">
-                Tidak ada produk yang menunggu review. Pesanan yang sudah
-                selesai akan muncul di sini.
+                Tidak ada produk yang menunggu review. Pesanan yang sudah selesai akan muncul di sini.
               </p>
             </div>
           ) : (
@@ -101,7 +82,6 @@ export default async function MemberReviewsPage() {
           )}
         </section>
 
-        {/* Review saya */}
         <section>
           <h2 className="text-xl font-black text-gray-900">
             Review yang sudah saya buat ({myReviews.length})
@@ -109,23 +89,23 @@ export default async function MemberReviewsPage() {
 
           {myReviews.length === 0 ? (
             <div className="mt-5 rounded-2xl border border-gray-100 bg-white p-8 text-center">
-              <span className="text-4xl">📝</span>
+              <span className="text-4xl" aria-hidden="true">📝</span>
               <p className="mt-3 text-sm text-gray-500">Belum ada review.</p>
             </div>
           ) : (
             <div className="mt-5 space-y-3">
-              {myReviews.map((r) => (
+              {myReviews.map((review) => (
                 <div
-                  key={r.id}
+                  key={review.id}
                   className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm"
                 >
                   <div className="flex items-start gap-3">
                     <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-gray-100">
-                      {r.product.imageUrl ? (
+                      {review.product.imageUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={r.product.imageUrl}
-                          alt={r.product.name}
+                          src={review.product.imageUrl}
+                          alt={review.product.name}
                           className="h-full w-full object-cover"
                         />
                       ) : (
@@ -136,22 +116,22 @@ export default async function MemberReviewsPage() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <Link
-                        href={`/products/${r.product.slug}`}
+                        href={`/products/${review.product.slug}`}
                         className="line-clamp-1 text-sm font-semibold text-gray-900 hover:text-natalo-700"
                       >
-                        {r.product.name}
+                        {review.product.name}
                       </Link>
-                      {r.variantLabel && (
+                      {review.variantLabel && (
                         <p className="text-xs text-natalo-600">
-                          {r.variantLabel}
+                          {review.variantLabel}
                         </p>
                       )}
                       <div className="mt-1 flex items-center gap-2">
-                        <Stars rating={r.rating} size="sm" />
+                        <Stars rating={review.rating} size="sm" />
                         <span className="text-xs text-gray-400">
-                          {new Date(r.createdAt).toLocaleDateString("id-ID")}
+                          {new Date(review.createdAt).toLocaleDateString("id-ID")}
                         </span>
-                        {r.status === "HIDDEN" && (
+                        {review.status === "HIDDEN" && (
                           <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-600">
                             Disembunyikan
                           </span>
@@ -160,24 +140,24 @@ export default async function MemberReviewsPage() {
                     </div>
                   </div>
 
-                  {r.title && (
+                  {review.title && (
                     <p className="mt-3 text-sm font-semibold text-gray-900">
-                      {r.title}
+                      {review.title}
                     </p>
                   )}
-                  {r.content && (
-                    <p className="mt-1 text-sm text-gray-700 whitespace-pre-line">
-                      {r.content}
+                  {review.content && (
+                    <p className="mt-1 whitespace-pre-line text-sm text-gray-700">
+                      {review.content}
                     </p>
                   )}
 
-                  {r.images.length > 0 && (
+                  {review.images.length > 0 && (
                     <div className="mt-2 flex gap-2">
-                      {r.images.map((img) => (
+                      {review.images.map((image) => (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          key={img.id}
-                          src={img.imageUrl}
+                          key={image.id}
+                          src={image.imageUrl}
                           alt=""
                           className="h-14 w-14 rounded-lg object-cover"
                         />
@@ -185,13 +165,13 @@ export default async function MemberReviewsPage() {
                     </div>
                   )}
 
-                  {r.reply && (
+                  {review.reply && (
                     <div className="mt-3 rounded-lg bg-natalo-50 p-3">
                       <p className="text-xs font-bold text-natalo-800">
-                        💬 Balasan Penjual
+                        Balasan Penjual
                       </p>
-                      <p className="mt-0.5 text-sm text-gray-700 whitespace-pre-line">
-                        {r.reply.content}
+                      <p className="mt-0.5 whitespace-pre-line text-sm text-gray-700">
+                        {review.reply.content}
                       </p>
                     </div>
                   )}

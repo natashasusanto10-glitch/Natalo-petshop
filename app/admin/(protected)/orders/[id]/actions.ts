@@ -8,6 +8,7 @@ import { sendOrderStatusEmail } from "@/lib/email-order";
 import { assertCanTransitionOrderStatus, transitionOrderStatus } from "@/lib/order-transitions";
 import { buildOrderDetailUrl } from "@/lib/order-detail";
 import { sendOrderStatusPush } from "@/lib/push";
+import { SELF_PICKUP_METHOD, createPickupCode } from "@/lib/self-pickup";
 import {
   sendCustomMessage,
   sendOrderCancelled,
@@ -58,7 +59,7 @@ export async function markAsPaid(orderId: string) {
   await requireAdmin();
   const current = await prisma.order.findUnique({
     where: { id: orderId },
-    select: { status: true, paymentStatus: true },
+    select: { status: true, paymentStatus: true, orderType: true },
   });
   if (!current) return;
 
@@ -83,9 +84,14 @@ export async function markAsPaid(orderId: string) {
       status: { notIn: ["CANCELLED", "REFUNDED"] },
       paymentStatus: { notIn: ["PAID", "REFUNDED"] },
     },
-    data: current.status === "PENDING"
-      ? { paymentStatus: "PAID", status: "PAID" }
-      : { paymentStatus: "PAID" },
+    data:
+      current.status === "PENDING" && current.orderType === SELF_PICKUP_METHOD
+        ? { paymentStatus: "PAID", status: "PROCESSING", pickupStatus: "PREPARING" }
+        : current.status === "PENDING"
+        ? { paymentStatus: "PAID", status: "PAID" }
+        : current.orderType === SELF_PICKUP_METHOD
+        ? { paymentStatus: "PAID", pickupStatus: "PREPARING" }
+        : { paymentStatus: "PAID" },
   });
   if (result.count === 0) {
     throw new Error("Order sudah berubah, refresh halaman dulu.");
@@ -100,9 +106,11 @@ export async function markAsPaid(orderId: string) {
     });
   }
 
-  await createBiteshipShipment(orderId).catch((error) => {
-    console.error("[biteship] create shipment after manual payment failed", error);
-  });
+  if (current.orderType !== SELF_PICKUP_METHOD) {
+    await createBiteshipShipment(orderId).catch((error) => {
+      console.error("[biteship] create shipment after manual payment failed", error);
+    });
+  }
   revalidateOrderAdmin(orderId);
 }
 
@@ -185,6 +193,77 @@ export async function markAsDelivered(orderId: string) {
       console.error("[whatsapp] order completed notification failed", error);
     });
   }
+  revalidateOrderAdmin(orderId);
+}
+
+export async function markAsReadyForPickup(orderId: string) {
+  await requireAdmin();
+  const current = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: {
+      status: true,
+      paymentStatus: true,
+      orderType: true,
+      pickupCode: true,
+      orderNumber: true,
+    },
+  });
+  if (!current) return;
+  if (current.orderType !== SELF_PICKUP_METHOD) {
+    throw new Error("Order ini bukan Self Pick Up.");
+  }
+  if (current.paymentStatus !== "PAID") {
+    throw new Error("Order belum lunas, belum bisa ditandai siap diambil.");
+  }
+
+  let pickupCode = current.pickupCode;
+  if (!pickupCode) {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const candidate = createPickupCode();
+      const exists = await prisma.order.findUnique({
+        where: { pickupCode: candidate },
+        select: { id: true },
+      });
+      if (!exists) {
+        pickupCode = candidate;
+        break;
+      }
+    }
+  }
+  if (!pickupCode) throw new Error("Gagal membuat kode pickup.");
+
+  await transitionOrderStatus(orderId, "READY_FOR_PICKUP", {
+    pickupCode,
+    pickupStatus: "READY",
+    readyForPickupAt: new Date(),
+  });
+
+  await sendOrderStatusPush(orderId, current.orderNumber, "READY_FOR_PICKUP").catch(() => {});
+  revalidateOrderAdmin(orderId);
+}
+
+export async function markAsPickedUp(orderId: string) {
+  const admin = await requireAdmin();
+  const current = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { status: true, paymentStatus: true, orderType: true, pickupStatus: true },
+  });
+  if (!current) return;
+  if (current.orderType !== SELF_PICKUP_METHOD) {
+    throw new Error("Order ini bukan Self Pick Up.");
+  }
+  if (current.status !== "READY_FOR_PICKUP" || current.paymentStatus !== "PAID") {
+    throw new Error("Order belum siap untuk diserahkan.");
+  }
+  if (current.pickupStatus === "PICKED_UP") {
+    throw new Error("Order sudah pernah diserahkan.");
+  }
+
+  await transitionOrderStatus(orderId, "DELIVERED", {
+    pickupStatus: "PICKED_UP",
+    pickedUpAt: new Date(),
+    pickedUpByAdminId: admin.sub,
+  });
   revalidateOrderAdmin(orderId);
 }
 

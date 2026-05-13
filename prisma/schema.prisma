@@ -12,6 +12,7 @@ enum OrderStatus {
   PENDING
   PAID
   PROCESSING
+  READY_FOR_PICKUP
   SHIPPED
   DELIVERED
   CANCELLED
@@ -63,6 +64,7 @@ model User {
   chatThreads         ChatThread[]     @relation("CustomerChatThreads")
   chatMessages        ChatMessage[]    @relation("ChatSender")
   cartItems           CartItem[]
+  productViews        UserProductView[]
   announcementReads   AnnouncementRead[]
   createdAt           DateTime        @default(now())
   updatedAt           DateTime        @updatedAt
@@ -136,8 +138,45 @@ model Product {
   variants          ProductVariant[]
   variantAttrs      VariantAttribute[]
   favorites         Favorite[]
+  viewedBy          UserProductView[]
+  recommendationSources ProductRecommendationRule[] @relation("RecommendationSource")
+  recommendationTargets ProductRecommendationRule[] @relation("RecommendationTarget")
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
+}
+
+model UserProductView {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String   @map("product_id")
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  viewedAt  DateTime @default(now()) @map("viewed_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, productId])
+  @@index([userId, viewedAt])
+  @@index([productId])
+  @@map("user_product_views")
+}
+
+model ProductRecommendationRule {
+  id                   String   @id @default(cuid())
+  sourceProductId       String   @map("source_product_id")
+  sourceProduct         Product  @relation("RecommendationSource", fields: [sourceProductId], references: [id], onDelete: Cascade)
+  recommendedProductId  String   @map("recommended_product_id")
+  recommendedProduct    Product  @relation("RecommendationTarget", fields: [recommendedProductId], references: [id], onDelete: Cascade)
+  relationType          String   @default("complementary") @map("relation_type")
+  priority              Int      @default(0)
+  isActive              Boolean  @default(true) @map("is_active")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@unique([sourceProductId, recommendedProductId, relationType])
+  @@index([sourceProductId, isActive, priority])
+  @@index([recommendedProductId])
+  @@map("product_recommendation_rules")
 }
 
 model Order {
@@ -158,6 +197,8 @@ model Order {
   shippingAreaLabel    String?
   shippingProvinceName String?
   shippingDistrictName String?
+  orderType            String          @default("DELIVERY")
+  shippingMethod       String          @default("DELIVERY")
   courierCode          String?
   courierService       String?
   trackingNumber       String?
@@ -168,6 +209,17 @@ model Order {
   biteshipRequest      Json?
   biteshipResponse     Json?
   biteshipError        String?
+  pickupStoreName      String?
+  pickupStoreAddress   String?
+  pickupStoreLatitude  Float?
+  pickupStoreLongitude Float?
+  pickupHours          String?
+  pickupCode           String?         @unique
+  pickupQrCode         String?
+  pickupStatus         String?
+  readyForPickupAt     DateTime?
+  pickedUpAt           DateTime?
+  pickedUpByAdminId    String?
   subtotal             Int
   shippingCost         Int             @default(0)
   discount             Int             @default(0)
@@ -189,6 +241,8 @@ model Order {
 
   @@index([biteshipOrderId])
   @@index([shipmentStatus])
+  @@index([orderType])
+  @@index([pickupStatus])
 }
 
 model OrderItem {

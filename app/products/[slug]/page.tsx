@@ -11,6 +11,7 @@ import { SocialProofRow } from "@/components/products/SocialProofRow";
 import { TrustInfoCard } from "@/components/products/TrustInfoCard";
 import { VoucherCard } from "@/components/products/VoucherCard";
 import { ProductTabs } from "@/components/products/ProductTabs";
+import { ProductViewTracker } from "@/components/product/ProductViewTracker";
 import { formatRupiah } from "@/lib/format";
 import { getProductBySlug, getProducts } from "@/lib/products";
 import { prisma } from "@/lib/prisma";
@@ -157,6 +158,7 @@ export default async function ProductDetailPage({
 
   return (
     <div className="product-detail-page bg-gray-50 md:bg-white">
+      <ProductViewTracker productId={product.id} slug={product.slug} />
       {/* Status bar override per-product. Default app-wide = dark icons + white
           themeColor. Untuk produk dengan hero photo gelap atau brand-themed
           card di top, ganti ke iconColor="light" themeColor="#1E5FBF" supaya

@@ -24,6 +24,11 @@ const NAV_GROUPS: NavGroup[] = [
         icon: <Glyph d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 3h6v4H9zM9 12h6M9 16h4" />,
       },
       {
+        href: "/admin/pickup-validation",
+        label: "Validasi Pickup",
+        icon: <Glyph d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />,
+      },
+      {
         href: "/admin/products",
         label: "Produk",
         icon: <Glyph d="M20 7H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1ZM16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />,

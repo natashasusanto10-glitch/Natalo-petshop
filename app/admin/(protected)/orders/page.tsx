@@ -7,6 +7,7 @@ const STATUS_LABELS: Record<string, string> = {
   PENDING: "Order Baru",
   PAID: "Sudah Dibayar",
   PROCESSING: "Diproses",
+  READY_FOR_PICKUP: "Siap Diambil",
   SHIPPED: "Dikirim",
   DELIVERED: "Selesai",
   CANCELLED: "Dibatalkan",
@@ -18,6 +19,7 @@ const STATUS_COLORS: Record<string, string> = {
   PENDING: "bg-amber-100 text-amber-700",
   PAID: "bg-emerald-100 text-emerald-700",
   PROCESSING: "bg-natalo-100 text-natalo-700",
+  READY_FOR_PICKUP: "bg-green-100 text-green-700",
   SHIPPED: "bg-indigo-100 text-indigo-700",
   DELIVERED: "bg-emerald-100 text-emerald-700",
   CANCELLED: "bg-red-100 text-red-700",
@@ -49,9 +51,9 @@ const PAGE_SIZE = 20;
 export default async function AdminOrdersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; pay?: string; page?: string }>;
+  searchParams: Promise<{ status?: string; pay?: string; type?: string; page?: string }>;
 }) {
-  const { status, pay, page: pageStr } = await searchParams;
+  const { status, pay, type, page: pageStr } = await searchParams;
   const page = Math.max(1, parseInt(pageStr || "1", 10));
 
   const where: Record<string, unknown> = {};
@@ -60,6 +62,12 @@ export default async function AdminOrdersPage({
     where.paymentStatus = "PAID";
   } else if (status && status !== "ALL") {
     where.status = status;
+  }
+
+  if (type === "SELF_PICKUP") {
+    where.orderType = "SELF_PICKUP";
+  } else if (type === "DELIVERY") {
+    where.orderType = "DELIVERY";
   }
 
   if (status === "NEED_PACKING") {
@@ -95,11 +103,13 @@ export default async function AdminOrdersPage({
     const merged: Record<string, string> = {
       status: status || "ALL",
       pay: pay || "ALL",
+      type: type || "ALL",
       page: "1",
       ...overrides,
     };
     if (merged.status && merged.status !== "ALL") sp.set("status", merged.status);
     if (merged.pay && merged.pay !== "ALL") sp.set("pay", merged.pay);
+    if (merged.type && merged.type !== "ALL") sp.set("type", merged.type);
     if (merged.page && merged.page !== "1") sp.set("page", merged.page);
     const str = sp.toString();
     return `/admin/orders${str ? `?${str}` : ""}`;
@@ -111,6 +121,7 @@ export default async function AdminOrdersPage({
     { key: "PENDING", label: "Order Baru", count: countMap["PENDING"] ?? 0 },
     { key: "PAID", label: "Sudah Dibayar", count: countMap["PAID"] ?? 0 },
     { key: "PROCESSING", label: "Diproses", count: countMap["PROCESSING"] ?? 0 },
+    { key: "READY_FOR_PICKUP", label: "Siap Diambil", count: countMap["READY_FOR_PICKUP"] ?? 0 },
     { key: "SHIPPED", label: "Dikirim", count: countMap["SHIPPED"] ?? 0 },
     { key: "DELIVERED", label: "Selesai", count: countMap["DELIVERED"] ?? 0 },
     { key: "CANCELLED", label: "Dibatalkan", count: countMap["CANCELLED"] ?? 0 },
@@ -119,6 +130,7 @@ export default async function AdminOrdersPage({
 
   const activeStatus = status || "ALL";
   const activePay = pay || "ALL";
+  const activeType = type || "ALL";
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
@@ -135,6 +147,27 @@ export default async function AdminOrdersPage({
 
       {/* Status tabs */}
       <div className="mt-8 flex flex-wrap gap-2">
+        {[
+          { key: "ALL", label: "Semua" },
+          { key: "DELIVERY", label: "Delivery" },
+          { key: "SELF_PICKUP", label: "Self Pick Up" },
+        ].map((tab) => (
+          <Link
+            key={tab.key}
+            href={buildUrl({ type: tab.key })}
+            className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold transition ${
+              activeType === tab.key
+                ? "bg-natalo-600 text-white"
+                : "border border-zinc-200 text-zinc-600 hover:border-zinc-400"
+            }`}
+          >
+            {tab.label}
+          </Link>
+        ))}
+      </div>
+
+      {/* Status tabs */}
+      <div className="mt-4 flex flex-wrap gap-2">
         {tabs.map((tab) => (
           <Link
             key={tab.key}
@@ -214,6 +247,11 @@ export default async function AdminOrdersPage({
                       <td className="px-5 py-4">
                         <p className="font-bold text-zinc-950">{order.orderNumber}</p>
                         <p className="text-zinc-400">{totalQty} item</p>
+                        <p className="mt-1 text-xs font-bold text-zinc-500">
+                          {order.orderType === "SELF_PICKUP"
+                            ? "Ambil Sendiri di Toko"
+                            : "Delivery"}
+                        </p>
                       </td>
                       <td className="px-5 py-4">
                         <p className="font-semibold text-zinc-950">{order.customerName}</p>

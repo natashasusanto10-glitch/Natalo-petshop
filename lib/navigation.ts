@@ -26,6 +26,7 @@ export const HIDDEN_BOTTOM_NAV_PATTERNS: RegExp[] = [
   /^\/help(\/|$)/,
   /^\/wishlist(\/|$)/,
   /^\/member\/favorites(\/|$)/,
+  /^\/member\/reviews(\/|$)/,
   /^\/notifications(\/|$)/,
   /^\/akun\/alamat(\/|$)/,
   /^\/akun\/pengaturan\/notifikasi(\/|$)/,
@@ -48,6 +49,14 @@ export const HIDDEN_BOTTOM_NAV_PATTERNS: RegExp[] = [
   /^\/member\/profile$/,
   /^\/order-status(\/|$)/,
   /^\/pesanan\/[^/]+$/,
+
+  // Review/rating form aliases — fokus mengisi rating dan ulasan produk
+  /^\/review(\/|$)/,
+  /^\/reviews(\/|$)/,
+  /^\/rating(\/|$)/,
+  /^\/order\/review(\/|$)/,
+  /^\/product\/review(\/|$)/,
+  /^\/write-review(\/|$)/,
 ];
 
 export function shouldHideBottomNav(

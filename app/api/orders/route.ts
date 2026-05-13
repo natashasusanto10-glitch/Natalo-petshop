@@ -7,6 +7,7 @@ import { createOrderSchema } from "@/lib/validation";
 import type { CheckedOutItem } from "@/lib/checkout-items";
 import { InvalidCustomerSessionError, resolveOrderIdentity } from "@/lib/order-identity";
 import { buildOrderDetailPath, buildOrderDetailUrl, createTrackingToken } from "@/lib/order-detail";
+import { SELF_PICKUP_METHOD, SELF_PICKUP_STORE } from "@/lib/self-pickup";
 import { sendAdminOrderCreated, sendOrderCreated } from "@/lib/whatsapp";
 
 class StockConflictError extends Error {
@@ -336,7 +337,11 @@ export async function POST(request: Request) {
     if (appliedManualVoucher) appliedVouchers.push(appliedManualVoucher);
     const appliedVoucher = appliedVouchers[0] ?? null;
 
-    const total = Math.max(subtotal + input.shippingCost - discount, 0);
+    const isSelfPickup =
+      input.orderType === SELF_PICKUP_METHOD ||
+      input.shippingMethod === SELF_PICKUP_METHOD;
+    const shippingCost = isSelfPickup ? 0 : input.shippingCost;
+    const total = Math.max(subtotal + shippingCost - discount, 0);
     const orderNumber = createOrderNumber();
     const trackingToken = createTrackingToken();
 
@@ -409,20 +414,28 @@ export async function POST(request: Request) {
           customerName: input.customerName,
           customerPhone: input.customerPhone,
           customerEmail: input.customerEmail || null,
-          shippingAddress: input.shippingAddress,
-          shippingCity: input.shippingCity,
-          shippingPostalCode: input.shippingPostalCode,
-          shippingLatitude: input.shippingLatitude ?? null,
-          shippingLongitude: input.shippingLongitude ?? null,
-          shippingPinpointAddress: input.shippingPinpointAddress || null,
-          shippingAreaId: input.shippingAreaId,
-          shippingAreaLabel: input.shippingAreaLabel || null,
-          shippingProvinceName: input.shippingProvinceName || null,
-          shippingDistrictName: input.shippingDistrictName || null,
-          courierCode: input.courierCode,
-          courierService: input.courierService,
+          shippingAddress: isSelfPickup ? SELF_PICKUP_STORE.address : input.shippingAddress,
+          shippingCity: isSelfPickup ? "Medan Kota" : input.shippingCity,
+          shippingPostalCode: isSelfPickup ? null : input.shippingPostalCode,
+          shippingLatitude: isSelfPickup ? SELF_PICKUP_STORE.latitude : input.shippingLatitude ?? null,
+          shippingLongitude: isSelfPickup ? SELF_PICKUP_STORE.longitude : input.shippingLongitude ?? null,
+          shippingPinpointAddress: isSelfPickup ? null : input.shippingPinpointAddress || null,
+          shippingAreaId: isSelfPickup ? SELF_PICKUP_METHOD : input.shippingAreaId,
+          shippingAreaLabel: isSelfPickup ? SELF_PICKUP_STORE.name : input.shippingAreaLabel || null,
+          shippingProvinceName: isSelfPickup ? null : input.shippingProvinceName || null,
+          shippingDistrictName: isSelfPickup ? null : input.shippingDistrictName || null,
+          orderType: isSelfPickup ? SELF_PICKUP_METHOD : "DELIVERY",
+          shippingMethod: isSelfPickup ? SELF_PICKUP_METHOD : "DELIVERY",
+          courierCode: isSelfPickup ? null : input.courierCode,
+          courierService: isSelfPickup ? null : input.courierService,
+          pickupStoreName: isSelfPickup ? SELF_PICKUP_STORE.name : null,
+          pickupStoreAddress: isSelfPickup ? SELF_PICKUP_STORE.address : null,
+          pickupStoreLatitude: isSelfPickup ? SELF_PICKUP_STORE.latitude : null,
+          pickupStoreLongitude: isSelfPickup ? SELF_PICKUP_STORE.longitude : null,
+          pickupHours: isSelfPickup ? SELF_PICKUP_STORE.hours : null,
+          pickupStatus: isSelfPickup ? "WAITING_PAYMENT" : null,
           subtotal,
-          shippingCost: input.shippingCost,
+          shippingCost,
           discount,
           total,
           voucherCode: appliedCustomerVoucher?.code ?? null,

@@ -11,9 +11,9 @@ import { loadCart, saveCart, type CartItem } from "@/lib/cart";
 import type { CartStockIssue } from "@/lib/cart-stock";
 import { VoucherClaimBar } from "@/components/cart/VoucherClaimBar";
 import { SwipeableCartRow } from "@/components/cart/SwipeableCartRow";
+import { CartRecommendationSections } from "@/components/cart/CartRecommendationSections";
 import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
 import { hapticSuccess, hapticTap, hapticWarning } from "@/lib/native/haptics";
-import { natToast } from "@/components/Toast";
 
 // Voucher sheet & delete modal hanya muncul setelah user interaksi —
 // lazy-load JS-nya supaya initial bundle cart page lebih ringan.
@@ -38,6 +38,13 @@ type ManualQuantityState = {
   item: CartItem;
   key: string;
 };
+type PendingDeletedItem = {
+  id: number;
+  item: CartItem;
+  key: string;
+  index: number;
+  selected: boolean;
+};
 type QuantityValidationResult =
   | { valid: false; message: string }
   | { valid: true; quantity: number; message: "" };
@@ -47,7 +54,7 @@ function cartKey(item: CartItem) {
 }
 
 function itemSelectionLabel(kindCount: number, quantityCount: number) {
-  if (kindCount <= 0) return "Belum ada produk dipilih";
+  if (kindCount <= 0) return "0 jenis produk (0 item)";
   return `${kindCount} jenis produk (${quantityCount} item)`;
 }
 
@@ -104,6 +111,7 @@ export default function CartPage() {
   const [stockRefreshing, setStockRefreshing] = useState(false);
   const didInitialSelect = useRef(false);
   const didInitialStockRefresh = useRef(false);
+  const previousCartKeysRef = useRef<Set<string>>(new Set());
 
   // Voucher state — di-persist ke sessionStorage supaya di-pickup oleh
   // /checkout/page.tsx saat user lanjut ke checkout.
@@ -120,6 +128,9 @@ export default function CartPage() {
   const [manualQuantity, setManualQuantity] = useState<ManualQuantityState | null>(null);
   const [manualQuantityInput, setManualQuantityInput] = useState("");
   const quantityInputRef = useRef<HTMLInputElement | null>(null);
+  const [pendingDeletedItems, setPendingDeletedItems] = useState<PendingDeletedItem[]>([]);
+  const undoTimerRef = useRef<number | null>(null);
+  const deleteIdRef = useRef(0);
 
   // Restore voucher pilihan dari sessionStorage saat mount
   useEffect(() => {
@@ -172,14 +183,17 @@ export default function CartPage() {
   useEffect(() => {
     function syncCart() {
       const nextItems = loadCart();
+      const previousKeys = previousCartKeysRef.current;
+      const available = new Set(nextItems.map(cartKey));
+      previousCartKeysRef.current = available;
       setItems(nextItems);
       setSelectedKeys((current) => {
-        const available = new Set(nextItems.map(cartKey));
         if (!didInitialSelect.current) {
           didInitialSelect.current = true;
           return new Set(available);
         }
-        return new Set([...current].filter((key) => available.has(key)));
+        const newKeys = [...available].filter((key) => !previousKeys.has(key));
+        return new Set([...current].filter((key) => available.has(key)).concat(newKeys));
       });
       if (!didInitialStockRefresh.current && nextItems.length > 0) {
         didInitialStockRefresh.current = true;
@@ -258,9 +272,79 @@ export default function CartPage() {
     return () => window.clearTimeout(id);
   }, [manualQuantity]);
 
+  useEffect(() => {
+    return () => {
+      if (undoTimerRef.current) window.clearTimeout(undoTimerRef.current);
+    };
+  }, []);
+
   function persist(next: CartItem[]) {
     setItems(next);
     saveCart(next);
+  }
+
+  function restartUndoTimer() {
+    if (undoTimerRef.current) window.clearTimeout(undoTimerRef.current);
+    undoTimerRef.current = window.setTimeout(() => {
+      setPendingDeletedItems([]);
+      undoTimerRef.current = null;
+    }, 4000);
+  }
+
+  function removeItemWithUndo(item: CartItem) {
+    const targetKey = cartKey(item);
+    const originalIndex = items.findIndex((cartItem) => cartKey(cartItem) === targetKey);
+    if (originalIndex === -1) return;
+
+    const wasSelected = selectedKeys.has(targetKey);
+    const deletedEntry: PendingDeletedItem = {
+      id: deleteIdRef.current + 1,
+      item,
+      key: targetKey,
+      index: originalIndex,
+      selected: wasSelected,
+    };
+    deleteIdRef.current = deletedEntry.id;
+
+    hapticWarning();
+    setPendingDeletedItems((current) => [...current, deletedEntry]);
+    setSelectedKeys((current) => {
+      const nextSelected = new Set(current);
+      nextSelected.delete(targetKey);
+      return nextSelected;
+    });
+    persist(items.filter((cartItem) => cartKey(cartItem) !== targetKey));
+    restartUndoTimer();
+  }
+
+  function undoDeletedItems() {
+    if (pendingDeletedItems.length === 0) return;
+    const deletedSnapshot = [...pendingDeletedItems].sort((a, b) => a.index - b.index);
+
+    if (undoTimerRef.current) {
+      window.clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = null;
+    }
+    setPendingDeletedItems([]);
+    setItems((current) => {
+      const restored = [...current];
+      for (const deleted of deletedSnapshot) {
+        if (restored.some((item) => cartKey(item) === deleted.key)) continue;
+        const insertAt = Math.min(deleted.index, restored.length);
+        restored.splice(insertAt, 0, deleted.item);
+      }
+      saveCart(restored);
+      return restored;
+    });
+    setSelectedKeys((current) => {
+      const nextSelected = new Set(current);
+      for (const deleted of deletedSnapshot) {
+        if (deleted.selected) nextSelected.add(deleted.key);
+        else nextSelected.delete(deleted.key);
+      }
+      return nextSelected;
+    });
+    hapticSuccess();
   }
 
   async function refreshCartStock(
@@ -384,48 +468,9 @@ export default function CartPage() {
     persist(next);
   }
 
-  // Swipe-to-delete dengan undo toast — pattern iOS Mail / Tokopedia.
-  // Optimistic remove langsung, lalu kasih 5 detik window untuk URUNGKAN.
-  // Karena cart Natalo localStorage-based, tidak perlu defer commit ke server
-  // (undo = re-insert ke posisi awal + saveCart ulang).
+  // Swipe-to-delete memakai snackbar undo yang sama dengan tombol trash kecil.
   function handleSwipeDelete(item: CartItem) {
-    const targetKey = cartKey(item);
-    const originalIndex = items.findIndex((i) => cartKey(i) === targetKey);
-    if (originalIndex === -1) return;
-
-    hapticTap();
-    const nextItems = items.filter((i) => cartKey(i) !== targetKey);
-    setSelectedKeys((current) => {
-      const nextSelected = new Set(current);
-      nextSelected.delete(targetKey);
-      return nextSelected;
-    });
-    persist(nextItems);
-
-    natToast(`"${item.name.slice(0, 30)}${item.name.length > 30 ? "…" : ""}" dihapus`, {
-      kind: "default",
-      action: {
-        label: "URUNGKAN",
-        onClick: () => {
-          // Re-insert at original index berdasarkan SNAPSHOT saat swipe.
-          // Pakai functional update supaya pakai latest items state (user
-          // bisa edit lain selama 5s window).
-          setItems((current) => {
-            const restored = [...current];
-            const insertAt = Math.min(originalIndex, restored.length);
-            restored.splice(insertAt, 0, item);
-            saveCart(restored);
-            return restored;
-          });
-          setSelectedKeys((current) => {
-            const nextSelected = new Set(current);
-            nextSelected.add(targetKey);
-            return nextSelected;
-          });
-          hapticSuccess();
-        },
-      },
-    });
+    removeItemWithUndo(item);
   }
 
   // ── Delete confirmation flow ─────────────────────────────────
@@ -435,12 +480,6 @@ export default function CartPage() {
     if (selectedItems.length === 0) return;
     setDeleteMode("selected");
     setTargetItem(null);
-    setIsDeleteModalOpen(true);
-  }
-
-  function openDeleteSingleModal(item: CartItem) {
-    setDeleteMode("single");
-    setTargetItem(item);
     setIsDeleteModalOpen(true);
   }
 
@@ -651,7 +690,7 @@ export default function CartPage() {
                           </div>
                           <button
                             type="button"
-                            onClick={() => openDeleteSingleModal(item)}
+                            onClick={() => removeItemWithUndo(item)}
                             aria-label={`Hapus ${item.name}`}
                             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-300 transition hover:bg-red-50 hover:text-red-500"
                           >
@@ -680,7 +719,10 @@ export default function CartPage() {
                           <div className="flex shrink-0 items-center rounded-full border border-gray-200 bg-white">
                             <button
                               type="button"
-                              onClick={() => updateQty(key, item.quantity - 1)}
+                              onClick={() => {
+                                if (item.quantity <= 1) removeItemWithUndo(item);
+                                else updateQty(key, item.quantity - 1);
+                              }}
                               className="flex h-9 w-9 items-center justify-center rounded-full text-lg font-bold text-gray-600 transition-all duration-75 hover:text-blue-600 active:scale-90"
                               aria-label="Kurangi"
                             >
@@ -717,6 +759,8 @@ export default function CartPage() {
               })}
             </div>
           </section>
+
+          <CartRecommendationSections cartItems={items} />
 
           <section className="mt-4 hidden rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100 md:block">
             <div className="space-y-1.5">
@@ -872,6 +916,34 @@ export default function CartPage() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {pendingDeletedItems.length > 0 && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-[calc(84px+env(safe-area-inset-bottom))] z-50 px-4 md:bottom-6">
+          <div
+            role="status"
+            aria-live="polite"
+            className="pointer-events-auto mx-auto flex max-w-3xl items-center gap-3 rounded-2xl bg-slate-950 px-4 py-3 text-sm shadow-2xl"
+          >
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-500 text-white">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} className="h-3.5 w-3.5">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 10v6" strokeLinecap="round" />
+                <path d="M12 7.5h.01" strokeLinecap="round" />
+              </svg>
+            </span>
+            <span className="min-w-0 flex-1 font-bold text-white">
+              {pendingDeletedItems.length} produk telah dihapus
+            </span>
+            <button
+              type="button"
+              onClick={undoDeletedItems}
+              className="shrink-0 rounded-full px-2.5 py-1.5 text-sm font-black text-blue-400 transition active:bg-white/10"
+            >
+              Batalkan
+            </button>
+          </div>
         </div>
       )}
 

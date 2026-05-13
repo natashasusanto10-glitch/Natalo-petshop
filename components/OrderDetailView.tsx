@@ -33,6 +33,7 @@ const STATUS_LABEL: Record<string, string> = {
   PENDING: "Menunggu pembayaran",
   PAID: "Pembayaran dikonfirmasi",
   PROCESSING: "Pesanan diproses",
+  READY_FOR_PICKUP: "Pesanan siap diambil",
   SHIPPED: "Pesanan dikirim",
   DELIVERED: "Pesanan selesai",
   CANCELLED: "Pesanan dibatalkan",
@@ -57,10 +58,20 @@ const TIMELINE = [
   { key: "DELIVERED", label: "Pesanan selesai" },
 ];
 
+const SELF_PICKUP_TIMELINE = [
+  { key: "PENDING", label: "Pesanan dibuat" },
+  { key: "WAITING_PAYMENT", label: "Menunggu pembayaran" },
+  { key: "PAID", label: "Pembayaran dikonfirmasi" },
+  { key: "PROCESSING", label: "Pesanan disiapkan" },
+  { key: "READY_FOR_PICKUP", label: "Siap diambil" },
+  { key: "DELIVERED", label: "Pesanan selesai" },
+];
+
 const STATUS_STEP_INDEX: Record<string, number> = {
   PENDING: 1,
   PAID: 2,
   PROCESSING: 3,
+  READY_FOR_PICKUP: 4,
   SHIPPED: 4,
   DELIVERED: 5,
 };
@@ -96,6 +107,7 @@ function useCopyToast() {
 }
 
 function StatusTimeline({ order }: { order: SerializedOrderDetail }) {
+  const steps = order.orderType === "SELF_PICKUP" ? SELF_PICKUP_TIMELINE : TIMELINE;
   const currentIndex =
     order.status === "CANCELLED" ? -1 : STATUS_STEP_INDEX[order.status] ?? 0;
 
@@ -105,6 +117,36 @@ function StatusTimeline({ order }: { order: SerializedOrderDetail }) {
         <p className="text-sm font-black text-red-700">Pesanan dibatalkan</p>
         <p className="mt-1 text-sm text-red-600">
           Hubungi admin Natalo jika kamu membutuhkan bantuan lanjutan.
+        </p>
+      </div>
+    );
+  }
+
+  if (order.orderType === "SELF_PICKUP" && order.status === "READY_FOR_PICKUP") {
+    return (
+      <div className="rounded-3xl border border-green-100 bg-green-50 p-5">
+        <p className="text-sm font-black text-green-800">Pesanan Siap Diambil</p>
+        <p className="mt-2 text-sm leading-6 text-green-700">
+          Pesanan kamu sudah siap. Tunjukkan kode pengambilan ke kasir saat pickup.
+        </p>
+        {order.pickupCode && (
+          <div className="mt-4 rounded-2xl bg-white px-4 py-4 text-center">
+            <p className="text-xs font-bold text-gray-500">Kode Pengambilan</p>
+            <p className="mt-1 font-mono text-3xl font-black tracking-widest text-green-800">
+              {order.pickupCode}
+            </p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (order.orderType === "SELF_PICKUP") {
+    return (
+      <div className="rounded-3xl border border-blue-100 bg-blue-50 p-5">
+        <p className="text-sm font-black text-blue-900">Pesanan Sedang Disiapkan</p>
+        <p className="mt-2 text-sm leading-6 text-blue-800">
+          Pesanan kamu sedang disiapkan oleh toko. Kami akan memberi notifikasi saat pesanan sudah siap diambil.
         </p>
       </div>
     );
@@ -125,7 +167,7 @@ function StatusTimeline({ order }: { order: SerializedOrderDetail }) {
       </div>
 
       <div className="mt-5 space-y-4">
-        {TIMELINE.map((step, index) => {
+        {steps.map((step, index) => {
           const done = index <= currentIndex;
           const active = index === currentIndex;
           return (
@@ -138,7 +180,7 @@ function StatusTimeline({ order }: { order: SerializedOrderDetail }) {
                       : "border-gray-300 bg-white"
                   }`}
                 />
-                {index < TIMELINE.length - 1 && (
+                {index < steps.length - 1 && (
                   <span
                     className={`mt-1 h-7 w-px ${
                       done ? "bg-blue-200" : "bg-gray-200"
@@ -442,7 +484,51 @@ export function OrderDetailView({
 
             <StatusTimeline order={order} />
 
-            <div className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
+            {order.orderType === "SELF_PICKUP" && (
+              <div className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
+                <p className="font-black text-gray-950">Metode Pengambilan</p>
+                <div className="mt-3 space-y-3 text-sm text-gray-700">
+                  <div>
+                    <p className="font-black text-gray-950">Ambil Sendiri di Toko</p>
+                    <p className="mt-1 text-xs font-bold text-blue-700">
+                      Self Pick Up - Gratis Ongkir
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-950">Lokasi Toko</p>
+                    <p>{order.pickupStoreName ?? "Natalo Petshop / Sinar Petstore"}</p>
+                    <p>{order.pickupStoreAddress ?? order.shippingAddress}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-950">Jam Ambil</p>
+                    <p>{order.pickupHours ?? "09.00 - 17.00 WIB"}</p>
+                  </div>
+                  {order.status === "READY_FOR_PICKUP" && order.pickupCode && (
+                    <div className="rounded-2xl bg-green-50 px-4 py-3 text-center">
+                      <p className="text-xs font-bold text-green-700">Kode Pengambilan</p>
+                      <p className="mt-1 font-mono text-2xl font-black tracking-widest text-green-800">
+                        {order.pickupCode}
+                      </p>
+                      <p className="mt-1 text-xs text-green-700">
+                        Tunjukkan kode ini kepada kasir saat mengambil pesanan.
+                      </p>
+                    </div>
+                  )}
+                  <a
+                    href={order.pickupMapsUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex w-full justify-center rounded-full border border-blue-200 px-4 py-2.5 text-xs font-black text-blue-700 hover:bg-blue-50"
+                  >
+                    Buka di Google Maps
+                  </a>
+                </div>
+              </div>
+            )}
+
+            <div className={`rounded-3xl border border-gray-100 bg-white p-5 shadow-sm ${
+              order.orderType === "SELF_PICKUP" ? "hidden" : ""
+            }`}>
               <p className="font-black text-gray-950">Alamat Pengiriman</p>
               <div className="mt-3 space-y-1 text-sm text-gray-700">
                 <p>

@@ -9,6 +9,13 @@ import { formatRupiah, formatShippingDuration } from "@/lib/format";
 import { toCustomerShippingErrorMessage } from "@/lib/shipping-messages";
 import { MetodePengiriman } from "@/components/MetodePengiriman";
 import {
+  DELIVERY_METHOD,
+  SELF_PICKUP_METHOD,
+  SELF_PICKUP_STORE,
+  buildSelfPickupMapsUrl,
+  isSelfPickupMethod,
+} from "@/lib/self-pickup";
+import {
   CheckoutVoucherCard,
   type AppliedVoucher,
   type EligibleVoucher,
@@ -545,7 +552,8 @@ export default function CheckoutPage() {
   }
 
   const localSubtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const shippingCost = selectedRate?.price ?? 0;
+  const isSelfPickup = isSelfPickupMethod(selectedRate?.courier_code);
+  const shippingCost = isSelfPickup ? 0 : selectedRate?.price ?? 0;
   const subtotal = checkoutPricing?.subtotal ?? localSubtotal;
   const discount = checkoutPricing?.discount ?? voucherApplied?.discount ?? 0;
   const total = checkoutPricing?.total ?? Math.max(subtotal + shippingCost - discount, 0);
@@ -587,7 +595,7 @@ export default function CheckoutPage() {
   const addressAreaMissing = Boolean(form.shippingAddress.trim() && !form.shippingAreaId.trim());
   const canPlaceOrder = Boolean(
     items.length > 0 &&
-      addressValid &&
+      (isSelfPickup || addressValid) &&
       selectedRate &&
       payment &&
       total >= 0 &&
@@ -598,11 +606,11 @@ export default function CheckoutPage() {
     ? "Memproses..."
     : stockRefreshing
       ? "Cek stok..."
-    : !addressValid
+    : !selectedRate
+      ? "Pilih Pengiriman Dulu"
+    : !isSelfPickup && !addressValid
       ? "Lengkapi Alamat"
-      : !selectedRate
-        ? "Pilih Pengiriman Dulu"
-        : !payment
+      : !payment
           ? "Pilih Pembayaran Dulu"
           : "Buat Pesanan";
 
@@ -630,8 +638,8 @@ export default function CheckoutPage() {
         city: form.shippingCity,
       },
       shippingMethod: {
-        courierCode: selectedRate?.courier_code ?? null,
-        courierService: selectedRate?.courier_service_code ?? null,
+        courierCode: isSelfPickup ? null : selectedRate?.courier_code ?? null,
+        courierService: isSelfPickup ? null : selectedRate?.courier_service_code ?? null,
       },
       paymentProvider: paymentMethod,
     };
@@ -884,18 +892,22 @@ export default function CheckoutPage() {
   }
 
   async function getRates() {
-    if (!addressValid) {
-      setShippingError("Pilih atau lengkapi alamat pengiriman terlebih dahulu.");
-      return;
-    }
-    if (!form.shippingAreaId) {
-      setShippingError("Alamat pengiriman belum valid. Mohon pilih ulang kota/kecamatan dari daftar alamat.");
-      return;
-    }
     if (items.length === 0) {
       setShippingError("Keranjang kosong.");
       return;
     }
+
+    setShippingSheetOpen(true);
+
+    if (!addressValid || !form.shippingAreaId) {
+      setShippingError(
+        "Kurir belum tersedia untuk alamat ini. Kamu tetap bisa memilih Ambil Sendiri di Toko tanpa ongkir."
+      );
+      setRates([]);
+      setRatesLoading(false);
+      return;
+    }
+
     setShippingError("");
     setRates([]);
     setRatesLoading(true);
@@ -913,8 +925,6 @@ export default function CheckoutPage() {
         setPayment(null);
         return;
       }
-
-      setShippingSheetOpen(true);
 
       // Format items per spec Biteship: per item dengan name, value, weight, quantity
       const biteshipItems = items.map((it) => ({
@@ -982,18 +992,18 @@ export default function CheckoutPage() {
       return;
     }
 
-    if (!addressValid) {
+    if (!selectedRate) {
+      setError("Pilih metode pengiriman terlebih dahulu.");
+      return;
+    }
+
+    if (!isSelfPickup && !addressValid) {
       setError("Pilih atau lengkapi alamat pengiriman terlebih dahulu.");
       return;
     }
 
-    if (!form.shippingAreaId) {
+    if (!isSelfPickup && !form.shippingAreaId) {
       setError("Alamat pengiriman belum valid. Mohon pilih ulang kota/kecamatan dari daftar alamat.");
-      return;
-    }
-
-    if (!selectedRate) {
-      setError("Pilih kurir pengiriman terlebih dahulu. Klik \"Cek Ongkir\" dan pilih salah satu layanan.");
       return;
     }
 
@@ -1008,15 +1018,22 @@ export default function CheckoutPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...form,
+        orderType: isSelfPickup ? SELF_PICKUP_METHOD : DELIVERY_METHOD,
+        shippingMethod: isSelfPickup ? SELF_PICKUP_METHOD : DELIVERY_METHOD,
+        shippingAddress: isSelfPickup ? SELF_PICKUP_STORE.address : form.shippingAddress,
+        shippingCity: isSelfPickup ? "Medan Kota" : form.shippingCity,
+        shippingPostalCode: isSelfPickup ? "" : form.shippingPostalCode,
+        shippingAreaId: isSelfPickup ? SELF_PICKUP_METHOD : form.shippingAreaId,
+        shippingAreaLabel: isSelfPickup ? SELF_PICKUP_STORE.name : form.shippingAreaLabel,
         paymentProvider: payment.provider,
         manualBank: payment.provider === "MANUAL" ? payment.bank : undefined,
         items,
         shippingCost,
-        courierCode: selectedRate?.courier_code,
-        courierService: selectedRate?.courier_service_code,
-        shippingLatitude: form.shippingLatitude,
-        shippingLongitude: form.shippingLongitude,
-        shippingPinpointAddress: form.shippingPinpointAddress,
+        courierCode: isSelfPickup ? undefined : selectedRate?.courier_code,
+        courierService: isSelfPickup ? undefined : selectedRate?.courier_service_code,
+        shippingLatitude: isSelfPickup ? SELF_PICKUP_STORE.latitude : form.shippingLatitude,
+        shippingLongitude: isSelfPickup ? SELF_PICKUP_STORE.longitude : form.shippingLongitude,
+        shippingPinpointAddress: isSelfPickup ? null : form.shippingPinpointAddress,
       }),
     });
 
@@ -1035,7 +1052,7 @@ export default function CheckoutPage() {
       }`;
 
     // Simpan alamat ke buku alamat (best-effort, jangan ganggu flow)
-    if (isLoggedIn && saveToAddressBook && form.shippingAddress) {
+    if (isLoggedIn && saveToAddressBook && form.shippingAddress && !isSelfPickup) {
       void fetch("/api/alamat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1214,7 +1231,7 @@ export default function CheckoutPage() {
                   >
                     Pilih alamat tersimpan
                   </button>
-                </div>
+                  </div>
               )}
 
               {addressBookError && (
@@ -1475,10 +1492,13 @@ export default function CheckoutPage() {
                 Metode Pengiriman
               </label>
               {selectedRate ? (
-                <div className="mt-1 flex items-center justify-between gap-3 rounded-2xl border border-natalo-300 bg-natalo-50 p-3">
+                <div className="mt-1 rounded-2xl border border-natalo-300 bg-natalo-50 p-3">
+                  <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-bold text-zinc-950">
-                      {selectedRate.courier_name} {selectedRate.courier_service_name}
+                      {isSelfPickup
+                        ? "Ambil Sendiri di Toko"
+                        : `${selectedRate.courier_name} ${selectedRate.courier_service_name}`}
                     </p>
                     <p className="mt-0.5 truncate text-xs text-zinc-500">
                       {formatShippingDuration(selectedRate.duration)} · {formatRupiah(selectedRate.price)}
@@ -1491,24 +1511,41 @@ export default function CheckoutPage() {
                   >
                     Ganti ›
                   </button>
+                  </div>
+                  {isSelfPickup && (
+                    <div className="mt-3 rounded-2xl bg-white p-4 text-sm text-zinc-700">
+                      <p className="text-xs font-black text-zinc-500">Detail Pengambilan</p>
+                      <p className="mt-3 font-black text-zinc-950">Lokasi Toko</p>
+                      <p className="mt-1 font-semibold">{SELF_PICKUP_STORE.name}</p>
+                      <p>{SELF_PICKUP_STORE.addressLine}</p>
+                      <p>{SELF_PICKUP_STORE.area}</p>
+                      <p className="mt-3 font-black text-zinc-950">Jam Ambil</p>
+                      <p>{SELF_PICKUP_STORE.hours}</p>
+                      <div className="mt-4 rounded-2xl border border-dashed border-blue-200 bg-blue-50 px-4 py-5 text-center text-xs font-bold text-blue-700">
+                        Preview Maps
+                      </div>
+                      <a
+                        href={buildSelfPickupMapsUrl()}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-3 inline-flex w-full justify-center rounded-full border border-blue-200 px-4 py-2.5 text-xs font-black text-blue-700 hover:bg-blue-50"
+                      >
+                        Buka di Google Maps
+                      </a>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <button
                   type="button"
                   onClick={getRates}
-                  disabled={ratesLoading || !addressValid}
+                  disabled={ratesLoading}
                   className="mt-1 flex w-full items-center justify-between rounded-2xl border border-zinc-200 bg-white p-3 text-left transition hover:border-natalo-300 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <span className="text-sm font-medium text-zinc-700">
-                    {ratesLoading
-                      ? "Memuat ongkir..."
-                      : !addressValid
-                      ? addressAreaMissing
-                        ? "Pilih ulang area alamat dulu"
-                        : "Pilih atau lengkapi alamat dulu"
-                      : "Pilih metode pengiriman"}
+                    {ratesLoading ? "Memuat ongkir..." : "Pilih metode pengiriman"}
                   </span>
-                  {!ratesLoading && addressValid && (
+                  {!ratesLoading && (
                     <span className="text-zinc-400">›</span>
                   )}
                 </button>
@@ -1595,7 +1632,7 @@ export default function CheckoutPage() {
             <div className="flex justify-between text-zinc-600">
               <span>Ongkos kirim</span>
               {selectedRate ? (
-                <span>{formatRupiah(shippingCost)}</span>
+                <span>{isSelfPickup ? "Rp0 (Gratis)" : formatRupiah(shippingCost)}</span>
               ) : (
                 <span className="italic text-zinc-400">Belum dipilih</span>
               )}
@@ -1641,7 +1678,10 @@ export default function CheckoutPage() {
         loading={ratesLoading}
         error={shippingError || undefined}
         selected={selectedRate}
-        onSelect={(r) => setSelectedRate(r as RateOption)}
+        onSelect={(r) => {
+          setSelectedRate(r as RateOption);
+          setShippingError("");
+        }}
       />
 
       {/* Mobile sticky bottom CTA */}

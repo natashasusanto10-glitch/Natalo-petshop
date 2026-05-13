@@ -4,7 +4,8 @@ import { prisma } from "@/lib/prisma";
 const ALLOWED: Record<OrderStatus, OrderStatus[]> = {
   PENDING: ["PAID", "PROCESSING", "CANCELLED"],
   PAID: ["PROCESSING", "CANCELLED"],
-  PROCESSING: ["SHIPPED", "CANCELLED"],
+  PROCESSING: ["READY_FOR_PICKUP", "SHIPPED", "CANCELLED"],
+  READY_FOR_PICKUP: ["DELIVERED", "CANCELLED"],
   SHIPPED: ["DELIVERED"],
   DELIVERED: [],
   CANCELLED: [],

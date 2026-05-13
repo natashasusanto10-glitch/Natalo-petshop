@@ -3,6 +3,7 @@ import { createHash } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { createBiteshipShipmentIfReady } from "@/lib/biteship";
 import { sendOrderStatusPush } from "@/lib/push";
+import { SELF_PICKUP_METHOD } from "@/lib/self-pickup";
 import { sendPaymentConfirmed } from "@/lib/whatsapp";
 
 type MidtransNotification = {
@@ -79,16 +80,26 @@ export async function POST(request: NextRequest) {
     data: {
       paymentStatus,
       status:
-        paymentStatus === "PAID" && order.status === "PENDING"
+        paymentStatus === "PAID" &&
+        order.status === "PENDING" &&
+        order.orderType === SELF_PICKUP_METHOD
+          ? "PROCESSING"
+          : paymentStatus === "PAID" && order.status === "PENDING"
           ? "PAID"
           : paymentStatus === "REFUNDED"
           ? "REFUNDED"
+          : undefined,
+      pickupStatus:
+        paymentStatus === "PAID" && order.orderType === SELF_PICKUP_METHOD
+          ? "PREPARING"
           : undefined,
     },
   });
 
   if (paymentStatus === "PAID" && order.paymentStatus !== "PAID") {
-    createBiteshipShipmentIfReady(updatedOrder.id).catch(() => {});
+    if (updatedOrder.orderType !== SELF_PICKUP_METHOD) {
+      createBiteshipShipmentIfReady(updatedOrder.id).catch(() => {});
+    }
     sendOrderStatusPush(
       updatedOrder.id,
       updatedOrder.orderNumber,

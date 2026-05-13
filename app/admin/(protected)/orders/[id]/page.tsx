@@ -8,7 +8,9 @@ import {
   createShipment,
   markAsDelivered,
   markAsPaid,
+  markAsPickedUp,
   markAsProcessing,
+  markAsReadyForPickup,
   markAsShipped,
 } from "./actions";
 
@@ -16,6 +18,7 @@ const STATUS_LABELS: Record<string, string> = {
   PENDING: "Order Baru",
   PAID: "Sudah Dibayar",
   PROCESSING: "Diproses",
+  READY_FOR_PICKUP: "Siap Diambil",
   SHIPPED: "Dikirim",
   DELIVERED: "Selesai",
   CANCELLED: "Dibatalkan",
@@ -26,6 +29,7 @@ const STATUS_COLORS: Record<string, string> = {
   PENDING: "bg-amber-100 text-amber-700",
   PAID: "bg-emerald-100 text-emerald-700",
   PROCESSING: "bg-natalo-100 text-natalo-700",
+  READY_FOR_PICKUP: "bg-green-100 text-green-700",
   SHIPPED: "bg-indigo-100 text-indigo-700",
   DELIVERED: "bg-emerald-100 text-emerald-700",
   CANCELLED: "bg-red-100 text-red-700",
@@ -58,6 +62,8 @@ export default async function AdminOrderDetailPage({
   const { id } = await params;
   const markAsPaidAction = markAsPaid.bind(null, id);
   const markAsProcessingAction = markAsProcessing.bind(null, id);
+  const markAsReadyForPickupAction = markAsReadyForPickup.bind(null, id);
+  const markAsPickedUpAction = markAsPickedUp.bind(null, id);
   const markAsShippedAction = markAsShipped.bind(null, id);
   const markAsDeliveredAction = markAsDelivered.bind(null, id);
   const markAsCancelledAction = markAsCancelled.bind(null, id);
@@ -70,6 +76,7 @@ export default async function AdminOrderDetailPage({
   });
 
   if (!order) return notFound();
+  const isSelfPickup = order.orderType === "SELF_PICKUP";
 
   // Sanitize phone — strip non-digit, lalu normalisasi prefix 0/62/+62.
   // Kalau hasilnya tidak masuk akal (kurang dari 9 digit), hide tombol WA.
@@ -215,8 +222,38 @@ export default async function AdminOrderDetailPage({
             )}
           </section>
 
+          {isSelfPickup && (
+            <section className="rounded-3xl border border-green-200 bg-green-50 p-5">
+              <h2 className="font-bold text-zinc-950">Metode Pengambilan</h2>
+              <div className="mt-4 space-y-2 text-sm text-zinc-700">
+                <p>
+                  <span className="font-semibold">Metode:</span> Ambil Sendiri di Toko
+                </p>
+                <p>
+                  <span className="font-semibold">Lokasi:</span>{" "}
+                  {order.pickupStoreName ?? "Natalo Petshop / Sinar Petstore"}
+                </p>
+                <p>{order.pickupStoreAddress ?? order.shippingAddress}</p>
+                <p>
+                  <span className="font-semibold">Jam Ambil:</span>{" "}
+                  {order.pickupHours ?? "09.00 - 17.00 WIB"}
+                </p>
+                <p>
+                  <span className="font-semibold">Status pickup:</span>{" "}
+                  {order.pickupStatus ?? "-"}
+                </p>
+                {order.pickupCode && (
+                  <p>
+                    <span className="font-semibold">Kode pickup:</span>{" "}
+                    <span className="font-mono font-black">{order.pickupCode}</span>
+                  </p>
+                )}
+              </div>
+            </section>
+          )}
+
           {/* Pengiriman */}
-          <section className="rounded-3xl border border-zinc-200 p-5">
+          <section className={`rounded-3xl border border-zinc-200 p-5 ${isSelfPickup ? "hidden" : ""}`}>
             <h2 className="font-bold text-zinc-950">Pengiriman</h2>
             <div className="mt-4 space-y-2 text-sm text-zinc-700">
               <p>
@@ -366,7 +403,7 @@ export default async function AdminOrderDetailPage({
                   </form>
                 )}
 
-                {order.paymentStatus === "PAID" && order.courierCode && !order.biteshipOrderId && (
+                {order.paymentStatus === "PAID" && !isSelfPickup && order.courierCode && !order.biteshipOrderId && (
                   <form action={createShipmentAction}>
                     <button
                       type="submit"
@@ -378,7 +415,7 @@ export default async function AdminOrderDetailPage({
                 )}
 
                 {/* 3. Tandai sudah dikirim (PROCESSING → SHIPPED) */}
-                {order.status === "PROCESSING" && (
+                {order.status === "PROCESSING" && !isSelfPickup && (
                   <form action={markAsShippedAction} className="space-y-3">
                     <input
                       name="trackingNumber"
@@ -393,7 +430,7 @@ export default async function AdminOrderDetailPage({
                 )}
 
                 {/* 4. Update resi (SHIPPED) */}
-                {order.status === "SHIPPED" && (
+                {order.status === "SHIPPED" && !isSelfPickup && (
                   <form action={markAsShippedAction} className="space-y-3">
                     <input
                       name="trackingNumber"
@@ -411,13 +448,35 @@ export default async function AdminOrderDetailPage({
                 )}
 
                 {/* 5. Tandai selesai (SHIPPED) */}
-                {order.status === "SHIPPED" && (
+                {order.status === "SHIPPED" && !isSelfPickup && (
                   <form action={markAsDeliveredAction}>
                     <button
                       type="submit"
                       className="w-full rounded-full bg-emerald-600 px-5 py-3 text-sm font-bold text-white hover:bg-emerald-700"
                     >
                       ✅ Tandai selesai
+                    </button>
+                  </form>
+                )}
+
+                {isSelfPickup && order.paymentStatus === "PAID" && order.status === "PROCESSING" && (
+                  <form action={markAsReadyForPickupAction}>
+                    <button
+                      type="submit"
+                      className="w-full rounded-full bg-green-600 px-5 py-3 text-sm font-bold text-white hover:bg-green-700"
+                    >
+                      Siap Diambil
+                    </button>
+                  </form>
+                )}
+
+                {isSelfPickup && order.status === "READY_FOR_PICKUP" && (
+                  <form action={markAsPickedUpAction}>
+                    <button
+                      type="submit"
+                      className="w-full rounded-full bg-emerald-600 px-5 py-3 text-sm font-bold text-white hover:bg-emerald-700"
+                    >
+                      Serahkan Pesanan
                     </button>
                   </form>
                 )}

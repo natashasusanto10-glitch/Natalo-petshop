@@ -1,5 +1,6 @@
 import { randomBytes } from "crypto";
 import type { Prisma } from "@prisma/client";
+import { buildSelfPickupMapsUrl } from "@/lib/self-pickup";
 
 export const orderDetailInclude = {
   items: {
@@ -97,11 +98,27 @@ export function serializeOrderDetail(order: OrderDetailRecord) {
     shippingCity: order.shippingCity,
     shippingPostalCode: order.shippingPostalCode,
     shippingPinpointAddress: order.shippingPinpointAddress,
+    orderType: order.orderType,
+    shippingMethod: order.shippingMethod,
     courierCode: order.courierCode,
     courierService: order.courierService,
     trackingNumber: order.trackingNumber,
     shipmentStatus: order.shipmentStatus,
     biteshipTrackingUrl: order.biteshipTrackingUrl,
+    pickupStoreName: order.pickupStoreName,
+    pickupStoreAddress: order.pickupStoreAddress,
+    pickupStoreLatitude: order.pickupStoreLatitude,
+    pickupStoreLongitude: order.pickupStoreLongitude,
+    pickupHours: order.pickupHours,
+    pickupCode: order.pickupCode,
+    pickupQrCode: order.pickupQrCode,
+    pickupStatus: order.pickupStatus,
+    readyForPickupAt: order.readyForPickupAt?.toISOString() ?? null,
+    pickedUpAt: order.pickedUpAt?.toISOString() ?? null,
+    pickupMapsUrl:
+      order.pickupStoreLatitude !== null && order.pickupStoreLongitude !== null
+        ? `https://www.google.com/maps/search/?api=1&query=${order.pickupStoreLatitude},${order.pickupStoreLongitude}`
+        : buildSelfPickupMapsUrl(),
     notes: order.notes,
     createdAt: order.createdAt.toISOString(),
     updatedAt: order.updatedAt.toISOString(),

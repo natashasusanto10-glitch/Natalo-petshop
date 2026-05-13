@@ -150,7 +150,7 @@ export function EmptyCart() {
     <EmptyBase
       emoji="🛒"
       title="Keranjang kamu masih kosong"
-      desc="Yuk mulai belanja! Ada banyak produk hewan peliharaan yang menunggu."
+      desc="Yuk, pilih produk favorit untuk hewan peliharaanmu."
       action={<PrimaryLink href="/products">Mulai Belanja</PrimaryLink>}
     />
   );

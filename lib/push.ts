@@ -79,6 +79,8 @@ const STATUS_TITLES: Record<string, string> = {
   REFUNDED: "💸 Refund Diproses",
 };
 
+STATUS_TITLES.READY_FOR_PICKUP = "Pesanan Siap Diambil";
+
 export const ORDER_PUSH_EVENT_TYPE = "order_status_update";
 
 function appendQueryParam(path: string, key: string, value: string) {
@@ -96,6 +98,7 @@ export function buildOrderStatusPushPayload(params: {
   trackingNumber?: string | null;
   courierCode?: string | null;
   courierService?: string | null;
+  pickupCode?: string | null;
 }): PushPayload | null {
   const title = STATUS_TITLES[params.status];
   if (!title) return null;
@@ -119,6 +122,12 @@ export function buildOrderStatusPushPayload(params: {
       break;
     case "PROCESSING":
       body = `Pesanan ${params.orderNumber} sedang dipacking tim kami.`;
+      break;
+    case "READY_FOR_PICKUP":
+      body = `Pesanan kamu sudah siap diambil di Natalo Petshop / Sinar Petstore. Tunjukkan kode ${
+        params.pickupCode ?? "-"
+      } kepada kasir saat pickup.`;
+      requireInteraction = true;
       break;
     case "SHIPPED": {
       const parts: string[] = [];
@@ -197,6 +206,7 @@ export async function sendOrderStatusPush(
         trackingNumber: true,
         courierCode: true,
         courierService: true,
+        pickupCode: true,
       },
     })
     .catch(() => null);
@@ -221,6 +231,12 @@ export async function sendOrderStatusPush(
       break;
     case "PROCESSING":
       body = `Pesanan ${orderNumber} sedang dipacking tim kami.`;
+      break;
+    case "READY_FOR_PICKUP":
+      body = `Pesanan kamu sudah siap diambil di Natalo Petshop / Sinar Petstore. Tunjukkan kode ${
+        order.pickupCode ?? "-"
+      } kepada kasir saat pickup.`;
+      requireInteraction = true;
       break;
     case "SHIPPED": {
       const parts: string[] = [];
