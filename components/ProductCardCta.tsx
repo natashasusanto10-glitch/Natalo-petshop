@@ -39,16 +39,13 @@ export function ProductCardCta({
   hasVariants,
 }: Props) {
   const [added, setAdded] = useState(false);
-  const outOfStock = stock <= 0;
 
-  if (outOfStock) {
-    return (
-      <span className="inline-flex h-8 w-full items-center justify-center rounded-full bg-zinc-100 text-xs font-bold text-zinc-400">
-        Habis
-      </span>
-    );
-  }
-
+  // Multi-variant products: parent product.stock biasanya 0 (aggregated)
+  // tapi varian individual masih punya stock. JANGAN render "Habis" untuk
+  // hasVariants=true — selalu tampilkan "Pilih Varian" dan biarkan halaman
+  // detail produk yang validate stock per varian saat user pilih.
+  // Tanpa fix ini, multi-variant products selalu show "Habis" di catalog
+  // → user kira tidak bisa beli, lost sales.
   if (hasVariants) {
     return (
       <Link
@@ -57,6 +54,16 @@ export function ProductCardCta({
       >
         Pilih Varian
       </Link>
+    );
+  }
+
+  // Single-variant product: stock parent reliable, OK untuk check.
+  const outOfStock = stock <= 0;
+  if (outOfStock) {
+    return (
+      <span className="inline-flex h-8 w-full items-center justify-center rounded-full bg-zinc-100 text-xs font-bold text-zinc-400">
+        Habis
+      </span>
     );
   }
 
