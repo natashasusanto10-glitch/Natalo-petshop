@@ -27,6 +27,7 @@ export const HIDDEN_BOTTOM_NAV_PATTERNS: RegExp[] = [
   /^\/help(\/|$)/,
   /^\/wishlist(\/|$)/,
   /^\/member\/favorites(\/|$)/,
+  /^\/member\/points(\/|$)/,
   /^\/member\/reviews(\/|$)/,
   /^\/member\/vouchers(\/|$)/,
   /^\/account\/loyalty\/redeem$/,

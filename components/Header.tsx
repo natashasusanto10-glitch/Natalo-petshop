@@ -57,6 +57,15 @@ export function Header() {
   const isCartPage = currentPath === "/cart";
   const isBrandsDirectory = currentPath === "/brands";
   const isNotificationCenter = currentPath === "/notifications";
+  const isAccountSubPageWithoutBrandHeader =
+    currentPath === "/wishlist" ||
+    currentPath === "/akun/alamat" ||
+    currentPath === "/akun/alamat/tambah" ||
+    currentPath === "/akun/pengaturan/notifikasi" ||
+    currentPath === "/akun/sesi-aktif" ||
+    currentPath === "/member/points" ||
+    /^\/bantuan(\/|$)/.test(currentPath) ||
+    /^\/help(\/|$)/.test(currentPath);
   const isFocusedAccountPage =
     currentPath === "/member/orders" ||
     currentPath === "/member/profile" ||
@@ -64,14 +73,6 @@ export function Header() {
     currentPath === "/account/loyalty/redeem";
   const isProductDetail = /^\/products\/[^/]+$/.test(currentPath);
   const isCheckoutAddressPicker = currentPath === "/checkout/addresses";
-  const isStaticBrandHeaderPage =
-    currentPath === "/wishlist" ||
-    /^\/akun\/alamat(\/|$)/.test(currentPath) ||
-    currentPath === "/akun/pengaturan/notifikasi" ||
-    currentPath === "/akun/sesi-aktif" ||
-    currentPath === "/member/points" ||
-    /^\/bantuan(\/|$)/.test(currentPath) ||
-    /^\/help(\/|$)/.test(currentPath);
   const authTitle = AUTH_PATHS[currentPath];
   const isAuthPage = authTitle !== undefined;
   const isLoggedIn = Boolean(member?.name);
@@ -158,7 +159,15 @@ export function Header() {
     // karena UI sheet Apple/browser sudah kasih feedback sendiri
   }
 
-  if (isSearchPage || isProductSearchResult || isCartPage || isBrandsDirectory || isNotificationCenter || isFocusedAccountPage) return null;
+  if (
+    isSearchPage ||
+    isProductSearchResult ||
+    isCartPage ||
+    isBrandsDirectory ||
+    isNotificationCenter ||
+    isFocusedAccountPage ||
+    isAccountSubPageWithoutBrandHeader
+  ) return null;
 
   // Auth pages — render minimal header: back button + title saja. Bottom nav,
   // bell, profile, login button semua di-hide untuk fokus ke flow auth.
@@ -191,8 +200,6 @@ export function Header() {
       className={
         isProductDetail
           ? "product-detail-header nat-site-header bg-white md:sticky md:z-50 md:shadow-sm"
-          : isStaticBrandHeaderPage
-          ? "nat-site-header bg-white shadow-sm"
           : isHome || isProductsCatalog
           ? "nat-site-header mobile-sticky-header md:sticky"
           : "nat-site-header mobile-sticky-header md:sticky"
