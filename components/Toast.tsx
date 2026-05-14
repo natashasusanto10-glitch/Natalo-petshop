@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { AddToCartSuccessLottie } from "@/components/AddToCartSuccessLottie";
 
 type ToastKind = "default" | "ok" | "warn" | "err";
 
@@ -41,7 +42,7 @@ export function natToast(
   );
 }
 
-export function cartSuccessToast(msg = "Dimasukkan ke Keranjang") {
+export function cartSuccessToast(msg = "Produk berhasil dimasukkan ke keranjang") {
   if (typeof window === "undefined") return;
   window.dispatchEvent(
     new CustomEvent<{ msg: string }>(CART_SUCCESS_EVENT, {
@@ -52,7 +53,11 @@ export function cartSuccessToast(msg = "Dimasukkan ke Keranjang") {
 
 export function ToastProvider() {
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [cartSuccess, setCartSuccess] = useState<{ msg: string; visible: boolean } | null>(null);
+  const [cartSuccess, setCartSuccess] = useState<{
+    id: number;
+    msg: string;
+    visible: boolean;
+  } | null>(null);
   const timersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
   const cartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cartUnmountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -89,9 +94,10 @@ export function ToastProvider() {
       if (cartTimerRef.current) clearTimeout(cartTimerRef.current);
       if (cartUnmountTimerRef.current) clearTimeout(cartUnmountTimerRef.current);
 
-      setCartSuccess({ msg: detail.msg, visible: false });
+      const id = Date.now() + Math.random();
+      setCartSuccess({ id, msg: detail.msg, visible: false });
       requestAnimationFrame(() => {
-        setCartSuccess({ msg: detail.msg, visible: true });
+        setCartSuccess({ id, msg: detail.msg, visible: true });
       });
 
       cartTimerRef.current = setTimeout(() => {
@@ -135,18 +141,7 @@ export function ToastProvider() {
           aria-live="polite"
           className={`cart-success-toast ${cartSuccess.visible ? "is-show" : ""}`}
         >
-          <span className="cart-success-toast__icon" aria-hidden="true">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="3"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M20 6 9 17l-5-5" />
-            </svg>
-          </span>
+          <AddToCartSuccessLottie key={cartSuccess.id} />
           <span className="cart-success-toast__text">{cartSuccess.msg}</span>
         </div>
       )}

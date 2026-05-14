@@ -3,7 +3,7 @@
 import { cartSuccessToast, natToast } from "@/components/Toast";
 import { loadCart, saveCart, type CartItem } from "@/lib/cart";
 
-const SUCCESS_MESSAGE = "Dimasukkan ke Keranjang";
+const SUCCESS_MESSAGE = "Produk berhasil dimasukkan ke keranjang";
 const ERROR_MESSAGE = "Produk gagal dimasukkan ke keranjang, silakan coba lagi";
 
 type AddCartOptions = {

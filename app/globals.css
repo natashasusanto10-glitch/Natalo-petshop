@@ -622,63 +622,86 @@ body.top-drawer-open .nat-whatsapp-float {
 .cart-success-toast {
   position: fixed;
   left: 50%;
-  top: 50%;
+  bottom: calc(92px + env(safe-area-inset-bottom));
   z-index: 99999;
   display: flex;
-  min-width: 230px;
-  max-width: 82vw;
-  transform: translate(-50%, calc(-50% + 8px)) scale(0.92);
-  flex-direction: column;
+  width: min(420px, calc(100vw - 32px));
+  min-height: 64px;
+  transform: translate(-50%, 12px) scale(0.98);
+  flex-direction: row;
   align-items: center;
-  gap: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 20px;
-  background: linear-gradient(145deg, rgba(24, 24, 27, 0.96), rgba(64, 64, 64, 0.92));
-  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.28), 0 1px 0 rgba(255, 255, 255, 0.08) inset;
-  color: #ffffff;
+  gap: 10px;
+  border: 1px solid rgba(21, 101, 216, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 42px rgba(15, 52, 96, 0.16), 0 1px 0 rgba(255, 255, 255, 0.8) inset;
+  color: #07112f;
   opacity: 0;
-  padding: 22px 26px;
+  padding: 10px 14px 10px 10px;
   pointer-events: none;
-  text-align: center;
+  text-align: left;
   transition: opacity 0.22s ease, transform 0.22s ease;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(12px);
 }
 
 .cart-success-toast.is-show {
   opacity: 1;
-  transform: translate(-50%, -50%) scale(1);
+  transform: translate(-50%, 0) scale(1);
 }
 
-.cart-success-toast__icon {
+.cart-success-toast__visual {
+  position: relative;
   display: grid;
-  width: 52px;
-  height: 52px;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  place-items: center;
+}
+
+.cart-success-toast__lottie,
+.cart-success-toast__fallback {
+  display: block;
+  width: 48px;
+  height: 48px;
+}
+
+.cart-success-toast__fallback {
+  display: grid;
   place-items: center;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.16);
-  color: #ffffff;
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18);
+  background: #eaf3ff;
+  color: #1565d8;
 }
 
-.cart-success-toast__icon svg {
-  width: 28px;
-  height: 28px;
+.cart-success-toast__fallback svg {
+  width: 30px;
+  height: 30px;
 }
 
 .cart-success-toast__text {
-  font-size: 16px;
+  min-width: 0;
+  flex: 1;
+  font-size: 14px;
   font-weight: 800;
-  line-height: 1.25;
+  line-height: 1.3;
 }
 
 @media (max-width: 380px) {
   .cart-success-toast {
-    min-width: 220px;
-    padding: 20px 22px;
+    width: calc(100vw - 24px);
+    gap: 8px;
+    padding-right: 12px;
+  }
+
+  .cart-success-toast__visual,
+  .cart-success-toast__lottie,
+  .cart-success-toast__fallback {
+    width: 42px;
+    height: 42px;
   }
 
   .cart-success-toast__text {
-    font-size: 15px;
+    font-size: 13px;
   }
 }
 

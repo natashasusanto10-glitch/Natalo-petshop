@@ -6,8 +6,16 @@ import type { AnimationItem } from "lottie-web";
 
 const SEEN_KEY = "natalo:splash-shown";
 const SPLASH_LOTTIE_SRC = "/assets/lottie/splash_natalo_petshop.json";
-const SPLASH_MAX_MS = 1500;
-const SPLASH_FADE_MS = 180;
+const SPLASH_BASE_MS = 3000;
+const SPLASH_IOS_MS = 2800;
+const SPLASH_ANDROID_MS = 3000;
+const SPLASH_FADE_MS = 220;
+
+function splashDurationMs() {
+  if (typeof navigator === "undefined") return SPLASH_ANDROID_MS;
+  const ua = navigator.userAgent || "";
+  return /iPad|iPhone|iPod/.test(ua) ? SPLASH_IOS_MS : SPLASH_ANDROID_MS;
+}
 
 export function AppSplashOverlay() {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -34,7 +42,8 @@ export function AppSplashOverlay() {
       window.setTimeout(() => setVisible(false), SPLASH_FADE_MS);
     };
 
-    const hardStop = window.setTimeout(dismiss, SPLASH_MAX_MS);
+    const targetDuration = splashDurationMs();
+    const hardStop = window.setTimeout(dismiss, targetDuration + 350);
 
     async function loadSplash() {
       try {
@@ -60,10 +69,12 @@ export function AppSplashOverlay() {
         });
 
         animationRef.current = animation;
+        animation.setSpeed(SPLASH_BASE_MS / targetDuration);
         animation.addEventListener("complete", dismiss);
         animation.addEventListener("data_failed", () => setFailed(true));
       } catch {
         setFailed(true);
+        window.setTimeout(dismiss, 1200);
       }
     }
 
@@ -81,11 +92,11 @@ export function AppSplashOverlay() {
   return (
     <div
       aria-hidden="true"
-      className={`natalo-splash-overlay fixed inset-0 z-[9999] grid place-items-center bg-white transition-opacity duration-200 ${
+      className={`natalo-splash-overlay fixed inset-0 z-[9999] grid place-items-center bg-white px-6 py-[max(32px,env(safe-area-inset-top))] transition-opacity duration-200 [padding-bottom:max(32px,env(safe-area-inset-bottom))] ${
         leaving ? "pointer-events-none opacity-0" : "opacity-100"
       }`}
     >
-      <div className="relative h-full w-full max-w-[520px]">
+      <div className="relative h-[min(46dvh,430px)] min-h-[320px] w-[min(86vw,360px)]">
         <div
           ref={containerRef}
           className={`absolute inset-0 h-full w-full ${failed ? "hidden" : ""}`}

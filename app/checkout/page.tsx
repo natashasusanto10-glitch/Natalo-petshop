@@ -1650,17 +1650,8 @@ export default function CheckoutPage() {
             <p className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>
           )}
 
-          <button
-            type="submit"
-            form="checkout-form"
-            disabled={!canPlaceOrder}
-            className="mt-5 w-full rounded-full bg-natalo-600 px-6 py-4 text-sm font-bold text-white transition hover:bg-natalo-700 disabled:cursor-not-allowed disabled:bg-zinc-300 disabled:text-zinc-500"
-          >
-            {primaryCtaLabel}
-          </button>
-
           {paymentMethod === "MANUAL" && (
-            <p className="mt-3 text-center text-xs text-zinc-400">
+            <p className="mt-4 text-center text-xs text-zinc-400">
               Instruksi transfer akan tampil setelah order dibuat.
             </p>
           )}
