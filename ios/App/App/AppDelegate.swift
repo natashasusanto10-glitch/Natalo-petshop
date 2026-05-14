@@ -1,14 +1,48 @@
 import UIKit
+import UserNotifications
 import Capacitor
 
 @UIApplicationMain
-class AppDelegate: UIResponder, UIApplicationDelegate {
+class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
 
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // Set UNUserNotificationCenter delegate supaya push notification
+        // BANNER MUNCUL juga saat app foreground (default iOS suppress banner
+        // saat app open). Tanpa delegate, push delivered tapi tidak visible
+        // ke user yang sedang buka app.
+        UNUserNotificationCenter.current().delegate = self
         return true
+    }
+
+    // Called saat push arrive + app FOREGROUND. Default iOS = no banner.
+    // Override untuk explicit show banner + sound + badge walau app open.
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        if #available(iOS 14.0, *) {
+            completionHandler([.banner, .sound, .badge, .list])
+        } else {
+            completionHandler([.alert, .sound, .badge])
+        }
+    }
+
+    // Called saat user tap notification banner. Forward ke Capacitor
+    // PushNotifications plugin via NotificationCenter — supaya JS listener
+    // di app bisa handle deep-link/navigation.
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        NotificationCenter.default.post(
+            name: Notification.Name(rawValue: "didReceiveRemoteNotification"),
+            object: response.notification.request.content.userInfo
+        )
+        completionHandler()
     }
 
     func applicationWillResignActive(_ application: UIApplication) {
