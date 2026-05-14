@@ -32,6 +32,9 @@ splash-preview.png
 # TypeScript build cache
 tsconfig.tsbuildinfo
 
+# Folder structure dump (scratch / debugging — heavy text file, don't commit)
+struktur-folder.txt
+
 # App Store screenshots are large artifacts — generated via npm run gen:appstore-screenshots
 # Komment-out kalau mau commit ke repo (untuk versioning per release):
 # screenshots/

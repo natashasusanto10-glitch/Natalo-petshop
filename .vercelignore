@@ -9,10 +9,5 @@ dumps
 meilisearch.exe
 ngrok.exe
 *.log
-products_complete.json
-products_final.json
-products_with_new_titles.json
-title_failed.json
-title_generation_log.txt
-title_merge_report.txt
 tsconfig.tsbuildinfo
+struktur-folder.txt
