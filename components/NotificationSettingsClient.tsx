@@ -96,9 +96,19 @@ export function NotificationSettingsClient() {
   const [testing, setTesting] = useState(false);
   const [clientDiag, setClientDiag] = useState<ClientDiagnostic | null>(null);
   const [diagLoading, setDiagLoading] = useState(false);
+  // Tampilkan diagnostic UI hanya kalau URL ada ?debug=1. Tool ini untuk
+  // admin/dev troubleshoot push notif — bukan untuk regular customer.
+  // Cek di useEffect supaya tidak mismatch SSR vs client render.
+  const [showDiagnostic, setShowDiagnostic] = useState(false);
 
   useEffect(() => {
     setPreferences(readPreferences());
+    try {
+      const params = new URLSearchParams(window.location.search);
+      setShowDiagnostic(params.get("debug") === "1");
+    } catch {
+      setShowDiagnostic(false);
+    }
   }, []);
 
   async function runClientDiagnostic() {
@@ -243,6 +253,8 @@ export function NotificationSettingsClient() {
 
   return (
     <div className="space-y-5">
+      {showDiagnostic && (
+        <>
       <section className="rounded-3xl border border-purple-100 bg-purple-50 p-5">
         <p className="font-black text-purple-900">
           Diagnostic: State device ini
@@ -291,6 +303,8 @@ export function NotificationSettingsClient() {
           </pre>
         )}
       </section>
+        </>
+      )}
 
       <section className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
         <p className="font-black text-gray-950">Preferensi notifikasi</p>
