@@ -815,3 +815,15 @@ model FeedReport {
   @@index([postId])
   @@index([commentId])
 }
+
+// Search query logs untuk auto-generate "Pencarian populer" (7d) di home/search
+// overlay. Append-only; cleanup periodic via cron jika perlu.
+model SearchLog {
+  id        String   @id @default(cuid())
+  keyword   String   // normalized lowercase
+  userId    String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([keyword, createdAt])
+}

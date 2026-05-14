@@ -507,6 +507,13 @@ function SearchResultHeader({ query }: { query: string }) {
     next.delete("page");
     setSuggestOpen(false);
     inputRef.current?.blur();
+    if (trimmed && keywordChanged) {
+      void fetch("/api/search/log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keyword: trimmed }),
+      }).catch(() => {});
+    }
     router.push(`/search?${next}`);
   }
 

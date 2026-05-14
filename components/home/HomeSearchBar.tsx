@@ -30,23 +30,23 @@ export function HomeSearchBar({
           type="button"
           onClick={() => setOpen(true)}
           aria-label="Buka pencarian"
-          className="home-search-glass flex w-full items-center gap-2 rounded-full px-4 py-2.5 text-left transition hover:border-blue-200"
+          className="flex h-10 w-full items-center gap-2 rounded-full border border-natalo-200 bg-natalo-50/60 px-3 text-left shadow-sm transition active:bg-natalo-100/60"
         >
           <svg
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            strokeWidth={1.8}
+            strokeWidth={2}
             strokeLinecap="round"
             strokeLinejoin="round"
-            className="h-4 w-4 shrink-0 text-zinc-400"
+            className="h-4 w-4 shrink-0 text-natalo-500"
             aria-hidden
           >
             <circle cx="11" cy="11" r="7" />
             <path d="m20 20-3.5-3.5" />
           </svg>
-          <span className="flex-1 truncate text-sm text-zinc-400">
-            Cari di Natalo Petshop...
+          <span className="flex-1 truncate text-sm font-semibold text-gray-400">
+            Cari produk, brand, atau kategori...
           </span>
         </button>
       </div>

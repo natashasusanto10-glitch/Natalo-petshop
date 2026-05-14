@@ -6,34 +6,15 @@ import { useRouter } from "next/navigation";
 const STORAGE_KEY = "nat-search-history";
 const MAX_HISTORY = 6;
 
-const POPULAR_QUERIES: { rank: number; q: string }[] = [
-  { rank: 1, q: "angels creamy" },
-  { rank: 2, q: "royal canin" },
-  { rank: 3, q: "grooming kucing" },
-  { rank: 4, q: "kandang besi" },
-  { rank: 5, q: "vitamin bulu" },
-  { rank: 6, q: "susu kucing" },
-  { rank: 7, q: "filter aquarium" },
-  { rank: 8, q: "tali leash" },
-];
-
-const TRENDING_PRODUCTS: { q: string; title: string; reason: string }[] = [
-  {
-    q: "royal canin persian",
-    title: "Royal Canin Persian Adult",
-    reason: "Sering dicari untuk kucing ras",
-  },
-  {
-    q: "angels creamy tuna",
-    title: "Angels Creamy Tuna",
-    reason: "Camilan kucing favorit",
-  },
-  {
-    q: "cat litter tofu",
-    title: "Cat Litter Tofu",
-    reason: "Pasir kucing praktis dan wangi",
-  },
-];
+type PopularQuery = { rank: number; q: string };
+type TrendingProduct = {
+  id: string;
+  slug: string;
+  name: string;
+  imageUrl: string | null;
+  brandName: string | null;
+  categoryName: string | null;
+};
 
 type Suggest = {
   products: Array<{
@@ -89,7 +70,27 @@ export function SearchOverlay({ open, onClose }: Props) {
   const [history, setHistory] = useState<string[]>([]);
   const [suggest, setSuggest] = useState<Suggest>(EMPTY_SUGGEST);
   const [suggestLoading, setSuggestLoading] = useState(false);
+  const [popular, setPopular] = useState<PopularQuery[]>([]);
+  const [trending, setTrending] = useState<TrendingProduct[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const ctrl = new AbortController();
+    fetch("/api/search/popular", { signal: ctrl.signal, cache: "no-store" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data?.items)) setPopular(data.items);
+      })
+      .catch(() => {});
+    fetch("/api/search/trending", { signal: ctrl.signal, cache: "no-store" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data?.items)) setTrending(data.items);
+      })
+      .catch(() => {});
+    return () => ctrl.abort();
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -152,6 +153,13 @@ export function SearchOverlay({ open, onClose }: Props) {
     saveHistory(next);
     setQuery("");
     setSuggest(EMPTY_SUGGEST);
+
+    // Fire-and-forget search log. Never block search on this.
+    void fetch("/api/search/log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keyword: trimmed }),
+    }).catch(() => {});
 
     onClose();
     router.push(`/search?q=${encodeURIComponent(trimmed)}`);
@@ -318,50 +326,63 @@ export function SearchOverlay({ open, onClose }: Props) {
           </section>
         )}
 
-        <section className="pt-5">
-          <h4 className="text-sm font-black text-gray-900">Pencarian populer</h4>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {POPULAR_QUERIES.map((item) => (
-              <button
-                key={item.q}
-                type="button"
-                onClick={() => commit(item.q)}
-                className="inline-flex items-center gap-1.5 rounded-full border border-natalo-200 bg-natalo-50 px-3 py-1.5 text-xs font-black text-natalo-900 active:bg-natalo-100"
-              >
-                <span className="text-natalo-600">#{item.rank}</span>
-                <span>{item.q}</span>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section className="pt-6">
-          <h4 className="text-sm font-black text-gray-900">Lagi banyak dicari</h4>
-          <ul className="mt-3 space-y-2">
-            {TRENDING_PRODUCTS.map((item) => (
-              <li key={item.q}>
+        {popular.length > 0 && (
+          <section className="pt-5">
+            <h4 className="text-sm font-black text-gray-900">Pencarian populer</h4>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {popular.map((item) => (
                 <button
+                  key={`${item.rank}-${item.q}`}
                   type="button"
                   onClick={() => commit(item.q)}
-                  className="flex w-full items-center gap-3 rounded-2xl border border-gray-100 bg-white p-3 text-left active:border-natalo-200 active:bg-natalo-50"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-natalo-200 bg-natalo-50 px-3 py-1.5 text-xs font-black text-natalo-900 active:bg-natalo-100"
                 >
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-natalo-50 text-sm font-black text-natalo-600">
-                    NP
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-black text-gray-900">
-                      {item.title}
-                    </span>
-                    <span className="block truncate text-xs font-semibold text-gray-500">
-                      {item.reason}
-                    </span>
-                  </span>
-                  <ChevronRightIcon className="h-5 w-5 text-gray-300" />
+                  <span className="text-natalo-600">#{item.rank}</span>
+                  <span>{item.q}</span>
                 </button>
-              </li>
-            ))}
-          </ul>
-        </section>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {trending.length > 0 && (
+          <section className="pt-6">
+            <h4 className="text-sm font-black text-gray-900">Lagi banyak dicari</h4>
+            <ul className="mt-3 space-y-2">
+              {trending.map((item) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    onClick={() => commit(item.name)}
+                    className="flex w-full items-center gap-3 rounded-2xl border border-gray-100 bg-white p-3 text-left active:border-natalo-200 active:bg-natalo-50"
+                  >
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-natalo-50 text-sm font-black text-natalo-600">
+                      {item.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={item.imageUrl}
+                          alt={item.name}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span>NP</span>
+                      )}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-black text-gray-900">
+                        {item.name}
+                      </span>
+                      <span className="block truncate text-xs font-semibold text-gray-500">
+                        {item.brandName ?? item.categoryName ?? "Produk Natalo"}
+                      </span>
+                    </span>
+                    <ChevronRightIcon className="h-5 w-5 text-gray-300" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </div>
     </div>
   );
