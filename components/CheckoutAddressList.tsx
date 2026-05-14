@@ -144,7 +144,7 @@ export function CheckoutAddressList({ addresses, returnTo }: Props) {
 
   return (
     <main className="min-h-screen bg-slate-50 pb-[calc(104px+env(safe-area-inset-bottom))]">
-      <div className="sticky top-[env(safe-area-inset-top)] z-[900] border-b border-slate-100 bg-white shadow-[0_8px_20px_rgba(15,23,42,0.06)]">
+      <div className="sticky top-0 z-[1000] border-b border-slate-100 bg-white shadow-[0_8px_20px_rgba(15,23,42,0.06)] [padding-top:env(safe-area-inset-top)]">
         <div className="mx-auto flex max-w-2xl items-center justify-between gap-3 px-4 py-3">
           <Link
             href={returnTo}
@@ -163,17 +163,8 @@ export function CheckoutAddressList({ addresses, returnTo }: Props) {
         </div>
       </div>
 
-      <div className="mx-auto max-w-2xl px-4 pt-7">
-        <section>
-          <h1 className="text-[28px] font-black leading-tight tracking-tight text-slate-950">
-            Pilih Alamat Pengiriman
-          </h1>
-          <p className="mt-2 max-w-md text-sm font-semibold leading-6 text-slate-500">
-            Pilihan ini hanya dipakai untuk pesanan checkout saat ini.
-          </p>
-        </section>
-
-        <div className="mt-7 space-y-4">
+      <div className="mx-auto max-w-2xl px-4 pt-4">
+        <div className="space-y-4">
           {addresses.length === 0 ? (
             <section className="rounded-[28px] border border-dashed border-natalo-200 bg-white p-8 text-center shadow-sm">
               <div className="mx-auto grid h-14 w-14 place-items-center rounded-3xl bg-natalo-50 text-natalo-700">

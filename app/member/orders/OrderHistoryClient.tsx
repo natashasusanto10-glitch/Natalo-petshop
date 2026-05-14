@@ -262,6 +262,7 @@ function OrderCard({ order }: { order: OrderHistoryOrder }) {
   };
   const otherCount = Math.max(0, order.items.length - 1);
   const detailHref = `/pesanan/${order.orderNumber}`;
+  const isSelfPickup = order.orderType === "SELF_PICKUP";
 
   return (
     <article className="rounded-[24px] bg-white px-5 py-4 shadow-[0_4px_20px_-8px_rgba(15,23,42,0.08)] ring-1 ring-slate-100">
@@ -306,35 +307,57 @@ function OrderCard({ order }: { order: OrderHistoryOrder }) {
       </div>
 
       <div className="mt-4 border-t border-dashed border-slate-200 pt-4">
-        <div className="flex items-end justify-between gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Total</p>
             <p className="mt-0.5 text-base font-black leading-tight text-slate-950">
               {formatRupiah(order.total)}
             </p>
           </div>
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-            {order.orderType === "SELF_PICKUP" && (
-              <a
-                href={order.pickupMapsUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex min-h-11 items-center rounded-full px-3.5 text-[12.5px] font-semibold text-blue-700 ring-1 ring-blue-200 transition active:bg-blue-50"
+          <div
+            className={
+              isSelfPickup
+                ? "flex w-full min-w-0 flex-col gap-2 sm:w-[290px]"
+                : "flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:justify-end"
+            }
+          >
+            {isSelfPickup ? (
+              <div className="grid w-full min-w-0 grid-cols-[minmax(0,1.35fr)_minmax(0,.75fr)] gap-2">
+                <a
+                  href={order.pickupMapsUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex min-h-11 min-w-0 items-center justify-center rounded-full px-3 text-center text-[12.5px] font-semibold leading-tight text-blue-700 ring-1 ring-blue-200 transition active:bg-blue-50"
+                >
+                  Buka di Google Maps
+                </a>
+                <Link
+                  href={detailHref}
+                  aria-label={`Lihat detail pesanan ${order.orderNumber}`}
+                  className="inline-flex min-h-11 min-w-0 items-center justify-center gap-1 rounded-full px-3 text-[12.5px] font-semibold text-slate-700 ring-1 ring-slate-200 transition active:bg-slate-50"
+                >
+                  Detail
+                  <FiChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                </Link>
+              </div>
+            ) : (
+              <Link
+                href={detailHref}
+                aria-label={`Lihat detail pesanan ${order.orderNumber}`}
+                className="inline-flex min-h-11 items-center gap-1 rounded-full px-3.5 text-[12.5px] font-semibold text-slate-700 ring-1 ring-slate-200 transition active:bg-slate-50"
               >
-                Buka di Google Maps
-              </a>
+                Detail
+                <FiChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+              </Link>
             )}
-            <Link
-              href={detailHref}
-              aria-label={`Lihat detail pesanan ${order.orderNumber}`}
-              className="inline-flex min-h-11 items-center gap-1 rounded-full px-3.5 text-[12.5px] font-semibold text-slate-700 ring-1 ring-slate-200 transition active:bg-slate-50"
-            >
-              Detail
-              <FiChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
-            </Link>
             <ReorderButton
               orderId={order.id}
-              className="min-h-11 border-0 bg-gradient-to-br from-blue-600 to-blue-700 px-3.5 py-0 text-[12.5px] font-semibold text-white shadow-[0_4px_12px_-2px_rgba(37,99,235,0.25)] hover:bg-blue-700 hover:text-white"
+              className={[
+                "min-h-11 justify-center border-0 bg-gradient-to-br from-blue-600 to-blue-700 px-3.5 py-0 text-[12.5px] font-semibold text-white shadow-[0_4px_12px_-2px_rgba(37,99,235,0.25)] hover:bg-blue-700 hover:text-white",
+                isSelfPickup ? "w-full" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
             >
               <FiRefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
               Beli Lagi
