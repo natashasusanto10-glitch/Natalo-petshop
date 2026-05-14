@@ -27,11 +27,39 @@ async function getApnProvider() {
 
   const keyId = process.env.APNS_KEY_ID;
   const teamId = process.env.APNS_TEAM_ID;
-  const keyContent = process.env.APNS_KEY_CONTENT;
+  const rawKeyContent = process.env.APNS_KEY_CONTENT;
   const production = process.env.APNS_PRODUCTION === "true";
 
-  if (!keyId || !teamId || !keyContent) {
+  if (!keyId || !teamId || !rawKeyContent) {
     // APNs belum di-config — silently skip. Web Push tetap kerja.
+    return null;
+  }
+
+  // Vercel/Heroku env vars sering disimpan dengan "\n" literal (2 chars: backslash + n)
+  // bukan newline asli. PEM parser butuh actual newline. Convert dulu.
+  // Pattern sama dgn lib/fcm.ts untuk FCM_PRIVATE_KEY.
+  const keyContent = rawKeyContent.replace(/\\n/g, "\n").trim();
+
+  // Sanity log: confirm PEM markers present (no secret value leaked).
+  const hasBegin = keyContent.includes("-----BEGIN PRIVATE KEY-----");
+  const hasEnd = keyContent.includes("-----END PRIVATE KEY-----");
+  const lineCount = keyContent.split("\n").length;
+  console.log("[apns]", JSON.stringify({
+    event: "provider-init",
+    keyId,
+    teamId,
+    production,
+    keyContentLength: keyContent.length,
+    hasPEMBeginMarker: hasBegin,
+    hasPEMEndMarker: hasEnd,
+    lineCount,
+  }));
+
+  if (!hasBegin || !hasEnd) {
+    console.error("[apns]", JSON.stringify({
+      event: "provider-init-skip",
+      reason: "APNS_KEY_CONTENT missing PEM headers — check env var format in Vercel",
+    }));
     return null;
   }
 
@@ -43,7 +71,10 @@ async function getApnProvider() {
     });
     return apnProvider;
   } catch (err) {
-    console.warn("APNs provider init failed:", err);
+    console.error("[apns]", JSON.stringify({
+      event: "provider-init-error",
+      error: err instanceof Error ? err.message : String(err),
+    }));
     return null;
   }
 }
