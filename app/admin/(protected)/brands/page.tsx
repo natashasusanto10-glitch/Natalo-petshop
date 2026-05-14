@@ -3,7 +3,6 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
-import { MultiImageUpload } from "@/components/MultiImageUpload";
 import { BrandLogoOrderClient } from "@/components/admin/BrandLogoOrderClient";
 import { BrandLogoUploadButton } from "@/components/admin/BrandLogoUploadButton";
 
@@ -72,7 +71,6 @@ export default async function AdminBrandsPage({
       data: {
         name,
         slug,
-        logoUrl: String(formData.get("logoUrl") || "").trim() || null,
         position: parsePosition(formData.get("position")),
         isActive: formData.get("isActive") === "on",
       },
@@ -108,7 +106,7 @@ export default async function AdminBrandsPage({
 
   async function saveBrandOrder(formData: FormData) {
     "use server";
-    const orderedIds = parseOrderedIds(formData.get("orderedIds")).slice(0, 12);
+    const orderedIds = parseOrderedIds(formData.get("orderedIds")).slice(0, 18);
     if (orderedIds.length === 0) return;
 
     await prisma.$transaction([
@@ -122,7 +120,6 @@ export default async function AdminBrandsPage({
         where: {
           id: { notIn: orderedIds },
           isActive: true,
-          logoUrl: { not: null },
           position: { lt: 1000 },
         },
         data: { position: 1000 },
@@ -147,7 +144,7 @@ export default async function AdminBrandsPage({
 
   const logoOrderBrands = brands
     .filter((brand) => brand.isActive && brand.logoUrl)
-    .slice(0, 12)
+    .slice(0, 18)
     .map((brand) => ({
       id: brand.id,
       name: brand.name,
@@ -228,7 +225,6 @@ export default async function AdminBrandsPage({
             className="rounded-full border border-zinc-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-zinc-600"
           />
         </div>
-        <MultiImageUpload name="logoUrl" label="Logo brand" max={1} />
         <div className="flex flex-wrap items-center justify-between gap-3">
           <label className="inline-flex items-center gap-2 text-sm font-bold text-zinc-700">
             <input

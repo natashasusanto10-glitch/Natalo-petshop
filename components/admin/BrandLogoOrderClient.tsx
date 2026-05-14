@@ -20,6 +20,22 @@ function moveItem<T>(items: T[], fromIndex: number, toIndex: number) {
   return next;
 }
 
+function ImageIcon({ className = "h-5 w-5" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="4" y="5" width="16" height="14" rx="3" stroke="currentColor" strokeWidth="1.8" />
+      <path
+        d="m7 16 3.2-3.2a1.2 1.2 0 0 1 1.7 0L14 15l1.1-1.1a1.2 1.2 0 0 1 1.7 0L19 16"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="15.5" cy="9.5" r="1.25" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function BrandLogoOrderClient({
   brands,
   saveAction,
@@ -36,6 +52,47 @@ export function BrandLogoOrderClient({
     setItems(moveItem(items, fromIndex, toIndex));
   }
 
+  function renderBrandCard(brand: BrandLogoOrderItem, index: number) {
+    return (
+      <div
+        key={brand.id}
+        draggable
+        onDragStart={() => setDraggedId(brand.id)}
+        onDragEnter={() => reorder(brand.id)}
+        onDragOver={(event) => event.preventDefault()}
+        onDragEnd={() => setDraggedId(null)}
+        className={`relative flex h-[96px] w-[88px] shrink-0 cursor-grab flex-col items-center justify-center rounded-2xl border bg-zinc-50 px-2 py-2 text-center transition active:cursor-grabbing ${
+          draggedId === brand.id
+            ? "scale-[0.98] border-blue-300 bg-blue-50 opacity-80"
+            : "border-zinc-200 hover:border-zinc-300"
+        }`}
+        title={`Urutan ${index + 1}: ${brand.name}`}
+      >
+        <span className="absolute left-1.5 top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-blue-600 px-1 text-[10px] font-black text-white shadow-sm">
+          {index + 1}
+        </span>
+        <div className="flex h-10 w-14 items-center justify-center rounded-xl bg-white p-1.5 text-zinc-400 ring-1 ring-zinc-100">
+          {brand.logoUrl ? (
+            <img
+              src={brand.logoUrl}
+              alt=""
+              className="max-h-full max-w-full object-contain"
+              draggable={false}
+            />
+          ) : (
+            <ImageIcon className="h-4 w-4" />
+          )}
+        </div>
+        <p className="mt-1.5 line-clamp-2 text-[10px] font-bold leading-tight text-zinc-700">
+          {brand.name}
+        </p>
+      </div>
+    );
+  }
+
+  const firstRow = items.slice(0, 8);
+  const secondRow = items.slice(8, 18);
+
   if (brands.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-zinc-200 bg-white p-5 text-center text-sm font-semibold text-zinc-500">
@@ -49,9 +106,9 @@ export function BrandLogoOrderClient({
       <input type="hidden" name="orderedIds" value={orderedIds} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-black text-zinc-950">Logo Brand</h2>
+          <h2 className="text-base font-black text-zinc-950">Urutan Brand Utama</h2>
           <p className="mt-0.5 text-xs font-semibold text-zinc-500">
-            Atur maks. 12 brand utama. Drag kartu untuk mengubah urutan.
+            Atur 18 brand utama. Di luar grid ini otomatis tampil setelah urutan manual.
           </p>
         </div>
         <button
@@ -62,44 +119,15 @@ export function BrandLogoOrderClient({
         </button>
       </div>
 
-      <div className="mt-4 flex max-h-[132px] gap-2.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {items.map((brand, index) => (
-          <div
-            key={brand.id}
-            draggable
-            onDragStart={() => setDraggedId(brand.id)}
-            onDragEnter={() => reorder(brand.id)}
-            onDragOver={(event) => event.preventDefault()}
-            onDragEnd={() => setDraggedId(null)}
-            className={`relative flex h-[112px] w-[98px] shrink-0 cursor-grab flex-col items-center justify-center rounded-2xl border bg-zinc-50 px-2 py-2 text-center transition active:cursor-grabbing ${
-              draggedId === brand.id
-                ? "scale-[0.98] border-blue-300 bg-blue-50 opacity-80"
-                : "border-zinc-200 hover:border-zinc-300"
-            }`}
-            title={`Urutan ${index + 1}: ${brand.name}`}
-          >
-            <span className="absolute left-2 top-2 grid h-5 min-w-5 place-items-center rounded-full bg-blue-600 px-1 text-[10px] font-black text-white shadow-sm">
-              {index + 1}
-            </span>
-            <div className="flex h-12 w-16 items-center justify-center rounded-xl bg-white p-2 ring-1 ring-zinc-100">
-              {brand.logoUrl ? (
-                <img
-                  src={brand.logoUrl}
-                  alt=""
-                  className="max-h-full max-w-full object-contain"
-                  draggable={false}
-                />
-              ) : (
-                <span className="text-[10px] font-black uppercase text-zinc-400">
-                  {brand.name.slice(0, 2)}
-                </span>
-              )}
-            </div>
-            <p className="mt-2 line-clamp-2 text-[11px] font-bold leading-tight text-zinc-700">
-              {brand.name}
-            </p>
+      <div className="mt-4 space-y-2.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="grid min-w-max grid-cols-8 gap-2.5">
+          {firstRow.map((brand, index) => renderBrandCard(brand, index))}
+        </div>
+        {secondRow.length > 0 && (
+          <div className="grid min-w-max grid-cols-10 gap-2.5">
+            {secondRow.map((brand, index) => renderBrandCard(brand, index + 8))}
           </div>
-        ))}
+        )}
       </div>
     </form>
   );
