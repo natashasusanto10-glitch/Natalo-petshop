@@ -4,12 +4,15 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { FiStar } from "react-icons/fi";
 import { formatRupiah } from "@/lib/format";
 import { addItemToCart } from "@/lib/cart-actions";
 import { getWishlistItems, WishlistButton } from "@/components/WishlistButton";
 import { AddToCartBottomSheet } from "@/components/AddToCartBottomSheet";
 import { StickyBackTitle } from "@/components/StickyBackTitle";
 import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
+
+const RECENT_STORAGE_KEY = "nat-recent-product-views";
 
 type WishlistItem = {
   id: string;
@@ -23,8 +26,32 @@ type WishlistItem = {
   hasVariants?: boolean;
 };
 
+type RecommendationProduct = {
+  id: string;
+  slug: string;
+  name: string;
+  price: number;
+  image: string | null;
+  rating: number;
+  sold_count: number;
+};
+
+type RecommendationsResponse = {
+  data?: RecommendationProduct[];
+  has_more?: boolean;
+};
+
 function currentPrice(item: WishlistItem) {
   return item.memberPrice ?? item.price;
+}
+
+function readRecentProductIds() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(RECENT_STORAGE_KEY) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 function isOutOfStock(item: WishlistItem) {
@@ -59,6 +86,160 @@ function cartSheetItem(item: WishlistItem) {
     stock: item.stock ?? null,
     imageUrl: item.imageUrl,
   };
+}
+
+function RecommendationSkeleton() {
+  return (
+    <div className="animate-pulse overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+      <div className="aspect-square bg-gray-100" />
+      <div className="space-y-2 p-3">
+        <div className="h-3 rounded-full bg-gray-100" />
+        <div className="h-3 w-2/3 rounded-full bg-gray-100" />
+        <div className="mt-3 h-4 w-20 rounded-full bg-gray-100" />
+      </div>
+    </div>
+  );
+}
+
+function RecommendationCard({ product }: { product: RecommendationProduct }) {
+  return (
+    <article className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+      <Link href={`/products/${product.slug}`} className="block">
+        <div className="relative aspect-square overflow-hidden bg-gray-100">
+          {product.image ? (
+            <Image
+              src={product.image}
+              alt={product.name}
+              fill
+              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 220px"
+              placeholder="blur"
+              blurDataURL={IMAGE_BLUR_GRAY}
+              className="object-cover transition hover:scale-105"
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center text-3xl font-black text-gray-200">
+              NP
+            </div>
+          )}
+        </div>
+        <div className="p-2.5">
+          <h3 className="line-clamp-2 min-h-[2.35rem] text-[13px] font-bold leading-snug text-gray-900">
+            {product.name}
+          </h3>
+          <p className="mt-1.5 truncate text-sm font-black leading-tight text-natalo-600">
+            {formatRupiah(product.price)}
+          </p>
+          {product.rating > 0 || product.sold_count > 0 ? (
+            <p className="mt-1 inline-flex items-center gap-1 text-[11px] font-bold text-gray-500">
+              <FiStar className="h-3 w-3 fill-amber-400 text-amber-400" aria-hidden="true" />
+              {product.rating > 0 ? product.rating.toFixed(1) : "Baru"}
+              {product.sold_count > 0 ? ` · ${product.sold_count} terjual` : ""}
+            </p>
+          ) : null}
+        </div>
+      </Link>
+    </article>
+  );
+}
+
+function EmptyWishlistRecommendations() {
+  const [recommendations, setRecommendations] = useState<RecommendationProduct[]>([]);
+  const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+  const [sentinel, setSentinel] = useState<HTMLDivElement | null>(null);
+
+  async function loadMore() {
+    if (loading || !hasMore) return;
+    setLoading(true);
+    setError(false);
+
+    const viewed = readRecentProductIds();
+    const exclude = recommendations.map((product) => product.id);
+    const params = new URLSearchParams({
+      limit: "10",
+      viewed: viewed.join(","),
+      exclude: exclude.join(","),
+    });
+
+    try {
+      const response = await fetch(`/api/cart/recommendations?${params.toString()}`, {
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error("Failed to load recommendations");
+      const data = (await response.json()) as RecommendationsResponse;
+      const nextProducts = Array.isArray(data.data) ? data.data : [];
+      setRecommendations((current) => {
+        const seen = new Set(current.map((product) => product.id));
+        return [...current, ...nextProducts.filter((product) => !seen.has(product.id))];
+      });
+      setHasMore(Boolean(data.has_more));
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadMore();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!sentinel || !hasMore || error) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) void loadMore();
+      },
+      { rootMargin: "520px 0px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sentinel, hasMore, error, recommendations.length, loading]);
+
+  return (
+    <section className="mt-6">
+      <h2 className="px-1 text-lg font-black text-slate-950">Rekomendasi untuk kamu</h2>
+
+      {recommendations.length === 0 && loading ? (
+        <div className="mt-3 grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <RecommendationSkeleton key={index} />
+          ))}
+        </div>
+      ) : (
+        <div className="mt-3 grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-3">
+          {recommendations.map((product) => (
+            <RecommendationCard key={product.id} product={product} />
+          ))}
+        </div>
+      )}
+
+      {loading && recommendations.length > 0 && (
+        <div className="mt-3 grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <RecommendationSkeleton key={index} />
+          ))}
+        </div>
+      )}
+
+      {error && (
+        <p className="mt-4 rounded-2xl border border-red-100 bg-red-50 p-4 text-center text-sm font-bold text-red-600">
+          Rekomendasi belum bisa dimuat.
+        </p>
+      )}
+
+      {!hasMore && recommendations.length > 0 && (
+        <p className="mt-4 text-center text-xs font-semibold text-gray-400">
+          Kamu sudah melihat semuanya
+        </p>
+      )}
+
+      <div ref={setSentinel} className="h-8" />
+    </section>
+  );
 }
 
 export default function WishlistPage() {
@@ -115,6 +296,7 @@ export default function WishlistPage() {
         label="Wishlist"
         subtitle={`${items.length} produk disimpan`}
         fallbackHref="/member"
+        stickToTop
         rightAction={
           items.length > 0 ? (
             <Link href="/products" className="text-xs font-extrabold text-natalo-600">
@@ -127,16 +309,21 @@ export default function WishlistPage() {
       <div className="mx-auto max-w-4xl px-3 py-4 pb-36 md:px-4 md:py-8 md:pb-10">
 
       {items.length === 0 ? (
-        <div className="mt-8 rounded-2xl border border-dashed border-gray-200 bg-white p-8 text-center md:p-16">
-          <p className="text-4xl font-black text-gray-200">NP</p>
-          <p className="mt-4 font-semibold text-gray-500">Wishlist kamu masih kosong.</p>
-          <Link
-            href="/products"
-            className="mt-5 inline-flex rounded-xl bg-natalo-600 px-6 py-3 text-sm font-bold text-white transition hover:bg-natalo-700"
-          >
-            Jelajahi Produk
-          </Link>
-        </div>
+        <>
+          <div className="mt-8 rounded-2xl border border-dashed border-gray-200 bg-white p-8 text-center md:p-16">
+            <p className="text-4xl font-black text-gray-200">NP</p>
+            <p className="mt-4 font-semibold text-gray-500">
+              Simpan produk favoritmu agar mudah ditemukan lagi nanti.
+            </p>
+            <Link
+              href="/products"
+              className="mt-5 inline-flex rounded-xl bg-natalo-600 px-6 py-3 text-sm font-bold text-white transition hover:bg-natalo-700"
+            >
+              Jelajahi Produk
+            </Link>
+          </div>
+          <EmptyWishlistRecommendations />
+        </>
       ) : (
         <div className="mt-4 grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-3">
           {items.map((item) => {

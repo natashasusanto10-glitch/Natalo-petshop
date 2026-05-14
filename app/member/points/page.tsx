@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { StickyBackTitle } from "@/components/StickyBackTitle";
 import { prisma } from "@/lib/prisma";
 import { requireCustomerSession } from "@/lib/session-guards";
 
@@ -48,21 +49,12 @@ export default async function MemberPointsPage() {
     .reduce((s, h) => s + h.points, 0);
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-4 md:py-10">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-black text-gray-900 md:text-2xl">
-          Loyalty Poin
-        </h1>
-        <Link
-          href="/member"
-          className="text-sm font-semibold text-blue-500 hover:underline"
-        >
-          ← Kembali
-        </Link>
-      </div>
+    <>
+      <StickyBackTitle label="Loyalty Poin" fallbackHref="/member" stickToTop />
 
+      <div className="mx-auto max-w-2xl px-4 py-4 md:py-10">
       {/* Total balance card */}
-      <div className="mt-4 overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 p-5 text-white shadow-sm md:mt-6 md:p-6">
+      <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 p-5 text-white shadow-sm md:p-6">
         <p className="text-xs uppercase tracking-wider text-blue-100">
           Total Saldo Poin
         </p>
@@ -88,22 +80,20 @@ export default async function MemberPointsPage() {
       </div>
 
       {/* CTA: claim voucher */}
-      {total >= 50 && (
-        <Link
-          href="/member"
-          className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 transition hover:border-blue-300"
-        >
-          <div>
-            <p className="text-sm font-bold text-blue-700">
-              🎁 Tukar jadi voucher
-            </p>
-            <p className="mt-0.5 text-xs text-blue-600">
-              Min. 50 poin (= Rp5.000 diskon). Klaim di halaman member.
-            </p>
-          </div>
-          <span className="text-sm font-bold text-blue-700">Tukar →</span>
-        </Link>
-      )}
+      <Link
+        href="/account/loyalty/redeem"
+        className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 transition hover:border-blue-300"
+      >
+        <div>
+          <p className="text-sm font-bold text-blue-700">
+            🎁 Tukar Poin
+          </p>
+          <p className="mt-0.5 text-xs text-blue-600">
+            Min. 50 poin bisa ditukar menjadi voucher Rp5.000.
+          </p>
+        </div>
+        <span className="text-sm font-bold text-blue-700">Tukar Poin →</span>
+      </Link>
 
       {/* History list */}
       <div className="mt-6">
@@ -157,6 +147,7 @@ export default async function MemberPointsPage() {
           </div>
         )}
       </div>
-    </div>
+      </div>
+    </>
   );
 }
