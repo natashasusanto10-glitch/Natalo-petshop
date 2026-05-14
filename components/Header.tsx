@@ -67,6 +67,7 @@ export function Header() {
   const isStaticBrandHeaderPage =
     currentPath === "/wishlist" ||
     /^\/akun\/alamat(\/|$)/.test(currentPath) ||
+    currentPath === "/akun/pengaturan/notifikasi" ||
     currentPath === "/akun/sesi-aktif" ||
     currentPath === "/member/points" ||
     /^\/bantuan(\/|$)/.test(currentPath) ||

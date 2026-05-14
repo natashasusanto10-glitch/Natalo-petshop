@@ -117,11 +117,11 @@ export function ProductCard({
   }
 
   return (
-    <div className="group relative flex flex-col overflow-hidden rounded-2xl bg-gray-50 transition hover:shadow-md">
+    <div className="group relative flex min-w-0 flex-col overflow-hidden rounded-[18px] border border-[#e8eef7] bg-white p-2.5 shadow-[0_6px_18px_rgba(15,23,42,0.05)] transition active:scale-[0.99] active:opacity-90 sm:p-3 sm:hover:-translate-y-0.5 sm:hover:shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
       <Link href={`/products/${product.slug}`} className="flex flex-1 flex-col">
         {/* Image area */}
         <div
-          className="relative aspect-square bg-gray-100"
+          className="relative aspect-square rounded-2xl bg-white"
           style={{ viewTransitionName: `nat-prod-${product.slug}` }}
         >
           {product.imageUrl ? (
@@ -133,13 +133,13 @@ export function ProductCard({
               placeholder="blur"
               blurDataURL={IMAGE_BLUR_GRAY}
               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-              className="object-cover transition group-hover:scale-105"
+              className="object-contain p-2 transition duration-200 group-hover:scale-[1.03]"
             />
           ) : (
             <div className="flex h-full items-center justify-center text-5xl text-gray-300">🐾</div>
           )}
           {memberPrice !== null && (
-            <span className="absolute left-3 top-3 rounded-full bg-blue-500 px-2 py-0.5 text-xs font-bold text-white">
+            <span className="absolute left-1.5 top-1.5 rounded-full border border-white/80 bg-blue-500 px-2 py-0.5 text-xs font-bold text-white shadow-sm">
               Member
             </span>
           )}
@@ -147,22 +147,26 @@ export function ProductCard({
 
         {/* Info — TANPA deskripsi panjang. Deskripsi lengkap di halaman detail
             produk. Card cuma: gambar, nama (max 2 baris), harga, CTA. */}
-        <div className="flex flex-1 flex-col p-4">
-          <h3 className="line-clamp-2 font-semibold leading-snug text-gray-900">
+        <div className="flex min-w-0 flex-1 flex-col px-0.5 pb-0.5 pt-2">
+          <h3 className="line-clamp-2 min-h-[2.35rem] text-[12px] font-bold leading-snug text-zinc-800 sm:text-sm">
             {product.name}
           </h3>
 
-          <div className="mt-3">
-            <p className="font-bold text-gray-900">{formatRupiah(displayPrice)}</p>
+          <div className="mt-2">
+            <p className="truncate text-[14px] font-black leading-tight text-[#1E5FBF] sm:text-base">
+              {formatRupiah(displayPrice)}
+            </p>
             {hasMarkdown && (
-              <p className="text-xs text-gray-400 line-through">{formatRupiah(product.price)}</p>
+              <p className="mt-0.5 truncate text-[11px] font-medium text-zinc-400 line-through">
+                {formatRupiah(product.price)}
+              </p>
             )}
           </div>
         </div>
       </Link>
 
       {/* CTA kecil — outside Link untuk hindari nested-interactive. */}
-      <div className="px-4 pb-4">
+      <div className="mt-3">
         <ProductCardCta
           productId={product.id}
           slug={product.slug}

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { IoBagOutline } from "react-icons/io5";
+import { PetCartIcon } from "@/components/PetCartIcon";
 import { loadCart } from "@/lib/cart";
 
 type CartCountProps = {
@@ -35,14 +35,18 @@ export function CartCount({ compact = false }: CartCountProps) {
       href="/cart"
       className={
         compact
-          ? "relative inline-flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-700 shadow-sm ring-1 ring-slate-100 transition active:scale-95"
+          ? "nat-header-action-glass relative inline-flex h-11 w-11 items-center justify-center rounded-full text-slate-700 transition active:scale-95"
           : "relative inline-flex items-center gap-1 text-xs font-bold text-gray-700 sm:text-sm"
       }
       aria-label="Keranjang"
     >
-      <IoBagOutline
-        className={compact ? "h-6 w-6" : "h-5 w-5 text-gray-700 sm:h-6 sm:w-6"}
-        aria-hidden="true"
+      <PetCartIcon
+        className={compact ? "h-[22px] w-[22px]" : "h-5 w-5 text-gray-700 sm:h-6 sm:w-6"}
+        pawClassName={
+          compact
+            ? "absolute -bottom-0.5 -right-1 h-3.5 w-3.5 rounded-full bg-white p-0.5 text-[#1E5FBF] shadow-sm"
+            : "absolute -bottom-0.5 -right-1 h-3 w-3 rounded-full bg-white p-0.5 text-[#1E5FBF] shadow-sm"
+        }
       />
       {!compact && <span className="hidden xs:inline">Keranjang</span>}
       {count > 0 && (

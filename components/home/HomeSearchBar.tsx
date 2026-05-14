@@ -30,7 +30,7 @@ export function HomeSearchBar({
           type="button"
           onClick={() => setOpen(true)}
           aria-label="Buka pencarian"
-          className="flex w-full items-center gap-2 rounded-full border border-[#f0f0f0] bg-white px-4 py-2.5 text-left shadow-sm transition hover:border-blue-200"
+          className="home-search-glass flex w-full items-center gap-2 rounded-full px-4 py-2.5 text-left transition hover:border-blue-200"
         >
           <svg
             viewBox="0 0 24 24"

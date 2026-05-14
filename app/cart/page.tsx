@@ -5,10 +5,10 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FiShoppingCart } from "react-icons/fi";
 import { formatRupiah } from "@/lib/format";
 import { loadCart, saveCart, type CartItem } from "@/lib/cart";
 import type { CartStockIssue } from "@/lib/cart-stock";
+import { EmptyCartPetIllustration } from "@/components/PetCartIcon";
 import { VoucherClaimBar } from "@/components/cart/VoucherClaimBar";
 import { SwipeableCartRow } from "@/components/cart/SwipeableCartRow";
 import { CartRecommendationSections } from "@/components/cart/CartRecommendationSections";
@@ -108,7 +108,7 @@ function EmptyCartShoppingCard() {
     <section className="mt-4 rounded-2xl border border-blue-100 bg-white p-5 shadow-sm md:mt-8">
       <div className="flex items-start gap-4">
         <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-600">
-          <FiShoppingCart className="h-7 w-7" aria-hidden />
+          <EmptyCartPetIllustration className="h-11 w-11" />
         </div>
         <div className="min-w-0 flex-1">
           <h2 className="text-lg font-black leading-tight text-gray-950">

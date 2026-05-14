@@ -3,8 +3,9 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FiChevronRight, FiRefreshCw, FiShoppingCart, FiStar } from "react-icons/fi";
+import { FiChevronRight, FiRefreshCw, FiStar } from "react-icons/fi";
 import { BottomSheet } from "@/components/BottomSheet";
+import { PetCartIcon } from "@/components/PetCartIcon";
 import { natToast } from "@/components/Toast";
 import { addItemToCart } from "@/lib/cart-actions";
 import type { CartItem } from "@/lib/cart";
@@ -191,7 +192,11 @@ function ProductCard({
         className="absolute bottom-3 right-3 grid h-10 w-10 place-items-center rounded-full bg-blue-600 text-white shadow-[0_8px_18px_-8px_rgba(37,99,235,0.55)] transition active:scale-95 disabled:bg-gray-300"
         disabled={product.stock <= 0}
       >
-        <FiShoppingCart className="h-4 w-4" aria-hidden />
+        <PetCartIcon
+          kind="cart"
+          className="h-4 w-4"
+          pawClassName="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-white p-[1.5px] text-blue-600 shadow-sm"
+        />
       </button>
     </article>
   );

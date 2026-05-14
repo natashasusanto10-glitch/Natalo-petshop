@@ -119,7 +119,7 @@ export function BottomNavigation() {
         className="pointer-events-none absolute inset-x-0 bottom-0 h-[calc(env(safe-area-inset-bottom)+100px)] bg-gradient-to-t from-white from-72% to-white/0"
       />
       <div className="pointer-events-auto relative mx-3 mb-2">
-        <div className="relative grid h-[60px] grid-cols-4 overflow-hidden rounded-full border border-black/[0.06] bg-white/95 shadow-[0_10px_32px_rgba(15,40,80,0.16)] backdrop-blur-xl backdrop-saturate-150">
+        <div className="bottom-nav-glass relative grid h-[60px] grid-cols-4 overflow-hidden rounded-full">
           <span
             aria-hidden
             className="pointer-events-none absolute left-0 top-1.5 bottom-1.5 w-1/4 rounded-full bg-natalo-50 transition-transform duration-[450ms] ease-[cubic-bezier(0.34,1.56,0.64,1)]"

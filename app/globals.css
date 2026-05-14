@@ -136,6 +136,38 @@ body[data-review-modal-open="true"] .product-detail-header {
   padding: 0 max(1rem, env(safe-area-inset-right)) 10px max(1rem, env(safe-area-inset-left));
 }
 
+.nat-header-action-glass {
+  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  box-shadow: 0 8px 22px rgba(15, 52, 96, 0.1);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+.home-search-glass {
+  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid rgba(255, 255, 255, 0.64);
+  box-shadow: 0 8px 24px rgba(15, 52, 96, 0.08);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.benefit-marquee {
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.78);
+  border-top: 1px solid rgba(30, 100, 220, 0.08);
+  border-bottom: 1px solid rgba(30, 100, 220, 0.08);
+  box-shadow: 0 6px 18px rgba(30, 100, 220, 0.06);
+}
+
+.bottom-nav-glass {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow: 0 12px 32px rgba(15, 52, 96, 0.12);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+
 .sticky-back-title {
   position: sticky;
   top: calc(var(--natalo-mobile-header-min-height) + env(safe-area-inset-top));

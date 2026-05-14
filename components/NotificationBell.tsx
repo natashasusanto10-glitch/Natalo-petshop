@@ -74,7 +74,7 @@ export function NotificationBell({ compact = false }: NotificationBellProps) {
       href="/notifications"
       className={
         compact
-          ? "relative flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-600 shadow-sm ring-1 ring-slate-100 transition active:scale-95"
+          ? "nat-header-action-glass relative flex h-11 w-11 items-center justify-center rounded-full text-slate-600 transition active:scale-95"
           : "relative flex h-9 w-9 items-center justify-center rounded-full text-gray-600 transition hover:bg-gray-100 active:scale-90 xs:h-10 xs:w-10"
       }
       aria-label={count > 0 ? `Notifikasi (${count} belum dibaca)` : "Notifikasi"}

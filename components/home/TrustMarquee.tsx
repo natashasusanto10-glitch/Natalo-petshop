@@ -70,7 +70,7 @@ export default function TrustMarquee({
   }
 
   return (
-    <div className="marquee-wrap overflow-hidden border-y border-natalo-100 bg-gradient-to-r from-natalo-50 via-white to-amber-50">
+    <div className="benefit-marquee marquee-wrap">
       <div
         className="marquee-track flex h-9 w-max items-center whitespace-nowrap text-[11px] font-semibold text-slate-700 sm:h-10 sm:text-xs"
         style={{ animationDuration: `${durationSec}s` }}

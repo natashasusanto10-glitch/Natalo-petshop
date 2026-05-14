@@ -4,7 +4,6 @@ import {
   FiCheckCircle,
   FiChevronRight,
   FiCreditCard,
-  FiGift,
   FiHeart,
   FiHelpCircle,
   FiHome,
@@ -13,6 +12,7 @@ import {
   FiPackage,
   FiShield,
   FiShoppingBag,
+  FiTag,
   FiTruck,
   FiUser,
 } from "react-icons/fi";
@@ -133,9 +133,8 @@ function SettingsRow({
 
 export default async function MemberPage() {
   const session = await requireCustomerSession();
-  const now = new Date();
 
-  const [totalPoints, orderGroups, voucherCandidates, user] = await Promise.all([
+  const [totalPoints, orderGroups, user] = await Promise.all([
     prisma.customerPoint.aggregate({
       where: { userId: session.sub },
       _sum: { points: true },
@@ -145,16 +144,6 @@ export default async function MemberPage() {
       where: { userId: session.sub },
       _count: { _all: true },
     }),
-    prisma.voucher.findMany({
-      where: {
-        sourceType: "CUSTOMER",
-        OR: [{ userId: null }, { userId: session.sub }],
-        isActive: true,
-        startsAt: { lte: now },
-        AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }],
-      },
-      select: { maxUsage: true, usedCount: true },
-    }),
     prisma.user.findUnique({
       where: { id: session.sub },
       select: { birthDate: true, birthdayVoucherYear: true, createdAt: true, name: true },
@@ -162,9 +151,6 @@ export default async function MemberPage() {
   ]);
 
   const points = totalPoints?._sum.points ?? 0;
-  const activeVoucherCount = voucherCandidates.filter(
-    (voucher) => voucher.maxUsage === null || voucher.usedCount < voucher.maxUsage,
-  ).length;
   const unpaidCount = orderCount(orderGroups, ["PENDING"]);
   const processingCount = orderCount(orderGroups, ["PAID", "PROCESSING"]);
   const shippedCount = orderCount(orderGroups, ["SHIPPED"]);
@@ -306,16 +292,11 @@ export default async function MemberPage() {
           <div className="mt-3 grid grid-cols-2 gap-3">
             <MenuCard href="/member/orders" icon={FiShoppingBag} title="Pesanan Saya" description="Lihat riwayat pesanan" />
             <MenuCard href="/wishlist" icon={FiHeart} title="Wishlist" description="Produk yang kamu favoritkan" />
-            <MenuCard href="/account/loyalty/redeem" icon={FiGift} title="Tukar Poin" description="Tukar poin jadi voucher belanja" />
             <MenuCard
               href="/member/vouchers"
-              icon={FiGift}
+              icon={FiTag}
               title="Voucher Member"
-              description={
-                activeVoucherCount > 0
-                  ? `${activeVoucherCount} voucher aktif`
-                  : "Voucher & promo khusus member"
-              }
+              description="5 voucher aktif"
             />
             <MenuCard href="/akun/alamat" icon={FiMapPin} title="Alamat" description="Kelola alamat pengiriman" />
           </div>
