@@ -19,11 +19,22 @@ import { prisma } from "./prisma";
  */
 
 let apnProvider: import("@parse/node-apn").Provider | null = null;
-let apnInitialized = false;
+// Promise yang resolve ke provider — di-set sekali saat init dimulai, lalu
+// di-await oleh semua caller berikutnya. Mencegah race condition di mana
+// concurrent broadcast (2+ user paralel) ada yang baca `apnInitialized=true`
+// tapi `apnProvider` masih null (init belum selesai), yang bikin push gagal
+// dengan "skip-no-provider" walau env vars valid.
+let apnProviderInitPromise: Promise<import("@parse/node-apn").Provider | null> | null = null;
 
 async function getApnProvider() {
-  if (apnInitialized) return apnProvider;
-  apnInitialized = true;
+  if (apnProviderInitPromise) return apnProviderInitPromise;
+  apnProviderInitPromise = initApnProviderInternal();
+  return apnProviderInitPromise;
+}
+
+async function initApnProviderInternal(): Promise<
+  import("@parse/node-apn").Provider | null
+> {
 
   // Trim whitespace dari env values — pas paste di Vercel kadang ada
   // tab/space tersangkut di awal/akhir yang bikin JWT sign fail dengan
@@ -221,6 +232,6 @@ export function shutdownApns() {
   if (apnProvider) {
     apnProvider.shutdown();
     apnProvider = null;
-    apnInitialized = false;
+    apnProviderInitPromise = null;
   }
 }
