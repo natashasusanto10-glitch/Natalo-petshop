@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { hapticTap, hapticSuccess } from "@/lib/native/haptics";
 import { pickPhoto } from "@/lib/photo-picker";
@@ -575,29 +576,30 @@ function SheetShell({
   ariaLabel: string;
 }) {
   const [mounted, setMounted] = useState(false);
+  const [portalReady, setPortalReady] = useState(false);
+
   useEffect(() => {
+    setPortalReady(true);
     const id = requestAnimationFrame(() => setMounted(true));
     return () => cancelAnimationFrame(id);
   }, []);
 
   useEffect(() => {
-    const prev = document.body.style.overflow;
+    const prevBody = document.body.style.overflow;
+    const prevDoc = document.documentElement.style.overflow;
     document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, []);
-
-  // Lock body scroll on iOS via documentElement (Safari quirk).
-  useEffect(() => {
-    const prev = document.documentElement.style.overflow;
     document.documentElement.style.overflow = "hidden";
     return () => {
-      document.documentElement.style.overflow = prev;
+      document.body.style.overflow = prevBody;
+      document.documentElement.style.overflow = prevDoc;
     };
   }, []);
 
-  return (
+  if (!portalReady || typeof document === "undefined") return null;
+
+  // Portal to <body> so ancestor `transform` / `will-change` (e.g. fade-in
+  // animation on notification cards) can't trap our `position: fixed`.
+  const node = (
     <div
       className={`fixed inset-0 z-[3000] flex items-end justify-center bg-black/40 transition-opacity duration-300 sm:items-center sm:p-4 ${
         mounted ? "opacity-100" : "opacity-0"
@@ -617,6 +619,8 @@ function SheetShell({
       </div>
     </div>
   );
+
+  return createPortal(node, document.body);
 }
 
 function SheetHeader({
