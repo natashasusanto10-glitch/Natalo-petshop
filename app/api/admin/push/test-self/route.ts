@@ -125,19 +125,39 @@ export async function POST(req: NextRequest) {
 
     // ── APNs ─────────────────────────────────────────────────────
     if (apnsSubs.length > 0) {
-      const keyId = process.env.APNS_KEY_ID;
-      const teamId = process.env.APNS_TEAM_ID;
-      const keyContent = process.env.APNS_KEY_CONTENT;
+      // Trim whitespace — pas paste di Vercel kadang ada tab/space tersangkut.
+      const keyId = process.env.APNS_KEY_ID?.trim();
+      const teamId = process.env.APNS_TEAM_ID?.trim();
+      const rawKeyContent = process.env.APNS_KEY_CONTENT;
       const bundleId = process.env.APNS_BUNDLE_ID || "com.natalo.petshop";
       const production = process.env.APNS_PRODUCTION === "true";
 
-      if (!keyId || !teamId || !keyContent) {
+      if (!keyId || !teamId || !rawKeyContent) {
         results.apns.push({
           tokenHint: "—",
           status: "error",
           reason: "APNS_KEY_ID / APNS_TEAM_ID / APNS_KEY_CONTENT tidak lengkap di Vercel env.",
         });
       } else {
+        // Normalize PEM: replace escaped \n + auto-wrap single-line PEM ke
+        // multi-line format (sama dgn lib/apns.ts).
+        let keyContent = rawKeyContent.replace(/\\n/g, "\n").trim();
+        if (
+          keyContent.includes("-----BEGIN PRIVATE KEY-----") &&
+          keyContent.includes("-----END PRIVATE KEY-----") &&
+          !keyContent.includes("\n")
+        ) {
+          const body = keyContent
+            .replace("-----BEGIN PRIVATE KEY-----", "")
+            .replace("-----END PRIVATE KEY-----", "")
+            .replace(/\s/g, "");
+          const wrappedBody = (body.match(/.{1,64}/g) ?? []).join("\n");
+          keyContent =
+            "-----BEGIN PRIVATE KEY-----\n" +
+            wrappedBody +
+            "\n-----END PRIVATE KEY-----";
+        }
+
         try {
           const apn = await import("@parse/node-apn");
           const provider = new apn.Provider({
