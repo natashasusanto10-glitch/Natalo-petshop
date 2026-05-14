@@ -97,12 +97,49 @@ async function postNativeToken(token: string, platform: NativePlatform) {
       ? "/api/push/subscribe-fcm"
       : "/api/push/subscribe-apns";
 
-  await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify({ token, platform: platform ?? "ios" }),
+  console.log("[push-client] posting token", {
+    platform,
+    url,
+    tokenPreview: token.slice(0, 12) + "...",
   });
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ token, platform: platform ?? "ios" }),
+    });
+    console.log("[push-client] token POST result", {
+      status: res.status,
+      ok: res.ok,
+    });
+    // Fire-and-forget beacon ke server log endpoint biar status keliatan
+    // di Vercel Logs (tanpa butuh Safari Web Inspector).
+    fetch("/api/debug/push-trace", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        event: "token-posted",
+        platform,
+        status: res.status,
+        ok: res.ok,
+      }),
+    }).catch(() => {});
+  } catch (err) {
+    console.error("[push-client] token POST failed", err);
+    fetch("/api/debug/push-trace", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        event: "token-post-error",
+        platform,
+        error: String(err),
+      }),
+    }).catch(() => {});
+  }
 }
 
 async function ensureNativeRegistered(platform: NativePlatform) {
@@ -146,28 +183,51 @@ async function ensureNativeRegistered(platform: NativePlatform) {
   await errorHandle.remove().catch(() => {});
 }
 
+async function logTrace(event: string, data?: Record<string, unknown>) {
+  console.log("[push-client]", event, data ?? "");
+  try {
+    await fetch("/api/debug/push-trace", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ event, ...(data ?? {}) }),
+    });
+  } catch {
+    // ignore — diagnostic only
+  }
+}
+
 export async function registerNativePushForCurrentUser(
   prompt: boolean
 ): Promise<PushRegistrationResult> {
   const platform = await detectNativePlatform();
-  if (!platform) return "unsupported";
+  if (!platform) {
+    void logTrace("register-skip-not-native");
+    return "unsupported";
+  }
+  void logTrace("register-start", { platform, prompt });
 
   try {
     const { PushNotifications } = await import("@capacitor/push-notifications");
     let permission = (await PushNotifications.checkPermissions()).receive;
+    void logTrace("permission-checked", { permission });
 
     if (permission !== "granted") {
       if (!prompt) return permission === "denied" ? "denied" : "prompt";
       permission = (await PushNotifications.requestPermissions()).receive;
+      void logTrace("permission-requested", { permission });
     }
 
     if (permission !== "granted") {
+      void logTrace("register-denied", { permission });
       return permission === "denied" ? "denied" : "prompt";
     }
 
     await ensureNativeRegistered(platform);
+    void logTrace("register-complete", { platform });
     return "registered";
-  } catch {
+  } catch (err) {
+    void logTrace("register-error", { error: String(err) });
     return "error";
   }
 }
