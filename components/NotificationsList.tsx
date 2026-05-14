@@ -156,9 +156,11 @@ function NotificationCard({
   const reviewPrompt = isReviewPrompt(item);
   const orderNumber = extractOrderNumber(item);
   const ctaLabel =
-    item.ctaLabel ??
-    (reviewPrompt ? "Beri Ulasan" : type === "order" ? "Lihat Pesanan" : type === "promo" ? "Lihat Promo" : "Lihat Detail");
-  const href = reviewPrompt ? "/member/reviews" : item.url;
+    type === "announcement"
+      ? "Lihat Detail"
+      : item.ctaLabel ??
+        (reviewPrompt ? "Beri Ulasan" : type === "order" ? "Lihat Pesanan" : type === "promo" ? "Lihat Promo" : "Lihat Detail");
+  const href = type === "announcement" ? `/notifications/${item.id}` : reviewPrompt ? "/member/reviews" : item.url;
   const sourceLabel =
     type === "promo" ? "Promo dari Admin" : type === "announcement" ? "Pengumuman dari Admin" : orderNumber ? `Order ID: ${orderNumber}` : "Update Pesanan";
   const accent =

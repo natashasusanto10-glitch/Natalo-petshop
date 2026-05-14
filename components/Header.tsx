@@ -56,7 +56,7 @@ export function Header() {
   const isSearchPage = currentPath === "/search";
   const isCartPage = currentPath === "/cart";
   const isBrandsDirectory = currentPath === "/brands";
-  const isNotificationCenter = currentPath === "/notifications";
+  const isNotificationCenter = /^\/notifications(\/|$)/.test(currentPath);
   const isAccountSubPageWithoutBrandHeader =
     currentPath === "/wishlist" ||
     currentPath === "/akun/alamat" ||

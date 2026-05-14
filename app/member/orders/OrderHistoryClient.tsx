@@ -294,16 +294,10 @@ function OrderCard({ order }: { order: OrderHistoryOrder }) {
       className="cursor-pointer rounded-[24px] bg-white px-5 py-4 shadow-[0_4px_20px_-8px_rgba(15,23,42,0.08)] ring-1 ring-slate-100 transition active:scale-[0.995] active:bg-blue-50/30"
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 gap-3">
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-700">
-            <FiShoppingBag className="h-5 w-5" aria-hidden="true" />
-          </div>
-          <div className="min-w-0">
-            <p className="font-black leading-tight text-slate-950">Belanja</p>
-            <p className="mt-0.5 truncate text-xs font-semibold text-slate-500">
-              {formatOrderDate(order.createdAt)}
-            </p>
-          </div>
+        <div className="min-w-0 flex-1 pt-1">
+          <p className="truncate text-sm font-bold leading-5 text-slate-600">
+            {formatOrderDate(order.createdAt)}
+          </p>
         </div>
         <div className="relative flex shrink-0 items-center gap-2">
           <StatusPill group={group} />
