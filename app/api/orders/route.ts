@@ -224,8 +224,16 @@ export async function POST(request: Request) {
         });
       },
       findGuestUser({ phone, email }) {
+        // SECURITY: Hanya match user TANPA passwordHash (pure guest placeholder).
+        // Sebelumnya: guest checkout dgn email/phone milik registered user akan
+        // auto-attach ke akun mereka → attacker bisa "claim" voucher private
+        // user lain dgn isi email/HP korban di guest checkout (effectiveUserId
+        // di-bind ke korban, voucher.userId === effectiveUserId pass).
+        //
+        // Real accounts (passwordHash != null) WAJIB login untuk attach order.
         return prisma.user.findFirst({
           where: {
+            passwordHash: null,
             OR: [
               { phone },
               email ? { email } : undefined,
@@ -297,7 +305,12 @@ export async function POST(request: Request) {
         voucher.userId !== null &&
         voucher.userId !== effectiveUserId
       ) {
-        return null;
+        // Voucher private milik user lain. Sebelumnya silent skip (return
+        // null) → customer ketik kode, ga ada error, ga ada diskon, bingung.
+        // Sekarang surface explicit supaya jelas kenapa voucher gagal.
+        throw new VoucherValidationError(
+          "Voucher ini tidak berlaku untuk akun kamu.",
+        );
       }
       const isValid =
         subtotal >= voucher.minimumOrder &&
@@ -559,6 +572,15 @@ export async function POST(request: Request) {
     }
 
     if (paymentUrl || paymentReference) {
+      // Trade-off: update ini DI LUAR order $transaction supaya call ke
+      // Midtrans gateway tidak hold long-running transaction (Serializable
+      // isolation × HTTP roundtrip = potential lock contention).
+      // Konsekuensi: kalau Midtrans success TAPI update ini gagal (DB hiccup),
+      // order tidak punya paymentUrl/paymentReference. Webhook tetap kerja
+      // (route via order_id), tapi link "Bayar" di order detail customer
+      // missing. Mitigation: customer bisa request resend via "Bayar Ulang"
+      // di UI yang akan re-create payment session.
+      // TODO: kalau ini sering terjadi, retry sekali atau log alert ke admin.
       await prisma.order.update({
         where: { id: order.id },
         data: { paymentUrl, paymentReference, paymentStatus: "PENDING" },

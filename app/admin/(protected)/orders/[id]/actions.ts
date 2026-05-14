@@ -315,6 +315,26 @@ export async function markAsCancelled(orderId: string) {
       }
     }
 
+    // Rollback voucher usage — mirror logic dari payment-failure rollback
+    // di app/api/orders/route.ts. Sebelumnya admin-cancel TIDAK decrement
+    // usedCount → voucher stuck di "consumed", dan user tidak bisa pakai
+    // ulang (atau voucher kuota habis padahal order yg pakai sudah cancel).
+    const voucherCodes = [order.voucherCode, order.manualVoucherCode].filter(
+      (code): code is string => Boolean(code),
+    );
+    if (voucherCodes.length > 0) {
+      await tx.voucher.updateMany({
+        where: { code: { in: voucherCodes }, usedCount: { gt: 0 } },
+        data: { usedCount: { decrement: 1 } },
+      });
+    }
+
+    // Hapus CustomerPoint yang di-grant dari order ini — customer harusnya
+    // tidak keep points untuk order yang cancel.
+    await tx.customerPoint.deleteMany({
+      where: { source: `ORDER:${order.orderNumber}` },
+    });
+
     const result = await tx.order.updateMany({
       where: { id: orderId, status: order.status },
       data: { status: "CANCELLED" },
