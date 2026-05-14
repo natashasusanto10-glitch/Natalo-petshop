@@ -46,4 +46,21 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
     }
 
+    // MARK: - APNs Push Notifications
+    //
+    // Capacitor 8 PushNotifications plugin tergantung pada handler di
+    // AppDelegate ini untuk menerima APNs token dari iOS. Tanpa handler ini,
+    // PushNotifications.register() akan fire tapi token tidak pernah arrive
+    // ke JS listener — 'registration' event silent timeout setelah 30s.
+    //
+    // Reference: https://capacitorjs.com/docs/apis/push-notifications#ios
+
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        NotificationCenter.default.post(name: .capacitorDidRegisterForRemoteNotifications, object: deviceToken)
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications, object: error)
+    }
+
 }
