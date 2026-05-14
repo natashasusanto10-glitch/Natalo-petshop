@@ -62,9 +62,17 @@ export type ApnsPayload = {
  */
 export async function sendApnsToUser(userId: string, payload: ApnsPayload) {
   const provider = await getApnProvider();
-  if (!provider) return;
+  if (!provider) {
+    console.log("[apns]", JSON.stringify({
+      event: "skip-no-provider",
+      reason: "APNs env vars belum lengkap atau init gagal",
+      userId: userId.slice(-6),
+    }));
+    return;
+  }
 
   const bundleId = process.env.APNS_BUNDLE_ID || "com.natalo.petshop";
+  const production = process.env.APNS_PRODUCTION === "true";
 
   const subs = await prisma.pushSubscription
     .findMany({
@@ -72,7 +80,21 @@ export async function sendApnsToUser(userId: string, payload: ApnsPayload) {
     })
     .catch(() => []);
 
-  if (subs.length === 0) return;
+  console.log("[apns]", JSON.stringify({
+    event: "sending",
+    userId: userId.slice(-6),
+    apnsTokensFound: subs.length,
+    bundleId,
+    production,
+  }));
+
+  if (subs.length === 0) {
+    console.log("[apns]", JSON.stringify({
+      event: "skip-no-tokens",
+      userId: userId.slice(-6),
+    }));
+    return;
+  }
 
   const apn = await import("@parse/node-apn");
 
@@ -91,8 +113,26 @@ export async function sendApnsToUser(userId: string, payload: ApnsPayload) {
 
       try {
         const result = await provider.send(note, token);
+        console.log("[apns]", JSON.stringify({
+          event: "send-result",
+          userId: userId.slice(-6),
+          tokenPreview: token.slice(0, 12) + "...",
+          sent: result.sent?.length ?? 0,
+          failed: result.failed?.length ?? 0,
+          failedReasons: result.failed?.map((f) => ({
+            status: f.status,
+            reason: f.response?.reason ?? null,
+            errorCode: f.response?.["timestamp"] ?? null,
+          })) ?? [],
+        }));
         return { sub, result };
       } catch (err) {
+        console.error("[apns]", JSON.stringify({
+          event: "send-throw",
+          userId: userId.slice(-6),
+          tokenPreview: token.slice(0, 12) + "...",
+          error: err instanceof Error ? err.message : String(err),
+        }));
         return { sub, error: err };
       }
     }),
