@@ -158,14 +158,14 @@ function StatusTimeline({ order }: { order: SerializedOrderDetail }) {
 
   return (
     <div className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
-        <div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0 flex-1">
           <p className="text-sm font-black text-gray-900">Status Pesanan</p>
           <p className="mt-1 text-xs text-gray-500">
             Update otomatis saat status berubah.
           </p>
         </div>
-        <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
+        <span className="max-w-full shrink-0 truncate rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
           {STATUS_LABEL[order.status] ?? order.status}
         </span>
       </div>
@@ -417,7 +417,7 @@ export function OrderDetailView({
       // scroll-away di mobile (header non-home tidak sticky), supaya status
       // bar tidak menimpa konten teratas (mis. nomor pesanan, alamat). Di
       // desktop md: layout pakai py-10 default — env() jadi 0 di non-PWA.
-      className="min-h-dvh bg-gray-50 [padding-bottom:calc(1.25rem+env(safe-area-inset-bottom))]"
+      className="min-h-dvh overflow-x-hidden bg-gray-50 [padding-bottom:calc(1.25rem+env(safe-area-inset-bottom))]"
     >
       <PageStatusBar iconColor="dark" themeColor="#f8fafc" />
       <StickyBackTitle
@@ -456,7 +456,7 @@ export function OrderDetailView({
                   onClick={() =>
                     copy(order.orderNumber, "Nomor pesanan tersalin")
                   }
-                  className="rounded-full bg-blue-50 px-4 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100"
+                  className="ml-auto shrink-0 whitespace-nowrap rounded-full bg-blue-50 px-4 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100"
                 >
                   Salin Nomor
                 </button>
@@ -527,7 +527,7 @@ export function OrderDetailView({
               order.orderType === "SELF_PICKUP" ? "hidden" : ""
             }`}>
               <p className="font-black text-gray-950">Alamat Pengiriman</p>
-              <div className="mt-3 space-y-1 text-sm text-gray-700">
+              <div className="mt-3 space-y-1 text-sm text-gray-700 [overflow-wrap:anywhere]">
                 <p>
                   {order.customerName} · {order.customerPhone}
                 </p>
@@ -589,16 +589,16 @@ export function OrderDetailView({
                         </span>
                       )}
                     </Link>
-                    <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
+                    <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                       <div className="min-w-0">
                         <Link
                           href={`/products/${item.productSlug}`}
-                          className="line-clamp-2 font-semibold leading-snug text-gray-800 hover:text-blue-700"
+                          className="line-clamp-2 break-words font-semibold leading-snug text-gray-800 hover:text-blue-700"
                         >
                           {item.name}
                         </Link>
                         {item.variantLabel && (
-                          <p className="mt-1 inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">
+                          <p className="mt-1 inline-flex max-w-full truncate rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">
                             {item.variantLabel}
                           </p>
                         )}
@@ -609,20 +609,20 @@ export function OrderDetailView({
                           {formatRupiah(item.price * item.quantity)}
                         </p>
                       </div>
-                      <div className="flex shrink-0 flex-col items-end gap-2">
+                      <div className="flex shrink-0 flex-row items-center justify-end gap-2 sm:flex-col sm:items-end">
                         <span className="hidden font-bold text-gray-900 sm:inline">
                           {formatRupiah(item.price * item.quantity)}
                         </span>
                         {showReviewActions &&
                           (item.reviewed ? (
-                            <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700">
+                            <span className="shrink-0 whitespace-nowrap rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700">
                               Sudah direview
                             </span>
                           ) : (
                             <button
                               type="button"
                               onClick={() => setReviewItem(item)}
-                              className="rounded-full bg-blue-600 px-4 py-2 text-xs font-black text-white hover:bg-blue-700"
+                              className="shrink-0 whitespace-nowrap rounded-full bg-blue-600 px-4 py-2 text-xs font-black text-white hover:bg-blue-700"
                             >
                               Beri Review
                             </button>
