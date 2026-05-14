@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { MultiImageUpload } from "@/components/MultiImageUpload";
+import { BrandLogoOrderClient } from "@/components/admin/BrandLogoOrderClient";
+import { BrandLogoUploadButton } from "@/components/admin/BrandLogoUploadButton";
 
 function slugify(name: string) {
   return name
@@ -23,6 +25,18 @@ function revalidateBrandSurfaces() {
   revalidatePath("/");
   revalidatePath("/brands");
   revalidatePath("/products");
+}
+
+function parseOrderedIds(value: FormDataEntryValue | null) {
+  if (typeof value !== "string") return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed)
+      ? parsed.filter((id): id is string => typeof id === "string" && id.length > 0)
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 export default async function AdminBrandsPage({
@@ -92,17 +106,65 @@ export default async function AdminBrandsPage({
     revalidateBrandSurfaces();
   }
 
+  async function saveBrandOrder(formData: FormData) {
+    "use server";
+    const orderedIds = parseOrderedIds(formData.get("orderedIds")).slice(0, 12);
+    if (orderedIds.length === 0) return;
+
+    await prisma.$transaction([
+      ...orderedIds.map((id, index) =>
+        prisma.brand.update({
+          where: { id },
+          data: { position: index },
+        }),
+      ),
+      prisma.brand.updateMany({
+        where: {
+          id: { notIn: orderedIds },
+          isActive: true,
+          logoUrl: { not: null },
+          position: { lt: 1000 },
+        },
+        data: { position: 1000 },
+      }),
+    ]);
+
+    revalidateBrandSurfaces();
+  }
+
+  async function updateBrandLogo(brandId: string, logoUrl: string) {
+    "use server";
+    const cleanLogoUrl = logoUrl.trim();
+    if (!brandId || !cleanLogoUrl) return;
+
+    await prisma.brand.update({
+      where: { id: brandId },
+      data: { logoUrl: cleanLogoUrl },
+    });
+
+    revalidateBrandSurfaces();
+  }
+
+  const logoOrderBrands = brands
+    .filter((brand) => brand.isActive && brand.logoUrl)
+    .slice(0, 12)
+    .map((brand) => ({
+      id: brand.id,
+      name: brand.name,
+      logoUrl: brand.logoUrl,
+    }));
+
   return (
-    <div className="mx-auto max-w-5xl px-4 py-10">
+    <div className="mx-auto max-w-5xl px-4 py-5 md:py-10">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <Link
             href="/admin"
-            className="text-sm font-bold text-zinc-500 hover:text-zinc-950"
+            className="hidden text-sm font-bold text-zinc-500 hover:text-zinc-950 md:inline"
           >
             Kembali ke admin
           </Link>
-          <h1 className="mt-2 text-3xl font-black tracking-tight text-zinc-950">
+          <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:mt-2 md:text-3xl">
             Brand
           </h1>
           <p className="mt-1 text-sm text-zinc-500">
@@ -191,6 +253,10 @@ export default async function AdminBrandsPage({
         </p>
       )}
 
+      <div className="mt-6">
+        <BrandLogoOrderClient brands={logoOrderBrands} saveAction={saveBrandOrder} />
+      </div>
+
       <div className="mt-6 overflow-hidden rounded-2xl border border-zinc-200 bg-white">
         {brands.length === 0 ? (
           <div className="p-12 text-center text-sm text-zinc-500">
@@ -201,23 +267,15 @@ export default async function AdminBrandsPage({
             {brands.map((brand) => (
               <div
                 key={brand.id}
-                className="flex items-center justify-between gap-4 p-4 hover:bg-zinc-50"
+                className="flex flex-col gap-3 p-4 hover:bg-zinc-50 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
               >
                 <div className="flex min-w-0 flex-1 items-center gap-3">
-                  <div className="flex h-12 w-16 shrink-0 items-center justify-center rounded-xl border border-zinc-100 bg-white p-2">
-                    {brand.logoUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={brand.logoUrl}
-                        alt=""
-                        className="max-h-full max-w-full object-contain"
-                      />
-                    ) : (
-                      <span className="text-[10px] font-black uppercase text-zinc-400">
-                        {brand.name.slice(0, 2)}
-                      </span>
-                    )}
-                  </div>
+                  <BrandLogoUploadButton
+                    brandId={brand.id}
+                    brandName={brand.name}
+                    logoUrl={brand.logoUrl}
+                    updateLogoAction={updateBrandLogo}
+                  />
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="font-bold text-zinc-900">{brand.name}</p>
@@ -237,23 +295,23 @@ export default async function AdminBrandsPage({
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="grid grid-cols-3 gap-2 sm:flex sm:items-center">
                   <Link
                     href={`/admin/brands/${brand.id}/edit`}
-                    className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-bold text-zinc-700 hover:border-zinc-400"
+                    className="rounded-full border border-zinc-200 px-3 py-1.5 text-center text-xs font-bold text-zinc-700 hover:border-zinc-400"
                   >
                     Edit
                   </Link>
                   <Link
                     href={`/admin/products?brand=${brand.slug}`}
-                    className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-bold text-zinc-700 hover:border-zinc-400"
+                    className="rounded-full border border-zinc-200 px-3 py-1.5 text-center text-xs font-bold text-zinc-700 hover:border-zinc-400"
                   >
                     Produk
                   </Link>
                   <form action={deleteBrand}>
                     <input type="hidden" name="id" value={brand.id} />
                     <ConfirmSubmitButton
-                      className="rounded-full border border-red-100 px-3 py-1.5 text-xs font-bold text-red-500 hover:bg-red-50"
+                      className="w-full rounded-full border border-red-100 px-3 py-1.5 text-xs font-bold text-red-500 hover:bg-red-50"
                       message={`Hapus brand "${brand.name}"? ${brand._count.products} produk akan kehilangan label brand-nya (tapi produk tidak terhapus).`}
                     >
                       Hapus
