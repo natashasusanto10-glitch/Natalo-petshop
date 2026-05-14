@@ -283,7 +283,7 @@ export default async function MemberPage() {
             <OrderStatusItem href="/member/orders" icon={FiCreditCard} label="Belum Bayar" count={unpaidCount} />
             <OrderStatusItem href="/member/orders" icon={FiPackage} label="Diproses" count={processingCount} />
             <OrderStatusItem href="/member/orders" icon={FiTruck} label="Dikirim" count={shippedCount} />
-            <OrderStatusItem href="/member/orders" icon={FiCheckCircle} label="Selesai" count={doneCount} />
+            <OrderStatusItem href="/member/orders" icon={FiCheckCircle} label="Selesai" count={0} />
           </div>
         </section>
 
