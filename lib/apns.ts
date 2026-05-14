@@ -59,6 +59,7 @@ async function initApnProviderInternal(): Promise<
 
   // Auto-fix single-line PEM: kalau BEGIN/END present tapi cuma 1 baris,
   // extract base64 body lalu split per 64 chars (RFC 7468 PEM format).
+  // Defense untuk hosting yang strip newlines saat paste env value.
   if (
     keyContent.includes("-----BEGIN PRIVATE KEY-----") &&
     keyContent.includes("-----END PRIVATE KEY-----") &&
@@ -73,33 +74,16 @@ async function initApnProviderInternal(): Promise<
       "-----BEGIN PRIVATE KEY-----\n" +
       wrappedBody +
       "\n-----END PRIVATE KEY-----";
-    console.log("[apns]", JSON.stringify({
-      event: "pem-auto-wrap",
-      info: "Reconstructed multi-line PEM from single-line env value",
-      bodyLength: body.length,
-    }));
   }
 
-  // Sanity log: confirm PEM markers present (no secret value leaked).
-  const hasBegin = keyContent.includes("-----BEGIN PRIVATE KEY-----");
-  const hasEnd = keyContent.includes("-----END PRIVATE KEY-----");
-  const lineCount = keyContent.split("\n").length;
-  console.log("[apns]", JSON.stringify({
-    event: "provider-init",
-    keyId,
-    teamId,
-    production,
-    keyContentLength: keyContent.length,
-    hasPEMBeginMarker: hasBegin,
-    hasPEMEndMarker: hasEnd,
-    lineCount,
-  }));
-
-  if (!hasBegin || !hasEnd) {
-    console.error("[apns]", JSON.stringify({
-      event: "provider-init-skip",
-      reason: "APNS_KEY_CONTENT missing PEM headers — check env var format in Vercel",
-    }));
+  // Sanity check PEM markers — kalau hilang, env value rusak.
+  if (
+    !keyContent.includes("-----BEGIN PRIVATE KEY-----") ||
+    !keyContent.includes("-----END PRIVATE KEY-----")
+  ) {
+    console.error(
+      "[apns] APNS_KEY_CONTENT missing PEM headers — check env var format",
+    );
     return null;
   }
 
@@ -111,10 +95,10 @@ async function initApnProviderInternal(): Promise<
     });
     return apnProvider;
   } catch (err) {
-    console.error("[apns]", JSON.stringify({
-      event: "provider-init-error",
-      error: err instanceof Error ? err.message : String(err),
-    }));
+    console.error(
+      "[apns] provider init failed:",
+      err instanceof Error ? err.message : String(err),
+    );
     return null;
   }
 }
@@ -133,17 +117,9 @@ export type ApnsPayload = {
  */
 export async function sendApnsToUser(userId: string, payload: ApnsPayload) {
   const provider = await getApnProvider();
-  if (!provider) {
-    console.log("[apns]", JSON.stringify({
-      event: "skip-no-provider",
-      reason: "APNs env vars belum lengkap atau init gagal",
-      userId: userId.slice(-6),
-    }));
-    return;
-  }
+  if (!provider) return;
 
   const bundleId = process.env.APNS_BUNDLE_ID || "com.natalo.petshop";
-  const production = process.env.APNS_PRODUCTION === "true";
 
   const subs = await prisma.pushSubscription
     .findMany({
@@ -151,21 +127,7 @@ export async function sendApnsToUser(userId: string, payload: ApnsPayload) {
     })
     .catch(() => []);
 
-  console.log("[apns]", JSON.stringify({
-    event: "sending",
-    userId: userId.slice(-6),
-    apnsTokensFound: subs.length,
-    bundleId,
-    production,
-  }));
-
-  if (subs.length === 0) {
-    console.log("[apns]", JSON.stringify({
-      event: "skip-no-tokens",
-      userId: userId.slice(-6),
-    }));
-    return;
-  }
+  if (subs.length === 0) return;
 
   const apn = await import("@parse/node-apn");
 
@@ -175,14 +137,13 @@ export async function sendApnsToUser(userId: string, payload: ApnsPayload) {
       const note = new apn.Notification();
       // Visible notification (banner + sound + lockscreen) di iPhone.
       // PENTING: jangan set contentAvailable=true — itu signal Apple
-      // sebagai BACKGROUND push (silent, no banner, untuk background fetch
-      // saja). Apa pun yang kita kirim sebagai content-available akan
-      // delivered ke APNs (sent:1) tapi iOS TIDAK tampilkan UI apapun.
+      // sebagai BACKGROUND push (silent, no banner). Untuk visible
+      // alert pakai pushType="alert" + priority=10 (iOS 13+ wajib).
       note.alert = { title: payload.title, body: payload.body };
       note.sound = "default";
       note.topic = bundleId;
-      note.priority = 10; // 10 = immediate; required untuk alert push.
-      note.pushType = "alert"; // iOS 13+ requirement: explicit push type.
+      note.priority = 10;
+      note.pushType = "alert";
       note.badge = 1;
       note.payload = {
         ...(payload.data ?? {}),
@@ -191,26 +152,21 @@ export async function sendApnsToUser(userId: string, payload: ApnsPayload) {
 
       try {
         const result = await provider.send(note, token);
-        console.log("[apns]", JSON.stringify({
-          event: "send-result",
-          userId: userId.slice(-6),
-          tokenPreview: token.slice(0, 12) + "...",
-          sent: result.sent?.length ?? 0,
-          failed: result.failed?.length ?? 0,
-          failedReasons: result.failed?.map((f) => ({
-            status: f.status,
-            reason: f.response?.reason ?? null,
-            errorCode: f.response?.["timestamp"] ?? null,
-          })) ?? [],
-        }));
+        if (result.failed?.length) {
+          console.error(
+            "[apns] send failed",
+            result.failed.map((f) => ({
+              status: f.status,
+              reason: f.response?.reason ?? null,
+            })),
+          );
+        }
         return { sub, result };
       } catch (err) {
-        console.error("[apns]", JSON.stringify({
-          event: "send-throw",
-          userId: userId.slice(-6),
-          tokenPreview: token.slice(0, 12) + "...",
-          error: err instanceof Error ? err.message : String(err),
-        }));
+        console.error(
+          "[apns] send threw",
+          err instanceof Error ? err.message : String(err),
+        );
         return { sub, error: err };
       }
     }),

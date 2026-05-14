@@ -97,52 +97,38 @@ async function postNativeToken(token: string, platform: NativePlatform) {
       ? "/api/push/subscribe-fcm"
       : "/api/push/subscribe-apns";
 
-  console.log("[push-client] posting token", {
-    platform,
-    url,
-    tokenPreview: token.slice(0, 12) + "...",
-  });
-
   try {
-    const res = await fetch(url, {
+    await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       body: JSON.stringify({ token, platform: platform ?? "ios" }),
     });
-    console.log("[push-client] token POST result", {
-      status: res.status,
-      ok: res.ok,
-    });
-    // Fire-and-forget beacon ke server log endpoint biar status keliatan
-    // di Vercel Logs (tanpa butuh Safari Web Inspector).
-    fetch("/api/debug/push-trace", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({
-        event: "token-posted",
-        platform,
-        status: res.status,
-        ok: res.ok,
-      }),
-    }).catch(() => {});
   } catch (err) {
     console.error("[push-client] token POST failed", err);
-    fetch("/api/debug/push-trace", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({
-        event: "token-post-error",
-        platform,
-        error: String(err),
-      }),
-    }).catch(() => {});
   }
 }
 
-async function ensureNativeRegistered(platform: NativePlatform) {
+// Promise yang resolve saat satu register flow selesai. Mencegah parallel
+// invocation menambah listener berulang (memory + double-POST token).
+// Pattern sama dgn apnProviderInitPromise di lib/apns.ts.
+let nativeRegisterPromise: Promise<void> | null = null;
+
+async function ensureNativeRegistered(platform: NativePlatform): Promise<void> {
+  if (nativeRegisterPromise) return nativeRegisterPromise;
+  nativeRegisterPromise = ensureNativeRegisteredInternal(platform).finally(
+    () => {
+      // Reset agar future re-register (mis. user resubscribe manual) bisa
+      // jalan lagi setelah flow selesai/timeout. Tidak persistent.
+      nativeRegisterPromise = null;
+    },
+  );
+  return nativeRegisterPromise;
+}
+
+async function ensureNativeRegisteredInternal(
+  platform: NativePlatform,
+): Promise<void> {
   const { PushNotifications } = await import("@capacitor/push-notifications");
 
   let resolveDone: () => void = () => {};
@@ -150,146 +136,94 @@ async function ensureNativeRegistered(platform: NativePlatform) {
     resolveDone = resolve;
   });
   let settled = false;
-  const finish = (reason: string) => {
+  const finish = () => {
     if (settled) return;
     settled = true;
-    void logTrace("native-finish", { reason });
     resolveDone();
   };
-
-  void logTrace("native-listeners-attaching", { platform });
 
   const tokenHandle = await PushNotifications.addListener(
     "registration",
     async (token) => {
-      void logTrace("native-token-received", {
-        tokenPreview: token.value?.slice(0, 12) + "...",
-      });
       try {
         await postNativeToken(token.value, platform);
-      } catch (err) {
-        void logTrace("native-token-post-throw", { error: String(err) });
       } finally {
-        finish("token-received");
+        finish();
       }
-    }
+    },
   );
 
   const errorHandle = await PushNotifications.addListener(
     "registrationError",
-    (err) => {
-      void logTrace("native-registration-error", {
-        error: JSON.stringify(err),
-      });
-      finish("registration-error");
-    }
+    () => finish(),
   );
 
-  void logTrace("native-calling-register");
   try {
     await PushNotifications.register();
-    void logTrace("native-register-resolved");
   } catch (err) {
-    void logTrace("native-register-throw", { error: String(err) });
-    finish("register-throw");
+    console.error("[push-client] PushNotifications.register threw", err);
+    finish();
   }
 
-  // Timeout di-extend ke 30s — Apple APNs first-install registration kadang
-  // butuh waktu (especially poor network). Tetap timeout supaya useEffect
-  // tidak hang forever kalau APNs benar-benar fail silently.
+  // Timeout 30s — Apple APNs first-install registration kadang butuh waktu
+  // (poor network, sandbox vs production routing). Tetap ada timeout supaya
+  // caller tidak hang forever kalau registration silently fail.
   await Promise.race([
     done,
-    new Promise<void>((resolve) => setTimeout(resolve, 30_000)).then(() =>
-      finish("timeout-30s")
-    ),
+    new Promise<void>((resolve) => setTimeout(resolve, 30_000)).then(finish),
   ]);
 
   await tokenHandle.remove().catch(() => {});
   await errorHandle.remove().catch(() => {});
 }
 
-async function logTrace(event: string, data?: Record<string, unknown>) {
-  console.log("[push-client]", event, data ?? "");
-  try {
-    await fetch("/api/debug/push-trace", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ event, ...(data ?? {}) }),
-    });
-  } catch {
-    // ignore — diagnostic only
-  }
-}
-
 export async function registerNativePushForCurrentUser(
-  prompt: boolean
+  prompt: boolean,
 ): Promise<PushRegistrationResult> {
   const platform = await detectNativePlatform();
-  if (!platform) {
-    void logTrace("register-skip-not-native");
-    return "unsupported";
-  }
-  void logTrace("register-start", { platform, prompt });
+  if (!platform) return "unsupported";
 
   try {
     const { PushNotifications } = await import("@capacitor/push-notifications");
     let permission = (await PushNotifications.checkPermissions()).receive;
-    void logTrace("permission-checked", { permission });
 
     if (permission !== "granted") {
       if (!prompt) return permission === "denied" ? "denied" : "prompt";
       permission = (await PushNotifications.requestPermissions()).receive;
-      void logTrace("permission-requested", { permission });
     }
 
     if (permission !== "granted") {
-      void logTrace("register-denied", { permission });
       return permission === "denied" ? "denied" : "prompt";
     }
 
     await ensureNativeRegistered(platform);
-    void logTrace("register-complete", { platform });
     return "registered";
   } catch (err) {
-    void logTrace("register-error", { error: String(err) });
+    console.error("[push-client] native register error", err);
     return "error";
   }
 }
 
 export async function registerWebPushForCurrentUser(
-  prompt: boolean
+  prompt: boolean,
 ): Promise<PushRegistrationResult> {
   if (
     typeof window === "undefined" ||
     !("serviceWorker" in navigator) ||
     !("PushManager" in window)
   ) {
-    void logTrace("web-unsupported", {
-      hasSW: typeof window !== "undefined" && "serviceWorker" in navigator,
-      hasPushManager: typeof window !== "undefined" && "PushManager" in window,
-    });
     return "unsupported";
   }
 
   const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-  if (!vapidKey) {
-    void logTrace("web-no-vapid-key");
-    return "unsupported";
-  }
+  if (!vapidKey) return "unsupported";
 
   try {
-    void logTrace("web-start", { prompt });
-
     if ("Notification" in window) {
-      if (Notification.permission === "denied") {
-        void logTrace("web-permission-denied");
-        return "denied";
-      }
+      if (Notification.permission === "denied") return "denied";
       if (Notification.permission === "default") {
         if (!prompt) return "prompt";
         const nextPermission = await Notification.requestPermission();
-        void logTrace("web-permission-requested", { result: nextPermission });
         if (nextPermission !== "granted") {
           return nextPermission === "denied" ? "denied" : "prompt";
         }
@@ -297,39 +231,25 @@ export async function registerWebPushForCurrentUser(
     }
 
     const registration = await navigator.serviceWorker.ready;
-    void logTrace("web-sw-ready");
     let subscription = await registration.pushManager.getSubscription();
-    void logTrace("web-existing-sub", { exists: !!subscription });
 
     if (!subscription) {
-      try {
-        subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(vapidKey),
-        });
-        void logTrace("web-subscribed-new");
-      } catch (subErr) {
-        void logTrace("web-subscribe-error", { error: String(subErr) });
-        throw subErr;
-      }
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidKey),
+      });
     }
 
-    const json = subscription.toJSON();
-    void logTrace("web-posting", {
-      hasEndpoint: !!json.endpoint,
-      hasKeys: !!json.keys,
-    });
-    const res = await fetch("/api/push/subscribe", {
+    await fetch("/api/push/subscribe", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify(json),
+      body: JSON.stringify(subscription.toJSON()),
     });
-    void logTrace("web-post-result", { status: res.status, ok: res.ok });
 
     return "registered";
   } catch (err) {
-    void logTrace("web-error", { error: String(err) });
+    console.error("[push-client] web push register error", err);
     return "error";
   }
 }

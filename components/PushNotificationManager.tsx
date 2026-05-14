@@ -22,45 +22,25 @@ export function PushNotificationManager() {
   useEffect(() => {
     let cancelled = false;
 
-    function trace(event: string, data?: Record<string, unknown>) {
-      // Fire-and-forget diagnostic — visible di Vercel Logs `[push-trace]`
-      // dengan event name "manager-*" untuk distinguish dari register-* logs.
-      fetch("/api/debug/push-trace", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ event: `manager-${event}`, ...(data ?? {}) }),
-      }).catch(() => {});
-    }
-
     async function registerForLoggedInUser() {
-      trace("fire-start");
       try {
         const res = await fetch("/api/auth/me", {
           cache: "no-store",
           credentials: "include",
         });
         const member = (await res.json()) as MemberProfile;
-        if (cancelled) return;
-        if (!member.id) {
-          trace("no-member-id", { memberKeys: Object.keys(member ?? {}) });
-          return;
-        }
-        trace("member-loaded", { hasName: !!member.name });
+        if (cancelled || !member.id) return;
 
         const key = promptKey(member.id);
         const hasPrompted = localStorage.getItem(key) === "1";
-        trace("calling-register", { hasPrompted });
         const result = await registerPushForCurrentUser({
           prompt: !hasPrompted,
         });
-        trace("register-returned", { result });
 
         if (!cancelled && result !== "unsupported") {
           localStorage.setItem(key, "1");
         }
-      } catch (err) {
-        trace("fire-error", { error: String(err) });
+      } catch {
         // Push registration should never block app boot/login.
       }
     }

@@ -97,3 +97,6 @@ build/
 vendor/bundle/
 
 .vercel
+
+# Random local xlsx (data imports, exports)
+*.xlsx
