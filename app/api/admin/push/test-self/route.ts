@@ -172,8 +172,10 @@ export async function POST(req: NextRequest) {
               note.alert = { title, body };
               note.sound = "default";
               note.topic = bundleId;
+              note.priority = 10;
+              note.pushType = "alert";
+              note.badge = 1;
               note.payload = { url: "/notifications" };
-              note.contentAvailable = true;
 
               try {
                 const result = await provider.send(note, token);

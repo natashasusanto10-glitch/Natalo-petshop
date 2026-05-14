@@ -173,14 +173,21 @@ export async function sendApnsToUser(userId: string, payload: ApnsPayload) {
     subs.map(async (sub) => {
       const token = sub.endpoint.replace(/^apns:/, "");
       const note = new apn.Notification();
+      // Visible notification (banner + sound + lockscreen) di iPhone.
+      // PENTING: jangan set contentAvailable=true — itu signal Apple
+      // sebagai BACKGROUND push (silent, no banner, untuk background fetch
+      // saja). Apa pun yang kita kirim sebagai content-available akan
+      // delivered ke APNs (sent:1) tapi iOS TIDAK tampilkan UI apapun.
       note.alert = { title: payload.title, body: payload.body };
       note.sound = "default";
       note.topic = bundleId;
+      note.priority = 10; // 10 = immediate; required untuk alert push.
+      note.pushType = "alert"; // iOS 13+ requirement: explicit push type.
+      note.badge = 1;
       note.payload = {
         ...(payload.data ?? {}),
         url: payload.url,
       };
-      note.contentAvailable = true;
 
       try {
         const result = await provider.send(note, token);
