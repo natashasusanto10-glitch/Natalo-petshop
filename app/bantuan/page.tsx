@@ -137,7 +137,7 @@ const FAQS: FAQ[] = [
 export default function BantuanPage() {
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
-      <StickyBackTitle label="Pusat Bantuan" fallbackHref="/" />
+      <StickyBackTitle label="Pusat Bantuan" fallbackHref="/" stickToTop />
       <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="mb-6">
           <p className="mt-1 text-sm text-zinc-500">

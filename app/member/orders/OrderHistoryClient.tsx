@@ -44,6 +44,8 @@ type OrderHistoryOrder = {
   subtotal: number;
   paymentUrl: string | null;
   biteshipTrackingUrl: string | null;
+  orderType: string;
+  pickupMapsUrl: string;
   items: OrderHistoryItem[];
 };
 
@@ -311,7 +313,17 @@ function OrderCard({ order }: { order: OrderHistoryOrder }) {
               {formatRupiah(order.total)}
             </p>
           </div>
-          <div className="flex shrink-0 items-center justify-end gap-2">
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+            {order.orderType === "SELF_PICKUP" && (
+              <a
+                href={order.pickupMapsUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex min-h-11 items-center rounded-full px-3.5 text-[12.5px] font-semibold text-blue-700 ring-1 ring-blue-200 transition active:bg-blue-50"
+              >
+                Buka di Google Maps
+              </a>
+            )}
             <Link
               href={detailHref}
               aria-label={`Lihat detail pesanan ${order.orderNumber}`}

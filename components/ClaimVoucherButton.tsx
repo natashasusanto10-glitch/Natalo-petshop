@@ -4,10 +4,9 @@ import { useState } from "react";
 import { formatRupiah } from "@/lib/format";
 
 const TIERS = [
-  { points: 20, discountAmount: 5000 },
-  { points: 50, discountAmount: 20000 },
-  { points: 100, discountAmount: 50000 },
-  { points: 200, discountAmount: 120000 },
+  { points: 50, discountAmount: 5000 },
+  { points: 100, discountAmount: 10000 },
+  { points: 200, discountAmount: 20000 },
 ] as const;
 
 interface Props {

@@ -75,6 +75,10 @@ function readRecentProductIds() {
   }
 }
 
+function uniqueIds(ids: string[]) {
+  return Array.from(new Set(ids.filter(Boolean)));
+}
+
 function productCartItem(product: CartRecommendationProduct): CartItem {
   return {
     productId: product.id,
@@ -358,6 +362,7 @@ function VariantChoiceSheet({
 
 export function CartRecommendationSections({ cartItems }: Props) {
   const [recentlyViewed, setRecentlyViewed] = useState<CartRecommendationProduct[]>([]);
+  const [viewedSourceIds, setViewedSourceIds] = useState<string[]>([]);
   const [recentLoading, setRecentLoading] = useState(false);
   const [recommendations, setRecommendations] = useState<CartRecommendationProduct[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -370,10 +375,14 @@ export function CartRecommendationSections({ cartItems }: Props) {
   const cursorRef = useRef<string | null>(null);
   const hasMoreRef = useRef(true);
   const loadingRef = useRef(false);
+  const recommendationRequestRef = useRef(0);
   const cartIds = useMemo(() => cartProductIds(cartItems), [cartItems]);
   const cartIdsKey = cartIds.join(",");
   const recentIds = useMemo(() => recentlyViewed.map((product) => product.id), [recentlyViewed]);
-  const recentIdsKey = recentIds.join(",");
+  const behaviorIdsKey = useMemo(
+    () => uniqueIds([...viewedSourceIds, ...recentIds]).join(","),
+    [recentIds, viewedSourceIds],
+  );
 
   useEffect(() => {
     recommendationsRef.current = recommendations;
@@ -409,10 +418,7 @@ export function CartRecommendationSections({ cartItems }: Props) {
     let active = true;
     const currentCartIds = cartIdsKey ? cartIdsKey.split(",") : [];
     const localRecentIds = readRecentProductIds().filter((id) => !currentCartIds.includes(id));
-    if (localRecentIds.length === 0) {
-      setRecentlyViewed([]);
-      return;
-    }
+    setViewedSourceIds(localRecentIds);
     setRecentLoading(true);
     const params = new URLSearchParams({
       limit: "10",
@@ -423,7 +429,9 @@ export function CartRecommendationSections({ cartItems }: Props) {
       .then((response) => (response.ok ? response.json() : { data: [] }))
       .then((data: RecommendationsResponse) => {
         if (!active) return;
-        setRecentlyViewed(Array.isArray(data.data) ? data.data : []);
+        const nextRecentlyViewed = Array.isArray(data.data) ? data.data : [];
+        setRecentlyViewed(nextRecentlyViewed);
+        setViewedSourceIds(uniqueIds([...localRecentIds, ...nextRecentlyViewed.map((product) => product.id)]));
       })
       .catch(() => {
         if (active) setRecentlyViewed([]);
@@ -438,18 +446,21 @@ export function CartRecommendationSections({ cartItems }: Props) {
 
   const loadRecommendations = useCallback(
     async (reset = false) => {
-      if (loadingRef.current) return;
+      if (loadingRef.current && !reset) return;
       if (!reset && !hasMoreRef.current) return;
+      const requestId = recommendationRequestRef.current + 1;
+      recommendationRequestRef.current = requestId;
       loadingRef.current = true;
       setLoadingMore(true);
       setRecommendationError(false);
       const currentCartIds = cartIdsKey ? cartIdsKey.split(",") : [];
-      const currentRecentIds = recentIdsKey ? recentIdsKey.split(",") : [];
+      const currentBehaviorIds = behaviorIdsKey ? behaviorIdsKey.split(",") : [];
       const alreadyShown = reset ? [] : recommendationsRef.current.map((product) => product.id);
-      const exclude = Array.from(new Set([...currentCartIds, ...currentRecentIds, ...alreadyShown]));
+      const exclude = Array.from(new Set([...currentCartIds, ...currentBehaviorIds, ...alreadyShown]));
       const params = new URLSearchParams({
         limit: "10",
         cart: currentCartIds.join(","),
+        viewed: currentBehaviorIds.join(","),
         exclude: exclude.join(","),
       });
       if (!reset && cursorRef.current) params.set("cursor", cursorRef.current);
@@ -460,6 +471,7 @@ export function CartRecommendationSections({ cartItems }: Props) {
         });
         if (!response.ok) throw new Error("Failed to load recommendations");
         const data = (await response.json()) as RecommendationsResponse;
+        if (requestId !== recommendationRequestRef.current) return;
         const nextProducts = Array.isArray(data.data) ? data.data : [];
         setRecommendations((current) => {
           if (reset) return nextProducts;
@@ -469,13 +481,16 @@ export function CartRecommendationSections({ cartItems }: Props) {
         setCursor(data.next_cursor ?? null);
         setHasMore(Boolean(data.has_more));
       } catch {
+        if (requestId !== recommendationRequestRef.current) return;
         setRecommendationError(true);
       } finally {
-        loadingRef.current = false;
-        setLoadingMore(false);
+        if (requestId === recommendationRequestRef.current) {
+          loadingRef.current = false;
+          setLoadingMore(false);
+        }
       }
     },
-    [cartIdsKey, recentIdsKey],
+    [behaviorIdsKey, cartIdsKey],
   );
 
   useEffect(() => {
@@ -486,7 +501,7 @@ export function CartRecommendationSections({ cartItems }: Props) {
     setCursor(null);
     setHasMore(true);
     void loadRecommendations(true);
-  }, [cartIdsKey, recentIdsKey, loadRecommendations]);
+  }, [cartIdsKey, behaviorIdsKey, loadRecommendations]);
 
   useEffect(() => {
     const node = sentinelRef.current;

@@ -57,9 +57,20 @@ export function Header() {
   const isCartPage = currentPath === "/cart";
   const isBrandsDirectory = currentPath === "/brands";
   const isNotificationCenter = currentPath === "/notifications";
-  const isFocusedAccountPage = currentPath === "/member/orders" || currentPath === "/member/profile";
+  const isFocusedAccountPage =
+    currentPath === "/member/orders" ||
+    currentPath === "/member/profile" ||
+    currentPath === "/member/vouchers" ||
+    currentPath === "/account/loyalty/redeem";
   const isProductDetail = /^\/products\/[^/]+$/.test(currentPath);
   const isCheckoutAddressPicker = currentPath === "/checkout/addresses";
+  const isStaticBrandHeaderPage =
+    currentPath === "/wishlist" ||
+    /^\/akun\/alamat(\/|$)/.test(currentPath) ||
+    currentPath === "/akun/sesi-aktif" ||
+    currentPath === "/member/points" ||
+    /^\/bantuan(\/|$)/.test(currentPath) ||
+    /^\/help(\/|$)/.test(currentPath);
   const authTitle = AUTH_PATHS[currentPath];
   const isAuthPage = authTitle !== undefined;
   const isLoggedIn = Boolean(member?.name);
@@ -179,6 +190,8 @@ export function Header() {
       className={
         isProductDetail
           ? "product-detail-header nat-site-header bg-white md:sticky md:z-50 md:shadow-sm"
+          : isStaticBrandHeaderPage
+          ? "nat-site-header bg-white shadow-sm"
           : isHome || isProductsCatalog
           ? "nat-site-header mobile-sticky-header md:sticky"
           : "nat-site-header mobile-sticky-header md:sticky"

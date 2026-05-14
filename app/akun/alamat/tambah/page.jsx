@@ -20,7 +20,7 @@ export default async function AddAddressPage({ searchParams }) {
 
   return (
     <main className="min-h-screen bg-slate-50 pb-[calc(96px+env(safe-area-inset-bottom))]">
-      <StickyBackTitle label={backLabel} href={returnUrl} variant="textBack" />
+      <StickyBackTitle label={backLabel} href={returnUrl} variant="textBack" stickToTop />
       <div className="mx-auto max-w-md px-4 py-6 sm:py-8">
         <section className="rounded-3xl border border-slate-100 bg-white p-4 shadow-sm sm:p-6">
           <h1 className="text-2xl font-black tracking-tight text-slate-950">Tambah Alamat</h1>

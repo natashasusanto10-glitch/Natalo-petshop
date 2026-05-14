@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { StarsInput } from "@/components/StarRating";
 import { pickPhoto } from "@/lib/photo-picker";
@@ -30,6 +30,19 @@ export function ReviewModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    const previous = document.body.dataset.reviewModalOpen;
+    document.body.dataset.reviewModalOpen = "true";
+
+    return () => {
+      if (previous === undefined) {
+        delete document.body.dataset.reviewModalOpen;
+      } else {
+        document.body.dataset.reviewModalOpen = previous;
+      }
+    };
+  }, []);
 
   async function handleAddPhoto() {
     if (imageUrls.length >= 5) {
@@ -114,7 +127,7 @@ export function ReviewModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/40 p-4">
       <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white shadow-xl">
         {/* Header */}
         <div className="border-b border-gray-100 p-5">
@@ -122,7 +135,6 @@ export function ReviewModal({
           <div className="mt-3 flex items-center gap-3">
             <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-gray-100">
               {productImage ? (
-                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={productImage}
                   alt={productName}
@@ -199,7 +211,6 @@ export function ReviewModal({
                   key={i}
                   className="relative h-20 w-20 overflow-hidden rounded-lg border"
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={url}
                     alt=""

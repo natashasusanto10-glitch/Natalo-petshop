@@ -1521,9 +1521,6 @@ export default function CheckoutPage() {
                       <p>{SELF_PICKUP_STORE.area}</p>
                       <p className="mt-3 font-black text-zinc-950">Jam Ambil</p>
                       <p>{SELF_PICKUP_STORE.hours}</p>
-                      <div className="mt-4 rounded-2xl border border-dashed border-blue-200 bg-blue-50 px-4 py-5 text-center text-xs font-bold text-blue-700">
-                        Preview Maps
-                      </div>
                       <a
                         href={buildSelfPickupMapsUrl()}
                         target="_blank"

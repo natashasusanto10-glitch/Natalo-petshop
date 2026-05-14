@@ -17,7 +17,7 @@ export default async function AddressListPage() {
 
   return (
     <main className="min-h-screen bg-slate-50 pb-24">
-      <StickyBackTitle label="Kembali ke akun" href="/member" variant="textBack" />
+      <StickyBackTitle label="Kembali ke akun" href="/member" variant="textBack" stickToTop />
       <div className="mx-auto max-w-md px-4 py-6 sm:py-8">
         <div className="flex items-start justify-between gap-4">
           <div>

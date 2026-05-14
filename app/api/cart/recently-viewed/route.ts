@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { sampleProducts } from "@/lib/sample-data";
 import {
   cartRecommendationProductInclude,
   cartRecommendationWhere,
@@ -17,6 +18,38 @@ function parseIds(value: string | null) {
 
 function unique(values: string[]) {
   return values.filter((value, index, list) => list.indexOf(value) === index);
+}
+
+function serializeSampleProduct(product: (typeof sampleProducts)[number]) {
+  const price =
+    product.discountPrice !== null && product.discountPrice < product.price
+      ? product.discountPrice
+      : product.price;
+  const normalPrice =
+    product.discountPrice !== null && product.discountPrice < product.price ? product.price : null;
+
+  return {
+    id: product.id,
+    slug: product.slug,
+    name: product.name,
+    price,
+    normal_price: normalPrice,
+    discount_price: product.discountPrice,
+    discount_percent:
+      normalPrice && normalPrice > price
+        ? Math.round(((normalPrice - price) / normalPrice) * 100)
+        : null,
+    image: product.imageUrl,
+    stock: product.stock,
+    weightGram: product.weightGram,
+    rating: product.avgRating,
+    sold_count: product.reviewCount,
+    hasVariants: product.hasVariants,
+    category: null,
+    brand: null,
+    variantAttrs: [],
+    variants: [],
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -59,6 +92,16 @@ export async function GET(request: NextRequest) {
     .sort((a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999))
     .slice(0, limit)
     .map(serializeCartRecommendationProduct);
+  const foundIds = new Set(data.map((product) => product.id));
+  const sampleData =
+    data.length < limit
+      ? productIds
+          .filter((id) => !foundIds.has(id))
+          .map((id) => sampleProducts.find((product) => product.id === id))
+          .filter((product): product is (typeof sampleProducts)[number] => Boolean(product))
+          .filter((product) => product.stock > 0 && product.imageUrl)
+          .map(serializeSampleProduct)
+      : [];
 
-  return NextResponse.json({ data });
+  return NextResponse.json({ data: [...data, ...sampleData].slice(0, limit) });
 }

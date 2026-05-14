@@ -147,10 +147,11 @@ export default async function MemberPage() {
     }),
     prisma.voucher.findMany({
       where: {
-        userId: session.sub,
+        sourceType: "CUSTOMER",
+        OR: [{ userId: null }, { userId: session.sub }],
         isActive: true,
         startsAt: { lte: now },
-        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }],
       },
       select: { maxUsage: true, usedCount: true },
     }),
@@ -243,7 +244,7 @@ export default async function MemberPage() {
             </div>
           </div>
 
-          <div className="mt-5 grid grid-cols-3 gap-2 border-t border-white/18 pt-4">
+          <div className="mt-5 grid grid-cols-2 gap-2 border-t border-white/18 pt-4">
             <div>
               <p className="text-2xl font-black leading-none">{points.toLocaleString("id-ID")}</p>
               <p className="mt-1 text-[11px] font-bold text-blue-50">Loyalty Point</p>
@@ -253,12 +254,22 @@ export default async function MemberPage() {
               <p className="mt-1 text-[11px] font-bold text-blue-50">Member sejak</p>
             </div>
             <Link
+              href="/account/loyalty/redeem"
+              className="flex items-center justify-between gap-1 rounded-2xl bg-white/12 px-3 py-2 text-left ring-1 ring-white/16"
+            >
+              <span>
+                <span className="block text-sm font-black leading-tight">Tukar Poin</span>
+                <span className="block text-[11px] font-bold text-blue-50">Jadi voucher</span>
+              </span>
+              <FiChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />
+            </Link>
+            <Link
               href="/member/points"
               className="flex items-center justify-between gap-1 rounded-2xl bg-white/12 px-3 py-2 text-left ring-1 ring-white/16"
             >
               <span>
-                <span className="block text-sm font-black leading-tight">Riwayat</span>
-                <span className="block text-[11px] font-bold text-blue-50">Poin</span>
+                <span className="block text-sm font-black leading-tight">Riwayat Poin</span>
+                <span className="block text-[11px] font-bold text-blue-50">Transaksi poin</span>
               </span>
               <FiChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />
             </Link>
@@ -295,8 +306,9 @@ export default async function MemberPage() {
           <div className="mt-3 grid grid-cols-2 gap-3">
             <MenuCard href="/member/orders" icon={FiShoppingBag} title="Pesanan Saya" description="Lihat riwayat pesanan" />
             <MenuCard href="/wishlist" icon={FiHeart} title="Wishlist" description="Produk yang kamu favoritkan" />
+            <MenuCard href="/account/loyalty/redeem" icon={FiGift} title="Tukar Poin" description="Tukar poin jadi voucher belanja" />
             <MenuCard
-              href="/cart"
+              href="/member/vouchers"
               icon={FiGift}
               title="Voucher Member"
               description={
@@ -321,6 +333,7 @@ export default async function MemberPage() {
 
         <LogoutButton
           redirectTo="/member/login"
+          confirmBeforeLogout
           className="flex w-full items-center gap-3 rounded-[20px] border border-red-100 bg-white p-4 text-left text-red-600 shadow-[0_8px_24px_rgba(16,24,40,0.06)] hover:border-red-200 hover:bg-red-50 hover:text-red-600"
         >
           <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-red-50 text-red-500">

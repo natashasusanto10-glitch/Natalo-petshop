@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import RevokeOtherSessionsButton from "@/components/RevokeOtherSessionsButton";
+import { StickyBackTitle } from "@/components/StickyBackTitle";
 
 export const dynamic = "force-dynamic";
 
@@ -58,29 +59,14 @@ export default async function ActiveSessionPage() {
     .catch(() => null);
 
   return (
-    <main className="min-h-screen bg-zinc-50 px-4 py-8">
-      <div className="mx-auto max-w-md">
-        <div className="mb-6 flex items-center gap-3">
-          <Link
-            href="/member"
-            aria-label="Kembali ke akun"
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-zinc-600 shadow-sm hover:bg-zinc-100"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-4 w-4"
-              aria-hidden
-            >
-              <path d="m15 6-6 6 6 6" />
-            </svg>
-          </Link>
-          <h1 className="text-xl font-black text-zinc-900">Keamanan & sesi aktif</h1>
-        </div>
+    <main className="min-h-screen bg-zinc-50 pb-24">
+      <StickyBackTitle
+        label="Keamanan & sesi aktif"
+        href="/member"
+        variant="textBack"
+        stickToTop
+      />
+      <div className="mx-auto max-w-md px-4 py-6 sm:py-8">
 
         <p className="text-sm text-zinc-600">
           Berikut perangkat yang kamu pakai saat ini. Kalau melihat aktivitas mencurigakan,

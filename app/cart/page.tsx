@@ -5,8 +5,8 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { FiShoppingCart } from "react-icons/fi";
 import { formatRupiah } from "@/lib/format";
-import { EmptyCart } from "@/components/LoadingEmptyStates";
 import { loadCart, saveCart, type CartItem } from "@/lib/cart";
 import type { CartStockIssue } from "@/lib/cart-stock";
 import { VoucherClaimBar } from "@/components/cart/VoucherClaimBar";
@@ -100,6 +100,32 @@ function TrashIcon({ className = "h-4 w-4" }: { className?: string }) {
       <path d="M10 11v6M14 11v6" />
       <path d="M9 6V4h6v2" />
     </svg>
+  );
+}
+
+function EmptyCartShoppingCard() {
+  return (
+    <section className="mt-4 rounded-2xl border border-blue-100 bg-white p-5 shadow-sm md:mt-8">
+      <div className="flex items-start gap-4">
+        <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-600">
+          <FiShoppingCart className="h-7 w-7" aria-hidden />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-lg font-black leading-tight text-gray-950">
+            Keranjang kamu masih kosong
+          </h2>
+          <p className="mt-1 text-sm font-semibold leading-relaxed text-gray-500">
+            Yuk, pilih produk favorit untuk hewan peliharaanmu.
+          </p>
+          <Link
+            href="/products"
+            className="mt-4 inline-flex h-11 items-center justify-center rounded-full bg-blue-600 px-5 text-sm font-black text-white shadow-[0_8px_18px_-10px_rgba(37,99,235,0.75)] transition active:scale-95"
+          >
+            Mulai Belanja
+          </Link>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -229,6 +255,7 @@ export default function CartPage() {
   const selectedTotal = Math.max(selectedSubtotal - voucherDiscount, 0);
   const allSelected = items.length > 0 && selectedKeys.size === items.length;
   const selectionLabel = itemSelectionLabel(selectedCount, selectedQuantity);
+  const isCartEmpty = items.length === 0;
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -544,7 +571,11 @@ export default function CartPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 pb-[calc(104px+env(safe-area-inset-bottom))] md:pb-10">
+    <div
+      className={`mx-auto max-w-3xl px-4 ${
+        isCartEmpty ? "pb-10" : "pb-[calc(104px+env(safe-area-inset-bottom))] md:pb-10"
+      }`}
+    >
       <header className="sticky top-0 z-50 -mx-4 border-b border-gray-100 bg-white px-4 pb-3 [padding-top:calc(12px+env(safe-area-inset-top))]">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
@@ -588,10 +619,11 @@ export default function CartPage() {
         </p>
       </header>
 
-      {items.length === 0 ? (
-        <div className="mt-6 rounded-2xl border border-gray-100 bg-white md:mt-10">
-          <EmptyCart />
-        </div>
+      {isCartEmpty ? (
+        <>
+          <EmptyCartShoppingCard />
+          <CartRecommendationSections cartItems={items} />
+        </>
       ) : (
         <>
           <section className="mt-4 overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm md:mt-8">
