@@ -49,7 +49,7 @@ platform :ios do
     # Read current resolved version dari Info.plist (agvtool what-marketing-version
     # bisa fail kalau MARKETING_VERSION setting baru, jadi pakai PlistBuddy
     # fallback ke literal value yang sudah ter-resolve).
-    current_version_raw = sh("cd ios/App && agvtool what-marketing-version -terse1 2>/dev/null || echo unknown").strip
+    current_version_raw = sh("cd ../ios/App && agvtool what-marketing-version -terse1 2>/dev/null || echo unknown").strip
     UI.message("Current marketing version (agvtool): #{current_version_raw}")
 
     begin
@@ -74,7 +74,7 @@ platform :ios do
       parts[2] += 1
       new_version = parts.join(".")
       UI.message("Bumping marketing version: #{live_version} → #{new_version}")
-      sh("cd ios/App && agvtool new-marketing-version #{new_version}")
+      sh("cd ../ios/App && agvtool new-marketing-version #{new_version}")
     else
       UI.message("Skip version bump — no live App Store version detected.")
     end
