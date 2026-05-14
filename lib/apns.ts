@@ -25,8 +25,11 @@ async function getApnProvider() {
   if (apnInitialized) return apnProvider;
   apnInitialized = true;
 
-  const keyId = process.env.APNS_KEY_ID;
-  const teamId = process.env.APNS_TEAM_ID;
+  // Trim whitespace dari env values — pas paste di Vercel kadang ada
+  // tab/space tersangkut di awal/akhir yang bikin JWT sign fail dengan
+  // "secretOrPrivateKey must be an asymmetric key when using ES256".
+  const keyId = process.env.APNS_KEY_ID?.trim();
+  const teamId = process.env.APNS_TEAM_ID?.trim();
   const rawKeyContent = process.env.APNS_KEY_CONTENT;
   const production = process.env.APNS_PRODUCTION === "true";
 
@@ -35,10 +38,36 @@ async function getApnProvider() {
     return null;
   }
 
-  // Vercel/Heroku env vars sering disimpan dengan "\n" literal (2 chars: backslash + n)
-  // bukan newline asli. PEM parser butuh actual newline. Convert dulu.
-  // Pattern sama dgn lib/fcm.ts untuk FCM_PRIVATE_KEY.
-  const keyContent = rawKeyContent.replace(/\\n/g, "\n").trim();
+  // Normalize PEM content — handle 3 common paste failures di hosting:
+  //   1. "\n" escape literal (2 chars) — Vercel/Heroku kadang strip newlines
+  //   2. Single-line concat tanpa newline sama sekali
+  //   3. Whitespace berlebih di start/end
+  // PEM parser di @parse/node-apn / jsonwebtoken butuh actual LF newlines
+  // antara BEGIN marker, base64 content (max 64 chars/line), END marker.
+  let keyContent = rawKeyContent.replace(/\\n/g, "\n").trim();
+
+  // Auto-fix single-line PEM: kalau BEGIN/END present tapi cuma 1 baris,
+  // extract base64 body lalu split per 64 chars (RFC 7468 PEM format).
+  if (
+    keyContent.includes("-----BEGIN PRIVATE KEY-----") &&
+    keyContent.includes("-----END PRIVATE KEY-----") &&
+    !keyContent.includes("\n")
+  ) {
+    const body = keyContent
+      .replace("-----BEGIN PRIVATE KEY-----", "")
+      .replace("-----END PRIVATE KEY-----", "")
+      .replace(/\s/g, "");
+    const wrappedBody = (body.match(/.{1,64}/g) ?? []).join("\n");
+    keyContent =
+      "-----BEGIN PRIVATE KEY-----\n" +
+      wrappedBody +
+      "\n-----END PRIVATE KEY-----";
+    console.log("[apns]", JSON.stringify({
+      event: "pem-auto-wrap",
+      info: "Reconstructed multi-line PEM from single-line env value",
+      bodyLength: body.length,
+    }));
+  }
 
   // Sanity log: confirm PEM markers present (no secret value leaked).
   const hasBegin = keyContent.includes("-----BEGIN PRIVATE KEY-----");
