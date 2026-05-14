@@ -11,6 +11,7 @@ import {
   IoNotificationsOutline,
   IoPricetagOutline,
 } from "react-icons/io5";
+import { NotificationReviewSheet } from "@/components/NotificationReviewSheet";
 
 type NotificationType = "order" | "promo" | "announcement";
 type TabId = "all" | "order" | "promo" | "announcement";
@@ -118,30 +119,26 @@ function IconBadge({ type }: { type: NotificationType }) {
   );
 }
 
-function RatingStrip() {
-  const [rating, setRating] = useState(0);
-
+function RatingStrip({ onOpen, disabled }: { onOpen: () => void; disabled?: boolean }) {
   return (
-    <div className="mt-4 rounded-xl bg-emerald-50 px-3 py-3">
-      <div className="flex items-center gap-1" aria-label="Beri rating produk">
+    <button
+      type="button"
+      onClick={onOpen}
+      disabled={disabled}
+      className="mt-4 block w-full rounded-xl bg-emerald-50 px-3 py-3 text-left transition active:scale-[0.99] active:bg-emerald-100 disabled:opacity-60"
+      aria-label="Beri rating dan ulasan"
+    >
+      <div className="flex items-center gap-1" aria-hidden="true">
         {[1, 2, 3, 4, 5].map((value) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => setRating(value)}
-            className={`text-2xl leading-none transition active:scale-95 ${
-              value <= rating ? "text-amber-400" : "text-slate-300"
-            }`}
-            aria-label={`${value} bintang`}
-          >
+          <span key={value} className="text-2xl leading-none text-slate-300">
             {"★"}
-          </button>
+          </span>
         ))}
       </div>
       <p className="mt-2 text-xs font-semibold text-emerald-900">
         Bantu beri rating & ulasan untuk produk yang kamu beli
       </p>
-    </div>
+    </button>
   );
 }
 
@@ -155,12 +152,18 @@ function NotificationCard({
   const type = notificationType(item);
   const reviewPrompt = isReviewPrompt(item);
   const orderNumber = extractOrderNumber(item);
+  const [reviewSheetOpen, setReviewSheetOpen] = useState(false);
   const ctaLabel =
     type === "announcement"
       ? "Lihat Detail"
       : item.ctaLabel ??
-        (reviewPrompt ? "Beri Ulasan" : type === "order" ? "Lihat Pesanan" : type === "promo" ? "Lihat Promo" : "Lihat Detail");
-  const href = type === "announcement" ? `/notifications/${item.id}` : reviewPrompt ? "/member/reviews" : item.url;
+        (reviewPrompt ? "Lihat Pesanan" : type === "order" ? "Lihat Pesanan" : type === "promo" ? "Lihat Promo" : "Lihat Detail");
+  const href =
+    type === "announcement"
+      ? `/notifications/${item.id}`
+      : reviewPrompt
+        ? item.url ?? (orderNumber ? `/pesanan/${encodeURIComponent(orderNumber)}` : null)
+        : item.url;
   const sourceLabel =
     type === "promo" ? "Promo dari Admin" : type === "announcement" ? "Pengumuman dari Admin" : orderNumber ? `Order ID: ${orderNumber}` : "Update Pesanan";
   const accent =
@@ -189,7 +192,15 @@ function NotificationCard({
           </div>
 
           <p className="mt-2 text-sm leading-relaxed text-slate-600">{item.body}</p>
-          {reviewPrompt && <RatingStrip />}
+          {reviewPrompt && (
+            <RatingStrip
+              onOpen={() => {
+                onRead(item);
+                if (orderNumber) setReviewSheetOpen(true);
+              }}
+              disabled={!orderNumber}
+            />
+          )}
 
           <div className="mt-4 flex items-center justify-between gap-3">
             <span className="text-xs font-medium text-slate-400">{formatRelativeTime(item.createdAt)}</span>
@@ -217,6 +228,12 @@ function NotificationCard({
           )}
         </div>
       </div>
+      {reviewSheetOpen && orderNumber && (
+        <NotificationReviewSheet
+          orderNumber={orderNumber}
+          onClose={() => setReviewSheetOpen(false)}
+        />
+      )}
     </article>
   );
 }

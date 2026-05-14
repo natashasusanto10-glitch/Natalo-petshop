@@ -9,7 +9,6 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma, ReviewStatus } from "@prisma/client";
 
 const EDIT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // 30 hari
-const RATE_LIMIT_PER_DAY = 5;
 
 // ── Helpers ────────────────────────────────────────────────────
 
@@ -58,23 +57,6 @@ export async function recomputeProductAggregate(
   });
 }
 
-// ── Validasi & rate limit ──────────────────────────────────────
-
-async function ensureRateLimit(
-  tx: Prisma.TransactionClient,
-  userId: string
-) {
-  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const recent = await tx.review.count({
-    where: { userId, createdAt: { gte: cutoff } },
-  });
-  if (recent >= RATE_LIMIT_PER_DAY) {
-    throw new Error(
-      `Batas review tercapai (${RATE_LIMIT_PER_DAY}/hari). Coba lagi besok.`
-    );
-  }
-}
-
 // ── Create ─────────────────────────────────────────────────────
 
 interface CreateReviewInput {
@@ -97,9 +79,6 @@ export async function createReview(input: CreateReviewInput) {
   }
 
   return prisma.$transaction(async (tx) => {
-    // Rate limit
-    await ensureRateLimit(tx, userId);
-
     // Validasi: order item milik user, status order = DELIVERED
     const orderItem = await tx.orderItem.findUnique({
       where: { id: orderItemId },
