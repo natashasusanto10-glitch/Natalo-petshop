@@ -96,21 +96,7 @@ export function BrandChoiceSection({ brands }: BrandChoiceSectionProps) {
   }, []);
 
   if (brands.length === 0) {
-    return (
-      <section className="mt-8 px-4" aria-labelledby="brand-choice-title">
-        <div className="flex items-center justify-between">
-          <h2 id="brand-choice-title" className="text-[20px] font-black tracking-tight text-slate-900">
-            Brand Favorit
-          </h2>
-          <div className="h-5 w-20 animate-pulse rounded-full bg-slate-100" />
-        </div>
-        <div className="mt-3 grid grid-cols-3 gap-3">
-          {Array.from({ length: 3 }).map((_, index) => (
-            <div key={index} className="h-[116px] animate-pulse rounded-[20px] border border-slate-100 bg-white shadow-sm" />
-          ))}
-        </div>
-      </section>
-    );
+    return null;
   }
 
   return (

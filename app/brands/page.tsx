@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { BrandDirectoryClient } from "@/components/brands/BrandDirectoryClient";
-import { mergeBrandsWithFallback } from "@/lib/brand-catalog";
+import { mapDbBrandsToCatalogItems } from "@/lib/brand-catalog";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -13,8 +13,11 @@ export const metadata: Metadata = {
 export default async function BrandsPage() {
   const dbBrands = await prisma.brand
     .findMany({
-      where: { products: { some: { isActive: true } } },
-      orderBy: { name: "asc" },
+      where: {
+        isActive: true,
+        name: { not: "" },
+      },
+      orderBy: [{ position: "asc" }, { createdAt: "desc" }, { name: "asc" }],
       select: {
         id: true,
         name: true,
@@ -24,7 +27,7 @@ export default async function BrandsPage() {
     })
     .catch(() => []);
 
-  const brands = mergeBrandsWithFallback(dbBrands);
+  const brands = mapDbBrandsToCatalogItems(dbBrands);
 
   return <BrandDirectoryClient brands={brands} />;
 }

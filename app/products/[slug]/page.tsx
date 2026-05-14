@@ -80,11 +80,31 @@ export default async function ProductDetailPage({
   // Voucher load di-pindah ke client-side (VoucherCard fetch sendiri)
   // supaya halaman ini bisa cacheable di Vercel CDN. getSession() yg dulu
   // dipakai utk filter voucher per-user juga tidak diperlukan di server.
-  const [productWithCategory, allProducts] = await Promise.all([
+  const [productWithCategory, allProducts, soldSummary] = await Promise.all([
     prisma.product.findUnique({ where: { slug }, include: { category: true } }).catch(() => null),
     getProducts({ category: product.categorySlug ?? undefined, take: 12 }),
+    prisma.orderItem
+      .aggregate({
+        _sum: { quantity: true },
+        where: {
+          productId: product.id,
+          order: {
+            status: {
+              in: [
+                "PAID",
+                "PROCESSING",
+                "READY_FOR_PICKUP",
+                "SHIPPED",
+                "DELIVERED",
+              ],
+            },
+          },
+        },
+      })
+      .catch(() => ({ _sum: { quantity: 0 } })),
   ]);
   const favoriteIds: string[] = [];
+  const soldCount = soldSummary._sum.quantity ?? 0;
 
   const related = allProducts
     .filter((p) => p.id !== product.id)
@@ -209,6 +229,7 @@ export default async function ProductDetailPage({
             <SocialProofRow
               avgRating={product.avgRating}
               reviewCount={product.reviewCount}
+              soldCount={soldCount}
             />
 
             {/* 4. Voucher card */}

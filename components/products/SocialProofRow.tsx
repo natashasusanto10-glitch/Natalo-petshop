@@ -6,10 +6,7 @@ type Props = {
 };
 
 function formatSold(n: number) {
-  if (n >= 1000) return `${Math.floor(n / 1000)}k+ Terjual`;
-  if (n >= 100) return `${Math.floor(n / 50) * 50}+ Terjual`;
-  if (n >= 10) return `${Math.floor(n / 10) * 10}+ Terjual`;
-  return `${n} Terjual`;
+  return `Terjual ${n}`;
 }
 
 export function SocialProofRow({
@@ -18,12 +15,17 @@ export function SocialProofRow({
   photoReviewCount,
   soldCount,
 }: Props) {
-  // Tidak tampilkan apa pun bila belum ada data sama sekali — hindari clutter.
-  if (!avgRating && !reviewCount && !soldCount) return null;
+  const showRating = avgRating > 0 && reviewCount > 0;
+  const showPhotoReview =
+    typeof photoReviewCount === "number" && photoReviewCount > 0;
+  const showSold = typeof soldCount === "number" && soldCount > 0;
+
+  // Tidak tampilkan apa pun bila belum ada data sama sekali.
+  if (!showRating && !showPhotoReview && !showSold) return null;
 
   return (
     <div className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs font-bold text-gray-500">
-      {avgRating > 0 && reviewCount > 0 && (
+      {showRating && (
         <span className="inline-flex items-center gap-1 text-gray-700">
           <svg
             viewBox="0 0 24 24"
@@ -38,17 +40,25 @@ export function SocialProofRow({
           <span className="text-gray-400">({reviewCount})</span>
         </span>
       )}
-      {typeof photoReviewCount === "number" && photoReviewCount > 0 && (
+      {showPhotoReview && (
         <>
-          <span aria-hidden className="text-gray-300">•</span>
+          {showRating && (
+            <span aria-hidden className="text-gray-300">
+              •
+            </span>
+          )}
           <span className="font-extrabold text-natalo-600">
             {photoReviewCount} Foto ulasan
           </span>
         </>
       )}
-      {typeof soldCount === "number" && soldCount > 0 && (
+      {showSold && (
         <>
-          <span aria-hidden className="text-gray-300">•</span>
+          {(showRating || showPhotoReview) && (
+            <span aria-hidden className="text-gray-300">
+              •
+            </span>
+          )}
           <span>{formatSold(soldCount)}</span>
         </>
       )}

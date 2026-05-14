@@ -3,7 +3,6 @@ import { Suspense } from "react";
 import { ProductSearchBar } from "@/components/products/ProductSearchBar";
 import { ProductFilterChips } from "@/components/products/ProductFilterChips";
 import { ProductsInfiniteGrid } from "@/components/products/ProductsInfiniteGrid";
-import { FALLBACK_BRANDS } from "@/lib/brand-catalog";
 import type { NewProductFilter, PopularFilter } from "@/lib/products";
 import { prisma } from "@/lib/prisma";
 
@@ -62,14 +61,14 @@ export default async function ProductsPage({
     prisma.category.findMany({ orderBy: { name: "asc" } }).catch(() => []),
     brand
       ? prisma.brand
-          .findUnique({ where: { slug: brand }, select: { name: true } })
+          .findFirst({
+            where: { slug: brand, isActive: true },
+            select: { name: true },
+          })
           .catch(() => null)
       : Promise.resolve(null),
   ]);
-  const fallbackBrandName = brand
-    ? FALLBACK_BRANDS.find((item) => item.slug === brand)?.name
-    : undefined;
-  const activeBrandName = activeBrand?.name ?? fallbackBrandName;
+  const activeBrandName = activeBrand?.name;
   const title = activeBrandName ? `Produk ${activeBrandName}` : "Katalog Produk";
 
   return (

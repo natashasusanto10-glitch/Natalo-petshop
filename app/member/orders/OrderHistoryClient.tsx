@@ -2,15 +2,17 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type KeyboardEvent } from "react";
 import {
   FiAlertCircle,
   FiArrowLeft,
   FiCheckCircle,
   FiChevronDown,
-  FiChevronRight,
   FiClock,
   FiFileText,
+  FiHelpCircle,
+  FiMapPin,
+  FiMoreVertical,
   FiPackage,
   FiRefreshCw,
   FiSearch,
@@ -71,7 +73,7 @@ const STATUS_META = {
   processing: {
     label: "Diproses",
     icon: FiClock,
-    className: "bg-amber-50 text-amber-700",
+    className: "bg-blue-50 text-blue-700",
   },
   shipped: {
     label: "Dikirim",
@@ -134,7 +136,7 @@ function normalizeSearch(value: string) {
 
 function itemDescription(order: OrderHistoryOrder) {
   const count = order.items.reduce((sum, item) => sum + item.quantity, 0);
-  return `${count} barang · Subtotal ${formatRupiah(order.subtotal)}`;
+  return `${count} barang`;
 }
 
 function ProductThumbnail({ item }: { item: OrderHistoryItem }) {
@@ -250,6 +252,7 @@ function OrderSortControl({
 }
 
 function OrderCard({ order }: { order: OrderHistoryOrder }) {
+  const [menuOpen, setMenuOpen] = useState(false);
   const group = getOrderGroup(order);
   const primaryItem = order.items[0] ?? {
     id: `${order.id}-empty`,
@@ -260,104 +263,131 @@ function OrderCard({ order }: { order: OrderHistoryOrder }) {
     imageUrl: null,
     categoryName: null,
   };
-  const otherCount = Math.max(0, order.items.length - 1);
   const detailHref = `/pesanan/${order.orderNumber}`;
   const isSelfPickup = order.orderType === "SELF_PICKUP";
+  const helpHref = `/bantuan?order=${encodeURIComponent(order.orderNumber)}`;
+
+  function openDetail() {
+    window.location.href = detailHref;
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (event.target !== event.currentTarget) return;
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openDetail();
+    }
+  }
+
+  async function copyOrderNumber() {
+    await navigator.clipboard?.writeText(order.orderNumber);
+    setMenuOpen(false);
+  }
 
   return (
-    <article className="rounded-[24px] bg-white px-5 py-4 shadow-[0_4px_20px_-8px_rgba(15,23,42,0.08)] ring-1 ring-slate-100">
-      <div className="flex gap-3.5">
-        <ProductThumbnail item={primaryItem} />
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-3">
-            <button
-              type="button"
-              onClick={() => void navigator.clipboard?.writeText(order.orderNumber)}
-              className="inline-flex min-h-6 min-w-0 items-center gap-1.5 text-left font-mono text-[11px] font-semibold text-slate-400"
-              aria-label={`Salin nomor pesanan ${order.orderNumber}`}
-              title="Klik untuk salin nomor pesanan"
-            >
-              <FiFileText className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              <span className="truncate">{order.orderNumber}</span>
-            </button>
-            <p className="shrink-0 text-right text-[12.5px] font-normal text-slate-500">
+    <article
+      role="link"
+      tabIndex={0}
+      onClick={openDetail}
+      onKeyDown={handleKeyDown}
+      aria-label={`Lihat detail pesanan ${order.orderNumber}`}
+      className="cursor-pointer rounded-[24px] bg-white px-5 py-4 shadow-[0_4px_20px_-8px_rgba(15,23,42,0.08)] ring-1 ring-slate-100 transition active:scale-[0.995] active:bg-blue-50/30"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 gap-3">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-700">
+            <FiShoppingBag className="h-5 w-5" aria-hidden="true" />
+          </div>
+          <div className="min-w-0">
+            <p className="font-black leading-tight text-slate-950">Belanja</p>
+            <p className="mt-0.5 truncate text-xs font-semibold text-slate-500">
               {formatOrderDate(order.createdAt)}
             </p>
           </div>
-
-          <div className="mt-1.5 flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h2 className="line-clamp-2 text-[13.5px] font-semibold leading-snug text-slate-900">
-                {primaryItem.name}
-              </h2>
-              <p className="mt-1 line-clamp-1 text-xs font-semibold text-slate-500">
-                {primaryItem.categoryName || primaryItem.name.split(" ").slice(0, 2).join(" ")}
-                {otherCount > 0 ? ` · +${otherCount} produk lainnya` : ""}
-              </p>
+        </div>
+        <div className="relative flex shrink-0 items-center gap-2">
+          <StatusPill group={group} />
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              setMenuOpen((open) => !open);
+            }}
+            aria-label="Aksi pesanan"
+            className="grid h-9 w-9 place-items-center rounded-full text-slate-500 transition active:bg-slate-100"
+          >
+            <FiMoreVertical className="h-4 w-4" aria-hidden="true" />
+          </button>
+          {menuOpen && (
+            <div
+              onClick={(event) => event.stopPropagation()}
+              className="absolute right-0 top-10 z-20 w-56 overflow-hidden rounded-2xl border border-slate-100 bg-white py-1 shadow-[0_18px_45px_-18px_rgba(15,23,42,0.35)]"
+            >
+              <Link
+                href={detailHref}
+                className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"
+              >
+                <FiFileText className="h-4 w-4" aria-hidden="true" />
+                Lihat detail pesanan
+              </Link>
+              {isSelfPickup && (
+                <a
+                  href={order.pickupMapsUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"
+                >
+                  <FiMapPin className="h-4 w-4" aria-hidden="true" />
+                  Buka Google Maps
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={() => void copyOrderNumber()}
+                className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-bold text-slate-700 hover:bg-slate-50"
+              >
+                <FiFileText className="h-4 w-4" aria-hidden="true" />
+                Salin nomor pesanan
+              </button>
+              <Link
+                href={helpHref}
+                className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"
+              >
+                <FiHelpCircle className="h-4 w-4" aria-hidden="true" />
+                Bantuan pesanan
+              </Link>
             </div>
-            <StatusPill group={group} />
-          </div>
+          )}
+        </div>
+      </div>
 
-          <p className="mt-2 text-xs font-semibold text-slate-500">
-            Qty {primaryItem.quantity}
-            {order.items.length > 1 ? ` dari ${order.items.length} item` : ""} · {itemDescription(order)}
+      <div className="mt-4 flex gap-3.5">
+        <ProductThumbnail item={primaryItem} />
+
+        <div className="min-w-0 flex-1">
+          <h2 className="line-clamp-2 text-[13.5px] font-semibold leading-snug text-slate-900">
+            {primaryItem.name}
+          </h2>
+          <p className="mt-1 text-xs font-semibold text-slate-500">
+            {itemDescription(order)}
           </p>
         </div>
       </div>
 
       <div className="mt-4 border-t border-dashed border-slate-200 pt-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Total</p>
-            <p className="mt-0.5 text-base font-black leading-tight text-slate-950">
+        <div className="flex items-end justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+              Total Belanja
+            </p>
+            <p className="mt-0.5 truncate text-base font-black leading-tight text-slate-950">
               {formatRupiah(order.total)}
             </p>
           </div>
-          <div
-            className={
-              isSelfPickup
-                ? "flex w-full min-w-0 flex-col gap-2 sm:w-[290px]"
-                : "flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:justify-end"
-            }
-          >
-            {isSelfPickup ? (
-              <div className="grid w-full min-w-0 grid-cols-[minmax(0,1.35fr)_minmax(0,.75fr)] gap-2">
-                <a
-                  href={order.pickupMapsUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex min-h-11 min-w-0 items-center justify-center rounded-full px-3 text-center text-[12.5px] font-semibold leading-tight text-blue-700 ring-1 ring-blue-200 transition active:bg-blue-50"
-                >
-                  Buka di Google Maps
-                </a>
-                <Link
-                  href={detailHref}
-                  aria-label={`Lihat detail pesanan ${order.orderNumber}`}
-                  className="inline-flex min-h-11 min-w-0 items-center justify-center gap-1 rounded-full px-3 text-[12.5px] font-semibold text-slate-700 ring-1 ring-slate-200 transition active:bg-slate-50"
-                >
-                  Detail
-                  <FiChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                </Link>
-              </div>
-            ) : (
-              <Link
-                href={detailHref}
-                aria-label={`Lihat detail pesanan ${order.orderNumber}`}
-                className="inline-flex min-h-11 items-center gap-1 rounded-full px-3.5 text-[12.5px] font-semibold text-slate-700 ring-1 ring-slate-200 transition active:bg-slate-50"
-              >
-                Detail
-                <FiChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
-              </Link>
-            )}
+          <div onClick={(event) => event.stopPropagation()} className="shrink-0">
             <ReorderButton
               orderId={order.id}
-              className={[
-                "min-h-11 justify-center border-0 bg-gradient-to-br from-blue-600 to-blue-700 px-3.5 py-0 text-[12.5px] font-semibold text-white shadow-[0_4px_12px_-2px_rgba(37,99,235,0.25)] hover:bg-blue-700 hover:text-white",
-                isSelfPickup ? "w-full" : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
+              className="min-h-10 justify-center border-0 bg-gradient-to-br from-blue-600 to-blue-700 px-4 py-0 text-[12.5px] font-semibold text-white shadow-[0_4px_12px_-2px_rgba(37,99,235,0.25)] hover:bg-blue-700 hover:text-white"
             >
               <FiRefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
               Beli Lagi

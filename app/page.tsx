@@ -15,7 +15,7 @@ import TrustMarquee from "@/components/home/TrustMarquee";
 import type { TrustItem } from "@/data/trustItems";
 import { ExternalLink } from "@/components/ExternalLink";
 import { AppStoreCTACard } from "@/components/AppStoreBadge";
-import { FALLBACK_BRANDS, mergeBrandsWithFallback } from "@/lib/brand-catalog";
+import { mapDbBrandsToCatalogItems } from "@/lib/brand-catalog";
 
 const brand = process.env.NEXT_PUBLIC_BRAND_NAME || "Natalo Petshop";
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -439,9 +439,11 @@ export default async function HomePage() {
       .catch(() => []),
     prisma.brand
       .findMany({
-        where: { products: { some: { isActive: true } } },
-        take: 12,
-        orderBy: { products: { _count: "desc" } },
+        where: {
+          isActive: true,
+          name: { not: "" },
+        },
+        orderBy: [{ position: "asc" }, { createdAt: "desc" }, { name: "asc" }],
         select: {
           id: true,
           name: true,
@@ -475,12 +477,7 @@ export default async function HomePage() {
     .sort((a, b) => b.reviewCount - a.reviewCount || b.avgRating - a.avgRating)
     .slice(0, 6);
 
-  const allBrands = mergeBrandsWithFallback(dbFeaturedBrands);
-  const featuredSlugs = new Set(FALLBACK_BRANDS.slice(0, 18).map((brand) => brand.slug));
-  const featuredBrands = [
-    ...FALLBACK_BRANDS.slice(0, 18).map((brand) => allBrands.find((item) => item.slug === brand.slug) ?? brand),
-    ...allBrands.filter((brand) => !featuredSlugs.has(brand.slug)),
-  ].slice(0, 18);
+  const featuredBrands = mapDbBrandsToCatalogItems(dbFeaturedBrands);
 
   const flashSaleEnd = getJakartaMidnight();
   const recommendedProducts = getHomeRecommendations(availableHomeProducts);

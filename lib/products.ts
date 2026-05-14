@@ -316,7 +316,7 @@ function buildProductWhere({
   return {
     isActive: true,
     ...(category ? { category: { slug: category } } : {}),
-    ...(brand ? { brand: { slug: brand } } : {}),
+    ...(brand ? { brand: { slug: brand, isActive: true } } : {}),
     ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
     ...(createdAtCutoff ? { createdAt: { gte: createdAtCutoff } } : {}),
     ...(excludeIds?.length ? { id: { notIn: excludeIds } } : {}),
