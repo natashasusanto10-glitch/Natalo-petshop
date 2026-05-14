@@ -57,6 +57,34 @@ const GROUPS: {
   { key: "economy", serviceTypes: ["economy"], label: "Ekonomi", icon: "ECO", hint: "Estimasi 3-7 hari" },
 ];
 
+const ALLOWED_DELIVERY_RATES = new Set([
+  "gojek:instant",
+  "grab:instant",
+  "jne:reg",
+  "jne:regular",
+  "jne:yes",
+  "jne:jtr",
+  "jne:trucking",
+  "jnt:ez",
+]);
+
+function normalizeRateKeyPart(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+function isAllowedDeliveryRate(rate: Rate) {
+  const courierCode = normalizeRateKeyPart(rate.courier_code);
+  const serviceCode = normalizeRateKeyPart(rate.courier_service_code);
+  const serviceName = normalizeRateKeyPart(rate.courier_service_name);
+  const serviceType = normalizeRateKeyPart(rate.service_type);
+
+  return (
+    ALLOWED_DELIVERY_RATES.has(`${courierCode}:${serviceCode}`) ||
+    ALLOWED_DELIVERY_RATES.has(`${courierCode}:${serviceName}`) ||
+    ALLOWED_DELIVERY_RATES.has(`${courierCode}:${serviceType}`)
+  );
+}
+
 export function MetodePengiriman({
   open,
   onClose,
@@ -67,15 +95,16 @@ export function MetodePengiriman({
   onSelect,
   freeShipping = false,
 }: Props) {
+  const visibleRates = rates.filter(isAllowedDeliveryRate);
   const groups = GROUPS.map((g) => ({
     ...g,
-    items: rates.filter(
+    items: visibleRates.filter(
       (r) => g.serviceTypes.includes(r.service_type) && r.available
     ),
   })).filter((g) => g.items.length > 0);
 
-  const disabledRates = rates.filter((r) => !r.available);
-  const noResult = !loading && !error && rates.length === 0;
+  const disabledRates = visibleRates.filter((r) => !r.available);
+  const noResult = !loading && !error && visibleRates.length === 0;
   const selfPickupSelected = isSelfPickupMethod(selected?.courier_code);
 
   return (
