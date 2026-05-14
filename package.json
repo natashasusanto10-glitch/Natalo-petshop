@@ -61,6 +61,8 @@
     "@prisma/client": "6.19.0",
     "@react-google-maps/api": "^2.20.8",
     "@types/bcryptjs": "^2.4.6",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.38.0",
     "bcryptjs": "^3.0.3",
     "firebase-admin": "^13.9.0",
     "jose": "^6.2.3",

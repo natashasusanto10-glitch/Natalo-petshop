@@ -1,6 +1,26 @@
-# TODO — Persisted Rate Limiter (Production Hardening)
+# Persisted Rate Limiter — Implemented via Upstash Redis
 
-**Status:** Pending — butuh provisioning external store (Upstash Redis / Vercel KV / Postgres row).
+**Status:** ✅ Resolved — sudah migrate ke Upstash Redis via `lib/rate-limit.ts`.
+
+**Implementation summary:**
+- `lib/rate-limit.ts` — helper dengan graceful fallback kalau env vars belum di-set
+- `getLoginLimiter()` — sliding window 10 attempts / 15 min (member-login + admin-login)
+- `getOtpLimiter()` — sliding window 5 attempts / 10 min (register OTP + forgot-password)
+- `forgot-password` juga punya layer DB-based per-user limit (3/jam) di atas IP-based limit
+
+**Env vars (set di Vercel):**
+```
+UPSTASH_REDIS_REST_URL=https://xxxxx.upstash.io
+UPSTASH_REDIS_REST_TOKEN=AaaaXXXXX...
+```
+
+Kalau env vars tidak di-set, limiter fallback ke no-op (allow all) supaya dev local tidak block.
+
+---
+
+## Original Brief (historical, for reference)
+
+**Original status:** Pending — butuh provisioning external store (Upstash Redis / Vercel KV / Postgres row).
 
 **Affected endpoints (currently in-memory rate limit via module-level `Map`):**
 

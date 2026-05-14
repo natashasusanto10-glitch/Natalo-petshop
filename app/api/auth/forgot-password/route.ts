@@ -12,12 +12,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { sendPasswordResetEmail } from "@/lib/email";
+import { checkLimit, getClientIp, getOtpLimiter } from "@/lib/rate-limit";
 
 const TOKEN_TTL_MS = 60 * 60 * 1000; // 1 jam
 const RATE_LIMIT_PER_HOUR = 3;
 
 export async function POST(request: NextRequest) {
   try {
+    // IP-based limit (extra layer di atas per-user DB limit). Mencegah
+    // attacker spam endpoint dengan random email untuk enumeration timing.
+    const ip = getClientIp(request.headers);
+    const gate = await checkLimit(getOtpLimiter(), `forgot-password:${ip}`);
+    if (!gate.ok) {
+      return NextResponse.json(
+        { error: "Terlalu banyak permintaan reset password. Coba lagi nanti." },
+        { status: 429, headers: { "Retry-After": String(gate.retryAfter) } },
+      );
+    }
+
     const body = await request.json().catch(() => ({}));
     const email = String(body.email ?? "").trim().toLowerCase();
 

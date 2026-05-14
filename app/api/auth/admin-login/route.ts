@@ -5,63 +5,24 @@ import {
   getSessionCookieOptions,
 } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { checkLimit, getClientIp, getLoginLimiter } from "@/lib/rate-limit";
 import { createHash, timingSafeEqual } from "crypto";
-
-// TODO: Migrate ke persisted rate limiter. In-memory Map bypass-able via
-// serverless multi-instance load balancing. Lihat docs/RATE_LIMIT_TODO.md.
-type Bucket = { count: number; resetAt: number };
-
-const buckets = new Map<string, Bucket>();
-const MAX_ATTEMPTS = 5;
-const WINDOW_MS = 15 * 60_000;
 
 function safeCompare(a: string, b: string) {
   const hash = (s: string) => createHash("sha256").update(s).digest();
   return timingSafeEqual(hash(a), hash(b));
 }
 
-function getKey(request: NextRequest) {
-  const ip =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    request.headers.get("x-real-ip") ??
-    "unknown";
-  return `admin-login:${ip}`;
-}
-
-function checkRateLimit(key: string) {
-  const now = Date.now();
-  const bucket = buckets.get(key);
-
-  if (!bucket || bucket.resetAt < now) {
-    buckets.set(key, { count: 0, resetAt: now + WINDOW_MS });
-    return { ok: true };
-  }
-
-  if (bucket.count >= MAX_ATTEMPTS) {
-    return {
-      ok: false,
-      retryAfter: Math.ceil((bucket.resetAt - now) / 1000),
-    };
-  }
-
-  return { ok: true };
-}
-
-function recordFailure(key: string) {
-  const bucket = buckets.get(key);
-  if (bucket) bucket.count += 1;
-}
-
 export async function POST(request: NextRequest) {
-  const rateLimitKey = getKey(request);
-  const gate = checkRateLimit(rateLimitKey);
+  const ip = getClientIp(request.headers);
+  const gate = await checkLimit(getLoginLimiter(), `admin-login:${ip}`);
   if (!gate.ok) {
     return NextResponse.json(
       { error: "Terlalu banyak percobaan. Coba lagi nanti." },
       {
         status: 429,
         headers: { "Retry-After": String(gate.retryAfter) },
-      }
+      },
     );
   }
 
@@ -74,7 +35,7 @@ export async function POST(request: NextRequest) {
   if (!adminEmail || !adminPassword) {
     return NextResponse.json(
       { error: "Admin belum dikonfigurasi di .env" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 
@@ -82,10 +43,11 @@ export async function POST(request: NextRequest) {
   const passOk = safeCompare(password ?? "", adminPassword);
 
   if (!emailOk || !passOk) {
-    recordFailure(rateLimitKey);
+    // Sliding-window di Upstash sudah counter setiap call ke limiter,
+    // jadi tidak perlu manual recordFailure (limit auto-track per request).
     return NextResponse.json(
       { error: "Username/email/no. HP atau password salah" },
-      { status: 401 }
+      { status: 401 },
     );
   }
 
@@ -110,7 +72,6 @@ export async function POST(request: NextRequest) {
     name: admin.name,
     tv: admin.tokenVersion,
   });
-  buckets.delete(rateLimitKey);
 
   const response = NextResponse.json({ ok: true });
   response.cookies.set(

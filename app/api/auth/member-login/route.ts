@@ -2,36 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createSessionToken, getSessionCookieOptions, MEMBER_SESSION_COOKIE } from "@/lib/auth";
 import { normalizeIndonesianPhone } from "@/lib/phone";
+import { checkLimit, getClientIp, getLoginLimiter } from "@/lib/rate-limit";
 import bcrypt from "bcryptjs";
 import type { User } from "@prisma/client";
-
-// TODO: Migrate ke persisted rate limiter (Upstash Redis / Vercel KV /
-// Postgres row). In-memory Map tidak survive serverless cold start +
-// bisa di-bypass via multi-instance load balancing. Lihat
-// docs/RATE_LIMIT_TODO.md untuk implementation steps.
-type Bucket = { count: number; resetAt: number };
-const buckets = new Map<string, Bucket>();
-const MAX_ATTEMPTS = 10;
-const WINDOW_MS = 15 * 60_000;
-
-function checkRateLimit(request: NextRequest): { ok: boolean; retryAfter?: number } {
-  const ip =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    request.headers.get("x-real-ip") ??
-    "unknown";
-  const key = `member-login:${ip}`;
-  const now = Date.now();
-  const bucket = buckets.get(key);
-  if (!bucket || bucket.resetAt < now) {
-    buckets.set(key, { count: 1, resetAt: now + WINDOW_MS });
-    return { ok: true };
-  }
-  if (bucket.count >= MAX_ATTEMPTS) {
-    return { ok: false, retryAfter: Math.ceil((bucket.resetAt - now) / 1000) };
-  }
-  bucket.count += 1;
-  return { ok: true };
-}
 
 function getPhoneCandidates(identifier: string) {
   const digits = identifier.replace(/\D/g, "");
@@ -58,11 +31,12 @@ function getPhoneCandidates(identifier: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const gate = checkRateLimit(request);
+  const ip = getClientIp(request.headers);
+  const gate = await checkLimit(getLoginLimiter(), `member-login:${ip}`);
   if (!gate.ok) {
     return NextResponse.json(
       { error: "Terlalu banyak percobaan login. Coba lagi nanti." },
-      { status: 429, headers: { "Retry-After": String(gate.retryAfter) } }
+      { status: 429, headers: { "Retry-After": String(gate.retryAfter) } },
     );
   }
 

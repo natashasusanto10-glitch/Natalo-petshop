@@ -4,44 +4,15 @@ import { prisma } from "@/lib/prisma";
 import { normalizeIndonesianPhone } from "@/lib/phone";
 import { sendRegistrationOtpEmail } from "@/lib/email";
 import { sendCustomMessage } from "@/lib/whatsapp";
+import {
+  checkLimit,
+  getClientIp as getClientIpFromHeaders,
+  getOtpLimiter,
+} from "@/lib/rate-limit";
 import bcrypt from "bcryptjs";
 
-// TODO: Migrate ke persisted rate limiter. In-memory Map bypass-able via
-// serverless multi-instance load balancing — attacker bisa spam OTP send
-// (burn Fonnte WA quota) + email send (burn Resend quota). Lihat
-// docs/RATE_LIMIT_TODO.md untuk Upstash Redis / Vercel KV setup.
-type Bucket = { count: number; resetAt: number };
-
-const buckets = new Map<string, Bucket>();
-const WINDOW_MS = 10 * 60_000;
-const MAX_REQUESTS = 5;
 const OTP_EXPIRES_MS = 10 * 60_000;
 const MAX_VERIFY_ATTEMPTS = 5;
-
-function getClientIp(request: NextRequest) {
-  return (
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    request.headers.get("x-real-ip") ??
-    "unknown"
-  );
-}
-
-function checkRateLimit(key: string) {
-  const now = Date.now();
-  const bucket = buckets.get(key);
-
-  if (!bucket || bucket.resetAt < now) {
-    buckets.set(key, { count: 1, resetAt: now + WINDOW_MS });
-    return { ok: true };
-  }
-
-  if (bucket.count >= MAX_REQUESTS) {
-    return { ok: false, retryAfter: Math.ceil((bucket.resetAt - now) / 1000) };
-  }
-
-  bucket.count += 1;
-  return { ok: true };
-}
 
 function generateOtp() {
   return String(randomInt(100000, 1000000));
@@ -214,12 +185,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, registered: true });
   }
 
-  const rateKey = `member-register-otp:${getClientIp(request)}:${payload.email}:${payload.phone}`;
-  const gate = checkRateLimit(rateKey);
+  const ip = getClientIpFromHeaders(request.headers);
+  const rateKey = `register-otp:${ip}:${payload.email}:${payload.phone}`;
+  const gate = await checkLimit(getOtpLimiter(), rateKey);
   if (!gate.ok) {
     return NextResponse.json(
       { error: "Terlalu banyak permintaan OTP. Coba lagi nanti." },
-      { status: 429, headers: { "Retry-After": String(gate.retryAfter) } }
+      { status: 429, headers: { "Retry-After": String(gate.retryAfter) } },
     );
   }
 
