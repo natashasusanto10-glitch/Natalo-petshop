@@ -33,6 +33,7 @@ import { prisma } from "@/lib/prisma";
 import { sendPushToUser, type PushPayload } from "@/lib/push";
 import { sendApnsToUser } from "@/lib/apns";
 import { sendFcmToUser } from "@/lib/fcm";
+import { assertSameOrigin } from "@/lib/csrf";
 
 const broadcastSchema = z.object({
   title: z.string().trim().min(1).max(60),
@@ -52,6 +53,8 @@ const BATCH_SIZE = 50;
 export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
+  const csrfReject = assertSameOrigin(request);
+  if (csrfReject) return csrfReject;
   try {
     return await handle(request);
   } catch (err) {

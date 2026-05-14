@@ -26,11 +26,32 @@ import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { assertSameOrigin } from "@/lib/csrf";
 
 // Beri timeout lebih untuk eksekusi cascade delete pada dataset besar.
 export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
+  // Defense-in-depth: production butuh env flag ALLOW_DESTRUCTIVE_RESET=true
+  // untuk arm endpoint ini. Tanpa flag, walau admin cookie dicuri, endpoint
+  // tetap return 503. Set flag sementara untuk maintenance window, lalu
+  // hapus lagi setelah selesai.
+  if (
+    process.env.NODE_ENV === "production" &&
+    process.env.ALLOW_DESTRUCTIVE_RESET !== "true"
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "Reset endpoint disabled di production. Admin set ALLOW_DESTRUCTIVE_RESET=true di Vercel untuk enable sementara.",
+      },
+      { status: 503 },
+    );
+  }
+
+  const csrfReject = assertSameOrigin(request);
+  if (csrfReject) return csrfReject;
+
   const session = await getSession("ADMIN");
   if (!session || session.role !== "ADMIN") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
