@@ -10,6 +10,7 @@ import { addItemToCart } from "@/lib/cart-actions";
 import { getWishlistItems, WishlistButton } from "@/components/WishlistButton";
 import { AddToCartBottomSheet } from "@/components/AddToCartBottomSheet";
 import { StickyBackTitle } from "@/components/StickyBackTitle";
+import { EmptyWishlistLottie } from "@/components/wishlist/EmptyWishlistLottie";
 import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
 
 const RECENT_STORAGE_KEY = "nat-recent-product-views";
@@ -310,10 +311,16 @@ export default function WishlistPage() {
 
       {items.length === 0 ? (
         <>
-          <div className="mt-8 rounded-2xl border border-dashed border-gray-200 bg-white p-8 text-center md:p-16">
-            <p className="text-4xl font-black text-gray-200">NP</p>
-            <p className="mt-4 font-semibold text-gray-500">
-              Simpan produk favoritmu agar mudah ditemukan lagi nanti.
+          <div className="mt-8 rounded-2xl border border-blue-100 bg-white p-6 text-center shadow-[0_12px_34px_rgba(15,23,42,0.06)] md:p-10">
+            <EmptyWishlistLottie />
+            <h2 className="text-xl font-black leading-tight text-[#07112F]">
+              Wishlist kamu masih kosong
+            </h2>
+            <p className="mx-auto mt-2 max-w-md text-sm font-semibold leading-relaxed text-gray-500">
+              Simpan makanan, vitamin, pasir, atau perlengkapan favorit agar mudah dibeli lagi nanti.
+            </p>
+            <p className="mt-3 text-xs font-bold text-[#6B7280]">
+              Tekan ikon hati pada produk yang kamu suka.
             </p>
             <Link
               href="/products"
