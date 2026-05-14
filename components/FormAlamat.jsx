@@ -288,6 +288,68 @@ function LocationPicker({ open, value, onClose, onApply }) {
   });
   const [manualPostalCode, setManualPostalCode] = useState(value.kodePos || "");
 
+  const [dragY, setDragY] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [snapping, setSnapping] = useState(false);
+  const dragStartYRef = useRef(0);
+  const dragYRef = useRef(0);
+  const draggingRef = useRef(false);
+
+  function startDrag(target, clientY) {
+    if (target && target.closest && target.closest("button, a, input, textarea")) return;
+    dragStartYRef.current = clientY;
+    dragYRef.current = 0;
+    draggingRef.current = true;
+    setDragging(true);
+    setSnapping(false);
+    setDragY(0);
+  }
+  function moveDrag(clientY) {
+    if (!draggingRef.current) return;
+    const dy = Math.max(0, clientY - dragStartYRef.current);
+    dragYRef.current = dy;
+    setDragY(dy);
+  }
+  function endDrag() {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    setDragging(false);
+    if (dragYRef.current >= 120) {
+      onClose();
+      return;
+    }
+    setSnapping(true);
+    dragYRef.current = 0;
+    setDragY(0);
+    setTimeout(() => setSnapping(false), 280);
+  }
+  function onTouchStart(e) {
+    const t = e.touches[0];
+    if (!t) return;
+    startDrag(e.target, t.clientY);
+  }
+  function onTouchMove(e) {
+    const t = e.touches[0];
+    if (!t) return;
+    moveDrag(t.clientY);
+    if (draggingRef.current && dragYRef.current > 0 && e.cancelable) e.preventDefault();
+  }
+  function onMouseDown(e) {
+    if (e.button !== 0) return;
+    startDrag(e.target, e.clientY);
+  }
+  useEffect(() => {
+    if (!dragging) return;
+    const mm = (e) => moveDrag(e.clientY);
+    const mu = () => endDrag();
+    document.addEventListener("mousemove", mm);
+    document.addEventListener("mouseup", mu);
+    return () => {
+      document.removeEventListener("mousemove", mm);
+      document.removeEventListener("mouseup", mu);
+    };
+  }, [dragging]);
+
   useEffect(() => {
     if (!open) return;
     setStep("provinsi");
@@ -368,8 +430,28 @@ function LocationPicker({ open, value, onClose, onApply }) {
   return (
     <div className="fixed inset-0 z-[2100] bg-slate-950/40">
       <button type="button" aria-label="Tutup picker wilayah" className="absolute inset-0" onClick={onClose} />
-      <section className="absolute inset-x-0 bottom-0 max-h-[86dvh] rounded-t-[28px] bg-white shadow-2xl">
-        <div className="mx-auto h-1.5 w-12 rounded-full bg-slate-200 mt-3" />
+      <section
+        className="absolute inset-x-0 bottom-0 max-h-[86dvh] rounded-t-[28px] bg-white shadow-2xl"
+        style={{
+          touchAction: "pan-y",
+          transform: dragging || snapping ? `translate3d(0, ${dragY}px, 0)` : undefined,
+          transition: dragging
+            ? "none"
+            : snapping
+              ? "transform 280ms cubic-bezier(0.34, 1.26, 0.64, 1)"
+              : undefined,
+        }}
+      >
+        <div
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={endDrag}
+          onTouchCancel={endDrag}
+          onMouseDown={onMouseDown}
+          className="cursor-grab touch-pan-y select-none pt-3 active:cursor-grabbing"
+        >
+          <div className="mx-auto h-1.5 w-12 rounded-full bg-slate-200" />
+        </div>
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-4">
           <div>
             <p className="text-base font-black text-slate-950">Pilih Wilayah</p>
