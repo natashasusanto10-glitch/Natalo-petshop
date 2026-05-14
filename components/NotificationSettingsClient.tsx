@@ -82,6 +82,10 @@ type ClientDiagnostic = {
   vapidPublicConfigured: boolean;
   currentTokenHint: string | null;
   tokenSource: "fresh-register" | "no-token" | "error" | "n/a";
+  /** registrationError dari Capacitor — kalau ini ada, AppDelegate forwarding broken atau APNs registration failing. */
+  registrationError?: string;
+  /** Berapa lama wait sebelum timeout — biar bisa adjust kalau perlu. */
+  waitMs?: number;
   error?: string;
 };
 
@@ -131,8 +135,13 @@ export function NotificationSettingsClient() {
         diag.notificationPermission = perm.receive;
 
         if (perm.receive === "granted") {
-          // Call register() and capture token via listener. Timeout 10s.
+          // Call register() and capture token via listener. Wait 15s — iOS
+          // pertama kali register kadang lambat (kompiler APNs handshake).
           let token: string | null = null;
+          let regError: string | null = null;
+          const WAIT_MS = 15000;
+          diag.waitMs = WAIT_MS;
+
           const tokenHandle = await PushNotifications.addListener(
             "registration",
             (t) => {
@@ -141,15 +150,34 @@ export function NotificationSettingsClient() {
           );
           const errorHandle = await PushNotifications.addListener(
             "registrationError",
-            () => {},
+            (err) => {
+              // err shape: { error: string }
+              regError =
+                (err as { error?: string })?.error ?? JSON.stringify(err);
+            },
           );
           try {
             await PushNotifications.register();
-          } catch {}
-          await new Promise<void>((r) => setTimeout(r, 5000));
+          } catch (e) {
+            regError = e instanceof Error ? e.message : String(e);
+          }
+          // Resolve early kalau token/error sudah masuk.
+          await new Promise<void>((resolve) => {
+            const start = Date.now();
+            const check = () => {
+              if (token || regError) return resolve();
+              if (Date.now() - start >= WAIT_MS) return resolve();
+              setTimeout(check, 250);
+            };
+            check();
+          });
           await tokenHandle.remove().catch(() => {});
           await errorHandle.remove().catch(() => {});
-          if (token) {
+
+          if (regError) {
+            diag.registrationError = regError;
+            diag.tokenSource = "error";
+          } else if (token) {
             const t = token as string;
             diag.currentTokenHint = `${t.slice(0, 8)}…${t.slice(-6)}`;
             diag.tokenSource = "fresh-register";
