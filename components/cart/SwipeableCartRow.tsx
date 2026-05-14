@@ -151,8 +151,10 @@ export function SwipeableCartRow({ onDelete, disabled, children }: Props) {
   }
 
   function handleBackdropClick() {
-    // Tap di luar row saat terbuka → tutup
-    if (isOpen) {
+    // Tap di foreground saat terbuka → tutup. Guard tambahan `dragX !== 0`
+    // mencegah edge case isOpen=true tapi dragX sudah 0 (state out-of-sync
+    // race) yang triggers unnecessary re-render + frame jump.
+    if (isOpen && dragX !== 0) {
       setDragX(0);
       setIsOpen(false);
     }

@@ -288,12 +288,23 @@ export default function CartPage() {
 
   useEffect(() => {
     if (!manualQuantity) return;
-    const id = window.setTimeout(() => {
-      quantityInputRef.current?.focus();
-      quantityInputRef.current?.select();
-    }, 120);
+    // Chain dua rAF supaya focus dijalankan SETELAH dialog mount + paint.
+    // Sebelumnya pakai setTimeout 120ms brittle — kadang fire sebelum
+    // dialog visible (input fokus tapi keyboard tidak muncul di iOS),
+    // kadang fire setelah user sudah tap ke layar (focus lost).
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        quantityInputRef.current?.focus();
+        quantityInputRef.current?.select();
+      });
+    });
 
-    return () => window.clearTimeout(id);
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
   }, [manualQuantity]);
 
   useEffect(() => {
@@ -316,28 +327,47 @@ export default function CartPage() {
   }
 
   function removeItemWithUndo(item: CartItem) {
-    const targetKey = cartKey(item);
-    const originalIndex = items.findIndex((cartItem) => cartKey(cartItem) === targetKey);
-    if (originalIndex === -1) return;
+    removeItemsWithUndo([item]);
+  }
 
-    const wasSelected = selectedKeys.has(targetKey);
-    const deletedEntry: PendingDeletedItem = {
-      id: deleteIdRef.current + 1,
-      item,
-      key: targetKey,
-      index: originalIndex,
-      selected: wasSelected,
-    };
-    deleteIdRef.current = deletedEntry.id;
+  /**
+   * Hapus banyak item sekaligus dengan undo snackbar — pattern dipakai oleh
+   * - Single trash button (via removeItemWithUndo)
+   * - Swipe-to-delete (via handleSwipeDelete → removeItemWithUndo)
+   * - Bulk delete dari modal "Hapus Semua / Hapus Terpilih"
+   *
+   * Sebelumnya bulk delete commit langsung ke persist() tanpa entry di
+   * pendingDeletedItems → undo snackbar tidak muncul, user tidak bisa
+   * undo kalau salah pencet. Sekarang konsisten lewat satu jalur.
+   */
+  function removeItemsWithUndo(toDelete: CartItem[]) {
+    if (toDelete.length === 0) return;
+
+    const deletedEntries: PendingDeletedItem[] = [];
+    for (const item of toDelete) {
+      const targetKey = cartKey(item);
+      const originalIndex = items.findIndex((cartItem) => cartKey(cartItem) === targetKey);
+      if (originalIndex === -1) continue;
+      deleteIdRef.current = deleteIdRef.current + 1;
+      deletedEntries.push({
+        id: deleteIdRef.current,
+        item,
+        key: targetKey,
+        index: originalIndex,
+        selected: selectedKeys.has(targetKey),
+      });
+    }
+    if (deletedEntries.length === 0) return;
 
     hapticWarning();
-    setPendingDeletedItems((current) => [...current, deletedEntry]);
+    setPendingDeletedItems((current) => [...current, ...deletedEntries]);
+    const deletedKeySet = new Set(deletedEntries.map((entry) => entry.key));
     setSelectedKeys((current) => {
       const nextSelected = new Set(current);
-      nextSelected.delete(targetKey);
+      for (const key of deletedKeySet) nextSelected.delete(key);
       return nextSelected;
     });
-    persist(items.filter((cartItem) => cartKey(cartItem) !== targetKey));
+    persist(items.filter((cartItem) => !deletedKeySet.has(cartKey(cartItem))));
     restartUndoTimer();
   }
 
@@ -487,9 +517,8 @@ export default function CartPage() {
 
   function removeSelected() {
     if (selectedKeys.size === 0) return;
-    const next = items.filter((item) => !selectedKeys.has(cartKey(item)));
-    setSelectedKeys(new Set());
-    persist(next);
+    const toDelete = items.filter((item) => selectedKeys.has(cartKey(item)));
+    removeItemsWithUndo(toDelete);
   }
 
   // Swipe-to-delete memakai snackbar undo yang sama dengan tombol trash kecil.
@@ -518,21 +547,13 @@ export default function CartPage() {
     setIsDeleting(true);
     hapticSuccess();
     try {
+      // Route lewat removeItemsWithUndo — sama mekanisme dengan single-row
+      // trash button, jadi undo snackbar muncul untuk bulk delete juga.
       if (deleteMode === "single" && targetItem) {
-        // Hapus item single — pakai cartKey + remove via filter (sama
-        // pattern dgn updateQty(0) tapi tanpa side-effect quantity).
-        const targetKey = cartKey(targetItem);
-        const next = items.filter((item) => cartKey(item) !== targetKey);
-        setSelectedKeys((current) => {
-          const nextSelected = new Set(current);
-          nextSelected.delete(targetKey);
-          return nextSelected;
-        });
-        persist(next);
+        removeItemsWithUndo([targetItem]);
       } else if (deleteMode === "selected") {
-        const next = items.filter((item) => !selectedKeys.has(cartKey(item)));
-        setSelectedKeys(new Set());
-        persist(next);
+        const toDelete = items.filter((item) => selectedKeys.has(cartKey(item)));
+        removeItemsWithUndo(toDelete);
       }
       setIsDeleteModalOpen(false);
       setDeleteMode(null);
@@ -738,7 +759,10 @@ export default function CartPage() {
                             <p className="mt-0.5 text-xs font-semibold text-gray-400">
                               Subtotal {formatRupiah(lineTotal)}
                             </p>
-                            {item.stock != null && (
+                            {/* Hanya tampilkan label "Stok N" kalau stok benar-benar low
+                                (≤ 10). Sebelumnya selalu render bahkan "Stok 999" yang
+                                duplicate dengan "Tersisa X dari Y stok" di line bawah. */}
+                            {item.stock != null && item.stock > 0 && item.stock <= 10 && !showStockWarning && (
                               <p className="mt-0.5 text-[11px] font-semibold text-amber-600">
                                 Stok {item.stock}
                               </p>
@@ -958,6 +982,10 @@ export default function CartPage() {
           <div
             role="status"
             aria-live="polite"
+            // aria-atomic="true" → screen reader baca ulang seluruh region
+            // sebagai pesan tunggal alih-alih spam "1 produk dihapus",
+            // "2 produk dihapus", "3 produk dihapus" tiap delete.
+            aria-atomic="true"
             className="pointer-events-auto mx-auto flex max-w-3xl items-center gap-3 rounded-2xl bg-slate-950 px-4 py-3 text-sm shadow-2xl"
           >
             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-500 text-white">

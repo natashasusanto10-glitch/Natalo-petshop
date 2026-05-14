@@ -27,7 +27,9 @@ export function ProductCard({
   const isCompact = variant === "compact";
   const outOfStock = product.stock <= 0;
   const productHref = `/products/${product.slug}`;
-  const discountPercent = hasMarkdown
+  // Guard price=0 → division by zero → Infinity%. Edge case: produk
+  // gratis / promo. Tetap render 0% supaya badge "diskon" tidak nyala.
+  const discountPercent = hasMarkdown && product.price > 0
     ? Math.max(1, Math.round(((product.price - displayPrice) / product.price) * 100))
     : 0;
 
