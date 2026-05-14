@@ -14,6 +14,7 @@ import { ExternalLink } from "@/components/ExternalLink";
 import { trackSuccessfulOrder } from "@/lib/app-rating";
 import { PageStatusBar } from "@/components/PageStatusBar";
 import { ReviewModal } from "@/components/ReviewModal";
+import { StickyBackTitle } from "@/components/StickyBackTitle";
 import { SELF_PICKUP_STORE } from "@/lib/self-pickup";
 
 const BANK_ACCOUNTS: Record<
@@ -248,27 +249,7 @@ function OrderFollowUpCard({
   onReview: (item: SerializedOrderDetail["items"][number]) => void;
 }) {
   if (order.status === "DELIVERED") {
-    return (
-      <div className="rounded-3xl border border-green-100 bg-green-50 p-5">
-        <p className="text-sm font-black text-green-800">Pesanan Selesai</p>
-        <p className="mt-2 text-sm leading-6 text-green-700">
-          {reviewableItem
-            ? "Yuk beri ulasan untuk produk di pesanan ini."
-            : canReview
-            ? "Terima kasih, semua produk di pesanan ini sudah direview."
-            : "Terima kasih sudah berbelanja di Natalo Petshop."}
-        </p>
-        {reviewableItem && (
-          <button
-            type="button"
-            onClick={() => onReview(reviewableItem)}
-            className="mt-4 inline-flex w-full items-center justify-center rounded-full bg-green-700 px-5 py-3 text-sm font-black text-white hover:bg-green-800"
-          >
-            Beri Ulasan Produk
-          </button>
-        )}
-      </div>
-    );
+    return null;
   }
 
   if (order.status === "CANCELLED") {
@@ -436,34 +417,20 @@ export function OrderDetailView({
       // scroll-away di mobile (header non-home tidak sticky), supaya status
       // bar tidak menimpa konten teratas (mis. nomor pesanan, alamat). Di
       // desktop md: layout pakai py-10 default — env() jadi 0 di non-PWA.
-      className="min-h-dvh bg-gray-50 [padding-bottom:calc(1.25rem+env(safe-area-inset-bottom))] [padding-top:env(safe-area-inset-top)]"
+      className="min-h-dvh bg-gray-50 [padding-bottom:calc(1.25rem+env(safe-area-inset-bottom))]"
     >
       <PageStatusBar iconColor="dark" themeColor="#f8fafc" />
-      <div className="mx-auto max-w-4xl px-4 pb-24 pt-4 md:py-10">
+      <StickyBackTitle
+        label="Detail Pesanan"
+        fallbackHref="/member/orders"
+        stickToTop
+      />
+      <div className="mx-auto w-full max-w-4xl px-4 pb-24 pt-5 md:pt-6">
         {copyMsg && (
           <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-full bg-gray-950 px-4 py-2 text-xs font-bold text-white shadow-lg md:bottom-6">
             {copyMsg}
           </div>
         )}
-
-        <div className="sticky top-0 z-30 -mx-4 border-b border-gray-100 bg-gray-50/95 px-4 pb-3 pt-3 backdrop-blur md:static md:mx-0 md:border-0 md:bg-transparent md:px-0 md:pb-0 md:pt-0">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">
-                Pesanan Saya
-              </p>
-              <h1 className="mt-1 truncate text-xl font-black tracking-tight text-gray-950 md:text-3xl">
-                Detail Pesanan
-              </h1>
-            </div>
-            <Link
-              href="/member/orders"
-              className="shrink-0 rounded-full border border-gray-200 bg-white px-4 py-2 text-xs font-bold text-gray-700 hover:border-blue-300 hover:text-blue-700"
-            >
-              Pesanan Saya
-            </Link>
-          </div>
-        </div>
 
         {refreshError && (
           <p className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-700">
@@ -471,15 +438,15 @@ export function OrderDetailView({
           </p>
         )}
 
-        <div className="mt-5 grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
           <div className="space-y-5">
             <div className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
+                <div className="min-w-0 flex-1">
                   <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">
                     Nomor Pesanan
                   </p>
-                  <p className="mt-1 text-xl font-black text-gray-950">
+                  <p className="mt-1 break-all text-xl font-black text-gray-950">
                     {order.orderNumber}
                   </p>
                   <p className="mt-1 text-sm text-gray-500">{tanggal}</p>

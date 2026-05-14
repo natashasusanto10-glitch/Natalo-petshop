@@ -72,6 +72,7 @@ export function Header() {
     currentPath === "/member/vouchers" ||
     currentPath === "/account/loyalty/redeem";
   const isProductDetail = /^\/products\/[^/]+$/.test(currentPath);
+  const isOrderDetail = /^\/pesanan\/[^/]+$/.test(currentPath);
   const isCheckoutAddressPicker = currentPath === "/checkout/addresses";
   const authTitle = AUTH_PATHS[currentPath];
   const isAuthPage = authTitle !== undefined;
@@ -170,7 +171,8 @@ export function Header() {
     isNotificationCenter ||
     isFocusedAccountPage ||
     isAccountSubPageWithoutBrandHeader ||
-    isCheckoutAddressPicker
+    isCheckoutAddressPicker ||
+    isOrderDetail
   ) return null;
 
   // Auth pages — render minimal header: back button + title saja. Bottom nav,
