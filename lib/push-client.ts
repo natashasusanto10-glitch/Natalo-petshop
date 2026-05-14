@@ -240,18 +240,31 @@ export async function registerWebPushForCurrentUser(
     !("serviceWorker" in navigator) ||
     !("PushManager" in window)
   ) {
+    void logTrace("web-unsupported", {
+      hasSW: typeof window !== "undefined" && "serviceWorker" in navigator,
+      hasPushManager: typeof window !== "undefined" && "PushManager" in window,
+    });
     return "unsupported";
   }
 
   const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-  if (!vapidKey) return "unsupported";
+  if (!vapidKey) {
+    void logTrace("web-no-vapid-key");
+    return "unsupported";
+  }
 
   try {
+    void logTrace("web-start", { prompt });
+
     if ("Notification" in window) {
-      if (Notification.permission === "denied") return "denied";
+      if (Notification.permission === "denied") {
+        void logTrace("web-permission-denied");
+        return "denied";
+      }
       if (Notification.permission === "default") {
         if (!prompt) return "prompt";
         const nextPermission = await Notification.requestPermission();
+        void logTrace("web-permission-requested", { result: nextPermission });
         if (nextPermission !== "granted") {
           return nextPermission === "denied" ? "denied" : "prompt";
         }
@@ -259,24 +272,39 @@ export async function registerWebPushForCurrentUser(
     }
 
     const registration = await navigator.serviceWorker.ready;
+    void logTrace("web-sw-ready");
     let subscription = await registration.pushManager.getSubscription();
+    void logTrace("web-existing-sub", { exists: !!subscription });
 
     if (!subscription) {
-      subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapidKey),
-      });
+      try {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(vapidKey),
+        });
+        void logTrace("web-subscribed-new");
+      } catch (subErr) {
+        void logTrace("web-subscribe-error", { error: String(subErr) });
+        throw subErr;
+      }
     }
 
-    await fetch("/api/push/subscribe", {
+    const json = subscription.toJSON();
+    void logTrace("web-posting", {
+      hasEndpoint: !!json.endpoint,
+      hasKeys: !!json.keys,
+    });
+    const res = await fetch("/api/push/subscribe", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify(subscription.toJSON()),
+      body: JSON.stringify(json),
     });
+    void logTrace("web-post-result", { status: res.status, ok: res.ok });
 
     return "registered";
-  } catch {
+  } catch (err) {
+    void logTrace("web-error", { error: String(err) });
     return "error";
   }
 }
