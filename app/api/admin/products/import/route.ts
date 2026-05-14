@@ -153,109 +153,123 @@ export async function POST(request: NextRequest) {
     const description = generateDescription(prod);
 
     try {
-      const product = await prisma.product.upsert({
-        where: { slug: prod.slug },
-        update: {
-          name: prod.name,
-          price: prod.price,
-          stock: prod.stock,
-          weightGram: prod.weightGram,
-          hasVariants: prod.hasVariants,
-          isActive: prod.stock > 0,
-          categoryId,
-          brandId,
-          brandAutoAssigned: true,
-        },
-        create: {
-          name: prod.name,
-          slug: prod.slug,
-          description,
-          price: prod.price,
-          stock: prod.stock,
-          weightGram: prod.weightGram,
-          hasVariants: prod.hasVariants,
-          isActive: prod.stock > 0,
-          categoryId,
-          brandId,
-          brandAutoAssigned: true,
-        },
-      });
-      changedProductIds.add(product.id);
-
-      if (prod.hasVariants && prod.variants.length > 0) {
-        let attr = await prisma.variantAttribute.findFirst({
-          where: { productId: product.id, name: "Varian" },
+      // Wrap per-product dalam transaction supaya kalau salah satu step
+      // gagal (mis. SKU collision di variant), product row + variant
+      // partial-nya tidak commit. Sebelumnya semua upsert sequential di
+      // luar tx → bisa partial commit kalau function timeout mid-product.
+      const localVariantsUpserted = await prisma.$transaction(async (tx) => {
+        const product = await tx.product.upsert({
+          where: { slug: prod.slug },
+          update: {
+            name: prod.name,
+            price: prod.price,
+            stock: prod.stock,
+            weightGram: prod.weightGram,
+            hasVariants: prod.hasVariants,
+            isActive: prod.stock > 0,
+            categoryId,
+            // brandAutoAssigned TIDAK di-set di update branch — hanya
+            // di create. Sebelumnya overwrite manual brand assignment
+            // admin tiap import dijalankan.
+            brandId,
+          },
+          create: {
+            name: prod.name,
+            slug: prod.slug,
+            description,
+            price: prod.price,
+            stock: prod.stock,
+            weightGram: prod.weightGram,
+            hasVariants: prod.hasVariants,
+            isActive: prod.stock > 0,
+            categoryId,
+            brandId,
+            brandAutoAssigned: true,
+          },
         });
-        if (!attr) {
-          attr = await prisma.variantAttribute.create({
-            data: { productId: product.id, name: "Varian", position: 0 },
-          });
-        }
+        changedProductIds.add(product.id);
 
-        for (let i = 0; i < prod.variants.length; i++) {
-          const v = prod.variants[i];
-          const label = v.label || `Varian ${i + 1}`;
-
-          let opt = await prisma.variantOption.findFirst({
-            where: { attributeId: attr.id, value: label },
+        let localCount = 0;
+        if (prod.hasVariants && prod.variants.length > 0) {
+          let attr = await tx.variantAttribute.findFirst({
+            where: { productId: product.id, name: "Varian" },
           });
-          if (!opt) {
-            opt = await prisma.variantOption.create({
-              data: { attributeId: attr.id, value: label, position: i },
+          if (!attr) {
+            attr = await tx.variantAttribute.create({
+              data: { productId: product.id, name: "Varian", position: 0 },
             });
           }
 
-          const sku = `${prod.slug}-${label
-            .toLowerCase()
-            .replace(/\s+/g, "-")
-            .replace(/[^a-z0-9-]/g, "")
-            .slice(0, 30)}`;
+          for (let i = 0; i < prod.variants.length; i++) {
+            const v = prod.variants[i];
+            const label = v.label || `Varian ${i + 1}`;
 
-          const pv = await prisma.productVariant.upsert({
-            where: { sku },
-            update: {
-              price: v.price,
-              stock: v.stock,
-              weightGram: v.weightGram,
-              isActive: v.stock > 0,
-            },
-            create: {
-              productId: product.id,
-              sku,
-              price: v.price,
-              stock: v.stock,
-              weightGram: v.weightGram,
-              isActive: v.stock > 0,
-            },
-          });
+            let opt = await tx.variantOption.findFirst({
+              where: { attributeId: attr.id, value: label },
+            });
+            if (!opt) {
+              opt = await tx.variantOption.create({
+                data: { attributeId: attr.id, value: label, position: i },
+              });
+            }
 
-          await prisma.productVariantOption.upsert({
-            where: {
-              variantId_optionId: {
+            const sku = `${prod.slug}-${label
+              .toLowerCase()
+              .replace(/\s+/g, "-")
+              .replace(/[^a-z0-9-]/g, "")
+              .slice(0, 30)}`;
+
+            const pv = await tx.productVariant.upsert({
+              where: { sku },
+              update: {
+                price: v.price,
+                stock: v.stock,
+                weightGram: v.weightGram,
+                isActive: v.stock > 0,
+              },
+              create: {
+                productId: product.id,
+                sku,
+                price: v.price,
+                stock: v.stock,
+                weightGram: v.weightGram,
+                isActive: v.stock > 0,
+              },
+            });
+
+            await tx.productVariantOption.upsert({
+              where: {
+                variantId_optionId: {
+                  variantId: pv.id,
+                  optionId: opt.id,
+                },
+              },
+              update: {},
+              create: {
                 variantId: pv.id,
                 optionId: opt.id,
               },
-            },
-            update: {},
-            create: {
-              variantId: pv.id,
-              optionId: opt.id,
-            },
-          });
+            });
 
-          variantsUpserted++;
+            localCount++;
+          }
         }
-      }
+        return localCount;
+      });
 
+      variantsUpserted += localVariantsUpserted;
       productsUpserted++;
-    } catch {
+    } catch (err) {
+      // Log dgn slug supaya admin bisa investigate produk mana yg gagal.
+      // Sebelumnya silent catch → "skipped" hanya angka, no actionable info.
+      console.error(`[products-import] skip ${prod.slug}:`, err);
       skipped++;
     }
   }
 
   const processedSoFar = offset + slice.length;
   const done = processedSoFar >= totalProducts;
-  const nextOffset = done ? processedSoFar : processedSoFar;
+  const nextOffset = processedSoFar;
   const searchIndex = await syncProductsToSearchIndex([...changedProductIds]);
   if (searchIndex.failed > 0) {
     console.error("[admin products import] search index sync failed", searchIndex);

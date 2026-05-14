@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
@@ -62,17 +63,24 @@ export async function PATCH(request: NextRequest) {
   );
   const updated = results.reduce((s, r) => s + r.count, 0);
 
-  // Sync search index — non-blocking
-  (async () => {
+  // Sync search index non-blocking via Next.js `after()` — guarantees
+  // function tetap eksekusi setelah response dikirim. Sebelumnya pakai
+  // fire-and-forget IIFE yang bisa di-terminate oleh Vercel sebelum
+  // search sync selesai → search index stale.
+  after(async () => {
     try {
       const { syncProduct } = await import("@/lib/search");
       await Promise.all(
-        updates.map((u) => syncProduct(u.id).catch(() => {}))
+        updates.map((u) =>
+          syncProduct(u.id).catch((err) =>
+            console.error(`[bulk-sync] product ${u.id} search sync failed:`, err),
+          ),
+        ),
       );
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error("[bulk-sync] failed to import search module:", err);
     }
-  })();
+  });
 
   // Refresh halaman admin yg tergantung price/stock
   revalidatePath("/admin/products");

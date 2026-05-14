@@ -9,6 +9,7 @@
  * Rate limit: max 3 request per email per jam (anti spam).
  */
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { sendPasswordResetEmail } from "@/lib/email";
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
       select: { id: true, name: true, email: true },
     });
 
-    // Kalau user ada, generate token & kirim email
+    // Kalau user ada, generate token & schedule email send (non-blocking).
     if (user && user.email) {
       // Rate limit: berapa request reset dalam 1 jam terakhir?
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
@@ -55,7 +56,6 @@ export async function POST(request: NextRequest) {
       });
 
       if (recentCount < RATE_LIMIT_PER_HOUR) {
-        // Generate token
         const token = randomBytes(32).toString("hex");
         const expiresAt = new Date(Date.now() + TOKEN_TTL_MS);
 
@@ -63,11 +63,23 @@ export async function POST(request: NextRequest) {
           data: { token, userId: user.id, expiresAt },
         });
 
-        // Kirim email (await tapi error tidak block response)
-        await sendPasswordResetEmail({
-          to: user.email,
-          userName: user.name,
-          token,
+        // Fire-and-forget via Next.js `after()` — supaya response time
+        // tidak leak via SMTP latency (response cepat saat email tidak
+        // terdaftar, lambat saat terdaftar = email enumeration vector).
+        // `after()` guarantees handler tetap eksekusi di Vercel setelah
+        // response dikirim ke client.
+        const userEmail = user.email;
+        const userName = user.name;
+        after(async () => {
+          try {
+            await sendPasswordResetEmail({
+              to: userEmail,
+              userName,
+              token,
+            });
+          } catch (err) {
+            console.error("[forgot-password] email send failed:", err);
+          }
         });
       } else {
         console.warn(
@@ -76,7 +88,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Selalu return success (anti enumeration)
+    // Selalu return success (anti enumeration). Response time sekarang
+    // konsisten (~satu DB query) regardless email exists or not.
     return NextResponse.json({
       ok: true,
       message:

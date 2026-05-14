@@ -43,17 +43,21 @@ const config: CapacitorConfig = {
   webDir: "out",
 
   server: {
-    // GANTI dengan domain produksi sebelum `npx cap sync ios`.
-    url: "https://natalo-petshop.vercel.app",
+    // Production canonical domain. WebView load disini supaya cookie domain
+    // (member_session, admin_session) konsisten dgn web. Sebelumnya pakai
+    // vercel preview domain → kalau user navigasi ke natalopetshop.com via
+    // deep link, session cookie tidak follow (different cookie domain).
+    url: "https://www.natalopetshop.com",
     cleartext: false,
     // iOS allowed navigation — pastikan deep-link & redirect ke domain ini
-    // tidak keluar dari WebView ke Safari.
+    // tidak keluar dari WebView ke Safari. Vercel preview tetap di-allowlist
+    // untuk staging/QA builds.
     allowNavigation: [
-      "natalo-petshop.vercel.app",
-      "*.natalo-petshop.vercel.app",
       "www.natalopetshop.com",
       "natalopetshop.com",
       "*.natalopetshop.com",
+      "natalo-petshop.vercel.app",
+      "*.natalo-petshop.vercel.app",
     ],
   },
 

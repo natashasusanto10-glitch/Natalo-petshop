@@ -49,32 +49,24 @@ export async function POST(request: NextRequest) {
   }
 
   const isEmail = identifier.includes("@");
-  const normalizedIdentifier = identifier.toLowerCase();
+  const normalizedIdentifier = identifier.toLowerCase().trim();
   const phoneCandidates = getPhoneCandidates(identifier);
-  let user: User | null = await prisma.user.findFirst({
+  // Email: case-insensitive match. Untuk legacy data dgn whitespace di
+  // kolom email, kita coba juga raw identifier yang sudah di-trim.
+  // Phone: pakai exhaustive candidate list dari getPhoneCandidates.
+  // Sebelumnya ada fallback `findMany({ ... }).filter(...)` yang load
+  // SEMUA legacy user ke memory tiap login attempt → scale linear.
+  // Sekarang full indexed lookup.
+  const user: User | null = await prisma.user.findFirst({
     where: isEmail
-      ? { email: { equals: normalizedIdentifier, mode: "insensitive" } }
+      ? {
+          OR: [
+            { email: { equals: normalizedIdentifier, mode: "insensitive" } },
+            { email: { equals: identifier.trim(), mode: "insensitive" } },
+          ],
+        }
       : { OR: phoneCandidates.map((phone) => ({ phone })) },
   });
-
-  if (!user && isEmail) {
-    const legacyUsers = await prisma.user.findMany({
-      where: { email: { not: null }, passwordHash: { not: null } },
-    });
-    user =
-      legacyUsers.find((candidate) => candidate.email?.trim().toLowerCase() === normalizedIdentifier) ??
-      null;
-  }
-
-  if (!user && !isEmail) {
-    const normalizedPhone = normalizeIndonesianPhone(identifier);
-    const legacyUsers = await prisma.user.findMany({
-      where: { phone: { not: null }, passwordHash: { not: null } },
-    });
-    user =
-      legacyUsers.find((candidate) => normalizeIndonesianPhone(candidate.phone ?? "") === normalizedPhone) ??
-      null;
-  }
 
   if (!user || !user.passwordHash) {
     return NextResponse.json({ error: "Akun tidak ditemukan" }, { status: 401 });
