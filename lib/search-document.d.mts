@@ -9,6 +9,18 @@ export const TYPO_TOLERANCE: {
   minWordSizeForTypos: { oneTypo: number; twoTypos: number };
 };
 
+export function buildProductSearchText(product: {
+  name: string;
+  brand?: { name: string } | null;
+  category?: { name: string } | null;
+  variants?: Array<{
+    sku?: string | null;
+    deletedAt?: Date | null;
+    isActive: boolean;
+    options?: Array<{ option?: { value: string } | null }>;
+  }>;
+}): string;
+
 export function productToSearchDoc(product: {
   id: string;
   slug: string;

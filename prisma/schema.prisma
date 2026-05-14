@@ -129,6 +129,10 @@ model Product {
   avgRating         Float              @default(0)
   reviewCount       Int                @default(0)
   ratingBreakdown   Json?
+  // Denormalized search text (name + brand + variant names + sku codes).
+  // Di-maintain oleh app code (lib/search.ts syncProduct) + script backfill.
+  // GIN trigram index ada di migration product_search_text_trgm.
+  searchText        String             @default("") @map("searchText")
   categoryId        String?
   category          Category?          @relation(fields: [categoryId], references: [id])
   brandId           String?

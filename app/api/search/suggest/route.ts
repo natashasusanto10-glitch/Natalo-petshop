@@ -6,8 +6,9 @@
  * ulang dari database agar harga, stok, status aktif, dan varian tetap fresh.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { productIndex } from "@/lib/search";
+import { isMeiliEnabled, productIndex } from "@/lib/search";
 import {
   EMPTY_SUGGEST_RESPONSE as EMPTY,
   mergeSuggestionProducts,
@@ -170,38 +171,62 @@ async function hydrateMeiliProductsFromDb(
   return ids.map((id) => byId.get(id)).filter((product): product is SuggestProduct => Boolean(product));
 }
 
+async function trigramSuggestIds(query: string, limit: number): Promise<string[]> {
+  const q = query.trim().toLowerCase();
+  if (q.length < 2) return [];
+
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT id
+    FROM "Product"
+    WHERE "isActive" = true
+      AND (
+        "searchText" ILIKE ${"%" + q + "%"}
+        OR "searchText" % ${q}
+        OR similarity("searchText", ${q}) > 0.2
+      )
+    ORDER BY
+      CASE WHEN lower("name") = ${q} THEN 0
+           WHEN "searchText" ILIKE ${q + "%"} THEN 1
+           WHEN "searchText" ILIKE ${"%" + q + "%"} THEN 2
+           ELSE 3
+      END,
+      similarity("searchText", ${q}) DESC,
+      "createdAt" DESC
+    LIMIT ${limit}
+  `);
+
+  return rows.map((row) => row.id);
+}
+
 async function suggestFromDb(q: string, limit: number): Promise<SuggestResponse> {
   const tokens = tokensFor(q);
-  const productOr = [
-    { name: { contains: q, mode: "insensitive" as const } },
-    { description: { contains: q, mode: "insensitive" as const } },
-    { category: { name: { contains: q, mode: "insensitive" as const } } },
-    { brand: { name: { contains: q, mode: "insensitive" as const } } },
-    ...tokens.flatMap(tokenWhere),
-  ];
   const labelOr = [
     { name: { contains: q, mode: "insensitive" as const } },
     ...tokens.map((token) => ({ name: { contains: token, mode: "insensitive" as const } })),
   ];
 
+  const candidateIds = await trigramSuggestIds(q, Math.max(limit * 4, 12));
+
+  const productsPromise =
+    candidateIds.length === 0
+      ? null
+      : prisma.product.findMany({
+          where: {
+            id: { in: candidateIds },
+            isActive: true,
+            OR: suggestableProductState,
+          },
+          include: {
+            brand: { select: { name: true } },
+            variants: {
+              where: { deletedAt: null, isActive: true },
+              select: { price: true, stock: true },
+            },
+          },
+        });
+
   const [products, categories, brands] = await Promise.all([
-    prisma.product.findMany({
-      where: {
-        isActive: true,
-        AND: [
-          { OR: productOr },
-          { OR: suggestableProductState },
-        ],
-      },
-      include: {
-        brand: { select: { name: true } },
-        variants: {
-          where: { deletedAt: null, isActive: true },
-          select: { price: true, stock: true },
-        },
-      },
-      take: Math.max(limit * 4, 12),
-    }),
+    productsPromise ?? Promise.resolve([]),
     prisma.category.findMany({
       where: { OR: labelOr },
       include: { _count: { select: { products: true } } },
@@ -214,8 +239,10 @@ async function suggestFromDb(q: string, limit: number): Promise<SuggestResponse>
     }),
   ]);
 
-  const productSuggestions = products
-    .sort((a, b) => scoreLabel(b.name, q) - scoreLabel(a.name, q))
+  // Sort produk sesuai urutan kandidat dari trigram (already ranked by similarity).
+  const orderMap = new Map(candidateIds.map((id, i) => [id, i]));
+  const productSuggestions = [...products]
+    .sort((a, b) => (orderMap.get(a.id) ?? Infinity) - (orderMap.get(b.id) ?? Infinity))
     .slice(0, 5)
     .map(productToSuggestion);
 
@@ -250,7 +277,7 @@ export async function GET(request: NextRequest) {
     if (q.length < 2) return NextResponse.json(EMPTY);
 
     const [meiliResult, dbResult] = await Promise.all([
-      suggestFromMeili(q, limit).catch(() => EMPTY),
+      isMeiliEnabled() ? suggestFromMeili(q, limit).catch(() => EMPTY) : Promise.resolve(EMPTY),
       suggestFromDb(q, limit).catch(() => EMPTY),
     ]);
     const hydratedMeiliProducts = await hydrateMeiliProductsFromDb(meiliResult.products).catch(

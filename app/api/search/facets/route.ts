@@ -9,7 +9,7 @@
  * of truth dan tidak perlu masuk filterableAttributes.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { productIndex, searchProducts } from "@/lib/search";
+import { isMeiliEnabled, productIndex, searchProducts } from "@/lib/search";
 import { prisma } from "@/lib/prisma";
 import { buildWeightBuckets, hydrateFacetDistribution } from "@/lib/search-facets";
 
@@ -79,6 +79,16 @@ async function facetsFromDb(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  if (!isMeiliEnabled()) {
+    const fallback = await facetsFromDb(request).catch(() => ({
+      categories: [],
+      brands: [],
+      price_range: { min: 0, max: 10000000 },
+      weights: [],
+    }));
+    return NextResponse.json(fallback);
+  }
+
   try {
     const params = parseFacetParams(request);
     const result = await productIndex.search(params.q, {

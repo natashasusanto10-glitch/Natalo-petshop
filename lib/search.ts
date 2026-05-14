@@ -14,19 +14,37 @@
  */
 
 import { Meilisearch } from "meilisearch";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   applyProductIndexSettings,
+  buildProductSearchText,
   productToSearchDoc as mapProductToSearchDoc,
 } from "@/lib/search-document.mjs";
 
-const HOST = process.env.MEILISEARCH_HOST ?? "http://localhost:7700";
+const HOST = process.env.MEILISEARCH_HOST ?? "";
 const KEY = process.env.MEILISEARCH_API_KEY ?? "";
 const INDEX_NAME = process.env.MEILISEARCH_INDEX ?? "products";
 
-export const meili = new Meilisearch({ host: HOST, apiKey: KEY });
+export const meili = new Meilisearch({
+  host: HOST || "http://localhost:7700",
+  apiKey: KEY,
+});
 export const productIndex = meili.index(INDEX_NAME);
+
+/**
+ * Meilisearch hanya aktif kalau host di-set dan tidak menunjuk ke localhost
+ * di environment production (Vercel). Tanpa gate ini, deploy Vercel akan
+ * coba connect ke localhost:7700 dan men-spam error log setiap request.
+ */
+export function isMeiliEnabled() {
+  if (!HOST) return false;
+  const isVercel = process.env.VERCEL === "1";
+  if (isVercel && (HOST.includes("localhost") || HOST.includes("127.0.0.1"))) {
+    return false;
+  }
+  return true;
+}
 
 export type ProductSearchDoc = {
   id: string;
@@ -96,19 +114,50 @@ export async function buildProductDoc(productId: string): Promise<ProductSearchD
 /**
  * Sync satu produk ke search index.
  * Panggil setelah create/update product, atau setelah variant berubah.
+ *
+ * Selalu update kolom Product.searchText di DB (dipakai DB-fallback search
+ * dengan trigram). Push ke Meilisearch hanya kalau isMeiliEnabled().
  */
 export async function syncProduct(productId: string) {
   try {
-    const doc = await buildProductDoc(productId);
-    if (!doc) {
-      // Produk dihapus → hapus dari index
-      await productIndex.deleteDocument(productId);
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      include: {
+        category: { select: { id: true, name: true, slug: true } },
+        brand: { select: { id: true, name: true, slug: true } },
+        variants: {
+          where: { deletedAt: null, isActive: true },
+          include: {
+            options: {
+              include: { option: { select: { value: true } } },
+            },
+          },
+        },
+      },
+    });
+
+    if (!product) {
+      if (isMeiliEnabled()) {
+        await productIndex.deleteDocument(productId).catch(() => {});
+      }
       return { synced: false, deleted: true };
     }
-    await productIndex.addDocuments([doc]);
+
+    const searchText = buildProductSearchText(product);
+    // Raw SQL supaya tidak bergantung pada Prisma client yang sudah include
+    // field searchText. Build di Vercel akan tetap regenerate, tapi runtime
+    // tidak butuh typed field untuk update sederhana ini.
+    await prisma.$executeRaw(
+      Prisma.sql`UPDATE "Product" SET "searchText" = ${searchText} WHERE id = ${productId}`,
+    );
+
+    if (isMeiliEnabled()) {
+      const doc = mapProductToSearchDoc(product);
+      await productIndex.addDocuments([doc]);
+    }
+
     return { synced: true, deleted: false };
   } catch (e) {
-    // Jangan throw — search-index gagal tidak boleh block CRUD utama
     console.error("[search.syncProduct] failed:", e);
     return { synced: false, deleted: false, error: String(e) };
   }
@@ -342,9 +391,11 @@ export async function syncProductsToSearchIndex(productIds: string[], concurrenc
 }
 
 /**
- * Hapus produk dari index (untuk delete event).
+ * Hapus produk dari Meilisearch index. Caller sudah menghapus row DB,
+ * jadi tidak perlu update searchText.
  */
 export async function deleteProductFromIndex(productId: string) {
+  if (!isMeiliEnabled()) return;
   try {
     await productIndex.deleteDocument(productId);
   } catch (e) {
@@ -676,29 +727,120 @@ async function searchProductsFromMeili(opts: NormalizedSearchOptions) {
   };
 }
 
+/**
+ * Cari kandidat product IDs via pg_trgm similarity + ILIKE.
+ * Pakai GIN trigram index di Product.searchText. Return urut by similarity.
+ */
+async function trigramCandidateIds(query: string, limit = 500): Promise<string[]> {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT id
+    FROM "Product"
+    WHERE "isActive" = true
+      AND (
+        "searchText" ILIKE ${"%" + q + "%"}
+        OR "searchText" % ${q}
+        OR similarity("searchText", ${q}) > 0.15
+      )
+    ORDER BY
+      CASE WHEN lower("name") = ${q} THEN 0
+           WHEN "searchText" ILIKE ${q + "%"} THEN 1
+           WHEN "searchText" ILIKE ${"%" + q + "%"} THEN 2
+           ELSE 3
+      END,
+      similarity("searchText", ${q}) DESC,
+      "createdAt" DESC
+    LIMIT ${limit}
+  `);
+
+  return rows.map((row) => row.id);
+}
+
 async function searchProductsFromDb(opts: NormalizedSearchOptions) {
   const start = Date.now();
-  const pageArgs = buildDbSearchPageArgs(opts);
+  const q = opts.q.trim();
 
-  const [products, total] = await Promise.all([
-    prisma.product.findMany({
-      ...pageArgs,
-      include: PRODUCT_SEARCH_INCLUDE,
-    }),
-    prisma.product.count({ where: pageArgs.where }),
-  ]);
-  const docs = products.map((product) => mapProductToSearchDoc(product as ProductForSearchDoc));
-  const filteredDocs = filterSearchDocs(docs, opts);
-  const items = opts.sort === "relevance"
-    ? [...filteredDocs].sort(compareSearchItems(opts.sort, opts.q))
-    : filteredDocs;
+  let candidateIds: string[] | undefined;
+  if (q.length >= 2) {
+    candidateIds = await trigramCandidateIds(q, 500);
+    if (candidateIds.length === 0) {
+      return {
+        items: [],
+        total: 0,
+        page: Math.max(1, opts.page),
+        per_page: Math.max(1, Math.min(60, opts.perPage)),
+        facets: buildSearchFacets([]),
+        took_ms: Date.now() - start,
+        source: "database" as const,
+      };
+    }
+  }
+
+  const where: Prisma.ProductWhereInput = {
+    isActive: true,
+    ...(candidateIds ? { id: { in: candidateIds } } : {}),
+    ...(opts.categorySlug.length > 0 ? { category: { slug: { in: opts.categorySlug } } } : {}),
+    ...(opts.brandSlug.length > 0 ? { brand: { slug: { in: opts.brandSlug } } } : {}),
+  };
+
+  const priceWhere = productPriceWhere(opts);
+  const stockWhere: Prisma.ProductWhereInput | undefined = opts.inStock
+    ? {
+        OR: [
+          { hasVariants: false, stock: { gt: 0 } },
+          {
+            hasVariants: true,
+            variants: { some: { deletedAt: null, isActive: true, stock: { gt: 0 } } },
+          },
+        ],
+      }
+    : undefined;
+  const ratingWhere: Prisma.ProductWhereInput | undefined =
+    opts.minRating !== undefined && Number.isFinite(opts.minRating)
+      ? { avgRating: { gte: opts.minRating } }
+      : undefined;
+
+  const andFilters = [priceWhere, stockWhere, ratingWhere].filter(
+    (f): f is Prisma.ProductWhereInput => Boolean(f),
+  );
+  if (andFilters.length > 0) where.AND = andFilters;
+
+  const products = await prisma.product.findMany({
+    where,
+    include: PRODUCT_SEARCH_INCLUDE,
+    take: candidateIds ? undefined : 2000,
+  });
+
+  const docs = products.map((product) =>
+    mapProductToSearchDoc(product as ProductForSearchDoc),
+  );
+
+  // Kalau ada candidateIds, sort sesuai urutan kandidat (sudah by similarity).
+  // Kalau opts.sort bukan "relevance", override dengan compareSearchItems.
+  let items: ProductSearchDoc[];
+  if (candidateIds && opts.sort === "relevance") {
+    const orderMap = new Map(candidateIds.map((id, i) => [id, i]));
+    items = [...docs].sort(
+      (a, b) => (orderMap.get(a.id) ?? Infinity) - (orderMap.get(b.id) ?? Infinity),
+    );
+  } else {
+    items = [...docs].sort(compareSearchItems(opts.sort, q));
+  }
+
+  const total = items.length;
+  const facets = buildSearchFacets(items);
+  const limit = Math.max(1, Math.min(60, opts.perPage));
+  const page = Math.max(1, opts.page);
+  const offset = Math.max(0, (page - 1) * limit);
 
   return {
-    items,
+    items: items.slice(offset, offset + limit),
     total,
-    page: Math.max(1, opts.page),
-    per_page: Math.max(1, Math.min(60, opts.perPage)),
-    facets: buildSearchFacets(filteredDocs),
+    page,
+    per_page: limit,
+    facets,
     took_ms: Date.now() - start,
     source: "database" as const,
   };
@@ -736,10 +878,12 @@ export async function searchProducts(opts: SearchOptions) {
     perPage: limit,
   };
 
-  try {
-    return await searchProductsFromMeili(normalized);
-  } catch (error) {
-    console.error("[searchProducts] Meilisearch failed, using database fallback:", error);
-    return searchProductsFromDb(normalized);
+  if (isMeiliEnabled()) {
+    try {
+      return await searchProductsFromMeili(normalized);
+    } catch (error) {
+      console.error("[searchProducts] Meilisearch failed, using database fallback:", error);
+    }
   }
+  return searchProductsFromDb(normalized);
 }
