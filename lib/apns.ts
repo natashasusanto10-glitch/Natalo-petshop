@@ -162,14 +162,30 @@ export async function sendApnsToUser(userId: string, payload: ApnsPayload) {
 
       try {
         const result = await provider.send(note, token);
+        const tokenHint = `${token.slice(0, 8)}…${token.slice(-6)}`;
         if (result.failed?.length) {
           console.error(
             "[apns] send failed",
             result.failed.map((f) => ({
+              tokenHint,
               status: f.status,
               reason: f.response?.reason ?? null,
             })),
           );
+        }
+        if (result.sent?.length) {
+          // Log success dengan info lengkap untuk debug "APNs accept tapi
+          // tidak deliver ke device". Kalau muncul tapi notif tidak sampai
+          // HP: cek (a) Focus / DND iOS, (b) bundle ID match topic,
+          // (c) production env match build type (TestFlight=production,
+          // Xcode debug=sandbox), (d) iOS Settings → app → Notifications enabled.
+          console.log("[apns] send accepted by APNs", {
+            tokenHint,
+            topic: bundleId,
+            production: process.env.APNS_PRODUCTION === "true",
+            pushType: note.pushType,
+            sentCount: result.sent.length,
+          });
         }
         return { sub, result };
       } catch (err) {
