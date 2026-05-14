@@ -32,12 +32,18 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const session = await getSession("CUSTOMER");
+  if (!session || session.role !== "CUSTOMER") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const body = await req.json().catch(() => null);
   if (!body?.endpoint) {
     return NextResponse.json({ error: "endpoint required" }, { status: 400 });
   }
+  // Scope ke userId — attacker tidak bisa unsubscribe device user lain
+  // walaupun endpoint-nya ke-leak.
   await prisma.pushSubscription
-    .delete({ where: { endpoint: body.endpoint } })
-    .catch(() => {});
+    .deleteMany({ where: { endpoint: body.endpoint, userId: session.sub } });
   return NextResponse.json({ ok: true });
 }

@@ -109,6 +109,41 @@ async function postNativeToken(token: string, platform: NativePlatform) {
   }
 }
 
+// Cache token APNs/FCM yang sudah pernah diterima dari OS. Dipakai untuk
+// force-rebind ke userId session saat ini saat ganti akun: iOS sering
+// optimasi & tidak re-emit event "registration" kalau token belum berubah,
+// jadi listener-based POST tidak jalan → subscription di DB masih bound
+// ke akun lama. Dengan cache ini kita bisa POST ulang token yang sama tapi
+// pakai cookie session baru, sehingga upsert by-endpoint update userId.
+const NATIVE_TOKEN_STORAGE_KEY = "natalo-native-push-token";
+
+type CachedNativeToken = { token: string; platform: "ios" | "android" };
+
+function readCachedNativeToken(): CachedNativeToken | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(NATIVE_TOKEN_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<CachedNativeToken>;
+    if (!parsed.token || (parsed.platform !== "ios" && parsed.platform !== "android")) {
+      return null;
+    }
+    return { token: parsed.token, platform: parsed.platform };
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedNativeToken(token: string, platform: NativePlatform) {
+  if (typeof window === "undefined" || !platform) return;
+  try {
+    localStorage.setItem(
+      NATIVE_TOKEN_STORAGE_KEY,
+      JSON.stringify({ token, platform }),
+    );
+  } catch {}
+}
+
 // Promise yang resolve saat satu register flow selesai. Mencegah parallel
 // invocation menambah listener berulang (memory + double-POST token).
 // Pattern sama dgn apnProviderInitPromise di lib/apns.ts.
@@ -146,6 +181,7 @@ async function ensureNativeRegisteredInternal(
     "registration",
     async (token) => {
       try {
+        writeCachedNativeToken(token.value, platform);
         await postNativeToken(token.value, platform);
       } finally {
         finish();
@@ -194,6 +230,17 @@ export async function registerNativePushForCurrentUser(
 
     if (permission !== "granted") {
       return permission === "denied" ? "denied" : "prompt";
+    }
+
+    // Force-rebind dulu pakai cached token kalau ada. iOS sering tidak
+    // re-emit event "registration" saat register() dipanggil lagi (token
+    // sama, dianggap idempotent oleh OS) — listener tidak fire, POST
+    // tidak jalan, subscription di DB tetap bound ke akun lama. Dengan
+    // POST cached token di sini, upsert by-endpoint langsung update
+    // userId ke session saat ini (akun B yang baru login).
+    const cached = readCachedNativeToken();
+    if (cached && cached.platform === platform) {
+      await postNativeToken(cached.token, platform);
     }
 
     await ensureNativeRegistered(platform);

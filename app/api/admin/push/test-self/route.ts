@@ -26,6 +26,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import webpush from "web-push";
 import { getSession } from "@/lib/auth";
+import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
 
 const DEFAULT_TITLE = "🔔 Test Push (diagnostic)";
@@ -38,6 +39,9 @@ function hint(endpoint: string): string {
 
 export async function POST(req: NextRequest) {
   try {
+    const csrfReject = assertSameOrigin(req);
+    if (csrfReject) return csrfReject;
+
     const session = await getSession("ADMIN");
     if (!session || session.role !== "ADMIN") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

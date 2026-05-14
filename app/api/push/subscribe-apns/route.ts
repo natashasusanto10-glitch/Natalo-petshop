@@ -19,6 +19,9 @@ export async function POST(req: NextRequest) {
 
   const session = await getSession("CUSTOMER");
   if (!session || session.role !== "CUSTOMER") {
+    console.warn("[subscribe-apns] unauthorized — no customer session", {
+      tokenHint: body.token.slice(0, 8),
+    });
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const endpoint = `apns:${body.token}`;
@@ -40,16 +43,27 @@ export async function POST(req: NextRequest) {
     },
   });
 
+  console.log("[subscribe-apns] upserted", {
+    userId: session.sub,
+    tokenHint: body.token.slice(0, 8),
+  });
+
   return NextResponse.json({ ok: true });
 }
 
 export async function DELETE(req: NextRequest) {
+  const session = await getSession("CUSTOMER");
+  if (!session || session.role !== "CUSTOMER") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const body = await req.json().catch(() => null);
   if (!body?.token) {
     return NextResponse.json({ error: "token required" }, { status: 400 });
   }
-  await prisma.pushSubscription
-    .delete({ where: { endpoint: `apns:${body.token}` } })
-    .catch(() => {});
+  // Scope ke userId — attacker tidak bisa unsubscribe device user lain.
+  await prisma.pushSubscription.deleteMany({
+    where: { endpoint: `apns:${body.token}`, userId: session.sub },
+  });
   return NextResponse.json({ ok: true });
 }

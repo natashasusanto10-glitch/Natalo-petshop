@@ -117,7 +117,12 @@ export type ApnsPayload = {
  */
 export async function sendApnsToUser(userId: string, payload: ApnsPayload) {
   const provider = await getApnProvider();
-  if (!provider) return;
+  if (!provider) {
+    console.warn("[apns] skip: provider null (env vars missing/invalid)", {
+      userId,
+    });
+    return;
+  }
 
   const bundleId = process.env.APNS_BUNDLE_ID || "com.natalo.petshop";
 
@@ -127,7 +132,12 @@ export async function sendApnsToUser(userId: string, payload: ApnsPayload) {
     })
     .catch(() => []);
 
-  if (subs.length === 0) return;
+  if (subs.length === 0) {
+    console.warn("[apns] skip: no apns subscriptions for user", { userId });
+    return;
+  }
+
+  console.log("[apns] sending", { userId, tokenCount: subs.length });
 
   const apn = await import("@parse/node-apn");
 
