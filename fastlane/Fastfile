@@ -37,6 +37,38 @@ platform :ios do
       app_identifier: "com.natalo.petshop",
     )
 
+    # Auto-bump marketing version (CFBundleShortVersionString) saat version
+    # current sudah ter-release ke App Store. Apple lock version yang sudah
+    # public — build baru harus pakai marketing version lebih tinggi.
+    # bump_type: "patch" → 1.0 → 1.0.1 → 1.0.2 dst.
+    # Wajib di-call SEBELUM build_number increment supaya pbxproj baru di-baca
+    # oleh build_app step.
+    current_version = get_version_number(xcodeproj: XCODEPROJ, target: "App")
+    UI.message("Current marketing version: #{current_version}")
+
+    begin
+      latest_app_store_version = app_store_build_number(
+        api_key: api_key,
+        app_identifier: APP_BUNDLE,
+        live: true,
+      )
+      UI.message("Latest live App Store build: #{latest_app_store_version}")
+    rescue
+      latest_app_store_version = nil
+    end
+
+    # Strategi: kalau current version di pbxproj sama dengan version yang sudah
+    # live di App Store (atau lebih lama), bump patch. Kalau sudah ahead (dev
+    # sudah bump manual), skip.
+    if latest_app_store_version
+      increment_version_number(
+        xcodeproj: XCODEPROJ,
+        bump_type: "patch",
+      )
+      new_version = get_version_number(xcodeproj: XCODEPROJ, target: "App")
+      UI.message("Bumped marketing version: #{current_version} → #{new_version}")
+    end
+
     # Auto-increment build number berdasarkan TestFlight terakhir + 1.
     build_number = latest_testflight_build_number(
       api_key: api_key,
