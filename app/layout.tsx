@@ -217,6 +217,18 @@ export const metadata: Metadata = {
     ],
     apple: "/apple-touch-icon.png",
   },
+  // Smart App Banner — Safari iPhone auto-promote download Natalo Petshop
+  // dari App Store saat user buka site di mobile Safari. Banner appear di
+  // atas page dengan thumbnail icon app + tombol "View" / "Open" (kalau
+  // already installed). App ID 6767888044 dari App Store Connect.
+  //
+  // app-argument: URL halaman saat ini dipassing ke app via Universal Links,
+  // jadi tap banner buka app langsung di halaman yang sama (deep link).
+  // Browser auto-substitute siteUrl base — untuk per-page argument yang
+  // lebih spesifik, override metadata.other di per-page metadata.
+  other: {
+    "apple-itunes-app": `app-id=6767888044, app-argument=${siteUrl}`,
+  },
   verification: googleVerification
     ? {
         google: googleVerification,

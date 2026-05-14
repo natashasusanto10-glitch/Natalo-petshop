@@ -14,6 +14,7 @@ import HeroBanner from "@/components/home/HeroBanner";
 import TrustMarquee from "@/components/home/TrustMarquee";
 import type { TrustItem } from "@/data/trustItems";
 import { ExternalLink } from "@/components/ExternalLink";
+import { AppStoreCTACard } from "@/components/AppStoreBadge";
 import { FALLBACK_BRANDS, mergeBrandsWithFallback } from "@/lib/brand-catalog";
 
 const brand = process.env.NEXT_PUBLIC_BRAND_NAME || "Natalo Petshop";
@@ -622,6 +623,14 @@ export default async function HomePage() {
             );
           })}
         </div>
+      </section>
+
+      {/* ── App Store CTA — Auto-hide di Capacitor native shell. Visible
+          hanya di web/PWA untuk promote download Natalo Petshop iPhone app
+          dari App Store. Placement strategic: setelah user lihat hero +
+          shortcut grid (high engagement moment), sebelum flash sale. ── */}
+      <section className="mt-5 px-4">
+        <AppStoreCTACard />
       </section>
 
       {/* ── 5. FLASH SALE ── */}

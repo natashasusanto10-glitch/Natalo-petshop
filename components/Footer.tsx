@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { OperatingHours } from "@/components/OperatingHours";
 import { ExternalLink } from "@/components/ExternalLink";
+import { AppStoreBadge } from "@/components/AppStoreBadge";
 
 function InstagramIcon() {
   return (
@@ -76,6 +77,17 @@ export function Footer() {
                   {item.icon}
                 </ExternalLink>
               ))}
+            </div>
+            {/* App Store badge — auto-hide di Capacitor native shell (user
+                yang lagi pakai iOS app sudah punya app). Visible di web +
+                PWA installation untuk promote download. */}
+            <div className="mt-4">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-zinc-500">
+                Tersedia di
+              </p>
+              <div className="mt-2">
+                <AppStoreBadge />
+              </div>
             </div>
           </div>
 
