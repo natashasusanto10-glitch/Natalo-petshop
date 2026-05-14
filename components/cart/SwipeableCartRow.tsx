@@ -41,6 +41,11 @@ export function SwipeableCartRow({ onDelete, disabled, children }: Props) {
   const startYRef = useRef<number | null>(null);
   const isHorizontalRef = useRef<boolean | null>(null);
   const pointerIdRef = useRef<number | null>(null);
+  // Guard untuk prevent double-delete: setelah commit threshold reached,
+  // setTimeout(onDelete, 160ms) di-schedule untuk animation. User bisa
+  // swipe lagi atau tap action button dalam 160ms window → second onDelete
+  // fired. Flag ini block subsequent gesture/click selama commit pending.
+  const isCommittingRef = useRef(false);
 
   function reset() {
     startXRef.current = null;
@@ -50,8 +55,16 @@ export function SwipeableCartRow({ onDelete, disabled, children }: Props) {
     setIsDragging(false);
   }
 
+  function commitDelete() {
+    if (isCommittingRef.current) return;
+    isCommittingRef.current = true;
+    setDragX(-500);
+    setIsOpen(false);
+    setTimeout(() => onDelete(), 160);
+  }
+
   function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
-    if (disabled) return;
+    if (disabled || isCommittingRef.current) return;
     // Hanya respond ke touch + mouse left button
     if (e.pointerType === "mouse" && e.button !== 0) return;
     startXRef.current = e.clientX;
@@ -117,13 +130,8 @@ export function SwipeableCartRow({ onDelete, disabled, children }: Props) {
     const finalX = dragX;
 
     if (finalX < COMMIT_THRESHOLD) {
-      // Full swipe → commit delete. Animate further left untuk feel "sliding
-      // out of view", lalu trigger onDelete.
-      setDragX(-500);
-      setIsOpen(false);
-      setTimeout(() => {
-        onDelete();
-      }, 160);
+      // Full swipe → commit delete. commitDelete() handle dedup via flag.
+      commitDelete();
     } else if (finalX < REVEAL_THRESHOLD) {
       // Snap to revealed state — user bisa tap "Hapus" button
       setDragX(SNAP_OPEN_X);
@@ -138,10 +146,8 @@ export function SwipeableCartRow({ onDelete, disabled, children }: Props) {
   }
 
   function handleActionClick() {
-    if (disabled) return;
-    setDragX(-500);
-    setIsOpen(false);
-    setTimeout(() => onDelete(), 160);
+    if (disabled || isCommittingRef.current) return;
+    commitDelete();
   }
 
   function handleBackdropClick() {
