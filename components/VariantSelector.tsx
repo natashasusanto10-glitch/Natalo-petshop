@@ -1,11 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { formatRupiah } from "@/lib/format";
 import type { StoreVariantAttribute, StoreProductVariant } from "@/lib/products";
 import { addItemToCart } from "@/lib/cart-actions";
 import { AddToCartBottomSheet } from "@/components/AddToCartBottomSheet";
 import { hapticTap } from "@/lib/native/haptics";
+
+const CHECKOUT_SELECTION_KEY = "checkout:selectedCartItems";
 
 // Props
 interface Props {
@@ -17,6 +20,7 @@ interface Props {
 }
 
 export function VariantSelector({ product, attrs, variants, onVariantImage }: Props) {
+  const router = useRouter();
   // State
   // selected[attributeId] = optionId
   const [selected, setSelected] = useState<Record<string, string>>({});
@@ -68,6 +72,15 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
   }, [currentVariant, variants]);
 
   const outOfStock = currentVariant ? currentVariant.stock === 0 : false;
+  // Pre-selection OOS: kalau SEMUA varian aktif punya stok 0, sticky CTA
+  // harus disabled walau user belum pick. Sebelumnya `outOfStock` selalu
+  // false pre-selection → "Beli Sekarang" enabled, klik tidak melakukan
+  // apa-apa (silent fail di addToCart guard).
+  const allVariantsOutOfStock = useMemo(() => {
+    const active = variants.filter((v) => v.isActive && !v.deletedAt);
+    return active.length > 0 && active.every((v) => v.stock <= 0);
+  }, [variants]);
+  const effectiveOutOfStock = outOfStock || (!currentVariant && allVariantsOutOfStock);
 
   const selectedLabel = useMemo(
     () =>
@@ -109,12 +122,14 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
         detail: {
           hasVariants: true,
           canAdd: !!currentVariant && !outOfStock,
-          outOfStock: !!currentVariant && outOfStock,
+          // Surface OOS bahkan pre-selection kalau semua varian habis,
+          // supaya sticky bar disable "Beli Sekarang".
+          outOfStock: effectiveOutOfStock,
           price: currentVariant?.price ?? minPrice,
         },
       }),
     );
-  }, [currentVariant, outOfStock, minPrice]);
+  }, [currentVariant, outOfStock, effectiveOutOfStock, minPrice]);
 
   // Disabled check untuk tombol opsi
   const isOptionDisabled = useCallback(
@@ -186,27 +201,36 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
     // Ganti gambar utama kalau variant punya foto sendiri
     if (onVariantImage) onVariantImage(currentVariant.imageUrl);
 
-    const result = addItemToCart(
-      {
-        productId: product.id,
-        slug: product.slug,
-        variantId: currentVariant.id,
-        variantLabel: selectedLabel,
-        name: product.name,
-        price: currentVariant.price,
-        quantity: 1,
-        subtotal: currentVariant.price,
-        weightGram: currentVariant.weightGram,
-        stock: currentVariant.stock,
-        imageUrl: currentVariant.imageUrl ?? product.imageUrl,
-      },
-      { showToast: !redirectToCheckout },
-    );
+    const cartItem = {
+      productId: product.id,
+      slug: product.slug,
+      variantId: currentVariant.id,
+      variantLabel: selectedLabel,
+      name: product.name,
+      price: currentVariant.price,
+      quantity: 1,
+      subtotal: currentVariant.price,
+      weightGram: currentVariant.weightGram,
+      stock: currentVariant.stock,
+      imageUrl: currentVariant.imageUrl ?? product.imageUrl,
+    };
+
+    const result = addItemToCart(cartItem, { showToast: !redirectToCheckout });
 
     if (!result.ok) return;
 
     if (redirectToCheckout) {
-      window.location.href = "/checkout";
+      // Scope checkout HANYA ke varian ini — bukan seluruh cart.
+      const cartKey = `${product.id}:${currentVariant.id}`;
+      try {
+        sessionStorage.setItem(
+          CHECKOUT_SELECTION_KEY,
+          JSON.stringify([{ ...cartItem }]),
+        );
+      } catch {
+        // sessionStorage unavailable (private mode) — fallback ke flow lama.
+      }
+      router.push(`/checkout?cart_item_ids=${encodeURIComponent(cartKey)}`);
     }
   }
 

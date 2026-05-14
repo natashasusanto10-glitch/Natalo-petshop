@@ -657,6 +657,11 @@ export default function CartPage() {
                       {issue.message}
                     </p>
                   ))}
+                  {stockIssues.length > 3 && (
+                    <p className="text-xs font-semibold text-amber-700/80">
+                      +{stockIssues.length - 3} produk lain juga berubah
+                    </p>
+                  )}
                 </div>
               </div>
             )}

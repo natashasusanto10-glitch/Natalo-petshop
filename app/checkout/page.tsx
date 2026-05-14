@@ -163,6 +163,13 @@ export default function CheckoutPage() {
   const [ineligibleVouchers, setIneligibleVouchers] = useState<IneligibleVoucher[]>([]);
   const [voucherInvalidated, setVoucherInvalidated] = useState<string | null>(null);
   const [voucherSyncLoading, setVoucherSyncLoading] = useState(false);
+  // `voucherSyncFailed`: true kalau server-side recalculate gagal (network).
+  // Sebelumnya kita silently fallback ke client-side discount calculation,
+  // padahal voucher belum di-validate server-side → user lihat diskon
+  // yang mungkin sudah tidak valid (mis. voucher expired, atau subtotal
+  // turun di bawah min_order). Sekarang clear discount + disable CTA
+  // sampai recalculation succeed lagi.
+  const [voucherSyncFailed, setVoucherSyncFailed] = useState(false);
   const [autoVoucherSuppressed, setAutoVoucherSuppressed] = useState(false);
   const [checkoutPricing, setCheckoutPricing] = useState<CheckoutPricing | null>(null);
   const [showAllCheckoutItems, setShowAllCheckoutItems] = useState(false);
@@ -600,12 +607,17 @@ export default function CheckoutPage() {
       payment &&
       total >= 0 &&
       !stockRefreshing &&
-      !orderLoading
+      !orderLoading &&
+      // Voucher recalc gagal — discount belum di-verify server, jangan
+      // allow place order sampai sync berhasil.
+      !voucherSyncFailed
   );
   const primaryCtaLabel = orderLoading
     ? "Memproses..."
     : stockRefreshing
       ? "Cek stok..."
+    : voucherSyncFailed
+      ? "Cek koneksi & coba lagi"
     : !selectedRate
       ? "Pilih Pengiriman Dulu"
     : !isSelfPickup && !addressValid
@@ -646,6 +658,8 @@ export default function CheckoutPage() {
   }
 
   function applyCheckoutPricing(data: CheckoutRecalculateResponse) {
+    // Successful server recalculation — clear failure flag.
+    setVoucherSyncFailed(false);
     const eligible = Array.isArray(data.available_vouchers) ? data.available_vouchers : [];
     const ineligible = Array.isArray(data.unavailable_vouchers) ? data.unavailable_vouchers : [];
     const customerApplied = data.applied_customer_voucher ?? data.applied_voucher ?? null;
@@ -748,14 +762,17 @@ export default function CheckoutPage() {
     )
       .catch((err) => {
         if (err?.name !== "AbortError") {
-          const totalDiscount =
-            (voucherApplied?.discount ?? 0) + (manualVoucherApplied?.discount ?? 0);
+          // Recalculation gagal — JANGAN apply stale discount client-side.
+          // Voucher belum di-validate server (mis. mungkin sudah expired,
+          // atau subtotal < min_order setelah user ubah cart). Clear
+          // discount, flag failure → CTA disabled (lihat canPlaceOrder).
           setCheckoutPricing({
             subtotal: localSubtotal,
             shipping_fee: shippingCost,
-            discount: totalDiscount,
-            total: Math.max(localSubtotal + shippingCost - totalDiscount, 0),
+            discount: 0,
+            total: Math.max(localSubtotal + shippingCost, 0),
           });
+          setVoucherSyncFailed(true);
         }
       })
       .finally(() => {

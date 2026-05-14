@@ -39,7 +39,14 @@ export function InstallPrompt() {
   }
 
   return (
-    <div className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-sm rounded-2xl border border-blue-200 bg-white p-4 shadow-lg">
+    <div
+      className="fixed inset-x-4 z-50 mx-auto max-w-sm rounded-2xl border border-blue-200 bg-white p-4 shadow-lg"
+      style={{
+        // Offset di atas BottomNavigation (~76px tall) + safe-area iOS.
+        // Sebelumnya `bottom-4` saja → card nempel bottom nav di mobile PWA.
+        bottom: "calc(80px + env(safe-area-inset-bottom, 0px))",
+      }}
+    >
       <p className="font-semibold text-zinc-900">Pasang aplikasi</p>
       <p className="mt-1 text-sm text-zinc-500">
         Tambahkan ke layar utama untuk akses cepat & notifikasi pesanan.

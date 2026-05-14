@@ -25,25 +25,54 @@ export function PaymentProofUpload({ orderNumber }: { orderNumber: string }) {
       setStatus("success");
     } else {
       const data = await res.json().catch(() => ({}));
-      setErrorMsg(data.error ?? "Gagal mengunggah. Coba lagi.");
+      // API routes di codebase ini consistent return `{ error }` (lihat
+      // app/api/orders/[orderNumber]/payment-proof/route.ts). Tetap support
+      // `message` sebagai fallback untuk endpoint lain yg pakai konvensi
+      // berbeda.
+      setErrorMsg(data.error ?? data.message ?? "Gagal mengunggah. Coba lagi.");
       setStatus("error");
     }
   }
 
+  function resetForm() {
+    setStatus("idle");
+    setErrorMsg("");
+    if (inputRef.current) inputRef.current.value = "";
+  }
+
   if (status === "success") {
     return (
-      <div className="mt-4 rounded-2xl bg-green-50 p-4 text-center">
-        <span className="text-2xl">✅</span>
-        <p className="mt-1 font-semibold text-green-800">Bukti transfer berhasil dikirim!</p>
-        <p className="mt-1 text-sm text-green-600">Tim kami akan mengkonfirmasi pembayaran kamu segera.</p>
+      <div className="mt-4 space-y-3">
+        <div className="rounded-2xl bg-green-50 p-4 text-center">
+          <span className="text-2xl">✅</span>
+          <p className="mt-1 font-semibold text-green-800">Bukti transfer berhasil dikirim!</p>
+          <p className="mt-1 text-sm text-green-600">
+            Tim kami akan mengkonfirmasi pembayaran kamu segera.
+          </p>
+        </div>
+        {/* Recovery path — admin bisa minta upload ulang kalau ada masalah
+            dgn proof yang dikirim (mis. screenshot blur, salah order). */}
+        <button
+          type="button"
+          onClick={resetForm}
+          className="w-full rounded-full border border-zinc-200 py-2.5 text-sm font-semibold text-zinc-700 transition-colors hover:bg-zinc-50"
+        >
+          Ganti bukti transfer
+        </button>
       </div>
     );
   }
 
   return (
     <form onSubmit={handleSubmit} className="mt-4 space-y-3">
-      <p className="text-sm font-semibold text-zinc-700">Upload Bukti Transfer</p>
+      <label
+        htmlFor={`payment-proof-${orderNumber}`}
+        className="block text-sm font-semibold text-zinc-700"
+      >
+        Upload Bukti Transfer
+      </label>
       <input
+        id={`payment-proof-${orderNumber}`}
         ref={inputRef}
         type="file"
         accept="image/jpeg,image/png,image/webp"

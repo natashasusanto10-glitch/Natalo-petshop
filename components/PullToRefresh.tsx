@@ -49,12 +49,17 @@ export function PullToRefresh({ disabled = false }: { disabled?: boolean }) {
   const startYRef = useRef(0);
   const isPullingRef = useRef(false);
   const refreshingRef = useRef(false);
+  // Mirror pullDistance ke ref supaya handler bisa baca tanpa harus
+  // bergantung ke state di deps (yg akan trigger re-bind listener tiap
+  // touchmove → dropped events + CPU churn).
+  const pullDistanceRef = useRef(0);
   // Track apakah pull sudah pernah past threshold di gesture saat ini, biar
   // haptic cuma fire SEKALI saat transition (gak spam tiap touchmove).
   const wasPastThresholdRef = useRef(false);
 
   // Sync state ke ref biar event handler dapat nilai terbaru tanpa rebind
   refreshingRef.current = refreshing;
+  pullDistanceRef.current = pullDistance;
 
   useEffect(() => {
     if (disabled) return;
@@ -123,7 +128,7 @@ export function PullToRefresh({ disabled = false }: { disabled?: boolean }) {
       if (!isPullingRef.current) return;
       isPullingRef.current = false;
 
-      if (pullDistance >= TRIGGER_DISTANCE) {
+      if (pullDistanceRef.current >= TRIGGER_DISTANCE) {
         setRefreshing(true);
         try {
           // Refetch server components Next.js
@@ -160,7 +165,10 @@ export function PullToRefresh({ disabled = false }: { disabled?: boolean }) {
       document.removeEventListener("touchend", handleTouchEnd);
       document.removeEventListener("touchcancel", handleTouchEnd);
     };
-  }, [pullDistance, disabled, router]);
+    // pullDistance SENGAJA tidak di-include — kalau di-include, effect tear
+    // down + register ulang listener tiap touchmove (CPU churn + dropped
+    // events). Handler baca via pullDistanceRef.
+  }, [disabled, router]);
 
   // Visible distance untuk render indicator (saat refreshing, force ke threshold)
   const visibleDistance = refreshing ? TRIGGER_DISTANCE : pullDistance;

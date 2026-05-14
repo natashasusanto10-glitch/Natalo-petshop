@@ -38,6 +38,10 @@ export function WhatsAppFloat() {
     sessionStorage.setItem("wa-tooltip-dismissed", "1");
   }
 
+  // `usePathname()` bisa return null saat router transition di App Router.
+  // Tanpa guard, `.startsWith(...)` throw TypeError → component crash.
+  if (!pathname) return null;
+
   const hideOn = [
     "/admin",
     "/checkout",

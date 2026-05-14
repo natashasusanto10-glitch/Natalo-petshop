@@ -14,6 +14,7 @@ import { EmptyWishlistLottie } from "@/components/wishlist/EmptyWishlistLottie";
 import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
 
 const RECENT_STORAGE_KEY = "nat-recent-product-views";
+const CHECKOUT_SELECTION_KEY = "checkout:selectedCartItems";
 
 type WishlistItem = {
   id: string;
@@ -287,8 +288,18 @@ export default function WishlistPage() {
       return;
     }
 
-    const result = addItemToCart(cartPayload(item), { showToast: false });
-    if (result.ok) router.push("/checkout");
+    const payload = cartPayload(item);
+    const result = addItemToCart(payload, { showToast: false });
+    if (result.ok) {
+      // Scope checkout HANYA ke produk ini — bukan seluruh cart.
+      const cartKey = `${item.id}:`;
+      try {
+        sessionStorage.setItem(CHECKOUT_SELECTION_KEY, JSON.stringify([payload]));
+      } catch {
+        // sessionStorage unavailable — checkout tetap jalan via full cart.
+      }
+      router.push(`/checkout?cart_item_ids=${encodeURIComponent(cartKey)}`);
+    }
   }
 
   return (

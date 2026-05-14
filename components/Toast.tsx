@@ -124,7 +124,13 @@ export function ToastProvider() {
   return (
     <>
       {toasts.length > 0 && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-[88px] z-[70] flex flex-col items-center gap-2 px-4 md:bottom-6">
+        <div
+          // Stack di atas bottom-nav + iOS home indicator. Sebelumnya
+          // hard-coded `bottom-[88px]` → toast collide dgn home indicator
+          // di iPhone X+. Desktop (md+) override jadi simple `bottom-6`
+          // karena tidak ada bottom-nav.
+          className="pointer-events-none fixed inset-x-0 bottom-[calc(88px+env(safe-area-inset-bottom,0px))] z-[70] flex flex-col items-center gap-2 px-4 md:bottom-6"
+        >
           {toasts.map((t) => (
             <ToastItem
               key={t.id}

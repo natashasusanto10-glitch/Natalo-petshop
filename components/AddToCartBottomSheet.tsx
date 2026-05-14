@@ -25,10 +25,13 @@ export function AddToCartBottomSheet({ open, item, onClose, onAdded }: Props) {
   const minimumQuantity = Math.max(1, Number(item?.minimumQuantity ?? 1) || 1);
   const stock = item?.stock ?? null;
   const maxQuantity = stock !== null ? Math.max(0, stock) : null;
-  const initialQuantity = Math.max(
-    1,
-    maxQuantity !== null ? Math.min(maxQuantity || 1, minimumQuantity) : minimumQuantity,
-  );
+  // Initial qty: kalau stock=0, set ke 0 (sheet akan disabled). Sebelumnya
+  // pakai `maxQuantity || 1` yang collapse 0→1, jadi UI render qty "1"
+  // untuk produk habis. Pakai ?? untuk preserve 0.
+  const initialQuantity =
+    maxQuantity !== null
+      ? Math.min(maxQuantity, minimumQuantity)
+      : minimumQuantity;
   const [quantity, setQuantity] = useState(initialQuantity);
 
   useEffect(() => {
@@ -39,8 +42,13 @@ export function AddToCartBottomSheet({ open, item, onClose, onAdded }: Props) {
   const subtotal = useMemo(() => (item ? item.price * quantity : 0), [item, quantity]);
   const belowMinimum = quantity < minimumQuantity;
   const outOfStock = maxQuantity !== null && maxQuantity <= 0;
+  // Edge case: minimum > stock → user tidak akan bisa naik ke minimum.
+  // "Tambah" stay disabled forever tanpa path forward. Tandai eksplisit
+  // supaya UI bisa render pesan jelas.
+  const minimumExceedsStock =
+    maxQuantity !== null && minimumQuantity > maxQuantity && maxQuantity > 0;
   const canIncrease = maxQuantity === null || quantity < maxQuantity;
-  const canSubmit = !!item && !outOfStock && !belowMinimum;
+  const canSubmit = !!item && !outOfStock && !belowMinimum && !minimumExceedsStock;
 
   function decrease() {
     setQuantity((value) => {
@@ -171,7 +179,12 @@ export function AddToCartBottomSheet({ open, item, onClose, onAdded }: Props) {
             </div>
           </div>
 
-          {minimumQuantity > 1 && belowMinimum && (
+          {minimumExceedsStock ? (
+            <p className="rounded-2xl bg-red-50 p-3 text-xs font-bold leading-relaxed text-red-600">
+              Stok tidak cukup untuk minimum pembelian {minimumQuantity} (tersedia {maxQuantity}).
+              Hubungi admin atau coba lagi nanti.
+            </p>
+          ) : minimumQuantity > 1 && belowMinimum && (
             <p className="rounded-2xl bg-red-50 p-3 text-xs font-bold leading-relaxed text-red-600">
               Produk ini memiliki minimum jumlah pembelian sebesar {minimumQuantity}. Mohon
               penuhi syarat jumlah minimum sebelum checkout
