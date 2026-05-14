@@ -8,7 +8,6 @@ import { useRouter } from "next/navigation";
 import { formatRupiah } from "@/lib/format";
 import { loadCart, saveCart, type CartItem } from "@/lib/cart";
 import type { CartStockIssue } from "@/lib/cart-stock";
-import { EmptyCartPetIllustration } from "@/components/PetCartIcon";
 import { VoucherClaimBar } from "@/components/cart/VoucherClaimBar";
 import { SwipeableCartRow } from "@/components/cart/SwipeableCartRow";
 import { CartRecommendationSections } from "@/components/cart/CartRecommendationSections";
@@ -105,26 +104,32 @@ function TrashIcon({ className = "h-4 w-4" }: { className?: string }) {
 
 function EmptyCartShoppingCard() {
   return (
-    <section className="mt-4 rounded-2xl border border-blue-100 bg-white p-5 shadow-sm md:mt-8">
-      <div className="flex items-start gap-4">
-        <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-600">
-          <EmptyCartPetIllustration className="h-11 w-11" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-lg font-black leading-tight text-gray-950">
-            Keranjang kamu masih kosong
-          </h2>
-          <p className="mt-1 text-sm font-semibold leading-relaxed text-gray-500">
-            Yuk, pilih produk favorit untuk hewan peliharaanmu.
-          </p>
-          <Link
-            href="/products"
-            className="mt-4 inline-flex h-11 items-center justify-center rounded-full bg-blue-600 px-5 text-sm font-black text-white shadow-[0_8px_18px_-10px_rgba(37,99,235,0.75)] transition active:scale-95"
-          >
-            Mulai Belanja
-          </Link>
-        </div>
+    <section className="mt-4 rounded-2xl border border-blue-100 bg-white p-6 text-center shadow-[0_12px_34px_rgba(15,23,42,0.06)] md:mt-8 md:p-10">
+      <div className="relative mx-auto mb-5 aspect-[1.27/1] w-full max-w-[280px]">
+        <Image
+          src="/assets/images/empty_cart_pets_fullcolor.png"
+          alt=""
+          width={1016}
+          height={797}
+          className="h-full w-full object-contain"
+          aria-hidden="true"
+        />
       </div>
+      <h2 className="text-xl font-black leading-tight text-[#07112F]">
+        Keranjang kamu masih kosong
+      </h2>
+      <p className="mx-auto mt-2 max-w-md text-sm font-semibold leading-relaxed text-gray-500">
+        Yuk pilih makanan, vitamin, pasir, atau perlengkapan favorit untuk hewan kesayanganmu.
+      </p>
+      <p className="mt-3 text-xs font-bold text-[#6B7280]">
+        Produk yang kamu tambahkan akan muncul di sini.
+      </p>
+      <Link
+        href="/products"
+        className="mt-5 inline-flex h-11 items-center justify-center rounded-full bg-blue-600 px-6 text-sm font-black text-white shadow-[0_8px_18px_-10px_rgba(37,99,235,0.75)] transition active:scale-95"
+      >
+        Jelajahi Produk
+      </Link>
     </section>
   );
 }
