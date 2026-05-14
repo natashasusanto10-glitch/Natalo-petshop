@@ -3,6 +3,7 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
+import { SELF_PICKUP_STORE } from "@/lib/self-pickup";
 import {
   markAsCancelled,
   createShipment,
@@ -231,12 +232,12 @@ export default async function AdminOrderDetailPage({
                 </p>
                 <p>
                   <span className="font-semibold">Lokasi:</span>{" "}
-                  {order.pickupStoreName ?? "Natalo Petshop / Sinar Petstore"}
+                  {order.pickupStoreName ?? SELF_PICKUP_STORE.name}
                 </p>
-                <p>{order.pickupStoreAddress ?? order.shippingAddress}</p>
+                <p>{order.pickupStoreAddress ?? SELF_PICKUP_STORE.address}</p>
                 <p>
                   <span className="font-semibold">Jam Ambil:</span>{" "}
-                  {order.pickupHours ?? "09.00 - 17.00 WIB"}
+                  {order.pickupHours ?? SELF_PICKUP_STORE.hours}
                 </p>
                 <p>
                   <span className="font-semibold">Status pickup:</span>{" "}

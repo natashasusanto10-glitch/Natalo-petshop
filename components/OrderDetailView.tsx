@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
+import { FiPackage } from "react-icons/fi";
 import { formatRupiah } from "@/lib/format";
 import {
   getFirstReviewableOrderItem,
@@ -12,6 +14,7 @@ import { ExternalLink } from "@/components/ExternalLink";
 import { trackSuccessfulOrder } from "@/lib/app-rating";
 import { PageStatusBar } from "@/components/PageStatusBar";
 import { ReviewModal } from "@/components/ReviewModal";
+import { SELF_PICKUP_STORE } from "@/lib/self-pickup";
 
 const BANK_ACCOUNTS: Record<
   string,
@@ -496,12 +499,12 @@ export function OrderDetailView({
                   </div>
                   <div>
                     <p className="font-semibold text-gray-950">Lokasi Toko</p>
-                    <p>{order.pickupStoreName ?? "Natalo Petshop / Sinar Petstore"}</p>
-                    <p>{order.pickupStoreAddress ?? order.shippingAddress}</p>
+                    <p>{order.pickupStoreName ?? SELF_PICKUP_STORE.name}</p>
+                    <p>{order.pickupStoreAddress ?? SELF_PICKUP_STORE.address}</p>
                   </div>
                   <div>
                     <p className="font-semibold text-gray-950">Jam Ambil</p>
-                    <p>{order.pickupHours ?? "09.00 - 17.00 WIB"}</p>
+                    <p>{order.pickupHours ?? SELF_PICKUP_STORE.hours}</p>
                   </div>
                   {order.status === "READY_FOR_PICKUP" && order.pickupCode && (
                     <div className="rounded-2xl bg-green-50 px-4 py-3 text-center">
@@ -571,42 +574,66 @@ export function OrderDetailView({
                 {order.items.map((item) => (
                   <div
                     key={item.id}
-                    className="flex flex-col gap-3 rounded-2xl border border-gray-100 p-3 text-sm sm:flex-row sm:items-start sm:justify-between"
+                    className="flex gap-3 rounded-2xl border border-gray-100 bg-white p-3 text-sm"
                   >
-                    <div className="min-w-0">
-                      <Link
-                        href={`/products/${item.productSlug}`}
-                        className="font-semibold text-gray-800 hover:text-blue-700"
-                      >
-                        {item.name}
-                      </Link>
-                      {item.variantLabel && (
-                        <p className="mt-0.5 text-xs text-gray-400">
-                          {item.variantLabel}
-                        </p>
+                    <Link
+                      href={`/products/${item.productSlug}`}
+                      aria-label={`Lihat produk ${item.name}`}
+                      className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-gray-50 ring-1 ring-gray-100"
+                    >
+                      {item.productImage ? (
+                        <Image
+                          src={item.productImage}
+                          alt={item.name}
+                          fill
+                          sizes="64px"
+                          className="object-cover"
+                        />
+                      ) : (
+                        <span className="grid h-full w-full place-items-center text-gray-400">
+                          <FiPackage className="h-6 w-6" aria-hidden />
+                        </span>
                       )}
-                      <p className="mt-1 text-xs text-gray-500">
-                        Qty {item.quantity}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 items-center justify-between gap-3 sm:flex-col sm:items-end">
-                      <span className="font-bold text-gray-900">
-                        {formatRupiah(item.price * item.quantity)}
-                      </span>
-                      {showReviewActions &&
-                        (item.reviewed ? (
-                          <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700">
-                            Sudah direview
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setReviewItem(item)}
-                            className="rounded-full bg-blue-600 px-4 py-2 text-xs font-black text-white hover:bg-blue-700"
-                          >
-                            Beri Review
-                          </button>
-                        ))}
+                    </Link>
+                    <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <Link
+                          href={`/products/${item.productSlug}`}
+                          className="line-clamp-2 font-semibold leading-snug text-gray-800 hover:text-blue-700"
+                        >
+                          {item.name}
+                        </Link>
+                        {item.variantLabel && (
+                          <p className="mt-1 inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">
+                            {item.variantLabel}
+                          </p>
+                        )}
+                        <p className="mt-1 text-xs font-semibold text-gray-500">
+                          Qty {item.quantity}
+                        </p>
+                        <p className="mt-1 font-bold text-gray-900 sm:hidden">
+                          {formatRupiah(item.price * item.quantity)}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 flex-col items-end gap-2">
+                        <span className="hidden font-bold text-gray-900 sm:inline">
+                          {formatRupiah(item.price * item.quantity)}
+                        </span>
+                        {showReviewActions &&
+                          (item.reviewed ? (
+                            <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700">
+                              Sudah direview
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setReviewItem(item)}
+                              className="rounded-full bg-blue-600 px-4 py-2 text-xs font-black text-white hover:bg-blue-700"
+                            >
+                              Beri Review
+                            </button>
+                          ))}
+                      </div>
                     </div>
                   </div>
                 ))}

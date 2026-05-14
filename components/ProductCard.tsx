@@ -3,7 +3,6 @@ import Link from "next/link";
 import { StoreProduct } from "@/lib/products";
 import { formatRupiah } from "@/lib/format";
 import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
-import { WishlistButton } from "./WishlistButton";
 import { ProductCardCta } from "./ProductCardCta";
 
 type Props = {
@@ -113,24 +112,6 @@ export function ProductCard({
             hasVariants={product.hasVariants}
           />
         </div>
-
-        {/* Wishlist button — outside Link to avoid nested-interactive */}
-        <div className="absolute right-5 top-5">
-          <WishlistButton
-            size="sm"
-            product={{
-              id: product.id,
-              name: product.name,
-              slug: product.slug,
-              price: product.price,
-              memberPrice,
-              imageUrl: product.imageUrl,
-              weightGram: product.weightGram,
-              stock: product.stock,
-              hasVariants: product.hasVariants,
-            }}
-          />
-        </div>
       </div>
     );
   }
@@ -191,23 +172,6 @@ export function ProductCard({
           weightGram={product.weightGram}
           stock={product.stock}
           hasVariants={product.hasVariants}
-        />
-      </div>
-
-      {/* Wishlist button */}
-      <div className="absolute right-3 top-3">
-        <WishlistButton
-          product={{
-            id: product.id,
-            name: product.name,
-            slug: product.slug,
-            price: product.price,
-            memberPrice,
-            imageUrl: product.imageUrl,
-            weightGram: product.weightGram,
-            stock: product.stock,
-            hasVariants: product.hasVariants,
-          }}
         />
       </div>
     </div>

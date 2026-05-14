@@ -1,5 +1,6 @@
 import { requireCustomerSession } from "@/lib/session-guards";
 import { prisma } from "@/lib/prisma";
+import { buildSelfPickupMapsUrl } from "@/lib/self-pickup";
 import { OrderErrorState, OrderHistoryClient } from "./OrderHistoryClient";
 
 export default async function MemberOrdersPage() {
@@ -40,6 +41,8 @@ export default async function MemberOrdersPage() {
           subtotal: order.subtotal,
           paymentUrl: order.paymentUrl,
           biteshipTrackingUrl: order.biteshipTrackingUrl,
+          orderType: order.orderType,
+          pickupMapsUrl: buildSelfPickupMapsUrl(),
           items: order.items.map((item) => ({
             id: item.id,
             name: item.name,

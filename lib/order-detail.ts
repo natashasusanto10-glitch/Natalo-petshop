@@ -1,6 +1,6 @@
 import { randomBytes } from "crypto";
 import type { Prisma } from "@prisma/client";
-import { buildSelfPickupMapsUrl } from "@/lib/self-pickup";
+import { SELF_PICKUP_METHOD, SELF_PICKUP_STORE, buildSelfPickupMapsUrl } from "@/lib/self-pickup";
 
 export const orderDetailInclude = {
   items: {
@@ -75,6 +75,8 @@ export function isOrderContactMatch(
 }
 
 export function serializeOrderDetail(order: OrderDetailRecord) {
+  const isSelfPickup = order.orderType === SELF_PICKUP_METHOD;
+
   return {
     id: order.id,
     orderNumber: order.orderNumber,
@@ -105,20 +107,21 @@ export function serializeOrderDetail(order: OrderDetailRecord) {
     trackingNumber: order.trackingNumber,
     shipmentStatus: order.shipmentStatus,
     biteshipTrackingUrl: order.biteshipTrackingUrl,
-    pickupStoreName: order.pickupStoreName,
-    pickupStoreAddress: order.pickupStoreAddress,
+    pickupStoreName: isSelfPickup
+      ? order.pickupStoreName ?? SELF_PICKUP_STORE.name
+      : order.pickupStoreName,
+    pickupStoreAddress: isSelfPickup
+      ? order.pickupStoreAddress ?? SELF_PICKUP_STORE.address
+      : order.pickupStoreAddress,
     pickupStoreLatitude: order.pickupStoreLatitude,
     pickupStoreLongitude: order.pickupStoreLongitude,
-    pickupHours: order.pickupHours,
+    pickupHours: isSelfPickup ? order.pickupHours ?? SELF_PICKUP_STORE.hours : order.pickupHours,
     pickupCode: order.pickupCode,
     pickupQrCode: order.pickupQrCode,
     pickupStatus: order.pickupStatus,
     readyForPickupAt: order.readyForPickupAt?.toISOString() ?? null,
     pickedUpAt: order.pickedUpAt?.toISOString() ?? null,
-    pickupMapsUrl:
-      order.pickupStoreLatitude !== null && order.pickupStoreLongitude !== null
-        ? `https://www.google.com/maps/search/?api=1&query=${order.pickupStoreLatitude},${order.pickupStoreLongitude}`
-        : buildSelfPickupMapsUrl(),
+    pickupMapsUrl: buildSelfPickupMapsUrl(),
     notes: order.notes,
     createdAt: order.createdAt.toISOString(),
     updatedAt: order.updatedAt.toISOString(),

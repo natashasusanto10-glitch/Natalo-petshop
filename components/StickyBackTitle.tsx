@@ -13,6 +13,7 @@ type StickyBackTitleProps = {
   fallbackHref?: string;
   rightAction?: ReactNode;
   variant?: "title" | "textBack";
+  stickToTop?: boolean;
 };
 
 export function StickyBackTitle({
@@ -23,6 +24,7 @@ export function StickyBackTitle({
   fallbackHref = "/",
   rightAction,
   variant = "title",
+  stickToTop = false,
 }: StickyBackTitleProps) {
   const router = useRouter();
   const [isScrolled, setIsScrolled] = useState(false);
@@ -70,7 +72,9 @@ export function StickyBackTitle({
 
   return (
     <div
-      className={`sticky-back-title ${isScrolled ? "sticky-back-title--scrolled" : ""}`}
+      className={`sticky-back-title ${stickToTop ? "sticky-back-title--page-top" : ""} ${
+        isScrolled ? "sticky-back-title--scrolled" : ""
+      }`}
     >
       <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-3">
         {href ? (

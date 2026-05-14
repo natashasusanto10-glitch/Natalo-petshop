@@ -18,6 +18,10 @@ function parseIds(value: string | null) {
     .slice(0, 100);
 }
 
+function unique(values: string[]) {
+  return values.filter((value, index, list) => list.indexOf(value) === index);
+}
+
 function pushUnique(
   target: CartRecommendationProductRow[],
   products: CartRecommendationProductRow[],
@@ -92,15 +96,37 @@ export async function GET(request: NextRequest) {
   const limit = Math.min(Math.max(Number(searchParams.get("limit") ?? 10) || 10, 1), 10);
   const excludeIds = parseIds(searchParams.get("exclude"));
   const cartIds = parseIds(searchParams.get("cart"));
+  const viewedIds = parseIds(searchParams.get("viewed"));
   const take = limit + 1;
   const session = await getSession("CUSTOMER").catch(() => null);
   const seen = new Set(excludeIds);
   const products: CartRecommendationProductRow[] = [];
+  let storedViewIds: string[] = [];
+
+  if (session?.sub) {
+    try {
+      const rows = await prisma.$queryRaw<{ product_id: string }[]>`
+        SELECT "product_id"
+        FROM "user_product_views"
+        WHERE "user_id" = ${session.sub}
+        ORDER BY "viewed_at" DESC
+        LIMIT 30
+      `;
+      storedViewIds = rows.map((row) => row.product_id);
+    } catch {
+      storedViewIds = [];
+    }
+  }
+
+  const behaviorIds = unique([...viewedIds, ...storedViewIds]).filter(
+    (id) => !cartIds.includes(id),
+  );
+  const sourceIds = unique([...cartIds, ...behaviorIds]).slice(0, 100);
 
   const sourceProducts =
-    cartIds.length > 0
+    sourceIds.length > 0
       ? await prisma.product.findMany({
-          where: { id: { in: cartIds } },
+          where: { id: { in: sourceIds } },
           select: { id: true, categoryId: true, brandId: true },
         })
       : [];
@@ -111,7 +137,7 @@ export async function GET(request: NextRequest) {
     .map((product) => product.brandId)
     .filter((id): id is string => Boolean(id));
 
-  const ruleIds = await getManualRuleIds(cartIds, take * 2);
+  const ruleIds = await getManualRuleIds(sourceIds, take * 2);
   if (ruleIds.length > 0) {
     const manualProducts = await prisma.product.findMany({
       where: { AND: [cartRecommendationWhere(excludeIds), { id: { in: ruleIds } }] },

@@ -116,6 +116,12 @@ input, textarea, select, button {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
 }
 
+body[data-review-modal-open="true"] .nat-site-header,
+body[data-review-modal-open="true"] .mobile-sticky-header,
+body[data-review-modal-open="true"] .product-detail-header {
+  position: static !important;
+}
+
 .mobile-header-row {
   display: flex;
   height: 60px;
@@ -138,6 +144,11 @@ input, textarea, select, button {
   padding: 16px max(1rem, env(safe-area-inset-right)) 12px max(1rem, env(safe-area-inset-left));
   border-bottom: 1px solid rgba(226, 232, 240, 0.7);
   transition: box-shadow 180ms ease;
+}
+
+.sticky-back-title--page-top {
+  top: 0;
+  padding-top: calc(16px + env(safe-area-inset-top));
 }
 
 .sticky-back-title--scrolled {
@@ -494,6 +505,10 @@ body.top-drawer-open .nat-whatsapp-float {
 
   .sticky-back-title {
     top: 84px;
+  }
+
+  .sticky-back-title--page-top {
+    top: 0;
   }
 
   .voucher-safe-area {
