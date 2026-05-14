@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { registerPushForCurrentUser } from "@/lib/push-client";
 
 type PreferenceKey = "orders" | "promo" | "chat" | "favorites";
 
@@ -56,40 +55,12 @@ function readPreferences(): Preferences {
   }
 }
 
-function statusCopy(status: string | null) {
-  switch (status) {
-    case "registered":
-      return "Notifikasi aktif di perangkat ini.";
-    case "denied":
-      return "Izin notifikasi diblokir. Aktifkan dari Settings HP/browser.";
-    case "prompt":
-      return "Izin belum diberikan. Tekan tombol aktifkan untuk meminta izin.";
-    case "unsupported":
-      return "Perangkat/browser ini belum mendukung push notification.";
-    case "error":
-      return "Belum bisa mengaktifkan notifikasi. Coba lagi nanti.";
-    default:
-      return "Aktifkan notifikasi agar update penting masuk langsung ke HP.";
-  }
-}
-
 export function NotificationSettingsClient() {
   const [preferences, setPreferences] =
     useState<Preferences>(DEFAULT_PREFERENCES);
-  const [status, setStatus] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
     setPreferences(readPreferences());
-    // registerPushForCurrentUser bisa lama (up to 30s native APNs timeout).
-    // Cancel flag mencegah setState pada unmounted component (React warning).
-    void registerPushForCurrentUser({ prompt: false }).then((result) => {
-      if (!cancelled) setStatus(result);
-    });
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   function updatePreference(key: PreferenceKey, value: boolean) {
@@ -98,59 +69,8 @@ export function NotificationSettingsClient() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   }
 
-  async function enablePush() {
-    setLoading(true);
-    const result = await registerPushForCurrentUser({ prompt: true });
-    setStatus(result);
-    setLoading(false);
-  }
-
   return (
     <div className="space-y-5">
-      <section className="rounded-3xl border border-blue-100 bg-blue-50 p-5">
-        <div className="flex items-start gap-3">
-          <p className="flex-1 text-sm font-black text-blue-900">
-            Notifikasi aplikasi
-          </p>
-          {status === "registered" && (
-            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-xs font-bold text-green-700">
-              <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-              Aktif
-            </span>
-          )}
-        </div>
-        <p className="mt-2 text-sm leading-6 text-blue-800">
-          {statusCopy(status)}
-        </p>
-
-        {/* Button hanya muncul saat user PERLU action: belum prompt,
-            denied, error. Saat "registered" → status badge sudah cukup,
-            button "Aktifkan" tidak relevan (akan no-op). Saat
-            "unsupported" → device tidak support sama sekali, button
-            tidak akan bantu. */}
-        {(status === "prompt" || status === "denied" || status === "error" || status === null) && (
-          <button
-            type="button"
-            onClick={enablePush}
-            disabled={loading}
-            className="mt-4 inline-flex w-full items-center justify-center rounded-full bg-blue-600 px-5 py-3 text-sm font-black text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-          >
-            {loading
-              ? "Memeriksa izin..."
-              : status === "denied"
-                ? "Coba minta izin lagi"
-                : "Aktifkan notifikasi perangkat"}
-          </button>
-        )}
-
-        {status === "denied" && (
-          <p className="mt-3 text-xs leading-5 text-blue-700/80">
-            Kalau popup izin tidak muncul, buka iPhone Settings →
-            Notifications → Natalo Petshop → Allow Notifications.
-          </p>
-        )}
-      </section>
-
       <section className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
         <p className="font-black text-gray-950">Preferensi notifikasi</p>
         <div className="mt-4 divide-y divide-gray-100">
@@ -181,9 +101,8 @@ export function NotificationSettingsClient() {
       </section>
 
       <p className="px-1 text-xs leading-5 text-gray-500">
-        Pengaturan izin utama tetap mengikuti Settings HP. Preferensi di sini
-        disimpan untuk aplikasi dan bisa dipakai saat kategori notifikasi promo,
-        chat, atau produk favorit mulai dikirim dari backend.
+        Preferensi di halaman ini mengatur kategori notifikasi dari aplikasi
+        Natalo. Izin notifikasi perangkat tetap mengikuti pengaturan HP.
       </p>
     </div>
   );

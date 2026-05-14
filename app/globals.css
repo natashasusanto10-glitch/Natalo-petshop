@@ -302,23 +302,6 @@ body[data-bottom-nav="hidden"] .nat-main-shell {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-.natalo-splash-overlay {
-  animation: natalo-splash-auto-hide 2.2s ease forwards;
-}
-
-@keyframes natalo-splash-auto-hide {
-  0%,
-  78% {
-    opacity: 1;
-    visibility: visible;
-  }
-  100% {
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-  }
-}
-
 /* Floating island nav — wrapper transparent + pointer-events:none, only
    the inner pill (.nat-bottom-nav__pill) is opaque/interactive. Height
    tetap = var bottom-nav-height supaya .nat-main-shell padding-bottom
