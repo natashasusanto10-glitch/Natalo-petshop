@@ -175,13 +175,13 @@ export default function BantuanPage() {
           Tidak menemukan jawaban?
         </h2>
         <p className="mt-2 text-sm text-natalo-800">
-          Tim Natalo siap bantu via WhatsApp Senin-Sabtu, jam operasional toko.
-          Tombol WhatsApp hijau di pojok kanan bawah, atau email{" "}
+          Tim Natalo siap bantu Senin-Sabtu, sesuai jam operasional toko. Kamu bisa
+          menghubungi kami melalui WhatsApp di 081289997113 atau email{" "}
           <a
-            href="mailto:hello@natalopetshop.com"
+            href="mailto:Natalopetshop@gmail.com"
             className="font-bold text-natalo-900 underline"
           >
-            hello@natalopetshop.com
+            Natalopetshop@gmail.com
           </a>
           .
         </p>
