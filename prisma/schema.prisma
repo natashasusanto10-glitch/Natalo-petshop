@@ -66,6 +66,15 @@ model User {
   cartItems           CartItem[]
   productViews        UserProductView[]
   announcementReads   AnnouncementRead[]
+  // Feed relations — admin post & user community video, plus engagement.
+  feedPosts           FeedPost[]      @relation("FeedAuthor")
+  moderatedFeedPosts  FeedPost[]      @relation("FeedModerator")
+  feedComments        FeedComment[]   @relation("FeedCommentAuthor")
+  hiddenComments      FeedComment[]   @relation("FeedCommentModerator")
+  feedLikes           FeedLike[]
+  feedCommentLikes    FeedCommentLike[]
+  feedReportsFiled    FeedReport[]    @relation("FeedReporter")
+  feedReportsResolved FeedReport[]    @relation("FeedReportResolver")
   createdAt           DateTime        @default(now())
   updatedAt           DateTime        @updatedAt
 }
@@ -147,6 +156,8 @@ model Product {
   viewedBy          UserProductView[]
   recommendationSources ProductRecommendationRule[] @relation("RecommendationSource")
   recommendationTargets ProductRecommendationRule[] @relation("RecommendationTarget")
+  // Feed posts yang tag/link ke produk ini (admin product card, promo, video+product).
+  feedPosts         FeedPost[]
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 }
@@ -592,4 +603,215 @@ model AnnouncementRead {
   @@id([userId, announcementId])
   @@index([userId])
   @@index([announcementId])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// FEED — In-app feed video + promo + community content (F1 foundation).
+//
+// Catatan desain:
+// - Single FeedPost table dgn `kind` enum membedakan 4 jenis admin
+//   (VIDEO_ONLY, PRODUCT_ONLY, VIDEO_PRODUCT, PROMO) + 1 user (COMMUNITY).
+// - `tab` enum routing ke 3 tab di UI (REKOMENDASI / PROMO / KOMUNITAS).
+//   Admin set saat post; user COMMUNITY otomatis ke KOMUNITAS.
+// - `status` workflow: PENDING_REVIEW (user upload menunggu) → ACTIVE →
+//   HIDDEN (admin sembunyikan), atau langsung REJECTED. Admin posts
+//   auto-ACTIVE saat publish (di-set di app code, bukan default schema).
+// - Denormalized count fields (likeCount/commentCount/viewCount) supaya
+//   feed listing tidak butuh COUNT() subquery. Maintain via service layer.
+// - thumbnailUrl wajib untuk video posts → Capacitor optimization (paint
+//   thumbnail dulu, video baru load saat viewport). Client-side extract
+//   via Canvas API (lihat docs F4 saat user upload diimplement).
+// ─────────────────────────────────────────────────────────────────────
+
+enum FeedPostKind {
+  VIDEO_ONLY      // Admin: konten edukasi/informasi tanpa produk
+  PRODUCT_ONLY    // Admin: card produk ringan (tanpa video) di feed
+  VIDEO_PRODUCT   // Admin: video jualan dgn produk terkait
+  PROMO           // Admin: banner/video promo dgn pricing diskon
+  COMMUNITY       // User: video komunitas (review/pengalaman/tips)
+}
+
+enum FeedPostTab {
+  REKOMENDASI     // Mix admin content + approved community
+  PROMO           // Admin promo official
+  KOMUNITAS       // User-uploaded community videos
+}
+
+enum FeedPostStatus {
+  PENDING_REVIEW  // User upload menunggu moderasi admin
+  ACTIVE          // Publik, tampil di feed
+  REJECTED        // Admin tolak (alasan di moderationNote)
+  HIDDEN          // Sebelumnya ACTIVE, di-hide admin (bisa di-unhide)
+}
+
+enum FeedReportTargetType {
+  POST
+  COMMENT
+}
+
+enum FeedReportReason {
+  SPAM
+  INAPPROPRIATE
+  MISLEADING
+  COPYRIGHT
+  OTHER
+}
+
+enum FeedReportStatus {
+  PENDING
+  RESOLVED        // Admin took action (hide/delete)
+  DISMISSED       // Admin reviewed, no violation
+}
+
+model FeedPost {
+  id              String          @id @default(cuid())
+  authorId        String
+  author          User            @relation("FeedAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  // Snapshot author role at post time. Sebenarnya derive dari author.role,
+  // tapi cache di sini supaya moderation query tidak join User tiap kali.
+  authorRole      String          // "ADMIN" | "CUSTOMER"
+  kind            FeedPostKind
+  tab             FeedPostTab
+  status          FeedPostStatus  @default(ACTIVE)
+
+  title           String
+  description     String?
+
+  // Video fields — nullable untuk PRODUCT_ONLY (kind tanpa video).
+  videoUrl        String?
+  videoMimeType   String?
+  videoSizeBytes  Int?
+  videoDurationSec Int?
+  videoWidth      Int?
+  videoHeight     Int?
+  thumbnailUrl    String?         // Wajib kalau ada videoUrl
+
+  // Product linkage — nullable untuk VIDEO_ONLY + COMMUNITY tanpa tag.
+  // COMMUNITY user yg tag produk: arahkan ke produk resmi (bukan toko user).
+  productId       String?
+  product         Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  // Promo-specific (kind == PROMO). Skip kalau bukan promo.
+  promoOriginalPrice Int?
+  promoDiscountPrice Int?
+  promoStartsAt      DateTime?
+  promoEndsAt        DateTime?
+
+  // Denormalized engagement counters — maintained oleh service layer.
+  // Pakai @default(0) supaya tidak null saat insert.
+  likeCount       Int             @default(0)
+  commentCount    Int             @default(0)
+  viewCount       Int             @default(0)
+
+  // Moderation trail
+  moderatedById   String?
+  moderatedBy     User?           @relation("FeedModerator", fields: [moderatedById], references: [id], onDelete: SetNull)
+  moderatedAt     DateTime?
+  moderationNote  String?         // Reason kalau REJECTED/HIDDEN
+
+  publishedAt     DateTime?       // Saat status pertama kali ACTIVE
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  comments        FeedComment[]
+  likes           FeedLike[]
+  reports         FeedReport[]
+
+  // Index utama untuk feed listing (filter by tab + status + sorted).
+  @@index([tab, status, publishedAt])
+  // User profile / "my posts" — list semua post oleh author tertentu.
+  @@index([authorId, status, createdAt])
+  // Product detail page bisa show "video yang pakai produk ini".
+  @@index([productId, status])
+  // Admin moderation queue — list PENDING_REVIEW sorted oldest first.
+  @@index([status, createdAt])
+}
+
+model FeedComment {
+  id              String        @id @default(cuid())
+  postId          String
+  post            FeedPost      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  authorId        String
+  author          User          @relation("FeedCommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  // Threading: 1 level. Admin "balas sebagai Natalo Official" set parentCommentId
+  // ke comment user. Tidak ada nested reply lebih dalam (UX simple).
+  parentCommentId String?
+  parent          FeedComment?  @relation("CommentReplies", fields: [parentCommentId], references: [id], onDelete: Cascade)
+  replies         FeedComment[] @relation("CommentReplies")
+
+  content         String
+  // Flag admin official reply — UI render dgn badge "Natalo Official".
+  // Cache di sini supaya tidak harus join User.role tiap kali.
+  isAdminOfficial Boolean       @default(false)
+
+  // Moderation
+  isHidden        Boolean       @default(false)
+  hiddenById      String?
+  hiddenBy        User?         @relation("FeedCommentModerator", fields: [hiddenById], references: [id], onDelete: SetNull)
+  hiddenAt        DateTime?
+  hiddenReason    String?
+
+  likeCount       Int           @default(0)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  likes           FeedCommentLike[]
+  reports         FeedReport[]
+
+  @@index([postId, isHidden, createdAt])
+  @@index([authorId])
+  @@index([parentCommentId])
+}
+
+/// Composite PK (userId, postId) — natural unique, idempotent like toggle.
+model FeedLike {
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  postId    String
+  post      FeedPost  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+
+  @@id([userId, postId])
+  @@index([postId])
+}
+
+/// Separate table dari FeedLike supaya query bersih (like comment vs like post
+/// punya counter berbeda). Mirip pattern ReviewVote.
+model FeedCommentLike {
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  commentId String
+  comment   FeedComment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+
+  @@id([userId, commentId])
+  @@index([commentId])
+}
+
+/// Report user untuk post atau comment. Admin queue lewat status=PENDING.
+model FeedReport {
+  id          String                @id @default(cuid())
+  reporterId  String
+  reporter    User                  @relation("FeedReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  targetType  FeedReportTargetType
+  // Exactly one of postId/commentId terisi (constraint di service layer).
+  postId      String?
+  post        FeedPost?             @relation(fields: [postId], references: [id], onDelete: Cascade)
+  commentId   String?
+  comment     FeedComment?          @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  reason      FeedReportReason
+  detail      String?
+
+  status      FeedReportStatus      @default(PENDING)
+  resolvedById String?
+  resolvedBy  User?                 @relation("FeedReportResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  resolvedAt  DateTime?
+
+  createdAt   DateTime              @default(now())
+
+  @@index([status, createdAt])
+  @@index([reporterId])
+  @@index([postId])
+  @@index([commentId])
 }
