@@ -100,18 +100,47 @@ export function NotificationSettingsClient() {
   return (
     <div className="space-y-5">
       <section className="rounded-3xl border border-blue-100 bg-blue-50 p-5">
-        <p className="text-sm font-black text-blue-900">Notifikasi aplikasi</p>
+        <div className="flex items-start gap-3">
+          <p className="flex-1 text-sm font-black text-blue-900">
+            Notifikasi aplikasi
+          </p>
+          {status === "registered" && (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-xs font-bold text-green-700">
+              <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+              Aktif
+            </span>
+          )}
+        </div>
         <p className="mt-2 text-sm leading-6 text-blue-800">
           {statusCopy(status)}
         </p>
-        <button
-          type="button"
-          onClick={enablePush}
-          disabled={loading}
-          className="mt-4 inline-flex w-full items-center justify-center rounded-full bg-blue-600 px-5 py-3 text-sm font-black text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-        >
-          {loading ? "Memeriksa izin..." : "Aktifkan notifikasi perangkat"}
-        </button>
+
+        {/* Button hanya muncul saat user PERLU action: belum prompt,
+            denied, error. Saat "registered" → status badge sudah cukup,
+            button "Aktifkan" tidak relevan (akan no-op). Saat
+            "unsupported" → device tidak support sama sekali, button
+            tidak akan bantu. */}
+        {(status === "prompt" || status === "denied" || status === "error" || status === null) && (
+          <button
+            type="button"
+            onClick={enablePush}
+            disabled={loading}
+            className="mt-4 inline-flex w-full items-center justify-center rounded-full bg-blue-600 px-5 py-3 text-sm font-black text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+          >
+            {loading
+              ? "Memeriksa izin..."
+              : status === "denied"
+                ? "Coba minta izin lagi"
+                : "Aktifkan notifikasi perangkat"}
+          </button>
+        )}
+
+        {status === "denied" && (
+          <p className="mt-3 text-xs leading-5 text-blue-700/80">
+            Kalau popup izin tidak muncul, buka iPhone Settings →
+            Notifications → Natalo Petshop → Allow Notifications.
+          </p>
+        )}
       </section>
 
       <section className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
