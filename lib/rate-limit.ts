@@ -76,6 +76,41 @@ export function getOtpLimiter(): Ratelimit | null {
   return otpLimiterCache;
 }
 
+// Sliding window 1 menit, 30 calls.
+// Digunakan untuk endpoint yang call paid external API (Google Maps Places,
+// reverse-geocode). Lebih longgar dari OTP karena UX autocomplete butuh
+// banyak call per detik saat user ketik.
+let mapsLimiterCache: Ratelimit | null = null;
+export function getMapsLimiter(): Ratelimit | null {
+  if (mapsLimiterCache) return mapsLimiterCache;
+  const redis = getRedisClient();
+  if (!redis) return null;
+  mapsLimiterCache = new Ratelimit({
+    redis,
+    limiter: Ratelimit.slidingWindow(30, "1 m"),
+    prefix: "rate:maps",
+    analytics: false,
+  });
+  return mapsLimiterCache;
+}
+
+// Sliding window 1 jam, 20 calls.
+// Digunakan untuk AI product-assistant — cegah OpenAI budget burn dari
+// 1 logged-in user yang loop POSTs.
+let aiLimiterCache: Ratelimit | null = null;
+export function getAiLimiter(): Ratelimit | null {
+  if (aiLimiterCache) return aiLimiterCache;
+  const redis = getRedisClient();
+  if (!redis) return null;
+  aiLimiterCache = new Ratelimit({
+    redis,
+    limiter: Ratelimit.slidingWindow(20, "1 h"),
+    prefix: "rate:ai",
+    analytics: false,
+  });
+  return aiLimiterCache;
+}
+
 type LimitResult =
   | { ok: true }
   | { ok: false; retryAfter: number };

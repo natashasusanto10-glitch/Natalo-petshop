@@ -1,7 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getGoogleMapsServerKey } from "@/lib/google-maps-key";
+import { checkLimit, getClientIp, getMapsLimiter } from "@/lib/rate-limit";
 
 export async function POST(request: NextRequest) {
+  // Tanpa rate limit endpoint ini = direct passthrough billing ke Google
+  // Maps. Attacker bisa loop POST tanpa auth → cost-DoS. 30 calls/menit
+  // cukup untuk UX autocomplete normal (user ketik ~10 char dlm 10 detik).
+  const ip = getClientIp(request.headers);
+  const gate = await checkLimit(getMapsLimiter(), `places-autocomplete:${ip}`);
+  if (!gate.ok) {
+    return NextResponse.json(
+      { error: "Terlalu banyak permintaan. Tunggu sebentar." },
+      { status: 429, headers: { "Retry-After": String(gate.retryAfter) } },
+    );
+  }
+
   const apiKey = getGoogleMapsServerKey();
   if (!apiKey) {
     return NextResponse.json(

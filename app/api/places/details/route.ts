@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { mapGoogleAddress } from "@/lib/google-address";
 import { getGoogleMapsServerKey } from "@/lib/google-maps-key";
+import { checkLimit, getClientIp, getMapsLimiter } from "@/lib/rate-limit";
 
 export async function POST(request: NextRequest) {
+  const ip = getClientIp(request.headers);
+  const gate = await checkLimit(getMapsLimiter(), `places-details:${ip}`);
+  if (!gate.ok) {
+    return NextResponse.json(
+      { error: "Terlalu banyak permintaan. Tunggu sebentar." },
+      { status: 429, headers: { "Retry-After": String(gate.retryAfter) } },
+    );
+  }
+
   const apiKey = getGoogleMapsServerKey();
   if (!apiKey) {
     return NextResponse.json(

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { assertSameOrigin } from "@/lib/csrf";
 import { syncProduct } from "@/lib/search";
 
 type Update = { id: string; price?: number; stock?: number };
@@ -11,6 +12,9 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfReject = assertSameOrigin(request);
+  if (csrfReject) return csrfReject;
+
   const session = await getSession("ADMIN");
   if (!session || session.role !== "ADMIN") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

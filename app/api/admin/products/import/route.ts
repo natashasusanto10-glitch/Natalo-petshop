@@ -41,6 +41,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
+import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
 import { syncProductsToSearchIndex } from "@/lib/search";
 import importData from "@/prisma/products_import.json";
@@ -84,6 +85,9 @@ const DEFAULT_BATCH_SIZE = 80;
 const MAX_BATCH_SIZE = 200;
 
 export async function POST(request: NextRequest) {
+  const csrfReject = assertSameOrigin(request);
+  if (csrfReject) return csrfReject;
+
   const session = await getSession("ADMIN");
   if (!session || session.role !== "ADMIN") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

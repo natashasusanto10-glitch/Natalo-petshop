@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { uploadToUT } from "@/lib/uploadthing";
 import { getSession } from "@/lib/auth";
+import { validateImageMagicBytes } from "@/lib/upload/validate-image-bytes";
 
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_SIZE = 5 * 1024 * 1024;
@@ -50,6 +51,17 @@ export async function POST(
   }
   if (file.size > MAX_SIZE) {
     return NextResponse.json({ error: "Ukuran file maksimal 5 MB" }, { status: 400 });
+  }
+
+  // Magic-byte check — cegah polyglot/SVG-XSS payload dgn Content-Type
+  // spoofed sebagai image/jpeg. Admin akan view proof di /admin/pickup-validation;
+  // tanpa check ini, attacker bisa inject script via UploadThing trusted origin.
+  const buffer = Buffer.from(await file.arrayBuffer());
+  if (!validateImageMagicBytes(buffer, file.type)) {
+    return NextResponse.json(
+      { error: "Isi file tidak cocok dengan format gambar" },
+      { status: 415 },
+    );
   }
 
   try {

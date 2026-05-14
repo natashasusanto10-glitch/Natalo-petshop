@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
+import { assertSameOrigin } from "@/lib/csrf";
 import { validateImageMagicBytes } from "@/lib/upload/validate-image-bytes";
 import { uploadToUT } from "@/lib/uploadthing";
 
@@ -7,6 +8,9 @@ const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/g
 const MAX_SIZE = 2 * 1024 * 1024;
 
 export async function POST(request: NextRequest) {
+  const csrfReject = assertSameOrigin(request);
+  if (csrfReject) return csrfReject;
+
   const session = await getSession("ADMIN");
   if (!session || session.role !== "ADMIN") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

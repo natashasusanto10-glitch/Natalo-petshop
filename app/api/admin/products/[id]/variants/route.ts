@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { assertSameOrigin } from "@/lib/csrf";
 import { syncProduct } from "@/lib/search";
 import { putVariantsPayloadSchema } from "@/lib/validators/variant-schema";
 
@@ -17,6 +18,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const csrfReject = assertSameOrigin(request);
+    if (csrfReject) return csrfReject;
+
     const session = await getSession("ADMIN");
     if (!session || session.role !== "ADMIN")
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

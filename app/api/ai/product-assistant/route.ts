@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { checkLimit, getAiLimiter } from "@/lib/rate-limit";
 
 const MAX_QUESTION_LENGTH = 500;
 const MAX_PRODUCTS_CONTEXT = 30;
@@ -11,6 +12,17 @@ export async function POST(request: NextRequest) {
   const session = await getSession("CUSTOMER");
   if (!session) {
     return NextResponse.json({ error: "Login diperlukan" }, { status: 401 });
+  }
+
+  // Rate limit per-user (key = userId, bukan IP) — cegah OpenAI budget burn
+  // dari 1 user yang loop POST. 20 calls/jam = ~3 menit cooldown per call,
+  // cukup untuk UX tanya jawab normal.
+  const gate = await checkLimit(getAiLimiter(), `ai-assistant:${session.sub}`);
+  if (!gate.ok) {
+    return NextResponse.json(
+      { error: "Kamu sudah banyak bertanya hari ini. Coba lagi nanti." },
+      { status: 429, headers: { "Retry-After": String(gate.retryAfter) } },
+    );
   }
 
   const apiKey = process.env.OPENAI_API_KEY;

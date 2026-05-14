@@ -59,10 +59,15 @@ export async function POST(request: NextRequest) {
     const passwordHash = await bcrypt.hash(password, 10);
 
     await prisma.$transaction([
-      // Update password user
+      // Update password user + bump tokenVersion → force-logout semua sesi
+      // aktif di device lain (mis. device attacker yang sebelumnya sempat
+      // login dengan password lama).
       prisma.user.update({
         where: { id: tokenRecord.userId },
-        data: { passwordHash },
+        data: {
+          passwordHash,
+          tokenVersion: { increment: 1 },
+        },
       }),
       // Mark token as used
       prisma.passwordResetToken.update({
