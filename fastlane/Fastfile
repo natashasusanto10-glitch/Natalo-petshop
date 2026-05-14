@@ -123,6 +123,53 @@ platform :ios do
     UI.success("✅ .ipa selesai di ./build/Natalo-Petshop.ipa")
   end
 
+  desc "Nuke + regenerate App Store distribution cert + profile"
+  desc "Pakai saat profile di Apple Developer Console berstatus 'Invalid'"
+  desc "atau setelah enable capability baru (mis. Push Notifications) yg tidak terbawa ke profile lama."
+  lane :regenerate_distribution do
+    api_key = app_store_connect_api_key(
+      key_id: ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"],
+      issuer_id: ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"],
+      key_content: ENV["APP_STORE_CONNECT_API_KEY_KEY"],
+      is_key_content_base64: false,
+      in_house: false,
+    )
+
+    UI.message("🧹 Nuke existing App Store distribution cert + profile (Apple + match repo)...")
+
+    # match_nuke hapus distribution cert + profile dari:
+    # - Apple Developer Portal
+    # - Match encrypted git repo (natalo-ios-certs)
+    # Setelah nuke, harus regenerate fresh — itulah call match() di bawah.
+    # skip_confirmation auto-yes untuk CI environment.
+    begin
+      match_nuke(
+        type: "appstore",
+        team_id: TEAM_ID,
+        api_key: api_key,
+        skip_confirmation: true,
+      )
+    rescue => e
+      UI.important("Nuke gagal (mungkin nothing to nuke): #{e.message} — lanjut regenerate.")
+    end
+
+    UI.message("🔑 Generate fresh App Store distribution cert + profile...")
+
+    # match dengan readonly: false + force: true akan create cert + profile baru
+    # yang otomatis include semua capabilities yang sekarang ada di App ID
+    # (Associated Domains, In-App Purchase, Push Notifications).
+    match(
+      type: "appstore",
+      readonly: false,
+      force: true,
+      api_key: api_key,
+      app_identifier: APP_BUNDLE,
+    )
+
+    UI.success("✅ Distribution profile baru sudah valid + include Push Notifications.")
+    UI.success("   Sekarang run lane 'beta' untuk build + upload ke TestFlight.")
+  end
+
   error do |lane, exception|
     UI.error("❌ Lane #{lane} gagal: #{exception.message}")
   end

@@ -17,6 +17,7 @@ on:
         options:
           - beta # Build + upload TestFlight
           - build_only # Build .ipa, upload sebagai artifact saja, tidak ke TestFlight
+          - regenerate_distribution # Nuke + regenerate App Store cert + profile (saat Invalid)
 
 permissions:
   contents: write # Diperlukan oleh stefanzweifel/git-auto-commit-action untuk push ios/ scaffold
