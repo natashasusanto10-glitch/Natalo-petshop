@@ -5,6 +5,10 @@ import { normalizeIndonesianPhone } from "@/lib/phone";
 import bcrypt from "bcryptjs";
 import type { User } from "@prisma/client";
 
+// TODO: Migrate ke persisted rate limiter (Upstash Redis / Vercel KV /
+// Postgres row). In-memory Map tidak survive serverless cold start +
+// bisa di-bypass via multi-instance load balancing. Lihat
+// docs/RATE_LIMIT_TODO.md untuk implementation steps.
 type Bucket = { count: number; resetAt: number };
 const buckets = new Map<string, Bucket>();
 const MAX_ATTEMPTS = 10;

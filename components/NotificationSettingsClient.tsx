@@ -80,8 +80,16 @@ export function NotificationSettingsClient() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     setPreferences(readPreferences());
-    void registerPushForCurrentUser({ prompt: false }).then(setStatus);
+    // registerPushForCurrentUser bisa lama (up to 30s native APNs timeout).
+    // Cancel flag mencegah setState pada unmounted component (React warning).
+    void registerPushForCurrentUser({ prompt: false }).then((result) => {
+      if (!cancelled) setStatus(result);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   function updatePreference(key: PreferenceKey, value: boolean) {

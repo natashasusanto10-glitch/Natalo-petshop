@@ -7,6 +7,8 @@ import {
 import { prisma } from "@/lib/prisma";
 import { createHash, timingSafeEqual } from "crypto";
 
+// TODO: Migrate ke persisted rate limiter. In-memory Map bypass-able via
+// serverless multi-instance load balancing. Lihat docs/RATE_LIMIT_TODO.md.
 type Bucket = { count: number; resetAt: number };
 
 const buckets = new Map<string, Bucket>();

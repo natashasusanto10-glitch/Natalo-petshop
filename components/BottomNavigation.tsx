@@ -87,9 +87,9 @@ export function BottomNavigation() {
   const hideNav = shouldHideBottomNav(pathname) || (pathname === "/products" && Boolean(searchParams.get("q")?.trim()));
 
   // Sync body data attribute supaya CSS bisa adjust .nat-main-shell
-  // padding-bottom (tanpa space kosong saat nav hidden). Pakai useEffect
-  // hanya untuk side-effect ini — render utama tetap kontrolled lewat
-  // conditional return di bawah.
+  // padding-bottom (tanpa space kosong saat nav hidden). Effect terpisah
+  // dari unmount cleanup supaya navigasi route tidak race delete attribute
+  // (cegah 1-frame flash padding-bottom shrinks).
   useEffect(() => {
     if (typeof document === "undefined") return;
     if (hideNav) {
@@ -97,12 +97,17 @@ export function BottomNavigation() {
     } else {
       delete document.body.dataset.bottomNav;
     }
+  }, [hideNav]);
+
+  useEffect(() => {
+    // Full unmount cleanup — hanya jalan saat component benar-benar unmount
+    // (mis. route ke /admin yang skip StoreOnly), bukan saat hideNav berubah.
     return () => {
       if (typeof document !== "undefined") {
         delete document.body.dataset.bottomNav;
       }
     };
-  }, [hideNav]);
+  }, []);
 
   if (hideNav) return null;
 

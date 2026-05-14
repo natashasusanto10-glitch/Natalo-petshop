@@ -95,22 +95,25 @@ export function Header() {
   useEffect(() => {
     let active = true;
 
-    async function loadMember() {
+    function loadMember() {
       fetch("/api/auth/me", { cache: "no-store" })
-      .then((res) => res.json())
-      .then((data: MemberProfile) => {
-        if (active) {
-          setMember(data.name ? data : null);
-          if (data.name) bootstrapCartSync();
-          else switchToGuestCart();
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setMember(null);
-          switchToGuestCart();
-        }
-      });
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data: MemberProfile | null) => {
+          if (!active) return;
+          if (data?.name) {
+            setMember(data);
+            bootstrapCartSync();
+          } else {
+            setMember(null);
+            switchToGuestCart();
+          }
+        })
+        .catch(() => {
+          if (active) {
+            setMember(null);
+            switchToGuestCart();
+          }
+        });
     }
 
     loadMember();

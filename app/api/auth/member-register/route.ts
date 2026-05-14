@@ -6,6 +6,10 @@ import { sendRegistrationOtpEmail } from "@/lib/email";
 import { sendCustomMessage } from "@/lib/whatsapp";
 import bcrypt from "bcryptjs";
 
+// TODO: Migrate ke persisted rate limiter. In-memory Map bypass-able via
+// serverless multi-instance load balancing — attacker bisa spam OTP send
+// (burn Fonnte WA quota) + email send (burn Resend quota). Lihat
+// docs/RATE_LIMIT_TODO.md untuk Upstash Redis / Vercel KV setup.
 type Bucket = { count: number; resetAt: number };
 
 const buckets = new Map<string, Bucket>();

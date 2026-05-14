@@ -360,10 +360,37 @@ export function OrderDetailView({
       }
     }
 
-    const id = window.setInterval(refresh, 15000);
+    // Polling tiap 15s untuk auto-update status. Pause saat tab/app tidak
+    // visible — di iOS native app yang background, polling akan drain
+    // battery + waste API calls untuk update yang user tidak lihat.
+    let id: number | null = null;
+    function start() {
+      if (id !== null) return;
+      id = window.setInterval(refresh, 15000);
+    }
+    function stop() {
+      if (id !== null) {
+        window.clearInterval(id);
+        id = null;
+      }
+    }
+    function onVisibilityChange() {
+      if (document.hidden) {
+        stop();
+      } else {
+        // Saat kembali visible, langsung refresh sekali (sync state cepat)
+        // lalu resume interval.
+        void refresh();
+        start();
+      }
+    }
+
+    if (!document.hidden) start();
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       cancelled = true;
-      window.clearInterval(id);
+      stop();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [initialOrder.orderNumber, token]);
 

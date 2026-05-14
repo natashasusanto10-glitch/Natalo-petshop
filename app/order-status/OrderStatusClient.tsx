@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type Props = {
@@ -30,6 +30,16 @@ export function OrderStatusClient({ initialOrderNumber = "" }: Props) {
   // CTA WhatsApp ke admin.
   const [apiFail, setApiFail] = useState(false);
   const [loading, setLoading] = useState(false);
+  // AbortController untuk cancel in-flight fetch saat unmount/resubmit.
+  // Tanpa ini, response slow lama bisa overwrite state setelah user
+  // navigate / submit ulang dgn data baru.
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
 
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -38,13 +48,20 @@ export function OrderStatusClient({ initialOrderNumber = "" }: Props) {
     setApiFail(false);
     setLoading(true);
 
+    // Abort previous request kalau ada (user re-submit cepat)
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     const params = new URLSearchParams({
       order: orderNumber.trim(),
       contact: contact.trim(),
     });
 
     try {
-      const res = await fetch(`/api/orders/status?${params}`);
+      const res = await fetch(`/api/orders/status?${params}`, {
+        signal: controller.signal,
+      });
       let data: { message?: string; detailUrl?: string } = {};
       try {
         data = await res.json();
@@ -65,11 +82,14 @@ export function OrderStatusClient({ initialOrderNumber = "" }: Props) {
       }
 
       router.push(data.detailUrl);
-    } catch {
+    } catch (err) {
+      // AbortError = user re-submit / unmount, jangan show error
+      if (err instanceof Error && err.name === "AbortError") return;
       // Network error, offline, fetch aborted, etc.
       setApiFail(true);
     } finally {
-      setLoading(false);
+      // Hanya unset loading kalau controller ini masih yang aktif
+      if (abortRef.current === controller) setLoading(false);
     }
   }
 
