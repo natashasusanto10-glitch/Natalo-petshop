@@ -17,6 +17,8 @@
  * - Retry button kalau error
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { FiPlus } from "react-icons/fi";
 import type { FeedPostTab } from "@prisma/client";
 import type { FeedListResponse, FeedPostListItem } from "@/lib/feed/types";
 import { hapticTap } from "@/lib/native/haptics";
@@ -24,11 +26,11 @@ import { FeedActiveVideoProvider } from "./FeedActiveVideoContext";
 import { FeedVideoCard } from "./FeedVideoCard";
 import { FeedCommentSheet } from "./FeedCommentSheet";
 
-const TABS: { value: FeedPostTab; label: string; enabled: boolean }[] = [
-  { value: "REKOMENDASI", label: "Rekomendasi", enabled: true },
-  { value: "PROMO", label: "Promo", enabled: true },
-  // Komunitas disabled di MVP — buka setelah F4 (user upload) ready.
-  { value: "KOMUNITAS", label: "Komunitas", enabled: false },
+const TABS: { value: FeedPostTab; label: string }[] = [
+  { value: "REKOMENDASI", label: "Rekomendasi" },
+  { value: "PROMO", label: "Promo" },
+  // F4: Komunitas aktif setelah user upload flow ready.
+  { value: "KOMUNITAS", label: "Komunitas" },
 ];
 
 export function FeedClient() {
@@ -116,33 +118,40 @@ export function FeedClient() {
   return (
     <FeedActiveVideoProvider>
       <div className="mx-auto flex max-w-2xl flex-col gap-4 pb-24 pt-2">
-        {/* Tab switcher */}
-        <nav
-          role="tablist"
-          aria-label="Tab Feed"
-          className="sticky top-0 z-10 mx-2 flex items-center gap-1 rounded-full border border-gray-100 bg-white/95 p-1 shadow-sm backdrop-blur"
-        >
-          {TABS.map((t) => (
-            <button
-              key={t.value}
-              type="button"
-              role="tab"
-              aria-selected={activeTab === t.value}
-              disabled={!t.enabled}
-              onClick={() => t.enabled && handleSelectTab(t.value)}
-              className={`flex-1 rounded-full py-2 text-xs font-extrabold transition ${
-                activeTab === t.value
-                  ? "bg-natalo-600 text-white shadow-sm"
-                  : t.enabled
-                    ? "text-gray-600 active:bg-gray-100"
-                    : "cursor-not-allowed text-gray-300"
-              }`}
-            >
-              {t.label}
-              {!t.enabled && <span className="ml-1 text-[9px]">SOON</span>}
-            </button>
-          ))}
-        </nav>
+        {/* Tab switcher + upload action */}
+        <div className="sticky top-0 z-10 mx-2 flex items-center gap-2">
+          <nav
+            role="tablist"
+            aria-label="Tab Feed"
+            className="flex flex-1 items-center gap-1 rounded-full border border-gray-100 bg-white/95 p-1 shadow-sm backdrop-blur"
+          >
+            {TABS.map((t) => (
+              <button
+                key={t.value}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === t.value}
+                onClick={() => handleSelectTab(t.value)}
+                className={`flex-1 rounded-full py-2 text-xs font-extrabold transition ${
+                  activeTab === t.value
+                    ? "bg-natalo-600 text-white shadow-sm"
+                    : "text-gray-600 active:bg-gray-100"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </nav>
+          {/* Upload button — di tab KOMUNITAS lebih prominent, di tab lain tetap visible
+              supaya user gampang menemukan. Auth check di /feed/upload page. */}
+          <Link
+            href="/feed/upload"
+            aria-label="Upload video komunitas"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-natalo-600 text-white shadow-md transition active:scale-95"
+          >
+            <FiPlus className="h-5 w-5" />
+          </Link>
+        </div>
 
         {/* Feed body */}
         <div className="flex flex-col gap-4 px-2">
@@ -227,8 +236,8 @@ function EmptyTabState({ tab }: { tab: FeedPostTab }) {
       subtitle: "Promo terbaru dari Natalo akan muncul di sini.",
     },
     KOMUNITAS: {
-      title: "Komunitas akan segera hadir",
-      subtitle: "Fitur upload video komunitas sedang disiapkan.",
+      title: "Belum ada video komunitas",
+      subtitle: "Jadi yang pertama bagi pengalaman bersama hewan peliharaanmu! Tap tombol + di atas.",
     },
   };
   const m = messages[tab];
