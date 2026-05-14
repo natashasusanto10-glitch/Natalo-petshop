@@ -7,7 +7,6 @@ import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
 import { getProducts, getProductsCount, type StoreProduct } from "@/lib/products";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
-import { FlashSaleCountdown } from "@/components/home/FlashSaleCountdown";
 import { BrandChoiceSection } from "@/components/home/BrandChoiceSection";
 import { HomeExploreProducts } from "@/components/home/HomeExploreProducts";
 import { HomeProductCard } from "@/components/home/HomeProductCard";
@@ -86,21 +85,6 @@ const SHORTCUT_ITEMS: {
     external: true,
   },
 ];
-
-function getJakartaMidnight() {
-  const now = new Date();
-  const fmt = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Jakarta",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  const parts = fmt.formatToParts(now);
-  const y = parts.find((p) => p.type === "year")!.value;
-  const m = parts.find((p) => p.type === "month")!.value;
-  const d = parts.find((p) => p.type === "day")!.value;
-  return new Date(`${y}-${m}-${d}T23:59:59+07:00`).getTime();
-}
 
 function HomeIcon({
   name,
@@ -504,6 +488,57 @@ async function getPopularCategories(limit = 6): Promise<HomeCategory[]> {
   }
 }
 
+function discountPercent(price: number, discountPrice: number | null) {
+  if (!discountPrice || price <= 0 || discountPrice >= price) return 0;
+  return Math.round(((price - discountPrice) / price) * 100);
+}
+
+async function getFlashSaleProducts(limit = 7): Promise<StoreProduct[]> {
+  try {
+    const products = await prisma.product.findMany({
+      where: {
+        isActive: true,
+        price: { gt: 0 },
+        discountPrice: { not: null },
+      },
+      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+      include: {
+        category: { select: { slug: true } },
+      },
+    });
+
+    return products
+      .filter((product) => discountPercent(product.price, product.discountPrice) > 20)
+      .sort((a, b) => {
+        const discountDiff =
+          discountPercent(b.price, b.discountPrice) -
+          discountPercent(a.price, a.discountPrice);
+        if (discountDiff !== 0) return discountDiff;
+        return b.updatedAt.getTime() - a.updatedAt.getTime();
+      })
+      .slice(0, limit)
+      .map((product) => ({
+        id: product.id,
+        name: product.name,
+        slug: product.slug,
+        description: product.description,
+        price: product.price,
+        discountPrice: product.discountPrice,
+        memberPrice: product.memberPrice,
+        stock: product.stock,
+        weightGram: product.weightGram,
+        imageUrl: product.imageUrl,
+        gallery: product.gallery ?? [],
+        hasVariants: product.hasVariants,
+        avgRating: product.avgRating,
+        reviewCount: product.reviewCount,
+        categorySlug: product.category?.slug ?? null,
+      }));
+  } catch {
+    return [];
+  }
+}
+
 async function getBestSellerProducts(limit = 6): Promise<StoreProduct[]> {
   try {
     const soldRows = await prisma.orderItem.groupBy({
@@ -638,8 +673,8 @@ export default async function HomePage() {
     },
   ];
 
-  const [products, popularCategories, dbFeaturedBrands, availableHomeProducts, bestSellers] = await Promise.all([
-    getProducts({ take: 24 }),
+  const [flashSaleRows, popularCategories, dbFeaturedBrands, availableHomeProducts, bestSellers] = await Promise.all([
+    getFlashSaleProducts(7),
     getPopularCategories(6),
     prisma.brand
       .findMany({
@@ -667,12 +702,10 @@ export default async function HomePage() {
 
   const homeCategories = popularCategories;
 
-  const flashSaleProducts = products
-    .filter((p) => p.discountPrice !== null && p.discountPrice < p.price)
-    .slice(0, 6);
+  const flashSaleProducts = flashSaleRows.slice(0, 6);
+  const hasMoreFlashSaleProducts = flashSaleRows.length > 6;
   const featuredBrands = mapDbBrandsToCatalogItems(dbFeaturedBrands);
 
-  const flashSaleEnd = getJakartaMidnight();
   const recommendedProducts = getHomeRecommendations(availableHomeProducts);
   const recommendedIds = recommendedProducts.map((product) => product.id);
   const exploreExcludeIds =
@@ -815,33 +848,29 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ── App Store CTA — Auto-hide di Capacitor native shell. Visible
-          hanya di web/PWA untuk promote download Natalo Petshop iPhone app
-          dari App Store. Placement strategic: setelah user lihat hero +
-          shortcut grid (high engagement moment), sebelum flash sale. ── */}
-      <section className="mt-5 px-4">
-        <AppStoreCTACard />
-      </section>
-
       {/* ── 5. FLASH SALE ── */}
       {flashSaleProducts.length > 0 && (
-        <section className="mt-5">
-          <div className="flex items-center justify-between gap-2 px-4">
+        <section className="mt-5 px-4">
+          <div className="flex items-center justify-between gap-2">
             <div>
               <h2 className="text-lg font-black text-zinc-900">⚡ Flash Sale</h2>
-              <p className="mt-0.5 text-xs text-zinc-500">Diskon spesial sampai tengah malam</p>
+              <p className="mt-0.5 text-xs text-zinc-500">Diskon spesial dari admin Natalo</p>
             </div>
-            <FlashSaleCountdown endsAt={flashSaleEnd} />
+            {hasMoreFlashSaleProducts && (
+              <Link href="/products?promo=1" className="text-xs font-bold text-blue-600">
+                Lihat semua
+              </Link>
+            )}
           </div>
-          <div className="mt-3 flex snap-x snap-mandatory gap-2.5 overflow-x-auto px-4 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="mt-3 grid grid-cols-3 gap-2.5">
             {flashSaleProducts.map((p) => {
-              const finalPrice = p.discountPrice ?? p.price;
-              const off = Math.max(1, Math.round(((p.price - finalPrice) / p.price) * 100));
+              const finalPrice = p.discountPrice!;
+              const off = discountPercent(p.price, p.discountPrice);
               return (
                 <Link
                   key={p.id}
                   href={`/products/${p.slug}`}
-                  className="w-[42vw] min-w-[124px] max-w-[150px] shrink-0 snap-start overflow-hidden rounded-2xl border border-[#eef3fb] bg-white shadow-sm active:opacity-90"
+                  className="min-w-0 overflow-hidden rounded-2xl border border-[#eef3fb] bg-white shadow-sm active:opacity-90"
                 >
                   <div className="relative aspect-square w-full bg-white p-2">
                     {p.imageUrl ? (
@@ -850,7 +879,7 @@ export default async function HomePage() {
                         alt={p.name}
                         fill
                         loading="lazy"
-                        sizes="(max-width: 640px) 42vw, 150px"
+                        sizes="(max-width: 640px) 33vw, 150px"
                         placeholder="blur"
                         blurDataURL={IMAGE_BLUR_GRAY}
                         className="object-contain p-2"
@@ -865,16 +894,13 @@ export default async function HomePage() {
                     </span>
                   </div>
                   <div className="p-2">
-                    <p className="line-clamp-2 text-[11px] font-bold text-zinc-700">{p.name}</p>
-                    <div className="mt-1 flex items-center justify-between gap-1">
-                      <p className="min-w-0 truncate text-[13px] font-black leading-tight text-[#1E5FBF]">
+                    <p className="line-clamp-2 min-h-[2.1rem] text-[11px] font-bold leading-snug text-zinc-700">{p.name}</p>
+                    <div className="mt-1">
+                      <p className="truncate text-[13px] font-black leading-tight text-[#1E5FBF]">
                         {formatRupiah(finalPrice)}
                       </p>
-                      {p.avgRating > 0 && (
-                        <span className="shrink-0 text-[10px] font-bold text-amber-500">★ {p.avgRating.toFixed(1)}</span>
-                      )}
                     </div>
-                    <p className="text-[10px] text-zinc-400 line-through">
+                    <p className="truncate text-[10px] text-zinc-400 line-through">
                       {formatRupiah(p.price)}
                     </p>
                   </div>
@@ -884,6 +910,10 @@ export default async function HomePage() {
           </div>
         </section>
       )}
+
+      <section className="mt-5 px-4">
+        <AppStoreCTACard />
+      </section>
 
       {/* ── 11. PRODUK TERLARIS ── */}
       <section className="mt-5">
