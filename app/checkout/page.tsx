@@ -1050,6 +1050,9 @@ export default function CheckoutPage() {
       `/pesanan/${encodeURIComponent(data.orderNumber)}${
         data.trackingToken ? `?token=${encodeURIComponent(data.trackingToken)}` : ""
       }`;
+    const orderCreatedUrl = `${detailUrl}${
+      detailUrl.includes("?") ? "&" : "?"
+    }created=1`;
 
     // Simpan alamat ke buku alamat (best-effort, jangan ganggu flow)
     if (isLoggedIn && saveToAddressBook && form.shippingAddress && !isSelfPickup) {
@@ -1080,11 +1083,11 @@ export default function CheckoutPage() {
       window.snap.pay(data.snapToken, {
         onSuccess: () => {
           clearCart();
-          router.push(detailUrl);
+          router.push(orderCreatedUrl);
         },
         onPending: () => {
           clearCart();
-          router.push(detailUrl);
+          router.push(orderCreatedUrl);
         },
         onError: () => {
           setError("Pembayaran gagal. Silakan coba lagi.");
@@ -1092,14 +1095,14 @@ export default function CheckoutPage() {
         onClose: () => {
           setError("Pembayaran dibatalkan. Order tetap tersimpan dan bisa dibuka dari detail pesanan.");
           clearCart();
-          router.push(detailUrl);
+          router.push(orderCreatedUrl);
         },
       });
       return;
     }
 
     clearCart();
-    router.push(detailUrl);
+    router.push(orderCreatedUrl);
   }
 
   function field(

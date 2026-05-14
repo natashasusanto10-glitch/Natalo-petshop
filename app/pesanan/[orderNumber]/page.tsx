@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 
 type Props = {
   params: Promise<{ orderNumber: string }>;
-  searchParams: Promise<{ token?: string }>;
+  searchParams: Promise<{ token?: string; created?: string }>;
 };
 
 export default async function OrderDetailPage({ params, searchParams }: Props) {
@@ -88,6 +88,7 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
       initialOrder={serializeOrderDetail(order)}
       token={query.token ?? null}
       canReview={isOwner}
+      showCreatedSuccess={query.created === "1"}
     />
   );
 }
