@@ -53,6 +53,24 @@ export function buildOrderDetailUrl(
   return `${siteUrl}${buildOrderDetailPath(orderNumber, trackingToken)}`;
 }
 
+export function buildOrderSuccessPath(
+  orderNumber: string,
+  trackingToken?: string | null
+) {
+  const path = `/pesanan/${encodeURIComponent(orderNumber)}/success`;
+  return trackingToken
+    ? `${path}?token=${encodeURIComponent(trackingToken)}`
+    : path;
+}
+
+export function buildOrderSuccessUrl(
+  orderNumber: string,
+  trackingToken?: string | null
+) {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  return `${siteUrl}${buildOrderSuccessPath(orderNumber, trackingToken)}`;
+}
+
 export function isOrderContactMatch(
   order: { customerEmail?: string | null; customerPhone: string },
   contact: string

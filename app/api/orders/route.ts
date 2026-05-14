@@ -6,7 +6,7 @@ import { createOrderNumber } from "@/lib/format";
 import { createOrderSchema } from "@/lib/validation";
 import type { CheckedOutItem } from "@/lib/checkout-items";
 import { InvalidCustomerSessionError, resolveOrderIdentity } from "@/lib/order-identity";
-import { buildOrderDetailPath, buildOrderDetailUrl, createTrackingToken } from "@/lib/order-detail";
+import { buildOrderDetailPath, buildOrderDetailUrl, buildOrderSuccessUrl, createTrackingToken } from "@/lib/order-detail";
 import { SELF_PICKUP_METHOD, SELF_PICKUP_STORE } from "@/lib/self-pickup";
 import { sendAdminOrderCreated, sendOrderCreated } from "@/lib/whatsapp";
 
@@ -78,7 +78,7 @@ async function createMidtransPayment(order: { orderNumber: string; trackingToken
         "qris",
       ],
       callbacks: {
-        finish: buildOrderDetailUrl(order.orderNumber, order.trackingToken),
+        finish: buildOrderSuccessUrl(order.orderNumber, order.trackingToken),
       },
     }),
   });

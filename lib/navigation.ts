@@ -55,6 +55,7 @@ export const HIDDEN_BOTTOM_NAV_PATTERNS: RegExp[] = [
   /^\/member\/profile$/,
   /^\/order-status(\/|$)/,
   /^\/pesanan\/[^/]+$/,
+  /^\/pesanan\/[^/]+\/success$/,
 
   // Review/rating form aliases — fokus mengisi rating dan ulasan produk
   /^\/review(\/|$)/,

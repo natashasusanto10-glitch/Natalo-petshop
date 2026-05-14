@@ -1050,9 +1050,10 @@ export default function CheckoutPage() {
       `/pesanan/${encodeURIComponent(data.orderNumber)}${
         data.trackingToken ? `?token=${encodeURIComponent(data.trackingToken)}` : ""
       }`;
-    const orderCreatedUrl = `${detailUrl}${
-      detailUrl.includes("?") ? "&" : "?"
-    }created=1`;
+    const [detailPath, detailQuery] = detailUrl.split("?");
+    const orderCreatedUrl = `${detailPath.replace(/\/$/, "")}/success${
+      detailQuery ? `?${detailQuery}` : ""
+    }`;
 
     // Simpan alamat ke buku alamat (best-effort, jangan ganggu flow)
     if (isLoggedIn && saveToAddressBook && form.shippingAddress && !isSelfPickup) {
