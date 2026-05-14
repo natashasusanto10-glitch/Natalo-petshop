@@ -150,33 +150,58 @@ async function ensureNativeRegistered(platform: NativePlatform) {
     resolveDone = resolve;
   });
   let settled = false;
-  const finish = () => {
+  const finish = (reason: string) => {
     if (settled) return;
     settled = true;
+    void logTrace("native-finish", { reason });
     resolveDone();
   };
+
+  void logTrace("native-listeners-attaching", { platform });
 
   const tokenHandle = await PushNotifications.addListener(
     "registration",
     async (token) => {
+      void logTrace("native-token-received", {
+        tokenPreview: token.value?.slice(0, 12) + "...",
+      });
       try {
         await postNativeToken(token.value, platform);
+      } catch (err) {
+        void logTrace("native-token-post-throw", { error: String(err) });
       } finally {
-        finish();
+        finish("token-received");
       }
     }
   );
 
   const errorHandle = await PushNotifications.addListener(
     "registrationError",
-    () => finish()
+    (err) => {
+      void logTrace("native-registration-error", {
+        error: JSON.stringify(err),
+      });
+      finish("registration-error");
+    }
   );
 
-  PushNotifications.register().catch(() => finish());
+  void logTrace("native-calling-register");
+  try {
+    await PushNotifications.register();
+    void logTrace("native-register-resolved");
+  } catch (err) {
+    void logTrace("native-register-throw", { error: String(err) });
+    finish("register-throw");
+  }
 
+  // Timeout di-extend ke 30s — Apple APNs first-install registration kadang
+  // butuh waktu (especially poor network). Tetap timeout supaya useEffect
+  // tidak hang forever kalau APNs benar-benar fail silently.
   await Promise.race([
     done,
-    new Promise<void>((resolve) => setTimeout(resolve, 8000)).then(finish),
+    new Promise<void>((resolve) => setTimeout(resolve, 30_000)).then(() =>
+      finish("timeout-30s")
+    ),
   ]);
 
   await tokenHandle.remove().catch(() => {});
