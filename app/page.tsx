@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import type { OrderStatus } from "@prisma/client";
 import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
 import { getProducts, getProductsCount, type StoreProduct } from "@/lib/products";
 import { prisma } from "@/lib/prisma";
@@ -380,6 +381,225 @@ function getHomeRecommendations(products: StoreProduct[]) {
   return uniqueProducts([...promoProducts, ...popularProducts, ...products]).slice(0, 10);
 }
 
+const VALID_BEST_SELLER_ORDER_STATUSES: OrderStatus[] = [
+  "PAID",
+  "PROCESSING",
+  "READY_FOR_PICKUP",
+  "SHIPPED",
+  "DELIVERED",
+];
+
+type HomeCategory = {
+  id: string;
+  name: string;
+  slug: string;
+  products: Array<{ imageUrl: string | null }>;
+  _count: { products: number };
+};
+
+async function getFallbackHomeCategories(limit = 6): Promise<HomeCategory[]> {
+  return prisma.category
+    .findMany({
+      where: { products: { some: { isActive: true } } },
+      take: limit,
+      orderBy: [{ products: { _count: "desc" } }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        products: {
+          where: { isActive: true },
+          take: 1,
+          select: { imageUrl: true },
+        },
+        _count: { select: { products: { where: { isActive: true } } } },
+      },
+    })
+    .catch(() => []);
+}
+
+async function getPopularCategories(limit = 6): Promise<HomeCategory[]> {
+  try {
+    const soldRows = await prisma.orderItem.groupBy({
+      by: ["productId"],
+      where: {
+        order: {
+          paymentStatus: "PAID",
+          status: { in: VALID_BEST_SELLER_ORDER_STATUSES },
+        },
+        product: {
+          isActive: true,
+          categoryId: { not: null },
+        },
+      },
+      _sum: { quantity: true },
+    });
+
+    if (soldRows.length === 0) return getFallbackHomeCategories(limit);
+
+    const soldCountByProduct = new Map(
+      soldRows.map((row) => [row.productId, row._sum?.quantity ?? 0]),
+    );
+    const purchasedProducts = await prisma.product.findMany({
+      where: {
+        id: { in: soldRows.map((row) => row.productId) },
+        isActive: true,
+        categoryId: { not: null },
+      },
+      select: {
+        id: true,
+        categoryId: true,
+      },
+    });
+
+    const soldCountByCategory = new Map<string, number>();
+    for (const product of purchasedProducts) {
+      if (!product.categoryId) continue;
+      soldCountByCategory.set(
+        product.categoryId,
+        (soldCountByCategory.get(product.categoryId) ?? 0) +
+          (soldCountByProduct.get(product.id) ?? 0),
+      );
+    }
+
+    const categoryIds = Array.from(soldCountByCategory.keys());
+    if (categoryIds.length === 0) return getFallbackHomeCategories(limit);
+
+    const categories = await prisma.category.findMany({
+      where: {
+        id: { in: categoryIds },
+        products: { some: { isActive: true } },
+      },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        products: {
+          where: { isActive: true },
+          take: 1,
+          select: { imageUrl: true },
+        },
+        _count: { select: { products: { where: { isActive: true } } } },
+      },
+    });
+
+    const popularCategories = categories
+      .sort((a, b) => {
+        const soldDiff =
+          (soldCountByCategory.get(b.id) ?? 0) -
+          (soldCountByCategory.get(a.id) ?? 0);
+        if (soldDiff !== 0) return soldDiff;
+        if (b._count.products !== a._count.products) {
+          return b._count.products - a._count.products;
+        }
+        return a.name.localeCompare(b.name, "id-ID");
+      })
+      .slice(0, limit);
+
+    return popularCategories.length > 0
+      ? popularCategories
+      : getFallbackHomeCategories(limit);
+  } catch {
+    return getFallbackHomeCategories(limit);
+  }
+}
+
+async function getBestSellerProducts(limit = 6): Promise<StoreProduct[]> {
+  try {
+    const soldRows = await prisma.orderItem.groupBy({
+      by: ["productId"],
+      where: {
+        order: {
+          paymentStatus: "PAID",
+          status: { in: VALID_BEST_SELLER_ORDER_STATUSES },
+        },
+        product: { isActive: true },
+      },
+      _sum: { quantity: true },
+      orderBy: { _sum: { quantity: "desc" } },
+      take: Math.max(limit * 4, limit),
+    });
+
+    const productIds = soldRows.map((row) => row.productId);
+    if (productIds.length === 0) return [];
+
+    const soldCountByProduct = new Map(
+      soldRows.map((row) => [row.productId, row._sum?.quantity ?? 0]),
+    );
+
+    const soldProducts = await prisma.product.findMany({
+      where: {
+        id: { in: productIds },
+        isActive: true,
+      },
+      include: {
+        category: { select: { slug: true } },
+        variants: {
+          where: { deletedAt: null, isActive: true },
+          select: { price: true, stock: true },
+        },
+      },
+    });
+
+    return soldProducts
+      .sort((a, b) => {
+        const soldDiff =
+          (soldCountByProduct.get(b.id) ?? 0) -
+          (soldCountByProduct.get(a.id) ?? 0);
+        if (soldDiff !== 0) return soldDiff;
+        if (b.avgRating !== a.avgRating) return b.avgRating - a.avgRating;
+        return b.createdAt.getTime() - a.createdAt.getTime();
+      })
+      .slice(0, limit)
+      .map((product) => {
+        if (product.hasVariants && product.variants.length > 0) {
+          const prices = product.variants.map((variant) => variant.price);
+          const totalStock = product.variants.reduce(
+            (sum, variant) => sum + variant.stock,
+            0,
+          );
+          return {
+            id: product.id,
+            name: product.name,
+            slug: product.slug,
+            description: product.description,
+            price: Math.min(...prices),
+            discountPrice: null,
+            memberPrice: product.memberPrice,
+            stock: totalStock,
+            weightGram: product.weightGram,
+            imageUrl: product.imageUrl,
+            gallery: product.gallery ?? [],
+            hasVariants: true,
+            avgRating: product.avgRating,
+            reviewCount: product.reviewCount,
+            categorySlug: product.category?.slug ?? null,
+          };
+        }
+
+        return {
+          id: product.id,
+          name: product.name,
+          slug: product.slug,
+          description: product.description,
+          price: product.price,
+          discountPrice: product.discountPrice,
+          memberPrice: product.memberPrice,
+          stock: product.stock,
+          weightGram: product.weightGram,
+          imageUrl: product.imageUrl,
+          gallery: product.gallery ?? [],
+          hasVariants: false,
+          avgRating: product.avgRating,
+          reviewCount: product.reviewCount,
+          categorySlug: product.category?.slug ?? null,
+        };
+      });
+  } catch {
+    return [];
+  }
+}
+
 export default async function HomePage() {
   const wa =
     process.env.NEXT_PUBLIC_WA_NUMBER ||
@@ -418,25 +638,9 @@ export default async function HomePage() {
     },
   ];
 
-  const [products, popularCategories, dbFeaturedBrands, availableHomeProducts] = await Promise.all([
+  const [products, popularCategories, dbFeaturedBrands, availableHomeProducts, bestSellers] = await Promise.all([
     getProducts({ take: 24 }),
-    prisma.category
-      .findMany({
-        where: { products: { some: { isActive: true } } },
-        take: 6,
-        orderBy: { products: { _count: "desc" } },
-        select: {
-          name: true,
-          slug: true,
-          products: {
-            where: { isActive: true },
-            take: 1,
-            select: { imageUrl: true },
-          },
-          _count: { select: { products: { where: { isActive: true } } } },
-        },
-      })
-      .catch(() => []),
+    getPopularCategories(6),
     prisma.brand
       .findMany({
         where: {
@@ -458,25 +662,14 @@ export default async function HomePage() {
       inStockOnly: true,
       withImageOnly: true,
     }),
+    getBestSellerProducts(6),
   ]);
 
-  const fallbackPopularCategories = [
-    { name: "Makanan Kucing", slug: "makanan-kucing", products: [], _count: { products: 0 } },
-    { name: "Makanan Anjing", slug: "makanan-anjing", products: [], _count: { products: 0 } },
-    { name: "Aquarium & Ikan", slug: "aquarium-kolam", products: [], _count: { products: 0 } },
-    { name: "Kandang & Carrier", slug: "kandang-carrier", products: [], _count: { products: 0 } },
-    { name: "Grooming Tools", slug: "grooming-tools", products: [], _count: { products: 0 } },
-    { name: "Snack & Treat", slug: "snack-treat-kucing", products: [], _count: { products: 0 } },
-  ];
-  const homeCategories = popularCategories.length > 0 ? popularCategories : fallbackPopularCategories;
+  const homeCategories = popularCategories;
 
   const flashSaleProducts = products
     .filter((p) => p.discountPrice !== null && p.discountPrice < p.price)
     .slice(0, 6);
-  const bestSellers = [...products]
-    .sort((a, b) => b.reviewCount - a.reviewCount || b.avgRating - a.avgRating)
-    .slice(0, 6);
-
   const featuredBrands = mapDbBrandsToCatalogItems(dbFeaturedBrands);
 
   const flashSaleEnd = getJakartaMidnight();
