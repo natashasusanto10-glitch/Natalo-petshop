@@ -37,36 +37,46 @@ platform :ios do
       app_identifier: "com.natalo.petshop",
     )
 
-    # Auto-bump marketing version (CFBundleShortVersionString) saat version
-    # current sudah ter-release ke App Store. Apple lock version yang sudah
-    # public — build baru harus pakai marketing version lebih tinggi.
-    # bump_type: "patch" → 1.0 → 1.0.1 → 1.0.2 dst.
-    # Wajib di-call SEBELUM build_number increment supaya pbxproj baru di-baca
-    # oleh build_app step.
-    current_version = get_version_number(xcodeproj: XCODEPROJ, target: "App")
-    UI.message("Current marketing version: #{current_version}")
+    # Auto-bump marketing version saat version current sudah ter-release ke
+    # App Store. Apple lock version yang sudah public — build baru harus
+    # pakai marketing version lebih tinggi.
+    #
+    # Capacitor template pakai $(MARKETING_VERSION) build setting variable di
+    # Info.plist, bukan literal. Fastlane's increment_version_number tidak
+    # bisa parse build setting — pakai agvtool langsung (Apple official tool
+    # yang resolve build setting dengan benar).
+    #
+    # Read current resolved version dari Info.plist (agvtool what-marketing-version
+    # bisa fail kalau MARKETING_VERSION setting baru, jadi pakai PlistBuddy
+    # fallback ke literal value yang sudah ter-resolve).
+    current_version_raw = sh("cd ios/App && agvtool what-marketing-version -terse1 2>/dev/null || echo unknown").strip
+    UI.message("Current marketing version (agvtool): #{current_version_raw}")
 
     begin
-      latest_app_store_version = app_store_build_number(
+      latest_app_store_version = google_app_store_build_number = app_store_build_number(
         api_key: api_key,
         app_identifier: APP_BUNDLE,
         live: true,
       )
-      UI.message("Latest live App Store build: #{latest_app_store_version}")
-    rescue
+      live_version = lane_context[SharedValues::LATEST_VERSION]
+      UI.message("Latest live App Store: version=#{live_version} build=#{latest_app_store_version}")
+    rescue => e
+      UI.important("Tidak bisa fetch live App Store version: #{e.message}")
       latest_app_store_version = nil
+      live_version = nil
     end
 
-    # Strategi: kalau current version di pbxproj sama dengan version yang sudah
-    # live di App Store (atau lebih lama), bump patch. Kalau sudah ahead (dev
-    # sudah bump manual), skip.
-    if latest_app_store_version
-      increment_version_number(
-        xcodeproj: XCODEPROJ,
-        bump_type: "patch",
-      )
-      new_version = get_version_number(xcodeproj: XCODEPROJ, target: "App")
-      UI.message("Bumped marketing version: #{current_version} → #{new_version}")
+    # Strategi: kalau ada version live di App Store, bump current ke patch+1
+    # dari live version. Mis. live=1.0 → next=1.0.1.
+    if live_version && !live_version.empty?
+      parts = live_version.split(".").map(&:to_i)
+      parts << 0 while parts.length < 3
+      parts[2] += 1
+      new_version = parts.join(".")
+      UI.message("Bumping marketing version: #{live_version} → #{new_version}")
+      sh("cd ios/App && agvtool new-marketing-version #{new_version}")
+    else
+      UI.message("Skip version bump — no live App Store version detected.")
     end
 
     # Auto-increment build number berdasarkan TestFlight terakhir + 1.
