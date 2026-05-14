@@ -361,7 +361,13 @@ function ReviewForm({
   if (success) {
     return (
       <SheetShell onClose={onClose} ariaLabel="Review terkirim">
-        <div className="flex flex-col items-center px-6 pb-8 pt-10 text-center [padding-bottom:calc(2rem+env(safe-area-inset-bottom))]">
+        <div
+          data-sheet-handle
+          className="shrink-0 cursor-grab touch-pan-y select-none px-5 pt-3 active:cursor-grabbing"
+        >
+          <div className="mx-auto h-1.5 w-10 rounded-full bg-gray-200" aria-hidden="true" />
+        </div>
+        <div className="flex flex-col items-center px-6 pb-8 pt-6 text-center [padding-bottom:calc(2rem+env(safe-area-inset-bottom))]">
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-3xl text-green-600">
             ✓
           </div>
@@ -566,6 +572,9 @@ function ReviewForm({
   );
 }
 
+const DRAG_CLOSE_PX = 120;
+const SNAP_BACK_MS = 280;
+
 function SheetShell({
   children,
   onClose,
@@ -577,6 +586,12 @@ function SheetShell({
 }) {
   const [mounted, setMounted] = useState(false);
   const [portalReady, setPortalReady] = useState(false);
+  const [dragY, setDragY] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [snappingBack, setSnappingBack] = useState(false);
+  const dragStartYRef = useRef(0);
+  const dragYRef = useRef(0);
+  const draggingRef = useRef(false);
 
   useEffect(() => {
     setPortalReady(true);
@@ -595,7 +610,80 @@ function SheetShell({
     };
   }, []);
 
+  function startDrag(target: EventTarget | null, clientY: number) {
+    // Only start drag if touch began on the header handle area.
+    if (!(target instanceof HTMLElement)) return;
+    if (!target.closest("[data-sheet-handle]")) return;
+    // Don't drag from interactive elements within the header.
+    if (target.closest("button, a, input, textarea")) return;
+    dragStartYRef.current = clientY;
+    dragYRef.current = 0;
+    draggingRef.current = true;
+    setDragging(true);
+    setSnappingBack(false);
+    setDragY(0);
+  }
+
+  function moveDrag(clientY: number) {
+    if (!draggingRef.current) return;
+    const dy = Math.max(0, clientY - dragStartYRef.current);
+    dragYRef.current = dy;
+    setDragY(dy);
+  }
+
+  function endDrag() {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    setDragging(false);
+    if (dragYRef.current >= DRAG_CLOSE_PX) {
+      onClose();
+      return;
+    }
+    setSnappingBack(true);
+    dragYRef.current = 0;
+    setDragY(0);
+    window.setTimeout(() => setSnappingBack(false), SNAP_BACK_MS);
+  }
+
+  function onTouchStart(e: React.TouchEvent) {
+    const t = e.touches[0];
+    if (!t) return;
+    startDrag(e.target, t.clientY);
+  }
+  function onTouchMove(e: React.TouchEvent) {
+    const t = e.touches[0];
+    if (!t) return;
+    moveDrag(t.clientY);
+    if (draggingRef.current && dragYRef.current > 0 && e.cancelable) {
+      e.preventDefault();
+    }
+  }
+  function onMouseDown(e: React.MouseEvent) {
+    if (e.button !== 0) return;
+    startDrag(e.target, e.clientY);
+  }
+
+  useEffect(() => {
+    if (!dragging) return;
+    function mm(e: globalThis.MouseEvent) {
+      moveDrag(e.clientY);
+    }
+    function mu() {
+      endDrag();
+    }
+    document.addEventListener("mousemove", mm);
+    document.addEventListener("mouseup", mu);
+    return () => {
+      document.removeEventListener("mousemove", mm);
+      document.removeEventListener("mouseup", mu);
+    };
+  }, [dragging]);
+
   if (!portalReady || typeof document === "undefined") return null;
+
+  const translate = dragging || snappingBack ? dragY : mounted ? 0 : undefined;
+  const inlineTransform =
+    translate !== undefined ? `translate3d(0, ${translate}px, 0)` : undefined;
 
   // Portal to <body> so ancestor `transform` / `will-change` (e.g. fade-in
   // animation on notification cards) can't trap our `position: fixed`.
@@ -610,10 +698,23 @@ function SheetShell({
       aria-label={ariaLabel}
     >
       <div
-        className={`flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl transition-transform duration-300 ease-out [transition-timing-function:cubic-bezier(0.2,0.8,0.2,1)] sm:rounded-3xl ${
-          mounted ? "translate-y-0" : "translate-y-full sm:translate-y-4"
-        }`}
+        className={`flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl ${
+          dragging
+            ? ""
+            : snappingBack
+              ? "transition-transform duration-[280ms] [transition-timing-function:cubic-bezier(0.34,1.26,0.64,1)]"
+              : "transition-transform duration-300 ease-out [transition-timing-function:cubic-bezier(0.2,0.8,0.2,1)]"
+        } ${mounted || dragging || snappingBack ? "translate-y-0" : "translate-y-full sm:translate-y-4"}`}
+        style={{
+          transform: inlineTransform,
+          touchAction: "pan-y",
+        }}
         onClick={(e) => e.stopPropagation()}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={endDrag}
+        onTouchCancel={endDrag}
+        onMouseDown={onMouseDown}
       >
         {children}
       </div>
@@ -633,8 +734,11 @@ function SheetHeader({
   onClose: () => void;
 }) {
   return (
-    <div className="relative shrink-0 border-b border-gray-100 px-5 pb-4 pt-3">
-      <div className="mx-auto h-1 w-10 rounded-full bg-gray-200" aria-hidden="true" />
+    <div
+      data-sheet-handle
+      className="relative shrink-0 cursor-grab touch-pan-y select-none border-b border-gray-100 px-5 pb-4 pt-3 active:cursor-grabbing"
+    >
+      <div className="mx-auto h-1.5 w-10 rounded-full bg-gray-200" aria-hidden="true" />
       <div className="mt-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-lg font-black text-gray-900">{title}</h2>
