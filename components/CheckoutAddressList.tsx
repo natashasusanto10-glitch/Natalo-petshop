@@ -144,7 +144,7 @@ export function CheckoutAddressList({ addresses, returnTo }: Props) {
 
   return (
     <main className="min-h-screen bg-slate-50 pb-[calc(104px+env(safe-area-inset-bottom))]">
-      <div className="sticky top-[calc(var(--natalo-mobile-header-min-height)+env(safe-area-inset-top))] z-[900] border-b border-slate-100 bg-white/95 backdrop-blur">
+      <div className="sticky top-[env(safe-area-inset-top)] z-[900] border-b border-slate-100 bg-white shadow-[0_8px_20px_rgba(15,23,42,0.06)]">
         <div className="mx-auto flex max-w-2xl items-center justify-between gap-3 px-4 py-3">
           <Link
             href={returnTo}

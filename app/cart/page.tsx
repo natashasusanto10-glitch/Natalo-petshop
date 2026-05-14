@@ -11,6 +11,7 @@ import type { CartStockIssue } from "@/lib/cart-stock";
 import { VoucherClaimBar } from "@/components/cart/VoucherClaimBar";
 import { SwipeableCartRow } from "@/components/cart/SwipeableCartRow";
 import { CartRecommendationSections } from "@/components/cart/CartRecommendationSections";
+import { EmptyCartLottie } from "@/components/cart/EmptyCartLottie";
 import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
 import { hapticSuccess, hapticTap, hapticWarning } from "@/lib/native/haptics";
 
@@ -105,16 +106,7 @@ function TrashIcon({ className = "h-4 w-4" }: { className?: string }) {
 function EmptyCartShoppingCard() {
   return (
     <section className="mt-4 rounded-2xl border border-blue-100 bg-white p-6 text-center shadow-[0_12px_34px_rgba(15,23,42,0.06)] md:mt-8 md:p-10">
-      <div className="relative mx-auto mb-5 aspect-[1.27/1] w-full max-w-[280px]">
-        <Image
-          src="/assets/images/empty_cart_pets_fullcolor.png"
-          alt=""
-          width={1016}
-          height={797}
-          className="h-full w-full object-contain"
-          aria-hidden="true"
-        />
-      </div>
+      <EmptyCartLottie />
       <h2 className="text-xl font-black leading-tight text-[#07112F]">
         Keranjang kamu masih kosong
       </h2>

@@ -166,7 +166,8 @@ export function Header() {
     isBrandsDirectory ||
     isNotificationCenter ||
     isFocusedAccountPage ||
-    isAccountSubPageWithoutBrandHeader
+    isAccountSubPageWithoutBrandHeader ||
+    isCheckoutAddressPicker
   ) return null;
 
   // Auth pages — render minimal header: back button + title saja. Bottom nav,
