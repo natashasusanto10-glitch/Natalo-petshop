@@ -13,7 +13,7 @@ import { PaymentProofUpload } from "@/components/PaymentProofUpload";
 import { ExternalLink } from "@/components/ExternalLink";
 import { trackSuccessfulOrder } from "@/lib/app-rating";
 import { PageStatusBar } from "@/components/PageStatusBar";
-import { ReviewModal } from "@/components/ReviewModal";
+import { ReviewFlow, buildReviewItemFromOrder } from "@/components/review/ReviewFlow";
 import { StickyBackTitle } from "@/components/StickyBackTitle";
 import { SELF_PICKUP_STORE } from "@/lib/self-pickup";
 
@@ -754,13 +754,26 @@ export function OrderDetailView({
       </div>
 
       {reviewItem && (
-        <ReviewModal
-          orderItemId={reviewItem.id}
-          productId={reviewItem.productId}
-          productName={reviewItem.name}
-          productImage={reviewItem.productImage}
-          variantLabel={reviewItem.variantLabel}
+        <ReviewFlow
+          orderNumber={order.orderNumber}
+          preselectedItem={buildReviewItemFromOrder({
+            id: reviewItem.id,
+            productId: reviewItem.productId,
+            name: reviewItem.name,
+            productImage: reviewItem.productImage,
+            variantLabel: reviewItem.variantLabel,
+            quantity: reviewItem.quantity,
+            reviewed: reviewItem.reviewed,
+          })}
           onClose={() => setReviewItem(null)}
+          onSubmitted={() => {
+            setOrder((prev) => ({
+              ...prev,
+              items: prev.items.map((it) =>
+                it.id === reviewItem.id ? { ...it, reviewed: true } : it
+              ),
+            }));
+          }}
         />
       )}
     </div>

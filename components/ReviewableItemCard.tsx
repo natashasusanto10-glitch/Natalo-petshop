@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ReviewModal } from "@/components/ReviewModal";
+import { ReviewFlow } from "@/components/review/ReviewFlow";
 import { formatRupiah } from "@/lib/format";
 
 type Item = {
@@ -52,19 +52,24 @@ export function ReviewableItemCard({ item }: { item: Item }) {
         </div>
         <button
           onClick={() => setOpen(true)}
-          className="rounded-full bg-natalo-600 px-5 py-2 text-sm font-bold text-white hover:bg-natalo-700"
+          className="shrink-0 whitespace-nowrap rounded-full bg-natalo-600 px-5 py-2 text-sm font-bold text-white hover:bg-natalo-700"
         >
           ★ Beri Review
         </button>
       </div>
 
       {open && (
-        <ReviewModal
-          orderItemId={item.id}
-          productId={item.product.id}
-          productName={item.name}
-          productImage={item.product.imageUrl}
-          variantLabel={item.variantLabel}
+        <ReviewFlow
+          orderNumber={item.order.orderNumber}
+          preselectedItem={{
+            orderItemId: item.id,
+            productId: item.product.id,
+            productName: item.name,
+            productImage: item.product.imageUrl,
+            variantLabel: item.variantLabel,
+            quantity: item.quantity,
+            reviewed: false,
+          }}
           onClose={() => setOpen(false)}
         />
       )}
