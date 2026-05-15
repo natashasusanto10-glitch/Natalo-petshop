@@ -90,16 +90,50 @@ export function ProductFilterTopDrawer({
   // Lock body scroll + body class + ESC close
   useEffect(() => {
     if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    document.body.classList.add("top-drawer-open");
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+    const body = document.body;
+    const html = document.documentElement;
+    const prevBody = {
+      overflow: body.style.overflow,
+      position: body.style.position,
+      top: body.style.top,
+      left: body.style.left,
+      right: body.style.right,
+      width: body.style.width,
+      overscrollBehavior: body.style.overscrollBehavior,
+    };
+    const prevHtml = {
+      overflow: html.style.overflow,
+      overscrollBehavior: html.style.overscrollBehavior,
+    };
+
+    body.style.overflow = "hidden";
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
+    body.style.left = `-${scrollX}px`;
+    body.style.right = "0";
+    body.style.width = "100%";
+    body.style.overscrollBehavior = "none";
+    html.style.overflow = "hidden";
+    html.style.overscrollBehavior = "none";
+    body.classList.add("top-drawer-open");
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
     }
     document.addEventListener("keydown", onKey);
     return () => {
-      document.body.style.overflow = prev;
-      document.body.classList.remove("top-drawer-open");
+      body.style.overflow = prevBody.overflow;
+      body.style.position = prevBody.position;
+      body.style.top = prevBody.top;
+      body.style.left = prevBody.left;
+      body.style.right = prevBody.right;
+      body.style.width = prevBody.width;
+      body.style.overscrollBehavior = prevBody.overscrollBehavior;
+      html.style.overflow = prevHtml.overflow;
+      html.style.overscrollBehavior = prevHtml.overscrollBehavior;
+      body.classList.remove("top-drawer-open");
+      window.scrollTo(scrollX, scrollY);
       document.removeEventListener("keydown", onKey);
     };
   }, [open, onClose]);
@@ -161,7 +195,14 @@ export function ProductFilterTopDrawer({
   if (!open || typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999]" role="dialog" aria-modal="true" aria-label="Filter produk">
+    <div
+      className="fixed inset-0 z-[9999]"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Filter produk"
+      data-no-swipe-back="true"
+      data-drawer="true"
+    >
       <button
         type="button"
         aria-label="Tutup filter"
@@ -170,20 +211,24 @@ export function ProductFilterTopDrawer({
       />
 
       <div
-        className="relative mt-[calc(env(safe-area-inset-top)_+_0.75rem)] overflow-hidden rounded-[28px] bg-white shadow-2xl animate-in slide-in-from-top-4 fade-in duration-200"
+        className="product-filter-sheet relative z-10 mt-[calc(env(safe-area-inset-top)_+_0.75rem)] flex flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl animate-in slide-in-from-top-4 fade-in duration-200"
         style={{
           maxHeight: "min(88dvh, calc(100dvh - env(safe-area-inset-top) - 1.5rem))",
+          overscrollBehavior: "contain",
         }}
       >
         {/* Drag handle */}
-        <div className="flex justify-center pt-3">
-          <div className="h-1.5 w-14 rounded-full bg-slate-300" />
+        <div className="shrink-0 touch-pan-y select-none pt-3">
+          <div className="flex justify-center">
+            <div className="h-1.5 w-14 rounded-full bg-slate-300" />
+          </div>
         </div>
 
         <div
-          className="overflow-y-auto px-5 pb-6 pt-3"
+          className="product-filter-sheet-content min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-3 [-webkit-overflow-scrolling:touch]"
           style={{
-            maxHeight: "calc(min(88dvh, calc(100dvh - env(safe-area-inset-top) - 1.5rem)) - 2.75rem)",
+            overscrollBehavior: "contain",
+            WebkitOverflowScrolling: "touch",
           }}
         >
           {/* Semua — instant reset */}
