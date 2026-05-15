@@ -51,6 +51,16 @@ function isAuthorized(request: NextRequest): boolean {
   return auth === `Bearer ${cfg.webhookSecret}`;
 }
 
+/**
+ * Bunny dashboard validates the webhook URL by probing it with GET before
+ * letting the admin save. Without this handler the probe gets a 405 and
+ * Bunny rejects the URL as "invalid". Return a tiny 200 so the validator
+ * passes; real webhook traffic comes in as POST.
+ */
+export async function GET() {
+  return NextResponse.json({ ok: true, hint: "POST only — this URL receives Bunny Stream callbacks." });
+}
+
 export async function POST(request: NextRequest) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ ok: false }, { status: 401 });
