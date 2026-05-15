@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { EditProfileForm } from "@/components/EditProfileForm";
 import { requireCustomerSession } from "@/lib/session-guards";
+import { PageStatusBar } from "@/components/PageStatusBar";
 
 export const metadata: Metadata = { title: "Profil Saya" };
 
@@ -28,8 +29,20 @@ export default async function MemberProfilePage() {
     : null;
 
   return (
-    <main className="min-h-screen bg-zinc-50 pb-[calc(2rem+env(safe-area-inset-bottom))]">
-      <header className="sticky top-0 z-50 border-b border-zinc-100 bg-white px-4 pb-3 pt-4 shadow-sm [padding-top:calc(1rem_+_env(safe-area-inset-top))]">
+    <main className="profile-edit-page min-h-screen bg-zinc-50 pb-[calc(2rem+env(safe-area-inset-bottom))]">
+      <PageStatusBar
+        iconColor="dark"
+        themeColor="#ffffff"
+        nativeBackgroundColor="#ffffff"
+        overlaysWebView={false}
+      />
+      <header
+        className="profile-header sticky top-0 z-50 border-b border-zinc-100 bg-white px-4 pb-3 shadow-sm"
+        style={{
+          minHeight: "calc(56px + env(safe-area-inset-top))",
+          paddingTop: "calc(env(safe-area-inset-top) + 10px)",
+        }}
+      >
         <div className="mx-auto flex max-w-2xl items-center gap-2">
           <Link
             href="/member"
