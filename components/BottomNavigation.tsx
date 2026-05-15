@@ -85,6 +85,7 @@ export function BottomNavigation() {
   }, [pathname, optimisticHref]);
 
   const hideNav = shouldHideBottomNav(pathname) || (pathname === "/products" && Boolean(searchParams.get("q")?.trim()));
+  const isFeedRoute = pathname === "/feed";
 
   // Sync body data attribute supaya CSS bisa adjust .nat-main-shell
   // padding-bottom (tanpa space kosong saat nav hidden). Effect terpisah
@@ -112,7 +113,10 @@ export function BottomNavigation() {
   if (hideNav) return null;
 
   return (
-    <nav className="bottom-nav nat-bottom-nav md:hidden" aria-label="Navigasi utama">
+    <nav
+      className={`bottom-nav nat-bottom-nav md:hidden ${isFeedRoute ? "nat-bottom-nav--feed" : ""}`}
+      aria-label="Navigasi utama"
+    >
       {/* Full-width backdrop edge-fade — gradient putih dari transparent di
           atas → solid putih di bawah. Cover ENTIRE nav zone (pill height +
           margin + safe-area), bukan cuma safe-area. Tujuan: content scroll
@@ -121,7 +125,11 @@ export function BottomNavigation() {
           tetap floating di atas via z-stacking + shadow. */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-[calc(env(safe-area-inset-bottom)+100px)] bg-gradient-to-t from-white from-72% to-white/0"
+        className={`pointer-events-none absolute inset-x-0 bottom-0 ${
+          isFeedRoute
+            ? "h-[calc(env(safe-area-inset-bottom)+84px)] bg-gradient-to-t from-black/90 from-45% to-black/0"
+            : "h-[calc(env(safe-area-inset-bottom)+100px)] bg-gradient-to-t from-white from-72% to-white/0"
+        }`}
       />
       <div className="pointer-events-auto relative mx-3 mb-2">
         <div className="bottom-nav-glass relative grid h-[60px] grid-cols-4 overflow-hidden rounded-full">

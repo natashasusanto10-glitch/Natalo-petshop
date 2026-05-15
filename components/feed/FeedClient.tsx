@@ -8,12 +8,12 @@
  * columns. All ACTIVE posts are mixed in one snap-scrolling feed.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { FiPlus } from "react-icons/fi";
 import type { FeedListResponse, FeedPostListItem } from "@/lib/feed/types";
 import { FeedActiveVideoProvider } from "./FeedActiveVideoContext";
 import { FeedVideoCard } from "./FeedVideoCard";
 import { FeedCommentSheet } from "./FeedCommentSheet";
+import { FeedCreatePostSheet } from "./FeedCreatePostSheet";
 
 export function FeedClient() {
   const [posts, setPosts] = useState<FeedPostListItem[]>([]);
@@ -24,6 +24,7 @@ export function FeedClient() {
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [commentPostId, setCommentPostId] = useState<string | null>(null);
+  const [createPostOpen, setCreatePostOpen] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -94,13 +95,14 @@ export function FeedClient() {
   return (
     <FeedActiveVideoProvider>
       <div className="relative mx-auto flex h-full max-w-2xl flex-col">
-        <Link
-          href="/feed/upload"
-          aria-label="Upload video komunitas"
-          className="absolute right-4 top-[calc(env(safe-area-inset-top)+1rem)] z-30 grid h-11 w-11 place-items-center text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.55)] transition active:scale-95"
+        <button
+          type="button"
+          onClick={() => setCreatePostOpen(true)}
+          aria-label="Buat postingan"
+          className="absolute right-4 top-[calc(env(safe-area-inset-top)+1rem)] z-30 grid h-11 w-11 place-items-center rounded-full bg-natalo-600 text-white shadow-[0_10px_30px_rgba(30,95,191,0.42)] ring-1 ring-white/15 transition active:scale-95"
         >
-          <FiPlus className="h-9 w-9" />
-        </Link>
+          <FiPlus className="h-7 w-7" />
+        </button>
 
         <div className="min-h-0 flex-1 snap-y snap-mandatory overflow-y-auto overscroll-contain pb-[calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+0.75rem)] [-ms-overflow-style:none] [scrollbar-width:none] md:space-y-3 md:px-2 md:pb-4 md:pt-2 [&::-webkit-scrollbar]:hidden">
           {loading && <FeedSkeleton />}
@@ -145,6 +147,10 @@ export function FeedClient() {
         postId={commentPostId}
         onClose={() => setCommentPostId(null)}
       />
+      <FeedCreatePostSheet
+        open={createPostOpen}
+        onClose={() => setCreatePostOpen(false)}
+      />
     </FeedActiveVideoProvider>
   );
 }
@@ -174,12 +180,8 @@ function FeedSkeleton() {
 
 function EmptyFeedState() {
   return (
-    <div className="rounded-3xl border border-dashed border-white/15 bg-white p-8 text-center">
-      <p className="text-sm font-extrabold text-gray-700">Belum ada konten</p>
-      <p className="mt-1 text-xs leading-relaxed text-gray-500">
-        Video, promo, dan konten komunitas Natalo akan tampil di sini dalam satu
-        feed.
-      </p>
+    <div className="flex min-h-full items-center justify-center px-6 [padding-bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+1rem)] [padding-top:calc(env(safe-area-inset-top)+5rem)]">
+      <p className="text-lg font-black tracking-normal text-white/90">Segera Hadir</p>
     </div>
   );
 }

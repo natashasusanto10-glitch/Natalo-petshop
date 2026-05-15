@@ -62,6 +62,7 @@ type CreatePostBody = {
   videoMimeType?: string | null;
   videoSizeBytes?: number | null;
   productId?: string | null;
+  productIds?: unknown;
   promoOriginalPrice?: number | null;
   promoDiscountPrice?: number | null;
   promoStartsAt?: string | null;
@@ -143,12 +144,43 @@ export async function POST(request: NextRequest) {
   // ── Field-level validation per kind ───────────────────────────────
   const videoUrl = body.videoUrl ? String(body.videoUrl).trim() : null;
   const thumbnailUrl = body.thumbnailUrl ? String(body.thumbnailUrl).trim() : null;
-  const productId = body.productId ? String(body.productId).trim() : null;
+  const productIdsFromBody = Array.isArray(body.productIds)
+    ? body.productIds
+        .map((value) => String(value ?? "").trim())
+        .filter(Boolean)
+    : [];
+  const productIds = [...new Set(productIdsFromBody)];
+  if (productIdsFromBody.length > 3 || productIds.length > 3) {
+    return NextResponse.json(
+      { error: "Maksimal 3 produk yang bisa di-pin." },
+      { status: 400 },
+    );
+  }
+  const productIdFromBody = body.productId ? String(body.productId).trim() : null;
+  const productId =
+    !isAdmin && productIds.length > 0 ? productIds[0] : productIdFromBody;
+  const productIdsToVerify = !isAdmin
+    ? [...new Set([...productIds, ...(productId ? [productId] : [])])]
+    : productId
+      ? [productId]
+      : [];
+  if (!isAdmin && productIdsToVerify.length > 3) {
+    return NextResponse.json(
+      { error: "Maksimal 3 produk yang bisa di-pin." },
+      { status: 400 },
+    );
+  }
 
   if (kind === "VIDEO_ONLY" || kind === "VIDEO_PRODUCT" || kind === "COMMUNITY") {
-    if (!videoUrl || !thumbnailUrl) {
+    if (kind !== "COMMUNITY" && (!videoUrl || !thumbnailUrl)) {
       return NextResponse.json(
         { error: "Video + thumbnail wajib." },
+        { status: 400 },
+      );
+    }
+    if (kind === "COMMUNITY" && ((videoUrl && !thumbnailUrl) || (!videoUrl && thumbnailUrl))) {
+      return NextResponse.json(
+        { error: "Video + thumbnail harus lengkap." },
         { status: 400 },
       );
     }
@@ -204,15 +236,15 @@ export async function POST(request: NextRequest) {
   }
 
   // ── Verify FK produk kalau di-tag ─────────────────────────────────
-  if (productId) {
-    const exists = await prisma.product.findUnique({
-      where: { id: productId },
+  if (productIdsToVerify.length > 0) {
+    const products = await prisma.product.findMany({
+      where: { id: { in: productIdsToVerify } },
       select: { id: true, isActive: true },
     });
-    if (!exists) {
+    if (products.length !== productIdsToVerify.length) {
       return NextResponse.json({ error: "Produk tidak ditemukan." }, { status: 404 });
     }
-    if (!exists.isActive && !isAdmin) {
+    if (products.some((product) => !product.isActive) && !isAdmin) {
       return NextResponse.json(
         { error: "Produk tidak aktif, tidak bisa di-tag." },
         { status: 400 },
@@ -220,18 +252,19 @@ export async function POST(request: NextRequest) {
     }
 
     if (!isAdmin) {
-      const verifiedPurchase = await prisma.orderItem.findFirst({
+      const verifiedPurchases = await prisma.orderItem.findMany({
         where: {
-          productId,
+          productId: { in: productIdsToVerify },
           order: {
             userId: session.sub,
             paymentStatus: "PAID",
             status: "DELIVERED",
           },
         },
-        select: { id: true },
+        select: { productId: true },
+        distinct: ["productId"],
       });
-      if (!verifiedPurchase) {
+      if (verifiedPurchases.length !== productIdsToVerify.length) {
         return NextResponse.json(
           {
             error:
