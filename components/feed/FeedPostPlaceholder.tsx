@@ -26,7 +26,11 @@ export function FeedPostPlaceholder({ thumbnailUrl }: Props) {
           src={thumbnailUrl}
           alt=""
           loading="lazy"
-          className="absolute inset-0 h-full w-full object-cover"
+          // `object-contain` matches the active card's video framing
+          // (Instagram Reels style — no crop, thin letterbox bars). Without
+          // matching, the user sees a visible jump when scrolling between
+          // a placeholder and the real video card.
+          className="absolute inset-0 h-full w-full object-contain"
           onError={(event) => {
             event.currentTarget.style.display = "none";
           }}

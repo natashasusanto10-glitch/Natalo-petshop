@@ -108,7 +108,10 @@ export function FeedVideoCard({ post, index, onOpenComments }: Props) {
                 ? post.videoWidth / post.videoHeight
                 : 9 / 16
             }
-            className="h-full min-h-full rounded-none [&>img]:object-cover"
+            // object-fit is decided inside FeedVideoPlayer (object-contain
+            // for Reels-style letterbox so vertical video plays at its true
+            // aspect ratio without crop). Don't force it back to cover here.
+            className="h-full min-h-full rounded-none"
           />
         ) : product?.imageUrl ? (
           <Link href={productHref} className="block h-full">

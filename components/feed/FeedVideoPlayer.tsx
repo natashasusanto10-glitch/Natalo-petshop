@@ -201,7 +201,12 @@ export function FeedVideoPlayer({
         <img
           src={thumbnailUrl}
           alt=""
-          className="absolute inset-0 h-full w-full object-cover"
+          // `object-contain` keeps the full thumbnail visible without any
+          // crop — matches Instagram Reels / TikTok behaviour where vertical
+          // video shows at its native aspect ratio with thin black bars on
+          // phones taller than 9:16 (iPhone 15 is ~9:19.5). The action
+          // buttons + caption overlay sit comfortably on those bars.
+          className="absolute inset-0 h-full w-full object-contain"
           onError={(event) => {
             event.currentTarget.style.display = "none";
           }}
@@ -220,7 +225,9 @@ export function FeedVideoPlayer({
         muted
         loop
         preload={loadSrc && !farFromViewport ? preloadMode : "none"}
-        className="absolute inset-0 h-full w-full object-cover"
+        // See thumbnail comment above — `object-contain` mirrors Instagram
+        // Reels: video plays at its true aspect ratio, no zoom-crop.
+        className="absolute inset-0 h-full w-full object-contain"
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
         onWaiting={() => setIsPlaying(false)}
