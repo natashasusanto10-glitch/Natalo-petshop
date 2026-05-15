@@ -35,10 +35,8 @@ export function FeedVideoCard({ post, index, onOpenComments }: Props) {
 
   const isAdmin = post.author.role === "ADMIN";
   const product = post.product;
-  const promo = post.promo;
   const hasVideo = Boolean(post.videoUrl);
   const isCommunity = post.kind === "COMMUNITY";
-  const contentLabel = getContentLabel(post.kind);
   const productHref = product ? `/products/${product.slug}` : "#";
 
   async function toggleLike() {
@@ -113,103 +111,57 @@ export function FeedVideoCard({ post, index, onOpenComments }: Props) {
 
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/35 via-black/5 to-black/82" />
 
-      <div className="absolute bottom-[calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+2.25rem)] right-4 z-[2] flex flex-col items-center gap-4 md:bottom-5">
+      <div className="absolute right-5 z-[2] flex flex-col items-center gap-5 [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+6.25rem)] md:bottom-8">
         <ActionButton
-          label={String(likeCount)}
+          label={formatEngagementCount(likeCount)}
           ariaLabel={liked ? "Batal suka" : "Suka"}
           pressed={liked}
           onClick={toggleLike}
         >
-          <FiHeart className={`h-8 w-8 ${liked ? "fill-red-500 stroke-red-500" : ""}`} />
+          <FiHeart className={`h-[33px] w-[33px] ${liked ? "fill-red-500 stroke-red-500" : ""}`} />
         </ActionButton>
         <ActionButton
-          label={String(post.commentCount)}
+          label={formatEngagementCount(post.commentCount)}
           ariaLabel="Komentar"
           onClick={() => onOpenComments(post.id)}
         >
-          <FiMessageCircle className="h-8 w-8" />
+          <FiMessageCircle className="h-[33px] w-[33px]" />
         </ActionButton>
         <ActionButton label="" ariaLabel="Bagikan" onClick={handleShare}>
-          <FiShare2 className="h-8 w-8" />
+          <FiShare2 className="h-[33px] w-[33px]" />
         </ActionButton>
       </div>
 
-      <div className="absolute inset-x-0 bottom-0 z-[1] space-y-3 px-4 pb-[calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+2.25rem)] pr-24 md:pb-5">
-        <div className="min-w-0">
-          <p className="flex min-w-0 items-center gap-1.5 text-sm font-black text-white">
-            <span className="min-w-0 truncate">
-              {isAdmin ? "Natalo Petshop" : post.author.name}
-            </span>
-            {isAdmin && (
-              <span className="shrink-0 rounded-full border border-white/20 bg-white/15 px-1.5 py-0.5 text-[9px] font-black uppercase text-white backdrop-blur-xl">
-                Official
-              </span>
-            )}
-            {!isAdmin && product && (
-              <span className="shrink-0 rounded-full border border-white/20 bg-white/15 px-1.5 py-0.5 text-[9px] font-black uppercase text-white backdrop-blur-xl">
-                Pembeli Terverifikasi
-              </span>
-            )}
-          </p>
-          <p className="text-[11px] font-semibold text-white/70">
-            {formatRelativeTime(post.publishedAt ?? post.createdAt)}
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-1.5">
-          <span className={`rounded-full border border-white/25 px-2 py-1 text-[10px] font-black uppercase shadow-sm shadow-black/10 backdrop-blur-xl ${contentLabel.className}`}>
-            {contentLabel.label}
-          </span>
-          {promo && (
-            <span className="rounded-full border border-white/25 bg-white/20 px-2 py-1 text-[10px] font-black uppercase text-white shadow-sm shadow-black/10 backdrop-blur-xl">
-              Promo
-            </span>
-          )}
-        </div>
-
-        <div>
-          <h2 className="line-clamp-2 text-base font-black leading-snug text-white">
-            {post.title}
-          </h2>
-          {post.description && (
-            <p className="mt-1 line-clamp-3 text-xs leading-relaxed text-white/85">
-              {post.description}
-            </p>
-          )}
-        </div>
-
-        {promo && (
-          <div className="inline-flex items-baseline gap-2 rounded-2xl border border-white/25 bg-white/18 px-3 py-2 text-left text-white shadow-sm shadow-black/10 backdrop-blur-xl">
-            <span className="text-base font-black">
-              {formatRupiah(promo.discountPrice)}
-            </span>
-            <span className="text-xs text-white/60 line-through">
-              {formatRupiah(promo.originalPrice)}
-            </span>
+      <div className="absolute inset-x-0 bottom-0 z-[1] space-y-3 px-4 pb-[calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+2rem)] pr-24 md:pb-5">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-natalo-600 text-[13px] font-black text-white ring-1 ring-white/20">
+            {isAdmin ? "NL" : post.author.name.charAt(0).toUpperCase()}
           </div>
-        )}
+          <div className="min-w-0">
+            <p className="truncate text-[15px] font-extrabold leading-tight text-white">
+              {isAdmin ? "Natalo Petshop" : post.author.name}
+            </p>
+            <p className="mt-1 line-clamp-2 text-[13px] font-medium leading-snug text-white/88">
+              {post.description?.trim() || post.title}
+              {isAdmin ? " 💙" : ""}
+            </p>
+          </div>
+        </div>
 
         {product && (
           <button
             type="button"
             onClick={() => setProductSheetOpen(true)}
-            className="flex max-w-full items-center gap-2 rounded-full border border-white/25 bg-white/18 px-3 py-2 text-left text-white shadow-sm shadow-black/10 backdrop-blur-xl transition active:scale-[0.98]"
+            className="flex max-w-full items-center gap-2 rounded-full border border-white/22 bg-black/22 px-3 py-2 text-left text-white shadow-sm shadow-black/10 backdrop-blur-xl transition active:scale-[0.98]"
           >
             <FiPackage className="h-4 w-4 shrink-0 text-white" />
-            <span className="truncate text-xs font-black">
-              {isCommunity ? "Produk dipakai" : "Lihat produk"} - {product.name}
+            <span className="shrink-0 text-xs font-semibold text-white/90">
+              {isCommunity ? "Produk digunakan" : "Produk terkait"}
+            </span>
+            <span className="truncate text-xs font-black text-natalo-300">
+              {product.name}
             </span>
           </button>
-        )}
-
-        {isAdmin && product && product.stock > 0 && (
-          <Link
-            href={productHref}
-            className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/18 px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-black/10 backdrop-blur-xl transition active:scale-[0.98]"
-          >
-            <FiShoppingCart className="h-4 w-4" />
-            Beli Sekarang
-          </Link>
         )}
       </div>
 
@@ -244,9 +196,9 @@ function ActionButton({
       aria-label={ariaLabel}
       aria-pressed={pressed}
       onClick={onClick}
-      className="flex min-h-11 min-w-11 flex-col items-center justify-center gap-1 text-[11px] font-black text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.75)] transition active:scale-95"
+      className="flex min-h-11 min-w-11 flex-col items-center justify-center gap-1 text-[11px] font-semibold text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.75)] transition active:scale-95"
     >
-      <span className="grid h-8 w-8 place-items-center">
+      <span className="grid h-[34px] w-[34px] place-items-center">
         {children}
       </span>
       {label && <span className="leading-none">{label}</span>}
@@ -314,33 +266,14 @@ function PinnedProductSheet({
   );
 }
 
-function getContentLabel(kind: FeedPostListItem["kind"]) {
-  if (kind === "PROMO") {
-    return { label: "Promo", className: "bg-white/20 text-white" };
+function formatEngagementCount(count: number | null | undefined) {
+  const safeCount = Number(count ?? 0);
+  if (!Number.isFinite(safeCount) || safeCount <= 0) return "";
+  if (safeCount >= 1_000_000) {
+    return `${(safeCount / 1_000_000).toFixed(safeCount >= 10_000_000 ? 0 : 1).replace(/\.0$/, "")}M`;
   }
-  if (kind === "PRODUCT_ONLY" || kind === "VIDEO_PRODUCT") {
-    return { label: "Jualan Produk", className: "bg-white/20 text-white" };
+  if (safeCount >= 1_000) {
+    return `${(safeCount / 1_000).toFixed(safeCount >= 10_000 ? 0 : 1).replace(/\.0$/, "")}K`;
   }
-  if (kind === "VIDEO_ONLY") {
-    return { label: "Edukasi", className: "bg-white/20 text-white" };
-  }
-  return { label: "Komunitas", className: "bg-white/20 text-white" };
-}
-
-function formatRelativeTime(iso: string) {
-  const d = new Date(iso);
-  const diff = Date.now() - d.getTime();
-  const sec = Math.floor(diff / 1000);
-  if (sec < 60) return "Baru saja";
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min} menit lalu`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr} jam lalu`;
-  const day = Math.floor(hr / 24);
-  if (day < 7) return `${day} hari lalu`;
-  return d.toLocaleDateString("id-ID", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  return String(safeCount);
 }

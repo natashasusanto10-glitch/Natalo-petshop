@@ -54,13 +54,13 @@ function NavIcon({
   return (
     <span
       className={`flex items-center justify-center transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
-        feedVariant ? "h-8 w-8" : "h-6 w-6"
+        feedVariant ? "h-7 w-7" : "h-6 w-6"
       } ${active && !feedVariant ? "-translate-y-0.5 scale-110" : ""}`}
     >
       <Icon
         aria-hidden
         className={`${
-          feedVariant ? (active ? "h-8 w-8" : "h-7 w-7") : "h-6 w-6"
+          feedVariant ? (active ? "h-7 w-7" : "h-6 w-6") : "h-6 w-6"
       }`}
       />
     </span>
@@ -153,19 +153,19 @@ export function BottomNavigation() {
         aria-hidden
         className={`pointer-events-none absolute inset-x-0 bottom-0 ${
           isFeedRoute
-            ? "h-[calc(env(safe-area-inset-bottom)+72px)] bg-gradient-to-t from-black/30 to-black/0"
+            ? "h-[calc(env(safe-area-inset-bottom)+64px)] bg-gradient-to-t from-black/32 to-black/0"
             : "h-[calc(env(safe-area-inset-bottom)+100px)] bg-gradient-to-t from-white from-72% to-white/0"
         }`}
       />
       <div
         className={`pointer-events-auto relative ${
-          isFeedRoute ? "mx-5 mb-2" : "mx-3 mb-2"
+          isFeedRoute ? "mx-5 mb-1.5" : "mx-3 mb-2"
         }`}
       >
         <div
           className={`relative grid grid-cols-4 ${
             isFeedRoute
-              ? "h-[58px] overflow-visible bg-transparent"
+              ? "h-[54px] overflow-visible bg-transparent"
               : "bottom-nav-glass h-[60px] overflow-hidden rounded-full"
           }`}
         >
@@ -194,8 +194,8 @@ export function BottomNavigation() {
                 className={`relative z-[1] flex h-full flex-col items-center justify-center gap-1 px-1 text-[11px] leading-none transition-colors duration-200 active:opacity-90 ${
                   isFeedRoute
                     ? active
-                      ? "text-[12px] font-extrabold text-white"
-                      : "text-[12px] font-semibold text-white/52"
+                      ? "text-[11px] font-semibold text-white"
+                      : "text-[11px] font-medium text-white/45"
                     : active
                       ? "font-extrabold text-[#1E5FBF]"
                       : "font-semibold text-[#9ca3af]"
