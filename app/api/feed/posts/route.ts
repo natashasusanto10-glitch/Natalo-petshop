@@ -22,8 +22,8 @@ import { prisma } from "@/lib/prisma";
 import { listFeedPosts } from "@/lib/feed/queries";
 
 const VALID_TABS: ReadonlyArray<FeedPostTab> = ["REKOMENDASI", "PROMO", "KOMUNITAS"];
-const CUSTOMER_MIN_VIDEO_DURATION_SEC = 1;
-const CUSTOMER_MAX_VIDEO_DURATION_SEC = 45;
+const CUSTOMER_MIN_VIDEO_DURATION_SEC = 15;
+const CUSTOMER_MAX_VIDEO_DURATION_SEC = 30;
 
 function isValidTab(value: string | null): value is FeedPostTab {
   return value !== null && (VALID_TABS as ReadonlyArray<string>).includes(value);

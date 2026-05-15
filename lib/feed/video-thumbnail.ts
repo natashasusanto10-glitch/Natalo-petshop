@@ -14,6 +14,13 @@ export type VideoMetadata = {
   height: number;
 };
 
+export type VideoThumbnailResult = {
+  blob: Blob;
+  usedFallback: boolean;
+};
+
+const DEFAULT_THUMBNAIL_TIMEOUT_MS = 30000;
+
 /**
  * Render video ke <video> hidden, baca dimension + duration setelah
  * `loadedmetadata` fire.
@@ -64,9 +71,19 @@ export function readVideoMetadata(file: File): Promise<VideoMetadata> {
  */
 export async function extractVideoThumbnail(
   file: File,
-  options: { targetTimeSec?: number; maxWidth?: number; quality?: number } = {},
+  options: {
+    targetTimeSec?: number;
+    maxWidth?: number;
+    quality?: number;
+    timeoutMs?: number;
+  } = {},
 ): Promise<Blob> {
-  const { targetTimeSec = 1.0, maxWidth = 720, quality = 0.85 } = options;
+  const {
+    targetTimeSec = 1.0,
+    maxWidth = 480,
+    quality = 0.82,
+    timeoutMs = DEFAULT_THUMBNAIL_TIMEOUT_MS,
+  } = options;
 
   return new Promise<Blob>((resolve, reject) => {
     const url = URL.createObjectURL(file);
@@ -84,7 +101,7 @@ export async function extractVideoThumbnail(
     const timeout = window.setTimeout(() => {
       cleanup();
       reject(new Error("Gagal extract thumbnail (timeout)."));
-    }, 20000);
+    }, timeoutMs);
 
     function onSeeked() {
       try {
@@ -140,4 +157,72 @@ export async function extractVideoThumbnail(
 
     video.src = url;
   });
+}
+
+export async function createFallbackVideoThumbnail(
+  metadata?: Partial<VideoMetadata>,
+): Promise<Blob> {
+  const width = 360;
+  const height = Math.max(
+    360,
+    Math.round(width / Math.max(0.55, Math.min(1.8, (metadata?.width ?? 9) / (metadata?.height ?? 16)))),
+  );
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return new Blob([], { type: "image/jpeg" });
+  }
+
+  const gradient = ctx.createLinearGradient(0, 0, width, height);
+  gradient.addColorStop(0, "#05070b");
+  gradient.addColorStop(0.55, "#101827");
+  gradient.addColorStop(1, "#1e5fbf");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+
+  ctx.fillStyle = "rgba(255,255,255,0.13)";
+  ctx.beginPath();
+  ctx.arc(width * 0.82, height * 0.18, 74, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.beginPath();
+  ctx.moveTo(width / 2 - 28, height / 2 - 38);
+  ctx.lineTo(width / 2 - 28, height / 2 + 38);
+  ctx.lineTo(width / 2 + 42, height / 2);
+  ctx.closePath();
+  ctx.fill();
+
+  return new Promise<Blob>((resolve) => {
+    canvas.toBlob(
+      (blob) => resolve(blob ?? new Blob([], { type: "image/jpeg" })),
+      "image/jpeg",
+      0.78,
+    );
+  });
+}
+
+export async function extractVideoThumbnailSafe(
+  file: File,
+  metadata: VideoMetadata,
+  options: {
+    targetTimeSec?: number;
+    maxWidth?: number;
+    quality?: number;
+    timeoutMs?: number;
+    onError?: (error: unknown) => void;
+  } = {},
+): Promise<VideoThumbnailResult> {
+  try {
+    const blob = await extractVideoThumbnail(file, options);
+    return { blob, usedFallback: false };
+  } catch (error) {
+    options.onError?.(error);
+    return {
+      blob: await createFallbackVideoThumbnail(metadata),
+      usedFallback: true,
+    };
+  }
 }

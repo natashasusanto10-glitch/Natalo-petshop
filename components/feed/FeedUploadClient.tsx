@@ -32,7 +32,7 @@ import { BottomSheet } from "@/components/BottomSheet";
 import { formatRupiah } from "@/lib/format";
 import { hapticSuccess, hapticTap, hapticWarning } from "@/lib/native/haptics";
 import {
-  extractVideoThumbnail,
+  extractVideoThumbnailSafe,
   readVideoMetadata,
   type VideoMetadata,
 } from "@/lib/feed/video-thumbnail";
@@ -45,7 +45,7 @@ import { FeedUploadSuccessLottie } from "./FeedUploadSuccessLottie";
 
 const MAX_TITLE_LENGTH = 200;
 const MAX_DESC_LENGTH = 300;
-const ACCEPT_VIDEO = "video/mp4,video/webm,video/quicktime";
+const ACCEPT_VIDEO = "video/mp4,video/quicktime";
 
 type Step = "pick" | "form" | "uploading" | "success" | "error";
 type ProcessingStage =
@@ -182,11 +182,30 @@ export function FeedUploadClient() {
       }
 
       setProcessingStage("generating-thumbnail");
-      const thumb = await extractVideoThumbnail(picked, {
+      const thumb = await extractVideoThumbnailSafe(picked, meta, {
         targetTimeSec: Math.min(1, meta.durationSec / 2),
+        maxWidth: 480,
+        timeoutMs: 30000,
+        onError: (thumbnailError) => {
+          console.info("[feed-video] legacy-thumbnail:fallback", {
+            fileName: picked.name,
+            size: picked.size,
+            mimeType: picked.type,
+            durationSec: meta.durationSec,
+            error:
+              thumbnailError instanceof Error
+                ? {
+                    name: thumbnailError.name,
+                    message: thumbnailError.message,
+                    stack: thumbnailError.stack,
+                  }
+                : { message: String(thumbnailError) },
+            usedFallback: true,
+          });
+        },
       });
-      setThumbnailBlob(thumb);
-      setThumbnailPreviewUrl(URL.createObjectURL(thumb));
+      setThumbnailBlob(thumb.blob);
+      setThumbnailPreviewUrl(URL.createObjectURL(thumb.blob));
       setStep("form");
       hapticTap();
     } catch (err) {
@@ -406,7 +425,7 @@ function PickPanel({
       </div>
       <h2 className="mt-4 text-sm font-extrabold text-gray-900">Pilih video</h2>
       <p className="mt-2 text-xs text-gray-500">
-        MP4, WebM, atau MOV · video mentah max {formatFileSize(MAX_SOURCE_VIDEO_SIZE)} · durasi{" "}
+        MP4 atau MOV · video mentah max {formatFileSize(MAX_SOURCE_VIDEO_SIZE)} · durasi{" "}
         {USER_VIDEO_CONFIG.minDuration}-{USER_VIDEO_CONFIG.maxDuration} detik
       </p>
 

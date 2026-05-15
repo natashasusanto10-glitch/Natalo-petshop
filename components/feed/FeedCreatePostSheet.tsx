@@ -26,6 +26,7 @@ import {
 } from "react-icons/fi";
 import { formatRupiah } from "@/lib/format";
 import {
+  createFallbackVideoThumbnail,
   extractVideoThumbnail,
   readVideoMetadata,
   type VideoMetadata,
@@ -46,14 +47,14 @@ const MAX_VIDEO_DURATION = USER_VIDEO_CONFIG.maxDuration;
 const DURATION_RANGE_LABEL = `${MIN_VIDEO_DURATION}-${MAX_VIDEO_DURATION} detik`;
 const MAX_CAPTION_LENGTH = 300;
 const MAX_PINNED_PRODUCTS = 3;
-// Gallery picker accepts semua format umum (webm dipakai Android Chrome).
+// Gallery picker accepts format yang dipakai Feed user: MP4 dan MOV.
 // Camera recorder (capture="environment") pakai accept terpisah "video/*"
 // karena iOS WKFileUploadPanel crash kalau accept-list mengandung MIME yang
 // tidak punya UTI mapping (mis. video/webm — iOS tidak support WebM native).
 // Pakai "video/*" memberi WKWebView signal generic → UIImagePickerController
 // langsung dibuka dengan mediaTypes = [kUTTypeMovie] dan iOS rekam dalam
 // format native-nya sendiri (.mov / quicktime).
-const ACCEPT_VIDEO_GALLERY = "video/mp4,video/webm,video/quicktime";
+const ACCEPT_VIDEO_GALLERY = "video/mp4,video/quicktime";
 const ACCEPT_VIDEO_CAMERA = "video/*";
 
 type FlowStep = "pick" | "trim" | "detail" | "success" | "status";
@@ -78,6 +79,7 @@ type SelectedVideo = {
   previewUrl: string;
   thumbnailBlob: Blob;
   thumbnailUrl: string;
+  thumbnailIsFallback: boolean;
   metadata: VideoMetadata;
 };
 
@@ -103,6 +105,7 @@ export function FeedCreatePostSheet({ open, onClose }: Props) {
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const previewVideoRef = useRef<HTMLVideoElement>(null);
+  const pickTokenRef = useRef(0);
   const [step, setStep] = useState<FlowStep>("pick");
   const [selectedVideo, setSelectedVideo] = useState<SelectedVideo | null>(null);
   const [selecting, setSelecting] = useState(false);
@@ -227,29 +230,46 @@ export function FeedCreatePostSheet({ open, onClose }: Props) {
 
   async function handleVideoPick(file: File | null) {
     if (!file) return;
+    const pickToken = pickTokenRef.current + 1;
+    pickTokenRef.current = pickToken;
     setSelecting(true);
     setVideoError(null);
     setFormError(null);
 
     try {
-      if (!file.type.startsWith("video/")) {
-        throw new Error("File harus berupa video.");
-      }
-      if (file.size > MAX_SOURCE_VIDEO_SIZE) {
-        throw new Error(`Ukuran video maksimal ${formatFileSize(MAX_SOURCE_VIDEO_SIZE)}.`);
-      }
+      validatePickedVideoFile(file);
+      debugFeedVideo("pick:start", getVideoDebugBase(file));
 
-      const metadata = await readVideoMetadata(file);
-      const thumbnailBlob = await extractVideoThumbnail(file, {
-        targetTimeSec: Math.min(1, Math.max(0, metadata.durationSec / 2)),
+      const localFile = await copyVideoToLocalFile(file);
+      debugFeedVideo("pick:local-copy-ready", {
+        ...getVideoDebugBase(file),
+        localCachePath: localFile.name,
+        localSize: localFile.size,
       });
-      const previewUrl = URL.createObjectURL(file);
-      const thumbnailUrl = URL.createObjectURL(thumbnailBlob);
+
+      const metadata = await readVideoMetadata(localFile);
+      debugFeedVideo("metadata:loaded", {
+        ...getVideoDebugBase(localFile),
+        durationSec: metadata.durationSec,
+        width: metadata.width,
+        height: metadata.height,
+      });
+
+      const fallbackThumbnailBlob = await createFallbackVideoThumbnail(metadata);
+      const previewUrl = URL.createObjectURL(localFile);
+      const thumbnailUrl = URL.createObjectURL(fallbackThumbnailBlob);
       const duration = Math.max(0, metadata.durationSec);
       const nextStart = 0;
       const nextEnd = Math.min(duration, MAX_VIDEO_DURATION);
 
-      resetVideo({ file, previewUrl, thumbnailBlob, thumbnailUrl, metadata });
+      resetVideo({
+        file: localFile,
+        previewUrl,
+        thumbnailBlob: fallbackThumbnailBlob,
+        thumbnailUrl,
+        thumbnailIsFallback: true,
+        metadata,
+      });
       setTrimStart(nextStart);
       setTrimEnd(nextEnd);
 
@@ -259,16 +279,72 @@ export function FeedCreatePostSheet({ open, onClose }: Props) {
       } else if (duration > MAX_VIDEO_DURATION) {
         setVideoError("Video maksimal 30 detik. Potong video terlebih dahulu sebelum lanjut.");
         void hapticTap();
+        void generateThumbnailBestEffort(localFile, metadata, pickToken);
       } else {
         void hapticTap();
+        void generateThumbnailBestEffort(localFile, metadata, pickToken);
       }
     } catch (err) {
-      setVideoError(err instanceof Error ? err.message : "Gagal membaca video.");
+      debugFeedVideo("pick:error", {
+        ...getVideoDebugBase(file),
+        error: serializeError(err),
+      });
+      setVideoError(getFriendlyVideoPickError(err));
       void hapticWarning();
     } finally {
       setSelecting(false);
       if (galleryInputRef.current) galleryInputRef.current.value = "";
       if (cameraInputRef.current) cameraInputRef.current.value = "";
+    }
+  }
+
+  async function generateThumbnailBestEffort(
+    file: File,
+    metadata: VideoMetadata,
+    pickToken: number,
+  ) {
+    const startedAt = performance.now();
+    debugFeedVideo("thumbnail:start", {
+      ...getVideoDebugBase(file),
+      targetTimeSec: Math.min(1, Math.max(0.5, metadata.durationSec / 2)),
+    });
+
+    try {
+      const thumbnailBlob = await extractVideoThumbnail(file, {
+        targetTimeSec: Math.min(1, Math.max(0.5, metadata.durationSec / 2)),
+        maxWidth: 480,
+        timeoutMs: 30000,
+      });
+      const thumbnailUrl = URL.createObjectURL(thumbnailBlob);
+      const elapsedMs = Math.round(performance.now() - startedAt);
+      debugFeedVideo("thumbnail:success", {
+        ...getVideoDebugBase(file),
+        elapsedMs,
+        thumbnailSize: thumbnailBlob.size,
+        usedFallback: false,
+      });
+
+      setSelectedVideo((current) => {
+        if (!current || pickTokenRef.current !== pickToken || current.file !== file) {
+          URL.revokeObjectURL(thumbnailUrl);
+          return current;
+        }
+        URL.revokeObjectURL(current.thumbnailUrl);
+        return {
+          ...current,
+          thumbnailBlob,
+          thumbnailUrl,
+          thumbnailIsFallback: false,
+        };
+      });
+    } catch (err) {
+      debugFeedVideo("thumbnail:fallback", {
+        ...getVideoDebugBase(file),
+        elapsedMs: Math.round(performance.now() - startedAt),
+        error: serializeError(err),
+        usedFallback: true,
+      });
+      setVideoError((current) => current ?? "Video berhasil dipilih, tetapi preview belum bisa dibuat.");
     }
   }
 
@@ -574,7 +650,7 @@ function PickVideoStep({
 
           {selecting && (
             <div className="mt-4 rounded-3xl border border-white/10 bg-white/10 p-4 text-sm font-bold text-white/70">
-              Membaca video...
+              Menyiapkan video...
             </div>
           )}
 
@@ -1319,6 +1395,105 @@ function LightHeader({
       )}
     </header>
   );
+}
+
+function validatePickedVideoFile(file: File) {
+  const lowerName = file.name.toLowerCase();
+  const hasSupportedExtension = lowerName.endsWith(".mp4") || lowerName.endsWith(".mov");
+  const hasSupportedMime =
+    file.type === "video/mp4" ||
+    file.type === "video/quicktime" ||
+    file.type === "video/x-m4v" ||
+    file.type === "";
+
+  if (!hasSupportedExtension && !hasSupportedMime) {
+    throw new Error("Format video harus MP4 atau MOV.");
+  }
+  if (file.type && !file.type.startsWith("video/")) {
+    throw new Error("File harus berupa video.");
+  }
+  if (file.size <= 0) {
+    throw new Error("File video belum bisa dibaca.");
+  }
+  if (file.size > MAX_SOURCE_VIDEO_SIZE) {
+    throw new Error(`Ukuran video maksimal ${formatFileSize(MAX_SOURCE_VIDEO_SIZE)}.`);
+  }
+}
+
+async function copyVideoToLocalFile(file: File) {
+  const buffer = await file.arrayBuffer();
+  const name = getLocalVideoFileName(file);
+  return new File([buffer], name, {
+    type: normalizeVideoMime(file),
+    lastModified: Date.now(),
+  });
+}
+
+function getLocalVideoFileName(file: File) {
+  const cleanName = file.name.replace(/[^\w.\-]+/g, "-").replace(/^-+|-+$/g, "");
+  if (cleanName) return cleanName;
+  const extension = file.type === "video/quicktime" ? "mov" : "mp4";
+  return `feed-video-${Date.now()}.${extension}`;
+}
+
+function normalizeVideoMime(file: File) {
+  if (file.type) return file.type;
+  return file.name.toLowerCase().endsWith(".mov") ? "video/quicktime" : "video/mp4";
+}
+
+function getFriendlyVideoPickError(error: unknown) {
+  if (!(error instanceof Error)) return "Gagal membaca video.";
+  if (
+    error.message.startsWith("Format") ||
+    error.message.startsWith("File") ||
+    error.message.startsWith("Ukuran")
+  ) {
+    return error.message;
+  }
+  return "Video belum bisa dibaca. Pastikan format MP4/MOV dan file sudah tersimpan penuh di perangkat.";
+}
+
+function getVideoDebugBase(file: File) {
+  return {
+    platform: getRuntimePlatform(),
+    originalName: file.name || "(unnamed)",
+    originalPath: file.webkitRelativePath || "(not provided by browser)",
+    size: file.size,
+    mimeType: file.type || "(empty)",
+    lastModified: file.lastModified || null,
+  };
+}
+
+function getRuntimePlatform() {
+  if (typeof window === "undefined") return "server";
+  const cap = (
+    window as Window & {
+      Capacitor?: { getPlatform?: () => string; isNativePlatform?: () => boolean };
+    }
+  ).Capacitor;
+  try {
+    if (cap?.isNativePlatform?.()) return cap.getPlatform?.() ?? "capacitor";
+  } catch {
+    // Fall through to user-agent based platform label.
+  }
+  if (isIOS()) return "ios-web";
+  if (/Android/i.test(navigator.userAgent)) return "android-web";
+  return "web";
+}
+
+function debugFeedVideo(stage: string, details: Record<string, unknown>) {
+  console.info(`[feed-video] ${stage}`, details);
+}
+
+function serializeError(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
+  }
+  return { message: String(error) };
 }
 
 function getStepTitle(step: FlowStep) {
