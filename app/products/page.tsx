@@ -94,7 +94,7 @@ export default async function ProductsPage({
         className={`sticky z-50 -mx-4 mb-3 bg-white px-4 pb-2.5 pt-0 shadow-[0_8px_24px_rgba(15,23,42,0.06)] ${
           isSearchResult
             ? "top-0 [padding-top:calc(0.5rem+env(safe-area-inset-top))]"
-            : "-mt-1 top-[calc(var(--natalo-mobile-header-min-height)+env(safe-area-inset-top))] rounded-b-3xl"
+            : "-mt-3 top-[calc(var(--natalo-mobile-header-min-height)+env(safe-area-inset-top)-0.5rem)] rounded-b-3xl"
         } md:mt-0 md:static md:mx-0 md:mb-5 md:rounded-none md:bg-transparent md:px-0 md:pb-0 md:pt-0 md:shadow-none`}
       >
         {activeBrandName && (
