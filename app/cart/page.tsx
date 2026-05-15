@@ -987,7 +987,7 @@ export default function CartPage() {
             // sebagai pesan tunggal alih-alih spam "1 produk dihapus",
             // "2 produk dihapus", "3 produk dihapus" tiap delete.
             aria-atomic="true"
-            className="pointer-events-auto mx-auto flex max-w-3xl items-center gap-3 rounded-full bg-slate-950 px-4 py-2.5 text-sm shadow-2xl"
+            className="pointer-events-auto mx-auto flex max-w-3xl items-center gap-3 rounded-full border border-slate-400/15 bg-slate-950 px-4 py-2.5 text-sm text-white shadow-[0_18px_42px_rgba(2,6,23,0.28)]"
           >
             <SnackbarProductDeletedLottie triggerKey={pendingDeletedItems.length} />
             <span className="min-w-0 flex-1 truncate font-bold text-white">

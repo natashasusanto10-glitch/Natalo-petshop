@@ -681,18 +681,18 @@ body.top-drawer-open .nat-whatsapp-float {
   z-index: 99999;
   display: flex;
   width: min(420px, calc(100vw - 32px));
-  min-height: 64px;
+  min-height: 56px;
   transform: translate(-50%, 12px) scale(0.98);
   flex-direction: row;
   align-items: center;
   gap: 10px;
-  border: 1px solid rgba(21, 101, 216, 0.12);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 18px 42px rgba(15, 52, 96, 0.16), 0 1px 0 rgba(255, 255, 255, 0.8) inset;
-  color: #07112f;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 999px;
+  background: #020617;
+  box-shadow: 0 18px 42px rgba(2, 6, 23, 0.28), 0 1px 0 rgba(255, 255, 255, 0.08) inset;
+  color: #ffffff;
   opacity: 0;
-  padding: 10px 14px 10px 10px;
+  padding: 8px 14px 8px 10px;
   pointer-events: auto;
   text-align: left;
   transition: opacity 0.22s ease, transform 0.22s ease;
@@ -707,30 +707,30 @@ body.top-drawer-open .nat-whatsapp-float {
 .cart-success-toast__visual {
   position: relative;
   display: grid;
-  width: 48px;
-  height: 48px;
-  flex: 0 0 48px;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
   place-items: center;
 }
 
 .cart-success-toast__lottie,
 .cart-success-toast__fallback {
   display: block;
-  width: 48px;
-  height: 48px;
+  width: 40px;
+  height: 40px;
 }
 
 .cart-success-toast__fallback {
   display: grid;
   place-items: center;
   border-radius: 999px;
-  background: #eaf3ff;
-  color: #1565d8;
+  background: rgba(37, 99, 235, 0.18);
+  color: #60a5fa;
 }
 
 .cart-success-toast__fallback svg {
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
 }
 
 .cart-success-toast__action {
@@ -742,13 +742,13 @@ body.top-drawer-open .nat-whatsapp-float {
   padding: 8px 12px;
   font-size: 13px;
   font-weight: 800;
-  color: #1565d8;
+  color: #60a5fa;
   background: transparent;
   white-space: nowrap;
   transition: background-color 0.15s ease, transform 0.1s ease;
 }
 .cart-success-toast__action:active {
-  background: rgba(21, 101, 216, 0.08);
+  background: rgba(96, 165, 250, 0.12);
   transform: scale(0.98);
 }
 

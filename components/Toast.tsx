@@ -56,14 +56,22 @@ type CartSuccessOptions = {
 };
 
 const DEFAULT_CART_ACTION = { label: "Lihat Keranjang", href: "/cart" };
-const DEFAULT_CART_MSG = "Produk berhasil dimasukkan ke keranjang";
+const DEFAULT_CART_MSG = "Produk berhasil ditambahkan";
+
+function normalizeCartSuccessMessage(message: string | undefined) {
+  if (!message) return DEFAULT_CART_MSG;
+  if (/berhasil/i.test(message) && /keranjang/i.test(message)) {
+    return DEFAULT_CART_MSG;
+  }
+  return message;
+}
 
 export function cartSuccessToast(input?: string | CartSuccessOptions) {
   if (typeof window === "undefined") return;
   const opts: CartSuccessOptions =
     typeof input === "string" ? { msg: input } : input ?? {};
   const detail = {
-    msg: opts.msg ?? DEFAULT_CART_MSG,
+    msg: normalizeCartSuccessMessage(opts.msg),
     action: opts.action === null ? null : opts.action ?? DEFAULT_CART_ACTION,
   };
   window.dispatchEvent(
