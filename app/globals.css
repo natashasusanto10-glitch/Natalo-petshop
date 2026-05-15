@@ -76,6 +76,13 @@ body {
   background: #ffffff;
   color: var(--foreground);
   font-family: var(--font-sans);
+  /* Stop iOS WebView rubber-band overscroll from leaking into the body.
+     Without this, scrolling past the last content row on long pages (akun,
+     order history, etc.) drags the fixed bottom-nav with it for a frame
+     before snapping back. `contain` keeps elastic bounce inside scrollable
+     children while the body itself never bounces — fixed elements stay
+     glued to the viewport. */
+  overscroll-behavior-y: contain;
 }
 
 html[data-feed-route="true"],
@@ -309,7 +316,8 @@ body[data-review-modal-open="true"] .product-detail-header {
   padding-bottom: calc(var(--natalo-bottom-nav-height) + env(safe-area-inset-bottom));
 }
 
-html[data-feed-route="true"] .nat-main-shell {
+html[data-feed-route="true"] .nat-main-shell,
+body[data-feed-route="true"] .nat-main-shell {
   min-height: 100dvh;
   background: #000000;
   padding-bottom: 0;
