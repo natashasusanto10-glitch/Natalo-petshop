@@ -80,9 +80,9 @@ export default async function ProductsPage({
       }`}
     >
       <div
-        className={`sticky z-50 -mx-4 mb-4 bg-white px-4 pb-3 pt-3 shadow-[0_8px_24px_rgba(15,23,42,0.06)] ${
+        className={`sticky z-50 -mx-4 mb-3 bg-white px-4 pb-2.5 pt-1 shadow-[0_8px_24px_rgba(15,23,42,0.06)] ${
           isSearchResult
-            ? "top-0 [padding-top:calc(0.75rem+env(safe-area-inset-top))]"
+            ? "top-0 [padding-top:calc(0.5rem+env(safe-area-inset-top))]"
             : "top-[calc(var(--natalo-mobile-header-min-height)+env(safe-area-inset-top))] rounded-b-3xl"
         } md:static md:mx-0 md:mb-5 md:rounded-none md:bg-transparent md:px-0 md:pb-0 md:pt-0 md:shadow-none`}
       >
@@ -94,7 +94,7 @@ export default async function ProductsPage({
             </p>
           </div>
         )}
-        <div className="mb-2">
+        <div className="mb-1.5">
           <Suspense fallback={<div className="h-10 w-full animate-pulse rounded-full bg-gray-100" />}>
             <ProductSearchBar defaultValue={q ?? ""} showBackButton={isSearchResult} />
           </Suspense>
