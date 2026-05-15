@@ -360,7 +360,12 @@ function ReviewForm({
 
   if (success) {
     return (
-      <SheetShell onClose={onClose} ariaLabel="Review terkirim">
+      <SheetShell
+        onClose={onClose}
+        ariaLabel="Review terkirim"
+        dragAnywhere
+        dragCloseThreshold={80}
+      >
         <div
           data-sheet-handle
           className="shrink-0 cursor-grab touch-pan-y select-none px-5 pt-3 active:cursor-grabbing"
@@ -579,10 +584,14 @@ function SheetShell({
   children,
   onClose,
   ariaLabel,
+  dragAnywhere = false,
+  dragCloseThreshold = DRAG_CLOSE_PX,
 }: {
   children: React.ReactNode;
   onClose: () => void;
   ariaLabel: string;
+  dragAnywhere?: boolean;
+  dragCloseThreshold?: number;
 }) {
   const [mounted, setMounted] = useState(false);
   const [portalReady, setPortalReady] = useState(false);
@@ -611,11 +620,12 @@ function SheetShell({
   }, []);
 
   function startDrag(target: EventTarget | null, clientY: number) {
-    // Only start drag if touch began on the header handle area.
     if (!(target instanceof HTMLElement)) return;
-    if (!target.closest("[data-sheet-handle]")) return;
-    // Don't drag from interactive elements within the header.
+    // Don't drag from interactive elements; CTA taps must stay crisp.
     if (target.closest("button, a, input, textarea")) return;
+    // Most review sheets drag only from the handle/header. The success sheet is
+    // short, so it can safely drag from the whole non-interactive surface.
+    if (!dragAnywhere && !target.closest("[data-sheet-handle]")) return;
     dragStartYRef.current = clientY;
     dragYRef.current = 0;
     draggingRef.current = true;
@@ -635,7 +645,7 @@ function SheetShell({
     if (!draggingRef.current) return;
     draggingRef.current = false;
     setDragging(false);
-    if (dragYRef.current >= DRAG_CLOSE_PX) {
+    if (dragYRef.current >= dragCloseThreshold) {
       onClose();
       return;
     }
