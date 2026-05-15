@@ -39,6 +39,9 @@ export async function listFeedPosts({
   const posts = await prisma.feedPost.findMany({
     where: {
       status: "ACTIVE",
+      // Soft-deleted posts stay in DB for audit/restore but must never
+      // surface in the public feed.
+      deletedAt: null,
       ...(tab ? { tab } : {}),
     },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],

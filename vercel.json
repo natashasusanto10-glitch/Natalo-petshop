@@ -8,6 +8,15 @@
     },
     "app/api/**/*.js": {
       "maxDuration": 30
+    },
+    "app/api/cron/**/*.ts": {
+      "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/feed-storage-gc",
+      "schedule": "0 3 * * 0"
+    }
+  ]
 }

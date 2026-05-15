@@ -75,6 +75,7 @@ model User {
   feedCommentLikes    FeedCommentLike[]
   feedReportsFiled    FeedReport[]    @relation("FeedReporter")
   feedReportsResolved FeedReport[]    @relation("FeedReportResolver")
+  feedModerationLogs  FeedModerationLog[] @relation("FeedModerationActor")
   createdAt           DateTime        @default(now())
   updatedAt           DateTime        @updatedAt
 }
@@ -710,12 +711,18 @@ model FeedPost {
   moderationNote  String?         // Reason kalau REJECTED/HIDDEN
 
   publishedAt     DateTime?       // Saat status pertama kali ACTIVE
+  // Soft-delete marker. NULL = post masih ada. Saat di-set, row tetap di
+  // DB (untuk audit + restore) tapi feed listing query harus filter out.
+  // Cleanup helper masih boleh wipe UploadThing assets — restore akan
+  // re-upload kalau benar-benar perlu.
+  deletedAt       DateTime?
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
   comments        FeedComment[]
   likes           FeedLike[]
   reports         FeedReport[]
+  moderationLogs  FeedModerationLog[]
 
   // Index utama untuk feed listing (filter by tab + status + sorted).
   @@index([tab, status, publishedAt])
@@ -725,6 +732,27 @@ model FeedPost {
   @@index([productId, status])
   // Admin moderation queue — list PENDING_REVIEW sorted oldest first.
   @@index([status, createdAt])
+  // Soft-deleted listing untuk admin trash view.
+  @@index([deletedAt])
+}
+
+// Audit trail untuk semua moderation transition di FeedPost. Append-only —
+// admin tidak boleh edit/delete entries (Prisma client + UI block update).
+// Setiap row mencatat siapa lakukan apa, kapan, dengan note opsional.
+model FeedModerationLog {
+  id          String         @id @default(cuid())
+  postId      String
+  post        FeedPost       @relation(fields: [postId], references: [id], onDelete: Cascade)
+  actorId     String
+  actor       User           @relation("FeedModerationActor", fields: [actorId], references: [id], onDelete: Restrict)
+  action      String         // "approve" | "reject" | "hide" | "unhide" | "delete" | "restore"
+  fromStatus  String?        // Status sebelum action (null kalau create)
+  toStatus    String?        // Status sesudah action
+  note        String?        // Reason kalau reject/hide
+  createdAt   DateTime       @default(now())
+
+  @@index([postId, createdAt])
+  @@index([actorId, createdAt])
 }
 
 model FeedComment {

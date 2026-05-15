@@ -18,6 +18,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { uploadToUT } from "@/lib/uploadthing";
+import { prisma } from "@/lib/prisma";
 import { ADMIN_VIDEO_CONFIG, USER_VIDEO_CONFIG, formatFileSize } from "@/lib/feed/video-config";
 
 const ALLOWED_TYPES = new Set([
@@ -25,6 +26,12 @@ const ALLOWED_TYPES = new Set([
   "video/webm",
   "video/quicktime", // iOS .mov
 ]);
+
+// Customer-side feed upload limit. Counts posts (FeedPost rows) created
+// in the last 24h by the same user, regardless of moderation status —
+// so a flood of upload→reject loops still counts. Admins exempt.
+const CUSTOMER_RATE_LIMIT_PER_DAY = 3;
+const RATE_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 export async function POST(request: NextRequest) {
   const csrfReject = assertSameOrigin(request);
   if (csrfReject) return csrfReject;
@@ -53,6 +60,26 @@ export async function POST(request: NextRequest) {
       { error: `Ukuran video maksimal ${formatFileSize(maxSize)} setelah kompresi.` },
       { status: 413 },
     );
+  }
+
+  // Customer rate limit: max 3 uploads / 24h. Admins exempt — they post
+  // promo and curated content. Count is over FeedPost (the metadata row
+  // that actually gets committed) so a half-finished upload doesn't burn
+  // a slot. Net effect: a spammer who tries to flood the moderation
+  // queue gets a 429 after their 3rd successful submission.
+  if (session.role !== "ADMIN") {
+    const since = new Date(Date.now() - RATE_LIMIT_WINDOW_MS);
+    const recentCount = await prisma.feedPost.count({
+      where: { authorId: session.sub, createdAt: { gte: since } },
+    });
+    if (recentCount >= CUSTOMER_RATE_LIMIT_PER_DAY) {
+      return NextResponse.json(
+        {
+          error: `Batas upload tercapai (${CUSTOMER_RATE_LIMIT_PER_DAY}/hari). Coba lagi besok.`,
+        },
+        { status: 429 },
+      );
+    }
   }
 
   try {
