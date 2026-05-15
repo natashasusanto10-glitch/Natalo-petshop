@@ -47,20 +47,9 @@ function BrandLogo({ brand }: { brand: BrandChoiceItem }) {
 export function BrandChoiceSection({ brands }: BrandChoiceSectionProps) {
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const resumeTimerRef = useRef<number | null>(null);
-  const [activePage, setActivePage] = useState(0);
+  const currentPageRef = useRef(0);
   const [autoPaused, setAutoPaused] = useState(false);
   const pageCount = useMemo(() => Math.max(1, Math.ceil(brands.length / 3)), [brands.length]);
-
-  const scrollToPage = useCallback((page: number) => {
-    const scroller = scrollerRef.current;
-    if (!scroller) return;
-    const nextPage = ((page % pageCount) + pageCount) % pageCount;
-    scroller.scrollTo({
-      left: nextPage * scroller.clientWidth,
-      behavior: "smooth",
-    });
-    setActivePage(nextPage);
-  }, [pageCount]);
 
   const pauseAutoSlide = useCallback(() => {
     setAutoPaused(true);
@@ -70,19 +59,18 @@ export function BrandChoiceSection({ brands }: BrandChoiceSectionProps) {
     }, 5500);
   }, []);
 
+  // Auto-slide: advance to next page every 4s. Bubble indicator was removed
+  // (per spec) but autoplay + manual swipe must keep working.
   useEffect(() => {
     if (pageCount <= 1 || autoPaused) return undefined;
     const interval = window.setInterval(() => {
-      setActivePage((current) => {
-        const next = (current + 1) % pageCount;
-        const scroller = scrollerRef.current;
-        if (scroller) {
-          scroller.scrollTo({
-            left: next * scroller.clientWidth,
-            behavior: "smooth",
-          });
-        }
-        return next;
+      const scroller = scrollerRef.current;
+      if (!scroller) return;
+      const next = (currentPageRef.current + 1) % pageCount;
+      currentPageRef.current = next;
+      scroller.scrollTo({
+        left: next * scroller.clientWidth,
+        behavior: "smooth",
       });
     }, 4000);
 
@@ -121,9 +109,9 @@ export function BrandChoiceSection({ brands }: BrandChoiceSectionProps) {
           const scroller = scrollerRef.current;
           if (!scroller) return;
           const page = Math.round(scroller.scrollLeft / Math.max(1, scroller.clientWidth));
-          setActivePage(Math.min(pageCount - 1, Math.max(0, page)));
+          currentPageRef.current = Math.min(pageCount - 1, Math.max(0, page));
         }}
-        className="scrollbar-hide mx-4 mt-3 flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth pb-2"
+        className="scrollbar-hide mx-4 mt-3 flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth"
       >
         {brands.map((brand) => (
           <Link
@@ -141,25 +129,6 @@ export function BrandChoiceSection({ brands }: BrandChoiceSectionProps) {
           </Link>
         ))}
       </div>
-
-      {pageCount > 1 && (
-        <div className="mt-2 flex justify-center gap-1.5" aria-label="Posisi brand favorit">
-          {Array.from({ length: pageCount }).map((_, index) => (
-            <button
-              key={index}
-              type="button"
-              onClick={() => {
-                pauseAutoSlide();
-                scrollToPage(index);
-              }}
-              aria-label={`Slide brand ${index + 1}`}
-              className={`h-1.5 rounded-full transition-all ${
-                activePage === index ? "w-4 bg-natalo-600" : "w-1.5 bg-slate-300"
-              }`}
-            />
-          ))}
-        </div>
-      )}
     </section>
   );
 }
