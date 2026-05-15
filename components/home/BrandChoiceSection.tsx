@@ -111,14 +111,14 @@ export function BrandChoiceSection({ brands }: BrandChoiceSectionProps) {
           const page = Math.round(scroller.scrollLeft / Math.max(1, scroller.clientWidth));
           currentPageRef.current = Math.min(pageCount - 1, Math.max(0, page));
         }}
-        className="scrollbar-hide mx-4 mt-3 flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth"
+        className="scrollbar-hide mt-3 flex snap-x snap-mandatory gap-2.5 overflow-x-auto scroll-smooth px-4 pb-2"
       >
         {brands.map((brand) => (
           <Link
             key={brand.id}
             href={brandProductHref(brand)}
             aria-label={`Lihat produk brand ${brand.name}`}
-            className="flex h-[116px] min-w-0 shrink-0 basis-[calc((100%_-_1.5rem)/3)] snap-start flex-col items-center justify-center rounded-[20px] border border-[#E5EAF3] bg-white px-3 py-3 shadow-[0_8px_22px_rgba(15,23,42,0.06)] transition active:scale-[0.97] active:opacity-90"
+            className="flex h-[116px] min-w-0 shrink-0 basis-[calc((100%_-_1.25rem)/3)] snap-start flex-col items-center justify-center rounded-2xl border border-[#eef3fb] bg-white px-3 py-3 shadow-sm transition active:scale-[0.97] active:opacity-90"
           >
             <div className="flex h-[54px] w-full items-center justify-center">
               <BrandLogo brand={brand} />
