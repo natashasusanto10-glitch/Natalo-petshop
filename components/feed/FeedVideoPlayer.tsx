@@ -201,12 +201,13 @@ export function FeedVideoPlayer({
         <img
           src={thumbnailUrl}
           alt=""
-          // `object-contain` keeps the full thumbnail visible without any
-          // crop — matches Instagram Reels / TikTok behaviour where vertical
-          // video shows at its native aspect ratio with thin black bars on
-          // phones taller than 9:16 (iPhone 15 is ~9:19.5). The action
-          // buttons + caption overlay sit comfortably on those bars.
-          className="absolute inset-0 h-full w-full object-contain"
+          // `object-cover` (TikTok-style fill). Every feed cell is exactly
+          // one viewport (100dvh) and the video must fill it edge-to-edge
+          // — no black letterbox bars, no chance of the next card peeking
+          // through dead space. Source videos uploaded at non-9:16 ratios
+          // get cropped to fit; the trade-off is intentional to keep the
+          // hard-paged feed visually consistent.
+          className="absolute inset-0 h-full w-full object-cover"
           onError={(event) => {
             event.currentTarget.style.display = "none";
           }}
@@ -225,9 +226,9 @@ export function FeedVideoPlayer({
         muted
         loop
         preload={loadSrc && !farFromViewport ? preloadMode : "none"}
-        // See thumbnail comment above — `object-contain` mirrors Instagram
-        // Reels: video plays at its true aspect ratio, no zoom-crop.
-        className="absolute inset-0 h-full w-full object-contain"
+        // See thumbnail comment — object-cover so the video always fills
+        // the snap cell completely, matching TikTok-style hard-paged feed.
+        className="absolute inset-0 h-full w-full object-cover"
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
         onWaiting={() => setIsPlaying(false)}
