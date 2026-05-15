@@ -693,7 +693,7 @@ body.top-drawer-open .nat-whatsapp-float {
   color: #07112f;
   opacity: 0;
   padding: 10px 14px 10px 10px;
-  pointer-events: none;
+  pointer-events: auto;
   text-align: left;
   transition: opacity 0.22s ease, transform 0.22s ease;
   backdrop-filter: blur(12px);
@@ -736,9 +736,10 @@ body.top-drawer-open .nat-whatsapp-float {
 .cart-success-toast__action {
   flex-shrink: 0;
   display: inline-flex;
+  min-height: 40px;
   align-items: center;
   border-radius: 999px;
-  padding: 6px 12px;
+  padding: 8px 12px;
   font-size: 13px;
   font-weight: 800;
   color: #1565d8;
