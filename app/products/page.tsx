@@ -79,18 +79,23 @@ export default async function ProductsPage({
           : "pb-[calc(6rem+env(safe-area-inset-bottom))] md:py-10"
       }`}
     >
-      {/* Sticky search + filter row. pt-0 di mobile non-search supaya jarak
-          header → search ~10px (sisa whitespace dari .nat-header-inner
-          min-height 60px + items-center vs logo h-10). Sebelumnya pt-1
-          bikin total gap ~14px yang terasa terlalu lega. Filter chips
-          tetap di bawah search bar (mb-1.5 di wrapper search) dan padding
-          bawah sticky (pb-2.5) tidak diubah karena di luar scope. */}
+      {/* Sticky search + filter row. Non-search mode (Header global tampil):
+          pt-0 + -mt-1 (-4px) pulls search bar up untuk tipiskan vertical-
+          centering whitespace yang tersisa di dalam Header element
+          (.nat-header-inner min-height 60px + items-center vs logo h-10
+          menyisakan ~8px whitespace di bawah ikon). Hasil akhir: gap visual
+          dari bawah ikon ke search bar ~4px — rapat tapi tetap punya hairline
+          breathing space biar tidak menempel kasar. Mengubah min-height
+          Header langsung akan affect SEMUA halaman lain, di luar scope.
+          Search-result mode (Header hidden via route check di Header.tsx):
+          pakai padding-top eksplisit untuk safe-area status bar, tidak butuh
+          negative margin. md: reset karena desktop pakai static positioning. */}
       <div
         className={`sticky z-50 -mx-4 mb-3 bg-white px-4 pb-2.5 pt-0 shadow-[0_8px_24px_rgba(15,23,42,0.06)] ${
           isSearchResult
             ? "top-0 [padding-top:calc(0.5rem+env(safe-area-inset-top))]"
-            : "top-[calc(var(--natalo-mobile-header-min-height)+env(safe-area-inset-top))] rounded-b-3xl"
-        } md:static md:mx-0 md:mb-5 md:rounded-none md:bg-transparent md:px-0 md:pb-0 md:pt-0 md:shadow-none`}
+            : "-mt-1 top-[calc(var(--natalo-mobile-header-min-height)+env(safe-area-inset-top))] rounded-b-3xl"
+        } md:mt-0 md:static md:mx-0 md:mb-5 md:rounded-none md:bg-transparent md:px-0 md:pb-0 md:pt-0 md:shadow-none`}
       >
         {activeBrandName && (
           <div className="mb-3">
