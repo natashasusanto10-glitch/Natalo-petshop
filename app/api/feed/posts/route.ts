@@ -22,6 +22,12 @@ import { prisma } from "@/lib/prisma";
 import { listFeedPosts } from "@/lib/feed/queries";
 import { ADMIN_VIDEO_CONFIG, USER_VIDEO_CONFIG } from "@/lib/feed/video-config";
 
+// Make sure the feed list never gets cached at the edge — newly approved
+// posts must appear on the next pull without waiting for a revalidation
+// window or a service-worker bust.
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const VALID_TABS: ReadonlyArray<FeedPostTab> = ["REKOMENDASI", "PROMO", "KOMUNITAS"];
 const CUSTOMER_MIN_VIDEO_DURATION_SEC = USER_VIDEO_CONFIG.minDuration;
 const CUSTOMER_MAX_VIDEO_DURATION_SEC = USER_VIDEO_CONFIG.maxDuration;
