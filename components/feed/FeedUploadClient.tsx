@@ -24,11 +24,12 @@ import {
   FiImage,
   FiInfo,
   FiPackage,
-  FiPause,
   FiPlay,
   FiRotateCcw,
   FiShield,
   FiVideo,
+  FiVolume2,
+  FiVolumeX,
   FiX,
 } from "react-icons/fi";
 import { BottomSheet } from "@/components/BottomSheet";
@@ -758,6 +759,9 @@ function PreviewScreen({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
+  // Start muted — autoplay policy di browser/WKWebView ngeblok audio
+  // sebelum user gesture. Begitu user tap unmute, kita unmute.
+  const [muted, setMuted] = useState(true);
 
   // Auto-play sekali saat masuk preview supaya user langsung lihat motion.
   useEffect(() => {
@@ -772,6 +776,13 @@ function PreviewScreen({
     };
   }, []);
 
+  // Sync muted state ke element supaya tap unmute langsung kedengeran.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.muted = muted;
+  }, [muted]);
+
   function togglePlay() {
     const v = videoRef.current;
     if (!v) return;
@@ -783,6 +794,24 @@ function PreviewScreen({
       v.pause();
       setPlaying(false);
     }
+  }
+
+  function toggleMute() {
+    setMuted((current) => {
+      const next = !current;
+      const v = videoRef.current;
+      if (v) {
+        v.muted = next;
+        // Kalau user unmute saat video pause, sekalian start play —
+        // user gesture sudah valid jadi audio kedengeran.
+        if (!next && v.paused) {
+          v.play()
+            .then(() => setPlaying(true))
+            .catch(() => {});
+        }
+      }
+      return next;
+    });
   }
 
   function restart() {
@@ -814,7 +843,6 @@ function PreviewScreen({
               src={videoSrc}
               className="h-full w-full object-cover"
               playsInline
-              muted
               loop
               onPause={() => setPlaying(false)}
               onPlay={() => setPlaying(true)}
@@ -834,6 +862,18 @@ function PreviewScreen({
             <span className="absolute right-3 top-3 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-black tracking-wide backdrop-blur">
               {formatClock(durationSec)}
             </span>
+            <button
+              type="button"
+              onClick={toggleMute}
+              aria-label={muted ? "Nyalakan suara" : "Matikan suara"}
+              className="absolute bottom-3 right-3 grid h-10 w-10 place-items-center rounded-full bg-black/60 text-white backdrop-blur transition active:scale-95"
+            >
+              {muted ? (
+                <FiVolumeX className="h-4 w-4" />
+              ) : (
+                <FiVolume2 className="h-4 w-4" />
+              )}
+            </button>
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-3">
@@ -929,6 +969,7 @@ function TrimScreen({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
+  const [muted, setMuted] = useState(true);
 
   // Loop preview dalam segment yang dipilih.
   useEffect(() => {
@@ -938,6 +979,12 @@ function TrimScreen({
       v.currentTime = trimStart;
     }
   }, [trimStart, trimEnd]);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.muted = muted;
+  }, [muted]);
 
   function togglePlay() {
     const v = videoRef.current;
@@ -953,6 +1000,22 @@ function TrimScreen({
       v.pause();
       setPlaying(false);
     }
+  }
+
+  function toggleMute() {
+    setMuted((current) => {
+      const next = !current;
+      const v = videoRef.current;
+      if (v) {
+        v.muted = next;
+        if (!next && v.paused) {
+          v.play()
+            .then(() => setPlaying(true))
+            .catch(() => {});
+        }
+      }
+      return next;
+    });
   }
 
   function onTimeUpdate() {
@@ -989,7 +1052,6 @@ function TrimScreen({
               src={videoSrc}
               className="h-full w-full object-cover"
               playsInline
-              muted
               loop
               onPause={() => setPlaying(false)}
               onPlay={() => setPlaying(true)}
@@ -1010,6 +1072,18 @@ function TrimScreen({
             <span className="absolute right-3 top-3 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-black tracking-wide backdrop-blur">
               {formatClock(durationSec)}
             </span>
+            <button
+              type="button"
+              onClick={toggleMute}
+              aria-label={muted ? "Nyalakan suara" : "Matikan suara"}
+              className="absolute bottom-3 right-3 grid h-10 w-10 place-items-center rounded-full bg-black/60 text-white backdrop-blur transition active:scale-95"
+            >
+              {muted ? (
+                <FiVolumeX className="h-4 w-4" />
+              ) : (
+                <FiVolume2 className="h-4 w-4" />
+              )}
+            </button>
           </div>
 
           <p className="mt-5 text-center text-[12px] font-semibold leading-relaxed text-white/55">
@@ -1742,4 +1816,3 @@ function uploadToBunnyWithProgress(params: {
     xhr.send(params.body);
   });
 }
-
