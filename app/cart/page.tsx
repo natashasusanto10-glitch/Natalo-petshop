@@ -12,6 +12,7 @@ import { VoucherClaimBar } from "@/components/cart/VoucherClaimBar";
 import { SwipeableCartRow } from "@/components/cart/SwipeableCartRow";
 import { CartRecommendationSections } from "@/components/cart/CartRecommendationSections";
 import { EmptyCartLottie } from "@/components/cart/EmptyCartLottie";
+import { SnackbarProductDeletedLottie } from "@/components/cart/SnackbarProductDeletedLottie";
 import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
 import { hapticSuccess, hapticTap, hapticWarning } from "@/lib/native/haptics";
 
@@ -986,16 +987,10 @@ export default function CartPage() {
             // sebagai pesan tunggal alih-alih spam "1 produk dihapus",
             // "2 produk dihapus", "3 produk dihapus" tiap delete.
             aria-atomic="true"
-            className="pointer-events-auto mx-auto flex max-w-3xl items-center gap-3 rounded-2xl bg-slate-950 px-4 py-3 text-sm shadow-2xl"
+            className="pointer-events-auto mx-auto flex max-w-3xl items-center gap-3 rounded-full bg-slate-950 px-4 py-2.5 text-sm shadow-2xl"
           >
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-500 text-white">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} className="h-3.5 w-3.5">
-                <circle cx="12" cy="12" r="9" />
-                <path d="M12 10v6" strokeLinecap="round" />
-                <path d="M12 7.5h.01" strokeLinecap="round" />
-              </svg>
-            </span>
-            <span className="min-w-0 flex-1 font-bold text-white">
+            <SnackbarProductDeletedLottie triggerKey={pendingDeletedItems.length} />
+            <span className="min-w-0 flex-1 truncate font-bold text-white">
               {pendingDeletedItems.length} produk telah dihapus
             </span>
             <button
