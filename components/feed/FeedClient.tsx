@@ -317,7 +317,15 @@ function FeedPostsList({
             // Match the snap height of <FeedVideoCard>'s article so the
             // wrapper is a single snap cell and scroll position stays
             // consistent regardless of which child renders.
-            style={{ minHeight: "100%" }}
+            //
+            // Both `height: 100%` AND `minHeight: 100%` are required: the
+            // article inside uses `min-h-full` which only resolves a
+            // percentage when the parent has a *definite* `height` (per CSS
+            // spec — a parent that only has `min-height` returns `auto` to
+            // the child, which resolves to 0). Without the explicit height,
+            // the article collapses to 0 px and the entire feed renders blank
+            // even though React mounts the component tree correctly.
+            style={{ height: "100%", minHeight: "100%" }}
           >
             {renderFull ? (
               <FeedVideoCard
