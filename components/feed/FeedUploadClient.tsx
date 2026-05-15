@@ -180,6 +180,45 @@ export function FeedUploadClient() {
     setTrimEnd(USER_VIDEO_CONFIG.maxDuration);
   }
 
+  function regenerateThumbnailAtTime(
+    picked: File,
+    meta: VideoMetadata,
+    timeSec: number,
+    jobId: number,
+  ) {
+    void extractVideoThumbnailSafe(picked, meta, {
+      // Frame trim-start (offset kecil 0.1s supaya tidak nyangkut keyframe
+      // sebelum trim-start yang kadang hitam). Clamp dengan durasi total.
+      targetTimeSec: Math.min(
+        Math.max(0.1, timeSec + 0.1),
+        Math.max(0.1, meta.durationSec - 0.05),
+      ),
+      maxWidth: 480,
+      timeoutMs: THUMBNAIL_BACKGROUND_TIMEOUT_MS,
+      onError: (thumbnailError) => {
+        console.info("[feed-video] retrim thumbnail fallback", {
+          error:
+            thumbnailError instanceof Error
+              ? { name: thumbnailError.name, message: thumbnailError.message }
+              : { message: String(thumbnailError) },
+        });
+      },
+    })
+      .then((thumb) => {
+        if (thumbnailJobRef.current !== jobId) return;
+        const prev = thumbnailPreviewUrl;
+        setThumbnailPreviewUrl(URL.createObjectURL(thumb.blob));
+        // Revoke setelah React swap supaya tidak race dengan <Image> yang
+        // masih pegang URL lama.
+        if (prev) {
+          setTimeout(() => URL.revokeObjectURL(prev), 500);
+        }
+      })
+      .catch(() => {
+        // Thumbnail lama tetap dipakai — no-op.
+      });
+  }
+
   function generateThumbnailInBackground(
     picked: File,
     meta: VideoMetadata,
@@ -440,7 +479,18 @@ export function FeedUploadClient() {
               );
             }}
             onBack={() => goBack("preview")}
-            onNext={() => goNext("detail")}
+            onNext={() => {
+              // Regenerate thumbnail dari trim-start frame supaya thumbnail
+              // di success + admin review match konten yang akan tayang
+              // (bukan frame yang user potong di awal). Background — kalau
+              // gagal, thumbnail sebelumnya tetap dipakai.
+              if (file && metadata) {
+                const jobId = thumbnailJobRef.current + 1;
+                thumbnailJobRef.current = jobId;
+                regenerateThumbnailAtTime(file, metadata, trimStart, jobId);
+              }
+              goNext("detail");
+            }}
           />
         )}
         {step === "detail" && filePreviewUrl && (
@@ -466,7 +516,6 @@ export function FeedUploadClient() {
         )}
         {step === "success" && (
           <SuccessScreen
-            videoPreviewUrl={filePreviewUrl}
             thumbnailPreviewUrl={thumbnailPreviewUrl}
             finalDuration={finalDuration}
             postId={resultPostId}
@@ -1671,14 +1720,12 @@ function PetChip({
 // ── Step 5: Menunggu Review ─────────────────────────────────────────
 
 function SuccessScreen({
-  videoPreviewUrl,
   thumbnailPreviewUrl,
   finalDuration,
   postId,
   onBackToFeed,
   onViewMyPosts,
 }: {
-  videoPreviewUrl: string | null;
   thumbnailPreviewUrl: string | null;
   finalDuration: number;
   postId: string | null;
@@ -1706,31 +1753,45 @@ function SuccessScreen({
           Postingan kamu sedang menunggu review admin.
         </p>
 
-        {(thumbnailPreviewUrl || videoPreviewUrl) && (
-          <div className="relative mt-7 h-44 w-32 overflow-hidden rounded-2xl ring-1 ring-white/10">
-            {thumbnailPreviewUrl ? (
-              <Image
-                src={thumbnailPreviewUrl}
-                alt="Preview postingan"
-                fill
-                sizes="128px"
-                className="object-cover"
-                unoptimized
-              />
-            ) : (
-              <video
-                src={videoPreviewUrl ?? undefined}
-                className="h-full w-full object-cover"
-                muted
-                playsInline
-                preload="metadata"
-              />
-            )}
-            <span className="absolute bottom-2 left-2 rounded-md bg-black/70 px-2 py-0.5 text-[11px] font-black">
-              {formatClock(finalDuration)}
+        {/* Preview card — selalu render. Pakai thumbnail user kalau berhasil
+            di-generate, fallback dark gradient kalau gagal. Play icon dan
+            duration badge selalu visible. */}
+        <div className="relative mt-7 h-44 w-32 overflow-hidden rounded-2xl ring-1 ring-white/10">
+          {thumbnailPreviewUrl ? (
+            <Image
+              src={thumbnailPreviewUrl}
+              alt="Preview postingan"
+              fill
+              sizes="128px"
+              className="object-cover"
+              unoptimized
+            />
+          ) : (
+            <div
+              aria-hidden
+              className="absolute inset-0 bg-[linear-gradient(135deg,#05070b_0%,#101827_55%,#1e5fbf_100%)]"
+            />
+          )}
+          {/* Dark overlay tipis supaya play icon + duration tetap kebaca
+              meski thumbnail terang. */}
+          <div
+            aria-hidden
+            className="absolute inset-0 bg-black/15"
+          />
+          {/* Play icon center */}
+          <div
+            aria-hidden
+            className="absolute inset-0 grid place-items-center"
+          >
+            <span className="grid h-11 w-11 place-items-center rounded-full bg-black/55 text-white backdrop-blur-sm">
+              <FiPlay className="h-5 w-5" />
             </span>
           </div>
-        )}
+          {/* Duration badge bottom-left */}
+          <span className="absolute bottom-2 left-2 rounded-md bg-black/70 px-2 py-0.5 text-[11px] font-black tracking-wide">
+            {formatClock(finalDuration)}
+          </span>
+        </div>
 
         <div className="mt-10 w-full max-w-xs space-y-3">
           <button
