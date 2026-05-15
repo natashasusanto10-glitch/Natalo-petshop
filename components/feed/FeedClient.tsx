@@ -99,9 +99,9 @@ export function FeedClient() {
           type="button"
           onClick={() => setCreatePostOpen(true)}
           aria-label="Buat postingan"
-          className="absolute right-4 top-[calc(env(safe-area-inset-top)+1rem)] z-30 grid h-11 w-11 place-items-center rounded-full bg-natalo-600 text-white shadow-[0_10px_30px_rgba(30,95,191,0.42)] ring-1 ring-white/15 transition active:scale-95"
+          className="absolute right-5 top-[calc(env(safe-area-inset-top)+14px)] z-30 grid h-[52px] w-[52px] place-items-center rounded-full border border-white/35 bg-black/25 text-white shadow-[0_10px_28px_rgba(0,0,0,0.28)] backdrop-blur-xl transition active:scale-95"
         >
-          <FiPlus className="h-7 w-7" />
+          <FiPlus className="h-8 w-8" />
         </button>
 
         <div className="min-h-0 flex-1 snap-y snap-mandatory overflow-y-auto overscroll-contain pb-[calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+0.75rem)] [-ms-overflow-style:none] [scrollbar-width:none] md:space-y-3 md:px-2 md:pb-4 md:pt-2 [&::-webkit-scrollbar]:hidden">
@@ -161,16 +161,19 @@ function FeedSkeleton() {
       {[0, 1].map((i) => (
         <div
           key={i}
-          className="overflow-hidden rounded-[28px] border border-white/10 bg-white"
+          className="relative min-h-full snap-start overflow-hidden bg-black"
         >
-          <div className="flex items-center gap-2 px-4 py-3">
-            <div className="h-9 w-9 animate-pulse rounded-full bg-gray-200" />
-            <div className="h-3 w-32 animate-pulse rounded-full bg-gray-200" />
+          <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-white/14 via-white/7 to-white/3" />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/35 via-black/0 to-black/82" />
+          <div className="absolute bottom-[calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+2.25rem)] left-4 right-24 space-y-3">
+            <div className="h-4 w-36 animate-pulse rounded-full bg-white/20" />
+            <div className="h-3 w-52 animate-pulse rounded-full bg-white/16" />
+            <div className="h-3 w-40 animate-pulse rounded-full bg-white/12" />
           </div>
-          <div className="mx-4 aspect-[9/16] animate-pulse rounded-2xl bg-gray-200" />
-          <div className="space-y-2 p-4">
-            <div className="h-3 w-3/4 animate-pulse rounded-full bg-gray-200" />
-            <div className="h-3 w-1/2 animate-pulse rounded-full bg-gray-200" />
+          <div className="absolute bottom-[calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+2.25rem)] right-4 flex flex-col items-center gap-4">
+            <div className="h-8 w-8 animate-pulse rounded-full bg-white/18" />
+            <div className="h-8 w-8 animate-pulse rounded-full bg-white/14" />
+            <div className="h-8 w-8 animate-pulse rounded-full bg-white/10" />
           </div>
         </div>
       ))}

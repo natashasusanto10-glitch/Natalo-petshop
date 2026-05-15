@@ -3,9 +3,8 @@
 import Link from "next/link";
 import Image from "next/image";
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
-  FiBookmark,
   FiHeart,
   FiMessageCircle,
   FiPackage,
@@ -25,13 +24,10 @@ type Props = {
   onOpenComments: (postId: string) => void;
 };
 
-const SAVED_POSTS_KEY = "natalo:saved-feed-posts";
-
 export function FeedVideoCard({ post, onOpenComments }: Props) {
   const [liked, setLiked] = useState(post.viewerLiked);
   const [likeCount, setLikeCount] = useState(post.likeCount);
   const [likeBusy, setLikeBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [productSheetOpen, setProductSheetOpen] = useState(false);
 
   const isAdmin = post.author.role === "ADMIN";
@@ -41,14 +37,6 @@ export function FeedVideoCard({ post, onOpenComments }: Props) {
   const isCommunity = post.kind === "COMMUNITY";
   const contentLabel = getContentLabel(post.kind);
   const productHref = product ? `/products/${product.slug}` : "#";
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const savedIds = JSON.parse(
-      window.localStorage.getItem(SAVED_POSTS_KEY) || "[]",
-    ) as string[];
-    setSaved(savedIds.includes(post.id));
-  }, [post.id]);
 
   async function toggleLike() {
     if (likeBusy) return;
@@ -81,22 +69,6 @@ export function FeedVideoCard({ post, onOpenComments }: Props) {
       title: post.title,
       text: post.description ?? "Lihat video Natalo Petshop ini.",
       url,
-    });
-  }
-
-  function toggleSave() {
-    setSaved((value) => {
-      const next = !value;
-      if (typeof window !== "undefined") {
-        const current = new Set(
-          JSON.parse(window.localStorage.getItem(SAVED_POSTS_KEY) || "[]") as string[],
-        );
-        if (next) current.add(post.id);
-        else current.delete(post.id);
-        window.localStorage.setItem(SAVED_POSTS_KEY, JSON.stringify([...current]));
-      }
-      hapticTap();
-      return next;
     });
   }
 
@@ -135,35 +107,9 @@ export function FeedVideoCard({ post, onOpenComments }: Props) {
         )}
       </div>
 
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/65 via-black/10 to-black/80" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/35 via-black/5 to-black/82" />
 
-      <header className="relative z-[1] flex items-center gap-2 px-4 pb-1 pt-[calc(env(safe-area-inset-top)+1rem)]">
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-xs font-black text-natalo-700 shadow-sm">
-          {isAdmin ? "N" : initial(post.author.name)}
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="flex min-w-0 items-center gap-1.5 text-sm font-extrabold text-white">
-            <span className="min-w-0 truncate">
-              {isAdmin ? "Natalo Petshop" : post.author.name}
-            </span>
-            {isAdmin && (
-              <span className="shrink-0 rounded-full border border-white/25 bg-white/20 px-1.5 py-0.5 text-[9px] font-black uppercase text-white backdrop-blur-xl">
-                Official
-              </span>
-            )}
-            {!isAdmin && product && (
-              <span className="shrink-0 rounded-full border border-white/25 bg-white/20 px-1.5 py-0.5 text-[9px] font-black uppercase text-white backdrop-blur-xl">
-                Pembeli Terverifikasi
-              </span>
-            )}
-          </p>
-          <p className="text-[11px] font-semibold text-white/70">
-            {formatRelativeTime(post.publishedAt ?? post.createdAt)}
-          </p>
-        </div>
-      </header>
-
-      <div className="absolute bottom-[calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+1.25rem)] right-3 z-[2] flex flex-col items-center gap-4 md:bottom-5">
+      <div className="absolute bottom-[calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+2.25rem)] right-4 z-[2] flex flex-col items-center gap-4 md:bottom-5">
         <ActionButton
           label={String(likeCount)}
           ariaLabel={liked ? "Batal suka" : "Suka"}
@@ -182,17 +128,30 @@ export function FeedVideoCard({ post, onOpenComments }: Props) {
         <ActionButton label="" ariaLabel="Bagikan" onClick={handleShare}>
           <FiShare2 className="h-8 w-8" />
         </ActionButton>
-        <ActionButton
-          label=""
-          ariaLabel={saved ? "Batal simpan" : "Simpan"}
-          pressed={saved}
-          onClick={toggleSave}
-        >
-          <FiBookmark className={`h-8 w-8 ${saved ? "fill-white" : ""}`} />
-        </ActionButton>
       </div>
 
-      <div className="absolute inset-x-0 bottom-0 z-[1] space-y-3 px-4 pb-[calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+1.25rem)] pr-20 md:pb-5">
+      <div className="absolute inset-x-0 bottom-0 z-[1] space-y-3 px-4 pb-[calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+2.25rem)] pr-24 md:pb-5">
+        <div className="min-w-0">
+          <p className="flex min-w-0 items-center gap-1.5 text-sm font-black text-white">
+            <span className="min-w-0 truncate">
+              {isAdmin ? "Natalo Petshop" : post.author.name}
+            </span>
+            {isAdmin && (
+              <span className="shrink-0 rounded-full border border-white/20 bg-white/15 px-1.5 py-0.5 text-[9px] font-black uppercase text-white backdrop-blur-xl">
+                Official
+              </span>
+            )}
+            {!isAdmin && product && (
+              <span className="shrink-0 rounded-full border border-white/20 bg-white/15 px-1.5 py-0.5 text-[9px] font-black uppercase text-white backdrop-blur-xl">
+                Pembeli Terverifikasi
+              </span>
+            )}
+          </p>
+          <p className="text-[11px] font-semibold text-white/70">
+            {formatRelativeTime(post.publishedAt ?? post.createdAt)}
+          </p>
+        </div>
+
         <div className="flex flex-wrap gap-1.5">
           <span className={`rounded-full border border-white/25 px-2 py-1 text-[10px] font-black uppercase shadow-sm shadow-black/10 backdrop-blur-xl ${contentLabel.className}`}>
             {contentLabel.label}
@@ -362,10 +321,6 @@ function getContentLabel(kind: FeedPostListItem["kind"]) {
     return { label: "Edukasi", className: "bg-white/20 text-white" };
   }
   return { label: "Komunitas", className: "bg-white/20 text-white" };
-}
-
-function initial(name: string): string {
-  return name.trim().charAt(0).toUpperCase() || "?";
 }
 
 function formatRelativeTime(iso: string) {

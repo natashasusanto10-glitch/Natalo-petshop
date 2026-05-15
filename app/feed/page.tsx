@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PageStatusBar } from "@/components/PageStatusBar";
 import { FeedClient } from "@/components/feed/FeedClient";
 
 export const metadata: Metadata = {
@@ -13,6 +14,12 @@ export const metadata: Metadata = {
 export default function FeedPage() {
   return (
     <main className="h-[100dvh] -mb-[calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom))] overflow-hidden bg-black">
+      <PageStatusBar
+        iconColor="light"
+        themeColor="#000000"
+        nativeBackgroundColor="#00000000"
+        overlaysWebView
+      />
       <FeedClient />
     </main>
   );

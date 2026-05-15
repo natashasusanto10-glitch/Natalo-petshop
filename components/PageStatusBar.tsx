@@ -4,6 +4,12 @@ import { useEffect } from "react";
 
 type IconColor = "dark" | "light";
 
+type NativeStatusBarInfo = {
+  style?: string;
+  color?: string;
+  overlays?: boolean;
+};
+
 type Props = {
   /**
    * Warna ICON status bar (time, battery, signal indicator).
@@ -16,6 +22,15 @@ type Props = {
    * Default: "#ffffff" (selaras dengan header putih kebanyakan halaman).
    */
   themeColor?: string;
+  /**
+   * Native status bar background. Feed memakai transparent agar video berada
+   * di belakang status bar, sementara halaman biasa tetap mengikuti themeColor.
+   */
+  nativeBackgroundColor?: string;
+  /**
+   * Khusus fullscreen Feed/video: izinkan konten web masuk di belakang status bar.
+   */
+  overlaysWebView?: boolean;
 };
 
 /**
@@ -37,6 +52,8 @@ type Props = {
 export function PageStatusBar({
   iconColor = "dark",
   themeColor = "#ffffff",
+  nativeBackgroundColor,
+  overlaysWebView = false,
 }: Props) {
   useEffect(() => {
     // 1. Update theme-color meta (semua existing tag)
@@ -57,26 +74,34 @@ export function PageStatusBar({
     }
 
     // 2. Update iOS native status bar via Capacitor plugin.
-    // Capture previous style sebelum override, untuk restore di cleanup
+    // Capture previous state sebelum override, untuk restore di cleanup
     // (penting kalau component di-mount nested — mis. di splash overlay).
     let cancelled = false;
     let previousNativeStyle: string | null = null;
     let previousNativeColor: string | null = null;
+    let previousNativeOverlay: boolean | null = null;
+    let touchedNative = false;
+
     (async () => {
       try {
         const { StatusBar, Style } = await import("@capacitor/status-bar");
         if (cancelled) return;
         try {
-          const info = await StatusBar.getInfo();
-          previousNativeStyle = info.style;
-          previousNativeColor = info.color;
+          const info = (await StatusBar.getInfo()) as NativeStatusBarInfo;
+          previousNativeStyle = info.style ?? null;
+          previousNativeColor = info.color ?? null;
+          previousNativeOverlay =
+            typeof info.overlays === "boolean" ? info.overlays : null;
         } catch {
           // getInfo bisa fail di simulator, biarkan
         }
         if (cancelled) return;
-        await StatusBar.setOverlaysWebView({ overlay: false });
+        touchedNative = true;
+        await StatusBar.setOverlaysWebView({ overlay: overlaysWebView });
         if (cancelled) return;
-        await StatusBar.setBackgroundColor({ color: themeColor });
+        await StatusBar.setBackgroundColor({
+          color: nativeBackgroundColor ?? themeColor,
+        });
         if (cancelled) return;
         await StatusBar.setStyle({
           style: iconColor === "dark" ? Style.Light : Style.Dark,
@@ -103,7 +128,7 @@ export function PageStatusBar({
       // Restore iOS native status bar ke state sebelum component mount.
       // Wajib supaya nested mount (splash overlay → unmount) gak leave
       // status bar di style yang salah.
-      if (previousNativeStyle) {
+      if (touchedNative) {
         (async () => {
           try {
             const { StatusBar, Style } = await import("@capacitor/status-bar");
@@ -111,19 +136,20 @@ export function PageStatusBar({
               previousNativeStyle === "LIGHT"
                 ? Style.Light
                 : previousNativeStyle === "DARK"
-                ? Style.Dark
-                : Style.Default;
-            if (previousNativeColor) {
-              await StatusBar.setBackgroundColor({
-                color: previousNativeColor,
-              });
-            }
+                  ? Style.Dark
+                  : Style.Default;
+            await StatusBar.setOverlaysWebView({
+              overlay: previousNativeOverlay ?? false,
+            });
+            await StatusBar.setBackgroundColor({
+              color: previousNativeColor ?? "#ffffff",
+            });
             await StatusBar.setStyle({ style: restored });
           } catch {}
         })();
       }
     };
-  }, [iconColor, themeColor]);
+  }, [iconColor, nativeBackgroundColor, overlaysWebView, themeColor]);
 
   return null;
 }

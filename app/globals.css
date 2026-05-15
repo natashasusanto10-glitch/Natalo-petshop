@@ -168,6 +168,14 @@ body[data-review-modal-open="true"] .product-detail-header {
   backdrop-filter: blur(14px);
 }
 
+.feed-bottom-nav-glass {
+  background: rgba(0, 0, 0, 0.58);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+}
+
 .sticky-back-title {
   position: sticky;
   top: calc(var(--natalo-mobile-header-min-height) + env(safe-area-inset-top));
@@ -317,6 +325,11 @@ body[data-bottom-nav="hidden"] .nat-main-shell {
   padding-bottom: env(safe-area-inset-bottom);
   background: transparent;
   pointer-events: none;
+}
+
+.nat-bottom-nav--feed {
+  z-index: 120;
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 body.nat-modal-open .bottom-nav,

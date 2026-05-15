@@ -127,15 +127,25 @@ export function BottomNavigation() {
         aria-hidden
         className={`pointer-events-none absolute inset-x-0 bottom-0 ${
           isFeedRoute
-            ? "h-[calc(env(safe-area-inset-bottom)+84px)] bg-gradient-to-t from-black/90 from-45% to-black/0"
+            ? "h-[calc(env(safe-area-inset-bottom)+92px)] bg-transparent"
             : "h-[calc(env(safe-area-inset-bottom)+100px)] bg-gradient-to-t from-white from-72% to-white/0"
         }`}
       />
-      <div className="pointer-events-auto relative mx-3 mb-2">
-        <div className="bottom-nav-glass relative grid h-[60px] grid-cols-4 overflow-hidden rounded-full">
+      <div
+        className={`pointer-events-auto relative ${
+          isFeedRoute ? "mx-4 mb-[10px]" : "mx-3 mb-2"
+        }`}
+      >
+        <div
+          className={`bottom-nav-glass relative grid grid-cols-4 overflow-hidden rounded-full ${
+            isFeedRoute ? "h-[70px] feed-bottom-nav-glass" : "h-[60px]"
+          }`}
+        >
           <span
             aria-hidden
-            className="pointer-events-none absolute left-0 top-1.5 bottom-1.5 w-1/4 rounded-full bg-natalo-50 transition-transform duration-[450ms] ease-[cubic-bezier(0.34,1.56,0.64,1)]"
+            className={`pointer-events-none absolute left-0 top-1.5 bottom-1.5 w-1/4 rounded-full transition-transform duration-[450ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
+              isFeedRoute ? "bg-natalo-600/95" : "bg-natalo-50"
+            }`}
             style={{ transform: `translateX(${activeIndex * 100}%)` }}
           />
           {ITEMS.map((item, i) => {
@@ -154,7 +164,13 @@ export function BottomNavigation() {
                 onTouchStart={() => router.prefetch(item.href)}
                 aria-current={active ? "page" : undefined}
                 className={`relative z-[1] flex h-full flex-col items-center justify-center gap-1 px-1 text-[11px] leading-none transition-colors duration-200 active:opacity-90 ${
-                  active ? "font-extrabold text-[#1E5FBF]" : "font-semibold text-[#9ca3af]"
+                  isFeedRoute
+                    ? active
+                      ? "font-extrabold text-white"
+                      : "font-semibold text-white/58"
+                    : active
+                      ? "font-extrabold text-[#1E5FBF]"
+                      : "font-semibold text-[#9ca3af]"
                 }`}
               >
                 <span className="relative">
