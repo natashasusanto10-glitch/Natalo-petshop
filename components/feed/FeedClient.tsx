@@ -125,14 +125,13 @@ export function FeedClient() {
   return (
     <FeedActiveVideoProvider>
       <div className="relative mx-auto flex h-full max-w-2xl flex-col">
-        <FeedTopHeader />
         <button
           type="button"
           onClick={startUploadFlow}
           aria-label="Buat postingan"
-          className="absolute right-5 top-[calc(env(safe-area-inset-top)+14px)] z-30 grid h-11 w-11 place-items-center text-white transition active:scale-95"
+          className="absolute right-[22px] top-[calc(env(safe-area-inset-top)+18px)] z-30 grid h-8 w-8 place-items-center text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)] transition active:scale-95"
         >
-          <FiPlus className="h-9 w-9" />
+          <FiPlus className="h-8 w-8" />
         </button>
 
         <div
@@ -279,19 +278,6 @@ function FeedPostsList({
         );
       })}
     </>
-  );
-}
-
-function FeedTopHeader() {
-  return (
-    <div className="pointer-events-none absolute left-5 top-[calc(env(safe-area-inset-top)+18px)] z-30 flex items-center gap-2.5 text-white">
-      <span className="grid h-9 w-9 place-items-center rounded-full bg-natalo-600 text-base font-black leading-none shadow-[0_6px_18px_rgba(30,95,191,0.35)]">
-        NL
-      </span>
-      <span className="text-[22px] font-extrabold leading-none tracking-normal drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)]">
-        Feed
-      </span>
-    </div>
   );
 }
 

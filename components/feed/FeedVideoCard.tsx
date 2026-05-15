@@ -129,65 +129,64 @@ export function FeedVideoCard({ post, index, onOpenComments }: Props) {
         )}
       </div>
 
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/35 via-black/5 to-black/82" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-[260px] bg-gradient-to-t from-black/85 via-black/52 to-transparent" />
+      <div className="pointer-events-none absolute right-0 top-0 bottom-[calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+1.5rem)] z-[1] w-24 bg-gradient-to-l from-black/28 to-transparent" />
 
-      <div className="absolute right-5 z-[2] flex flex-col items-center gap-5 [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+6.25rem)] md:bottom-8">
+      <div className="absolute right-3.5 z-[2] flex flex-col items-center gap-[22px] [bottom:calc(env(safe-area-inset-bottom)+245px)] md:bottom-10">
         <ActionButton
           label={formatEngagementCount(likeCount)}
           ariaLabel={liked ? "Batal suka" : "Suka"}
           pressed={liked}
           onClick={toggleLike}
         >
-          <FiHeart className={`h-[33px] w-[33px] ${liked ? "fill-red-500 stroke-red-500" : ""}`} />
+          <FiHeart className={`h-[34px] w-[34px] ${liked ? "fill-[#FF3040] stroke-[#FF3040]" : ""}`} />
         </ActionButton>
         <ActionButton
           label={formatEngagementCount(post.commentCount)}
           ariaLabel="Komentar"
           onClick={() => onOpenComments(post.id)}
         >
-          <FiMessageCircle className="h-[33px] w-[33px]" />
+          <FiMessageCircle className="h-[34px] w-[34px]" />
         </ActionButton>
         <ActionButton
           label={formatEngagementCount(shareCount)}
           ariaLabel="Bagikan"
           onClick={handleShare}
         >
-          <FiSend className="h-[33px] w-[33px]" />
+          <FiSend className="h-[34px] w-[34px]" />
         </ActionButton>
       </div>
 
-      <div className="absolute inset-x-0 bottom-0 z-[1] space-y-3 px-4 pb-[calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+2rem)] pr-24 md:pb-5">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-natalo-600 text-[13px] font-black text-white ring-1 ring-white/20">
-            {isAdmin ? "NL" : post.author.name.charAt(0).toUpperCase()}
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-[15px] font-extrabold leading-tight text-white">
-              {isAdmin ? "Natalo Petshop" : post.author.name}
-            </p>
-            <p className="mt-1 line-clamp-2 text-[13px] font-medium leading-snug text-white/88">
-              {post.description?.trim() || post.title}
-              {isAdmin ? " 💙" : ""}
-            </p>
-          </div>
+      <div className="absolute left-[18px] right-[88px] z-[2] flex min-w-0 items-center gap-3 [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+5.125rem)] md:bottom-24">
+        <div className="grid h-[54px] w-[54px] shrink-0 place-items-center rounded-full bg-natalo-600 text-base font-black text-white ring-1 ring-white/25">
+          {isAdmin ? "NL" : post.author.name.charAt(0).toUpperCase()}
         </div>
-
-        {product && (
-          <button
-            type="button"
-            onClick={() => setProductSheetOpen(true)}
-            className="flex max-w-full items-center gap-2 rounded-full border border-white/22 bg-black/22 px-3 py-2 text-left text-white shadow-sm shadow-black/10 backdrop-blur-xl transition active:scale-[0.98]"
-          >
-            <FiPackage className="h-4 w-4 shrink-0 text-white" />
-            <span className="shrink-0 text-xs font-semibold text-white/90">
-              {isCommunity ? "Produk digunakan" : "Produk terkait"}
-            </span>
-            <span className="truncate text-xs font-black text-natalo-300">
-              {product.name}
-            </span>
-          </button>
-        )}
+        <div className="min-w-0">
+          <p className="truncate text-[18px] font-bold leading-tight text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]">
+            {isAdmin ? "Natalo Petshop" : post.author.name}
+          </p>
+          <p className="mt-0.5 line-clamp-2 text-[15px] font-normal leading-snug text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]">
+            {post.description?.trim() || post.title}
+            {isAdmin ? " 💙" : ""}
+          </p>
+        </div>
       </div>
+
+      {product && (
+        <button
+          type="button"
+          onClick={() => setProductSheetOpen(true)}
+          className="absolute left-[18px] right-[72px] z-[2] flex h-[42px] items-center gap-2 rounded-full border border-white/22 bg-black/60 px-3.5 text-left text-white shadow-sm shadow-black/10 backdrop-blur-xl transition [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+1.625rem)] active:scale-[0.98] md:bottom-8"
+        >
+          <FiPackage className="h-4 w-4 shrink-0 text-white" />
+          <span className="shrink-0 text-sm font-medium text-white">
+            {isCommunity ? "Produk digunakan" : "Produk terkait"}
+          </span>
+          <span className="truncate text-sm font-bold text-[#8EC5FF]">
+            {product.name}
+          </span>
+        </button>
+      )}
 
       {product && (
         <PinnedProductSheet
@@ -220,7 +219,7 @@ function ActionButton({
       aria-label={ariaLabel}
       aria-pressed={pressed}
       onClick={onClick}
-      className="flex min-h-11 min-w-11 flex-col items-center justify-center gap-1 text-[11px] font-semibold text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.75)] transition active:scale-95"
+      className="flex min-w-11 flex-col items-center justify-center gap-[5px] text-[13px] font-medium text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)] transition active:scale-95"
     >
       <span className="grid h-[34px] w-[34px] place-items-center">
         {children}
