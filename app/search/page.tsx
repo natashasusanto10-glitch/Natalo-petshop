@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { BottomSheet } from "@/components/BottomSheet";
+import { PageStatusBar } from "@/components/PageStatusBar";
 import { QuickAddToCart } from "@/components/QuickAddToCart";
 import {
   SearchFilters,
@@ -245,9 +246,15 @@ function SearchPageContent() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-[calc(6rem+env(safe-area-inset-bottom))] md:bg-white md:pb-12">
+      <PageStatusBar
+        iconColor="dark"
+        themeColor="#ffffff"
+        nativeBackgroundColor="#ffffff"
+        overlaysWebView={false}
+      />
       <SearchResultHeader query={q} />
 
-      <div className="mx-auto max-w-6xl px-3 py-3 md:px-4 md:py-6">
+      <div className="mx-auto max-w-6xl px-3 py-4 md:px-4 md:py-6">
         <div className="rounded-2xl border border-gray-100 bg-white p-3 shadow-sm md:border-0 md:p-0 md:shadow-none">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -521,7 +528,13 @@ function SearchResultHeader({ query }: { query: string }) {
     suggest.products.length > 0 || suggest.categories.length > 0 || suggest.brands.length > 0;
 
   return (
-    <header className="sticky top-0 z-30 border-b border-gray-100 bg-white/95 px-3 pb-3 pt-3 backdrop-blur md:static md:px-4 [padding-top:calc(1rem_+_env(safe-area-inset-top))]">
+    <header
+      className="sticky top-0 z-30 border-b border-gray-100 bg-white/95 px-3 pb-3 backdrop-blur md:static md:px-4"
+      style={{
+        minHeight: "calc(56px + env(safe-area-inset-top))",
+        paddingTop: "calc(env(safe-area-inset-top) + 10px)",
+      }}
+    >
       <div ref={wrapperRef} className="relative mx-auto flex max-w-6xl items-center gap-2">
         <button
           type="button"
