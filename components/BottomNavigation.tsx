@@ -101,11 +101,24 @@ export function BottomNavigation() {
   }, [hideNav]);
 
   useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (isFeedRoute) {
+      document.documentElement.dataset.feedRoute = "true";
+      document.body.dataset.feedRoute = "true";
+    } else {
+      delete document.documentElement.dataset.feedRoute;
+      delete document.body.dataset.feedRoute;
+    }
+  }, [isFeedRoute]);
+
+  useEffect(() => {
     // Full unmount cleanup — hanya jalan saat component benar-benar unmount
     // (mis. route ke /admin yang skip StoreOnly), bukan saat hideNav berubah.
     return () => {
       if (typeof document !== "undefined") {
         delete document.body.dataset.bottomNav;
+        delete document.documentElement.dataset.feedRoute;
+        delete document.body.dataset.feedRoute;
       }
     };
   }, []);

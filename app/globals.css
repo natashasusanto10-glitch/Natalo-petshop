@@ -78,6 +78,13 @@ body {
   font-family: var(--font-sans);
 }
 
+html[data-feed-route="true"],
+html[data-feed-route="true"] body,
+html[data-feed-route="true"] #__next,
+html[data-feed-route="true"] #root {
+  background: #000000;
+}
+
 input, textarea, select, button {
   font: inherit;
 }
@@ -300,6 +307,16 @@ body[data-review-modal-open="true"] .product-detail-header {
 .nat-main-shell {
   background: #ffffff;
   padding-bottom: calc(var(--natalo-bottom-nav-height) + env(safe-area-inset-bottom));
+}
+
+html[data-feed-route="true"] .nat-main-shell {
+  min-height: 100dvh;
+  background: #000000;
+  padding-bottom: 0;
+}
+
+html[data-feed-route="true"] .site-footer {
+  display: none;
 }
 
 /* Saat bottom nav hidden (route detail produk/checkout/payment/auth/order
