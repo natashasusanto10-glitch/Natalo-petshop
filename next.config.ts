@@ -7,6 +7,13 @@ const withBundleAnalyzer = bundleAnalyzer({
 });
 
 const nextConfig: NextConfig = {
+  // Prisma client harus di-skip dari bundler Next.js — kalau ikut di-bundle
+  // (default behavior di Next.js 16 Turbopack), yang ke-load adalah varian
+  // `edge.js` yang wajib pakai `prisma://` URL (Data Proxy). Dengan dia jadi
+  // external, Node.js `require` ambil langsung dari node_modules dan dapat
+  // engine library normal yang menerima `postgresql://`.
+  serverExternalPackages: ["@prisma/client", "prisma"],
+
   // Bundle optimization
   experimental: {
     // View Transitions API — enable browser-level cross-fade between
@@ -91,8 +98,20 @@ const nextConfig: NextConfig = {
       },
       {
         // FFmpeg.wasm butuh cross-origin isolated page supaya SharedArrayBuffer
-        // tersedia. Batasi hanya ke layar upload video agar resource eksternal
-        // di halaman katalog/search tetap tidak terdampak COEP.
+        // tersedia (= multi-threaded encoding). Without these headers the
+        // WASM runs single-threaded and a 30s clip can take 30-60s to
+        // compress on iOS. Scoped to upload-capable routes so the rest of
+        // the app stays free to embed cross-origin resources without
+        // explicit CORP markers.
+        //
+        // NOTE: /feed itself (which hosts <FeedCreatePostSheet> via
+        // <FeedUploadProvider>) deliberately does NOT get these headers
+        // because the feed timeline loads UploadThing video/thumbnail
+        // assets that don't return CORP headers — with require-corp the
+        // feed would render as a wall of broken videos. The trade-off is
+        // single-threaded compression when posting from /feed. Speed is
+        // tuned via preset/crf in USER_VIDEO_CONFIG instead. Server-side
+        // encoding (Bunny / Mux) would eliminate the dilemma entirely.
         source: "/feed/upload",
         headers: ffmpegHeaders,
       },

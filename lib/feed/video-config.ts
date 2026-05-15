@@ -22,8 +22,16 @@ export const USER_VIDEO_CONFIG = {
   videoBitrate: "1500k",
   fps: 30,
   videoCodec: "libx264",
-  crf: 23,
-  preset: "medium",
+  // CRF 26 (was 23) — slight quality drop on motion, invisible on the
+  // small viewport pet videos use. Combined with the faster preset this
+  // halves encode time without blowing past the 5MB target file size.
+  crf: 26,
+  // "veryfast" (was "medium") — ffmpeg.wasm runs single-threaded on
+  // iOS WKWebView when triggered from a non-isolated route (the /feed
+  // background upload flow doesn't have COEP/COOP headers), so preset
+  // choice is the biggest knob. Veryfast typically 3-4x faster than
+  // medium with ~10-15% larger output, still well under 5MB target.
+  preset: "veryfast",
   audioCodec: "aac",
   audioBitrate: "96k",
   targetFileSize: 5 * 1024 * 1024,
