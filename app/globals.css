@@ -76,13 +76,21 @@ body {
   background: #ffffff;
   color: var(--foreground);
   font-family: var(--font-sans);
-  /* Stop iOS WebView rubber-band overscroll from leaking into the body.
-     Without this, scrolling past the last content row on long pages (akun,
-     order history, etc.) drags the fixed bottom-nav with it for a frame
-     before snapping back. `contain` keeps elastic bounce inside scrollable
-     children while the body itself never bounces — fixed elements stay
-     glued to the viewport. */
-  overscroll-behavior-y: contain;
+  /* Stop iOS WebView rubber-band overscroll from leaking into the body and
+     dragging the fixed bottom-nav with it. `none` is stricter than `contain`
+     and is the one that actually sticks on iOS 16+ WKWebView. Scrollable
+     children that legitimately need their own bounce (modals/sheets/feed
+     swiper) opt back in locally. */
+  overscroll-behavior-y: none;
+  overscroll-behavior-x: none;
+}
+
+html {
+  /* Mirror the body's anti-bounce setting on the scrolling viewport
+     ancestor. Some iOS builds attach the rubber-band to <html> instead of
+     <body> depending on which element is the propagating scroll container,
+     so we lock both. */
+  overscroll-behavior-y: none;
 }
 
 html[data-feed-route="true"],
@@ -350,6 +358,15 @@ body[data-bottom-nav="hidden"] .nat-main-shell {
   padding-bottom: env(safe-area-inset-bottom);
   background: transparent;
   pointer-events: none;
+  /* Force the nav onto its own GPU compositing layer. On iOS WKWebView
+     this decouples the fixed element from the body scroll's rubber-band:
+     when the page overscrolls past the bottom, the nav stays glued to
+     the viewport instead of getting visually dragged up with the content. */
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .nat-bottom-nav--feed {
