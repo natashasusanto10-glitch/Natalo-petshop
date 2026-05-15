@@ -5,9 +5,8 @@
  * stabil saat insert/delete di tengah list. Lebih reliable dari offset
  * pagination yg geser saat ada post baru.
  *
- * MVP: tab REKOMENDASI menampilkan ACTIVE dari semua kind (admin + community).
- * Tab PROMO dan KOMUNITAS filter ke kind/tab spesifik. Sort by publishedAt
- * desc (newest first); fallback createdAt kalau publishedAt null.
+ * Public feed is a single TikTok-style stream. `tab` remains optional for
+ * legacy/admin callers, but the storefront no longer exposes tab columns.
  */
 import { prisma } from "@/lib/prisma";
 import type { FeedPostTab } from "@prisma/client";
@@ -22,13 +21,13 @@ const FEED_PAGE_SIZE = 10;
 const COMMENT_PAGE_SIZE = 20;
 
 type FeedListOptions = {
-  tab: FeedPostTab;
+  tab?: FeedPostTab | null;
   cursor?: string | null;
   viewerUserId?: string | null;
 };
 
 /**
- * List feed posts untuk satu tab. Pakai cursor pagination (id terakhir
+ * List feed posts. Pakai cursor pagination (id terakhir
  * yg di-render). Sort by createdAt desc; publishedAt belum reliable
  * (akan di-set saat F4 saat admin publish post).
  */
@@ -39,8 +38,8 @@ export async function listFeedPosts({
 }: FeedListOptions): Promise<FeedListResponse> {
   const posts = await prisma.feedPost.findMany({
     where: {
-      tab,
       status: "ACTIVE",
+      ...(tab ? { tab } : {}),
     },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: FEED_PAGE_SIZE + 1,

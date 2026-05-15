@@ -30,18 +30,19 @@ function isValidTab(value: string | null): value is FeedPostTab {
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const rawTab = searchParams.get("tab");
-  if (!isValidTab(rawTab)) {
+  if (rawTab && !isValidTab(rawTab)) {
     return NextResponse.json(
       { error: "Parameter `tab` harus REKOMENDASI, PROMO, atau KOMUNITAS." },
       { status: 400 },
     );
   }
+  const tab = rawTab ? (rawTab as FeedPostTab) : null;
 
   const cursor = searchParams.get("cursor") || null;
   const session = await getSession().catch(() => null);
 
   const result = await listFeedPosts({
-    tab: rawTab,
+    tab,
     cursor,
     viewerUserId: session?.sub ?? null,
   });
@@ -216,6 +217,29 @@ export async function POST(request: NextRequest) {
         { error: "Produk tidak aktif, tidak bisa di-tag." },
         { status: 400 },
       );
+    }
+
+    if (!isAdmin) {
+      const verifiedPurchase = await prisma.orderItem.findFirst({
+        where: {
+          productId,
+          order: {
+            userId: session.sub,
+            paymentStatus: "PAID",
+            status: "DELIVERED",
+          },
+        },
+        select: { id: true },
+      });
+      if (!verifiedPurchase) {
+        return NextResponse.json(
+          {
+            error:
+              "Produk yang di-pin harus berasal dari riwayat pembelian yang sudah diterima.",
+          },
+          { status: 403 },
+        );
+      }
     }
   }
 

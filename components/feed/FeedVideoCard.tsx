@@ -1,23 +1,22 @@
 "use client";
 
-/**
- * Satu card di feed list. Render:
- * - Video player (kalau ada videoUrl) atau thumbnail produk (kalau PRODUCT_ONLY)
- * - Author badge (Natalo Official untuk admin, nama biasa untuk user)
- * - Title + description
- * - Product card kecil (kalau ada productId)
- * - Promo pricing (kalau kind=PROMO)
- * - Like + comment buttons (like optimistic update)
- *
- * Spec 10.9 — produk di feed cuma card ringan, detail full di /products/[slug].
- */
 import Link from "next/link";
 import Image from "next/image";
-import { useState } from "react";
-import { FiHeart, FiMessageCircle, FiShoppingCart } from "react-icons/fi";
+import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
+import {
+  FiBookmark,
+  FiHeart,
+  FiMessageCircle,
+  FiPackage,
+  FiShare2,
+  FiShoppingCart,
+} from "react-icons/fi";
+import { BottomSheet } from "@/components/BottomSheet";
 import { formatRupiah } from "@/lib/format";
 import { hapticTap } from "@/lib/native/haptics";
 import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
+import { shareContent } from "@/lib/share";
 import type { FeedPostListItem } from "@/lib/feed/types";
 import { FeedVideoPlayer } from "./FeedVideoPlayer";
 
@@ -26,20 +25,34 @@ type Props = {
   onOpenComments: (postId: string) => void;
 };
 
+const SAVED_POSTS_KEY = "natalo:saved-feed-posts";
+
 export function FeedVideoCard({ post, onOpenComments }: Props) {
   const [liked, setLiked] = useState(post.viewerLiked);
   const [likeCount, setLikeCount] = useState(post.likeCount);
   const [likeBusy, setLikeBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [productSheetOpen, setProductSheetOpen] = useState(false);
 
   const isAdmin = post.author.role === "ADMIN";
   const product = post.product;
   const promo = post.promo;
   const hasVideo = Boolean(post.videoUrl);
+  const isCommunity = post.kind === "COMMUNITY";
+  const contentLabel = getContentLabel(post.kind);
+  const productHref = product ? `/products/${product.slug}` : "#";
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const savedIds = JSON.parse(
+      window.localStorage.getItem(SAVED_POSTS_KEY) || "[]",
+    ) as string[];
+    setSaved(savedIds.includes(post.id));
+  }, [post.id]);
 
   async function toggleLike() {
     if (likeBusy) return;
     setLikeBusy(true);
-    // Optimistic update — spec 10.8. UI berubah instan, rollback kalau gagal.
     const prevLiked = liked;
     const prevCount = likeCount;
     setLiked(!prevLiked);
@@ -49,11 +62,9 @@ export function FeedVideoCard({ post, onOpenComments }: Props) {
       const res = await fetch(`/api/feed/posts/${post.id}/like`, { method: "POST" });
       if (!res.ok) throw new Error("Like failed");
       const data: { liked: boolean; likeCount: number } = await res.json();
-      // Sync server state — kalau race, server is source of truth.
       setLiked(data.liked);
       setLikeCount(data.likeCount);
     } catch {
-      // Rollback
       setLiked(prevLiked);
       setLikeCount(prevCount);
     } finally {
@@ -61,31 +72,38 @@ export function FeedVideoCard({ post, onOpenComments }: Props) {
     }
   }
 
-  return (
-    <article className="overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-sm">
-      {/* Header: author + badge */}
-      <header className="flex items-center gap-2 px-4 py-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-natalo-100 text-xs font-black text-natalo-700">
-          {isAdmin ? "N" : initial(post.author.name)}
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-1.5 truncate text-sm font-extrabold text-gray-900">
-            {isAdmin ? "Natalo Petshop" : post.author.name}
-            {isAdmin && (
-              <span className="rounded-full bg-natalo-600 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-white">
-                Official
-              </span>
-            )}
-          </p>
-          <p className="text-[11px] font-semibold text-gray-400">
-            {formatRelativeTime(post.publishedAt ?? post.createdAt)}
-          </p>
-        </div>
-      </header>
+  async function handleShare() {
+    hapticTap();
+    const path = `/feed?post=${post.id}`;
+    const url =
+      typeof window !== "undefined" ? `${window.location.origin}${path}` : path;
+    await shareContent({
+      title: post.title,
+      text: post.description ?? "Lihat video Natalo Petshop ini.",
+      url,
+    });
+  }
 
-      {/* Media area */}
-      {hasVideo && post.videoUrl ? (
-        <div className="px-4">
+  function toggleSave() {
+    setSaved((value) => {
+      const next = !value;
+      if (typeof window !== "undefined") {
+        const current = new Set(
+          JSON.parse(window.localStorage.getItem(SAVED_POSTS_KEY) || "[]") as string[],
+        );
+        if (next) current.add(post.id);
+        else current.delete(post.id);
+        window.localStorage.setItem(SAVED_POSTS_KEY, JSON.stringify([...current]));
+      }
+      hapticTap();
+      return next;
+    });
+  }
+
+  return (
+    <article className="relative min-h-full snap-start overflow-hidden bg-black text-white shadow-sm md:rounded-[28px]">
+      <div className="absolute inset-0">
+        {hasVideo && post.videoUrl ? (
           <FeedVideoPlayer
             postId={post.id}
             videoUrl={post.videoUrl}
@@ -96,12 +114,10 @@ export function FeedVideoCard({ post, onOpenComments }: Props) {
                 ? post.videoWidth / post.videoHeight
                 : 9 / 16
             }
+            className="h-full min-h-full rounded-none [&>img]:object-cover"
           />
-        </div>
-      ) : product?.imageUrl ? (
-        // PRODUCT_ONLY — render thumbnail produk full-width
-        <Link href={`/products/${product.slug}`} className="block px-4">
-          <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-gray-100">
+        ) : product?.imageUrl ? (
+          <Link href={productHref} className="block h-full">
             <Image
               src={product.imageUrl}
               alt={product.name}
@@ -111,102 +127,241 @@ export function FeedVideoCard({ post, onOpenComments }: Props) {
               blurDataURL={IMAGE_BLUR_GRAY}
               className="object-cover"
             />
+          </Link>
+        ) : (
+          <div className="grid h-full place-items-center bg-gradient-to-br from-natalo-700 to-slate-950">
+            <FiPackage className="h-16 w-16 text-white/50" />
           </div>
-        </Link>
-      ) : null}
+        )}
+      </div>
 
-      {/* Body */}
-      <div className="space-y-3 px-4 py-3">
-        <h2 className="text-sm font-extrabold leading-snug text-gray-900">{post.title}</h2>
-        {post.description && (
-          <p className="line-clamp-3 text-xs leading-relaxed text-gray-600">
-            {post.description}
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/65 via-black/10 to-black/80" />
+
+      <header className="relative z-[1] flex items-center gap-2 px-4 pb-1 pt-[calc(env(safe-area-inset-top)+1rem)]">
+        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-xs font-black text-natalo-700 shadow-sm">
+          {isAdmin ? "N" : initial(post.author.name)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="flex min-w-0 items-center gap-1.5 text-sm font-extrabold text-white">
+            <span className="min-w-0 truncate">
+              {isAdmin ? "Natalo Petshop" : post.author.name}
+            </span>
+            {isAdmin && (
+              <span className="shrink-0 rounded-full border border-white/25 bg-white/20 px-1.5 py-0.5 text-[9px] font-black uppercase text-white backdrop-blur-xl">
+                Official
+              </span>
+            )}
+            {!isAdmin && product && (
+              <span className="shrink-0 rounded-full border border-white/25 bg-white/20 px-1.5 py-0.5 text-[9px] font-black uppercase text-white backdrop-blur-xl">
+                Pembeli Terverifikasi
+              </span>
+            )}
           </p>
-        )}
+          <p className="text-[11px] font-semibold text-white/70">
+            {formatRelativeTime(post.publishedAt ?? post.createdAt)}
+          </p>
+        </div>
+      </header>
 
-        {/* Promo pricing block */}
-        {promo && (
-          <div className="rounded-2xl bg-red-50 p-3">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-red-600">
+      <div className="absolute bottom-[calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+1.25rem)] right-3 z-[2] flex flex-col items-center gap-4 md:bottom-5">
+        <ActionButton
+          label={String(likeCount)}
+          ariaLabel={liked ? "Batal suka" : "Suka"}
+          pressed={liked}
+          onClick={toggleLike}
+        >
+          <FiHeart className={`h-8 w-8 ${liked ? "fill-red-500 stroke-red-500" : ""}`} />
+        </ActionButton>
+        <ActionButton
+          label={String(post.commentCount)}
+          ariaLabel="Komentar"
+          onClick={() => onOpenComments(post.id)}
+        >
+          <FiMessageCircle className="h-8 w-8" />
+        </ActionButton>
+        <ActionButton label="" ariaLabel="Bagikan" onClick={handleShare}>
+          <FiShare2 className="h-8 w-8" />
+        </ActionButton>
+        <ActionButton
+          label=""
+          ariaLabel={saved ? "Batal simpan" : "Simpan"}
+          pressed={saved}
+          onClick={toggleSave}
+        >
+          <FiBookmark className={`h-8 w-8 ${saved ? "fill-white" : ""}`} />
+        </ActionButton>
+      </div>
+
+      <div className="absolute inset-x-0 bottom-0 z-[1] space-y-3 px-4 pb-[calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+1.25rem)] pr-20 md:pb-5">
+        <div className="flex flex-wrap gap-1.5">
+          <span className={`rounded-full border border-white/25 px-2 py-1 text-[10px] font-black uppercase shadow-sm shadow-black/10 backdrop-blur-xl ${contentLabel.className}`}>
+            {contentLabel.label}
+          </span>
+          {promo && (
+            <span className="rounded-full border border-white/25 bg-white/20 px-2 py-1 text-[10px] font-black uppercase text-white shadow-sm shadow-black/10 backdrop-blur-xl">
               Promo
+            </span>
+          )}
+        </div>
+
+        <div>
+          <h2 className="line-clamp-2 text-base font-black leading-snug text-white">
+            {post.title}
+          </h2>
+          {post.description && (
+            <p className="mt-1 line-clamp-3 text-xs leading-relaxed text-white/85">
+              {post.description}
             </p>
-            <div className="mt-1 flex items-baseline gap-2">
-              <span className="text-base font-black text-red-700">
-                {formatRupiah(promo.discountPrice)}
-              </span>
-              <span className="text-xs text-gray-400 line-through">
-                {formatRupiah(promo.originalPrice)}
-              </span>
-            </div>
+          )}
+        </div>
+
+        {promo && (
+          <div className="inline-flex items-baseline gap-2 rounded-2xl border border-white/25 bg-white/18 px-3 py-2 text-left text-white shadow-sm shadow-black/10 backdrop-blur-xl">
+            <span className="text-base font-black">
+              {formatRupiah(promo.discountPrice)}
+            </span>
+            <span className="text-xs text-white/60 line-through">
+              {formatRupiah(promo.originalPrice)}
+            </span>
           </div>
         )}
 
-        {/* Product card ringan (admin VIDEO_PRODUCT atau community tag) */}
         {product && (
-          <Link
-            href={`/products/${product.slug}`}
-            className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-gray-50 p-2.5 transition active:bg-gray-100"
+          <button
+            type="button"
+            onClick={() => setProductSheetOpen(true)}
+            className="flex max-w-full items-center gap-2 rounded-full border border-white/25 bg-white/18 px-3 py-2 text-left text-white shadow-sm shadow-black/10 backdrop-blur-xl transition active:scale-[0.98]"
           >
-            {product.imageUrl && (
-              <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-white">
-                <Image
-                  src={product.imageUrl}
-                  alt={product.name}
-                  fill
-                  sizes="56px"
-                  placeholder="blur"
-                  blurDataURL={IMAGE_BLUR_GRAY}
-                  className="object-cover"
-                />
-              </div>
-            )}
-            <div className="min-w-0 flex-1">
-              <p className="line-clamp-2 text-xs font-extrabold text-gray-900">
-                {product.name}
-              </p>
-              <p className="mt-0.5 text-sm font-black text-natalo-600">
-                {formatRupiah(product.discountPrice ?? product.price)}
-              </p>
-            </div>
-            {isAdmin && product.stock > 0 && (
-              <button
-                type="button"
-                aria-label="Lihat produk"
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-natalo-600 text-white transition active:scale-95"
-              >
-                <FiShoppingCart className="h-4 w-4" />
-              </button>
-            )}
+            <FiPackage className="h-4 w-4 shrink-0 text-white" />
+            <span className="truncate text-xs font-black">
+              {isCommunity ? "Produk dipakai" : "Lihat produk"} - {product.name}
+            </span>
+          </button>
+        )}
+
+        {isAdmin && product && product.stock > 0 && (
+          <Link
+            href={productHref}
+            className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/18 px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-black/10 backdrop-blur-xl transition active:scale-[0.98]"
+          >
+            <FiShoppingCart className="h-4 w-4" />
+            Beli Sekarang
           </Link>
         )}
       </div>
 
-      {/* Footer actions */}
-      <footer className="flex items-center gap-4 border-t border-gray-100 px-4 py-2.5">
-        <button
-          type="button"
-          onClick={toggleLike}
-          aria-label={liked ? "Batal suka" : "Suka"}
-          aria-pressed={liked}
-          className="flex items-center gap-1.5 text-sm font-bold text-gray-600 transition active:scale-95"
-        >
-          <FiHeart
-            className={`h-5 w-5 transition ${liked ? "fill-red-500 stroke-red-500" : ""}`}
-          />
-          <span>{likeCount}</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => onOpenComments(post.id)}
-          aria-label="Komentar"
-          className="flex items-center gap-1.5 text-sm font-bold text-gray-600 transition active:scale-95"
-        >
-          <FiMessageCircle className="h-5 w-5" />
-          <span>{post.commentCount}</span>
-        </button>
-      </footer>
+      {product && (
+        <PinnedProductSheet
+          open={productSheetOpen}
+          product={product}
+          isAdmin={isAdmin}
+          onClose={() => setProductSheetOpen(false)}
+        />
+      )}
     </article>
   );
+}
+
+function ActionButton({
+  children,
+  label,
+  ariaLabel,
+  pressed,
+  onClick,
+}: {
+  children: ReactNode;
+  label: string;
+  ariaLabel: string;
+  pressed?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={ariaLabel}
+      aria-pressed={pressed}
+      onClick={onClick}
+      className="flex min-h-11 min-w-11 flex-col items-center justify-center gap-1 text-[11px] font-black text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.75)] transition active:scale-95"
+    >
+      <span className="grid h-8 w-8 place-items-center">
+        {children}
+      </span>
+      {label && <span className="leading-none">{label}</span>}
+    </button>
+  );
+}
+
+function PinnedProductSheet({
+  open,
+  product,
+  isAdmin,
+  onClose,
+}: {
+  open: boolean;
+  product: NonNullable<FeedPostListItem["product"]>;
+  isAdmin: boolean;
+  onClose: () => void;
+}) {
+  const price = product.discountPrice ?? product.price;
+  return (
+    <BottomSheet open={open} onClose={onClose} title="Produk di Video">
+      <div className="space-y-3">
+        <Link
+          href={`/products/${product.slug}`}
+          className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white p-3 transition active:bg-gray-50"
+        >
+          {product.imageUrl ? (
+            <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-gray-100">
+              <Image
+                src={product.imageUrl}
+                alt={product.name}
+                fill
+                sizes="80px"
+                placeholder="blur"
+                blurDataURL={IMAGE_BLUR_GRAY}
+                className="object-cover"
+              />
+            </div>
+          ) : (
+            <div className="grid h-20 w-20 shrink-0 place-items-center rounded-2xl bg-gray-100 text-natalo-600">
+              <FiPackage className="h-7 w-7" />
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="line-clamp-2 text-sm font-black text-gray-900">
+              {product.name}
+            </p>
+            <p className="mt-1 text-base font-black text-natalo-600">
+              {formatRupiah(price)}
+            </p>
+            <p className={`mt-1 text-xs font-bold ${product.stock > 0 ? "text-emerald-600" : "text-red-500"}`}>
+              {product.stock > 0 ? `Stok ${product.stock}` : "Stok Habis"}
+            </p>
+          </div>
+        </Link>
+        <Link
+          href={`/products/${product.slug}`}
+          className="flex w-full items-center justify-center gap-2 rounded-full bg-natalo-600 py-3 text-sm font-black text-white transition active:scale-[0.98]"
+        >
+          <FiShoppingCart className="h-4 w-4" />
+          {isAdmin ? "Beli Sekarang" : "Lihat Produk"}
+        </Link>
+      </div>
+    </BottomSheet>
+  );
+}
+
+function getContentLabel(kind: FeedPostListItem["kind"]) {
+  if (kind === "PROMO") {
+    return { label: "Promo", className: "bg-white/20 text-white" };
+  }
+  if (kind === "PRODUCT_ONLY" || kind === "VIDEO_PRODUCT") {
+    return { label: "Jualan Produk", className: "bg-white/20 text-white" };
+  }
+  if (kind === "VIDEO_ONLY") {
+    return { label: "Edukasi", className: "bg-white/20 text-white" };
+  }
+  return { label: "Komunitas", className: "bg-white/20 text-white" };
 }
 
 function initial(name: string): string {
@@ -224,5 +379,9 @@ function formatRelativeTime(iso: string) {
   if (hr < 24) return `${hr} jam lalu`;
   const day = Math.floor(hr / 24);
   if (day < 7) return `${day} hari lalu`;
-  return d.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+  return d.toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }

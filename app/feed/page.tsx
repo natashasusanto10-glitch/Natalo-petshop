@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 // ada admin posting / promo baru, jadi tidak butuh SSR caching layer.
 export default function FeedPage() {
   return (
-    <main className="min-h-[calc(100dvh-8rem)] bg-slate-50 px-2 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-3">
+    <main className="h-[100dvh] -mb-[calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom))] overflow-hidden bg-black">
       <FeedClient />
     </main>
   );

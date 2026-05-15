@@ -27,7 +27,9 @@
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { FiArrowLeft, FiUploadCloud, FiVideo, FiX } from "react-icons/fi";
+import { FiArrowLeft, FiCheck, FiPackage, FiUploadCloud, FiVideo, FiX } from "react-icons/fi";
+import { BottomSheet } from "@/components/BottomSheet";
+import { formatRupiah } from "@/lib/format";
 import { hapticSuccess, hapticTap, hapticWarning } from "@/lib/native/haptics";
 import {
   extractVideoThumbnail,
@@ -39,10 +41,24 @@ import { FeedUploadSuccessLottie } from "./FeedUploadSuccessLottie";
 const MAX_VIDEO_SIZE = 30 * 1024 * 1024;
 const MAX_DURATION_SEC = 90; // soft cap UI; server tidak enforce
 const MAX_TITLE_LENGTH = 200;
-const MAX_DESC_LENGTH = 2000;
+const MAX_DESC_LENGTH = 300;
 const ACCEPT_VIDEO = "video/mp4,video/webm,video/quicktime";
 
 type Step = "pick" | "form" | "uploading" | "success" | "error";
+
+type PinnableProduct = {
+  productId: string;
+  slug: string;
+  name: string;
+  imageUrl: string | null;
+  price: number;
+  originalPrice: number;
+  stock: number;
+  avgRating: number;
+  reviewCount: number;
+  purchasedAt: string;
+  orderNumber: string;
+};
 
 export function FeedUploadClient() {
   const router = useRouter();
@@ -58,6 +74,10 @@ export function FeedUploadClient() {
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<string>("");
+  const [pinnableProducts, setPinnableProducts] = useState<PinnableProduct[]>([]);
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [productPickerOpen, setProductPickerOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<PinnableProduct | null>(null);
 
   // Track current object URLs via ref supaya cleanup on unmount tidak
   // butuh URL di deps (yang akan trigger cleanup tiap state berubah).
@@ -72,6 +92,28 @@ export function FeedUploadClient() {
       const { file: fileUrl, thumb: thumbUrl } = urlRefs.current;
       if (fileUrl) URL.revokeObjectURL(fileUrl);
       if (thumbUrl) URL.revokeObjectURL(thumbUrl);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setProductsLoading(true);
+    fetch("/api/feed/pinnable-products")
+      .then((res) => {
+        if (!res.ok) return { products: [] };
+        return res.json() as Promise<{ products: PinnableProduct[] }>;
+      })
+      .then((data) => {
+        if (!cancelled) setPinnableProducts(data.products ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setPinnableProducts([]);
+      })
+      .finally(() => {
+        if (!cancelled) setProductsLoading(false);
+      });
+    return () => {
+      cancelled = true;
     };
   }, []);
 
@@ -186,6 +228,7 @@ export function FeedUploadClient() {
           videoDurationSec: Math.round(metadata.durationSec),
           videoWidth: metadata.width,
           videoHeight: metadata.height,
+          productId: selectedProduct?.productId ?? null,
         }),
       });
       const postData = await postRes.json();
@@ -226,6 +269,7 @@ export function FeedUploadClient() {
               resetSelection();
               setTitle("");
               setDescription("");
+              setSelectedProduct(null);
               setStep("pick");
             }}
             className="rounded-full border border-natalo-200 py-3 text-sm font-extrabold text-natalo-700 transition active:bg-natalo-50"
@@ -271,8 +315,19 @@ export function FeedUploadClient() {
           thumbnailPreviewUrl={thumbnailPreviewUrl}
           title={title}
           description={description}
+          selectedProduct={selectedProduct}
+          pinnableProducts={pinnableProducts}
+          productsLoading={productsLoading}
+          productPickerOpen={productPickerOpen}
           onTitleChange={setTitle}
           onDescriptionChange={setDescription}
+          onOpenProductPicker={() => setProductPickerOpen(true)}
+          onCloseProductPicker={() => setProductPickerOpen(false)}
+          onSelectProduct={(product) => {
+            setSelectedProduct(product);
+            setProductPickerOpen(false);
+          }}
+          onClearProduct={() => setSelectedProduct(null)}
           onChangeFile={() => {
             resetSelection();
             setStep("pick");
@@ -342,8 +397,16 @@ function FormPanel({
   thumbnailPreviewUrl,
   title,
   description,
+  selectedProduct,
+  pinnableProducts,
+  productsLoading,
+  productPickerOpen,
   onTitleChange,
   onDescriptionChange,
+  onOpenProductPicker,
+  onCloseProductPicker,
+  onSelectProduct,
+  onClearProduct,
   onChangeFile,
   onSubmit,
   uploading,
@@ -355,8 +418,16 @@ function FormPanel({
   thumbnailPreviewUrl: string | null;
   title: string;
   description: string;
+  selectedProduct: PinnableProduct | null;
+  pinnableProducts: PinnableProduct[];
+  productsLoading: boolean;
+  productPickerOpen: boolean;
   onTitleChange: (v: string) => void;
   onDescriptionChange: (v: string) => void;
+  onOpenProductPicker: () => void;
+  onCloseProductPicker: () => void;
+  onSelectProduct: (product: PinnableProduct) => void;
+  onClearProduct: () => void;
   onChangeFile: () => void;
   onSubmit: () => void;
   uploading: boolean;
@@ -451,10 +522,60 @@ function FormPanel({
         </div>
       </div>
 
+      <div className="space-y-3 rounded-3xl border border-gray-100 bg-white p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xs font-extrabold text-gray-700">Pin Produk</h2>
+            <p className="mt-1 text-[11px] leading-relaxed text-gray-500">
+              Pilih produk dari pesanan yang sudah kamu terima.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenProductPicker}
+            disabled={uploading || productsLoading}
+            className="rounded-full bg-natalo-600 px-3 py-2 text-[11px] font-extrabold text-white transition active:scale-95 disabled:bg-gray-300"
+          >
+            {productsLoading ? "Memuat" : selectedProduct ? "Ganti" : "Pilih"}
+          </button>
+        </div>
+
+        {selectedProduct ? (
+          <div className="flex items-center gap-3 rounded-2xl border border-natalo-100 bg-natalo-50 p-2.5">
+            <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-white text-natalo-600">
+              <FiPackage className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="line-clamp-2 text-xs font-extrabold text-gray-900">
+                {selectedProduct.name}
+              </p>
+              <p className="mt-0.5 text-[11px] font-semibold text-gray-500">
+                Dibeli {formatDate(selectedProduct.purchasedAt)}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClearProduct}
+              disabled={uploading}
+              aria-label="Hapus produk pin"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white text-gray-500 disabled:opacity-50"
+            >
+              <FiX className="h-4 w-4" />
+            </button>
+          </div>
+        ) : (
+          <p className="rounded-2xl bg-gray-50 p-3 text-xs leading-relaxed text-gray-500">
+            Opsional. Produk yang dipilih akan tampil sebagai chip di feed dan
+            membantu pembeli lain langsung melihat produk yang kamu pakai.
+          </p>
+        )}
+      </div>
+
       {/* Moderation notice */}
-      <div className="rounded-2xl bg-blue-50 p-3 text-xs leading-relaxed text-blue-800">
-        Video kamu akan direview admin sebelum tampil di tab Komunitas. Pastikan
-        konten sesuai pedoman komunitas Natalo.
+      <div className="rounded-2xl bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">
+        Video kamu akan direview admin maksimal 1x24 jam sebelum tampil di tab
+        Komunitas. Pastikan konten menampilkan hewan peliharaan dan tidak
+        mempromosikan produk kompetitor.
       </div>
 
       {error && (
@@ -472,6 +593,97 @@ function FormPanel({
       >
         {uploading ? uploadProgress || "Mengunggah..." : "Upload Video"}
       </button>
+
+      <ProductPickerSheet
+        open={productPickerOpen}
+        products={pinnableProducts}
+        selectedProductId={selectedProduct?.productId ?? null}
+        loading={productsLoading}
+        onClose={onCloseProductPicker}
+        onSelect={onSelectProduct}
+      />
     </div>
   );
+}
+
+function ProductPickerSheet({
+  open,
+  products,
+  selectedProductId,
+  loading,
+  onClose,
+  onSelect,
+}: {
+  open: boolean;
+  products: PinnableProduct[];
+  selectedProductId: string | null;
+  loading: boolean;
+  onClose: () => void;
+  onSelect: (product: PinnableProduct) => void;
+}) {
+  return (
+    <BottomSheet open={open} onClose={onClose} title="Pilih Produk">
+      <div className="space-y-3">
+        {loading && (
+          <p className="py-8 text-center text-xs font-bold text-gray-400">
+            Memuat produk...
+          </p>
+        )}
+        {!loading && products.length === 0 && (
+          <div className="rounded-2xl bg-gray-50 p-4 text-center">
+            <p className="text-sm font-extrabold text-gray-700">
+              Belum ada produk yang bisa di-pin
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-gray-500">
+              Produk akan muncul setelah pesanan kamu selesai dan berstatus
+              diterima.
+            </p>
+          </div>
+        )}
+        {products.map((product) => {
+          const selected = product.productId === selectedProductId;
+          return (
+            <button
+              key={`${product.productId}-${product.orderNumber}`}
+              type="button"
+              onClick={() => onSelect(product)}
+              className={`flex w-full items-center gap-3 rounded-2xl border p-3 text-left transition active:bg-gray-50 ${
+                selected
+                  ? "border-natalo-500 bg-natalo-50"
+                  : "border-gray-100 bg-white"
+              }`}
+            >
+              <div className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-gray-100 text-natalo-600">
+                <FiPackage className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="line-clamp-2 text-sm font-extrabold text-gray-900">
+                  {product.name}
+                </p>
+                <p className="mt-0.5 text-xs font-black text-natalo-600">
+                  {formatRupiah(product.price)}
+                </p>
+                <p className="mt-0.5 text-[11px] font-semibold text-gray-500">
+                  Dibeli {formatDate(product.purchasedAt)}
+                </p>
+              </div>
+              {selected && (
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-natalo-600 text-white">
+                  <FiCheck className="h-4 w-4" />
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </BottomSheet>
+  );
+}
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }

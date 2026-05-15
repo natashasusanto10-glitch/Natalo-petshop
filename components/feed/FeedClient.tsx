@@ -1,60 +1,42 @@
 "use client";
 
 /**
- * Feed client component — fetch + render list, manage active video, tab
- * switching, infinite scroll, comment sheet.
+ * TikTok-style public feed: a single mixed vertical stream.
  *
- * Spec compliance:
- * - 3 tabs (Rekomendasi / Promo / Komunitas) — Komunitas DISABLED di MVP
- *   (admin-only content sampai F4/F5 ready)
- * - Pagination 10 per load
- * - Single autoplay (via FeedActiveVideoProvider context wrapping)
- * - Comment di-load saat tap (lazy)
- *
- * MVP gracefully degrades:
- * - Loading skeleton saat fetch awal
- * - Empty state per tab
- * - Retry button kalau error
+ * The DB still stores `tab` for admin organization and backward compatibility,
+ * but the customer-facing app no longer exposes Rekomendasi/Promo/Komunitas
+ * columns. All ACTIVE posts are mixed in one snap-scrolling feed.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { FiPlus } from "react-icons/fi";
-import type { FeedPostTab } from "@prisma/client";
 import type { FeedListResponse, FeedPostListItem } from "@/lib/feed/types";
-import { hapticTap } from "@/lib/native/haptics";
 import { FeedActiveVideoProvider } from "./FeedActiveVideoContext";
 import { FeedVideoCard } from "./FeedVideoCard";
 import { FeedCommentSheet } from "./FeedCommentSheet";
 
-const TABS: { value: FeedPostTab; label: string }[] = [
-  { value: "REKOMENDASI", label: "Rekomendasi" },
-  { value: "PROMO", label: "Promo" },
-  // F4: Komunitas aktif setelah user upload flow ready.
-  { value: "KOMUNITAS", label: "Komunitas" },
-];
-
 export function FeedClient() {
-  const [activeTab, setActiveTab] = useState<FeedPostTab>("REKOMENDASI");
   const [posts, setPosts] = useState<FeedPostListItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [commentPostId, setCommentPostId] = useState<string | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
-  // Fetch awal saat tab berubah
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setPosts([]);
     setCursor(null);
     setError(null);
-    fetch(`/api/feed/posts?tab=${activeTab}`)
-      .then((r) => {
-        if (!r.ok) throw new Error("Gagal memuat feed");
-        return r.json() as Promise<FeedListResponse>;
+
+    fetch("/api/feed/posts")
+      .then((res) => {
+        if (!res.ok) throw new Error("Gagal memuat feed");
+        return res.json() as Promise<FeedListResponse>;
       })
       .then((data) => {
         if (cancelled) return;
@@ -69,29 +51,29 @@ export function FeedClient() {
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
+
     return () => {
       cancelled = true;
     };
-  }, [activeTab]);
+  }, [reloadKey]);
 
   const loadMore = useCallback(async () => {
     if (!cursor || loadingMore || !hasMore) return;
     setLoadingMore(true);
     try {
-      const res = await fetch(`/api/feed/posts?tab=${activeTab}&cursor=${cursor}`);
+      const res = await fetch(`/api/feed/posts?cursor=${cursor}`);
       if (!res.ok) throw new Error();
       const data: FeedListResponse = await res.json();
       setPosts((prev) => [...prev, ...data.items]);
       setCursor(data.nextCursor);
       setHasMore(Boolean(data.nextCursor));
     } catch {
-      // silent — sentinel akan trigger lagi saat user scroll
+      // The sentinel will try again when it re-enters the viewport.
     } finally {
       setLoadingMore(false);
     }
-  }, [activeTab, cursor, hasMore, loadingMore]);
+  }, [cursor, hasMore, loadingMore]);
 
-  // IntersectionObserver untuk infinite scroll sentinel
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el || !hasMore) return;
@@ -107,72 +89,36 @@ export function FeedClient() {
     return () => obs.disconnect();
   }, [loadMore, hasMore]);
 
-  function handleSelectTab(tab: FeedPostTab) {
-    if (tab === activeTab) return;
-    hapticTap();
-    setActiveTab(tab);
-  }
-
   const commentSheetOpen = useMemo(() => commentPostId !== null, [commentPostId]);
 
   return (
     <FeedActiveVideoProvider>
-      <div className="mx-auto flex max-w-2xl flex-col gap-4 pb-24 pt-2">
-        {/* Tab switcher + upload action */}
-        <div className="sticky top-0 z-10 mx-2 flex items-center gap-2">
-          <nav
-            role="tablist"
-            aria-label="Tab Feed"
-            className="flex flex-1 items-center gap-1 rounded-full border border-gray-100 bg-white/95 p-1 shadow-sm backdrop-blur"
-          >
-            {TABS.map((t) => (
-              <button
-                key={t.value}
-                type="button"
-                role="tab"
-                aria-selected={activeTab === t.value}
-                onClick={() => handleSelectTab(t.value)}
-                className={`flex-1 rounded-full py-2 text-xs font-extrabold transition ${
-                  activeTab === t.value
-                    ? "bg-natalo-600 text-white shadow-sm"
-                    : "text-gray-600 active:bg-gray-100"
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </nav>
-          {/* Upload button — di tab KOMUNITAS lebih prominent, di tab lain tetap visible
-              supaya user gampang menemukan. Auth check di /feed/upload page. */}
-          <Link
-            href="/feed/upload"
-            aria-label="Upload video komunitas"
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-natalo-600 text-white shadow-md transition active:scale-95"
-          >
-            <FiPlus className="h-5 w-5" />
-          </Link>
-        </div>
+      <div className="relative mx-auto flex h-full max-w-2xl flex-col">
+        <Link
+          href="/feed/upload"
+          aria-label="Upload video komunitas"
+          className="absolute right-4 top-[calc(env(safe-area-inset-top)+1rem)] z-30 grid h-11 w-11 place-items-center text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.55)] transition active:scale-95"
+        >
+          <FiPlus className="h-9 w-9" />
+        </Link>
 
-        {/* Feed body */}
-        <div className="flex flex-col gap-4 px-2">
+        <div className="min-h-0 flex-1 snap-y snap-mandatory overflow-y-auto overscroll-contain pb-[calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+0.75rem)] [-ms-overflow-style:none] [scrollbar-width:none] md:space-y-3 md:px-2 md:pb-4 md:pt-2 [&::-webkit-scrollbar]:hidden">
           {loading && <FeedSkeleton />}
 
           {!loading && error && (
-            <div className="rounded-2xl bg-red-50 p-4 text-center">
+            <div className="rounded-3xl bg-white p-6 text-center">
               <p className="text-sm font-bold text-red-700">{error}</p>
               <button
                 type="button"
-                onClick={() => setActiveTab(activeTab)} // re-trigger via state
-                className="mt-2 text-xs font-extrabold text-red-600 underline"
+                onClick={() => setReloadKey((key) => key + 1)}
+                className="mt-3 rounded-full bg-natalo-600 px-4 py-2 text-xs font-extrabold text-white"
               >
                 Coba lagi
               </button>
             </div>
           )}
 
-          {!loading && !error && posts.length === 0 && (
-            <EmptyTabState tab={activeTab} />
-          )}
+          {!loading && !error && posts.length === 0 && <EmptyFeedState />}
 
           {posts.map((post) => (
             <FeedVideoCard
@@ -182,11 +128,12 @@ export function FeedClient() {
             />
           ))}
 
-          {/* Sentinel untuk infinite scroll */}
           {hasMore && !loading && (
-            <div ref={sentinelRef} className="h-8" aria-hidden="true">
+            <div ref={sentinelRef} className="h-8 snap-start" aria-hidden="true">
               {loadingMore && (
-                <p className="text-center text-xs font-bold text-gray-400">Memuat...</p>
+                <p className="text-center text-xs font-bold text-white/60">
+                  Memuat...
+                </p>
               )}
             </div>
           )}
@@ -208,7 +155,7 @@ function FeedSkeleton() {
       {[0, 1].map((i) => (
         <div
           key={i}
-          className="overflow-hidden rounded-3xl border border-gray-100 bg-white"
+          className="overflow-hidden rounded-[28px] border border-white/10 bg-white"
         >
           <div className="flex items-center gap-2 px-4 py-3">
             <div className="h-9 w-9 animate-pulse rounded-full bg-gray-200" />
@@ -225,26 +172,14 @@ function FeedSkeleton() {
   );
 }
 
-function EmptyTabState({ tab }: { tab: FeedPostTab }) {
-  const messages: Record<FeedPostTab, { title: string; subtitle: string }> = {
-    REKOMENDASI: {
-      title: "Belum ada konten",
-      subtitle: "Konten rekomendasi akan muncul di sini. Cek lagi nanti!",
-    },
-    PROMO: {
-      title: "Belum ada promo",
-      subtitle: "Promo terbaru dari Natalo akan muncul di sini.",
-    },
-    KOMUNITAS: {
-      title: "Belum ada video komunitas",
-      subtitle: "Jadi yang pertama bagi pengalaman bersama hewan peliharaanmu! Tap tombol + di atas.",
-    },
-  };
-  const m = messages[tab];
+function EmptyFeedState() {
   return (
-    <div className="rounded-3xl border border-dashed border-gray-200 bg-white p-8 text-center">
-      <p className="text-sm font-extrabold text-gray-700">{m.title}</p>
-      <p className="mt-1 text-xs text-gray-500">{m.subtitle}</p>
+    <div className="rounded-3xl border border-dashed border-white/15 bg-white p-8 text-center">
+      <p className="text-sm font-extrabold text-gray-700">Belum ada konten</p>
+      <p className="mt-1 text-xs leading-relaxed text-gray-500">
+        Video, promo, dan konten komunitas Natalo akan tampil di sini dalam satu
+        feed.
+      </p>
     </div>
   );
 }
