@@ -9,12 +9,13 @@ import {
   IoChevronForward,
   IoMegaphoneOutline,
   IoNotificationsOutline,
+  IoPlayCircleOutline,
   IoPricetagOutline,
 } from "react-icons/io5";
 import { NotificationReviewSheet } from "@/components/NotificationReviewSheet";
 
-type NotificationType = "order" | "promo" | "announcement";
-type TabId = "all" | "order" | "promo" | "announcement";
+type NotificationType = "order" | "promo" | "feed" | "announcement";
+type TabId = "all" | "order" | "promo" | "feed" | "announcement";
 
 type Notification = {
   id: string;
@@ -45,6 +46,7 @@ const TABS: Array<{ id: TabId; label: string }> = [
   { id: "all", label: "Semua" },
   { id: "order", label: "Pesanan" },
   { id: "promo", label: "Promo" },
+  { id: "feed", label: "Feed" },
   { id: "announcement", label: "Pengumuman" },
 ];
 
@@ -68,6 +70,10 @@ function formatRelativeTime(iso: string): string {
 function notificationType(item: Notification): NotificationType {
   if (item.type === "promo") return "promo";
   if (item.type === "order") return "order";
+  // Feed notifications (moderation status + comment / reply / like-milestone
+  // activity) are stamped with type="feed" by lib/feed/notifications.ts and
+  // lib/feed/activity-notifications.ts when they insert the Announcement row.
+  if (item.type === "feed") return "feed";
   return "announcement";
 }
 
@@ -87,9 +93,11 @@ function EmptyState({ tab }: { tab: TabId }) {
       ? "Update pesanan otomatis akan muncul di sini."
       : tab === "promo"
         ? "Promo resmi dari admin Natalo Petshop akan muncul di sini."
-        : tab === "announcement"
-          ? "Pengumuman resmi dari admin Natalo Petshop akan muncul di sini."
-          : "Update pesanan, promo, dan pengumuman akan muncul di sini.";
+        : tab === "feed"
+          ? "Update postingan Feed kamu — review admin, komentar, dan like — akan muncul di sini."
+          : tab === "announcement"
+            ? "Pengumuman resmi dari admin Natalo Petshop akan muncul di sini."
+            : "Update pesanan, promo, Feed, dan pengumuman akan muncul di sini.";
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white px-6 py-12 text-center shadow-sm">
@@ -113,6 +121,14 @@ function IconBadge({ type }: { type: NotificationType }) {
     return (
       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600">
         <IoPricetagOutline className="h-5 w-5" aria-hidden="true" />
+      </span>
+    );
+  }
+
+  if (type === "feed") {
+    return (
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-natalo-50 text-natalo-600">
+        <IoPlayCircleOutline className="h-6 w-6" aria-hidden="true" />
       </span>
     );
   }
@@ -186,13 +202,23 @@ function NotificationCard({
         ? item.url ?? (orderNumber ? `/pesanan/${encodeURIComponent(orderNumber)}` : null)
         : item.url;
   const sourceLabel =
-    type === "promo" ? "Promo dari Admin" : type === "announcement" ? "Pengumuman dari Admin" : orderNumber ? `Order ID: ${orderNumber}` : "Update Pesanan";
+    type === "promo"
+      ? "Promo dari Admin"
+      : type === "announcement"
+        ? "Pengumuman dari Admin"
+        : type === "feed"
+          ? "Feed Natalo"
+          : orderNumber
+            ? `Order ID: ${orderNumber}`
+            : "Update Pesanan";
   const accent =
     type === "order"
       ? "bg-emerald-500"
       : type === "promo"
         ? "bg-gradient-to-b from-blue-500 via-emerald-500 to-orange-400"
-        : "bg-violet-500";
+        : type === "feed"
+          ? "bg-natalo-500"
+          : "bg-violet-500";
 
   return (
     <article

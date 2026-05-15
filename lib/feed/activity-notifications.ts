@@ -33,7 +33,11 @@ function truncate(input: string, limit = 80): string {
   return `${trimmed.slice(0, limit - 1)}…`;
 }
 
-async function fanout(userId: string, payload: PushPayload) {
+async function fanout(
+  userId: string,
+  payload: PushPayload,
+  ctaLabel = "Buka di Feed",
+) {
   try {
     await Promise.all([
       sendPushToUser(userId, payload),
@@ -47,7 +51,7 @@ async function fanout(userId: string, payload: PushPayload) {
             url: payload.url ?? "/notifications",
             segment: "all",
             type: FEED_NOTIF_TYPE,
-            ctaLabel: "Lihat",
+            ctaLabel,
             publishedAt: new Date(),
             targetUserId: userId,
           },
@@ -98,7 +102,7 @@ export async function sendCommentNotification(params: {
         comment_id: params.commentId,
       },
     };
-    await fanout(post.authorId, payload);
+    await fanout(post.authorId, payload, "Balas Komentar");
   } catch (err) {
     console.warn("[feed-activity] sendCommentNotification:", err);
   }
@@ -142,7 +146,7 @@ export async function sendReplyNotification(params: {
         reply_comment_id: params.replyCommentId,
       },
     };
-    await fanout(parent.authorId, payload);
+    await fanout(parent.authorId, payload, "Lihat Balasan");
   } catch (err) {
     console.warn("[feed-activity] sendReplyNotification:", err);
   }
@@ -192,7 +196,7 @@ export async function sendLikeMilestoneNotification(params: {
         milestone: String(params.milestone),
       },
     };
-    await fanout(post.authorId, payload);
+    await fanout(post.authorId, payload, "Lihat Postingan");
   } catch (err) {
     console.warn("[feed-activity] sendLikeMilestoneNotification:", err);
   }
