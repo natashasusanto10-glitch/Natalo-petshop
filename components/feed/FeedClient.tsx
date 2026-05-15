@@ -251,7 +251,14 @@ function FeedPostsList({
             ref={(el) => registerRef(index, el)}
             data-index={index}
             data-post-id={post.id}
-            className="snap-start"
+            // `snap-always` forces the scroll-snap engine to land on exactly
+            // one card per scroll gesture. Without it iOS Safari can rest
+            // mid-way between two cards on quick flicks, showing the bottom
+            // half of video N and top half of video N+1 at the same time.
+            // Combined with `snap-mandatory` on the parent it gives the
+            // TikTok-style hard-paged feel: every release jumps to a single
+            // full-screen video.
+            className="snap-start snap-always"
             // Match the snap height of <FeedVideoCard>'s article so the
             // wrapper is a single snap cell and scroll position stays
             // consistent regardless of which child renders.
