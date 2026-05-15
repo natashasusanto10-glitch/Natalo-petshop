@@ -101,6 +101,7 @@ export function FeedUploadClient() {
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
   const [metadata, setMetadata] = useState<VideoMetadata | null>(null);
   const [thumbnailPreviewUrl, setThumbnailPreviewUrl] = useState<string | null>(null);
+  const [thumbnailIsFallback, setThumbnailIsFallback] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzingLabel, setAnalyzingLabel] = useState("Menyiapkan video...");
   const [pickError, setPickError] = useState<string | null>(null);
@@ -176,6 +177,7 @@ export function FeedUploadClient() {
     setFilePreviewUrl(null);
     setMetadata(null);
     setThumbnailPreviewUrl(null);
+    setThumbnailIsFallback(false);
     setTrimStart(0);
     setTrimEnd(USER_VIDEO_CONFIG.maxDuration);
   }
@@ -208,6 +210,7 @@ export function FeedUploadClient() {
         if (thumbnailJobRef.current !== jobId) return;
         const prev = thumbnailPreviewUrl;
         setThumbnailPreviewUrl(URL.createObjectURL(thumb.blob));
+        setThumbnailIsFallback(thumb.usedFallback);
         // Revoke setelah React swap supaya tidak race dengan <Image> yang
         // masih pegang URL lama.
         if (prev) {
@@ -249,6 +252,7 @@ export function FeedUploadClient() {
       .then((thumb) => {
         if (thumbnailJobRef.current !== jobId) return;
         setThumbnailPreviewUrl(URL.createObjectURL(thumb.blob));
+        setThumbnailIsFallback(thumb.usedFallback);
       })
       .catch((thumbnailError) => {
         console.info("[feed-video] thumbnail skipped", {
@@ -497,6 +501,7 @@ export function FeedUploadClient() {
           <DetailScreen
             videoPreviewUrl={filePreviewUrl}
             thumbnailPreviewUrl={thumbnailPreviewUrl}
+            thumbnailIsFallback={thumbnailIsFallback}
             finalDuration={finalDuration}
             caption={caption}
             onCaptionChange={setCaption}
@@ -1464,6 +1469,7 @@ function seekTo(video: HTMLVideoElement, time: number) {
 function DetailScreen({
   videoPreviewUrl,
   thumbnailPreviewUrl,
+  thumbnailIsFallback,
   finalDuration,
   caption,
   onCaptionChange,
@@ -1482,6 +1488,7 @@ function DetailScreen({
 }: {
   videoPreviewUrl: string;
   thumbnailPreviewUrl: string | null;
+  thumbnailIsFallback: boolean;
   finalDuration: number;
   caption: string;
   onCaptionChange: (v: string) => void;
@@ -1498,8 +1505,32 @@ function DetailScreen({
   onBack: () => void;
   onSubmit: () => void;
 }) {
+  const realThumbnailUrl = thumbnailIsFallback ? null : thumbnailPreviewUrl;
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const roots = [
+      document.documentElement,
+      document.body,
+      document.getElementById("__next"),
+      document.getElementById("root"),
+    ].filter(Boolean) as HTMLElement[];
+    const previousBackgrounds = roots.map((node) => node.style.backgroundColor);
+    roots.forEach((node) => {
+      node.style.backgroundColor = "#000";
+    });
+    return () => {
+      roots.forEach((node, index) => {
+        node.style.backgroundColor = previousBackgrounds[index] ?? "";
+      });
+    };
+  }, []);
+
   return (
-    <div className="flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-black text-white">
+    <div
+      className="feed-create-detail-page flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-black text-white"
+      style={{ backgroundColor: "#000" }}
+    >
       <FlowHeader
         title="Detail Postingan"
         leftSlot={<BackButton onClick={onBack} />}
@@ -1513,14 +1544,17 @@ function DetailScreen({
         sticky
       />
 
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(32px+env(safe-area-inset-bottom))] [-webkit-overflow-scrolling:touch]">
+      <div
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-black px-4 pb-[calc(32px+env(safe-area-inset-bottom))] [-webkit-overflow-scrolling:touch]"
+        style={{ backgroundColor: "#000" }}
+      >
         <div className="mx-auto max-w-md space-y-4 pt-2">
           {/* Caption row + thumbnail */}
           <div className="flex gap-3 rounded-2xl border border-white/8 bg-white/[0.03] p-3">
             <div className="relative h-24 w-20 shrink-0 overflow-hidden rounded-xl bg-white/5">
-              {thumbnailPreviewUrl ? (
+              {realThumbnailUrl ? (
                 <Image
-                  src={thumbnailPreviewUrl}
+                  src={realThumbnailUrl}
                   alt="Preview"
                   fill
                   sizes="80px"
@@ -1536,6 +1570,12 @@ function DetailScreen({
                   preload="metadata"
                 />
               )}
+              <span className="absolute inset-0 bg-black/10" />
+              <span className="absolute inset-0 grid place-items-center">
+                <span className="grid h-8 w-8 place-items-center rounded-full bg-black/55 text-white backdrop-blur-sm">
+                  <FiPlay className="ml-0.5 h-4 w-4" />
+                </span>
+              </span>
               <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-black">
                 {formatClock(finalDuration)}
               </span>
