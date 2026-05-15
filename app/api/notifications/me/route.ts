@@ -132,7 +132,10 @@ export async function GET() {
       body: a.body,
       url: a.url,
       segment: a.segment,
-      type: a.targetUserId ? "order" : a.type,
+      // Trust the stored type. Old data without an explicit type defaults
+      // to "announcement" via the Prisma default; new personal notifs
+      // (order, feed) set their own type explicitly when they're created.
+      type: a.type,
       ctaLabel: a.ctaLabel,
       createdAt: a.createdAt.toISOString(),
       read: a.reads.length > 0,

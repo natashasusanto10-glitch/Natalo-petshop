@@ -38,8 +38,11 @@ import {
 import { hapticSuccess, hapticTap, hapticWarning } from "@/lib/native/haptics";
 import { isIOS } from "@/lib/native-platform";
 
-const MIN_VIDEO_DURATION = 15;
-const MAX_VIDEO_DURATION = 30;
+// Source-of-truth lives in USER_VIDEO_CONFIG (lib/feed/video-config.ts).
+// Mirror locally for terse references inside this component.
+const MIN_VIDEO_DURATION = USER_VIDEO_CONFIG.minDuration;
+const MAX_VIDEO_DURATION = USER_VIDEO_CONFIG.maxDuration;
+const DURATION_RANGE_LABEL = `${MIN_VIDEO_DURATION}-${MAX_VIDEO_DURATION} detik`;
 const MAX_CAPTION_LENGTH = 300;
 const MAX_PINNED_PRODUCTS = 3;
 // Gallery picker accepts semua format umum (webm dipakai Android Chrome).
@@ -630,7 +633,7 @@ function PickVideoStep({
 
           <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-natalo-600/20 px-3 py-2 text-xs font-black text-natalo-100 ring-1 ring-natalo-400/30">
             <FiInfo className="h-4 w-4" />
-            Pilih video berdurasi 15-30 detik
+            Pilih video berdurasi {DURATION_RANGE_LABEL}
           </div>
 
           {selecting && (
@@ -800,7 +803,7 @@ function TrimVideoStep({
           </div>
 
           <div className="mt-4 rounded-3xl bg-natalo-600/25 p-4 text-sm font-black text-natalo-50 ring-1 ring-natalo-400/30">
-            Durasi final harus 15-30 detik
+            Durasi final harus {DURATION_RANGE_LABEL}
           </div>
           <div
             className={`mt-3 flex items-center gap-3 rounded-3xl p-4 text-sm font-black ${
@@ -1153,7 +1156,7 @@ function StatusStep({
             <div className="flex gap-3">
               <FiInfo className="mt-0.5 h-5 w-5 shrink-0 text-natalo-600" />
               <ul className="space-y-2">
-                <li>Durasi video valid 15-30 detik ({formatDuration(finalDuration)})</li>
+                <li>Durasi video valid {DURATION_RANGE_LABEL} ({formatDuration(finalDuration)})</li>
                 <li>Review admin maksimal 1×24 jam</li>
                 <li>Notifikasi akan dikirim saat status berubah</li>
               </ul>

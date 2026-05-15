@@ -18,6 +18,7 @@ import type { FeedPostStatus } from "@prisma/client";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
+import { sendFeedModerationNotification } from "@/lib/feed/notifications";
 
 type ModerationAction = "approve" | "reject" | "hide" | "unhide";
 const VALID_ACTIONS: ModerationAction[] = ["approve", "reject", "hide", "unhide"];
@@ -104,6 +105,15 @@ export async function PATCH(
       moderationNote: true,
       publishedAt: true,
     },
+  });
+
+  // Notify the post author via push + notification center. Fire-and-forget
+  // by design — Notification helper swallows its own errors so a failure
+  // here can never roll back the moderation transition the admin just made.
+  void sendFeedModerationNotification({
+    postId,
+    action: action as ModerationAction,
+    note: noteStr || null,
   });
 
   return NextResponse.json({
