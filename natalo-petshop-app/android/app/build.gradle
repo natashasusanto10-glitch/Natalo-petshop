@@ -16,7 +16,7 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         // Bump versionCode setiap release ke Play Store — versionName boleh
         // tetap kalau hanya patch internal, tapi versionCode HARUS naik.
-        versionCode 8
+        versionCode 9
         versionName "1.0.7"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
@@ -25,6 +25,7 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+
     signingConfigs {
         release {
             if (keystorePropsFile.exists()) {

@@ -74,6 +74,20 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- Kamera + galeri untuk @capacitor/camera (review foto, dll).
+         CAMERA: ambil foto langsung. READ_MEDIA_IMAGES: pilih dari galeri
+         di Android 13+ (API 33). READ_EXTERNAL_STORAGE: galeri di Android 12-
+         (maxSdkVersion 32 supaya tidak diminta lagi di Android 13+). -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <!-- required=false supaya app tetap installable di device tanpa kamera. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+
     <!-- Queries: external app intents -->
     <queries>
         <intent>
