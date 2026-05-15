@@ -27,7 +27,7 @@
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { FiArrowLeft, FiCheck, FiPackage, FiUploadCloud, FiVideo, FiX } from "react-icons/fi";
+import { FiArrowLeft, FiCheck, FiPackage, FiPause, FiPlay, FiUploadCloud, FiVideo, FiX } from "react-icons/fi";
 import { BottomSheet } from "@/components/BottomSheet";
 import { formatRupiah } from "@/lib/format";
 import { hapticSuccess, hapticTap, hapticWarning } from "@/lib/native/haptics";
@@ -47,7 +47,11 @@ const MAX_TITLE_LENGTH = 200;
 const MAX_DESC_LENGTH = 300;
 const ACCEPT_VIDEO = "video/mp4,video/quicktime";
 
-type Step = "pick" | "form" | "uploading" | "success" | "error";
+type Step = "pick" | "trim" | "form" | "uploading" | "success" | "error";
+
+// Allow longer source videos so users can trim down. Server-side validator
+// at /api/feed/posts still enforces 1-45s on the FINAL trimmed clip.
+const SOURCE_MAX_SECONDS = 180;
 type ProcessingStage =
   | "validating"
   | "compressing"
@@ -90,6 +94,17 @@ export function FeedUploadClient() {
   const [productsLoading, setProductsLoading] = useState(false);
   const [productPickerOpen, setProductPickerOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<PinnableProduct | null>(null);
+  // Trim state — defaults set when video is picked. trimEnd defaults to
+  // min(sourceDuration, MAX_DURATION) so a short video just opens already-valid.
+  const [trimStart, setTrimStart] = useState(0);
+  const [trimEnd, setTrimEnd] = useState(USER_VIDEO_CONFIG.maxDuration);
+  const [trimPreviewPlaying, setTrimPreviewPlaying] = useState(false);
+  const trimVideoRef = useRef<HTMLVideoElement>(null);
+
+  const finalDuration = Math.max(0, trimEnd - trimStart);
+  const trimValid =
+    finalDuration >= USER_VIDEO_CONFIG.minDuration &&
+    finalDuration <= USER_VIDEO_CONFIG.maxDuration;
 
   useEffect(() => {
     return () => {
@@ -170,16 +185,20 @@ export function FeedUploadClient() {
         setAnalyzing(false);
         return;
       }
-      if (meta.durationSec > USER_VIDEO_CONFIG.maxDuration) {
+      if (meta.durationSec > SOURCE_MAX_SECONDS) {
         URL.revokeObjectURL(pickedPreviewUrl);
         resetSelection();
         setError(
-          `Video terlalu panjang (${Math.round(meta.durationSec)}s). Maksimal ${USER_VIDEO_CONFIG.maxDuration} detik.`,
+          `Video terlalu panjang (${Math.round(meta.durationSec)}s). Maksimal ${SOURCE_MAX_SECONDS} detik untuk source.`,
         );
         hapticWarning();
         setAnalyzing(false);
         return;
       }
+      // Seed trim range — start at 0, end at min(duration, max-allowed).
+      // User opens the trim screen with a valid selection already.
+      setTrimStart(0);
+      setTrimEnd(Math.min(meta.durationSec, USER_VIDEO_CONFIG.maxDuration));
 
       setProcessingStage("generating-thumbnail");
       const thumb = await extractVideoThumbnailSafe(picked, meta, {
@@ -206,7 +225,9 @@ export function FeedUploadClient() {
       });
       setThumbnailBlob(thumb.blob);
       setThumbnailPreviewUrl(URL.createObjectURL(thumb.blob));
-      setStep("form");
+      // Always show the trim screen — even a short video benefits from a
+      // confirmation step. Avoids the "where's trim?" complaint.
+      setStep("trim");
       hapticTap();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal proses video.");
@@ -233,6 +254,11 @@ export function FeedUploadClient() {
       const { compressVideo } = await import("@/lib/feed/video-compressor");
       const compressedFile = await compressVideo(file, {
         config: USER_VIDEO_CONFIG,
+        // Trim values picked in the "trim" step — pass through so ffmpeg
+        // only encodes the selected slice and the final clip lands in
+        // the 1-45s server-side window.
+        trimStartSec: trimStart,
+        trimDurationSec: finalDuration,
         onProgress: (progress) => {
           setProcessingProgress(progress);
         },
@@ -283,7 +309,9 @@ export function FeedUploadClient() {
           thumbnailUrl: thumbData.url,
           videoMimeType: videoData.mimeType,
           videoSizeBytes: videoData.sizeBytes,
-          videoDurationSec: Math.round(metadata.durationSec),
+          // Final clip duration after trim, not source duration. Server
+          // validates this against 1-45s and would reject a 60s source.
+          videoDurationSec: Math.max(1, Math.round(finalDuration)),
           videoWidth: metadata.width,
           videoHeight: metadata.height,
           productId: selectedProduct?.productId ?? null,
@@ -369,6 +397,64 @@ export function FeedUploadClient() {
           error={error}
           fileInputRef={fileInputRef}
         />
+      ) : step === "trim" && metadata && filePreviewUrl ? (
+        <TrimPanel
+          videoSrc={filePreviewUrl}
+          videoRef={trimVideoRef}
+          durationSec={metadata.durationSec}
+          trimStart={trimStart}
+          trimEnd={trimEnd}
+          finalDuration={finalDuration}
+          isValid={trimValid}
+          isPlaying={trimPreviewPlaying}
+          onTrimStartChange={(v) => {
+            const next = Math.max(0, Math.min(v, trimEnd - 0.5));
+            setTrimStart(next);
+            const video = trimVideoRef.current;
+            if (video) video.currentTime = next;
+          }}
+          onTrimEndChange={(v) => {
+            const next = Math.max(trimStart + 0.5, Math.min(v, metadata.durationSec));
+            setTrimEnd(next);
+          }}
+          onTogglePlay={() => {
+            const video = trimVideoRef.current;
+            if (!video) return;
+            if (video.paused) {
+              if (video.currentTime < trimStart || video.currentTime >= trimEnd) {
+                video.currentTime = trimStart;
+              }
+              video.play().then(() => setTrimPreviewPlaying(true)).catch(() => {});
+            } else {
+              video.pause();
+              setTrimPreviewPlaying(false);
+            }
+          }}
+          onPause={() => setTrimPreviewPlaying(false)}
+          onTimeUpdate={() => {
+            const video = trimVideoRef.current;
+            if (!video) return;
+            if (video.currentTime >= trimEnd) {
+              video.pause();
+              video.currentTime = trimStart;
+              setTrimPreviewPlaying(false);
+            }
+          }}
+          onBack={() => {
+            const video = trimVideoRef.current;
+            if (video) video.pause();
+            setTrimPreviewPlaying(false);
+            resetSelection();
+            setStep("pick");
+          }}
+          onNext={() => {
+            const video = trimVideoRef.current;
+            if (video) video.pause();
+            setTrimPreviewPlaying(false);
+            setStep("form");
+            hapticTap();
+          }}
+        />
       ) : (
         <FormPanel
           file={file}
@@ -453,6 +539,154 @@ function PickPanel({
       )}
     </div>
   );
+}
+
+function TrimPanel({
+  videoSrc,
+  videoRef,
+  durationSec,
+  trimStart,
+  trimEnd,
+  finalDuration,
+  isValid,
+  isPlaying,
+  onTrimStartChange,
+  onTrimEndChange,
+  onTogglePlay,
+  onPause,
+  onTimeUpdate,
+  onBack,
+  onNext,
+}: {
+  videoSrc: string;
+  videoRef: React.RefObject<HTMLVideoElement | null>;
+  durationSec: number;
+  trimStart: number;
+  trimEnd: number;
+  finalDuration: number;
+  isValid: boolean;
+  isPlaying: boolean;
+  onTrimStartChange: (v: number) => void;
+  onTrimEndChange: (v: number) => void;
+  onTogglePlay: () => void;
+  onPause: () => void;
+  onTimeUpdate: () => void;
+  onBack: () => void;
+  onNext: () => void;
+}) {
+  const invalidText =
+    finalDuration < USER_VIDEO_CONFIG.minDuration
+      ? `Video terlalu pendek. Minimal ${USER_VIDEO_CONFIG.minDuration} detik.`
+      : `Video terlalu panjang. Maksimal ${USER_VIDEO_CONFIG.maxDuration} detik.`;
+
+  return (
+    <main className="flex min-h-[100dvh] flex-col bg-black text-white">
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-4 py-3 pt-[calc(env(safe-area-inset-top)+12px)]">
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label="Kembali"
+          className="flex h-10 w-10 items-center justify-center rounded-full text-white/85 transition active:bg-white/10"
+        >
+          <FiArrowLeft className="h-5 w-5" />
+        </button>
+        <h1 className="text-base font-black">Trim Video</h1>
+        <button
+          type="button"
+          onClick={onNext}
+          disabled={!isValid}
+          className="rounded-full bg-natalo-600 px-5 py-2 text-sm font-black text-white transition active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
+        >
+          Lanjut
+        </button>
+      </header>
+
+      <div className="flex-1 overflow-y-auto px-4 pb-[calc(24px+env(safe-area-inset-bottom))]">
+        <div className="mx-auto max-w-2xl pt-4">
+          <div className="relative overflow-hidden rounded-[28px] bg-white/10">
+            <video
+              ref={videoRef}
+              src={videoSrc}
+              className="aspect-[9/14] w-full object-cover"
+              playsInline
+              muted
+              onPause={onPause}
+              onTimeUpdate={onTimeUpdate}
+              onEnded={() => {
+                const video = videoRef.current;
+                if (video) video.currentTime = trimStart;
+                onPause();
+              }}
+            />
+            <button
+              type="button"
+              onClick={onTogglePlay}
+              aria-label={isPlaying ? "Pause video" : "Play video"}
+              className="absolute bottom-4 left-4 grid h-12 w-12 place-items-center rounded-full bg-black/55 text-white backdrop-blur"
+            >
+              {isPlaying ? <FiPause className="h-5 w-5" /> : <FiPlay className="h-5 w-5" />}
+            </button>
+            <span className="absolute bottom-5 left-1/2 -translate-x-1/2 rounded-full bg-black/55 px-3 py-1.5 text-sm font-black">
+              {formatTrimDuration(finalDuration)} / {formatTrimDuration(durationSec)}
+            </span>
+          </div>
+
+          <div className="mt-5 rounded-3xl border border-white/10 bg-white/10 p-4">
+            <div className="mb-3 flex items-center justify-between text-xs font-black text-white/65">
+              <span>{formatTrimDuration(trimStart)}</span>
+              <span>{formatTrimDuration(trimEnd)}</span>
+            </div>
+            <div className="rounded-2xl border border-natalo-400/70 bg-black/50 p-3">
+              <div className="h-14 overflow-hidden rounded-xl bg-[linear-gradient(90deg,rgba(30,95,191,.55),rgba(255,255,255,.14),rgba(30,95,191,.55))]" />
+              <label className="mt-4 block text-xs font-black text-white/60">
+                Mulai trim
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(0, durationSec - 0.5)}
+                  step={0.1}
+                  value={trimStart}
+                  onChange={(event) => onTrimStartChange(Number(event.target.value))}
+                  className="mt-2 w-full accent-natalo-500"
+                />
+              </label>
+              <label className="mt-3 block text-xs font-black text-white/60">
+                Akhir trim
+                <input
+                  type="range"
+                  min={Math.min(durationSec, trimStart + 0.5)}
+                  max={durationSec}
+                  step={0.1}
+                  value={trimEnd}
+                  onChange={(event) => onTrimEndChange(Number(event.target.value))}
+                  className="mt-2 w-full accent-natalo-500"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div
+            className={`mt-3 rounded-3xl px-4 py-3 text-sm font-black ${
+              isValid
+                ? "bg-natalo-600/25 text-natalo-50 ring-1 ring-natalo-400/30"
+                : "bg-amber-500/15 text-amber-200 ring-1 ring-amber-400/40"
+            }`}
+          >
+            {isValid
+              ? `Durasi final ${formatTrimDuration(finalDuration)} — sudah valid`
+              : invalidText}
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function formatTrimDuration(sec: number) {
+  const total = Math.max(0, Math.round(sec));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 function FormPanel({

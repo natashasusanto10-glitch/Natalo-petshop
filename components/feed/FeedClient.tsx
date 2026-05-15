@@ -39,7 +39,7 @@ export function FeedClient() {
   const [commentPostId, setCommentPostId] = useState<string | null>(null);
   const [uploadTransitioning, setUploadTransitioning] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const uploadRouteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const uploadRouteTimerRef = useRef<number | null>(null);
   useFeedChrome();
 
   // Pull-to-refresh wiring: PullToRefresh in the root layout dispatches
