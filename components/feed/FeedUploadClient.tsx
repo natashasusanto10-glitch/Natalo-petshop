@@ -795,15 +795,16 @@ function PreviewScreen({
   }
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-black text-white">
+    <div className="flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-black text-white">
       <FlowHeader
         title="Preview Video"
         leftSlot={<CloseButton onClick={onBack} label="Kembali" />}
         rightSlot={<NextButton onClick={onNext} />}
+        sticky
       />
 
-      <div className="flex-1 overflow-y-auto px-4 pb-10">
-        <div className="mx-auto max-w-md">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(32px+env(safe-area-inset-bottom))] [-webkit-overflow-scrolling:touch]">
+        <div className="mx-auto max-w-md pt-2">
           <div
             className="relative overflow-hidden rounded-[26px] bg-black/60 ring-1 ring-white/10"
             style={{ aspectRatio: "9 / 12" }}
