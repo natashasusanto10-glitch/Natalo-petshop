@@ -34,7 +34,45 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = (await request.json().catch(() => ({}))) as { postId?: string };
+  const body = (await request.json().catch(() => ({}))) as {
+    postId?: string;
+    debug?: boolean;
+  };
+
+  // Debug mode: dump last 5 feed posts with their key state — no mutation.
+  // Use this to see why a recently uploaded post isn't showing in the feed.
+  if (body.debug) {
+    const recent = await prisma.feedPost.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 5,
+      select: {
+        id: true,
+        status: true,
+        encodingStatus: true,
+        videoGuid: true,
+        videoUrl: true,
+        thumbnailUrl: true,
+        tab: true,
+        kind: true,
+        createdAt: true,
+        publishedAt: true,
+        moderatedAt: true,
+        deletedAt: true,
+        title: true,
+      },
+    });
+    // Also try to get Bunny status for the most recent one with a guid.
+    const firstWithGuid = recent.find((p) => p.videoGuid);
+    const bunnyMeta = firstWithGuid?.videoGuid
+      ? await getBunnyVideo(firstWithGuid.videoGuid)
+      : null;
+    return NextResponse.json({
+      ok: true,
+      mode: "debug",
+      recent,
+      bunnyMetaForFirst: bunnyMeta,
+    });
+  }
 
   const posts = await prisma.feedPost.findMany({
     where: {
