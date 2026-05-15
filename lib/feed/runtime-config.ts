@@ -72,15 +72,6 @@ function getConnectionType(): ConnectionType {
 export function getPreloadTier(distance: number): PreloadTier {
   const conn = getConnectionType();
 
-  if (conn === "wifi") {
-    // Fast pipe — be aggressive. Next card already fully downloaded so
-    // scroll-snap → playback is instant.
-    if (distance === 0) return "auto";
-    if (distance === 1) return "auto";
-    if (distance === 2) return "metadata";
-    return "none";
-  }
-
   if (conn === "cellular-slow") {
     // 3G / data-saver — only fetch the current card, even metadata for
     // neighbours costs noticeable bytes.
@@ -88,9 +79,15 @@ export function getPreloadTier(distance: number): PreloadTier {
     return "none";
   }
 
-  // 4G / unknown — the spec default. Current full, ±1 metadata only.
+  // WiFi, 4G, or unknown — treat aggressively so swipes feel instant
+  // like Instagram Reels / TikTok. iOS Capacitor's WKWebView often reports
+  // connection as "unknown" so unknown falling back to "metadata" only
+  // was breaking pre-buffer on most installs. Bias toward the WiFi tier:
+  // current card auto, ±1 cards auto (next swipe is instant), ±2 cards
+  // metadata only. ~10 MB pre-buffer on a typical 720p MP4 feed.
   if (distance === 0) return "auto";
-  if (distance === 1) return "metadata";
+  if (distance === 1) return "auto";
+  if (distance === 2) return "metadata";
   return "none";
 }
 

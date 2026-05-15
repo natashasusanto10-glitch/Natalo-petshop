@@ -34,7 +34,11 @@ type Props = {
   className?: string;
 };
 
-const LOADING_INDICATOR_DELAY_MS = 500;
+// Longer delay than feels right because pre-buffered MP4 usually transitions
+// from `isActive=true` → `isPlaying=true` in 50-200ms. Showing a spinner
+// in that window would cause a one-frame flash on every swipe even when
+// playback is effectively instant.
+const LOADING_INDICATOR_DELAY_MS = 1200;
 
 export function FeedVideoPlayer({
   postId,
@@ -127,6 +131,10 @@ export function FeedVideoPlayer({
 
   // Far-from-viewport guard so we can drop the video src entirely when the
   // card is way off-screen — meaningful memory savings on long feeds.
+  // 300% root margin (one full viewport on each side of the visible card)
+  // means ±1 cards are always within "load src" range so by the time the
+  // user swipes to them, the browser already has the manifest + first chunk
+  // buffered. Removes the loading flash on swipe that the user reported.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -142,24 +150,45 @@ export function FeedVideoPlayer({
           }
         }
       },
-      { rootMargin: "200% 0px 200% 0px", threshold: [0, 0.1] },
+      { rootMargin: "300% 0px 300% 0px", threshold: [0, 0.1] },
     );
     obs.observe(el);
     return () => obs.disconnect();
   }, []);
 
-  // Play / pause based on active state.
+  // Play / pause based on active state. When the user swipes to a new card,
+  // isActive flips true and we call play() immediately — but if the browser
+  // hasn't buffered enough yet, play() rejects silently and the video sits
+  // paused on the poster ("loading screen" the user reported). Listen to
+  // `canplay` so the moment the browser has the first frame ready we kick
+  // playback again. With distance-±1 preload="auto" the gap between
+  // becoming active and `canplay` firing is usually milliseconds on WiFi.
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    if (isActive) {
-      video.play().catch(() => {
-        setIsPlaying(false);
-      });
-    } else {
+    if (!isActive) {
       video.pause();
       setIsPlaying(false);
+      return;
     }
+    let cancelled = false;
+    const tryPlay = () => {
+      if (cancelled) return;
+      video.play().catch(() => {
+        if (!cancelled) setIsPlaying(false);
+      });
+    };
+    tryPlay();
+    // canplay/loadeddata fire when the video has buffered enough to play.
+    // We don't know which one fires first across browsers — both work as
+    // retry triggers.
+    video.addEventListener("canplay", tryPlay);
+    video.addEventListener("loadeddata", tryPlay);
+    return () => {
+      cancelled = true;
+      video.removeEventListener("canplay", tryPlay);
+      video.removeEventListener("loadeddata", tryPlay);
+    };
   }, [isActive]);
 
   // Delayed loading indicator. Only surface a spinner if the video stays
