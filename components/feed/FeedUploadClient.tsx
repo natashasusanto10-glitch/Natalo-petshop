@@ -969,15 +969,16 @@ function TrimScreen({
       : "Durasi terlalu panjang. Maksimal 45 detik.";
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-black text-white">
+    <div className="flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-black text-white">
       <FlowHeader
         title="Trim Video"
         leftSlot={<CloseButton onClick={onBack} label="Kembali" />}
         rightSlot={<NextButton onClick={onNext} disabled={!isValid} />}
+        sticky
       />
 
-      <div className="flex-1 overflow-y-auto px-4 pb-[calc(28px+env(safe-area-inset-bottom))]">
-        <div className="mx-auto max-w-md">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(32px+env(safe-area-inset-bottom))] [-webkit-overflow-scrolling:touch]">
+        <div className="mx-auto max-w-md pt-2">
           {/* Preview */}
           <div
             className="relative overflow-hidden rounded-[26px] bg-black/60 ring-1 ring-white/10"
