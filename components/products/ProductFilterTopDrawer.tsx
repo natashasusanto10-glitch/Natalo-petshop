@@ -169,13 +169,23 @@ export function ProductFilterTopDrawer({
         className="absolute inset-0 bg-black/30 backdrop-blur-sm animate-in fade-in duration-200"
       />
 
-      <div className="relative max-h-[78dvh] overflow-hidden rounded-b-[28px] bg-white shadow-2xl animate-in slide-in-from-top-4 fade-in duration-200">
+      <div
+        className="relative mt-[calc(env(safe-area-inset-top)_+_0.75rem)] overflow-hidden rounded-[28px] bg-white shadow-2xl animate-in slide-in-from-top-4 fade-in duration-200"
+        style={{
+          maxHeight: "min(88dvh, calc(100dvh - env(safe-area-inset-top) - 1.5rem))",
+        }}
+      >
         {/* Drag handle */}
         <div className="flex justify-center pt-3">
           <div className="h-1.5 w-14 rounded-full bg-slate-300" />
         </div>
 
-        <div className="max-h-[72dvh] overflow-y-auto px-5 pb-6 pt-3">
+        <div
+          className="overflow-y-auto px-5 pb-6 pt-3"
+          style={{
+            maxHeight: "calc(min(88dvh, calc(100dvh - env(safe-area-inset-top) - 1.5rem)) - 2.75rem)",
+          }}
+        >
           {/* Semua — instant reset */}
           <button
             type="button"

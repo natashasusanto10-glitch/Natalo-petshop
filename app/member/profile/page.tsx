@@ -29,7 +29,7 @@ export default async function MemberProfilePage() {
 
   return (
     <main className="min-h-screen bg-zinc-50 pb-[calc(2rem+env(safe-area-inset-bottom))]">
-      <header className="sticky top-0 z-50 border-b border-zinc-100 bg-white px-4 pb-3 pt-3 shadow-sm [padding-top:calc(0.75rem+env(safe-area-inset-top))]">
+      <header className="sticky top-0 z-50 border-b border-zinc-100 bg-white px-4 pb-3 pt-4 shadow-sm [padding-top:calc(1rem_+_env(safe-area-inset-top))]">
         <div className="mx-auto flex max-w-2xl items-center gap-2">
           <Link
             href="/member"

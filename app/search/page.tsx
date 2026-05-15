@@ -521,7 +521,7 @@ function SearchResultHeader({ query }: { query: string }) {
     suggest.products.length > 0 || suggest.categories.length > 0 || suggest.brands.length > 0;
 
   return (
-    <header className="sticky top-0 z-30 border-b border-gray-100 bg-white/95 px-3 pb-2 pt-2 backdrop-blur md:static md:px-4 [padding-top:calc(0.5rem+env(safe-area-inset-top))]">
+    <header className="sticky top-0 z-30 border-b border-gray-100 bg-white/95 px-3 pb-3 pt-3 backdrop-blur md:static md:px-4 [padding-top:calc(1rem_+_env(safe-area-inset-top))]">
       <div ref={wrapperRef} className="relative mx-auto flex max-w-6xl items-center gap-2">
         <button
           type="button"
