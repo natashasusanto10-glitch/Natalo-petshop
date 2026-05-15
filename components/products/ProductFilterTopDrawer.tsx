@@ -17,7 +17,14 @@
  */
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+  type MouseEvent,
+  type TouchEvent,
+} from "react";
 import { createPortal } from "react-dom";
 import { hapticTap } from "@/lib/native/haptics";
 
@@ -52,6 +59,13 @@ const POPULAR_OPTIONS = [
   { id: "most-bought", label: "Paling Banyak Dibeli" },
 ];
 
+const DRAG_CLOSE_DISTANCE = 96;
+const DRAG_CLOSE_VELOCITY = 0.62;
+const SNAP_BACK_MS = 220;
+const DISMISS_MS = 220;
+const SNAP_BACK_EASE = "cubic-bezier(0.34, 1.26, 0.64, 1)";
+const DISMISS_EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
+
 function ChevronDown({ className = "h-4 w-4" }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className} aria-hidden>
@@ -80,12 +94,42 @@ export function ProductFilterTopDrawer({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [expanded, setExpanded] = useState<FilterSection | null>(defaultSection ?? null);
+  const [dragY, setDragY] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isSnappingBack, setIsSnappingBack] = useState(false);
+  const [isDismissing, setIsDismissing] = useState(false);
+  const dragStartYRef = useRef(0);
+  const dragYRef = useRef(0);
+  const dragLastYRef = useRef(0);
+  const dragLastTimeRef = useRef(0);
+  const dragVelocityRef = useRef(0);
+  const isDraggingRef = useRef(false);
+  const finishDragRef = useRef<() => void>(() => {});
+  const snapBackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [, startTransition] = useTransition();
 
   // Sync expanded section dgn trigger source
   useEffect(() => {
     if (open) setExpanded(defaultSection ?? null);
   }, [open, defaultSection]);
+
+  useEffect(() => {
+    if (snapBackTimerRef.current) clearTimeout(snapBackTimerRef.current);
+    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+    if (open) {
+      dragYRef.current = 0;
+      isDraggingRef.current = false;
+      setDragY(0);
+      setIsDragging(false);
+      setIsSnappingBack(false);
+      setIsDismissing(false);
+    }
+    return () => {
+      if (snapBackTimerRef.current) clearTimeout(snapBackTimerRef.current);
+      if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+    };
+  }, [open]);
 
   // Lock body scroll + body class + ESC close
   useEffect(() => {
@@ -192,7 +236,120 @@ export function ProductFilterTopDrawer({
     });
   }
 
+  function snapBack() {
+    if (snapBackTimerRef.current) clearTimeout(snapBackTimerRef.current);
+    setIsSnappingBack(true);
+    dragYRef.current = 0;
+    setDragY(0);
+    snapBackTimerRef.current = setTimeout(() => {
+      setIsSnappingBack(false);
+    }, SNAP_BACK_MS);
+  }
+
+  function dismissWithAnimation() {
+    if (isDismissing) return;
+    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+    if (snapBackTimerRef.current) clearTimeout(snapBackTimerRef.current);
+    isDraggingRef.current = false;
+    setIsDragging(false);
+    setIsSnappingBack(false);
+    setIsDismissing(true);
+    dismissTimerRef.current = setTimeout(() => {
+      onClose();
+    }, DISMISS_MS);
+  }
+
+  function beginDrag(clientY: number) {
+    if (isDismissing) return;
+    if (snapBackTimerRef.current) clearTimeout(snapBackTimerRef.current);
+    dragStartYRef.current = clientY;
+    dragLastYRef.current = clientY;
+    dragLastTimeRef.current = performance.now();
+    dragVelocityRef.current = 0;
+    dragYRef.current = 0;
+    isDraggingRef.current = true;
+    setIsDragging(true);
+    setIsSnappingBack(false);
+    setDragY(0);
+  }
+
+  function updateDrag(clientY: number) {
+    if (!isDraggingRef.current) return;
+    const now = performance.now();
+    const deltaTime = Math.max(1, now - dragLastTimeRef.current);
+    const deltaY = clientY - dragLastYRef.current;
+    dragVelocityRef.current = deltaY / deltaTime;
+    dragLastYRef.current = clientY;
+    dragLastTimeRef.current = now;
+    const nextDragY = Math.max(0, clientY - dragStartYRef.current);
+    dragYRef.current = nextDragY;
+    setDragY(nextDragY);
+  }
+
+  function finishDrag() {
+    if (!isDraggingRef.current) return;
+    isDraggingRef.current = false;
+    setIsDragging(false);
+    if (
+      dragYRef.current >= DRAG_CLOSE_DISTANCE ||
+      dragVelocityRef.current >= DRAG_CLOSE_VELOCITY
+    ) {
+      dismissWithAnimation();
+      return;
+    }
+    snapBack();
+  }
+  finishDragRef.current = finishDrag;
+
+  function handleHandleMouseDown(event: MouseEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    beginDrag(event.clientY);
+  }
+
+  function handleHandleTouchStart(event: TouchEvent<HTMLDivElement>) {
+    const touch = event.touches[0];
+    if (!touch) return;
+    beginDrag(touch.clientY);
+  }
+
+  function handleHandleTouchMove(event: TouchEvent<HTMLDivElement>) {
+    const touch = event.touches[0];
+    if (!touch) return;
+    updateDrag(touch.clientY);
+    if (dragYRef.current > 0 && event.cancelable) event.preventDefault();
+  }
+
+  useEffect(() => {
+    if (!isDragging) return;
+    function handleMouseMove(event: globalThis.MouseEvent) {
+      updateDrag(event.clientY);
+      if (dragYRef.current > 0) event.preventDefault();
+    }
+    function handleMouseUp() {
+      finishDragRef.current();
+    }
+    document.addEventListener("mousemove", handleMouseMove, { passive: false });
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDragging]);
+
   if (!open || typeof document === "undefined") return null;
+
+  const sheetTransform = isDismissing
+    ? "translate3d(0, calc(100dvh - env(safe-area-inset-top)), 0)"
+    : isDragging || isSnappingBack
+      ? `translate3d(0, ${dragY}px, 0)`
+      : undefined;
+  const sheetTransition = isDragging
+    ? "none"
+    : isDismissing
+      ? `transform ${DISMISS_MS}ms ${DISMISS_EASE}, opacity ${DISMISS_MS}ms ease-out`
+      : isSnappingBack
+        ? `transform ${SNAP_BACK_MS}ms ${SNAP_BACK_EASE}`
+        : undefined;
 
   return createPortal(
     <div
@@ -206,8 +363,12 @@ export function ProductFilterTopDrawer({
       <button
         type="button"
         aria-label="Tutup filter"
-        onClick={onClose}
+        onClick={dismissWithAnimation}
         className="absolute inset-0 bg-black/30 backdrop-blur-sm animate-in fade-in duration-200"
+        style={{
+          opacity: isDismissing ? 0 : 1,
+          transition: `opacity ${DISMISS_MS}ms ease-out`,
+        }}
       />
 
       <div
@@ -215,10 +376,20 @@ export function ProductFilterTopDrawer({
         style={{
           maxHeight: "min(88dvh, calc(100dvh - env(safe-area-inset-top) - 1.5rem))",
           overscrollBehavior: "contain",
+          opacity: isDismissing ? 0.98 : 1,
+          transform: sheetTransform,
+          transition: sheetTransition,
         }}
       >
         {/* Drag handle */}
-        <div className="shrink-0 touch-pan-y select-none pt-3">
+        <div
+          className="shrink-0 cursor-grab touch-pan-y select-none pt-3 active:cursor-grabbing"
+          onMouseDown={handleHandleMouseDown}
+          onTouchStart={handleHandleTouchStart}
+          onTouchMove={handleHandleTouchMove}
+          onTouchEnd={finishDrag}
+          onTouchCancel={finishDrag}
+        >
           <div className="flex justify-center">
             <div className="h-1.5 w-14 rounded-full bg-slate-300" />
           </div>
