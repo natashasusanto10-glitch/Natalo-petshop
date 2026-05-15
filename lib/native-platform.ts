@@ -17,3 +17,26 @@ export function isCapacitorNative(): boolean {
     return false;
   }
 }
+
+/**
+ * Deteksi iOS — covers Capacitor iOS app, Mobile Safari, dan iPadOS yang
+ * masquerading sebagai Mac (iPadOS 13+ default desktop user agent).
+ *
+ * Dipakai untuk workaround bug WKWebView iOS yang tidak ada di Android/web,
+ * mis. <input capture="environment"> crash di iOS 26 WKWebView sebelum
+ * permission prompt sempat tampil.
+ */
+export function isIOS(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  if (/iPad|iPhone|iPod/.test(ua)) return true;
+  // iPadOS 13+ default UA = Mac. Detect via maxTouchPoints (Mac tidak punya touch).
+  if (
+    navigator.platform === "MacIntel" &&
+    typeof navigator.maxTouchPoints === "number" &&
+    navigator.maxTouchPoints > 1
+  ) {
+    return true;
+  }
+  return false;
+}

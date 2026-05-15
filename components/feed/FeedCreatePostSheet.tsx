@@ -36,6 +36,7 @@ import {
   USER_VIDEO_CONFIG,
 } from "@/lib/feed/video-config";
 import { hapticSuccess, hapticTap, hapticWarning } from "@/lib/native/haptics";
+import { isIOS } from "@/lib/native-platform";
 
 const MIN_VIDEO_DURATION = 15;
 const MAX_VIDEO_DURATION = 30;
@@ -556,6 +557,14 @@ function PickVideoStep({
   onPick: (file: File | null) => void;
   onNext: () => void;
 }) {
+  // iOS 26 WKWebView crash dengan <input capture="environment"> — code path
+  // WebKit terminate process sebelum WKFileUploadPanel render permission
+  // prompt. Workaround: di iOS drop capture attribute → iOS tampilkan native
+  // file picker dengan opsi "Take Photo or Video" + "Photo Library". 1 extra
+  // tap di iOS tapi tidak crash. Android tetap pakai capture untuk direct-
+  // launch kamera ke video recording mode (no bug di sana).
+  const onIOS = isIOS();
+  const cameraCaption = onIOS ? "Pilih atau rekam video" : "Rekam video baru";
   return (
     <div className="flex h-full flex-col bg-black">
       <DarkHeader
@@ -596,16 +605,26 @@ function PickVideoStep({
               <FiCamera className="h-6 w-6 text-natalo-300" />
               <p className="mt-3 text-sm font-black">Kamera</p>
               <p className="mt-1 text-xs font-semibold text-white/55">
-                Rekam video baru
+                {cameraCaption}
               </p>
-              <input
-                ref={cameraInputRef}
-                type="file"
-                accept={ACCEPT_VIDEO_CAMERA}
-                capture="environment"
-                className="hidden"
-                onChange={(event) => onPick(event.target.files?.[0] ?? null)}
-              />
+              {onIOS ? (
+                <input
+                  ref={cameraInputRef}
+                  type="file"
+                  accept={ACCEPT_VIDEO_CAMERA}
+                  className="hidden"
+                  onChange={(event) => onPick(event.target.files?.[0] ?? null)}
+                />
+              ) : (
+                <input
+                  ref={cameraInputRef}
+                  type="file"
+                  accept={ACCEPT_VIDEO_CAMERA}
+                  capture="environment"
+                  className="hidden"
+                  onChange={(event) => onPick(event.target.files?.[0] ?? null)}
+                />
+              )}
             </label>
           </div>
 
