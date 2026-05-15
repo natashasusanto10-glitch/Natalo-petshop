@@ -137,45 +137,47 @@ export function FeedVideoCard({ post, index, onOpenComments }: Props) {
           leaves the bottom edge of the video well clear of the caption. */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-[220px] bg-gradient-to-t from-black/70 via-black/35 to-transparent" />
 
-      {/* Right action rail — Instagram Reels styling. Smaller icons (28px),
-          tighter gap (18px), counts in compact font under each icon.
-          Positioned just above the product pill / caption block. */}
-      <div className="absolute right-3 z-[2] flex flex-col items-center gap-[18px] [bottom:calc(env(safe-area-inset-bottom)+200px)] md:bottom-10">
+      {/* Right action rail — fixed grid: 30px icon + 16px count slot.
+          Slot height tetap walau count = 0, supaya jarak vertical antar
+          tombol identik di semua video (sebelumnya icon loncat naik kalau
+          count kosong karena gap-1 tidak render). */}
+      <div className="absolute right-3 z-[2] flex flex-col items-center gap-5 [bottom:calc(env(safe-area-inset-bottom)+200px)] md:bottom-10">
         <ActionButton
           label={formatEngagementCount(likeCount)}
           ariaLabel={liked ? "Batal suka" : "Suka"}
           pressed={liked}
           onClick={toggleLike}
         >
-          <FiHeart className={`h-[28px] w-[28px] ${liked ? "fill-[#FF3040] stroke-[#FF3040]" : "stroke-[2.2]"}`} />
+          <FiHeart className={`h-[30px] w-[30px] ${liked ? "fill-[#FF3040] stroke-[#FF3040]" : "stroke-[2.2]"}`} />
         </ActionButton>
         <ActionButton
           label={formatEngagementCount(post.commentCount)}
           ariaLabel="Komentar"
           onClick={() => onOpenComments(post.id)}
         >
-          <FiMessageCircle className="h-[28px] w-[28px] stroke-[2.2]" />
+          <FiMessageCircle className="h-[30px] w-[30px] stroke-[2.2]" />
         </ActionButton>
         <ActionButton
           label={formatEngagementCount(shareCount)}
           ariaLabel="Bagikan"
           onClick={handleShare}
         >
-          <FiSend className="h-[28px] w-[28px] stroke-[2.2]" />
+          <FiSend className="h-[30px] w-[30px] stroke-[2.2]" />
         </ActionButton>
       </div>
 
-      {/* Bottom-left caption block — Instagram Reels layout:
-          line 1: small avatar (32px) inline with username (bold) on the
-          same baseline
-          line 2: caption underneath, smaller weight
-          Compact, sits just above the product pill. */}
-      <div className="absolute left-4 right-[72px] z-[2] [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+5rem)] md:bottom-24">
-        <div className="flex items-center gap-2">
-          <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-natalo-600 text-[11px] font-black text-white ring-[1.5px] ring-white">
+      {/* Bottom-left creator block — fixed grid template:
+          row 1: avatar 44px + username 16px (vertical-center to avatar)
+          row 2: caption 15px, max 2 lines (fixed height supaya block tidak
+                 shift kalau caption 1 baris)
+          Block anchor bottom konsisten — TIDAK ikut bergerak kalau product
+          pill absent. Pill di slot terpisah di bawah. */}
+      <div className="absolute left-4 right-[76px] z-[2] [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+5rem)] md:bottom-24">
+        <div className="flex items-center gap-3">
+          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-natalo-600 text-[15px] font-black text-white ring-[1.5px] ring-white shadow-[0_2px_8px_rgba(0,0,0,0.35)]">
             {isAdmin ? "NL" : post.author.name.charAt(0).toUpperCase()}
           </div>
-          <p className="truncate text-[14px] font-bold leading-tight text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
+          <p className="truncate text-[16px] font-bold leading-tight text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
             {isAdmin ? "Natalo Petshop" : post.author.name}
             {isAdmin && (
               <span className="ml-1 inline-flex h-[14px] w-[14px] -translate-y-px items-center justify-center rounded-full bg-[#1A8CD8] text-[9px] font-black text-white">
@@ -184,7 +186,7 @@ export function FeedVideoCard({ post, index, onOpenComments }: Props) {
             )}
           </p>
         </div>
-        <p className="mt-1.5 line-clamp-2 text-[13.5px] font-normal leading-snug text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
+        <p className="mt-2 line-clamp-2 text-[15px] font-normal leading-snug text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
           {post.description?.trim() || post.title}
         </p>
       </div>
@@ -236,15 +238,21 @@ function ActionButton({
       aria-label={ariaLabel}
       aria-pressed={pressed}
       onClick={onClick}
-      // Instagram Reels rail: icon ~28px, tiny count below in semi-bold.
-      // No background pill — just icon + count with text shadow for
-      // readability over any video frame.
-      className="flex min-w-[44px] flex-col items-center justify-center gap-1 text-[12px] font-semibold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)] transition active:scale-95"
+      // Fixed grid: icon-cell 30px + gap 4px + count-cell 16px = 50px
+      // total. Count-cell tinggi tetap walau label kosong supaya tinggi
+      // tombol identik di semua video (cegah icon Like loncat naik saat
+      // count = 0 sementara Comment punya angka).
+      className="flex min-w-[44px] flex-col items-center text-[12px] font-bold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)] transition active:scale-95"
     >
-      <span className="grid h-[28px] w-[28px] place-items-center">
+      <span className="grid h-[30px] w-[30px] place-items-center">
         {children}
       </span>
-      {label && <span className="leading-none tabular-nums">{label}</span>}
+      <span
+        className="mt-1 h-[14px] leading-[14px] tabular-nums"
+        aria-hidden={!label}
+      >
+        {label}
+      </span>
     </button>
   );
 }
