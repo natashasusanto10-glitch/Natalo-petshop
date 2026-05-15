@@ -41,15 +41,28 @@ function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-function NavIcon({ icon, active }: { icon: NavIconType; active: boolean }) {
+function NavIcon({
+  icon,
+  active,
+  feedVariant = false,
+}: {
+  icon: NavIconType;
+  active: boolean;
+  feedVariant?: boolean;
+}) {
   const Icon = icon;
   return (
     <span
-      className={`flex h-6 w-6 items-center justify-center transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
-        active ? "-translate-y-0.5 scale-110" : ""
-      }`}
+      className={`flex items-center justify-center transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
+        feedVariant ? "h-8 w-8" : "h-6 w-6"
+      } ${active && !feedVariant ? "-translate-y-0.5 scale-110" : ""}`}
     >
-      <Icon aria-hidden className="h-6 w-6" />
+      <Icon
+        aria-hidden
+        className={`${
+          feedVariant ? (active ? "h-8 w-8" : "h-7 w-7") : "h-6 w-6"
+      }`}
+      />
     </span>
   );
 }
@@ -140,27 +153,29 @@ export function BottomNavigation() {
         aria-hidden
         className={`pointer-events-none absolute inset-x-0 bottom-0 ${
           isFeedRoute
-            ? "h-[calc(env(safe-area-inset-bottom)+92px)] bg-transparent"
+            ? "h-[calc(env(safe-area-inset-bottom)+72px)] bg-gradient-to-t from-black/30 to-black/0"
             : "h-[calc(env(safe-area-inset-bottom)+100px)] bg-gradient-to-t from-white from-72% to-white/0"
         }`}
       />
       <div
         className={`pointer-events-auto relative ${
-          isFeedRoute ? "mx-4 mb-[10px]" : "mx-3 mb-2"
+          isFeedRoute ? "mx-5 mb-2" : "mx-3 mb-2"
         }`}
       >
         <div
-          className={`bottom-nav-glass relative grid grid-cols-4 overflow-hidden rounded-full ${
-            isFeedRoute ? "h-[70px] feed-bottom-nav-glass" : "h-[60px]"
+          className={`relative grid grid-cols-4 ${
+            isFeedRoute
+              ? "h-[58px] overflow-visible bg-transparent"
+              : "bottom-nav-glass h-[60px] overflow-hidden rounded-full"
           }`}
         >
-          <span
-            aria-hidden
-            className={`pointer-events-none absolute left-0 top-1.5 bottom-1.5 w-1/4 rounded-full transition-transform duration-[450ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
-              isFeedRoute ? "bg-natalo-600/95" : "bg-natalo-50"
-            }`}
-            style={{ transform: `translateX(${activeIndex * 100}%)` }}
-          />
+          {!isFeedRoute && (
+            <span
+              aria-hidden
+              className="pointer-events-none absolute left-0 top-1.5 bottom-1.5 w-1/4 rounded-full bg-natalo-50 transition-transform duration-[450ms] ease-[cubic-bezier(0.34,1.56,0.64,1)]"
+              style={{ transform: `translateX(${activeIndex * 100}%)` }}
+            />
+          )}
           {ITEMS.map((item, i) => {
             const active = i === activeIndex;
             const Icon = active ? item.activeIcon : item.icon;
@@ -179,15 +194,15 @@ export function BottomNavigation() {
                 className={`relative z-[1] flex h-full flex-col items-center justify-center gap-1 px-1 text-[11px] leading-none transition-colors duration-200 active:opacity-90 ${
                   isFeedRoute
                     ? active
-                      ? "font-extrabold text-white"
-                      : "font-semibold text-white/58"
+                      ? "text-[12px] font-extrabold text-white"
+                      : "text-[12px] font-semibold text-white/52"
                     : active
                       ? "font-extrabold text-[#1E5FBF]"
                       : "font-semibold text-[#9ca3af]"
                 }`}
               >
                 <span className="relative">
-                  <NavIcon icon={Icon} active={active} />
+                  <NavIcon icon={Icon} active={active} feedVariant={isFeedRoute} />
                 </span>
                 <span>{item.label}</span>
               </Link>

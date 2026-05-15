@@ -108,9 +108,9 @@ export function FeedClient() {
           type="button"
           onClick={() => setCreatePostOpen(true)}
           aria-label="Buat postingan"
-          className="absolute right-5 top-[calc(env(safe-area-inset-top)+14px)] z-30 grid h-[52px] w-[52px] place-items-center rounded-full border border-white/35 bg-black/25 text-white shadow-[0_10px_28px_rgba(0,0,0,0.28)] backdrop-blur-xl transition active:scale-95"
+          className="absolute right-5 top-[calc(env(safe-area-inset-top)+14px)] z-30 grid h-11 w-11 place-items-center text-white transition active:scale-95"
         >
-          <FiPlus className="h-8 w-8" />
+          <FiPlus className="h-9 w-9" />
         </button>
 
         <div
@@ -120,7 +120,7 @@ export function FeedClient() {
               : "pb-[calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+0.75rem)]"
           }`}
         >
-          {loading && <FeedSkeleton />}
+          {loading && null}
 
           {!loading && error && (
             <div className="rounded-3xl bg-white p-6 text-center">
@@ -240,36 +240,10 @@ function useFeedChrome() {
   }, []);
 }
 
-function FeedSkeleton() {
-  return (
-    <>
-      {[0, 1].map((i) => (
-        <div
-          key={i}
-          className="relative min-h-full snap-start overflow-hidden bg-black"
-        >
-          <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-white/14 via-white/7 to-white/3" />
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/35 via-black/0 to-black/82" />
-          <div className="absolute bottom-[calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+2.25rem)] left-4 right-24 space-y-3">
-            <div className="h-4 w-36 animate-pulse rounded-full bg-white/20" />
-            <div className="h-3 w-52 animate-pulse rounded-full bg-white/16" />
-            <div className="h-3 w-40 animate-pulse rounded-full bg-white/12" />
-          </div>
-          <div className="absolute bottom-[calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+2.25rem)] right-4 flex flex-col items-center gap-4">
-            <div className="h-8 w-8 animate-pulse rounded-full bg-white/18" />
-            <div className="h-8 w-8 animate-pulse rounded-full bg-white/14" />
-            <div className="h-8 w-8 animate-pulse rounded-full bg-white/10" />
-          </div>
-        </div>
-      ))}
-    </>
-  );
-}
-
 function EmptyFeedState() {
   return (
     <div className="box-border flex h-full items-center justify-center px-6 [padding-bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+1rem)] [padding-top:env(safe-area-inset-top)]">
-      <p className="text-lg font-black tracking-normal text-white/90">Segera Hadir</p>
+      <p className="text-[22px] font-bold tracking-normal text-white">Segera Hadir</p>
     </div>
   );
 }
