@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { FiPackage } from "react-icons/fi";
+import { useRouter } from "next/navigation";
+import { FiArrowLeft, FiPackage } from "react-icons/fi";
 import { formatRupiah } from "@/lib/format";
 import {
   getFirstReviewableOrderItem,
@@ -14,7 +15,6 @@ import { ExternalLink } from "@/components/ExternalLink";
 import { trackSuccessfulOrder } from "@/lib/app-rating";
 import { PageStatusBar } from "@/components/PageStatusBar";
 import { ReviewFlow, buildReviewItemFromOrder } from "@/components/review/ReviewFlow";
-import { StickyBackTitle } from "@/components/StickyBackTitle";
 import { SELF_PICKUP_STORE } from "@/lib/self-pickup";
 
 const BANK_ACCOUNTS: Record<
@@ -297,6 +297,7 @@ export function OrderDetailView({
     SerializedOrderDetail["items"][number] | null
   >(null);
   const { msg: copyMsg, copy } = useCopyToast();
+  const router = useRouter();
 
   // App Store rating prompt — trigger setelah order ke-3 berhasil dibayar.
   // Dedup per-order ID via localStorage di lib/app-rating.ts. Apple internal
@@ -411,20 +412,34 @@ export function OrderDetailView({
     items: order.items,
   });
 
+  function handleBack() {
+    if (window.history.length > 1) {
+      router.back();
+      return;
+    }
+    router.push("/member/orders");
+  }
+
   return (
     <div
-      // Top padding: safe-area + 16px (pt-4) — defense saat global Header
-      // scroll-away di mobile (header non-home tidak sticky), supaya status
-      // bar tidak menimpa konten teratas (mis. nomor pesanan, alamat). Di
-      // desktop md: layout pakai py-10 default — env() jadi 0 di non-PWA.
-      className="min-h-dvh overflow-x-hidden bg-gray-50 [padding-bottom:calc(1.25rem+env(safe-area-inset-bottom))]"
+      className="min-h-dvh overflow-x-clip bg-gray-50 [padding-bottom:calc(1.25rem+env(safe-area-inset-bottom))]"
     >
       <PageStatusBar iconColor="dark" themeColor="#f8fafc" />
-      <StickyBackTitle
-        label="Detail Pesanan"
-        fallbackHref="/member/orders"
-        stickToTop
-      />
+      <header className="sticky top-0 z-[80] border-b border-slate-200/80 bg-white px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
+        <div className="mx-auto flex h-11 w-full max-w-4xl items-center gap-3">
+          <button
+            type="button"
+            onClick={handleBack}
+            className="-ml-2 grid h-11 w-11 shrink-0 place-items-center rounded-full text-slate-900 transition active:bg-slate-100"
+            aria-label="Kembali"
+          >
+            <FiArrowLeft className="h-[22px] w-[22px]" aria-hidden="true" />
+          </button>
+          <h1 className="min-w-0 truncate text-[20px] font-black leading-tight text-slate-950">
+            Detail Pesanan
+          </h1>
+        </div>
+      </header>
       <div className="mx-auto w-full max-w-4xl px-4 pb-24 pt-5 md:pt-6">
         {copyMsg && (
           <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-full bg-gray-950 px-4 py-2 text-xs font-bold text-white shadow-lg md:bottom-6">
