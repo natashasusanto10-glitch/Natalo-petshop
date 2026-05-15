@@ -1,0 +1,89 @@
+/**
+ * POST /api/admin/feed/bunny-reconcile
+ *
+ * Manual reconciliation for FeedPost rows stuck at encodingStatus="uploading".
+ * Polls Bunny Stream for each video's real status and finalizes the row when
+ * Bunny reports FINISHED (or marks it failed when ERROR). Use this when the
+ * webhook didn't fire (network blip, Bunny outage, misconfigured URL, etc).
+ *
+ * Body (optional):
+ *   { postId?: string }   // reconcile just one post; otherwise scan all
+ *
+ * Returns:
+ *   { ok: true, reconciled: [{postId, action: "ready"|"failed"|"skipped"}] }
+ */
+import { NextRequest, NextResponse } from "next/server";
+import { getSession } from "@/lib/auth";
+import { assertSameOrigin } from "@/lib/csrf";
+import { prisma } from "@/lib/prisma";
+import {
+  BUNNY_VIDEO_STATUS,
+  bunnyPlaylistUrl,
+  bunnyThumbnailUrl,
+  getBunnyVideo,
+} from "@/lib/feed/bunny";
+
+export const dynamic = "force-dynamic";
+
+export async function POST(request: NextRequest) {
+  const csrfReject = assertSameOrigin(request);
+  if (csrfReject) return csrfReject;
+
+  const session = await getSession("ADMIN");
+  if (!session || session.role !== "ADMIN") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = (await request.json().catch(() => ({}))) as { postId?: string };
+
+  const posts = await prisma.feedPost.findMany({
+    where: {
+      ...(body.postId ? { id: body.postId } : {}),
+      encodingStatus: "uploading",
+      videoGuid: { not: null },
+    },
+    select: { id: true, videoGuid: true },
+    take: 50,
+  });
+
+  const results: Array<{ postId: string; action: string; detail?: string }> = [];
+
+  for (const post of posts) {
+    if (!post.videoGuid) continue;
+    const meta = await getBunnyVideo(post.videoGuid);
+    if (!meta) {
+      results.push({ postId: post.id, action: "skipped", detail: "Bunny returned null (transient or 404)" });
+      continue;
+    }
+    if (meta.status === BUNNY_VIDEO_STATUS.FINISHED) {
+      await prisma.feedPost.update({
+        where: { id: post.id },
+        data: {
+          encodingStatus: "ready",
+          videoUrl: bunnyPlaylistUrl(post.videoGuid),
+          thumbnailUrl: bunnyThumbnailUrl(post.videoGuid),
+          videoMimeType: "application/vnd.apple.mpegurl",
+          videoDurationSec: meta.length ? Math.round(meta.length) : null,
+          videoWidth: meta.width ?? null,
+          videoHeight: meta.height ?? null,
+          videoSizeBytes: meta.storageSize ?? null,
+        },
+      });
+      results.push({ postId: post.id, action: "ready" });
+    } else if (meta.status === BUNNY_VIDEO_STATUS.ERROR) {
+      await prisma.feedPost.update({
+        where: { id: post.id },
+        data: { encodingStatus: "failed" },
+      });
+      results.push({ postId: post.id, action: "failed" });
+    } else {
+      results.push({
+        postId: post.id,
+        action: "skipped",
+        detail: `Bunny status=${meta.status} (still processing)`,
+      });
+    }
+  }
+
+  return NextResponse.json({ ok: true, scanned: posts.length, results });
+}
