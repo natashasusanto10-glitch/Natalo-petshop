@@ -12,6 +12,10 @@ import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
 import { listFeedComments } from "@/lib/feed/queries";
+import {
+  sendCommentNotification,
+  sendReplyNotification,
+} from "@/lib/feed/activity-notifications";
 
 const MAX_COMMENT_LENGTH = 1000;
 
@@ -124,6 +128,26 @@ export async function POST(
     }
     return comment;
   });
+
+  // Fire-and-forget activity notification. Reply path goes to the parent
+  // comment's author; top-level comment goes to the post author. Helpers
+  // skip self-notify + admin-authored posts internally.
+  if (parentCommentId) {
+    void sendReplyNotification({
+      parentCommentId,
+      replyCommentId: result.id,
+      postId,
+      actorUserId: session.sub,
+      content,
+    });
+  } else {
+    void sendCommentNotification({
+      postId,
+      commentId: result.id,
+      actorUserId: session.sub,
+      content,
+    });
+  }
 
   return NextResponse.json({
     ok: true,

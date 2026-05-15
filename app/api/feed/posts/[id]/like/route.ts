@@ -16,6 +16,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
+import {
+  crossedLikeMilestone,
+  sendLikeMilestoneNotification,
+} from "@/lib/feed/activity-notifications";
 
 export async function POST(
   request: NextRequest,
@@ -46,10 +50,18 @@ export async function POST(
 
   // Toggle dalam transaction supaya counter tidak drift saat concurrent.
   // Try-create: kalau sudah ada (P2002 unique violation), berarti unlike.
+  // Also snapshot the previous likeCount so we can detect a milestone
+  // crossing on the way back out.
   const result = await prisma.$transaction(async (tx) => {
     const existing = await tx.feedLike.findUnique({
       where: { userId_postId: { userId: session.sub, postId } },
     });
+
+    const before = await tx.feedPost.findUnique({
+      where: { id: postId },
+      select: { likeCount: true },
+    });
+    const prevCount = before?.likeCount ?? 0;
 
     if (existing) {
       await tx.feedLike.delete({
@@ -61,7 +73,12 @@ export async function POST(
         data: { likeCount: { decrement: 1 } },
         select: { likeCount: true },
       });
-      return { liked: false, likeCount: Math.max(0, updated.likeCount) };
+      return {
+        liked: false,
+        likeCount: Math.max(0, updated.likeCount),
+        prevCount,
+        nextCount: updated.likeCount,
+      };
     }
 
     await tx.feedLike.create({
@@ -72,8 +89,27 @@ export async function POST(
       data: { likeCount: { increment: 1 } },
       select: { likeCount: true },
     });
-    return { liked: true, likeCount: updated.likeCount };
+    return {
+      liked: true,
+      likeCount: updated.likeCount,
+      prevCount,
+      nextCount: updated.likeCount,
+    };
   });
 
-  return NextResponse.json({ ok: true, ...result });
+  // Milestone push fires only on like (not unlike) and only when the new
+  // count actually crosses a threshold. Fire-and-forget — helper handles
+  // self-notify + admin-author skip internally.
+  if (result.liked) {
+    const milestone = crossedLikeMilestone(result.prevCount, result.nextCount);
+    if (milestone !== null) {
+      void sendLikeMilestoneNotification({ postId, milestone });
+    }
+  }
+
+  return NextResponse.json({
+    ok: true,
+    liked: result.liked,
+    likeCount: result.likeCount,
+  });
 }
