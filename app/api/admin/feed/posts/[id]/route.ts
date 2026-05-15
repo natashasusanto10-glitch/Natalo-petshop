@@ -19,6 +19,7 @@ import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
 import { sendFeedModerationNotification } from "@/lib/feed/notifications";
+import { deleteFeedAssets } from "@/lib/feed/cleanup";
 
 type ModerationAction = "approve" | "reject" | "hide" | "unhide";
 const VALID_ACTIONS: ModerationAction[] = ["approve", "reject", "hide", "unhide"];
@@ -72,7 +73,13 @@ export async function PATCH(
 
   const post = await prisma.feedPost.findUnique({
     where: { id: postId },
-    select: { id: true, status: true, publishedAt: true },
+    select: {
+      id: true,
+      status: true,
+      publishedAt: true,
+      videoUrl: true,
+      thumbnailUrl: true,
+    },
   });
   if (!post) {
     return NextResponse.json({ error: "Post tidak ditemukan." }, { status: 404 });
@@ -116,6 +123,19 @@ export async function PATCH(
     note: noteStr || null,
   });
 
+  // Storage cleanup. Reject + Hide free the video + thumbnail from
+  // UploadThing since the post is no longer publicly visible. NOTE: unhide
+  // after hide will leave a broken video URL — unhide should be reserved
+  // for the same-day "oops" case before this cleanup batch lands. If you
+  // need a reversible soft-hide, narrow this to only `action === "reject"`.
+  if (action === "reject" || action === "hide") {
+    void deleteFeedAssets({
+      videoUrl: post.videoUrl,
+      thumbnailUrl: post.thumbnailUrl,
+      context: `${action} ${postId}`,
+    });
+  }
+
   return NextResponse.json({
     ok: true,
     post: {
@@ -145,16 +165,26 @@ export async function DELETE(
     return NextResponse.json({ error: "Post ID required" }, { status: 400 });
   }
 
-  // Cascade FK di schema akan otomatis hapus FeedComment, FeedLike, dll.
-  const result = await prisma.feedPost
-    .delete({ where: { id: postId } })
-    .catch(() => null);
-  if (!result) {
+  // Fetch the asset URLs before the row is gone — Prisma cascade-deletes
+  // FeedComment / FeedLike / FeedReport rows automatically, and we follow
+  // up by also freeing the linked video + thumbnail from UploadThing.
+  const existing = await prisma.feedPost.findUnique({
+    where: { id: postId },
+    select: { id: true, videoUrl: true, thumbnailUrl: true },
+  });
+  if (!existing) {
     return NextResponse.json({ error: "Post tidak ditemukan." }, { status: 404 });
   }
 
-  // Note: TIDAK delete file di UploadThing storage (mahal + risiko false-delete).
-  // Orphan files bisa di-GC via scheduled cleanup task nanti.
+  await prisma.feedPost.delete({ where: { id: postId } });
+
+  // Storage cleanup — fire-and-forget so a UploadThing outage can't fail
+  // a delete that already removed the DB row.
+  void deleteFeedAssets({
+    videoUrl: existing.videoUrl,
+    thumbnailUrl: existing.thumbnailUrl,
+    context: `delete ${postId}`,
+  });
 
   return NextResponse.json({ ok: true });
 }
