@@ -37,6 +37,15 @@ export function FeedClient() {
   const sentinelRef = useRef<HTMLDivElement>(null);
   useFeedChrome();
 
+  // Pull-to-refresh wiring: PullToRefresh in the root layout dispatches
+  // "app-refresh" after the user pulls past the threshold. Bump reloadKey
+  // so the existing fetch effect re-runs from the top.
+  useEffect(() => {
+    const handler = () => setReloadKey((k) => k + 1);
+    window.addEventListener("app-refresh", handler);
+    return () => window.removeEventListener("app-refresh", handler);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -117,6 +126,10 @@ export function FeedClient() {
         </button>
 
         <div
+          // data-no-pull → PullToRefresh in the root layout sees this and
+          // bows out instead of stealing vertical touch gestures from the
+          // feed's snap-scroller. Keeps swipe-up-for-next-video instant.
+          data-no-pull
           className={`min-h-0 flex-1 snap-y snap-mandatory overflow-y-auto overscroll-contain [-ms-overflow-style:none] [scrollbar-width:none] md:space-y-3 md:px-2 md:pb-4 md:pt-2 [&::-webkit-scrollbar]:hidden ${
             showEmpty
               ? "pb-0"

@@ -295,6 +295,15 @@ export function NotificationsList() {
     void load();
   }, [load]);
 
+  // Pull-to-refresh wiring: PullToRefresh in the root layout dispatches
+  // "app-refresh" after the user pulls past the threshold. Re-fetch the
+  // notif list so the bell badge stays in sync with what's actually new.
+  useEffect(() => {
+    const handler = () => void load();
+    window.addEventListener("app-refresh", handler);
+    return () => window.removeEventListener("app-refresh", handler);
+  }, [load]);
+
   const filteredItems = useMemo(() => {
     if (!items) return null;
     if (activeTab === "all") return items;

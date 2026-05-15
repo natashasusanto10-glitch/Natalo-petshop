@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+
 export default function GlobalError({
   error,
   reset,
@@ -8,6 +10,29 @@ export default function GlobalError({
   reset: () => void;
 }) {
   console.error("[GlobalError]", error);
+
+  // Fire-and-forget error report. Runs in effect (not render) so that a
+  // re-render during recovery doesn't spam duplicate beacons.
+  useEffect(() => {
+    try {
+      const body = JSON.stringify({
+        source: "global-error",
+        message: error.message,
+        digest: error.digest,
+        stack: error.stack,
+        url: typeof window !== "undefined" ? window.location.href : null,
+        userAgent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+      });
+      if (typeof navigator !== "undefined" && navigator.sendBeacon) {
+        navigator.sendBeacon(
+          "/api/log-error",
+          new Blob([body], { type: "application/json" }),
+        );
+      }
+    } catch {
+      // Never break the recovery screen itself.
+    }
+  }, [error]);
 
   return (
     <html lang="id">

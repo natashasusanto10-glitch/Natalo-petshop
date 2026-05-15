@@ -12,6 +12,34 @@ export default function ErrorPage({
 }) {
   useEffect(() => {
     console.error(error);
+    // Fire-and-forget error report — sendBeacon so the request survives
+    // even if the page is mid-unmount when the boundary fires. Endpoint
+    // is the integration point for Sentry / PostHog later.
+    try {
+      const body = JSON.stringify({
+        source: "error-boundary",
+        message: error.message,
+        digest: error.digest,
+        stack: error.stack,
+        url: typeof window !== "undefined" ? window.location.href : null,
+        userAgent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+      });
+      if (typeof navigator !== "undefined" && navigator.sendBeacon) {
+        navigator.sendBeacon(
+          "/api/log-error",
+          new Blob([body], { type: "application/json" }),
+        );
+      } else {
+        void fetch("/api/log-error", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+          keepalive: true,
+        }).catch(() => {});
+      }
+    } catch {
+      // Telemetry must never break the recovery UI itself.
+    }
   }, [error]);
 
   return (
