@@ -210,7 +210,7 @@ export default async function MemberPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 pb-[calc(120px+env(safe-area-inset-bottom))] pt-4">
+    <main className="min-h-screen bg-slate-50 px-4 pb-6 pt-4">
       <div className="mx-auto max-w-4xl space-y-5">
         <section className="overflow-hidden rounded-[24px] bg-gradient-to-br from-[#1677FF] to-[#0F4EAF] p-4 text-white shadow-[0_8px_24px_rgba(16,24,40,0.08)]">
           <div className="flex items-start gap-3">
