@@ -20,6 +20,7 @@ import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
 import { sendFeedModerationNotification } from "@/lib/feed/notifications";
 import { deleteFeedAssets } from "@/lib/feed/cleanup";
+import { reconcileFeedPost } from "@/lib/feed/reconcile";
 
 type ModerationAction = "approve" | "reject" | "hide" | "unhide" | "restore";
 const VALID_ACTIONS: ModerationAction[] = [
@@ -96,6 +97,7 @@ export async function PATCH(
       videoUrl: true,
       thumbnailUrl: true,
       videoGuid: true,
+      encodingStatus: true,
     },
   });
   if (!post) {
@@ -108,6 +110,28 @@ export async function PATCH(
       },
       { status: 409 },
     );
+  }
+
+  // Approve auto-reconcile: kalau post di-approve tapi Bunny webhook belum
+  // pernah set encodingStatus=ready (atau hilang di jaringan), polling Bunny
+  // langsung. Tanpa ini, post yang sudah ACTIVE tetap tidak muncul di feed
+  // karena listFeedPosts filter encodingStatus="ready" — admin harus manual
+  // panggil /api/feed/diag?force=1 yang tidak obvious.
+  let reconcileResult: Awaited<ReturnType<typeof reconcileFeedPost>> | null =
+    null;
+  if (
+    action === "approve" &&
+    post.videoGuid &&
+    post.encodingStatus !== "ready" &&
+    post.encodingStatus !== "failed"
+  ) {
+    try {
+      reconcileResult = await reconcileFeedPost(post.id);
+    } catch (err) {
+      // Reconcile gagal jangan blokir approve — admin keputusan moderasi
+      // tetap commit, weekly diag/cron bisa pickup nanti.
+      console.warn("[admin-approve] reconcile failed:", err);
+    }
   }
 
   const now = new Date();
@@ -178,6 +202,10 @@ export async function PATCH(
       moderationNote: updated.moderationNote,
       publishedAt: updated.publishedAt?.toISOString() ?? null,
     },
+    // Expose reconcile outcome supaya admin tahu kalau post baru di-approve
+    // tapi encoding belum ready (rare — biasanya Bunny webhook beat the
+    // admin click). Null kalau approve tidak memerlukan reconcile.
+    reconcile: reconcileResult,
   });
 }
 
