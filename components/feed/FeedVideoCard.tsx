@@ -8,7 +8,7 @@ import {
   FiHeart,
   FiMessageCircle,
   FiPackage,
-  FiShare2,
+  FiSend,
   FiShoppingCart,
 } from "react-icons/fi";
 import { BottomSheet } from "@/components/BottomSheet";
@@ -31,6 +31,7 @@ export function FeedVideoCard({ post, index, onOpenComments }: Props) {
   const [liked, setLiked] = useState(post.viewerLiked);
   const [likeCount, setLikeCount] = useState(post.likeCount);
   const [likeBusy, setLikeBusy] = useState(false);
+  const [shareCount, setShareCount] = useState(post.shareCount ?? 0);
   const [productSheetOpen, setProductSheetOpen] = useState(false);
 
   const isAdmin = post.author.role === "ADMIN";
@@ -66,11 +67,30 @@ export function FeedVideoCard({ post, index, onOpenComments }: Props) {
     const path = `/feed?post=${post.id}`;
     const url =
       typeof window !== "undefined" ? `${window.location.origin}${path}` : path;
-    await shareContent({
+    const result = await shareContent({
       title: post.title,
       text: post.description ?? "Lihat video Natalo Petshop ini.",
       url,
     });
+    // Only credit a real share — cancelled / failed shares don't bump
+    // the counter. Optimistic update; server returns the canonical value.
+    const counted =
+      result.method === "native" ||
+      result.method === "web-share" ||
+      result.method === "clipboard";
+    if (!counted) return;
+    const prev = shareCount;
+    setShareCount(prev + 1);
+    try {
+      const res = await fetch(`/api/feed/posts/${post.id}/share`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error("Share count update failed");
+      const data: { shareCount: number } = await res.json();
+      setShareCount(data.shareCount);
+    } catch {
+      setShareCount(prev);
+    }
   }
 
   return (
@@ -127,8 +147,12 @@ export function FeedVideoCard({ post, index, onOpenComments }: Props) {
         >
           <FiMessageCircle className="h-[33px] w-[33px]" />
         </ActionButton>
-        <ActionButton label="" ariaLabel="Bagikan" onClick={handleShare}>
-          <FiShare2 className="h-[33px] w-[33px]" />
+        <ActionButton
+          label={formatEngagementCount(shareCount)}
+          ariaLabel="Bagikan"
+          onClick={handleShare}
+        >
+          <FiSend className="h-[33px] w-[33px]" />
         </ActionButton>
       </div>
 

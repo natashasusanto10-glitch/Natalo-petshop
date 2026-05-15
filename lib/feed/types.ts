@@ -46,6 +46,7 @@ export type FeedPostListItem = {
   likeCount: number;
   commentCount: number;
   viewCount: number;
+  shareCount: number;
   author: FeedPostAuthor;
   publishedAt: string | null;
   createdAt: string;

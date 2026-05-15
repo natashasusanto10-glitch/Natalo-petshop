@@ -703,6 +703,10 @@ model FeedPost {
   likeCount       Int             @default(0)
   commentCount    Int             @default(0)
   viewCount       Int             @default(0)
+  // Increment via POST /api/feed/posts/[id]/share after the platform's
+  // native share dialog resolves successfully. Cancelled/failed shares
+  // do not count.
+  shareCount      Int             @default(0)
 
   // Moderation trail
   moderatedById   String?

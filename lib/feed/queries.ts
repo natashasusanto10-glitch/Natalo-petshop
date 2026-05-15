@@ -119,6 +119,7 @@ export async function listFeedPosts({
     likeCount: p.likeCount,
     commentCount: p.commentCount,
     viewCount: p.viewCount,
+    shareCount: p.shareCount,
     author: {
       id: p.author.id,
       name: p.author.name,
