@@ -16,8 +16,8 @@ export type FeedVideoConfig = {
 export const MAX_SOURCE_VIDEO_SIZE = 200 * 1024 * 1024;
 
 export const USER_VIDEO_CONFIG = {
-  minDuration: 15,
-  maxDuration: 30,
+  minDuration: 1,
+  maxDuration: 45,
   resolution: 720,
   videoBitrate: "1500k",
   fps: 30,
@@ -31,8 +31,8 @@ export const USER_VIDEO_CONFIG = {
 } satisfies FeedVideoConfig;
 
 export const ADMIN_VIDEO_CONFIG = {
-  minDuration: 5,
-  maxDuration: 90,
+  minDuration: 1,
+  maxDuration: 60,
   resolution: 1080,
   videoBitrate: "3000k",
   fps: 30,

@@ -20,10 +20,13 @@ import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
 import { listFeedPosts } from "@/lib/feed/queries";
+import { ADMIN_VIDEO_CONFIG, USER_VIDEO_CONFIG } from "@/lib/feed/video-config";
 
 const VALID_TABS: ReadonlyArray<FeedPostTab> = ["REKOMENDASI", "PROMO", "KOMUNITAS"];
-const CUSTOMER_MIN_VIDEO_DURATION_SEC = 15;
-const CUSTOMER_MAX_VIDEO_DURATION_SEC = 30;
+const CUSTOMER_MIN_VIDEO_DURATION_SEC = USER_VIDEO_CONFIG.minDuration;
+const CUSTOMER_MAX_VIDEO_DURATION_SEC = USER_VIDEO_CONFIG.maxDuration;
+const ADMIN_MIN_VIDEO_DURATION_SEC = ADMIN_VIDEO_CONFIG.minDuration;
+const ADMIN_MAX_VIDEO_DURATION_SEC = ADMIN_VIDEO_CONFIG.maxDuration;
 
 function isValidTab(value: string | null): value is FeedPostTab {
   return value !== null && (VALID_TABS as ReadonlyArray<string>).includes(value);
@@ -180,7 +183,7 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
-    if (kind === "COMMUNITY" && !isAdmin) {
+    if (!isAdmin) {
       const durationSec = Number(body.videoDurationSec);
       if (
         !Number.isFinite(durationSec) ||
@@ -189,6 +192,19 @@ export async function POST(request: NextRequest) {
       ) {
         return NextResponse.json(
           { error: `Durasi video Feed harus ${CUSTOMER_MIN_VIDEO_DURATION_SEC}-${CUSTOMER_MAX_VIDEO_DURATION_SEC} detik.` },
+          { status: 400 },
+        );
+      }
+    }
+    if (isAdmin && videoUrl) {
+      const durationSec = Number(body.videoDurationSec);
+      if (
+        !Number.isFinite(durationSec) ||
+        durationSec < ADMIN_MIN_VIDEO_DURATION_SEC ||
+        durationSec > ADMIN_MAX_VIDEO_DURATION_SEC
+      ) {
+        return NextResponse.json(
+          { error: `Durasi video admin harus ${ADMIN_MIN_VIDEO_DURATION_SEC}-${ADMIN_MAX_VIDEO_DURATION_SEC} detik.` },
           { status: 400 },
         );
       }

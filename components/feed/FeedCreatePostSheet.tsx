@@ -274,10 +274,10 @@ export function FeedCreatePostSheet({ open, onClose }: Props) {
       setTrimEnd(nextEnd);
 
       if (duration < MIN_VIDEO_DURATION) {
-        setVideoError("Video terlalu pendek. Upload video minimal 15 detik.");
+        setVideoError(`Video terlalu pendek. Upload video minimal ${MIN_VIDEO_DURATION} detik.`);
         void hapticWarning();
       } else if (duration > MAX_VIDEO_DURATION) {
-        setVideoError("Video maksimal 30 detik. Potong video terlebih dahulu sebelum lanjut.");
+        setVideoError(`Video maksimal ${MAX_VIDEO_DURATION} detik. Potong video terlebih dahulu sebelum lanjut.`);
         void hapticTap();
         void generateThumbnailBestEffort(localFile, metadata, pickToken);
       } else {
@@ -739,8 +739,8 @@ function TrimVideoStep({
   const duration = selectedVideo.metadata.durationSec;
   const invalidText =
     finalDuration < MIN_VIDEO_DURATION
-      ? "Video terlalu pendek. Upload minimal 15 detik."
-      : "Video terlalu panjang. Maksimal 30 detik.";
+      ? `Video terlalu pendek. Upload minimal ${MIN_VIDEO_DURATION} detik.`
+      : `Video terlalu panjang. Maksimal ${MAX_VIDEO_DURATION} detik.`;
 
   return (
     <div className="flex h-full flex-col bg-black">
