@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { PageStatusBar } from "@/components/PageStatusBar";
 import { getSession } from "@/lib/auth";
-import { FeedCreatePostPageClient } from "@/components/feed/FeedCreatePostPageClient";
+import { FeedUploadClient } from "@/components/feed/FeedUploadClient";
 
 export const metadata: Metadata = {
   title: "Upload Video — Feed Natalo",
@@ -21,14 +20,8 @@ export default async function FeedUploadPage() {
   }
 
   return (
-    <main className="min-h-[100dvh] overflow-hidden bg-black">
-      <PageStatusBar
-        iconColor="light"
-        themeColor="#000000"
-        nativeBackgroundColor="#00000000"
-        overlaysWebView
-      />
-      <FeedCreatePostPageClient />
+    <main className="min-h-[100dvh] bg-slate-50">
+      <FeedUploadClient />
     </main>
   );
 }
