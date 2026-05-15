@@ -123,10 +123,49 @@ export function useFeedUpload() {
   return ctx;
 }
 
+// Telemetry helper — fire each stage transition to /api/log-error so we
+// have server-visible traces even when the user's toast was dismissed
+// before they could screenshot it. Beacon survives page unmount.
+function logFeedUploadEvent(
+  stage: string,
+  detail: Record<string, unknown> = {},
+) {
+  try {
+    const body = JSON.stringify({
+      source: "feed-upload",
+      message: `[feed-upload] ${stage}`,
+      url: typeof window !== "undefined" ? window.location.href : null,
+      userAgent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+      context: { stage, ...detail },
+    });
+    if (typeof navigator !== "undefined" && navigator.sendBeacon) {
+      navigator.sendBeacon(
+        "/api/log-error",
+        new Blob([body], { type: "application/json" }),
+      );
+      return;
+    }
+    void fetch("/api/log-error", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      keepalive: true,
+    }).catch(() => {});
+  } catch {
+    // Telemetry must never break the upload flow.
+  }
+}
+
 async function runUpload(
   payload: FeedUploadPayload,
   setState: React.Dispatch<React.SetStateAction<FeedUploadState>>,
 ) {
+  logFeedUploadEvent("start", {
+    fileSize: payload.videoFile.size,
+    fileType: payload.videoFile.type,
+    trimDurationSec: payload.trimDurationSec,
+    captionLen: payload.caption.length,
+  });
   try {
     // Step 1: compress
     const { compressVideo } = await import("@/lib/feed/video-compressor");
@@ -138,6 +177,10 @@ async function runUpload(
         setState((current) =>
           current.stage === "compressing" ? { ...current, progress: p } : current,
         ),
+    });
+    logFeedUploadEvent("compressed", {
+      sizeBefore: payload.videoFile.size,
+      sizeAfter: compressedFile.size,
     });
 
     // Step 2: upload video
@@ -154,10 +197,15 @@ async function runUpload(
     });
     const videoData = await videoRes.json().catch(() => ({}));
     if (!videoRes.ok) {
+      logFeedUploadEvent("upload-video-failed", {
+        httpStatus: videoRes.status,
+        responseError: videoData?.error,
+      });
       throw new Error(
         typeof videoData?.error === "string" ? videoData.error : "Upload video gagal.",
       );
     }
+    logFeedUploadEvent("upload-video-ok", { videoUrl: videoData?.url });
 
     // Step 3: upload thumbnail
     setState((current) => ({
@@ -176,12 +224,17 @@ async function runUpload(
     });
     const thumbData = await thumbRes.json().catch(() => ({}));
     if (!thumbRes.ok) {
+      logFeedUploadEvent("upload-thumb-failed", {
+        httpStatus: thumbRes.status,
+        responseError: thumbData?.error,
+      });
       throw new Error(
         typeof thumbData?.error === "string"
           ? thumbData.error
           : "Upload thumbnail gagal.",
       );
     }
+    logFeedUploadEvent("upload-thumb-ok", { thumbnailUrl: thumbData?.url });
 
     // Step 4: submit post
     setState((current) => ({
@@ -218,10 +271,15 @@ async function runUpload(
     });
     const postData = await postRes.json().catch(() => ({}));
     if (!postRes.ok) {
+      logFeedUploadEvent("submit-post-failed", {
+        httpStatus: postRes.status,
+        responseError: postData?.error,
+      });
       throw new Error(
         typeof postData?.error === "string" ? postData.error : "Gagal membuat postingan.",
       );
     }
+    logFeedUploadEvent("submit-post-ok", { postId: postData?.post?.id });
 
     setState({
       active: true,
@@ -231,6 +289,10 @@ async function runUpload(
       postId: String(postData?.post?.id ?? ""),
     });
   } catch (err) {
+    logFeedUploadEvent("error", {
+      message: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : null,
+    });
     setState({
       active: true,
       stage: "error",
