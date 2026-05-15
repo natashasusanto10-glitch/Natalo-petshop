@@ -20,8 +20,32 @@ export default async function FeedUploadPage() {
   }
 
   return (
-    <main className="min-h-[100dvh] bg-slate-50">
-      <FeedUploadClient />
+    <main className="min-h-[100dvh] overflow-x-hidden bg-slate-50">
+      <div className="feed-upload-page-enter min-h-[100dvh]">
+        <FeedUploadClient />
+      </div>
+      <style>{`
+        .feed-upload-page-enter {
+          animation: feed-upload-page-enter 340ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        @keyframes feed-upload-page-enter {
+          from {
+            opacity: 0.86;
+            transform: translate3d(100%, 0, 0);
+          }
+          to {
+            opacity: 1;
+            transform: translate3d(0, 0, 0);
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .feed-upload-page-enter {
+            animation: none !important;
+          }
+        }
+      `}</style>
     </main>
   );
 }

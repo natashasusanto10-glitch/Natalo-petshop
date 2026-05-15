@@ -25,7 +25,7 @@ import { FeedCommentSheet } from "./FeedCommentSheet";
 import { getVirtualWindow } from "@/lib/feed/runtime-config";
 import { hapticTap } from "@/lib/native/haptics";
 
-const UPLOAD_ROUTE_TRANSITION_MS = 300;
+const UPLOAD_ROUTE_TRANSITION_MS = 120;
 
 export function FeedClient() {
   const router = useRouter();
@@ -58,6 +58,10 @@ export function FeedClient() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    router.prefetch("/feed/upload");
+  }, [router]);
 
   useEffect(() => {
     let cancelled = false;
