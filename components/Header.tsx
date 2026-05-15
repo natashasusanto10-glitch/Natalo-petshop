@@ -60,8 +60,9 @@ export function Header() {
   const isFeedRoute = /^\/feed(\/|$)/.test(currentPath);
   const isAccountSubPageWithoutBrandHeader =
     currentPath === "/wishlist" ||
-    currentPath === "/akun/alamat" ||
-    currentPath === "/akun/alamat/tambah" ||
+    // Semua sub-page alamat (daftar, tambah, edit/[id]) pakai StickyBackTitle
+    // sebagai sub-header — tidak butuh brand header (logo + bell + cart).
+    /^\/akun\/alamat(\/|$)/.test(currentPath) ||
     currentPath === "/akun/pengaturan/notifikasi" ||
     currentPath === "/akun/sesi-aktif" ||
     currentPath === "/member/points" ||
