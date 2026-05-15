@@ -34,6 +34,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import type { FeedPostKind, FeedPostTab } from "@prisma/client";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Rate limit — same logic as legacy upload-video.
-  if (session.role !== "ADMIN") {
+  if (!isAdmin) {
     const since = new Date(Date.now() - RATE_LIMIT_WINDOW_MS);
     const recent = await prisma.feedPost.count({
       where: { authorId: session.sub, createdAt: { gte: since } },
@@ -86,7 +87,17 @@ export async function POST(request: NextRequest) {
     petType?: string | null;
     petName?: string;
     productIds?: unknown;
+    // Admin-only fields. Customer sessions always create COMMUNITY posts to
+    // the KOMUNITAS tab regardless of what's sent.
+    kind?: string;
+    tab?: string;
+    productId?: string | null;
+    promoOriginalPrice?: number | null;
+    promoDiscountPrice?: number | null;
+    promoStartsAt?: string | null;
+    promoEndsAt?: string | null;
   };
+  const isAdmin = session.role === "ADMIN";
 
   // Caption (mapped ke `title` di DB) sekarang opsional sesuai flow baru —
   // kalau user tidak isi caption, kita pakai placeholder "Postingan baru"
@@ -136,21 +147,61 @@ export async function POST(request: NextRequest) {
     .filter(Boolean);
   const finalDescription = descParts.join("\n\n") || null;
 
+  // Admin can publish to other kinds/tabs (VIDEO_ONLY, PRODUCT_ONLY,
+  // VIDEO_PRODUCT, PROMO). Customer is always COMMUNITY → KOMUNITAS.
+  const ADMIN_KINDS: FeedPostKind[] = ["VIDEO_ONLY", "PRODUCT_ONLY", "VIDEO_PRODUCT", "PROMO"];
+  let kind: FeedPostKind = "COMMUNITY";
+  let tab: FeedPostTab = "KOMUNITAS";
+  if (isAdmin) {
+    const rawKind = String(body.kind ?? "VIDEO_ONLY");
+    kind = (ADMIN_KINDS as ReadonlyArray<string>).includes(rawKind)
+      ? (rawKind as FeedPostKind)
+      : "VIDEO_ONLY";
+    if (kind === "PROMO") {
+      tab = "PROMO";
+    } else {
+      const rawTab = String(body.tab ?? "REKOMENDASI");
+      tab = rawTab === "PROMO" ? "PROMO" : "REKOMENDASI";
+    }
+  }
+
+  // Optional admin promo + product fields.
+  const productIdSingle = isAdmin && body.productId
+    ? String(body.productId).trim()
+    : productIds[0] ?? null;
+  const promoOriginalPrice =
+    isAdmin && kind === "PROMO" && Number.isFinite(Number(body.promoOriginalPrice))
+      ? Number(body.promoOriginalPrice)
+      : null;
+  const promoDiscountPrice =
+    isAdmin && kind === "PROMO" && Number.isFinite(Number(body.promoDiscountPrice))
+      ? Number(body.promoDiscountPrice)
+      : null;
+  const promoStartsAt =
+    isAdmin && body.promoStartsAt ? new Date(body.promoStartsAt) : null;
+  const promoEndsAt =
+    isAdmin && body.promoEndsAt ? new Date(body.promoEndsAt) : null;
+
   // Insert FeedPost row in uploading state. videoUrl + thumbnailUrl filled
   // when webhook reports "ready" (encodingStatus=ready). Until then the
   // feed list query excludes this row.
   const post = await prisma.feedPost.create({
     data: {
       authorId: session.sub,
-      authorRole: session.role === "ADMIN" ? "ADMIN" : "CUSTOMER",
-      kind: "COMMUNITY",
-      tab: "KOMUNITAS",
-      status: session.role === "ADMIN" ? "ACTIVE" : "PENDING_REVIEW",
+      authorRole: isAdmin ? "ADMIN" : "CUSTOMER",
+      kind,
+      tab,
+      status: isAdmin ? "ACTIVE" : "PENDING_REVIEW",
+      publishedAt: isAdmin ? new Date() : null,
       title,
       description: finalDescription,
       videoGuid: created.guid,
       encodingStatus: "uploading",
-      productId: productIds[0] ?? null,
+      productId: productIdSingle,
+      promoOriginalPrice,
+      promoDiscountPrice,
+      promoStartsAt: promoStartsAt && !Number.isNaN(promoStartsAt.getTime()) ? promoStartsAt : null,
+      promoEndsAt: promoEndsAt && !Number.isNaN(promoEndsAt.getTime()) ? promoEndsAt : null,
     },
     select: { id: true },
   });

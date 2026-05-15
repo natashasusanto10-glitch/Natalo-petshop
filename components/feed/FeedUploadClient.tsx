@@ -48,9 +48,7 @@ import {
 
 const MAX_CAPTION_LENGTH = 500;
 const ACCEPT_VIDEO = "video/mp4,video/quicktime,video/*";
-// Source max — longer than final trim window (45s) so user bisa trim down.
-// Server-side validator tetap enforce 1-45s di output.
-const SOURCE_MAX_SECONDS = 180;
+const THUMBNAIL_BACKGROUND_TIMEOUT_MS = 5000;
 const FILMSTRIP_FRAMES = 7;
 
 type Step =
@@ -98,11 +96,13 @@ export function FeedUploadClient() {
   // ── Video state ───────────────────────────────────────────────────
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const thumbnailJobRef = useRef(0);
   const [file, setFile] = useState<File | null>(null);
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
   const [metadata, setMetadata] = useState<VideoMetadata | null>(null);
   const [thumbnailPreviewUrl, setThumbnailPreviewUrl] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [analyzingLabel, setAnalyzingLabel] = useState("Menyiapkan video...");
   const [pickError, setPickError] = useState<string | null>(null);
 
   // Trim
@@ -128,7 +128,7 @@ export function FeedUploadClient() {
   const [uploadLabel, setUploadLabel] = useState("");
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStage, setUploadStage] = useState<
-    "submitting" | "compressing" | "uploading" | null
+    "submitting" | "trimming" | "uploading" | null
   >(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [resultPostId, setResultPostId] = useState<string | null>(null);
@@ -169,6 +169,7 @@ export function FeedUploadClient() {
   }, []);
 
   function resetVideo() {
+    thumbnailJobRef.current += 1;
     if (filePreviewUrl) URL.revokeObjectURL(filePreviewUrl);
     if (thumbnailPreviewUrl) URL.revokeObjectURL(thumbnailPreviewUrl);
     setFile(null);
@@ -177,6 +178,50 @@ export function FeedUploadClient() {
     setThumbnailPreviewUrl(null);
     setTrimStart(0);
     setTrimEnd(USER_VIDEO_CONFIG.maxDuration);
+  }
+
+  function generateThumbnailInBackground(
+    picked: File,
+    meta: VideoMetadata,
+    jobId: number,
+  ) {
+    void extractVideoThumbnailSafe(picked, meta, {
+      targetTimeSec: Math.min(1, Math.max(0.5, meta.durationSec * 0.25)),
+      maxWidth: 480,
+      timeoutMs: THUMBNAIL_BACKGROUND_TIMEOUT_MS,
+      onError: (thumbnailError) => {
+        console.info("[feed-video] thumbnail fallback", {
+          fileName: picked.name,
+          size: picked.size,
+          mimeType: picked.type,
+          durationSec: meta.durationSec,
+          error:
+            thumbnailError instanceof Error
+              ? {
+                  name: thumbnailError.name,
+                  message: thumbnailError.message,
+                }
+              : { message: String(thumbnailError) },
+          usedFallback: true,
+        });
+      },
+    })
+      .then((thumb) => {
+        if (thumbnailJobRef.current !== jobId) return;
+        setThumbnailPreviewUrl(URL.createObjectURL(thumb.blob));
+      })
+      .catch((thumbnailError) => {
+        console.info("[feed-video] thumbnail skipped", {
+          fileName: picked.name,
+          error:
+            thumbnailError instanceof Error
+              ? {
+                  name: thumbnailError.name,
+                  message: thumbnailError.message,
+                }
+              : { message: String(thumbnailError) },
+        });
+      });
   }
 
   async function handleFilePick(picked: File | null) {
@@ -200,28 +245,23 @@ export function FeedUploadClient() {
     }
 
     const pickedPreviewUrl = URL.createObjectURL(picked);
+    const jobId = thumbnailJobRef.current + 1;
+    thumbnailJobRef.current = jobId;
     setFile(picked);
     setFilePreviewUrl(pickedPreviewUrl);
     setAnalyzing(true);
+    setAnalyzingLabel("Memeriksa durasi video...");
 
     try {
       const meta = await readVideoMetadata(picked);
       setMetadata(meta);
 
-      if (meta.durationSec < USER_VIDEO_CONFIG.minDuration) {
+      if (
+        meta.durationSec < USER_VIDEO_CONFIG.minDuration ||
+        meta.durationSec > USER_VIDEO_CONFIG.maxDuration
+      ) {
         resetVideo();
-        setPickError("Video terlalu pendek. Minimal 1 detik.");
-        void hapticWarning();
-        setAnalyzing(false);
-        return;
-      }
-      if (meta.durationSec > SOURCE_MAX_SECONDS) {
-        resetVideo();
-        setPickError(
-          `Video terlalu panjang (${Math.round(
-            meta.durationSec,
-          )}s). Maksimal ${SOURCE_MAX_SECONDS} detik untuk source.`,
-        );
+        setPickError("Video harus berdurasi 1–45 detik.");
         void hapticWarning();
         setAnalyzing(false);
         return;
@@ -231,19 +271,13 @@ export function FeedUploadClient() {
       setTrimStart(0);
       setTrimEnd(Math.min(meta.durationSec, USER_VIDEO_CONFIG.maxDuration));
 
-      // Extract thumbnail untuk preview (best-effort, fallback aman).
-      const thumb = await extractVideoThumbnailSafe(picked, meta, {
-        targetTimeSec: Math.min(1, meta.durationSec / 2),
-        maxWidth: 480,
-        timeoutMs: 20000,
-      });
-      setThumbnailPreviewUrl(URL.createObjectURL(thumb.blob));
-
+      setAnalyzing(false);
       goNext("preview");
+      generateThumbnailInBackground(picked, meta, jobId);
     } catch (err) {
       resetVideo();
       setPickError(
-        err instanceof Error ? err.message : "Video belum bisa digunakan. Coba pilih video lain.",
+        "Video belum bisa digunakan. Coba pilih video lain.",
       );
       void hapticWarning();
     } finally {
@@ -288,7 +322,7 @@ export function FeedUploadClient() {
       const wantsTrim =
         trimStart > 0.1 || finalDuration < metadata.durationSec - 0.1;
       if (wantsTrim) {
-        setUploadStage("compressing");
+        setUploadStage("trimming");
         setUploadProgress(0);
         setUploadLabel("Memotong video...");
         const { trimVideo } = await import("@/lib/feed/video-trimmer");
@@ -356,6 +390,7 @@ export function FeedUploadClient() {
         {step === "pick" && (
           <PickScreen
             analyzing={analyzing}
+            analyzingLabel={analyzingLabel}
             error={pickError}
             onClose={handleCloseFlow}
             onOpenGallery={() => galleryInputRef.current?.click()}
@@ -406,8 +441,9 @@ export function FeedUploadClient() {
             onNext={() => goNext("detail")}
           />
         )}
-        {step === "detail" && thumbnailPreviewUrl && (
+        {step === "detail" && filePreviewUrl && (
           <DetailScreen
+            videoPreviewUrl={filePreviewUrl}
             thumbnailPreviewUrl={thumbnailPreviewUrl}
             finalDuration={finalDuration}
             caption={caption}
@@ -428,6 +464,7 @@ export function FeedUploadClient() {
         )}
         {step === "success" && (
           <SuccessScreen
+            videoPreviewUrl={filePreviewUrl}
             thumbnailPreviewUrl={thumbnailPreviewUrl}
             finalDuration={finalDuration}
             postId={resultPostId}
@@ -603,12 +640,14 @@ function NextButton({
 
 function PickScreen({
   analyzing,
+  analyzingLabel,
   error,
   onClose,
   onOpenGallery,
   onOpenCamera,
 }: {
   analyzing: boolean;
+  analyzingLabel: string;
   error: string | null;
   onClose: () => void;
   onOpenGallery: () => void;
@@ -650,7 +689,7 @@ function PickScreen({
               {analyzing && (
                 <p className="mt-2 inline-flex items-center gap-2 text-xs font-bold text-natalo-200">
                   <span className="h-3 w-3 animate-spin rounded-full border-2 border-natalo-300/40 border-t-natalo-200" />
-                  Memproses video...
+                  {analyzingLabel}
                 </p>
               )}
             </div>
@@ -1372,6 +1411,7 @@ function seekTo(video: HTMLVideoElement, time: number) {
 // ── Step 4: Detail Postingan ────────────────────────────────────────
 
 function DetailScreen({
+  videoPreviewUrl,
   thumbnailPreviewUrl,
   finalDuration,
   caption,
@@ -1389,7 +1429,8 @@ function DetailScreen({
   onBack,
   onSubmit,
 }: {
-  thumbnailPreviewUrl: string;
+  videoPreviewUrl: string;
+  thumbnailPreviewUrl: string | null;
   finalDuration: number;
   caption: string;
   onCaptionChange: (v: string) => void;
@@ -1399,7 +1440,7 @@ function DetailScreen({
   petType: PetType;
   onPetChange: (v: PetType) => void;
   uploading: boolean;
-  uploadStage: "submitting" | "compressing" | "uploading" | null;
+  uploadStage: "submitting" | "trimming" | "uploading" | null;
   uploadProgress: number;
   uploadLabel: string;
   submitError: string | null;
@@ -1426,14 +1467,24 @@ function DetailScreen({
           {/* Caption row + thumbnail */}
           <div className="flex gap-3 rounded-2xl border border-white/8 bg-white/[0.03] p-3">
             <div className="relative h-24 w-20 shrink-0 overflow-hidden rounded-xl bg-white/5">
-              <Image
-                src={thumbnailPreviewUrl}
-                alt="Preview"
-                fill
-                sizes="80px"
-                className="object-cover"
-                unoptimized
-              />
+              {thumbnailPreviewUrl ? (
+                <Image
+                  src={thumbnailPreviewUrl}
+                  alt="Preview"
+                  fill
+                  sizes="80px"
+                  className="object-cover"
+                  unoptimized
+                />
+              ) : (
+                <video
+                  src={videoPreviewUrl}
+                  className="h-full w-full object-cover"
+                  muted
+                  playsInline
+                  preload="metadata"
+                />
+              )}
               <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-black">
                 {formatClock(finalDuration)}
               </span>
@@ -1541,7 +1592,7 @@ function DetailScreen({
                     {uploadLabel || "Memproses..."}
                   </p>
                   <p className="mt-1 text-[11px] font-semibold text-natalo-200/80">
-                    {uploadStage === "compressing"
+                    {uploadStage === "trimming"
                       ? "Sedang memotong video..."
                       : uploadStage === "uploading"
                         ? "Mengunggah ke cloud..."
@@ -1550,7 +1601,7 @@ function DetailScreen({
                 </div>
                 <div className="h-6 w-6 shrink-0 animate-spin rounded-full border-2 border-natalo-300/30 border-t-natalo-200" />
               </div>
-              {(uploadStage === "compressing" || uploadStage === "uploading") && (
+              {(uploadStage === "trimming" || uploadStage === "uploading") && (
                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
                   <div
                     className="h-full rounded-full bg-natalo-400 transition-[width]"
@@ -1618,12 +1669,14 @@ function PetChip({
 // ── Step 5: Menunggu Review ─────────────────────────────────────────
 
 function SuccessScreen({
+  videoPreviewUrl,
   thumbnailPreviewUrl,
   finalDuration,
   postId,
   onBackToFeed,
   onViewMyPosts,
 }: {
+  videoPreviewUrl: string | null;
   thumbnailPreviewUrl: string | null;
   finalDuration: number;
   postId: string | null;
@@ -1651,16 +1704,26 @@ function SuccessScreen({
           Postingan kamu sedang menunggu review admin.
         </p>
 
-        {thumbnailPreviewUrl && (
+        {(thumbnailPreviewUrl || videoPreviewUrl) && (
           <div className="relative mt-7 h-44 w-32 overflow-hidden rounded-2xl ring-1 ring-white/10">
-            <Image
-              src={thumbnailPreviewUrl}
-              alt="Preview postingan"
-              fill
-              sizes="128px"
-              className="object-cover"
-              unoptimized
-            />
+            {thumbnailPreviewUrl ? (
+              <Image
+                src={thumbnailPreviewUrl}
+                alt="Preview postingan"
+                fill
+                sizes="128px"
+                className="object-cover"
+                unoptimized
+              />
+            ) : (
+              <video
+                src={videoPreviewUrl ?? undefined}
+                className="h-full w-full object-cover"
+                muted
+                playsInline
+                preload="metadata"
+              />
+            )}
             <span className="absolute bottom-2 left-2 rounded-md bg-black/70 px-2 py-0.5 text-[11px] font-black">
               {formatClock(finalDuration)}
             </span>

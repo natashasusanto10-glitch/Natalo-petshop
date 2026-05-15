@@ -194,48 +194,65 @@ export function AdminFeedCreateClient() {
 
     setSubmitting(true);
     try {
-      let videoUrl: string | null = null;
-      let thumbnailUrl: string | null = null;
-      let videoMimeType: string | null = null;
-      let videoSizeBytes: number | null = null;
-
-      // Upload video kalau ada
-      if (videoFile && thumbBlob) {
-        setProgress("Memproses video...");
-        setCompressProgress(0);
-        const { compressVideo } = await import("@/lib/feed/video-compressor");
-        const compressedFile = await compressVideo(videoFile, {
-          config: ADMIN_VIDEO_CONFIG,
-          onProgress: setCompressProgress,
+      // Video path: Bunny direct upload. The server creates the FeedPost
+      // row pre-filled with kind/tab/promo + a Bunny GUID, returns a
+      // signed upload URL, and the Bunny webhook finalises encodingStatus
+      // + videoUrl when transcoding completes. No client-side compression
+      // — admin desktops would hang for minutes on long videos, and Bunny
+      // handles every codec we throw at it.
+      if (videoFile) {
+        setProgress("Menyiapkan upload...");
+        const provisionBody = {
+          title: title.trim() || "Postingan baru",
+          description: description.trim() || null,
+          kind,
+          tab: kind === "PROMO" ? "PROMO" : "REKOMENDASI",
+          productId: selectedProduct?.id ?? null,
+          promoOriginalPrice: kind === "PROMO" ? Number(promoOriginal) || null : null,
+          promoDiscountPrice: kind === "PROMO" ? Number(promoDiscount) || null : null,
+          promoStartsAt: kind === "PROMO" && promoStarts ? promoStarts : null,
+          promoEndsAt: kind === "PROMO" && promoEnds ? promoEnds : null,
+        };
+        const provisionRes = await fetch("/api/feed/bunny/upload-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(provisionBody),
         });
-        if (compressedFile.size > ADMIN_VIDEO_CONFIG.maxFileSize) {
-          throw new Error(
-            `Hasil kompresi masih ${formatFileSize(compressedFile.size)}. Maksimal ${formatFileSize(ADMIN_VIDEO_CONFIG.maxFileSize)}.`,
-          );
+        const provisionData = await provisionRes.json();
+        if (!provisionRes.ok) {
+          throw new Error(provisionData.error ?? "Gagal menyiapkan upload.");
         }
 
         setProgress("Mengunggah video...");
-        const vForm = new FormData();
-        vForm.append("file", compressedFile);
-        const vRes = await fetch("/api/feed/upload-video", { method: "POST", body: vForm });
-        const vData = await vRes.json();
-        if (!vRes.ok) throw new Error(vData.error ?? "Upload video gagal.");
-        videoUrl = vData.url;
-        videoMimeType = vData.mimeType;
-        videoSizeBytes = vData.sizeBytes;
-
-        setProgress("Mengunggah thumbnail...");
-        const tForm = new FormData();
-        tForm.append("file", new File([thumbBlob], "thumb.jpg", { type: "image/jpeg" }));
-        const tRes = await fetch("/api/feed/upload-thumbnail", {
-          method: "POST",
-          body: tForm,
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("PUT", provisionData.uploadUrl, true);
+          xhr.setRequestHeader("AccessKey", provisionData.uploadHeaders.AccessKey);
+          xhr.setRequestHeader("Content-Type", "application/octet-stream");
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+              setCompressProgress(Math.round((e.loaded / e.total) * 100));
+            }
+          };
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) resolve();
+            else reject(new Error(`Upload gagal (HTTP ${xhr.status})`));
+          };
+          xhr.onerror = () => reject(new Error("Network error saat upload."));
+          xhr.send(videoFile);
         });
-        const tData = await tRes.json();
-        if (!tRes.ok) throw new Error(tData.error ?? "Upload thumbnail gagal.");
-        thumbnailUrl = tData.url;
+
+        // Done. Bunny will encode + fire webhook → encodingStatus=ready.
+        // Admin gets ACTIVE+publishedAt set already by the upload-url
+        // endpoint, so the post will appear in the feed as soon as
+        // encoding finishes (usually <1 min for short clips).
+        router.push("/admin/feed");
+        router.refresh();
+        return;
       }
 
+      // No video (e.g., PROMO banner-only). Fall back to the legacy JSON
+      // /api/feed/posts endpoint which doesn't go through Bunny at all.
       setProgress("Menyimpan post...");
       const tab = kind === "PROMO" ? "PROMO" : "REKOMENDASI";
       const body = {
@@ -243,13 +260,13 @@ export function AdminFeedCreateClient() {
         tab,
         title: title.trim(),
         description: description.trim() || null,
-        videoUrl,
-        thumbnailUrl,
-        videoMimeType,
-        videoSizeBytes,
-        videoDurationSec: videoMeta ? Math.round(videoMeta.durationSec) : null,
-        videoWidth: videoMeta?.width ?? null,
-        videoHeight: videoMeta?.height ?? null,
+        videoUrl: null,
+        thumbnailUrl: null,
+        videoMimeType: null,
+        videoSizeBytes: null,
+        videoDurationSec: null,
+        videoWidth: null,
+        videoHeight: null,
         productId: selectedProduct?.id ?? null,
         promoOriginalPrice: kind === "PROMO" ? Number(promoOriginal) : null,
         promoDiscountPrice: kind === "PROMO" ? Number(promoDiscount) : null,
@@ -542,7 +559,7 @@ export function AdminFeedCreateClient() {
         className="sticky bottom-4 w-full rounded-full bg-natalo-600 py-3 text-sm font-extrabold text-white shadow-lg transition active:scale-[0.98] disabled:bg-gray-300"
       >
         {submitting
-          ? progress === "Memproses video..." && compressProgress > 0
+          ? progress === "Mengunggah video..." && compressProgress > 0
             ? `${progress} ${compressProgress}%`
             : progress || "Memproses..."
           : "Publish Post"}
