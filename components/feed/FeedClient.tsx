@@ -36,7 +36,41 @@ export function FeedClient() {
   const [reloadKey, setReloadKey] = useState(0);
   const [commentPostId, setCommentPostId] = useState<string | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   useFeedChrome();
+
+  // CSS scroll-snap-mandatory is supposed to force snapping, but iOS
+  // Capacitor's WKWebView occasionally lets a flick rest mid-way between
+  // two cards (Apple's snap engine treats `scroll-snap-stop: always` as a
+  // hint, not a hard contract, in some build versions). Add a JS fallback:
+  // 150ms after the scroll stops, if the scroll position isn't a multiple
+  // of the card height, snap it programmatically. Belt-and-suspenders for
+  // the TikTok-style hard-paged feel.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    let timer: number | null = null;
+    function snapNow() {
+      const container = el;
+      if (!container) return;
+      const cellHeight = container.clientHeight;
+      if (!cellHeight) return;
+      const current = container.scrollTop;
+      const nearest = Math.round(current / cellHeight) * cellHeight;
+      if (Math.abs(current - nearest) > 1) {
+        container.scrollTo({ top: nearest, behavior: "smooth" });
+      }
+    }
+    function onScroll() {
+      if (timer != null) window.clearTimeout(timer);
+      timer = window.setTimeout(snapNow, 150);
+    }
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      if (timer != null) window.clearTimeout(timer);
+    };
+  }, []);
 
   // Pull-to-refresh wiring: PullToRefresh in the root layout dispatches
   // "app-refresh" after the user pulls past the threshold. Bump reloadKey
@@ -135,6 +169,7 @@ export function FeedClient() {
         </button>
 
         <div
+          ref={scrollRef}
           // data-no-pull → PullToRefresh in the root layout sees this and
           // bows out instead of stealing vertical touch gestures from the
           // feed's snap-scroller. Keeps swipe-up-for-next-video instant.
