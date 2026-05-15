@@ -570,46 +570,44 @@ function PickVideoStep({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(24px+env(safe-area-inset-bottom))]">
         <div className="mx-auto max-w-2xl">
+          {/* Pakai <label> wrapping <input> alih-alih <button> + programmatic
+              .click(). Di iOS WKWebView 17+, user-gesture context bisa lost
+              antara React onClick handler fires dan ref.current.click() dipanggil
+              (microtask boundary) → WKFileUploadPanel reject + crash, terutama
+              untuk input dengan capture="environment" yang memicu
+              UIImagePickerController. Label→input native association preserve
+              user-gesture end-to-end via DOM event propagation. */}
           <div className="grid grid-cols-2 gap-3 pt-4">
-            <button
-              type="button"
-              onClick={() => galleryInputRef.current?.click()}
-              className="rounded-3xl border border-white/10 bg-white/10 p-4 text-left transition active:scale-[0.98]"
-            >
+            <label className="block cursor-pointer rounded-3xl border border-white/10 bg-white/10 p-4 text-left transition active:scale-[0.98]">
               <FiImage className="h-6 w-6 text-natalo-300" />
               <p className="mt-3 text-sm font-black">Galeri</p>
               <p className="mt-1 text-xs font-semibold text-white/55">
                 Pilih video dari perangkat
               </p>
-            </button>
-            <button
-              type="button"
-              onClick={() => cameraInputRef.current?.click()}
-              className="rounded-3xl border border-white/10 bg-white/10 p-4 text-left transition active:scale-[0.98]"
-            >
+              <input
+                ref={galleryInputRef}
+                type="file"
+                accept={ACCEPT_VIDEO_GALLERY}
+                className="hidden"
+                onChange={(event) => onPick(event.target.files?.[0] ?? null)}
+              />
+            </label>
+            <label className="block cursor-pointer rounded-3xl border border-white/10 bg-white/10 p-4 text-left transition active:scale-[0.98]">
               <FiCamera className="h-6 w-6 text-natalo-300" />
               <p className="mt-3 text-sm font-black">Kamera</p>
               <p className="mt-1 text-xs font-semibold text-white/55">
                 Rekam video baru
               </p>
-            </button>
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept={ACCEPT_VIDEO_CAMERA}
+                capture="environment"
+                className="hidden"
+                onChange={(event) => onPick(event.target.files?.[0] ?? null)}
+              />
+            </label>
           </div>
-
-          <input
-            ref={galleryInputRef}
-            type="file"
-            accept={ACCEPT_VIDEO_GALLERY}
-            className="hidden"
-            onChange={(event) => onPick(event.target.files?.[0] ?? null)}
-          />
-          <input
-            ref={cameraInputRef}
-            type="file"
-            accept={ACCEPT_VIDEO_CAMERA}
-            capture="environment"
-            className="hidden"
-            onChange={(event) => onPick(event.target.files?.[0] ?? null)}
-          />
 
           <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-natalo-600/20 px-3 py-2 text-xs font-black text-natalo-100 ring-1 ring-natalo-400/30">
             <FiInfo className="h-4 w-4" />
