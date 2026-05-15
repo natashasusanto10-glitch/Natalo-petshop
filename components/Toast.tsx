@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { AddToCartSuccessLottie } from "@/components/AddToCartSuccessLottie";
 
@@ -27,7 +28,9 @@ type ToastEventDetail = {
 const EVENT = "nat-toast";
 const DURATION_MS = 5000;
 const CART_SUCCESS_EVENT = "nat-cart-success-toast";
-const CART_SUCCESS_DURATION_MS = 1800;
+// Held a bit longer so users have time to read + tap "Lihat Keranjang"
+// without the toast disappearing on them.
+const CART_SUCCESS_DURATION_MS = 2600;
 const CART_SUCCESS_EXIT_MS = 240;
 
 export function natToast(
@@ -42,12 +45,29 @@ export function natToast(
   );
 }
 
-export function cartSuccessToast(msg = "Produk berhasil dimasukkan ke keranjang") {
+type CartSuccessOptions = {
+  /** Override the toast copy. Defaults to "Produk berhasil dimasukkan ke keranjang". */
+  msg?: string;
+  /**
+   * Action link rendered on the right side of the toast. Defaults to /cart
+   * with label "Lihat Keranjang". Pass `null` to hide the action entirely.
+   */
+  action?: { label: string; href: string } | null;
+};
+
+const DEFAULT_CART_ACTION = { label: "Lihat Keranjang", href: "/cart" };
+const DEFAULT_CART_MSG = "Produk berhasil dimasukkan ke keranjang";
+
+export function cartSuccessToast(input?: string | CartSuccessOptions) {
   if (typeof window === "undefined") return;
+  const opts: CartSuccessOptions =
+    typeof input === "string" ? { msg: input } : input ?? {};
+  const detail = {
+    msg: opts.msg ?? DEFAULT_CART_MSG,
+    action: opts.action === null ? null : opts.action ?? DEFAULT_CART_ACTION,
+  };
   window.dispatchEvent(
-    new CustomEvent<{ msg: string }>(CART_SUCCESS_EVENT, {
-      detail: { msg },
-    })
+    new CustomEvent<typeof detail>(CART_SUCCESS_EVENT, { detail })
   );
 }
 
@@ -57,6 +77,7 @@ export function ToastProvider() {
     id: number;
     msg: string;
     visible: boolean;
+    action: { label: string; href: string } | null;
   } | null>(null);
   const timersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
   const cartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -88,16 +109,22 @@ export function ToastProvider() {
     }
 
     function handleCartSuccess(e: Event) {
-      const detail = (e as CustomEvent<{ msg: string }>).detail;
+      const detail = (
+        e as CustomEvent<{
+          msg: string;
+          action: { label: string; href: string } | null;
+        }>
+      ).detail;
       if (!detail?.msg) return;
 
       if (cartTimerRef.current) clearTimeout(cartTimerRef.current);
       if (cartUnmountTimerRef.current) clearTimeout(cartUnmountTimerRef.current);
 
       const id = Date.now() + Math.random();
-      setCartSuccess({ id, msg: detail.msg, visible: false });
+      const action = detail.action ?? null;
+      setCartSuccess({ id, msg: detail.msg, visible: false, action });
       requestAnimationFrame(() => {
-        setCartSuccess({ id, msg: detail.msg, visible: true });
+        setCartSuccess({ id, msg: detail.msg, visible: true, action });
       });
 
       cartTimerRef.current = setTimeout(() => {
@@ -149,6 +176,14 @@ export function ToastProvider() {
         >
           <AddToCartSuccessLottie key={cartSuccess.id} />
           <span className="cart-success-toast__text">{cartSuccess.msg}</span>
+          {cartSuccess.action && (
+            <Link
+              href={cartSuccess.action.href}
+              className="cart-success-toast__action"
+            >
+              {cartSuccess.action.label}
+            </Link>
+          )}
         </div>
       )}
     </>

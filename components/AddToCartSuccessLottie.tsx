@@ -37,6 +37,9 @@ export function AddToCartSuccessLottie() {
           },
         });
 
+        // Asset is authored at 1.2s; play slightly faster to land within
+        // the 0.6–1.0s micro-interaction window from the spec.
+        animation.setSpeed(1.2);
         animationRef.current = animation;
         animation.addEventListener("data_failed", () => {
           if (!cancelled) setFailed(true);

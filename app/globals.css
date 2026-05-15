@@ -678,12 +678,34 @@ body.top-drawer-open .nat-whatsapp-float {
   height: 30px;
 }
 
+.cart-success-toast__action {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #1565d8;
+  background: transparent;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+.cart-success-toast__action:active {
+  background: rgba(21, 101, 216, 0.08);
+  transform: scale(0.98);
+}
+
 .cart-success-toast__text {
   min-width: 0;
   flex: 1;
   font-size: 14px;
   font-weight: 800;
   line-height: 1.3;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 @media (max-width: 380px) {
