@@ -57,6 +57,11 @@ export const HIDDEN_BOTTOM_NAV_PATTERNS: RegExp[] = [
   /^\/pesanan\/[^/]+$/,
   /^\/pesanan\/[^/]+\/success$/,
 
+  // Feed upload flow — full-screen immersive video posting (Pilih → Preview
+  // → Trim → Detail → Menunggu Review). Bottom nav harus hilang supaya flow
+  // tidak bocor visual ke layar di belakang.
+  /^\/feed\/upload(\/|$)/,
+
   // Review/rating form aliases — fokus mengisi rating dan ulasan produk
   /^\/review(\/|$)/,
   /^\/reviews(\/|$)/,

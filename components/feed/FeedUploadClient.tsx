@@ -517,13 +517,21 @@ function FlowHeader({
   title,
   leftSlot,
   rightSlot,
+  sticky = false,
 }: {
   title: string;
   leftSlot: React.ReactNode;
   rightSlot: React.ReactNode;
+  sticky?: boolean;
 }) {
   return (
-    <header className="grid shrink-0 grid-cols-[48px_1fr_auto] items-center gap-2 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+10px)]">
+    <header
+      className={`grid shrink-0 grid-cols-[48px_1fr_auto] items-center gap-2 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+10px)] ${
+        sticky
+          ? "sticky top-0 z-30 border-b border-white/10 bg-black/95 backdrop-blur"
+          : ""
+      }`}
+    >
       <div className="flex justify-start">{leftSlot}</div>
       <h1 className="text-center text-[15px] font-black tracking-wide">
         {title}
@@ -606,16 +614,17 @@ function PickScreen({
   onOpenCamera: () => void;
 }) {
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-black text-white">
+    <div className="flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-black text-white">
       <FlowHeader
         title="Pilih Video"
         leftSlot={<CloseButton onClick={onClose} />}
         rightSlot={
           <NextButton onClick={() => undefined} disabled label="Next" />
         }
+        sticky
       />
 
-      <div className="flex-1 overflow-y-auto px-5 pb-10">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-[calc(32px+env(safe-area-inset-bottom))] [-webkit-overflow-scrolling:touch]">
         {/* Large empty preview card */}
         <div className="mx-auto mt-2 max-w-md">
           <button
