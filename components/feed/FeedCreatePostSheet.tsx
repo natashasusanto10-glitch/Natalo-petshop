@@ -39,6 +39,7 @@ import {
 import { hapticSuccess, hapticTap, hapticWarning } from "@/lib/native/haptics";
 import { isIOS } from "@/lib/native-platform";
 import { useFeedUpload } from "@/components/feed/FeedUploadProvider";
+import { natToast } from "@/components/Toast";
 
 // Source-of-truth lives in USER_VIDEO_CONFIG (lib/feed/video-config.ts).
 // Mirror locally for terse references inside this component.
@@ -413,11 +414,25 @@ export function FeedCreatePostSheet({ open, onClose }: Props) {
   }
 
   function submitPost() {
-    if (!selectedVideo || !canPost) return;
+    if (!selectedVideo || !canPost) {
+      // Surface why the action was a no-op — without this the user sees
+      // "loading dulu" haptic on the button but nothing happens.
+      natToast(
+        !selectedVideo
+          ? "Belum ada video terpilih."
+          : "Durasi video belum valid (1-45 detik).",
+        { kind: "warn" },
+      );
+      void hapticWarning();
+      return;
+    }
     if (feedUpload.state.active && feedUpload.state.stage !== "done" && feedUpload.state.stage !== "error") {
       // Another upload is still running in the background — let the user
       // know rather than silently queuing a second one.
       setFormError("Upload sebelumnya masih berjalan. Tunggu sebentar ya.");
+      natToast("Upload sebelumnya masih berjalan. Tunggu sebentar ya.", {
+        kind: "warn",
+      });
       void hapticWarning();
       return;
     }
@@ -439,6 +454,12 @@ export function FeedCreatePostSheet({ open, onClose }: Props) {
       petName,
       selectedProductIds,
     });
+
+    // Belt-and-suspenders: also drop a regular toast so the user gets a
+    // visible "your video is uploading" signal even if the floating
+    // <FeedUploadToast> ends up behind another fixed element or fails to
+    // mount. natToast lives in <ToastProvider> at the body root.
+    natToast("Mengupload videomu di latar belakang…", { kind: "default" });
 
     resetAndClose();
   }
