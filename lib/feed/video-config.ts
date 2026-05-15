@@ -13,7 +13,12 @@ export type FeedVideoConfig = {
   maxFileSize: number;
 };
 
-export const MAX_SOURCE_VIDEO_SIZE = 200 * 1024 * 1024;
+// 50 MB ceiling. iOS WKWebView's ffmpeg.wasm sandbox runs out of memory
+// decoding the raw frames of a larger 4K HEVC clip from a recent iPhone
+// (a 22s 4K MOV is ~42MB — already at the edge in real-world testing).
+// Anything past this should be trimmed by the user or recorded at a
+// lower iPhone setting (Settings → Camera → Record Video → 1080p HD).
+export const MAX_SOURCE_VIDEO_SIZE = 50 * 1024 * 1024;
 
 export const USER_VIDEO_CONFIG = {
   minDuration: 1,

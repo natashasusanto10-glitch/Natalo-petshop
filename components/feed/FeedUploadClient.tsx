@@ -162,7 +162,11 @@ export function FeedUploadClient() {
       return;
     }
     if (picked.size > MAX_SOURCE_VIDEO_SIZE) {
-      setError(`Ukuran video mentah maksimal ${formatFileSize(MAX_SOURCE_VIDEO_SIZE)}.`);
+      setError(
+        `Ukuran video terlalu besar (${formatFileSize(picked.size)}). Maksimal ${formatFileSize(
+          MAX_SOURCE_VIDEO_SIZE,
+        )}. Tip: di iPhone, atur Settings → Camera → Record Video ke 1080p HD 30fps biar lebih ringan.`,
+      );
       hapticWarning();
       return;
     }
