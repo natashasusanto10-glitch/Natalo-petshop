@@ -17,11 +17,6 @@ import WebKit
  * class is set to `FeedAutoplayViewController` (Module: App).
  */
 class FeedAutoplayViewController: CAPBridgeViewController {
-    override func instanceConfiguration() -> InstanceConfiguration {
-        let config = super.instanceConfiguration()
-        return config
-    }
-
     override func webView(with frame: CGRect, configuration: WKWebViewConfiguration) -> WKWebView {
         // No-tap autoplay for the feed. Safe because our autoplay videos are
         // always muted (`<video muted playsinline>`) — iOS only enforces the
