@@ -78,12 +78,27 @@ const nextConfig: NextConfig = {
         value: "browsing-topics=(), interest-cohort=(), payment=(self), microphone=(), geolocation=(self), camera=(self)",
       },
     ];
+    const ffmpegHeaders = [
+      { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+      { key: "Cross-Origin-Embedder-Policy", value: "require-corp" },
+    ];
 
     return [
       {
         // Apply security headers ke semua path
         source: "/:path*",
         headers: securityHeaders,
+      },
+      {
+        // FFmpeg.wasm butuh cross-origin isolated page supaya SharedArrayBuffer
+        // tersedia. Batasi hanya ke layar upload video agar resource eksternal
+        // di halaman katalog/search tetap tidak terdampak COEP.
+        source: "/feed/upload",
+        headers: ffmpegHeaders,
+      },
+      {
+        source: "/admin/feed/new",
+        headers: ffmpegHeaders,
       },
       {
         // Static asset uploads — long-cache immutable

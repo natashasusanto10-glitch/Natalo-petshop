@@ -25,6 +25,11 @@ import {
   readVideoMetadata,
   type VideoMetadata,
 } from "@/lib/feed/video-thumbnail";
+import {
+  ADMIN_VIDEO_CONFIG,
+  formatFileSize,
+  MAX_SOURCE_VIDEO_SIZE,
+} from "@/lib/feed/video-config";
 
 type Kind = "VIDEO_ONLY" | "PRODUCT_ONLY" | "VIDEO_PRODUCT" | "PROMO";
 
@@ -36,7 +41,6 @@ type ProductSummary = {
   imageUrl: string | null;
 };
 
-const MAX_VIDEO_SIZE = 30 * 1024 * 1024;
 const ACCEPT_VIDEO = "video/mp4,video/webm,video/quicktime";
 
 export function AdminFeedCreateClient() {
@@ -63,6 +67,7 @@ export function AdminFeedCreateClient() {
   const [analyzing, setAnalyzing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [progress, setProgress] = useState("");
+  const [compressProgress, setCompressProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   const needsVideo = kind === "VIDEO_ONLY" || kind === "VIDEO_PRODUCT" || kind === "PROMO";
@@ -127,14 +132,26 @@ export function AdminFeedCreateClient() {
       setError("File harus video.");
       return;
     }
-    if (file.size > MAX_VIDEO_SIZE) {
-      setError("Video maksimal 30 MB.");
+    if (file.size > MAX_SOURCE_VIDEO_SIZE) {
+      setError(`Video mentah maksimal ${formatFileSize(MAX_SOURCE_VIDEO_SIZE)}.`);
       return;
     }
     setVideoFile(file);
     setAnalyzing(true);
     try {
       const meta = await readVideoMetadata(file);
+      if (meta.durationSec < ADMIN_VIDEO_CONFIG.minDuration) {
+        setError(`Video terlalu pendek. Minimal ${ADMIN_VIDEO_CONFIG.minDuration} detik.`);
+        setVideoFile(null);
+        setVideoMeta(null);
+        return;
+      }
+      if (meta.durationSec > ADMIN_VIDEO_CONFIG.maxDuration) {
+        setError(`Video terlalu panjang. Maksimal ${ADMIN_VIDEO_CONFIG.maxDuration} detik.`);
+        setVideoFile(null);
+        setVideoMeta(null);
+        return;
+      }
       setVideoMeta(meta);
       const thumb = await extractVideoThumbnail(file, {
         targetTimeSec: Math.min(1, meta.durationSec / 2),
@@ -184,9 +201,22 @@ export function AdminFeedCreateClient() {
 
       // Upload video kalau ada
       if (videoFile && thumbBlob) {
+        setProgress("Memproses video...");
+        setCompressProgress(0);
+        const { compressVideo } = await import("@/lib/feed/video-compressor");
+        const compressedFile = await compressVideo(videoFile, {
+          config: ADMIN_VIDEO_CONFIG,
+          onProgress: setCompressProgress,
+        });
+        if (compressedFile.size > ADMIN_VIDEO_CONFIG.maxFileSize) {
+          throw new Error(
+            `Hasil kompresi masih ${formatFileSize(compressedFile.size)}. Maksimal ${formatFileSize(ADMIN_VIDEO_CONFIG.maxFileSize)}.`,
+          );
+        }
+
         setProgress("Mengunggah video...");
         const vForm = new FormData();
-        vForm.append("file", videoFile);
+        vForm.append("file", compressedFile);
         const vRes = await fetch("/api/feed/upload-video", { method: "POST", body: vForm });
         const vData = await vRes.json();
         if (!vRes.ok) throw new Error(vData.error ?? "Upload video gagal.");
@@ -241,6 +271,7 @@ export function AdminFeedCreateClient() {
     } finally {
       setSubmitting(false);
       setProgress("");
+      setCompressProgress(0);
     }
   }
 
@@ -333,7 +364,9 @@ export function AdminFeedCreateClient() {
                 className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-200 py-4 text-xs font-extrabold text-gray-600 transition active:bg-gray-50 disabled:opacity-50"
               >
                 <FiUploadCloud className="h-4 w-4" />
-                {analyzing ? "Memproses..." : "Pilih video (max 30 MB)"}
+                {analyzing
+                  ? "Memproses..."
+                  : `Pilih video (${ADMIN_VIDEO_CONFIG.minDuration}-${ADMIN_VIDEO_CONFIG.maxDuration}s, raw max ${formatFileSize(MAX_SOURCE_VIDEO_SIZE)})`}
               </button>
             </>
           )}
@@ -508,7 +541,11 @@ export function AdminFeedCreateClient() {
         disabled={submitting}
         className="sticky bottom-4 w-full rounded-full bg-natalo-600 py-3 text-sm font-extrabold text-white shadow-lg transition active:scale-[0.98] disabled:bg-gray-300"
       >
-        {submitting ? progress || "Memproses..." : "Publish Post"}
+        {submitting
+          ? progress === "Memproses video..." && compressProgress > 0
+            ? `${progress} ${compressProgress}%`
+            : progress || "Memproses..."
+          : "Publish Post"}
       </button>
     </div>
   );

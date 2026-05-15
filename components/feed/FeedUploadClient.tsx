@@ -36,15 +36,25 @@ import {
   readVideoMetadata,
   type VideoMetadata,
 } from "@/lib/feed/video-thumbnail";
+import {
+  formatFileSize,
+  MAX_SOURCE_VIDEO_SIZE,
+  USER_VIDEO_CONFIG,
+} from "@/lib/feed/video-config";
 import { FeedUploadSuccessLottie } from "./FeedUploadSuccessLottie";
 
-const MAX_VIDEO_SIZE = 30 * 1024 * 1024;
-const MAX_DURATION_SEC = 90; // soft cap UI; server tidak enforce
 const MAX_TITLE_LENGTH = 200;
 const MAX_DESC_LENGTH = 300;
 const ACCEPT_VIDEO = "video/mp4,video/webm,video/quicktime";
 
 type Step = "pick" | "form" | "uploading" | "success" | "error";
+type ProcessingStage =
+  | "validating"
+  | "compressing"
+  | "generating-thumbnail"
+  | "uploading"
+  | "submitting"
+  | null;
 
 type PinnableProduct = {
   productId: string;
@@ -74,26 +84,23 @@ export function FeedUploadClient() {
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<string>("");
+  const [processingStage, setProcessingStage] = useState<ProcessingStage>(null);
+  const [processingProgress, setProcessingProgress] = useState(0);
   const [pinnableProducts, setPinnableProducts] = useState<PinnableProduct[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
   const [productPickerOpen, setProductPickerOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<PinnableProduct | null>(null);
 
-  // Track current object URLs via ref supaya cleanup on unmount tidak
-  // butuh URL di deps (yang akan trigger cleanup tiap state berubah).
-  const urlRefs = useRef<{ file: string | null; thumb: string | null }>({
-    file: null,
-    thumb: null,
-  });
-  urlRefs.current.file = filePreviewUrl;
-  urlRefs.current.thumb = thumbnailPreviewUrl;
   useEffect(() => {
     return () => {
-      const { file: fileUrl, thumb: thumbUrl } = urlRefs.current;
-      if (fileUrl) URL.revokeObjectURL(fileUrl);
-      if (thumbUrl) URL.revokeObjectURL(thumbUrl);
+      if (filePreviewUrl) URL.revokeObjectURL(filePreviewUrl);
     };
-  }, []);
+  }, [filePreviewUrl]);
+  useEffect(() => {
+    return () => {
+      if (thumbnailPreviewUrl) URL.revokeObjectURL(thumbnailPreviewUrl);
+    };
+  }, [thumbnailPreviewUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -139,30 +146,42 @@ export function FeedUploadClient() {
       hapticWarning();
       return;
     }
-    if (picked.size > MAX_VIDEO_SIZE) {
-      setError(
-        `Ukuran video maksimal ${Math.round(MAX_VIDEO_SIZE / 1024 / 1024)} MB. Coba rekam yang lebih pendek atau kompres dulu.`,
-      );
+    if (picked.size > MAX_SOURCE_VIDEO_SIZE) {
+      setError(`Ukuran video mentah maksimal ${formatFileSize(MAX_SOURCE_VIDEO_SIZE)}.`);
       hapticWarning();
       return;
     }
 
+    const pickedPreviewUrl = URL.createObjectURL(picked);
     setFile(picked);
-    setFilePreviewUrl(URL.createObjectURL(picked));
+    setFilePreviewUrl(pickedPreviewUrl);
     setAnalyzing(true);
+    setProcessingStage("validating");
+    setProcessingProgress(0);
 
     try {
       const meta = await readVideoMetadata(picked);
       setMetadata(meta);
-      if (meta.durationSec > MAX_DURATION_SEC) {
+      if (meta.durationSec < USER_VIDEO_CONFIG.minDuration) {
+        URL.revokeObjectURL(pickedPreviewUrl);
+        resetSelection();
+        setError(`Video terlalu pendek. Minimal ${USER_VIDEO_CONFIG.minDuration} detik.`);
+        hapticWarning();
+        setAnalyzing(false);
+        return;
+      }
+      if (meta.durationSec > USER_VIDEO_CONFIG.maxDuration) {
+        URL.revokeObjectURL(pickedPreviewUrl);
+        resetSelection();
         setError(
-          `Video terlalu panjang (${Math.round(meta.durationSec)}s). Maksimal ${MAX_DURATION_SEC} detik.`,
+          `Video terlalu panjang (${Math.round(meta.durationSec)}s). Maksimal ${USER_VIDEO_CONFIG.maxDuration} detik.`,
         );
         hapticWarning();
         setAnalyzing(false);
         return;
       }
 
+      setProcessingStage("generating-thumbnail");
       const thumb = await extractVideoThumbnail(picked, {
         targetTimeSec: Math.min(1, meta.durationSec / 2),
       });
@@ -175,6 +194,7 @@ export function FeedUploadClient() {
       hapticWarning();
     } finally {
       setAnalyzing(false);
+      setProcessingStage(null);
     }
   }
 
@@ -188,10 +208,28 @@ export function FeedUploadClient() {
     setError(null);
 
     try {
-      // 1. Upload video
+      setProcessingStage("compressing");
+      setProcessingProgress(0);
+      setUploadProgress("Memproses video...");
+      const { compressVideo } = await import("@/lib/feed/video-compressor");
+      const compressedFile = await compressVideo(file, {
+        config: USER_VIDEO_CONFIG,
+        onProgress: (progress) => {
+          setProcessingProgress(progress);
+        },
+      });
+      if (compressedFile.size > USER_VIDEO_CONFIG.maxFileSize) {
+        throw new Error(
+          `Hasil kompresi masih ${formatFileSize(compressedFile.size)}. Maksimal ${formatFileSize(USER_VIDEO_CONFIG.maxFileSize)}.`,
+        );
+      }
+
+      // 1. Upload video terkompresi
+      setProcessingStage("uploading");
+      setProcessingProgress(0);
       setUploadProgress("Mengunggah video...");
       const videoForm = new FormData();
-      videoForm.append("file", file);
+      videoForm.append("file", compressedFile);
       const videoRes = await fetch("/api/feed/upload-video", {
         method: "POST",
         body: videoForm,
@@ -214,6 +252,7 @@ export function FeedUploadClient() {
       if (!thumbRes.ok) throw new Error(thumbData.error ?? "Upload thumbnail gagal.");
 
       // 3. Create post — server set kind=COMMUNITY, status=PENDING_REVIEW.
+      setProcessingStage("submitting");
       setUploadProgress("Menyimpan...");
       const postRes = await fetch("/api/feed/posts", {
         method: "POST",
@@ -240,6 +279,9 @@ export function FeedUploadClient() {
       setError(err instanceof Error ? err.message : "Upload gagal. Coba lagi.");
       setStep("form");
       hapticWarning();
+    } finally {
+      setProcessingStage(null);
+      setProcessingProgress(0);
     }
   }
 
@@ -335,6 +377,8 @@ export function FeedUploadClient() {
           onSubmit={handleUpload}
           uploading={step === "uploading"}
           uploadProgress={uploadProgress}
+          processingStage={processingStage}
+          processingProgress={processingProgress}
           error={error}
         />
       )}
@@ -362,7 +406,8 @@ function PickPanel({
       </div>
       <h2 className="mt-4 text-sm font-extrabold text-gray-900">Pilih video</h2>
       <p className="mt-2 text-xs text-gray-500">
-        MP4, WebM, atau MOV · Maksimal 30 MB · Maksimal {90} detik
+        MP4, WebM, atau MOV · video mentah max {formatFileSize(MAX_SOURCE_VIDEO_SIZE)} · durasi{" "}
+        {USER_VIDEO_CONFIG.minDuration}-{USER_VIDEO_CONFIG.maxDuration} detik
       </p>
 
       <input
@@ -411,6 +456,8 @@ function FormPanel({
   onSubmit,
   uploading,
   uploadProgress,
+  processingStage,
+  processingProgress,
   error,
 }: {
   file: File;
@@ -432,6 +479,8 @@ function FormPanel({
   onSubmit: () => void;
   uploading: boolean;
   uploadProgress: string;
+  processingStage: ProcessingStage;
+  processingProgress: number;
   error: string | null;
 }) {
   const dur = metadata?.durationSec ?? 0;
@@ -578,6 +627,14 @@ function FormPanel({
         mempromosikan produk kompetitor.
       </div>
 
+      {uploading && (
+        <UploadProgressView
+          stage={processingStage}
+          progress={processingProgress}
+          label={uploadProgress || "Memproses video..."}
+        />
+      )}
+
       {error && (
         <p className="rounded-2xl bg-red-50 p-3 text-sm font-bold text-red-700">
           {error}
@@ -602,6 +659,54 @@ function FormPanel({
         onClose={onCloseProductPicker}
         onSelect={onSelectProduct}
       />
+    </div>
+  );
+}
+
+function UploadProgressView({
+  stage,
+  progress,
+  label,
+}: {
+  stage: ProcessingStage;
+  progress: number;
+  label: string;
+}) {
+  const stageText =
+    stage === "compressing"
+      ? "Memproses video 1/3"
+      : stage === "uploading"
+        ? "Mengunggah 2/3"
+        : stage === "submitting"
+          ? "Menyimpan 3/3"
+          : "Menyiapkan";
+  const showBar = stage === "compressing";
+
+  return (
+    <div className="rounded-2xl border border-natalo-100 bg-natalo-50 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-black text-natalo-800">{stageText}</p>
+          <p className="mt-1 text-xs font-semibold text-natalo-700">{label}</p>
+        </div>
+        <div className="h-7 w-7 shrink-0 animate-spin rounded-full border-2 border-natalo-200 border-t-natalo-700" />
+      </div>
+      {showBar && (
+        <div className="mt-3">
+          <div className="h-2 overflow-hidden rounded-full bg-white">
+            <div
+              className="h-full rounded-full bg-natalo-600 transition-[width]"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          <p className="mt-2 text-right text-[11px] font-black text-natalo-700">
+            {progress}%
+          </p>
+        </div>
+      )}
+      <p className="mt-2 text-[11px] leading-relaxed text-natalo-700/80">
+        Proses kompresi bisa memakan 10-30 detik, tergantung performa HP.
+      </p>
     </div>
   );
 }

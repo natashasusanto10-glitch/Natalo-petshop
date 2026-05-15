@@ -58,6 +58,9 @@ const config: CapacitorConfig = {
       "*.natalopetshop.com",
       "natalo-petshop.vercel.app",
       "*.natalo-petshop.vercel.app",
+      "*.uploadthing.com",
+      "*.ufs.sh",
+      "utfs.io",
     ],
   },
 

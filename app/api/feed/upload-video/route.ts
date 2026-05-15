@@ -4,9 +4,8 @@
  * Multipart upload untuk video user (kind=COMMUNITY) atau admin (kind=VIDEO_*).
  * Validasi sebelum push ke UploadThing:
  * - MIME wajib video/mp4 | video/webm | video/quicktime
- * - Size max 30 MB (hard limit — UploadThing 100GB cukup, tapi kita kontrol
- *   bandwidth + storage growth. Spec 10.5 sebut 100-200 MB, tapi tanpa
- *   server-side transcode kita conservative biar feed tetap ringan)
+ * - Size max 10 MB untuk user community, 25 MB untuk admin. Client compress
+ *   raw video sebelum sampai endpoint ini.
  * - Magic-byte cek skip dulu — video format header varied (ftyp, mvhd,
  *   matroska box dll), tambahkan kalau abuse pattern muncul
  *
@@ -19,14 +18,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { uploadToUT } from "@/lib/uploadthing";
+import { ADMIN_VIDEO_CONFIG, USER_VIDEO_CONFIG, formatFileSize } from "@/lib/feed/video-config";
 
 const ALLOWED_TYPES = new Set([
   "video/mp4",
   "video/webm",
   "video/quicktime", // iOS .mov
 ]);
-const MAX_SIZE = 30 * 1024 * 1024; // 30 MB
-
 export async function POST(request: NextRequest) {
   const csrfReject = assertSameOrigin(request);
   if (csrfReject) return csrfReject;
@@ -48,9 +46,11 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
-  if (file.size > MAX_SIZE) {
+  const maxSize =
+    session.role === "ADMIN" ? ADMIN_VIDEO_CONFIG.maxFileSize : USER_VIDEO_CONFIG.maxFileSize;
+  if (file.size > maxSize) {
     return NextResponse.json(
-      { error: "Ukuran video maksimal 30 MB. Rekam video lebih pendek atau kompres dulu." },
+      { error: `Ukuran video maksimal ${formatFileSize(maxSize)} setelah kompresi.` },
       { status: 413 },
     );
   }

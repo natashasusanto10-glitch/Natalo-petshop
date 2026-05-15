@@ -15,6 +15,9 @@ const config: CapacitorConfig = {
       'www.natalopetshop.com',
       'natalopetshop.com',
       '*.natalopetshop.com',
+      '*.uploadthing.com',
+      '*.ufs.sh',
+      'utfs.io',
     ],
   },
 
