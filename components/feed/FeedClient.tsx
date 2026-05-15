@@ -14,6 +14,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 import { FiHeart, FiMessageCircle, FiPlus, FiSend } from "react-icons/fi";
 import type { FeedListResponse, FeedPostListItem } from "@/lib/feed/types";
@@ -360,7 +361,7 @@ function FeedComingSoonActionRail() {
   );
 }
 
-function ComingSoonAction({ icon, count }: { icon: React.ReactNode; count?: string }) {
+function ComingSoonAction({ icon, count }: { icon: ReactNode; count?: string }) {
   return (
     <div className="flex flex-col items-center justify-center">
       {icon}
