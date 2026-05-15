@@ -23,13 +23,7 @@ import { FeedVideoCard } from "./FeedVideoCard";
 import { FeedPostPlaceholder } from "./FeedPostPlaceholder";
 import { FeedCommentSheet } from "./FeedCommentSheet";
 import { FeedCreatePostSheet } from "./FeedCreatePostSheet";
-
-// Virtual scroll window: render full <FeedVideoCard> only for posts within
-// this many positions of the active one. Anything beyond becomes a
-// <FeedPostPlaceholder> (thumbnail only — no <video>, no overlay handlers,
-// no sheets). Matches the spec — max 5 video elements in the DOM at any
-// given time (current + 2 before + 2 after).
-const VIRTUAL_WINDOW = 2;
+import { getVirtualWindow } from "@/lib/feed/runtime-config";
 
 export function FeedClient() {
   const [posts, setPosts] = useState<FeedPostListItem[]>([]);
@@ -192,6 +186,9 @@ function FeedPostsList({
 }) {
   const { activeIndex, setActive } = useFeedActiveVideo();
   const cardRefs = useRef<Map<number, HTMLElement | null>>(new Map());
+  // Read once per mount — deviceMemory is constant for the session, no
+  // point in re-evaluating on every render.
+  const virtualWindow = useMemo(() => getVirtualWindow(), []);
 
   useEffect(() => {
     if (posts.length === 0) return;
@@ -229,7 +226,7 @@ function FeedPostsList({
         // user sees the placeholder for half a second on cold load).
         const effectiveActive = activeIndex ?? 0;
         const distance = Math.abs(index - effectiveActive);
-        const renderFull = distance <= VIRTUAL_WINDOW;
+        const renderFull = distance <= virtualWindow;
 
         return (
           <div

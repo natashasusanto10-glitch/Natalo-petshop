@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useFeedActiveVideo } from "./FeedActiveVideoContext";
+import { getPreloadTier } from "@/lib/feed/runtime-config";
+import { useVideoMetrics } from "./useVideoMetrics";
 
 type Props = {
   postId: string;
@@ -15,18 +17,6 @@ type Props = {
 };
 
 const LOADING_INDICATOR_DELAY_MS = 500;
-
-/**
- * Map distance-from-active to HTML5 video preload tier.
- *   0 (current)  → "auto"     — full progressive download for instant playback
- *   ±1 (next/prev) → "metadata" — headers + first chunk, ready to swap in
- *   else         → "none"     — don't burn bandwidth
- */
-function preloadForDistance(distance: number): "auto" | "metadata" | "none" {
-  if (distance === 0) return "auto";
-  if (distance <= 1) return "metadata";
-  return "none";
-}
 
 export function FeedVideoPlayer({
   postId,
@@ -49,7 +39,12 @@ export function FeedVideoPlayer({
   // Distance from the currently-active card. Unknown active → treat as far.
   const distance =
     activeIndex == null ? Infinity : Math.abs(index - activeIndex);
-  const preloadMode = preloadForDistance(distance);
+  // Network-aware tier: WiFi gets aggressive prefetch, cellular-slow holds back.
+  const preloadMode = getPreloadTier(distance);
+
+  // Telemetry — collects canPlay / firstFrame / buffer counts and flushes
+  // to /api/feed/metrics when this card stops being active or unmounts.
+  useVideoMetrics({ videoRef, postId, isActive, videoDurationSec: durationSec });
 
   // Track when the active card changes via IntersectionObserver. Pass both
   // id and index so context can compute neighbours for preload decisions.
