@@ -113,9 +113,14 @@ export async function POST(request: NextRequest) {
   const created = await createBunnyVideo({
     title: `feed-${session.sub}-${Date.now()}`,
   });
-  if (!created) {
+  if (!created || "error" in created) {
+    const reason = created && "error" in created ? created.error : "no response";
     return NextResponse.json(
-      { error: "Gagal create video di Bunny." },
+      {
+        error: "Gagal create video di Bunny.",
+        debug: reason,
+        hint: "Pastikan BUNNY_LIBRARY_ID adalah angka (contoh 392164), bukan pull zone vz-xxxxx.",
+      },
       { status: 502 },
     );
   }

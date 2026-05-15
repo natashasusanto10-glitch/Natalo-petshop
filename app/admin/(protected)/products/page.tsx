@@ -145,15 +145,15 @@ export default async function AdminProductsPage({
   const hasActiveFilter = search || catSlug || brandSlug;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10">
+    <div className="mx-auto max-w-6xl px-4 py-5 md:py-10">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <Link href="/admin" className="text-sm font-bold text-zinc-500 hover:text-zinc-950">
+      <div className="flex flex-wrap items-end justify-between gap-3 md:gap-4">
+        <div className="min-w-0">
+          <Link href="/admin" className="hidden text-sm font-bold text-zinc-500 hover:text-zinc-950 md:inline">
             Kembali ke dashboard
           </Link>
-          <h1 className="mt-2 text-3xl font-black tracking-tight text-zinc-950">Produk</h1>
-          <p className="mt-1 text-sm text-zinc-500">
+          <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:mt-2 md:text-3xl">Produk</h1>
+          <p className="mt-1 text-xs text-zinc-500 md:text-sm">
             {totalAll} total · {totalReady} ready · {totalOut} habis · {totalArchived} arsip
             {activeCategory && (
               <span className="ml-2 rounded-full bg-natalo-100 px-2 py-0.5 text-xs font-bold text-natalo-700">
@@ -165,27 +165,27 @@ export default async function AdminProductsPage({
         <div className="flex shrink-0 items-center gap-2">
           <Link
             href="/admin/products/import"
-            className="rounded-full border border-zinc-300 bg-white px-4 py-3 text-sm font-bold text-zinc-700 transition hover:border-natalo-400 hover:bg-natalo-50 hover:text-natalo-700"
+            className="rounded-full border border-zinc-300 bg-white px-3 py-2 text-xs font-bold text-zinc-700 transition hover:border-natalo-400 hover:bg-natalo-50 hover:text-natalo-700 md:px-4 md:py-3 md:text-sm"
           >
-            ↧ Import Excel
+            ↧ Import
           </Link>
           <Link
             href="/admin/products/new"
-            className="rounded-full bg-zinc-950 px-5 py-3 text-sm font-bold text-white"
+            className="rounded-full bg-zinc-950 px-4 py-2 text-xs font-bold text-white md:px-5 md:py-3 md:text-sm"
           >
-            + Tambah produk
+            + Tambah
           </Link>
         </div>
       </div>
 
       {/* Search & Filter bar */}
-      <form action="/admin/products" method="get" className="mt-6 space-y-3">
+      <form action="/admin/products" method="get" className="mt-5 space-y-3 md:mt-6">
         {/* Hidden: pertahankan stock filter */}
         {stockFilter !== "all" && (
           <input type="hidden" name="stock" value={stockFilter} />
         )}
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-col gap-2 md:flex-row md:flex-wrap">
           {/* Search input */}
           <input
             type="text"
@@ -195,52 +195,56 @@ export default async function AdminProductsPage({
             className="min-w-0 flex-1 rounded-full border border-zinc-300 px-4 py-2.5 text-sm outline-none focus:border-zinc-950"
           />
 
-          {/* Kategori dropdown */}
-          <select
-            name="cat"
-            defaultValue={catSlug}
-            className="rounded-full border border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 outline-none focus:border-zinc-950"
-          >
-            <option value="">Semua Kategori</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.slug}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-
-          {/* Brand dropdown */}
-          <select
-            name="brand"
-            defaultValue={brandSlug}
-            className="rounded-full border border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 outline-none focus:border-zinc-950"
-          >
-            <option value="">Semua Brand</option>
-            <option value="none">— Tanpa brand —</option>
-            {brands.map((b) => (
-              <option key={b.id} value={b.slug}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-
-          {/* Tombol Cari */}
-          <button
-            type="submit"
-            className="rounded-full bg-zinc-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-zinc-800"
-          >
-            Cari
-          </button>
-
-          {/* Reset (tampil kalau ada filter aktif) */}
-          {hasActiveFilter && (
-            <Link
-              href={stockFilter !== "all" ? `/admin/products?stock=${stockFilter}` : "/admin/products"}
-              className="rounded-full border border-zinc-300 px-5 py-2.5 text-sm font-semibold text-zinc-600 hover:bg-zinc-50"
+          <div className="grid grid-cols-2 gap-2 md:flex md:gap-2">
+            {/* Kategori dropdown */}
+            <select
+              name="cat"
+              defaultValue={catSlug}
+              className="min-w-0 rounded-full border border-zinc-300 bg-white px-3 py-2.5 text-sm font-medium text-zinc-700 outline-none focus:border-zinc-950 md:px-4"
             >
-              ✕ Reset filter
-            </Link>
-          )}
+              <option value="">Semua Kategori</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.slug}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+
+            {/* Brand dropdown */}
+            <select
+              name="brand"
+              defaultValue={brandSlug}
+              className="min-w-0 rounded-full border border-zinc-300 bg-white px-3 py-2.5 text-sm font-medium text-zinc-700 outline-none focus:border-zinc-950 md:px-4"
+            >
+              <option value="">Semua Brand</option>
+              <option value="none">— Tanpa brand —</option>
+              {brands.map((b) => (
+                <option key={b.id} value={b.slug}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex gap-2">
+            {/* Tombol Cari */}
+            <button
+              type="submit"
+              className="flex-1 rounded-full bg-zinc-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-zinc-800 md:flex-none"
+            >
+              Cari
+            </button>
+
+            {/* Reset (tampil kalau ada filter aktif) */}
+            {hasActiveFilter && (
+              <Link
+                href={stockFilter !== "all" ? `/admin/products?stock=${stockFilter}` : "/admin/products"}
+                className="flex-1 rounded-full border border-zinc-300 px-5 py-2.5 text-center text-sm font-semibold text-zinc-600 hover:bg-zinc-50 md:flex-none"
+              >
+                ✕ Reset
+              </Link>
+            )}
+          </div>
         </div>
 
         {/* Active filter chips */}
@@ -285,14 +289,14 @@ export default async function AdminProductsPage({
       </form>
 
       {/* Stock filter tabs */}
-      <div className="mt-5 flex flex-wrap gap-2">
+      <div className="-mx-4 mt-5 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:flex-wrap md:overflow-visible md:px-0">
         {tabs.map((tab) => {
           const active = stockFilter === tab.key;
           return (
             <Link
               key={tab.key}
               href={buildHref({ stock: tab.key, page: 1 })}
-              className={`flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
+              className={`flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
                 active
                   ? "border-zinc-950 bg-zinc-950 text-white"
                   : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400"
@@ -312,8 +316,8 @@ export default async function AdminProductsPage({
       </div>
 
       {/* Product list */}
-      <div className="mt-6 overflow-hidden rounded-2xl border border-zinc-200 bg-white">
-        <div className="grid grid-cols-[minmax(320px,1fr)_160px_120px_120px] gap-4 border-b border-zinc-100 bg-zinc-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-zinc-400">
+      <div className="mt-5 overflow-hidden rounded-2xl border border-zinc-200 bg-white md:mt-6">
+        <div className="hidden grid-cols-[minmax(320px,1fr)_160px_120px_120px] gap-4 border-b border-zinc-100 bg-zinc-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-zinc-400 lg:grid">
           <span>Produk</span>
           <span>Harga</span>
           <span>Stok</span>
@@ -364,156 +368,240 @@ export default async function AdminProductsPage({
             const isOut = product.stock === 0;
             const isArchived = !product.isActive && product.stock > 0;
 
+            const productMeta = (
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                {product.category ? (
+                  <Link
+                    href={buildHref({ page: 1, cat: product.category.slug })}
+                    className="font-medium text-natalo-600 hover:underline"
+                  >
+                    {product.category.name}
+                  </Link>
+                ) : (
+                  <span className="text-zinc-300">Tanpa kategori</span>
+                )}
+                <span className="text-zinc-300">·</span>
+                {product.brand ? (
+                  <Link
+                    href={buildHref({ page: 1, brand: product.brand.slug })}
+                    className="flex items-center gap-1 font-medium text-purple-600 hover:underline"
+                  >
+                    🏭 {product.brand.name}
+                    {product.brandAutoAssigned && (
+                      <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">
+                        auto
+                      </span>
+                    )}
+                  </Link>
+                ) : (
+                  <Link
+                    href={`/admin/products/${product.id}/edit`}
+                    className="text-zinc-400 italic hover:text-zinc-700 hover:underline"
+                  >
+                    + brand
+                  </Link>
+                )}
+              </div>
+            );
+
+            const priceCell = product.hasVariants ? (
+              <VariantInlineEditCell
+                productId={product.id}
+                productName={product.name}
+                field="price"
+                initialValue={product.price}
+              />
+            ) : (
+              <InlineEditCell
+                productId={product.id}
+                field="price"
+                initialValue={product.price}
+              />
+            );
+
+            const stockCell = product.hasVariants ? (
+              <VariantInlineEditCell
+                productId={product.id}
+                productName={product.name}
+                field="stock"
+                initialValue={product.stock}
+              />
+            ) : (
+              <InlineEditCell
+                productId={product.id}
+                field="stock"
+                initialValue={product.stock}
+              />
+            );
+
+            const editLink = (
+              <Link
+                href={`/admin/products/${product.id}/edit`}
+                className="rounded-full border border-zinc-300 px-3 py-2 text-center text-xs font-bold hover:bg-zinc-50"
+              >
+                Edit
+              </Link>
+            );
+
+            const toggleForm = (
+              <form action={toggleActive}>
+                <input type="hidden" name="id" value={product.id} />
+                <input type="hidden" name="isActive" value={String(product.isActive)} />
+                <button
+                  type="submit"
+                  className={`w-full rounded-full border px-3 py-2 text-xs font-bold transition ${
+                    isArchived
+                      ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                      : "border-zinc-300 hover:bg-zinc-50"
+                  }`}
+                >
+                  {isArchived
+                    ? "Keluarkan arsip"
+                    : product.isActive
+                    ? (product.stock > 0 ? "Arsipkan" : "Nonaktifkan")
+                    : "Aktifkan"}
+                </button>
+              </form>
+            );
+
+            const deleteForm = (
+              <form action={deleteProduct}>
+                <input type="hidden" name="id" value={product.id} />
+                <ConfirmSubmitButton
+                  className="w-full rounded-full border border-red-200 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50"
+                  message={`Hapus permanen produk "${product.name}"? Tindakan ini tidak bisa dibatalkan. Jika produk pernah dipesan, gunakan Arsipkan saja.`}
+                >
+                  🗑️ Hapus
+                </ConfirmSubmitButton>
+              </form>
+            );
+
             return (
               <div
                 key={product.id}
-                className={`grid grid-cols-[minmax(320px,1fr)_160px_120px_120px] gap-4 border-b border-zinc-100 px-4 py-5 last:border-b-0 ${
+                className={`border-b border-zinc-100 last:border-b-0 ${
                   product.isActive ? "bg-white" : "bg-zinc-50 opacity-70"
                 }`}
               >
-                <div className="flex min-w-0 gap-3">
-                  <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-zinc-100">
-                    {product.imageUrl ? (
-                      <Image
-                        src={product.imageUrl}
-                        alt={product.name}
-                        fill
-                        sizes="56px"
-                        className="object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-xs font-bold text-zinc-300">
-                        IMG
-                      </div>
-                    )}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-start gap-2">
-                      <Link
-                        href={`/admin/products/${product.id}/edit`}
-                        className="line-clamp-2 font-semibold leading-snug text-zinc-950 hover:text-natalo-700"
-                      >
-                        {product.name}
-                      </Link>
-                      {isArchived ? (
-                        <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
-                          📦 Arsip
-                        </span>
-                      ) : !product.isActive ? (
-                        <span className="shrink-0 rounded-full bg-zinc-200 px-2 py-0.5 text-[11px] font-semibold text-zinc-600">
-                          Nonaktif
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-                      {product.category ? (
-                        <Link
-                          href={buildHref({ page: 1, cat: product.category.slug })}
-                          className="font-medium text-natalo-600 hover:underline"
-                        >
-                          {product.category.name}
-                        </Link>
+                {/* Mobile card */}
+                <div className="p-4 lg:hidden">
+                  <div className="flex gap-3">
+                    <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-zinc-100">
+                      {product.imageUrl ? (
+                        <Image
+                          src={product.imageUrl}
+                          alt={product.name}
+                          fill
+                          sizes="64px"
+                          className="object-cover"
+                        />
                       ) : (
-                        <span className="text-zinc-300">Tanpa kategori</span>
+                        <div className="flex h-full w-full items-center justify-center text-xs font-bold text-zinc-300">
+                          IMG
+                        </div>
                       )}
-                      <span className="text-zinc-300">·</span>
-                      {product.brand ? (
-                        <Link
-                          href={buildHref({ page: 1, brand: product.brand.slug })}
-                          className="flex items-center gap-1 font-medium text-purple-600 hover:underline"
-                        >
-                          🏭 {product.brand.name}
-                          {product.brandAutoAssigned && (
-                            <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">
-                              auto
-                            </span>
-                          )}
-                        </Link>
-                      ) : (
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start gap-2">
                         <Link
                           href={`/admin/products/${product.id}/edit`}
-                          className="text-zinc-400 italic hover:text-zinc-700 hover:underline"
+                          className="line-clamp-2 flex-1 font-semibold leading-snug text-zinc-950"
                         >
-                          + brand
+                          {product.name}
                         </Link>
+                        {isArchived ? (
+                          <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                            📦 Arsip
+                          </span>
+                        ) : !product.isActive ? (
+                          <span className="shrink-0 rounded-full bg-zinc-200 px-2 py-0.5 text-[10px] font-semibold text-zinc-600">
+                            Nonaktif
+                          </span>
+                        ) : null}
+                      </div>
+                      {productMeta}
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-2 border-t border-zinc-100 pt-3">
+                    <div>
+                      <p className="px-1 text-[10px] font-bold uppercase tracking-wide text-zinc-400">Harga</p>
+                      <div className="mt-1">{priceCell}</div>
+                      {hasDiscount && !product.hasVariants && (
+                        <p className="mt-1 px-2 text-[11px] text-natalo-700">
+                          Diskon: {formatRupiah(product.discountPrice!)}
+                        </p>
                       )}
                     </div>
+                    <div>
+                      <p className="px-1 text-[10px] font-bold uppercase tracking-wide text-zinc-400">Stok</p>
+                      <div className="mt-1">{stockCell}</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    {editLink}
+                    {toggleForm}
+                    {deleteForm}
                   </div>
                 </div>
 
-                <div className="pt-1">
-                  {product.hasVariants ? (
-                    <VariantInlineEditCell
-                      productId={product.id}
-                      productName={product.name}
-                      field="price"
-                      initialValue={product.price}
-                    />
-                  ) : (
-                    <InlineEditCell
-                      productId={product.id}
-                      field="price"
-                      initialValue={product.price}
-                    />
-                  )}
-                  {hasDiscount && !product.hasVariants && (
-                    <p className="mt-1 px-2 text-xs text-natalo-700">
-                      Diskon: {formatRupiah(product.discountPrice!)}
-                    </p>
-                  )}
-                </div>
+                {/* Desktop grid row */}
+                <div className="hidden grid-cols-[minmax(320px,1fr)_160px_120px_120px] gap-4 px-4 py-5 lg:grid">
+                  <div className="flex min-w-0 gap-3">
+                    <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-zinc-100">
+                      {product.imageUrl ? (
+                        <Image
+                          src={product.imageUrl}
+                          alt={product.name}
+                          fill
+                          sizes="56px"
+                          className="object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-xs font-bold text-zinc-300">
+                          IMG
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-start gap-2">
+                        <Link
+                          href={`/admin/products/${product.id}/edit`}
+                          className="line-clamp-2 font-semibold leading-snug text-zinc-950 hover:text-natalo-700"
+                        >
+                          {product.name}
+                        </Link>
+                        {isArchived ? (
+                          <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                            📦 Arsip
+                          </span>
+                        ) : !product.isActive ? (
+                          <span className="shrink-0 rounded-full bg-zinc-200 px-2 py-0.5 text-[11px] font-semibold text-zinc-600">
+                            Nonaktif
+                          </span>
+                        ) : null}
+                      </div>
+                      {productMeta}
+                    </div>
+                  </div>
 
-                <div className="pt-1">
-                  {product.hasVariants ? (
-                    <VariantInlineEditCell
-                      productId={product.id}
-                      productName={product.name}
-                      field="stock"
-                      initialValue={product.stock}
-                    />
-                  ) : (
-                    <InlineEditCell
-                      productId={product.id}
-                      field="stock"
-                      initialValue={product.stock}
-                    />
-                  )}
-                </div>
+                  <div className="pt-1">
+                    {priceCell}
+                    {hasDiscount && !product.hasVariants && (
+                      <p className="mt-1 px-2 text-xs text-natalo-700">
+                        Diskon: {formatRupiah(product.discountPrice!)}
+                      </p>
+                    )}
+                  </div>
 
-                <div className="flex flex-col items-stretch gap-2">
-                  <Link
-                    href={`/admin/products/${product.id}/edit`}
-                    className="rounded-full border border-zinc-300 px-3 py-2 text-center text-xs font-bold hover:bg-zinc-50"
-                  >
-                    Edit
-                  </Link>
-                  <form action={toggleActive}>
-                    <input type="hidden" name="id" value={product.id} />
-                    <input type="hidden" name="isActive" value={String(product.isActive)} />
-                    <button
-                      type="submit"
-                      className={`w-full rounded-full border px-3 py-2 text-xs font-bold transition ${
-                        isArchived
-                          ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
-                          : "border-zinc-300 hover:bg-zinc-50"
-                      }`}
-                    >
-                      {isArchived
-                        ? "Keluarkan arsip"
-                        : product.isActive
-                        ? (product.stock > 0 ? "Arsipkan" : "Nonaktifkan")
-                        : "Aktifkan"}
-                    </button>
-                  </form>
-                  <form action={deleteProduct}>
-                    <input type="hidden" name="id" value={product.id} />
-                    <ConfirmSubmitButton
-                      className="w-full rounded-full border border-red-200 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50"
-                      message={`Hapus permanen produk "${product.name}"? Tindakan ini tidak bisa dibatalkan. Jika produk pernah dipesan, gunakan Arsipkan saja.`}
-                    >
-                      🗑️ Hapus
-                    </ConfirmSubmitButton>
-                  </form>
+                  <div className="pt-1">{stockCell}</div>
+
+                  <div className="flex flex-col items-stretch gap-2">
+                    {editLink}
+                    {toggleForm}
+                    {deleteForm}
+                  </div>
                 </div>
               </div>
             );

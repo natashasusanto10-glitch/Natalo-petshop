@@ -27,24 +27,24 @@ export default async function AdminVouchersPage() {
   const now = new Date();
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-10">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <Link href="/admin" className="text-sm font-bold text-zinc-500 hover:text-zinc-950">
+    <div className="mx-auto max-w-5xl px-4 py-5 md:py-10">
+      <div className="flex flex-wrap items-end justify-between gap-3 md:gap-4">
+        <div className="min-w-0">
+          <Link href="/admin" className="hidden text-sm font-bold text-zinc-500 hover:text-zinc-950 md:inline">
             ← Kembali ke admin
           </Link>
-          <h1 className="mt-2 text-3xl font-black tracking-tight text-zinc-950">Voucher</h1>
+          <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:mt-2 md:text-3xl">Voucher</h1>
           <p className="mt-1 text-sm text-zinc-500">{vouchers.length} voucher</p>
         </div>
         <Link
           href="/admin/vouchers/new"
-          className="rounded-full bg-zinc-950 px-5 py-3 text-sm font-bold text-white"
+          className="shrink-0 rounded-full bg-zinc-950 px-4 py-2 text-xs font-bold text-white md:px-5 md:py-3 md:text-sm"
         >
           + Buat voucher
         </Link>
       </div>
 
-      <div className="mt-8 overflow-hidden rounded-3xl border border-zinc-200">
+      <div className="mt-5 overflow-hidden rounded-2xl border border-zinc-200 md:mt-8 md:rounded-3xl">
         {vouchers.length === 0 ? (
           <div className="p-12 text-center text-sm text-zinc-500">
             <p className="text-2xl">🎟️</p>
@@ -68,7 +68,7 @@ export default async function AdminVouchersPage() {
               if (v.discountAmount) discountParts.push(formatRupiah(v.discountAmount));
 
               return (
-                <div key={v.id} className="flex flex-wrap items-start justify-between gap-4 p-5">
+                <div key={v.id} className="flex flex-col gap-4 p-4 md:flex-row md:flex-wrap md:items-start md:justify-between md:p-5">
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-base font-bold text-zinc-950">{v.code}</span>

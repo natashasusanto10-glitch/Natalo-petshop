@@ -47,13 +47,13 @@ export default async function AdminVoucherNewPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10">
+    <div className="mx-auto max-w-2xl px-4 py-5 md:py-10">
       <Link href="/admin/vouchers" className="text-sm font-bold text-zinc-500 hover:text-zinc-950">
         ← Kembali ke voucher
       </Link>
-      <h1 className="mt-2 text-3xl font-black tracking-tight text-zinc-950">Buat Voucher</h1>
+      <h1 className="mt-2 text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">Buat Voucher</h1>
 
-      <form action={createVoucher} className="mt-8 space-y-5">
+      <form action={createVoucher} className="mt-5 space-y-5 md:mt-8">
         <Field
           label="Kode voucher"
           name="code"
@@ -125,19 +125,19 @@ export default async function AdminVoucherNewPage() {
           />
         </div>
 
-        <div className="flex gap-3 pt-2">
-          <button
-            type="submit"
-            className="rounded-full bg-zinc-950 px-6 py-3 text-sm font-bold text-white"
-          >
-            Buat voucher
-          </button>
+        <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row">
           <Link
             href="/admin/vouchers"
-            className="rounded-full border border-zinc-300 px-6 py-3 text-sm font-bold"
+            className="rounded-full border border-zinc-300 px-6 py-3 text-center text-sm font-bold"
           >
             Batal
           </Link>
+          <button
+            type="submit"
+            className="flex-1 rounded-full bg-zinc-950 px-6 py-3 text-sm font-bold text-white sm:flex-none"
+          >
+            Buat voucher
+          </button>
         </div>
       </form>
     </div>

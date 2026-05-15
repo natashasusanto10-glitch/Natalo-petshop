@@ -133,20 +133,20 @@ export default async function AdminOrdersPage({
   const activeType = type || "ALL";
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10">
+    <div className="mx-auto max-w-6xl px-4 py-5 md:py-10">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <Link href="/admin" className="text-sm font-bold text-zinc-500 hover:text-zinc-950">
+          <Link href="/admin" className="hidden text-sm font-bold text-zinc-500 hover:text-zinc-950 md:inline">
             ← Kembali ke admin
           </Link>
-          <h1 className="mt-2 text-3xl font-black tracking-tight text-zinc-950">Manajemen Order</h1>
+          <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:mt-2 md:text-3xl">Manajemen Order</h1>
           <p className="mt-1 text-sm text-zinc-500">{total} order ditemukan</p>
         </div>
       </div>
 
-      {/* Status tabs */}
-      <div className="mt-8 flex flex-wrap gap-2">
+      {/* Type tabs */}
+      <div className="-mx-4 mt-5 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:mt-8 md:flex-wrap md:overflow-visible md:px-0">
         {[
           { key: "ALL", label: "Semua" },
           { key: "DELIVERY", label: "Delivery" },
@@ -155,7 +155,7 @@ export default async function AdminOrdersPage({
           <Link
             key={tab.key}
             href={buildUrl({ type: tab.key })}
-            className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold transition ${
+            className={`inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-bold transition ${
               activeType === tab.key
                 ? "bg-natalo-600 text-white"
                 : "border border-zinc-200 text-zinc-600 hover:border-zinc-400"
@@ -167,12 +167,12 @@ export default async function AdminOrdersPage({
       </div>
 
       {/* Status tabs */}
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:mt-4 md:flex-wrap md:overflow-visible md:px-0">
         {tabs.map((tab) => (
           <Link
             key={tab.key}
             href={buildUrl({ status: tab.key })}
-            className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold transition ${
+            className={`inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-bold transition ${
               activeStatus === tab.key
                 ? "bg-zinc-950 text-white"
                 : "border border-zinc-200 text-zinc-600 hover:border-zinc-400"
@@ -191,13 +191,13 @@ export default async function AdminOrdersPage({
       </div>
 
       {/* Payment filter */}
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold text-zinc-500">Pembayaran:</span>
+      <div className="-mx-4 mt-3 flex items-center gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:mt-4 md:flex-wrap md:overflow-visible md:px-0">
+        <span className="shrink-0 text-xs font-semibold text-zinc-500">Pembayaran:</span>
         {(["ALL", "WAITING", "UNPAID", "PENDING", "PAID", "FAILED", "EXPIRED"] as const).map((p) => (
           <Link
             key={p}
             href={buildUrl({ pay: p })}
-            className={`rounded-full px-3 py-1 text-xs font-bold transition ${
+            className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold transition ${
               activePay === p
                 ? "bg-zinc-950 text-white"
                 : "border border-zinc-200 text-zinc-600 hover:border-zinc-400"
@@ -208,107 +208,164 @@ export default async function AdminOrdersPage({
         ))}
       </div>
 
-      {/* Orders table */}
-      <div className="mt-6 overflow-hidden rounded-3xl border border-zinc-200">
-        {orders.length === 0 ? (
-          <div className="p-12 text-center text-sm text-zinc-500">
-            <p className="text-2xl">📦</p>
-            <p className="mt-3 font-semibold text-zinc-700">Tidak ada order</p>
-            <p className="mt-1">Coba ganti filter di atas.</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-zinc-100 bg-zinc-50">
-                  <th className="px-5 py-4 text-left font-semibold text-zinc-600">Order</th>
-                  <th className="px-5 py-4 text-left font-semibold text-zinc-600">Customer</th>
-                  <th className="px-5 py-4 text-left font-semibold text-zinc-600 hidden sm:table-cell">
-                    Total
-                  </th>
-                  <th className="px-5 py-4 text-left font-semibold text-zinc-600 hidden md:table-cell">
-                    Pembayaran
-                  </th>
-                  <th className="px-5 py-4 text-left font-semibold text-zinc-600">Status</th>
-                  <th className="px-5 py-4 text-left font-semibold text-zinc-600 hidden lg:table-cell">
-                    Tanggal
-                  </th>
-                  <th className="px-5 py-4" />
-                </tr>
-              </thead>
-              <tbody>
-                {orders.map((order) => {
-                  const totalQty = order.items.reduce((s, i) => s + i.quantity, 0);
-                  return (
-                    <tr
-                      key={order.id}
-                      className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50 transition"
-                    >
-                      <td className="px-5 py-4">
-                        <p className="font-bold text-zinc-950">{order.orderNumber}</p>
-                        <p className="text-zinc-400">{totalQty} item</p>
-                        <p className="mt-1 text-xs font-bold text-zinc-500">
-                          {order.orderType === "SELF_PICKUP"
-                            ? "Ambil Sendiri di Toko"
-                            : "Delivery"}
-                        </p>
-                      </td>
-                      <td className="px-5 py-4">
-                        <p className="font-semibold text-zinc-950">{order.customerName}</p>
-                        <p className="text-zinc-400">{order.customerPhone}</p>
-                      </td>
-                      <td className="px-5 py-4 hidden sm:table-cell">
-                        <span className="font-bold text-zinc-950">
-                          {formatRupiah(order.total)}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 hidden md:table-cell">
-                        <span
-                          className={`rounded-full px-3 py-1 text-xs font-bold ${
-                            PAY_COLORS[order.paymentStatus] ?? "bg-zinc-100 text-zinc-600"
-                          }`}
-                        >
-                          {PAY_LABELS[order.paymentStatus] ?? order.paymentStatus}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4">
-                        <span
-                          className={`rounded-full px-3 py-1 text-xs font-bold ${
-                            STATUS_COLORS[order.status] ?? "bg-zinc-100 text-zinc-600"
-                          }`}
-                        >
-                          {STATUS_LABELS[order.status] ?? order.status}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 text-zinc-400 hidden lg:table-cell">
-                        {new Date(order.createdAt).toLocaleDateString("id-ID", {
+      {/* Empty state */}
+      {orders.length === 0 ? (
+        <div className="mt-6 overflow-hidden rounded-2xl border border-zinc-200 p-12 text-center text-sm text-zinc-500 md:rounded-3xl">
+          <p className="text-2xl">📦</p>
+          <p className="mt-3 font-semibold text-zinc-700">Tidak ada order</p>
+          <p className="mt-1">Coba ganti filter di atas.</p>
+        </div>
+      ) : (
+        <>
+          {/* Mobile card list */}
+          <div className="mt-5 space-y-3 md:hidden">
+            {orders.map((order) => {
+              const totalQty = order.items.reduce((s, i) => s + i.quantity, 0);
+              return (
+                <Link
+                  key={order.id}
+                  href={`/admin/orders/${order.id}`}
+                  className="block rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm transition active:scale-[0.99]"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-black text-zinc-950">{order.orderNumber}</p>
+                      <p className="mt-0.5 text-xs text-zinc-500">
+                        {new Date(order.createdAt).toLocaleString("id-ID", {
                           day: "numeric",
                           month: "short",
-                          year: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
                         })}
-                      </td>
-                      <td className="px-5 py-4">
-                        <Link
-                          href={`/admin/orders/${order.id}`}
-                          className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-bold hover:border-zinc-400 transition"
-                        >
-                          Detail
-                        </Link>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-base font-black text-zinc-950">
+                      {formatRupiah(order.total)}
+                    </span>
+                  </div>
+
+                  <div className="mt-2.5 flex items-center justify-between gap-3 text-sm">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-zinc-800">{order.customerName}</p>
+                      <p className="truncate text-xs text-zinc-500">{order.customerPhone}</p>
+                    </div>
+                    <span className="shrink-0 text-[11px] font-bold text-zinc-500">
+                      {totalQty} item · {order.orderType === "SELF_PICKUP" ? "Pickup" : "Delivery"}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    <span
+                      className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                        STATUS_COLORS[order.status] ?? "bg-zinc-100 text-zinc-600"
+                      }`}
+                    >
+                      {STATUS_LABELS[order.status] ?? order.status}
+                    </span>
+                    <span
+                      className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                        PAY_COLORS[order.paymentStatus] ?? "bg-zinc-100 text-zinc-600"
+                      }`}
+                    >
+                      {PAY_LABELS[order.paymentStatus] ?? order.paymentStatus}
+                    </span>
+                  </div>
+                </Link>
+              );
+            })}
           </div>
-        )}
-      </div>
+
+          {/* Desktop table */}
+          <div className="mt-6 hidden overflow-hidden rounded-3xl border border-zinc-200 md:block">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-zinc-100 bg-zinc-50">
+                    <th className="px-5 py-4 text-left font-semibold text-zinc-600">Order</th>
+                    <th className="px-5 py-4 text-left font-semibold text-zinc-600">Customer</th>
+                    <th className="px-5 py-4 text-left font-semibold text-zinc-600">Total</th>
+                    <th className="px-5 py-4 text-left font-semibold text-zinc-600">Pembayaran</th>
+                    <th className="px-5 py-4 text-left font-semibold text-zinc-600">Status</th>
+                    <th className="px-5 py-4 text-left font-semibold text-zinc-600 hidden lg:table-cell">
+                      Tanggal
+                    </th>
+                    <th className="px-5 py-4" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {orders.map((order) => {
+                    const totalQty = order.items.reduce((s, i) => s + i.quantity, 0);
+                    return (
+                      <tr
+                        key={order.id}
+                        className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50 transition"
+                      >
+                        <td className="px-5 py-4">
+                          <p className="font-bold text-zinc-950">{order.orderNumber}</p>
+                          <p className="text-zinc-400">{totalQty} item</p>
+                          <p className="mt-1 text-xs font-bold text-zinc-500">
+                            {order.orderType === "SELF_PICKUP"
+                              ? "Ambil Sendiri di Toko"
+                              : "Delivery"}
+                          </p>
+                        </td>
+                        <td className="px-5 py-4">
+                          <p className="font-semibold text-zinc-950">{order.customerName}</p>
+                          <p className="text-zinc-400">{order.customerPhone}</p>
+                        </td>
+                        <td className="px-5 py-4">
+                          <span className="font-bold text-zinc-950">
+                            {formatRupiah(order.total)}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4">
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-bold ${
+                              PAY_COLORS[order.paymentStatus] ?? "bg-zinc-100 text-zinc-600"
+                            }`}
+                          >
+                            {PAY_LABELS[order.paymentStatus] ?? order.paymentStatus}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4">
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-bold ${
+                              STATUS_COLORS[order.status] ?? "bg-zinc-100 text-zinc-600"
+                            }`}
+                          >
+                            {STATUS_LABELS[order.status] ?? order.status}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-zinc-400 hidden lg:table-cell">
+                          {new Date(order.createdAt).toLocaleDateString("id-ID", {
+                            day: "numeric",
+                            month: "short",
+                            year: "numeric",
+                          })}
+                        </td>
+                        <td className="px-5 py-4">
+                          <Link
+                            href={`/admin/orders/${order.id}`}
+                            className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-bold hover:border-zinc-400 transition"
+                          >
+                            Detail
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="mt-6 flex items-center justify-between">
+        <div className="mt-5 flex items-center justify-between gap-3 md:mt-6">
           <p className="text-sm text-zinc-500">
-            Halaman {page} dari {totalPages}
+            Hal. {page}/{totalPages}
           </p>
           <div className="flex gap-2">
             {page > 1 && (

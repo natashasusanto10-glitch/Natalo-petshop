@@ -240,12 +240,12 @@ export default async function AdminDashboardPage() {
   ];
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8">
+    <div className="mx-auto max-w-7xl px-4 py-5 md:py-8">
       <div>
-        <h1 className="text-3xl font-black tracking-tight text-zinc-950">
+        <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">
           Dashboard Admin
         </h1>
-        <p className="mt-2 text-sm text-zinc-600">
+        <p className="mt-1.5 text-sm text-zinc-600 md:mt-2">
           Masuk sebagai {session?.name ?? "Admin"}. Fokus utama: order masuk dan stok kritis.
         </p>
       </div>
@@ -268,30 +268,30 @@ export default async function AdminDashboardPage() {
         </Link>
       )}
 
-      <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="mt-6 grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
         {stats.map((stat) => (
           <Link
             key={stat.label}
             href={stat.href}
-            className="rounded-lg border border-zinc-200 bg-white p-4 transition hover:border-zinc-400"
+            className="rounded-lg border border-zinc-200 bg-white p-3 transition hover:border-zinc-400 md:p-4"
           >
-            <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">{stat.label}</p>
-            <p className="mt-3 text-3xl font-black text-zinc-950">{stat.value}</p>
-            <p className="mt-1 text-xs font-medium text-zinc-500">{stat.helper}</p>
+            <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-500 md:text-xs">{stat.label}</p>
+            <p className="mt-2 text-2xl font-black text-zinc-950 md:mt-3 md:text-3xl">{stat.value}</p>
+            <p className="mt-0.5 text-[11px] font-medium text-zinc-500 md:mt-1 md:text-xs">{stat.helper}</p>
           </Link>
         ))}
       </section>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px]">
-        <section className="rounded-lg border border-zinc-200 bg-white p-5">
+        <section className="rounded-lg border border-zinc-200 bg-white p-4 md:p-5">
           <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-black text-zinc-950">Order Perlu Diproses</h2>
-              <p className="mt-1 text-sm text-zinc-500">
+            <div className="min-w-0">
+              <h2 className="text-base font-black text-zinc-950 md:text-lg">Order Perlu Diproses</h2>
+              <p className="mt-1 hidden text-sm text-zinc-500 sm:block">
                 Prioritas: pembayaran menunggu, order baru, packing, dan pengiriman.
               </p>
             </div>
-            <Link href="/admin/orders" className="text-sm font-bold text-zinc-600 hover:text-zinc-950">
+            <Link href="/admin/orders" className="shrink-0 text-xs font-bold text-zinc-600 hover:text-zinc-950 md:text-sm">
               Semua order
             </Link>
           </div>

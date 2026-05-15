@@ -61,113 +61,180 @@ export default async function AdminStockPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-6 lg:py-10">
+    <div className="mx-auto max-w-4xl px-4 py-5 md:py-10">
       <div>
-        <h1 className="text-2xl font-black tracking-tight text-zinc-950 lg:text-3xl">Stok</h1>
+        <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">Stok</h1>
         <p className="mt-1 text-sm text-zinc-500">Monitor stok produk dan perbarui jika diperlukan.</p>
       </div>
 
       {/* Summary */}
-      <div className="mt-6 grid grid-cols-3 gap-3">
-        <div className="rounded-2xl border border-zinc-100 bg-white p-4">
-          <p className="text-xs font-semibold text-zinc-500">Total Produk</p>
-          <p className="mt-1 text-2xl font-black text-zinc-900">{products.length}</p>
+      <div className="mt-5 grid grid-cols-3 gap-2.5 md:mt-6 md:gap-3">
+        <div className="rounded-2xl border border-zinc-100 bg-white p-3 md:p-4">
+          <p className="text-[10px] font-semibold text-zinc-500 md:text-xs">Total Produk</p>
+          <p className="mt-1 text-xl font-black text-zinc-900 md:text-2xl">{products.length}</p>
         </div>
-        <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
-          <p className="text-xs font-semibold text-amber-600">Stok Menipis</p>
-          <p className="mt-1 text-2xl font-black text-amber-700">{lowStock.length}</p>
+        <div className="rounded-2xl border border-amber-100 bg-amber-50 p-3 md:p-4">
+          <p className="text-[10px] font-semibold text-amber-600 md:text-xs">Stok Menipis</p>
+          <p className="mt-1 text-xl font-black text-amber-700 md:text-2xl">{lowStock.length}</p>
         </div>
-        <div className="rounded-2xl border border-red-100 bg-red-50 p-4">
-          <p className="text-xs font-semibold text-red-600">Habis</p>
-          <p className="mt-1 text-2xl font-black text-red-700">{outOfStock.length}</p>
+        <div className="rounded-2xl border border-red-100 bg-red-50 p-3 md:p-4">
+          <p className="text-[10px] font-semibold text-red-600 md:text-xs">Habis</p>
+          <p className="mt-1 text-xl font-black text-red-700 md:text-2xl">{outOfStock.length}</p>
         </div>
       </div>
 
-      {/* Product stock list */}
-      <div className="mt-6 overflow-hidden rounded-3xl border border-zinc-200 bg-white">
-        {products.length === 0 ? (
-          <div className="p-12 text-center text-sm text-zinc-500">Belum ada produk.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-zinc-100 bg-zinc-50">
-                  <th className="px-5 py-4 text-left font-semibold text-zinc-600">Produk</th>
-                  <th className="px-5 py-4 text-left font-semibold text-zinc-600 hidden sm:table-cell">Kategori</th>
-                  <th className="px-5 py-4 text-right font-semibold text-zinc-600">Stok</th>
-                  <th className="px-5 py-4 text-left font-semibold text-zinc-600">Status</th>
-                  <th className="px-5 py-4 text-right font-semibold text-zinc-600">Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {products.map((product) => (
-                  <tr
-                    key={product.id}
-                    className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50 transition"
+      {products.length === 0 ? (
+        <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-12 text-center text-sm text-zinc-500 md:rounded-3xl">
+          Belum ada produk.
+        </div>
+      ) : (
+        <>
+          {/* Mobile card list */}
+          <div className="mt-5 space-y-3 md:hidden">
+            {products.map((product) => (
+              <div
+                key={product.id}
+                className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="line-clamp-2 font-semibold text-zinc-950">{product.name}</p>
+                    <p className="mt-0.5 truncate text-xs text-zinc-500">{product.category?.name ?? "Tanpa kategori"}</p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p
+                      className={`text-2xl font-black ${
+                        product.stock === 0
+                          ? "text-red-600"
+                          : product.stock <= 5
+                          ? "text-amber-600"
+                          : "text-zinc-900"
+                      }`}
+                    >
+                      {product.stock}
+                    </p>
+                    {product.stock === 0 ? (
+                      <span className="mt-1 inline-block rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">Habis</span>
+                    ) : product.stock <= 5 ? (
+                      <span className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">Menipis</span>
+                    ) : (
+                      <span className="mt-1 inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Tersedia</span>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-3 gap-2 border-t border-zinc-100 pt-3">
+                  <Link
+                    href={`/admin/products/${product.id}/edit`}
+                    className="rounded-full border border-zinc-200 px-3 py-2 text-center text-xs font-bold hover:border-zinc-400"
                   >
-                    <td className="px-5 py-4">
-                      <p className="font-semibold text-zinc-900">{product.name}</p>
-                    </td>
-                    <td className="px-5 py-4 text-zinc-500 hidden sm:table-cell">
-                      {product.category?.name ?? "-"}
-                    </td>
-                    <td className="px-5 py-4 text-right">
-                      <span
-                        className={`font-bold ${
-                          product.stock === 0
-                            ? "text-red-600"
-                            : product.stock <= 5
-                            ? "text-amber-600"
-                            : "text-zinc-900"
-                        }`}
-                      >
-                        {product.stock}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4">
-                      {product.stock === 0 ? (
-                        <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-bold text-red-700">Habis</span>
-                      ) : product.stock <= 5 ? (
-                        <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700">Menipis</span>
-                      ) : (
-                        <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700">Tersedia</span>
-                      )}
-                    </td>
-                    <td className="px-5 py-4">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <Link
-                          href={`/admin/products/${product.id}/edit`}
-                          className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-bold hover:border-zinc-400 transition"
-                        >
-                          Edit
-                        </Link>
-                        <form action={archiveProduct}>
-                          <input type="hidden" name="id" value={product.id} />
-                          <ConfirmSubmitButton
-                            className="rounded-full border border-amber-200 px-3 py-1.5 text-xs font-bold text-amber-700 hover:bg-amber-50 transition"
-                            message={`Arsipkan "${product.name}"? Produk akan di-set non-aktif dan tidak muncul di toko, tapi history pesanan tetap aman.`}
-                          >
-                            Arsip
-                          </ConfirmSubmitButton>
-                        </form>
-                        <form action={deleteProduct}>
-                          <input type="hidden" name="id" value={product.id} />
-                          <ConfirmSubmitButton
-                            className="rounded-full border border-red-200 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50 transition"
-                            message={`Hapus permanen "${product.name}"? Tidak bisa di-undo. Produk yg pernah dipesan tidak bisa dihapus permanen — gunakan Arsip.`}
-                          >
-                            Hapus
-                          </ConfirmSubmitButton>
-                        </form>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    Edit
+                  </Link>
+                  <form action={archiveProduct}>
+                    <input type="hidden" name="id" value={product.id} />
+                    <ConfirmSubmitButton
+                      className="w-full rounded-full border border-amber-200 px-3 py-2 text-xs font-bold text-amber-700 hover:bg-amber-50"
+                      message={`Arsipkan "${product.name}"? Produk akan di-set non-aktif dan tidak muncul di toko, tapi history pesanan tetap aman.`}
+                    >
+                      Arsip
+                    </ConfirmSubmitButton>
+                  </form>
+                  <form action={deleteProduct}>
+                    <input type="hidden" name="id" value={product.id} />
+                    <ConfirmSubmitButton
+                      className="w-full rounded-full border border-red-200 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50"
+                      message={`Hapus permanen "${product.name}"? Tidak bisa di-undo. Produk yg pernah dipesan tidak bisa dihapus permanen — gunakan Arsip.`}
+                    >
+                      Hapus
+                    </ConfirmSubmitButton>
+                  </form>
+                </div>
+              </div>
+            ))}
           </div>
-        )}
-      </div>
+
+          {/* Desktop table */}
+          <div className="mt-6 hidden overflow-hidden rounded-3xl border border-zinc-200 bg-white md:block">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-zinc-100 bg-zinc-50">
+                    <th className="px-5 py-4 text-left font-semibold text-zinc-600">Produk</th>
+                    <th className="px-5 py-4 text-left font-semibold text-zinc-600 hidden lg:table-cell">Kategori</th>
+                    <th className="px-5 py-4 text-right font-semibold text-zinc-600">Stok</th>
+                    <th className="px-5 py-4 text-left font-semibold text-zinc-600">Status</th>
+                    <th className="px-5 py-4 text-right font-semibold text-zinc-600">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {products.map((product) => (
+                    <tr
+                      key={product.id}
+                      className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50 transition"
+                    >
+                      <td className="px-5 py-4">
+                        <p className="font-semibold text-zinc-900">{product.name}</p>
+                      </td>
+                      <td className="px-5 py-4 text-zinc-500 hidden lg:table-cell">
+                        {product.category?.name ?? "-"}
+                      </td>
+                      <td className="px-5 py-4 text-right">
+                        <span
+                          className={`font-bold ${
+                            product.stock === 0
+                              ? "text-red-600"
+                              : product.stock <= 5
+                              ? "text-amber-600"
+                              : "text-zinc-900"
+                          }`}
+                        >
+                          {product.stock}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4">
+                        {product.stock === 0 ? (
+                          <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-bold text-red-700">Habis</span>
+                        ) : product.stock <= 5 ? (
+                          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700">Menipis</span>
+                        ) : (
+                          <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700">Tersedia</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Link
+                            href={`/admin/products/${product.id}/edit`}
+                            className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-bold hover:border-zinc-400 transition"
+                          >
+                            Edit
+                          </Link>
+                          <form action={archiveProduct}>
+                            <input type="hidden" name="id" value={product.id} />
+                            <ConfirmSubmitButton
+                              className="rounded-full border border-amber-200 px-3 py-1.5 text-xs font-bold text-amber-700 hover:bg-amber-50 transition"
+                              message={`Arsipkan "${product.name}"? Produk akan di-set non-aktif dan tidak muncul di toko, tapi history pesanan tetap aman.`}
+                            >
+                              Arsip
+                            </ConfirmSubmitButton>
+                          </form>
+                          <form action={deleteProduct}>
+                            <input type="hidden" name="id" value={product.id} />
+                            <ConfirmSubmitButton
+                              className="rounded-full border border-red-200 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50 transition"
+                              message={`Hapus permanen "${product.name}"? Tidak bisa di-undo. Produk yg pernah dipesan tidak bisa dihapus permanen — gunakan Arsip.`}
+                            >
+                              Hapus
+                            </ConfirmSubmitButton>
+                          </form>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

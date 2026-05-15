@@ -71,9 +71,9 @@ export default async function AdminReportsPage() {
   });
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-6 lg:py-10">
+    <div className="mx-auto max-w-4xl px-4 py-5 md:py-10">
       <div>
-        <h1 className="text-2xl font-black tracking-tight text-zinc-950 lg:text-3xl">
+        <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">
           Laporan
         </h1>
         <p className="mt-1 text-sm text-zinc-500">
@@ -129,7 +129,7 @@ export default async function AdminReportsPage() {
 
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
         {/* Top products */}
-        <section className="rounded-3xl border border-zinc-200 bg-white p-5">
+        <section className="rounded-2xl border border-zinc-200 bg-white p-4 md:rounded-3xl md:p-5">
           <h2 className="font-bold text-zinc-950">Produk Terlaris</h2>
           <div className="mt-4 space-y-2">
             {topProducts.length > 0 ? (
@@ -156,7 +156,7 @@ export default async function AdminReportsPage() {
         </section>
 
         {/* Order by status */}
-        <section className="rounded-3xl border border-zinc-200 bg-white p-5">
+        <section className="rounded-2xl border border-zinc-200 bg-white p-4 md:rounded-3xl md:p-5">
           <h2 className="font-bold text-zinc-950">Distribusi Status Order</h2>
           <div className="mt-4 space-y-2">
             {[

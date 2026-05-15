@@ -99,7 +99,7 @@ export default async function AdminOrderDetailPage({
   const isDone = order.status === "DELIVERED" || order.status === "CANCELLED" || order.status === "REFUNDED";
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-10">
+    <div className="mx-auto max-w-5xl px-4 py-5 md:py-10">
       <Link
         href="/admin/orders"
         className="text-sm font-bold text-zinc-500 hover:text-zinc-950"
@@ -107,21 +107,21 @@ export default async function AdminOrderDetailPage({
         ← Kembali ke daftar order
       </Link>
 
-      <div className="mt-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-black tracking-tight text-zinc-950">Detail Order</h1>
-          <p className="mt-1 text-zinc-500">{order.orderNumber}</p>
+      <div className="mt-4 flex flex-wrap items-start justify-between gap-3 md:mt-6 md:gap-4">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">Detail Order</h1>
+          <p className="mt-1 truncate text-zinc-500">{order.orderNumber}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 md:gap-3">
           <span
-            className={`rounded-full px-4 py-2 text-sm font-bold ${
+            className={`rounded-full px-3 py-1.5 text-xs font-bold md:px-4 md:py-2 md:text-sm ${
               PAY_COLORS[order.paymentStatus] ?? "bg-zinc-100 text-zinc-600"
             }`}
           >
             {PAY_LABELS[order.paymentStatus] ?? order.paymentStatus}
           </span>
           <span
-            className={`rounded-full px-4 py-2 text-sm font-bold ${
+            className={`rounded-full px-3 py-1.5 text-xs font-bold md:px-4 md:py-2 md:text-sm ${
               STATUS_COLORS[order.status] ?? "bg-zinc-100 text-zinc-600"
             }`}
           >
@@ -130,7 +130,7 @@ export default async function AdminOrderDetailPage({
           <Link
             href={`/admin/orders/${id}/print`}
             target="_blank"
-            className="flex items-center gap-2 rounded-full border border-zinc-200 px-4 py-2 text-sm font-bold text-zinc-700 transition hover:border-zinc-400 hover:text-zinc-950"
+            className="flex items-center gap-2 rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-bold text-zinc-700 transition hover:border-zinc-400 hover:text-zinc-950 md:px-4 md:py-2 md:text-sm"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4">
               <path d="M6 9V2h12v7" />
@@ -142,9 +142,9 @@ export default async function AdminOrderDetailPage({
         </div>
       </div>
 
-      <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_340px]">
+      <div className="mt-5 grid gap-4 md:mt-8 md:gap-6 lg:grid-cols-[1fr_340px]">
         {/* ── Produk ── */}
-        <section className="rounded-3xl border border-zinc-200 p-5">
+        <section className="rounded-2xl border border-zinc-200 p-4 md:rounded-3xl md:p-5">
           <h2 className="font-bold text-zinc-950">Produk dibeli</h2>
 
           <div className="mt-4 space-y-3">
@@ -191,7 +191,7 @@ export default async function AdminOrderDetailPage({
         {/* ── Sidebar ── */}
         <aside className="space-y-5">
           {/* Customer */}
-          <section className="rounded-3xl border border-zinc-200 p-5">
+          <section className="rounded-2xl border border-zinc-200 p-4 md:rounded-3xl md:p-5">
             <h2 className="font-bold text-zinc-950">Customer</h2>
             <div className="mt-4 space-y-2 text-sm text-zinc-700">
               <p>
@@ -322,7 +322,7 @@ export default async function AdminOrderDetailPage({
 
           {/* Bukti transfer */}
           {order.paymentProofUrl && (
-            <section className="rounded-3xl border border-zinc-200 p-5">
+            <section className="rounded-2xl border border-zinc-200 p-4 md:rounded-3xl md:p-5">
               <h2 className="font-bold text-zinc-950">Bukti Transfer</h2>
               <div className="mt-3 overflow-hidden rounded-2xl border border-zinc-100">
                 <Image
@@ -346,7 +346,7 @@ export default async function AdminOrderDetailPage({
 
           {/* Info tambahan */}
           {(order.paymentProvider || order.voucherCode || order.manualVoucherCode || order.notes) && (
-            <section className="rounded-3xl border border-zinc-200 p-5">
+            <section className="rounded-2xl border border-zinc-200 p-4 md:rounded-3xl md:p-5">
               <h2 className="font-bold text-zinc-950">Info tambahan</h2>
               <div className="mt-4 space-y-2 text-sm text-zinc-700">
                 <p>
@@ -376,7 +376,7 @@ export default async function AdminOrderDetailPage({
 
           {/* ── Aksi ── */}
           {!isDone && (
-            <section className="rounded-3xl border border-zinc-200 p-5">
+            <section className="rounded-2xl border border-zinc-200 p-4 md:rounded-3xl md:p-5">
               <h2 className="font-bold text-zinc-950">Aksi</h2>
 
               <div className="mt-5 space-y-3">

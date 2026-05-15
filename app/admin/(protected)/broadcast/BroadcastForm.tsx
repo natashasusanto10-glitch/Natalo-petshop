@@ -337,10 +337,10 @@ export function BroadcastForm() {
       </div>
 
       <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
             <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">Estimasi penerima push</p>
-            <p className="mt-1 text-2xl font-black text-zinc-900">
+            <p className="mt-1 text-xl font-black text-zinc-900 sm:text-2xl">
               {recipientCount !== null ? recipientCount.toLocaleString("id-ID") : "-"} user
             </p>
           </div>
@@ -348,7 +348,7 @@ export function BroadcastForm() {
             type="button"
             onClick={checkRecipientCount}
             disabled={loading || !canSubmit}
-            className="rounded-full border border-zinc-300 bg-white px-4 py-2 text-xs font-bold text-zinc-700 disabled:opacity-50"
+            className="shrink-0 rounded-full border border-zinc-300 bg-white px-4 py-2 text-xs font-bold text-zinc-700 disabled:opacity-50"
           >
             Cek jumlah
           </button>
@@ -387,7 +387,7 @@ export function BroadcastForm() {
         </div>
       )}
 
-      <div className="flex gap-3 pt-2">
+      <div className="flex flex-col gap-3 pt-2 sm:flex-row">
         {!confirming ? (
           <button
             type="button"
@@ -416,7 +416,7 @@ export function BroadcastForm() {
               type="button"
               onClick={() => setConfirming(false)}
               disabled={loading}
-              className="flex-1 rounded-full border border-zinc-300 bg-white px-6 py-3 text-sm font-bold text-zinc-700 disabled:opacity-50"
+              className="rounded-full border border-zinc-300 bg-white px-6 py-3 text-sm font-bold text-zinc-700 disabled:opacity-50 sm:flex-1"
             >
               Batal
             </button>

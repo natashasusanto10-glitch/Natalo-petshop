@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 export default function AdminBroadcastPage() {
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
+    <div className="mx-auto max-w-2xl px-4 py-5 md:py-8">
       <div className="mb-6">
         <Link href="/admin/dashboard" className="text-xs font-bold text-zinc-500 hover:underline">
           Kembali ke dashboard

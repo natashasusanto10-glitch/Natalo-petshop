@@ -324,11 +324,11 @@ export function VariantEditor({
 
   // ── Render ────────────────────────────────────────────────────
   return (
-    <div className="mt-8 rounded-2xl border border-zinc-200 bg-white p-6">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-black text-zinc-950">Varian Produk</h2>
-          <p className="mt-0.5 text-sm text-zinc-500">
+    <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-4 md:mt-8 md:p-6">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-base font-black text-zinc-950 md:text-lg">Varian Produk</h2>
+          <p className="mt-0.5 text-xs text-zinc-500 md:text-sm">
             Aktifkan jika produk ini punya pilihan seperti ukuran, berat, atau warna.
           </p>
         </div>
@@ -436,45 +436,148 @@ export function VariantEditor({
           {/* ── Tabel kombinasi ──────────────────────────────── */}
           {rows.length > 0 && (
             <div>
-              <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center md:justify-between">
                 <h3 className="text-sm font-bold text-zinc-700">
                   Tabel Kombinasi ({rows.length} varian)
                 </h3>
                 {/* Bulk fill */}
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs text-zinc-400">Isi semua:</span>
-                  <input
-                    type="number"
-                    value={bulkPrice}
-                    onChange={(e) => setBulkPrice(e.target.value)}
-                    placeholder="Harga"
-                    className="w-24 rounded-lg border border-zinc-300 px-2 py-1 text-xs outline-none focus:border-zinc-950"
-                  />
-                  <input
-                    type="number"
-                    value={bulkStock}
-                    onChange={(e) => setBulkStock(e.target.value)}
-                    placeholder="Stok"
-                    className="w-20 rounded-lg border border-zinc-300 px-2 py-1 text-xs outline-none focus:border-zinc-950"
-                  />
-                  <input
-                    type="number"
-                    value={bulkWeight}
-                    onChange={(e) => setBulkWeight(e.target.value)}
-                    placeholder="Gram"
-                    className="w-20 rounded-lg border border-zinc-300 px-2 py-1 text-xs outline-none focus:border-zinc-950"
-                  />
-                  <button
-                    type="button"
-                    onClick={applyBulk}
-                    className="rounded-lg bg-zinc-950 px-3 py-1 text-xs font-bold text-white hover:bg-zinc-700"
-                  >
-                    Apply
-                  </button>
+                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 md:border-0 md:bg-transparent md:p-0">
+                  <p className="text-xs font-semibold text-zinc-500 md:hidden">Isi semua varian sekaligus:</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 md:mt-0">
+                    <span className="hidden text-xs text-zinc-400 md:inline">Isi semua:</span>
+                    <input
+                      type="number"
+                      value={bulkPrice}
+                      onChange={(e) => setBulkPrice(e.target.value)}
+                      placeholder="Harga"
+                      className="min-w-0 flex-1 rounded-lg border border-zinc-300 px-2 py-1.5 text-xs outline-none focus:border-zinc-950 md:w-24 md:flex-none md:py-1"
+                    />
+                    <input
+                      type="number"
+                      value={bulkStock}
+                      onChange={(e) => setBulkStock(e.target.value)}
+                      placeholder="Stok"
+                      className="min-w-0 flex-1 rounded-lg border border-zinc-300 px-2 py-1.5 text-xs outline-none focus:border-zinc-950 md:w-20 md:flex-none md:py-1"
+                    />
+                    <input
+                      type="number"
+                      value={bulkWeight}
+                      onChange={(e) => setBulkWeight(e.target.value)}
+                      placeholder="Gram"
+                      className="min-w-0 flex-1 rounded-lg border border-zinc-300 px-2 py-1.5 text-xs outline-none focus:border-zinc-950 md:w-20 md:flex-none md:py-1"
+                    />
+                    <button
+                      type="button"
+                      onClick={applyBulk}
+                      className="shrink-0 rounded-lg bg-zinc-950 px-3 py-1.5 text-xs font-bold text-white hover:bg-zinc-700 md:py-1"
+                    >
+                      Apply
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              <div className="mt-3 overflow-x-auto rounded-xl border border-zinc-200">
+              {/* Mobile card list */}
+              <div className="mt-3 space-y-3 md:hidden">
+                {rows.map((row) => (
+                  <div
+                    key={row.tempId}
+                    className={`rounded-xl border p-3 ${
+                      row.isActive ? "border-zinc-200 bg-white" : "border-zinc-200 bg-zinc-50 opacity-70"
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap gap-1.5">
+                        {row.optionValues.map((val, i) => (
+                          <span
+                            key={i}
+                            className="rounded-md bg-natalo-50 px-2 py-0.5 text-[11px] font-bold text-natalo-700"
+                          >
+                            {attrs[i]?.name ? `${attrs[i].name}: ` : ""}{val}
+                          </span>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => updateRow(row.tempId, "isActive", !row.isActive)}
+                        className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[11px] font-bold transition-colors ${
+                          row.isActive
+                            ? "bg-green-50 text-green-700"
+                            : "bg-zinc-100 text-zinc-500"
+                        }`}
+                      >
+                        <span
+                          className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
+                            row.isActive ? "bg-green-500" : "bg-zinc-300"
+                          }`}
+                        >
+                          <span
+                            className={`absolute h-3 w-3 rounded-full bg-white shadow transition-transform ${
+                              row.isActive ? "translate-x-3.5" : "translate-x-0.5"
+                            }`}
+                          />
+                        </span>
+                        {row.isActive ? "Aktif" : "Nonaktif"}
+                      </button>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-2 gap-2.5">
+                      <label className="block">
+                        <span className="text-[10px] font-bold uppercase tracking-wide text-zinc-400">Harga *</span>
+                        <input
+                          type="number"
+                          value={row.price}
+                          onChange={(e) => updateRow(row.tempId, "price", e.target.value)}
+                          placeholder="0"
+                          min={0}
+                          inputMode="numeric"
+                          className="mt-0.5 w-full rounded-lg border border-zinc-300 px-2.5 py-2 text-sm outline-none focus:border-zinc-950"
+                        />
+                        {row.price && Number(row.price) > 0 && (
+                          <p className="mt-0.5 text-[10px] text-zinc-400">
+                            {formatRupiah(Number(row.price))}
+                          </p>
+                        )}
+                      </label>
+                      <label className="block">
+                        <span className="text-[10px] font-bold uppercase tracking-wide text-zinc-400">Stok</span>
+                        <input
+                          type="number"
+                          value={row.stock}
+                          onChange={(e) => updateRow(row.tempId, "stock", e.target.value)}
+                          min={0}
+                          inputMode="numeric"
+                          className="mt-0.5 w-full rounded-lg border border-zinc-300 px-2.5 py-2 text-sm outline-none focus:border-zinc-950"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-[10px] font-bold uppercase tracking-wide text-zinc-400">Berat (gram)</span>
+                        <input
+                          type="number"
+                          value={row.weightGram}
+                          onChange={(e) => updateRow(row.tempId, "weightGram", e.target.value)}
+                          min={1}
+                          inputMode="numeric"
+                          className="mt-0.5 w-full rounded-lg border border-zinc-300 px-2.5 py-2 text-sm outline-none focus:border-zinc-950"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-[10px] font-bold uppercase tracking-wide text-zinc-400">SKU</span>
+                        <input
+                          type="text"
+                          value={row.sku}
+                          onChange={(e) => updateRow(row.tempId, "sku", e.target.value.toUpperCase())}
+                          placeholder="opsional"
+                          className="mt-0.5 w-full rounded-lg border border-zinc-300 px-2.5 py-2 text-sm outline-none focus:border-zinc-950"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop table */}
+              <div className="mt-3 hidden overflow-x-auto rounded-xl border border-zinc-200 md:block">
                 <table className="w-full text-sm">
                   <thead className="bg-zinc-50 text-xs font-bold uppercase tracking-wide text-zinc-400">
                     <tr>
@@ -596,12 +699,12 @@ export function VariantEditor({
       )}
 
       {/* Save button */}
-      <div className="mt-6 flex items-center gap-4">
+      <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
         <button
           type="button"
           onClick={handleSave}
           disabled={saving || (hasVariants && validationErrors.length > 0)}
-          className="rounded-full bg-natalo-600 px-6 py-3 text-sm font-bold text-white transition hover:bg-natalo-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="w-full rounded-full bg-natalo-600 px-6 py-3 text-sm font-bold text-white transition hover:bg-natalo-700 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
         >
           {saving ? "Menyimpan..." : "Simpan Varian"}
         </button>

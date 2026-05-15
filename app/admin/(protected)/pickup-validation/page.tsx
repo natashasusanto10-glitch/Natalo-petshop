@@ -32,18 +32,18 @@ export default async function PickupValidationPage({
   const handOverAction = order ? markAsPickedUp.bind(null, order.id) : null;
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-10">
+    <div className="mx-auto max-w-3xl px-4 py-5 md:py-10">
       <Link href="/admin/orders" className="text-sm font-bold text-zinc-500 hover:text-zinc-950">
         ← Kembali ke pesanan
       </Link>
-      <div className="mt-4">
-        <h1 className="text-3xl font-black tracking-tight text-zinc-950">Validasi Pickup</h1>
+      <div className="mt-3 md:mt-4">
+        <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">Validasi Pickup</h1>
         <p className="mt-1 text-sm text-zinc-500">
           Masukkan kode pickup yang ditunjukkan customer saat mengambil pesanan.
         </p>
       </div>
 
-      <form action="/admin/pickup-validation" className="mt-8 rounded-3xl border border-zinc-200 p-5">
+      <form action="/admin/pickup-validation" className="mt-5 rounded-2xl border border-zinc-200 p-4 md:mt-8 md:rounded-3xl md:p-5">
         <label className="text-sm font-bold text-zinc-700" htmlFor="code">
           Kode Pickup
         </label>

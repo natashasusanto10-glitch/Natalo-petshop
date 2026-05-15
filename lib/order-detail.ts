@@ -104,6 +104,7 @@ export function serializeOrderDetail(order: OrderDetailRecord) {
     status: order.status,
     paymentStatus: order.paymentStatus,
     paymentProvider: order.paymentProvider,
+    paymentProofUrl: order.paymentProofUrl,
     paymentUrl: order.paymentUrl,
     paymentReference: order.paymentReference,
     subtotal: order.subtotal,

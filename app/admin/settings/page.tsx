@@ -7,9 +7,9 @@ export default async function AdminSettingsPage() {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "-";
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-6 lg:py-10">
+    <div className="mx-auto max-w-2xl px-4 py-5 md:py-10">
       <div>
-        <h1 className="text-2xl font-black tracking-tight text-zinc-950 lg:text-3xl">
+        <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">
           Pengaturan Toko
         </h1>
         <p className="mt-1 text-sm text-zinc-500">
@@ -18,7 +18,7 @@ export default async function AdminSettingsPage() {
       </div>
 
       {/* Current config (read-only display) */}
-      <section className="mt-6 rounded-3xl border border-zinc-200 bg-white p-6">
+      <section className="mt-5 rounded-2xl border border-zinc-200 bg-white p-4 md:mt-6 md:rounded-3xl md:p-6">
         <h2 className="font-bold text-zinc-950">Informasi Toko</h2>
         <p className="mt-1 text-xs text-zinc-400">
           Ubah nilai ini melalui file{" "}
@@ -41,7 +41,7 @@ export default async function AdminSettingsPage() {
       </section>
 
       {/* Payment gateways */}
-      <section className="mt-4 rounded-3xl border border-zinc-200 bg-white p-6">
+      <section className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4 md:rounded-3xl md:p-6">
         <h2 className="font-bold text-zinc-950">Payment Gateway</h2>
         <div className="mt-5 space-y-3">
           {[
@@ -68,7 +68,7 @@ export default async function AdminSettingsPage() {
       </section>
 
       {/* Shipping */}
-      <section className="mt-4 rounded-3xl border border-zinc-200 bg-white p-6">
+      <section className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4 md:rounded-3xl md:p-6">
         <h2 className="font-bold text-zinc-950">Pengiriman</h2>
         <div className="mt-5 space-y-3">
           {[

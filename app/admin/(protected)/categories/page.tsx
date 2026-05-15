@@ -20,23 +20,23 @@ export default async function AdminCategoriesPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-10">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <Link href="/admin" className="text-sm font-bold text-zinc-500 hover:text-zinc-950">
+    <div className="mx-auto max-w-3xl px-4 py-5 md:py-10">
+      <div className="flex items-end justify-between gap-3 md:gap-4">
+        <div className="min-w-0">
+          <Link href="/admin" className="hidden text-sm font-bold text-zinc-500 hover:text-zinc-950 md:inline">
             ← Dashboard
           </Link>
-          <h1 className="mt-2 text-3xl font-black tracking-tight text-zinc-950">Kategori</h1>
+          <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:mt-2 md:text-3xl">Kategori</h1>
         </div>
         <Link
           href="/admin/categories/new"
-          className="rounded-full bg-zinc-950 px-5 py-3 text-sm font-bold text-white"
+          className="shrink-0 rounded-full bg-zinc-950 px-4 py-2 text-xs font-bold text-white md:px-5 md:py-3 md:text-sm"
         >
-          + Tambah kategori
+          + Tambah
         </Link>
       </div>
 
-      <div className="mt-8 space-y-3">
+      <div className="mt-5 space-y-3 md:mt-8">
         {categories.length === 0 && (
           <p className="rounded-2xl bg-zinc-50 p-5 text-sm text-zinc-600">
             Belum ada kategori.{" "}
@@ -49,19 +49,19 @@ export default async function AdminCategoriesPage() {
         {categories.map((cat) => (
           <div
             key={cat.id}
-            className="flex items-center justify-between gap-4 rounded-2xl border border-zinc-200 p-4"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-200 p-4"
           >
-            <div>
-              <p className="font-semibold text-zinc-950">{cat.name}</p>
-              <p className="mt-0.5 text-sm text-zinc-400">
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-semibold text-zinc-950">{cat.name}</p>
+              <p className="mt-0.5 truncate text-sm text-zinc-400">
                 /{cat.slug} • {cat._count.products} produk
               </p>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2">
               <Link
                 href={`/admin/categories/${cat.id}/edit`}
-                className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-bold hover:bg-zinc-50"
+                className="rounded-full border border-zinc-300 px-3 py-1.5 text-xs font-bold hover:bg-zinc-50 md:px-4 md:py-2 md:text-sm"
               >
                 Edit
               </Link>
@@ -71,7 +71,7 @@ export default async function AdminCategoriesPage() {
                 <button
                   type="submit"
                   disabled={cat._count.products > 0}
-                  className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-bold text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="rounded-full border border-zinc-300 px-3 py-1.5 text-xs font-bold text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40 md:px-4 md:py-2 md:text-sm"
                   title={cat._count.products > 0 ? "Hapus produk di kategori ini dulu" : "Hapus kategori"}
                 >
                   Hapus

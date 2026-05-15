@@ -61,29 +61,36 @@ export function isBunnyConfigured(): boolean {
  */
 export async function createBunnyVideo(params: {
   title: string;
-}): Promise<{ guid: string } | null> {
+}): Promise<{ guid: string } | { error: string } | null> {
   const cfg = getBunnyConfig();
   if (!cfg) return null;
 
-  const res = await fetch(
-    `${BUNNY_API_BASE}/library/${cfg.libraryId}/videos`,
-    {
-      method: "POST",
-      headers: {
-        AccessKey: cfg.apiKey,
-        "Content-Type": "application/json",
-        accept: "application/json",
+  let res: Response;
+  try {
+    res = await fetch(
+      `${BUNNY_API_BASE}/library/${cfg.libraryId}/videos`,
+      {
+        method: "POST",
+        headers: {
+          AccessKey: cfg.apiKey,
+          "Content-Type": "application/json",
+          accept: "application/json",
+        },
+        body: JSON.stringify({ title: params.title.slice(0, 200) }),
       },
-      body: JSON.stringify({ title: params.title.slice(0, 200) }),
-    },
-  );
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "network error";
+    console.warn(`[bunny] createVideo fetch threw: ${msg}`);
+    return { error: `network: ${msg}` };
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     console.warn(`[bunny] createVideo failed: ${res.status} ${text}`);
-    return null;
+    return { error: `HTTP ${res.status}: ${text.slice(0, 200) || "no body"}` };
   }
-  const data = (await res.json()) as { guid?: string };
-  if (!data.guid) return null;
+  const data = (await res.json().catch(() => ({}))) as { guid?: string };
+  if (!data.guid) return { error: "Response missing guid field" };
   return { guid: data.guid };
 }
 

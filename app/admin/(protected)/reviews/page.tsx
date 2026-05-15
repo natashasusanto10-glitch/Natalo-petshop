@@ -84,17 +84,17 @@ export default async function AdminReviewsPage({
   ];
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10">
-      <Link href="/admin" className="text-sm font-bold text-zinc-500 hover:text-zinc-950">
+    <div className="mx-auto max-w-6xl px-4 py-5 md:py-10">
+      <Link href="/admin" className="hidden text-sm font-bold text-zinc-500 hover:text-zinc-950 md:inline">
         ← Kembali ke dashboard
       </Link>
-      <h1 className="mt-2 text-3xl font-black tracking-tight text-zinc-950">Moderasi Review</h1>
+      <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:mt-2 md:text-3xl">Moderasi Review</h1>
       <p className="mt-1 text-sm text-zinc-500">
         Kelola review pembeli dari pelanggan toko.
       </p>
 
       {/* Filter tabs */}
-      <div className="mt-6 flex flex-wrap gap-2">
+      <div className="-mx-4 mt-5 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:mt-6 md:flex-wrap md:overflow-visible md:px-0">
         {tabs.map((t) => {
           const isActive = (filterStatus ?? "all") === t.key;
           const href =
@@ -103,7 +103,7 @@ export default async function AdminReviewsPage({
             <Link
               key={t.key}
               href={href}
-              className={`flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
+              className={`flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
                 isActive
                   ? "border-zinc-950 bg-zinc-950 text-white"
                   : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400"
@@ -132,7 +132,7 @@ export default async function AdminReviewsPage({
           reviews.map((r) => (
             <div
               key={r.id}
-              className={`rounded-2xl border bg-white p-5 ${
+              className={`rounded-2xl border bg-white p-4 md:p-5 ${
                 r.status === "HIDDEN"
                   ? "border-red-200 bg-red-50"
                   : r.status === "DELETED"

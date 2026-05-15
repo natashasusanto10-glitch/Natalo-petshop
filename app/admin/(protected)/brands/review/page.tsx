@@ -89,14 +89,14 @@ export default async function BrandReviewPage({
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10">
+    <div className="mx-auto max-w-6xl px-4 py-5 md:py-10">
       <Link
         href="/admin/brands"
         className="text-sm font-bold text-zinc-500 hover:text-zinc-950"
       >
         ← Kembali ke brand
       </Link>
-      <h1 className="mt-2 text-3xl font-black tracking-tight text-zinc-950">
+      <h1 className="mt-2 text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">
         Review Auto-Assign Brand
       </h1>
       <p className="mt-1 text-sm text-zinc-500">
@@ -189,7 +189,7 @@ export default async function BrandReviewPage({
             {products.map((p) => (
               <div
                 key={p.id}
-                className="grid gap-4 p-4 sm:grid-cols-[1fr_220px_140px]"
+                className="grid gap-3 p-4 md:grid-cols-[1fr_220px_140px] md:gap-4"
               >
                 <div className="min-w-0">
                   <Link

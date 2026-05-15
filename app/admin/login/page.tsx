@@ -14,21 +14,33 @@ export default function AdminLoginPage() {
     setError("");
     setLoading(true);
 
-    const res = await fetch("/api/auth/admin-login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
+    try {
+      const res = await fetch("/api/auth/admin-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
 
-    const data = await res.json();
-    setLoading(false);
+      const text = await res.text();
+      const data = text ? (JSON.parse(text) as { error?: string }) : {};
 
-    if (!res.ok) {
-      setError(data.error || "Login gagal");
-      return;
+      if (!res.ok) {
+        setError(data.error || `Login gagal (HTTP ${res.status})`);
+        return;
+      }
+
+      window.location.replace("/admin/dashboard");
+    } catch (err) {
+      setError(
+        err instanceof SyntaxError
+          ? "Server mengembalikan response tidak valid. Cek koneksi database / log server."
+          : err instanceof Error
+            ? err.message
+            : "Login gagal. Coba lagi.",
+      );
+    } finally {
+      setLoading(false);
     }
-
-    window.location.replace("/admin/dashboard");
   }
 
   return (
