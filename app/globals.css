@@ -802,6 +802,12 @@ html[data-admin]::view-transition-group(*) {
   animation: none !important;
 }
 
+html[data-interactive-swipe-back="committing"]::view-transition-old(root),
+html[data-interactive-swipe-back="committing"]::view-transition-new(root),
+html[data-interactive-swipe-back="committing"]::view-transition-group(*) {
+  animation: none !important;
+}
+
 /* ── Tap polish (native-feel) ───────────────────────────────────
    1. Hilangkan tap-highlight flash biru di iOS Safari (sangat
       kelihatan saat hybrid mode di Capacitor WebView Android).
