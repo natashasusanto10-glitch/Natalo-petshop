@@ -2,23 +2,17 @@
 
 /**
  * Lottie success animation untuk upload video feed berhasil.
- * Spec section 7:
- * - Tema Natalo biru
- * - Autoplay true, loop false (max 1-2 kali)
- * - Fallback image kalau Lottie gagal load
- *
- * Pakai existing pattern dari OrderCreatedSuccessLottie. Asset path:
- * /assets/lottie/feed_upload_success_cat_dog.json (perlu di-upload terpisah;
- * untuk MVP fallback ke order_created_success Lottie kalau file belum ada).
+ * Tema Natalo Feed video upload success:
+ * kamera/video, kucing, anjing, cloud upload, check hijau, paw/heart/sparkle.
+ * Autoplay true, loop false, fallback image kalau Lottie gagal load.
  */
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import type { AnimationItem } from "lottie-web";
 
-const FEED_LOTTIE_SRC = "/assets/lottie/feed_upload_success_cat_dog.json";
-// Fallback chain: kalau cat-dog Lottie belum ada, pakai order success.
-const FALLBACK_LOTTIE_SRC = "/assets/lottie/order_created_success_natalo_blue.json";
-const FALLBACK_IMAGE_SRC = "/assets/images/order_created_success_fallback.png";
+const FEED_LOTTIE_SRC = "/assets/lottie/feed_video_upload_success_natalo.json";
+const FALLBACK_IMAGE_SRC =
+  "/assets/images/feed_video_upload_success_fallback.png";
 
 export function FeedUploadSuccessLottie() {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -28,35 +22,31 @@ export function FeedUploadSuccessLottie() {
   useEffect(() => {
     let cancelled = false;
 
-    async function tryLoad(src: string) {
-      const lottie = await import("lottie-web");
-      const response = await fetch(src, { cache: "force-cache" });
-      if (!response.ok) throw new Error(`Asset 404: ${src}`);
-      const animationData = await response.json();
-      if (cancelled || !containerRef.current) return null;
-      return lottie.default.loadAnimation({
-        container: containerRef.current,
-        renderer: "svg",
-        loop: false,
-        autoplay: true,
-        animationData,
-        rendererSettings: {
-          progressiveLoad: true,
-          preserveAspectRatio: "xMidYMid meet",
-        },
-      });
-    }
-
     async function loadAnimation() {
       try {
-        const anim = (await tryLoad(FEED_LOTTIE_SRC).catch(() => null)) ||
-          (await tryLoad(FALLBACK_LOTTIE_SRC).catch(() => null));
-        if (!anim) {
-          if (!cancelled) setFailed(true);
-          return;
-        }
-        animationRef.current = anim;
-        anim.addEventListener("data_failed", () => {
+        const [lottie, response] = await Promise.all([
+          import("lottie-web"),
+          fetch(FEED_LOTTIE_SRC, { cache: "force-cache" }),
+        ]);
+
+        if (!response.ok) throw new Error("Feed upload success Lottie not found");
+        const animationData = await response.json();
+        if (cancelled || !containerRef.current) return;
+
+        const animation = lottie.default.loadAnimation({
+          container: containerRef.current,
+          renderer: "svg",
+          loop: false,
+          autoplay: true,
+          animationData,
+          rendererSettings: {
+            progressiveLoad: true,
+            preserveAspectRatio: "xMidYMid meet",
+          },
+        });
+
+        animationRef.current = animation;
+        animation.addEventListener("data_failed", () => {
           if (!cancelled) setFailed(true);
         });
       } catch {
@@ -75,7 +65,7 @@ export function FeedUploadSuccessLottie() {
 
   return (
     <div
-      className="relative mx-auto h-[220px] w-full max-w-[280px]"
+      className="relative mx-auto h-[240px] w-full max-w-[280px]"
       aria-hidden="true"
     >
       <div

@@ -33,6 +33,7 @@ import {
   FiX,
 } from "react-icons/fi";
 import { BottomSheet } from "@/components/BottomSheet";
+import { FeedUploadSuccessLottie } from "@/components/feed/FeedUploadSuccessLottie";
 import { formatRupiah } from "@/lib/format";
 import { hapticSuccess, hapticTap, hapticWarning } from "@/lib/native/haptics";
 import {
@@ -1780,13 +1781,9 @@ function SuccessScreen({
         rightSlot={<span />}
       />
       <div className="flex flex-1 flex-col items-center justify-center px-6 pb-[calc(40px+env(safe-area-inset-bottom))] text-center">
-        <div className="relative grid h-24 w-24 place-items-center rounded-full bg-emerald-500/15 ring-1 ring-emerald-400/40">
-          <span className="grid h-16 w-16 place-items-center rounded-full bg-emerald-500 text-black shadow-[0_0_40px_rgba(16,185,129,0.45)]">
-            <FiCheck className="h-8 w-8" strokeWidth={3} />
-          </span>
-        </div>
+        <FeedUploadSuccessLottie />
 
-        <h1 className="mt-6 text-xl font-black text-white">
+        <h1 className="mt-2 text-xl font-black text-white">
           Postingan berhasil dikirim
         </h1>
         <p className="mt-2 max-w-xs text-sm font-medium leading-relaxed text-white/60">

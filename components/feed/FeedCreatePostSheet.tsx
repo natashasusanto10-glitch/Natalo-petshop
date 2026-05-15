@@ -39,6 +39,7 @@ import {
 import { hapticSuccess, hapticTap, hapticWarning } from "@/lib/native/haptics";
 import { isIOS } from "@/lib/native-platform";
 import { useFeedUpload } from "@/components/feed/FeedUploadProvider";
+import { FeedUploadSuccessLottie } from "@/components/feed/FeedUploadSuccessLottie";
 import { natToast } from "@/components/Toast";
 
 // Source-of-truth lives in USER_VIDEO_CONFIG (lib/feed/video-config.ts).
@@ -1078,10 +1079,8 @@ function SuccessStep({
   return (
     <div className="flex h-full flex-col bg-white px-5 pb-[calc(24px+env(safe-area-inset-bottom))] pt-[calc(54px+env(safe-area-inset-top))] text-center text-zinc-950">
       <div className="mx-auto flex min-h-0 w-full max-w-md flex-1 flex-col justify-center">
-        <div className="mx-auto grid h-32 w-32 place-items-center rounded-full bg-[linear-gradient(135deg,#1e5fbf,#38d5aa)] text-white shadow-xl">
-          <FiCheck className="h-16 w-16" />
-        </div>
-        <h1 className="mt-7 text-xl font-black">Postingan Berhasil Dikirim</h1>
+        <FeedUploadSuccessLottie />
+        <h1 className="mt-3 text-xl font-black">Postingan Berhasil Dikirim</h1>
         <p className="mx-auto mt-2 max-w-xs text-sm font-semibold leading-relaxed text-zinc-500">
           Video kamu sudah masuk antrean review admin.
         </p>
