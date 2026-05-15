@@ -15,16 +15,20 @@ import {
   useRef,
   useState,
 } from "react";
+import { useRouter } from "next/navigation";
 import { FiPlus } from "react-icons/fi";
 import type { FeedListResponse, FeedPostListItem } from "@/lib/feed/types";
 import { FeedActiveVideoProvider, useFeedActiveVideo } from "./FeedActiveVideoContext";
 import { FeedVideoCard } from "./FeedVideoCard";
 import { FeedPostPlaceholder } from "./FeedPostPlaceholder";
 import { FeedCommentSheet } from "./FeedCommentSheet";
-import { FeedCreatePostSheet } from "./FeedCreatePostSheet";
 import { getVirtualWindow } from "@/lib/feed/runtime-config";
+import { hapticTap } from "@/lib/native/haptics";
+
+const UPLOAD_ROUTE_TRANSITION_MS = 300;
 
 export function FeedClient() {
+  const router = useRouter();
   const [posts, setPosts] = useState<FeedPostListItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
@@ -33,8 +37,9 @@ export function FeedClient() {
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [commentPostId, setCommentPostId] = useState<string | null>(null);
-  const [createPostOpen, setCreatePostOpen] = useState(false);
+  const [uploadTransitioning, setUploadTransitioning] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const uploadRouteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useFeedChrome();
 
   // Pull-to-refresh wiring: PullToRefresh in the root layout dispatches
@@ -44,6 +49,14 @@ export function FeedClient() {
     const handler = () => setReloadKey((k) => k + 1);
     window.addEventListener("app-refresh", handler);
     return () => window.removeEventListener("app-refresh", handler);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (uploadRouteTimerRef.current) {
+        window.clearTimeout(uploadRouteTimerRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -112,13 +125,27 @@ export function FeedClient() {
   const commentSheetOpen = useMemo(() => commentPostId !== null, [commentPostId]);
   const showEmpty = !loading && !error && posts.length === 0;
 
+  function startUploadFlow() {
+    if (uploadTransitioning) return;
+    void hapticTap();
+    setUploadTransitioning(true);
+    uploadRouteTimerRef.current = window.setTimeout(() => {
+      router.push("/feed/upload");
+    }, UPLOAD_ROUTE_TRANSITION_MS);
+  }
+
   return (
     <FeedActiveVideoProvider>
-      <div className="relative mx-auto flex h-full max-w-2xl flex-col">
+      <div
+        className={`relative mx-auto flex h-full max-w-2xl flex-col transition-[opacity,transform] duration-300 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] ${
+          uploadTransitioning ? "-translate-x-7 opacity-70" : "translate-x-0 opacity-100"
+        }`}
+      >
         <FeedTopHeader />
         <button
           type="button"
-          onClick={() => setCreatePostOpen(true)}
+          onClick={startUploadFlow}
+          disabled={uploadTransitioning}
           aria-label="Buat postingan"
           className="absolute right-5 top-[calc(env(safe-area-inset-top)+14px)] z-30 grid h-11 w-11 place-items-center text-white transition active:scale-95"
         >
@@ -172,11 +199,47 @@ export function FeedClient() {
         postId={commentPostId}
         onClose={() => setCommentPostId(null)}
       />
-      <FeedCreatePostSheet
-        open={createPostOpen}
-        onClose={() => setCreatePostOpen(false)}
-      />
+      {uploadTransitioning && <FeedUploadRouteTransition />}
     </FeedActiveVideoProvider>
+  );
+}
+
+function FeedUploadRouteTransition() {
+  return (
+    <div
+      className="pointer-events-none fixed inset-0 z-[1900] bg-black/45 backdrop-blur-[1px] animate-in fade-in duration-300"
+      aria-hidden="true"
+    >
+      <div className="ml-auto flex h-full w-[94vw] max-w-2xl translate-x-0 flex-col rounded-l-[28px] bg-[#050505] text-white shadow-[-24px_0_60px_rgba(0,0,0,0.5)] [animation:feed-upload-route-enter_300ms_cubic-bezier(0.22,1,0.36,1)_both]">
+        <div className="grid h-[calc(56px+env(safe-area-inset-top))] shrink-0 grid-cols-[64px_1fr_64px] items-end px-2 pb-2 pt-[env(safe-area-inset-top)]">
+          <span className="grid h-11 w-11 place-items-center rounded-full bg-white/10 text-white/85">
+            ×
+          </span>
+          <span className="pb-3 text-center text-sm font-black">Pilih Video</span>
+          <span />
+        </div>
+        <div className="px-5 pt-6">
+          <h2 className="text-3xl font-black tracking-normal">Pilih Video</h2>
+          <p className="mt-2 max-w-[260px] text-sm font-semibold leading-6 text-white/58">
+            Pilih atau upload video untuk dibagikan ke Feed.
+          </p>
+          <div className="mt-7 space-y-3">
+            <div className="h-[96px] rounded-3xl bg-white/10" />
+            <div className="h-[96px] rounded-3xl bg-white/10" />
+          </div>
+        </div>
+      </div>
+      <style jsx>{`
+        @keyframes feed-upload-route-enter {
+          from {
+            transform: translate3d(100%, 0, 0);
+          }
+          to {
+            transform: translate3d(0, 0, 0);
+          }
+        }
+      `}</style>
+    </div>
   );
 }
 
