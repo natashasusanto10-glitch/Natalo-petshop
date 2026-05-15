@@ -1333,7 +1333,7 @@ function DetailScreen({
   onSubmit: () => void;
 }) {
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-black text-white">
+    <div className="flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-black text-white">
       <FlowHeader
         title="Detail Postingan"
         leftSlot={<BackButton onClick={onBack} />}
@@ -1344,10 +1344,11 @@ function DetailScreen({
             label={uploading ? "Mengirim..." : "Posting"}
           />
         }
+        sticky
       />
 
-      <div className="flex-1 overflow-y-auto px-4 pb-[calc(24px+env(safe-area-inset-bottom))]">
-        <div className="mx-auto max-w-md space-y-4">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(32px+env(safe-area-inset-bottom))] [-webkit-overflow-scrolling:touch]">
+        <div className="mx-auto max-w-md space-y-4 pt-2">
           {/* Caption row + thumbnail */}
           <div className="flex gap-3 rounded-2xl border border-white/8 bg-white/[0.03] p-3">
             <div className="relative h-24 w-20 shrink-0 overflow-hidden rounded-xl bg-white/5">
