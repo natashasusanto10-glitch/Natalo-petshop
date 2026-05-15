@@ -6,14 +6,17 @@
  * autoplay. Saat pindah tab/background, semua video pause.
  *
  * Pattern: tiap FeedVideoPlayer register IntersectionObserver, kalau ≥60%
- * visible call setActiveId(myId). Player render dgn <video> autoplay
- * kalau activeId === myId, paused kalau bukan.
+ * visible call setActiveId(myId, myIndex). Player render dgn <video> autoplay
+ * kalau activeId === myId, paused kalau bukan. activeIndex dipakai untuk
+ * compute 3-tier preload distance (auto/metadata/none) di tiap player.
  */
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { hapticTap } from "@/lib/native/haptics";
 
 type FeedActiveVideoContextValue = {
   activeId: string | null;
-  setActiveId: (id: string | null) => void;
+  activeIndex: number | null;
+  setActive: (id: string | null, index: number | null) => void;
   /**
    * Saat true (e.g. tab/page background, modal open), semua video harus
    * pause regardless activeId. Player baca flag ini untuk override
@@ -26,11 +29,13 @@ const FeedActiveVideoContext = createContext<FeedActiveVideoContextValue | null>
 
 export function FeedActiveVideoProvider({ children }: { children: React.ReactNode }) {
   const [activeId, setActiveIdState] = useState<string | null>(null);
+  const [activeIndex, setActiveIndexState] = useState<number | null>(null);
   const [paused, setPaused] = useState(false);
+  // Skip the haptic on the initial mount-time active set — only fire when
+  // the user actually scrolls between videos. Compared by id, not index,
+  // so a list re-render that keeps the same active post stays quiet.
+  const lastActiveIdRef = useRef<string | null>(null);
 
-  // Pause SEMUA video saat app masuk background (sesuai spec 10.13).
-  // Saat foreground kembali, biarkan player pickup state berdasarkan
-  // viewport visibility — JANGAN auto-resume tanpa user intent.
   useEffect(() => {
     function onVisibility() {
       setPaused(document.visibilityState !== "visible");
@@ -40,13 +45,21 @@ export function FeedActiveVideoProvider({ children }: { children: React.ReactNod
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, []);
 
-  const setActiveId = useCallback((id: string | null) => {
+  const setActive = useCallback((id: string | null, index: number | null) => {
     setActiveIdState((current) => (current === id ? current : id));
+    setActiveIndexState((current) => (current === index ? current : index));
+    // Premium-feel haptic on actual scroll-driven changes only.
+    if (id && id !== lastActiveIdRef.current) {
+      if (lastActiveIdRef.current !== null) {
+        void hapticTap();
+      }
+      lastActiveIdRef.current = id;
+    }
   }, []);
 
   const value = useMemo(
-    () => ({ activeId, setActiveId, paused }),
-    [activeId, setActiveId, paused],
+    () => ({ activeId, activeIndex, setActive, paused }),
+    [activeId, activeIndex, setActive, paused],
   );
 
   return (

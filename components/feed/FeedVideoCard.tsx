@@ -21,10 +21,13 @@ import { FeedVideoPlayer } from "./FeedVideoPlayer";
 
 type Props = {
   post: FeedPostListItem;
+  /** Position in the parent feed list. Threaded down to FeedVideoPlayer so
+   * it can compute distance-from-active and pick the right preload tier. */
+  index: number;
   onOpenComments: (postId: string) => void;
 };
 
-export function FeedVideoCard({ post, onOpenComments }: Props) {
+export function FeedVideoCard({ post, index, onOpenComments }: Props) {
   const [liked, setLiked] = useState(post.viewerLiked);
   const [likeCount, setLikeCount] = useState(post.likeCount);
   const [likeBusy, setLikeBusy] = useState(false);
@@ -78,6 +81,7 @@ export function FeedVideoCard({ post, onOpenComments }: Props) {
         {hasVideo && post.videoUrl ? (
           <FeedVideoPlayer
             postId={post.id}
+            index={index}
             videoUrl={post.videoUrl}
             thumbnailUrl={post.thumbnailUrl}
             durationSec={post.videoDurationSec}

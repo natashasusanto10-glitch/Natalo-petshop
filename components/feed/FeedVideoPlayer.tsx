@@ -5,6 +5,8 @@ import { useFeedActiveVideo } from "./FeedActiveVideoContext";
 
 type Props = {
   postId: string;
+  /** List position passed by parent feed so we can derive distance-from-active. */
+  index: number;
   videoUrl: string;
   thumbnailUrl: string | null;
   durationSec: number | null;
@@ -12,23 +14,45 @@ type Props = {
   className?: string;
 };
 
+const LOADING_INDICATOR_DELAY_MS = 500;
+
+/**
+ * Map distance-from-active to HTML5 video preload tier.
+ *   0 (current)  → "auto"     — full progressive download for instant playback
+ *   ±1 (next/prev) → "metadata" — headers + first chunk, ready to swap in
+ *   else         → "none"     — don't burn bandwidth
+ */
+function preloadForDistance(distance: number): "auto" | "metadata" | "none" {
+  if (distance === 0) return "auto";
+  if (distance <= 1) return "metadata";
+  return "none";
+}
+
 export function FeedVideoPlayer({
   postId,
+  index,
   videoUrl,
   thumbnailUrl,
   durationSec,
   aspectRatio = 9 / 16,
   className = "",
 }: Props) {
-  const { activeId, setActiveId, paused } = useFeedActiveVideo();
+  const { activeId, activeIndex, setActive, paused } = useFeedActiveVideo();
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [loadSrc, setLoadSrc] = useState(false);
   const [farFromViewport, setFarFromViewport] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [showLoadingIndicator, setShowLoadingIndicator] = useState(false);
 
   const isActive = activeId === postId && !paused;
+  // Distance from the currently-active card. Unknown active → treat as far.
+  const distance =
+    activeIndex == null ? Infinity : Math.abs(index - activeIndex);
+  const preloadMode = preloadForDistance(distance);
 
+  // Track when the active card changes via IntersectionObserver. Pass both
+  // id and index so context can compute neighbours for preload decisions.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -36,7 +60,7 @@ export function FeedVideoPlayer({
       (entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
-            setActiveId(postId);
+            setActive(postId, index);
           }
         }
       },
@@ -44,8 +68,10 @@ export function FeedVideoPlayer({
     );
     obs.observe(el);
     return () => obs.disconnect();
-  }, [postId, setActiveId]);
+  }, [postId, index, setActive]);
 
+  // Far-from-viewport guard so we can drop the video src entirely when the
+  // card is way off-screen — meaningful memory savings on long feeds.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -67,6 +93,7 @@ export function FeedVideoPlayer({
     return () => obs.disconnect();
   }, []);
 
+  // Play / pause based on active state.
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -80,11 +107,25 @@ export function FeedVideoPlayer({
     }
   }, [isActive]);
 
+  // Delayed loading indicator. Only surface a spinner if the video stays
+  // un-playable for >500ms while it's the active card; fast loads (cached,
+  // pre-warmed) never flash a spinner — the user perceives instant playback.
+  useEffect(() => {
+    if (!isActive || isPlaying) {
+      setShowLoadingIndicator(false);
+      return;
+    }
+    const t = window.setTimeout(() => {
+      setShowLoadingIndicator(true);
+    }, LOADING_INDICATOR_DELAY_MS);
+    return () => window.clearTimeout(t);
+  }, [isActive, isPlaying]);
+
   function togglePlay() {
     const video = videoRef.current;
     if (!video) return;
     if (video.paused) {
-      setActiveId(postId);
+      setActive(postId, index);
       video.play().catch(() => {
         setIsPlaying(false);
       });
@@ -120,15 +161,27 @@ export function FeedVideoPlayer({
         playsInline
         muted
         loop
-        preload={loadSrc && !farFromViewport ? "metadata" : "none"}
+        preload={loadSrc && !farFromViewport ? preloadMode : "none"}
         className="absolute inset-0 h-full w-full object-cover"
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
         onWaiting={() => setIsPlaying(false)}
-        style={{ opacity: isPlaying ? 1 : 0 }}
+        style={{ opacity: isPlaying ? 1 : 0, transition: "opacity 200ms" }}
       />
 
-      {!isPlaying && (
+      {/* Loading indicator only appears after the configurable delay — fast
+          loads never flash, slow loads get a subtle spinner instead of a
+          black hole. */}
+      {showLoadingIndicator && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <span
+            className="h-9 w-9 animate-spin rounded-full border-[3px] border-white/30 border-t-white/90"
+            aria-hidden="true"
+          />
+        </div>
+      )}
+
+      {!isPlaying && !showLoadingIndicator && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <div className="rounded-full bg-black/40 p-3 backdrop-blur-sm">
             <svg viewBox="0 0 24 24" className="h-8 w-8 fill-white">

@@ -137,10 +137,11 @@ export function FeedClient() {
 
           {showEmpty && <EmptyFeedState />}
 
-          {posts.map((post) => (
+          {posts.map((post, index) => (
             <FeedVideoCard
               key={post.id}
               post={post}
+              index={index}
               onOpenComments={setCommentPostId}
             />
           ))}

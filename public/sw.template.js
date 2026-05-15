@@ -116,9 +116,14 @@ self.addEventListener("activate", (e) => {
       .keys()
       .then((keys) =>
         Promise.all(
-          keys.map((k) =>
-            k === CACHE ? cleanupSensitiveEntries(k) : caches.delete(k)
-          )
+          keys.map((k) => {
+            if (k === CACHE) return cleanupSensitiveEntries(k);
+            // Preserve the feed-media cache across SW redeploys — re-downloading
+            // every cached MP4 just because the SW version bumped would waste
+            // both user bandwidth and the perf gain the cache exists for.
+            if (k === FEED_MEDIA_CACHE) return undefined;
+            return caches.delete(k);
+          })
         )
       )
       .then(() => self.clients.claim())
@@ -167,6 +172,49 @@ self.addEventListener("notificationclick", (e) => {
   );
 });
 
+// UploadThing feed media cache — keep the last N video + thumbnail
+// responses on disk so scroll-back is instant instead of re-downloading
+// the whole MP4 from the CDN. Cross-origin requests need their own
+// branch because the main fetch handler below early-returns on them.
+const FEED_MEDIA_CACHE = "natalo-feed-media-v1";
+const FEED_MEDIA_MAX_ENTRIES = 50;
+const FEED_MEDIA_HOSTS = ["utfs.io", "ufs.sh"];
+
+function isFeedMediaRequest(url) {
+  if (url.protocol !== "https:") return false;
+  return FEED_MEDIA_HOSTS.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`));
+}
+
+async function trimFeedMediaCache() {
+  const cache = await caches.open(FEED_MEDIA_CACHE);
+  const keys = await cache.keys();
+  if (keys.length <= FEED_MEDIA_MAX_ENTRIES) return;
+  // FIFO trim — oldest entries first.
+  const excess = keys.length - FEED_MEDIA_MAX_ENTRIES;
+  await Promise.all(keys.slice(0, excess).map((k) => cache.delete(k)));
+}
+
+async function handleFeedMediaRequest(request) {
+  const cache = await caches.open(FEED_MEDIA_CACHE);
+  const cached = await cache.match(request, { ignoreVary: true });
+  if (cached) return cached;
+
+  // Pass Range requests through to the network unmodified — caching partial
+  // responses would corrupt subsequent seeks. Only full 200 responses go
+  // into the cache.
+  try {
+    const response = await fetch(request);
+    if (response.ok && response.status === 200 && !request.headers.get("Range")) {
+      const cloned = response.clone();
+      void cache.put(request, cloned).then(() => trimFeedMediaCache()).catch(() => {});
+    }
+    return response;
+  } catch (err) {
+    if (cached) return cached;
+    throw err;
+  }
+}
+
 // Fetch strategy:
 // - API & auth → network only
 // - Static assets → cache first
@@ -174,6 +222,13 @@ self.addEventListener("notificationclick", (e) => {
 self.addEventListener("fetch", (e) => {
   const { request } = e;
   const url = new URL(request.url);
+
+  // Feed media (cross-origin UploadThing). Handled before the same-origin
+  // guard so video + thumbnail responses get cached for scroll-back.
+  if (request.method === "GET" && isFeedMediaRequest(url)) {
+    e.respondWith(handleFeedMediaRequest(request));
+    return;
+  }
 
   if (request.method !== "GET" || url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/")) return;
