@@ -18,7 +18,7 @@ import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
 import {
   BUNNY_VIDEO_STATUS,
-  bunnyPlaylistUrl,
+  bunnyMp4Url,
   bunnyThumbnailUrl,
   getBunnyVideo,
 } from "@/lib/feed/bunny";
@@ -37,7 +37,36 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => ({}))) as {
     postId?: string;
     debug?: boolean;
+    /** Rewrite legacy Bunny HLS rows to point at the MP4 progressive URL. */
+    migrateHlsToMp4?: boolean;
   };
+
+  // One-shot: convert any existing posts whose videoUrl still points at
+  // `playlist.m3u8` over to the MP4 URL. Run once after deploying the
+  // MP4 switch so playback hits the much-better-cached MP4 path even for
+  // rows written before the change.
+  if (body.migrateHlsToMp4) {
+    const oldRows = await prisma.feedPost.findMany({
+      where: {
+        videoGuid: { not: null },
+        videoUrl: { endsWith: "playlist.m3u8" },
+      },
+      select: { id: true, videoGuid: true },
+    });
+    const migrated: string[] = [];
+    for (const row of oldRows) {
+      if (!row.videoGuid) continue;
+      await prisma.feedPost.update({
+        where: { id: row.id },
+        data: {
+          videoUrl: bunnyMp4Url(row.videoGuid, 720),
+          videoMimeType: "video/mp4",
+        },
+      });
+      migrated.push(row.id);
+    }
+    return NextResponse.json({ ok: true, mode: "migrate-hls-to-mp4", migrated });
+  }
 
   // Debug mode: dump last 5 feed posts with their key state — no mutation.
   // Use this to see why a recently uploaded post isn't showing in the feed.
@@ -98,9 +127,9 @@ export async function POST(request: NextRequest) {
         where: { id: post.id },
         data: {
           encodingStatus: "ready",
-          videoUrl: bunnyPlaylistUrl(post.videoGuid),
+          videoUrl: bunnyMp4Url(post.videoGuid, 720),
           thumbnailUrl: bunnyThumbnailUrl(post.videoGuid),
-          videoMimeType: "application/vnd.apple.mpegurl",
+          videoMimeType: "video/mp4",
           videoDurationSec: meta.length ? Math.round(meta.length) : null,
           videoWidth: meta.width ?? null,
           videoHeight: meta.height ?? null,

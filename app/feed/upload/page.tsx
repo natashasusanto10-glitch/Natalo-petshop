@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { FeedUploadClient } from "@/components/feed/FeedUploadClient";
+import { PageStatusBar } from "@/components/PageStatusBar";
 
 export const metadata: Metadata = {
   title: "Upload Video — Feed Natalo",
@@ -15,23 +16,28 @@ export default async function FeedUploadPage() {
     redirect("/member/login?returnUrl=/feed/upload");
   }
   if (session.role === "ADMIN") {
-    // Admin akan posting via /admin/feed nanti.
     redirect("/feed");
   }
 
   return (
-    <main className="min-h-[100dvh] overflow-x-hidden bg-slate-50">
+    <main className="min-h-[100dvh] overflow-x-hidden bg-black text-white">
+      <PageStatusBar
+        iconColor="light"
+        themeColor="#000000"
+        nativeBackgroundColor="#00000000"
+        overlaysWebView
+      />
       <div className="feed-upload-page-enter min-h-[100dvh]">
         <FeedUploadClient />
       </div>
       <style>{`
         .feed-upload-page-enter {
-          animation: feed-upload-page-enter 340ms cubic-bezier(0.22, 1, 0.36, 1) both;
+          animation: feed-upload-page-enter 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
         }
 
         @keyframes feed-upload-page-enter {
           from {
-            opacity: 0.86;
+            opacity: 0.92;
             transform: translate3d(100%, 0, 0);
           }
           to {

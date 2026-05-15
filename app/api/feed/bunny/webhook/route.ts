@@ -27,7 +27,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   BUNNY_VIDEO_STATUS,
-  bunnyPlaylistUrl,
+  bunnyMp4Url,
   bunnyThumbnailUrl,
   getBunnyConfig,
   getBunnyVideo,
@@ -101,13 +101,17 @@ export async function POST(request: NextRequest) {
   // FINISHED — pull real dimensions + duration from Bunny so the feed
   // knows the aspect ratio before the first frame loads.
   const meta = await getBunnyVideo(guid);
+  // Use the MP4 progressive URL instead of HLS playlist. Short feed clips
+  // play and CDN-cache much better as a single MP4 than as a manifest +
+  // dozens of HLS segments. iOS Safari plays it natively with no extra
+  // player code. We default to 720p — sharp on portrait phone, ~5-10 MB.
   await prisma.feedPost.update({
     where: { id: post.id },
     data: {
       encodingStatus: "ready",
-      videoUrl: bunnyPlaylistUrl(guid),
+      videoUrl: bunnyMp4Url(guid, 720),
       thumbnailUrl: bunnyThumbnailUrl(guid),
-      videoMimeType: "application/vnd.apple.mpegurl", // HLS
+      videoMimeType: "video/mp4",
       videoDurationSec: meta?.length ? Math.round(meta.length) : null,
       videoWidth: meta?.width ?? null,
       videoHeight: meta?.height ?? null,

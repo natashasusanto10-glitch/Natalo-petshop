@@ -1,13 +1,26 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFeedActiveVideo } from "./FeedActiveVideoContext";
 import { getPreloadTier } from "@/lib/feed/runtime-config";
 import { useVideoMetrics } from "./useVideoMetrics";
+import { bunnyHlsToMp4 } from "@/lib/feed/bunny";
 
 function isHlsUrl(url: string | null | undefined): boolean {
   if (!url) return false;
   return url.includes(".m3u8");
+}
+
+/**
+ * Pick the best playback URL for this post. For posts written before the
+ * MP4 switch (videoUrl still points at `playlist.m3u8`), convert to the
+ * equivalent Bunny MP4 progressive URL — same video, dramatically better
+ * cold-cache behaviour. Falls back to the original URL when it isn't a
+ * recognisable Bunny HLS pattern (legacy UploadThing posts, etc).
+ */
+function resolvePlaybackUrl(url: string): string {
+  if (!isHlsUrl(url)) return url;
+  return bunnyHlsToMp4(url, 720) ?? url;
 }
 
 type Props = {
@@ -40,6 +53,11 @@ export function FeedVideoPlayer({
   const [isPlaying, setIsPlaying] = useState(false);
   const [showLoadingIndicator, setShowLoadingIndicator] = useState(false);
 
+  // Resolve HLS → MP4 for Bunny posts so the player benefits from single-file
+  // CDN caching. New posts already come through as MP4 from the webhook; this
+  // covers older rows still pointing at playlist.m3u8.
+  const playbackUrl = useMemo(() => resolvePlaybackUrl(videoUrl), [videoUrl]);
+
   const isActive = activeId === postId && !paused;
   // Distance from the currently-active card. Unknown active → treat as far.
   const distance =
@@ -51,20 +69,18 @@ export function FeedVideoPlayer({
   // to /api/feed/metrics when this card stops being active or unmounts.
   useVideoMetrics({ videoRef, postId, isActive, videoDurationSec: durationSec });
 
-  // HLS playback. Bunny serves .m3u8 playlists with adaptive bitrate
-  // variants. Safari (iOS + macOS) plays HLS natively via the standard
-  // <video src> path so we do nothing there. Other browsers (Android
-  // Chrome / desktop Chrome / Firefox) need hls.js to translate the
-  // playlist into MediaSource Extensions chunks. Dynamic import keeps
-  // the ~120KB hls.js bundle out of the initial page chunk.
+  // HLS fallback path. New Bunny posts now ship as MP4 progressive (much
+  // better cache behaviour for short feed clips), and legacy Bunny rows are
+  // rewritten to MP4 via resolvePlaybackUrl() above. Only legacy posts that
+  // we cannot rewrite (e.g. external HLS providers in the future) hit this
+  // path: Safari plays HLS natively, other browsers fall back to hls.js.
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     if (!loadSrc || farFromViewport) return;
-    if (!isHlsUrl(videoUrl)) return;
-    // Safari has native HLS — just let `<video src>` handle it.
+    if (!isHlsUrl(playbackUrl)) return;
     if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      video.src = videoUrl;
+      video.src = playbackUrl;
       return;
     }
     let destroyed = false;
@@ -75,11 +91,10 @@ export function FeedVideoPlayer({
       const hls = new Hls({
         maxBufferLength: 10,
         maxMaxBufferLength: 30,
-        // Match preload tier — current card downloads more aggressively.
         startLevel: -1,
         capLevelToPlayerSize: true,
       });
-      hls.loadSource(videoUrl);
+      hls.loadSource(playbackUrl);
       hls.attachMedia(video);
       hlsInstance = hls;
     });
@@ -87,9 +102,9 @@ export function FeedVideoPlayer({
       destroyed = true;
       hlsInstance?.destroy();
     };
-  }, [videoUrl, loadSrc, farFromViewport]);
+  }, [playbackUrl, loadSrc, farFromViewport]);
 
-  const isHls = isHlsUrl(videoUrl);
+  const isHls = isHlsUrl(playbackUrl);
 
   // Track when the active card changes via IntersectionObserver. Pass both
   // id and index so context can compute neighbours for preload decisions.
@@ -199,7 +214,7 @@ export function FeedVideoPlayer({
         // For HLS we let the effect above attach the source (Safari native
         // sets src direct, other browsers hand the stream to hls.js).
         // For progressive MP4 we use the native <video src> path.
-        src={loadSrc && !farFromViewport && !isHls ? videoUrl : undefined}
+        src={loadSrc && !farFromViewport && !isHls ? playbackUrl : undefined}
         poster={thumbnailUrl ?? undefined}
         playsInline
         muted

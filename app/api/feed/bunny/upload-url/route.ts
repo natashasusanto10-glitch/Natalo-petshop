@@ -88,11 +88,13 @@ export async function POST(request: NextRequest) {
     productIds?: unknown;
   };
 
-  const title = String(body.title ?? "").trim();
+  // Caption (mapped ke `title` di DB) sekarang opsional sesuai flow baru —
+  // kalau user tidak isi caption, kita pakai placeholder "Postingan baru"
+  // supaya kolom title (NOT NULL di DB) tetap valid. Caption full disimpan
+  // di `description`.
+  const rawTitle = String(body.title ?? "").trim();
   const description = body.description ? String(body.description).trim() : null;
-  if (!title || title.length < 3) {
-    return NextResponse.json({ error: "Judul minimal 3 karakter." }, { status: 400 });
-  }
+  const title = rawTitle.length > 0 ? rawTitle : "Postingan baru";
   if (title.length > MAX_TITLE_LENGTH) {
     return NextResponse.json({ error: "Judul terlalu panjang." }, { status: 400 });
   }

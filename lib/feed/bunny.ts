@@ -152,6 +152,39 @@ export function bunnyPlaylistUrl(guid: string): string {
 }
 
 /**
+ * Progressive MP4 URL — single file that the browser streams via HTTP
+ * range requests. Use this instead of HLS for short feed videos: one
+ * cache key vs. dozens of HLS segments means the CDN warms up faster
+ * (huge win when cache hit rate is low) and iOS Safari plays it
+ * natively without any extra player code.
+ *
+ * Bunny generates these MP4 transcodes when "MP4 Fallback" is enabled
+ * in the library settings. Available resolutions are reported in the
+ * video meta's `availableResolutions` field (typically 240p/360p/480p/720p).
+ * 720p is a safe default for portrait phone video — picture stays sharp,
+ * file size stays small (~5-10 MB for a 15-second clip).
+ */
+export function bunnyMp4Url(guid: string, height: 240 | 360 | 480 | 720 = 720): string {
+  const cfg = getBunnyConfig();
+  if (!cfg) return "";
+  return `https://${cfg.cdnHostname}/${guid}/play_${height}p.mp4`;
+}
+
+/**
+ * Best-effort: if a stored videoUrl points at a Bunny HLS playlist,
+ * derive the equivalent MP4 URL. Used on the client so existing rows
+ * (saved before the MP4 switch) still play via the faster MP4 path
+ * without a DB migration. Returns null when the URL doesn't match the
+ * Bunny HLS pattern so callers can fall back to the original src.
+ */
+export function bunnyHlsToMp4(hlsUrl: string | null | undefined, height: 240 | 360 | 480 | 720 = 720): string | null {
+  if (!hlsUrl) return null;
+  const match = hlsUrl.match(/^(https?:\/\/[^/]+)\/([a-f0-9-]+)\/playlist\.m3u8(?:\?.*)?$/i);
+  if (!match) return null;
+  return `${match[1]}/${match[2]}/play_${height}p.mp4`;
+}
+
+/**
  * Auto-generated thumbnail URL — Bunny pulls a frame at ~10% of the clip
  * by default. Good enough as a placeholder before the video element
  * finishes its first paint.

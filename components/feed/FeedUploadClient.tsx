@@ -1,33 +1,36 @@
 "use client";
 
 /**
- * Upload form untuk user community video. Spec section 6 flow:
- *   1. User buka feed
- *   2. Tap tombol upload / plus
- *   3. Pilih video
- *   4. Isi judul
- *   5. Isi deskripsi
- *   6. (Pilih kategori) — skip di MVP per keputusan user
- *   7. (Pilih produk yang dipakai, opsional) — di-implement
- *   8. Preview video
- *   9. Upload
- *  10. Tampilkan success screen dengan Lottie
+ * Flow post Feed Natalo — video short 1–45 detik.
  *
- * Field user TIDAK boleh: harga, stok, promo, tombol beli, link jualan
- * (di-enforce server-side juga — POST /api/feed/posts override kind=COMMUNITY).
+ *   1. Pilih Video      → empty preview + Galeri/Kamera cards
+ *   2. Preview Video    → cek hasil, Ganti Video / Putar Ulang
+ *   3. Trim Video       → timeline + filmstrip + handle kiri/kanan
+ *   4. Detail Postingan → caption (500), tag produk, info pet
+ *   5. Menunggu Review  → success + Kembali ke Feed / Lihat Postingan
  *
- * Spec 10.5: hard size limit 30 MB (lihat /api/feed/upload-video).
- *
- * Flow internal:
- *   A. User pilih file → readVideoMetadata + extract thumbnail di client
- *   B. User isi judul/deskripsi/produk
- *   C. Tap "Upload" → upload video → upload thumbnail → create post → success
- *   D. Success screen dengan Lottie + tombol "Kembali ke Feed"
+ * Setiap step adalah layar penuh dengan transisi slide native-like.
+ * Backend tetap pakai pipeline Bunny direct upload yang sudah ada
+ * (POST /api/feed/bunny/upload-url → PUT raw bytes).
  */
+
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
-import { FiArrowLeft, FiCheck, FiPackage, FiPause, FiPlay, FiUploadCloud, FiVideo, FiX } from "react-icons/fi";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  FiArrowLeft,
+  FiCamera,
+  FiCheck,
+  FiImage,
+  FiInfo,
+  FiPackage,
+  FiPause,
+  FiPlay,
+  FiRotateCcw,
+  FiShield,
+  FiVideo,
+  FiX,
+} from "react-icons/fi";
 import { BottomSheet } from "@/components/BottomSheet";
 import { formatRupiah } from "@/lib/format";
 import { hapticSuccess, hapticTap, hapticWarning } from "@/lib/native/haptics";
@@ -41,24 +44,24 @@ import {
   MAX_SOURCE_VIDEO_SIZE,
   USER_VIDEO_CONFIG,
 } from "@/lib/feed/video-config";
-import { FeedUploadSuccessLottie } from "./FeedUploadSuccessLottie";
 
-const MAX_TITLE_LENGTH = 200;
-const MAX_DESC_LENGTH = 300;
-const ACCEPT_VIDEO = "video/mp4,video/quicktime";
-
-type Step = "pick" | "trim" | "form" | "uploading" | "success" | "error";
-
-// Allow longer source videos so users can trim down. Server-side validator
-// at /api/feed/posts still enforces 1-45s on the FINAL trimmed clip.
+const MAX_CAPTION_LENGTH = 500;
+const ACCEPT_VIDEO = "video/mp4,video/quicktime,video/*";
+// Source max — longer than final trim window (45s) so user bisa trim down.
+// Server-side validator tetap enforce 1-45s di output.
 const SOURCE_MAX_SECONDS = 180;
-type ProcessingStage =
-  | "validating"
-  | "compressing"
-  | "generating-thumbnail"
-  | "uploading"
-  | "submitting"
-  | null;
+const FILMSTRIP_FRAMES = 7;
+
+type Step =
+  | "pick"
+  | "preview"
+  | "trim"
+  | "detail"
+  | "success";
+
+type Direction = "forward" | "back";
+
+type PetType = "cat" | "dog" | "other" | null;
 
 type PinnableProduct = {
   productId: string;
@@ -76,36 +79,60 @@ type PinnableProduct = {
 
 export function FeedUploadClient() {
   const router = useRouter();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Step machine ──────────────────────────────────────────────────
   const [step, setStep] = useState<Step>("pick");
+  const [direction, setDirection] = useState<Direction>("forward");
+
+  const goNext = useCallback((target: Step) => {
+    setDirection("forward");
+    setStep(target);
+    void hapticTap();
+  }, []);
+  const goBack = useCallback((target: Step) => {
+    setDirection("back");
+    setStep(target);
+  }, []);
+
+  // ── Video state ───────────────────────────────────────────────────
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
   const [metadata, setMetadata] = useState<VideoMetadata | null>(null);
-  const [thumbnailBlob, setThumbnailBlob] = useState<Blob | null>(null);
   const [thumbnailPreviewUrl, setThumbnailPreviewUrl] = useState<string | null>(null);
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [uploadProgress, setUploadProgress] = useState<string>("");
-  const [processingStage, setProcessingStage] = useState<ProcessingStage>(null);
-  const [processingProgress, setProcessingProgress] = useState(0);
-  const [pinnableProducts, setPinnableProducts] = useState<PinnableProduct[]>([]);
-  const [productsLoading, setProductsLoading] = useState(false);
-  const [productPickerOpen, setProductPickerOpen] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState<PinnableProduct | null>(null);
-  // Trim state — defaults set when video is picked. trimEnd defaults to
-  // min(sourceDuration, MAX_DURATION) so a short video just opens already-valid.
+  const [pickError, setPickError] = useState<string | null>(null);
+
+  // Trim
   const [trimStart, setTrimStart] = useState(0);
   const [trimEnd, setTrimEnd] = useState(USER_VIDEO_CONFIG.maxDuration);
-  const [trimPreviewPlaying, setTrimPreviewPlaying] = useState(false);
-  const trimVideoRef = useRef<HTMLVideoElement>(null);
-
   const finalDuration = Math.max(0, trimEnd - trimStart);
   const trimValid =
     finalDuration >= USER_VIDEO_CONFIG.minDuration &&
     finalDuration <= USER_VIDEO_CONFIG.maxDuration;
 
+  // Caption / tag / pet
+  const [caption, setCaption] = useState("");
+  const [selectedProduct, setSelectedProduct] = useState<PinnableProduct | null>(
+    null,
+  );
+  const [productPickerOpen, setProductPickerOpen] = useState(false);
+  const [pinnableProducts, setPinnableProducts] = useState<PinnableProduct[]>([]);
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [petType, setPetType] = useState<PetType>(null);
+
+  // Upload
+  const [uploading, setUploading] = useState(false);
+  const [uploadLabel, setUploadLabel] = useState("");
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStage, setUploadStage] = useState<
+    "submitting" | "compressing" | "uploading" | null
+  >(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [resultPostId, setResultPostId] = useState<string | null>(null);
+
+  // ── Cleanup blob URLs ─────────────────────────────────────────────
   useEffect(() => {
     return () => {
       if (filePreviewUrl) URL.revokeObjectURL(filePreviewUrl);
@@ -117,6 +144,7 @@ export function FeedUploadClient() {
     };
   }, [thumbnailPreviewUrl]);
 
+  // ── Load pinnable products lazily (need them for Detail step) ────
   useEffect(() => {
     let cancelled = false;
     setProductsLoading(true);
@@ -139,35 +167,34 @@ export function FeedUploadClient() {
     };
   }, []);
 
-  function resetSelection() {
+  function resetVideo() {
     if (filePreviewUrl) URL.revokeObjectURL(filePreviewUrl);
     if (thumbnailPreviewUrl) URL.revokeObjectURL(thumbnailPreviewUrl);
     setFile(null);
     setFilePreviewUrl(null);
     setMetadata(null);
-    setThumbnailBlob(null);
     setThumbnailPreviewUrl(null);
-    setError(null);
+    setTrimStart(0);
+    setTrimEnd(USER_VIDEO_CONFIG.maxDuration);
   }
 
   async function handleFilePick(picked: File | null) {
     if (!picked) return;
-    resetSelection();
-    setError(null);
+    resetVideo();
+    setPickError(null);
 
-    // Client-side validation — mirror server validation di route.
     if (!picked.type.startsWith("video/")) {
-      setError("File harus berupa video.");
-      hapticWarning();
+      setPickError("Format video belum didukung.");
+      void hapticWarning();
       return;
     }
     if (picked.size > MAX_SOURCE_VIDEO_SIZE) {
-      setError(
-        `Ukuran video terlalu besar (${formatFileSize(picked.size)}). Maksimal ${formatFileSize(
-          MAX_SOURCE_VIDEO_SIZE,
-        )}. Tip: di iPhone, atur Settings → Camera → Record Video ke 1080p HD 30fps biar lebih ringan.`,
+      setPickError(
+        `Ukuran video terlalu besar (${formatFileSize(
+          picked.size,
+        )}). Maksimal ${formatFileSize(MAX_SOURCE_VIDEO_SIZE)}.`,
       );
-      hapticWarning();
+      void hapticWarning();
       return;
     }
 
@@ -175,98 +202,76 @@ export function FeedUploadClient() {
     setFile(picked);
     setFilePreviewUrl(pickedPreviewUrl);
     setAnalyzing(true);
-    setProcessingStage("validating");
-    setProcessingProgress(0);
 
     try {
       const meta = await readVideoMetadata(picked);
       setMetadata(meta);
+
       if (meta.durationSec < USER_VIDEO_CONFIG.minDuration) {
-        URL.revokeObjectURL(pickedPreviewUrl);
-        resetSelection();
-        setError(`Video terlalu pendek. Minimal ${USER_VIDEO_CONFIG.minDuration} detik.`);
-        hapticWarning();
+        resetVideo();
+        setPickError("Video terlalu pendek. Minimal 1 detik.");
+        void hapticWarning();
         setAnalyzing(false);
         return;
       }
       if (meta.durationSec > SOURCE_MAX_SECONDS) {
-        URL.revokeObjectURL(pickedPreviewUrl);
-        resetSelection();
-        setError(
-          `Video terlalu panjang (${Math.round(meta.durationSec)}s). Maksimal ${SOURCE_MAX_SECONDS} detik untuk source.`,
+        resetVideo();
+        setPickError(
+          `Video terlalu panjang (${Math.round(
+            meta.durationSec,
+          )}s). Maksimal ${SOURCE_MAX_SECONDS} detik untuk source.`,
         );
-        hapticWarning();
+        void hapticWarning();
         setAnalyzing(false);
         return;
       }
-      // Seed trim range — start at 0, end at min(duration, max-allowed).
-      // User opens the trim screen with a valid selection already.
+
+      // Seed trim range — full clip kalau ≤45s, else 45s pertama.
       setTrimStart(0);
       setTrimEnd(Math.min(meta.durationSec, USER_VIDEO_CONFIG.maxDuration));
 
-      setProcessingStage("generating-thumbnail");
+      // Extract thumbnail untuk preview (best-effort, fallback aman).
       const thumb = await extractVideoThumbnailSafe(picked, meta, {
         targetTimeSec: Math.min(1, meta.durationSec / 2),
         maxWidth: 480,
-        timeoutMs: 30000,
-        onError: (thumbnailError) => {
-          console.info("[feed-video] legacy-thumbnail:fallback", {
-            fileName: picked.name,
-            size: picked.size,
-            mimeType: picked.type,
-            durationSec: meta.durationSec,
-            error:
-              thumbnailError instanceof Error
-                ? {
-                    name: thumbnailError.name,
-                    message: thumbnailError.message,
-                    stack: thumbnailError.stack,
-                  }
-                : { message: String(thumbnailError) },
-            usedFallback: true,
-          });
-        },
+        timeoutMs: 20000,
       });
-      setThumbnailBlob(thumb.blob);
       setThumbnailPreviewUrl(URL.createObjectURL(thumb.blob));
-      // Always show the trim screen — even a short video benefits from a
-      // confirmation step. Avoids the "where's trim?" complaint.
-      setStep("trim");
-      hapticTap();
+
+      goNext("preview");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal proses video.");
-      hapticWarning();
+      resetVideo();
+      setPickError(
+        err instanceof Error ? err.message : "Video belum bisa digunakan. Coba pilih video lain.",
+      );
+      void hapticWarning();
     } finally {
       setAnalyzing(false);
-      setProcessingStage(null);
     }
   }
 
-  async function handleUpload() {
+  async function handleSubmit() {
     if (!file || !metadata) return;
-    if (title.trim().length < 3) {
-      setError("Judul minimal 3 karakter.");
-      return;
-    }
-    setStep("uploading");
-    setError(null);
+    if (uploading) return;
+    setSubmitError(null);
+    setUploading(true);
+    setUploadStage("submitting");
+    setUploadProgress(0);
+    setUploadLabel("Menyiapkan unggahan...");
 
     try {
-      // 1. Server creates Bunny video record + FeedPost row. Returns the
-      //    direct-upload URL the client PUTs the raw bytes to.
-      setProcessingStage("submitting");
-      setProcessingProgress(0);
-      setUploadProgress("Menyiapkan unggahan...");
+      // 1) Buat record di Bunny + FeedPost row.
       const urlRes = await fetch("/api/feed/bunny/upload-url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: title.trim(),
-          description: description.trim() || null,
+          title: caption.trim().slice(0, 200),
+          description: caption.trim() || null,
+          petType: petType ?? null,
           productIds: selectedProduct ? [selectedProduct.productId] : [],
         }),
       });
-      const urlData = (await urlRes.json()) as {
+      const urlData = (await urlRes.json().catch(() => ({}))) as {
         error?: string;
         postId?: string;
         videoGuid?: string;
@@ -277,684 +282,1332 @@ export function FeedUploadClient() {
         throw new Error(urlData.error ?? "Gagal menyiapkan unggahan.");
       }
 
-      // 2. Trim the source first if the user picked a sub-range. ffmpeg.wasm
-      //    handles cutting (cheap, no full re-encode needed). If the user
-      //    kept the whole clip, skip this step and upload the raw file
-      //    directly — far faster + no WASM crash risk for big sources.
+      // 2) Trim source kalau user pilih sub-range. Else skip — upload raw.
       let uploadBlob: Blob = file;
       const wantsTrim =
         trimStart > 0.1 || finalDuration < metadata.durationSec - 0.1;
       if (wantsTrim) {
-        setProcessingStage("compressing");
-        setProcessingProgress(0);
-        setUploadProgress("Memotong video...");
-        // Dynamic import — keep ffmpeg.wasm out of the initial bundle.
+        setUploadStage("compressing");
+        setUploadProgress(0);
+        setUploadLabel("Memotong video...");
         const { trimVideo } = await import("@/lib/feed/video-trimmer");
         uploadBlob = await trimVideo(file, {
           trimStartSec: trimStart,
           trimDurationSec: finalDuration,
-          onProgress: setProcessingProgress,
+          onProgress: setUploadProgress,
         });
       }
 
-      // 3. Upload raw (or trimmed) video bytes directly to Bunny. No
-      //    client-side re-encoding — Bunny handles HLS variants in the
-      //    cloud after this PUT lands.
-      setProcessingStage("uploading");
-      setProcessingProgress(0);
-      setUploadProgress("Mengunggah video...");
+      // 3) PUT bytes ke Bunny.
+      setUploadStage("uploading");
+      setUploadProgress(0);
+      setUploadLabel("Mengunggah video...");
       await uploadToBunnyWithProgress({
         uploadUrl: urlData.uploadUrl,
         headers: urlData.uploadHeaders ?? {},
         body: uploadBlob,
-        onProgress: setProcessingProgress,
+        onProgress: setUploadProgress,
       });
 
-      hapticSuccess();
+      setResultPostId(urlData.postId ?? null);
+      void hapticSuccess();
+      setDirection("forward");
       setStep("success");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload gagal. Coba lagi.");
-      setStep("form");
-      hapticWarning();
+      setSubmitError(
+        err instanceof Error ? err.message : "Upload gagal. Coba lagi.",
+      );
+      void hapticWarning();
     } finally {
-      setProcessingStage(null);
-      setProcessingProgress(0);
+      setUploading(false);
+      setUploadStage(null);
+      setUploadProgress(0);
+      setUploadLabel("");
     }
   }
 
-  // ── Render per step ───────────────────────────────────────────────
-  if (step === "success") {
-    return (
-      <div className="flex min-h-[100dvh] flex-col items-center justify-center px-6 pb-24 pt-16 text-center">
-        <FeedUploadSuccessLottie />
-        <h1 className="mt-4 text-xl font-black text-natalo-700">
-          Video Berhasil Diupload!
-        </h1>
-        <p className="mt-3 max-w-sm text-sm leading-relaxed text-gray-600">
-          Terima kasih sudah berbagi pengalaman bersama komunitas Natalo.
-          Videomu sedang diproses di cloud (encoding HLS adaptive bitrate
-          ~1-2 menit), lalu admin akan review sebelum tampil di Feed.
-          Kamu akan dapat notifikasi saat status berubah.
-        </p>
-        <div className="mt-8 flex w-full max-w-xs flex-col gap-2">
-          <button
-            type="button"
-            onClick={() => router.push("/feed")}
-            className="rounded-full bg-natalo-600 py-3 text-sm font-extrabold text-white shadow-sm transition active:scale-95"
-          >
-            Kembali ke Feed
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              resetSelection();
-              setTitle("");
-              setDescription("");
-              setSelectedProduct(null);
-              setStep("pick");
-            }}
-            className="rounded-full border border-natalo-200 py-3 text-sm font-extrabold text-natalo-700 transition active:bg-natalo-50"
-          >
-            Upload Lagi
-          </button>
-        </div>
-      </div>
-    );
+  function handleCloseFlow() {
+    // Kembali ke Feed — bersihkan stack supaya tidak menumpuk.
+    router.replace("/feed");
   }
 
+  // ── Render ────────────────────────────────────────────────────────
   return (
-    <div className="mx-auto max-w-2xl px-4 pb-32 pt-4">
-      {/* Header */}
-      <header className="mb-6 flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => router.back()}
-          aria-label="Kembali"
-          className="grid h-10 w-10 place-items-center rounded-full bg-white shadow-sm"
-        >
-          <FiArrowLeft className="h-5 w-5 text-gray-700" />
-        </button>
-        <div>
-          <h1 className="text-base font-black text-gray-900">Upload Video Komunitas</h1>
-          <p className="text-[11px] font-semibold text-gray-500">
-            Bagikan pengalaman bersama hewan peliharaanmu
-          </p>
-        </div>
-      </header>
-
-      {step === "pick" || !file ? (
-        <PickPanel
-          onPick={(f) => handleFilePick(f)}
-          analyzing={analyzing}
-          error={error}
-          fileInputRef={fileInputRef}
-        />
-      ) : step === "trim" && metadata && filePreviewUrl ? (
-        <TrimPanel
-          videoSrc={filePreviewUrl}
-          videoRef={trimVideoRef}
-          durationSec={metadata.durationSec}
-          trimStart={trimStart}
-          trimEnd={trimEnd}
-          finalDuration={finalDuration}
-          isValid={trimValid}
-          isPlaying={trimPreviewPlaying}
-          onTrimStartChange={(v) => {
-            const next = Math.max(0, Math.min(v, trimEnd - 0.5));
-            setTrimStart(next);
-            const video = trimVideoRef.current;
-            if (video) video.currentTime = next;
-          }}
-          onTrimEndChange={(v) => {
-            const next = Math.max(trimStart + 0.5, Math.min(v, metadata.durationSec));
-            setTrimEnd(next);
-          }}
-          onTogglePlay={() => {
-            const video = trimVideoRef.current;
-            if (!video) return;
-            if (video.paused) {
-              if (video.currentTime < trimStart || video.currentTime >= trimEnd) {
-                video.currentTime = trimStart;
-              }
-              video.play().then(() => setTrimPreviewPlaying(true)).catch(() => {});
-            } else {
-              video.pause();
-              setTrimPreviewPlaying(false);
-            }
-          }}
-          onPause={() => setTrimPreviewPlaying(false)}
-          onTimeUpdate={() => {
-            const video = trimVideoRef.current;
-            if (!video) return;
-            if (video.currentTime >= trimEnd) {
-              video.pause();
-              video.currentTime = trimStart;
-              setTrimPreviewPlaying(false);
-            }
-          }}
-          onBack={() => {
-            const video = trimVideoRef.current;
-            if (video) video.pause();
-            setTrimPreviewPlaying(false);
-            resetSelection();
-            setStep("pick");
-          }}
-          onNext={() => {
-            const video = trimVideoRef.current;
-            if (video) video.pause();
-            setTrimPreviewPlaying(false);
-            setStep("form");
-            hapticTap();
-          }}
-        />
-      ) : (
-        <FormPanel
-          file={file}
-          metadata={metadata}
-          thumbnailPreviewUrl={thumbnailPreviewUrl}
-          title={title}
-          description={description}
-          selectedProduct={selectedProduct}
-          pinnableProducts={pinnableProducts}
-          productsLoading={productsLoading}
-          productPickerOpen={productPickerOpen}
-          onTitleChange={setTitle}
-          onDescriptionChange={setDescription}
-          onOpenProductPicker={() => setProductPickerOpen(true)}
-          onCloseProductPicker={() => setProductPickerOpen(false)}
-          onSelectProduct={(product) => {
-            setSelectedProduct(product);
-            setProductPickerOpen(false);
-          }}
-          onClearProduct={() => setSelectedProduct(null)}
-          onChangeFile={() => {
-            resetSelection();
-            setStep("pick");
-          }}
-          onSubmit={handleUpload}
-          uploading={step === "uploading"}
-          uploadProgress={uploadProgress}
-          processingStage={processingStage}
-          processingProgress={processingProgress}
-          error={error}
-        />
-      )}
-    </div>
-  );
-}
-
-// ── Sub-panels ────────────────────────────────────────────────────────
-
-function PickPanel({
-  onPick,
-  analyzing,
-  error,
-  fileInputRef,
-}: {
-  onPick: (f: File | null) => void;
-  analyzing: boolean;
-  error: string | null;
-  fileInputRef: React.RefObject<HTMLInputElement | null>;
-}) {
-  return (
-    <div className="rounded-3xl border border-dashed border-gray-200 bg-white p-8 text-center">
-      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-natalo-50">
-        <FiVideo className="h-8 w-8 text-natalo-600" />
-      </div>
-      <h2 className="mt-4 text-sm font-extrabold text-gray-900">Pilih video</h2>
-      <p className="mt-2 text-xs text-gray-500">
-        MP4 atau MOV · video mentah max {formatFileSize(MAX_SOURCE_VIDEO_SIZE)} · durasi{" "}
-        {USER_VIDEO_CONFIG.minDuration}-{USER_VIDEO_CONFIG.maxDuration} detik
-      </p>
-
+    <div className="relative min-h-[100dvh] w-full overflow-x-hidden bg-black text-white">
+      {/* Hidden inputs — satu untuk galeri, satu untuk kamera. */}
       <input
-        ref={fileInputRef}
+        ref={galleryInputRef}
         type="file"
         accept={ACCEPT_VIDEO}
         className="hidden"
-        onChange={(e) => onPick(e.target.files?.[0] ?? null)}
+        onChange={(e) => void handleFilePick(e.target.files?.[0] ?? null)}
       />
-      <button
-        type="button"
-        onClick={() => fileInputRef.current?.click()}
-        disabled={analyzing}
-        className="mt-5 inline-flex items-center gap-2 rounded-full bg-natalo-600 px-6 py-3 text-sm font-extrabold text-white transition active:scale-95 disabled:opacity-50"
-      >
-        <FiUploadCloud className="h-4 w-4" />
-        {analyzing ? "Memproses..." : "Pilih video"}
-      </button>
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept={ACCEPT_VIDEO}
+        capture="environment"
+        className="hidden"
+        onChange={(e) => void handleFilePick(e.target.files?.[0] ?? null)}
+      />
 
-      {error && (
-        <p className="mt-4 rounded-2xl bg-red-50 p-3 text-xs font-bold text-red-700">
-          {error}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function TrimPanel({
-  videoSrc,
-  videoRef,
-  durationSec,
-  trimStart,
-  trimEnd,
-  finalDuration,
-  isValid,
-  isPlaying,
-  onTrimStartChange,
-  onTrimEndChange,
-  onTogglePlay,
-  onPause,
-  onTimeUpdate,
-  onBack,
-  onNext,
-}: {
-  videoSrc: string;
-  videoRef: React.RefObject<HTMLVideoElement | null>;
-  durationSec: number;
-  trimStart: number;
-  trimEnd: number;
-  finalDuration: number;
-  isValid: boolean;
-  isPlaying: boolean;
-  onTrimStartChange: (v: number) => void;
-  onTrimEndChange: (v: number) => void;
-  onTogglePlay: () => void;
-  onPause: () => void;
-  onTimeUpdate: () => void;
-  onBack: () => void;
-  onNext: () => void;
-}) {
-  const invalidText =
-    finalDuration < USER_VIDEO_CONFIG.minDuration
-      ? `Video terlalu pendek. Minimal ${USER_VIDEO_CONFIG.minDuration} detik.`
-      : `Video terlalu panjang. Maksimal ${USER_VIDEO_CONFIG.maxDuration} detik.`;
-
-  return (
-    <main className="flex min-h-[100dvh] flex-col bg-black text-white">
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-4 py-3 pt-[calc(env(safe-area-inset-top)+12px)]">
-        <button
-          type="button"
-          onClick={onBack}
-          aria-label="Kembali"
-          className="flex h-10 w-10 items-center justify-center rounded-full text-white/85 transition active:bg-white/10"
-        >
-          <FiArrowLeft className="h-5 w-5" />
-        </button>
-        <h1 className="text-base font-black">Trim Video</h1>
-        <button
-          type="button"
-          onClick={onNext}
-          disabled={!isValid}
-          className="rounded-full bg-natalo-600 px-5 py-2 text-sm font-black text-white transition active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
-        >
-          Lanjut
-        </button>
-      </header>
-
-      <div className="flex-1 overflow-y-auto px-4 pb-[calc(24px+env(safe-area-inset-bottom))]">
-        <div className="mx-auto max-w-2xl pt-4">
-          <div className="relative overflow-hidden rounded-[28px] bg-white/10">
-            <video
-              ref={videoRef}
-              src={videoSrc}
-              className="aspect-[9/14] w-full object-cover"
-              playsInline
-              muted
-              onPause={onPause}
-              onTimeUpdate={onTimeUpdate}
-              onEnded={() => {
-                const video = videoRef.current;
-                if (video) video.currentTime = trimStart;
-                onPause();
-              }}
-            />
-            <button
-              type="button"
-              onClick={onTogglePlay}
-              aria-label={isPlaying ? "Pause video" : "Play video"}
-              className="absolute bottom-4 left-4 grid h-12 w-12 place-items-center rounded-full bg-black/55 text-white backdrop-blur"
-            >
-              {isPlaying ? <FiPause className="h-5 w-5" /> : <FiPlay className="h-5 w-5" />}
-            </button>
-            <span className="absolute bottom-5 left-1/2 -translate-x-1/2 rounded-full bg-black/55 px-3 py-1.5 text-sm font-black">
-              {formatTrimDuration(finalDuration)} / {formatTrimDuration(durationSec)}
-            </span>
-          </div>
-
-          <div className="mt-5 rounded-3xl border border-white/10 bg-white/10 p-4">
-            <div className="mb-3 flex items-center justify-between text-xs font-black text-white/65">
-              <span>{formatTrimDuration(trimStart)}</span>
-              <span>{formatTrimDuration(trimEnd)}</span>
-            </div>
-            <div className="rounded-2xl border border-natalo-400/70 bg-black/50 p-3">
-              <div className="h-14 overflow-hidden rounded-xl bg-[linear-gradient(90deg,rgba(30,95,191,.55),rgba(255,255,255,.14),rgba(30,95,191,.55))]" />
-              <label className="mt-4 block text-xs font-black text-white/60">
-                Mulai trim
-                <input
-                  type="range"
-                  min={0}
-                  max={Math.max(0, durationSec - 0.5)}
-                  step={0.1}
-                  value={trimStart}
-                  onChange={(event) => onTrimStartChange(Number(event.target.value))}
-                  className="mt-2 w-full accent-natalo-500"
-                />
-              </label>
-              <label className="mt-3 block text-xs font-black text-white/60">
-                Akhir trim
-                <input
-                  type="range"
-                  min={Math.min(durationSec, trimStart + 0.5)}
-                  max={durationSec}
-                  step={0.1}
-                  value={trimEnd}
-                  onChange={(event) => onTrimEndChange(Number(event.target.value))}
-                  className="mt-2 w-full accent-natalo-500"
-                />
-              </label>
-            </div>
-          </div>
-
-          <div
-            className={`mt-3 rounded-3xl px-4 py-3 text-sm font-black ${
-              isValid
-                ? "bg-natalo-600/25 text-natalo-50 ring-1 ring-natalo-400/30"
-                : "bg-amber-500/15 text-amber-200 ring-1 ring-amber-400/40"
-            }`}
-          >
-            {isValid
-              ? `Durasi final ${formatTrimDuration(finalDuration)} — sudah valid`
-              : invalidText}
-          </div>
-        </div>
-      </div>
-    </main>
-  );
-}
-
-function formatTrimDuration(sec: number) {
-  const total = Math.max(0, Math.round(sec));
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
-
-function FormPanel({
-  file,
-  metadata,
-  thumbnailPreviewUrl,
-  title,
-  description,
-  selectedProduct,
-  pinnableProducts,
-  productsLoading,
-  productPickerOpen,
-  onTitleChange,
-  onDescriptionChange,
-  onOpenProductPicker,
-  onCloseProductPicker,
-  onSelectProduct,
-  onClearProduct,
-  onChangeFile,
-  onSubmit,
-  uploading,
-  uploadProgress,
-  processingStage,
-  processingProgress,
-  error,
-}: {
-  file: File;
-  metadata: VideoMetadata | null;
-  thumbnailPreviewUrl: string | null;
-  title: string;
-  description: string;
-  selectedProduct: PinnableProduct | null;
-  pinnableProducts: PinnableProduct[];
-  productsLoading: boolean;
-  productPickerOpen: boolean;
-  onTitleChange: (v: string) => void;
-  onDescriptionChange: (v: string) => void;
-  onOpenProductPicker: () => void;
-  onCloseProductPicker: () => void;
-  onSelectProduct: (product: PinnableProduct) => void;
-  onClearProduct: () => void;
-  onChangeFile: () => void;
-  onSubmit: () => void;
-  uploading: boolean;
-  uploadProgress: string;
-  processingStage: ProcessingStage;
-  processingProgress: number;
-  error: string | null;
-}) {
-  const dur = metadata?.durationSec ?? 0;
-  const w = metadata?.width ?? 0;
-  const h = metadata?.height ?? 0;
-
-  return (
-    <div className="space-y-4">
-      {/* Preview thumbnail */}
-      <div className="overflow-hidden rounded-3xl border border-gray-100 bg-white">
-        <div className="relative aspect-[9/16] w-full bg-gray-100">
-          {thumbnailPreviewUrl ? (
-            <Image
-              src={thumbnailPreviewUrl}
-              alt="Preview thumbnail"
-              fill
-              sizes="(max-width: 768px) 100vw, 480px"
-              className="object-cover"
-              unoptimized
-            />
-          ) : null}
-          <button
-            type="button"
-            onClick={onChangeFile}
-            aria-label="Ganti video"
-            disabled={uploading}
-            className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-black/60 text-white backdrop-blur-sm transition active:scale-95 disabled:opacity-50"
-          >
-            <FiX className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="space-y-1 px-4 py-3 text-[11px] font-semibold text-gray-500">
-          <p>
-            <span className="font-extrabold text-gray-700">{file.name}</span>
-            <span> · {(file.size / 1024 / 1024).toFixed(1)} MB</span>
-          </p>
-          {dur > 0 && (
-            <p>
-              Durasi {Math.round(dur)}s · Resolusi {w}×{h}
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Title + description */}
-      <div className="space-y-3 rounded-3xl border border-gray-100 bg-white p-4">
-        <div>
-          <label
-            htmlFor="feed-title"
-            className="text-xs font-extrabold text-gray-700"
-          >
-            Judul <span className="text-red-500">*</span>
-          </label>
-          <input
-            id="feed-title"
-            type="text"
-            value={title}
-            onChange={(e) => onTitleChange(e.target.value)}
-            disabled={uploading}
-            maxLength={MAX_TITLE_LENGTH}
-            placeholder="Contoh: Kucing aku suka banget Royal Canin!"
-            className="mt-1 w-full rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm focus:border-natalo-500 focus:bg-white focus:outline-none disabled:opacity-50"
+      <StepFrame stepKey={step} direction={direction}>
+        {step === "pick" && (
+          <PickScreen
+            analyzing={analyzing}
+            error={pickError}
+            onClose={handleCloseFlow}
+            onOpenGallery={() => galleryInputRef.current?.click()}
+            onOpenCamera={() => cameraInputRef.current?.click()}
           />
-          <p className="mt-1 text-right text-[11px] text-gray-400">
-            {title.length}/{MAX_TITLE_LENGTH}
-          </p>
-        </div>
-        <div>
-          <label
-            htmlFor="feed-desc"
-            className="text-xs font-extrabold text-gray-700"
-          >
-            Deskripsi
-          </label>
-          <textarea
-            id="feed-desc"
-            value={description}
-            onChange={(e) => onDescriptionChange(e.target.value)}
-            disabled={uploading}
-            maxLength={MAX_DESC_LENGTH}
-            placeholder="Ceritakan pengalamanmu..."
-            rows={4}
-            className="mt-1 w-full rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm focus:border-natalo-500 focus:bg-white focus:outline-none disabled:opacity-50"
-          />
-          <p className="mt-1 text-right text-[11px] text-gray-400">
-            {description.length}/{MAX_DESC_LENGTH}
-          </p>
-        </div>
-      </div>
-
-      <div className="space-y-3 rounded-3xl border border-gray-100 bg-white p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="text-xs font-extrabold text-gray-700">Pin Produk</h2>
-            <p className="mt-1 text-[11px] leading-relaxed text-gray-500">
-              Pilih produk dari pesanan yang sudah kamu terima.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onOpenProductPicker}
-            disabled={uploading || productsLoading}
-            className="rounded-full bg-natalo-600 px-3 py-2 text-[11px] font-extrabold text-white transition active:scale-95 disabled:bg-gray-300"
-          >
-            {productsLoading ? "Memuat" : selectedProduct ? "Ganti" : "Pilih"}
-          </button>
-        </div>
-
-        {selectedProduct ? (
-          <div className="flex items-center gap-3 rounded-2xl border border-natalo-100 bg-natalo-50 p-2.5">
-            <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-white text-natalo-600">
-              <FiPackage className="h-5 w-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="line-clamp-2 text-xs font-extrabold text-gray-900">
-                {selectedProduct.name}
-              </p>
-              <p className="mt-0.5 text-[11px] font-semibold text-gray-500">
-                Dibeli {formatDate(selectedProduct.purchasedAt)}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={onClearProduct}
-              disabled={uploading}
-              aria-label="Hapus produk pin"
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white text-gray-500 disabled:opacity-50"
-            >
-              <FiX className="h-4 w-4" />
-            </button>
-          </div>
-        ) : (
-          <p className="rounded-2xl bg-gray-50 p-3 text-xs leading-relaxed text-gray-500">
-            Opsional. Produk yang dipilih akan tampil sebagai chip di feed dan
-            membantu pembeli lain langsung melihat produk yang kamu pakai.
-          </p>
         )}
-      </div>
-
-      {/* Moderation notice */}
-      <div className="rounded-2xl bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">
-        Video kamu akan direview admin maksimal 1x24 jam sebelum tampil di tab
-        Komunitas. Pastikan konten menampilkan hewan peliharaan dan tidak
-        mempromosikan produk kompetitor.
-      </div>
-
-      {uploading && (
-        <UploadProgressView
-          stage={processingStage}
-          progress={processingProgress}
-          label={uploadProgress || "Memproses video..."}
-        />
-      )}
-
-      {error && (
-        <p className="rounded-2xl bg-red-50 p-3 text-sm font-bold text-red-700">
-          {error}
-        </p>
-      )}
-
-      {/* CTA */}
-      <button
-        type="button"
-        onClick={onSubmit}
-        disabled={uploading || title.trim().length < 3}
-        className="sticky bottom-4 w-full rounded-full bg-natalo-600 py-3.5 text-sm font-extrabold text-white shadow-lg transition active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-gray-300"
-      >
-        {uploading ? uploadProgress || "Mengunggah..." : "Upload Video"}
-      </button>
+        {step === "preview" && filePreviewUrl && metadata && (
+          <PreviewScreen
+            videoSrc={filePreviewUrl}
+            durationSec={metadata.durationSec}
+            onBack={() => {
+              resetVideo();
+              goBack("pick");
+            }}
+            onChangeVideo={() => galleryInputRef.current?.click()}
+            onOpenGallery={() => galleryInputRef.current?.click()}
+            onOpenCamera={() => cameraInputRef.current?.click()}
+            onNext={() => goNext("trim")}
+          />
+        )}
+        {step === "trim" && filePreviewUrl && metadata && (
+          <TrimScreen
+            videoSrc={filePreviewUrl}
+            durationSec={metadata.durationSec}
+            trimStart={trimStart}
+            trimEnd={trimEnd}
+            finalDuration={finalDuration}
+            isValid={trimValid}
+            onTrimStartChange={(v) => {
+              const next = Math.max(0, Math.min(v, trimEnd - 1));
+              setTrimStart(next);
+            }}
+            onTrimEndChange={(v) => {
+              const maxAllowed = Math.min(
+                metadata.durationSec,
+                trimStart + USER_VIDEO_CONFIG.maxDuration,
+              );
+              const next = Math.max(trimStart + 1, Math.min(v, maxAllowed));
+              setTrimEnd(next);
+            }}
+            onReset={() => {
+              setTrimStart(0);
+              setTrimEnd(
+                Math.min(metadata.durationSec, USER_VIDEO_CONFIG.maxDuration),
+              );
+            }}
+            onBack={() => goBack("preview")}
+            onNext={() => goNext("detail")}
+          />
+        )}
+        {step === "detail" && thumbnailPreviewUrl && (
+          <DetailScreen
+            thumbnailPreviewUrl={thumbnailPreviewUrl}
+            finalDuration={finalDuration}
+            caption={caption}
+            onCaptionChange={setCaption}
+            selectedProduct={selectedProduct}
+            onOpenProductPicker={() => setProductPickerOpen(true)}
+            onClearProduct={() => setSelectedProduct(null)}
+            petType={petType}
+            onPetChange={setPetType}
+            uploading={uploading}
+            uploadStage={uploadStage}
+            uploadProgress={uploadProgress}
+            uploadLabel={uploadLabel}
+            submitError={submitError}
+            onBack={() => goBack("trim")}
+            onSubmit={() => void handleSubmit()}
+          />
+        )}
+        {step === "success" && (
+          <SuccessScreen
+            thumbnailPreviewUrl={thumbnailPreviewUrl}
+            finalDuration={finalDuration}
+            postId={resultPostId}
+            onBackToFeed={handleCloseFlow}
+            onViewMyPosts={() => router.replace("/akun")}
+          />
+        )}
+      </StepFrame>
 
       <ProductPickerSheet
         open={productPickerOpen}
         products={pinnableProducts}
         selectedProductId={selectedProduct?.productId ?? null}
         loading={productsLoading}
-        onClose={onCloseProductPicker}
-        onSelect={onSelectProduct}
+        onClose={() => setProductPickerOpen(false)}
+        onSelect={(product) => {
+          setSelectedProduct(product);
+          setProductPickerOpen(false);
+        }}
       />
     </div>
   );
 }
 
-function UploadProgressView({
-  stage,
-  progress,
-  label,
+// ── Step frame — native-like slide transitions ──────────────────────
+
+function StepFrame({
+  stepKey,
+  direction,
+  children,
 }: {
-  stage: ProcessingStage;
-  progress: number;
-  label: string;
+  stepKey: Step;
+  direction: Direction;
+  children: React.ReactNode;
 }) {
-  const stageText =
-    stage === "compressing"
-      ? "Memproses video 1/3"
-      : stage === "uploading"
-        ? "Mengunggah 2/3"
-        : stage === "submitting"
-          ? "Menyimpan 3/3"
-          : "Menyiapkan";
-  const showBar = stage === "compressing";
+  // Key the wrapper on stepKey so each enter triggers the slide animation.
+  const animClass =
+    direction === "forward"
+      ? "feed-step-enter-forward"
+      : "feed-step-enter-back";
 
   return (
-    <div className="rounded-2xl border border-natalo-100 bg-natalo-50 p-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-black text-natalo-800">{stageText}</p>
-          <p className="mt-1 text-xs font-semibold text-natalo-700">{label}</p>
-        </div>
-        <div className="h-7 w-7 shrink-0 animate-spin rounded-full border-2 border-natalo-200 border-t-natalo-700" />
+    <>
+      <div key={stepKey} className={`${animClass} min-h-[100dvh]`}>
+        {children}
       </div>
-      {showBar && (
-        <div className="mt-3">
-          <div className="h-2 overflow-hidden rounded-full bg-white">
-            <div
-              className="h-full rounded-full bg-natalo-600 transition-[width]"
-              style={{ width: `${progress}%` }}
+      <style>{`
+        .feed-step-enter-forward {
+          animation: feed-step-enter-forward 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        .feed-step-enter-back {
+          animation: feed-step-enter-back 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        @keyframes feed-step-enter-forward {
+          from {
+            opacity: 0.85;
+            transform: translate3d(100%, 0, 0);
+          }
+          to {
+            opacity: 1;
+            transform: translate3d(0, 0, 0);
+          }
+        }
+        @keyframes feed-step-enter-back {
+          from {
+            opacity: 0.85;
+            transform: translate3d(-100%, 0, 0);
+          }
+          to {
+            opacity: 1;
+            transform: translate3d(0, 0, 0);
+          }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .feed-step-enter-forward,
+          .feed-step-enter-back {
+            animation: none !important;
+          }
+        }
+      `}</style>
+    </>
+  );
+}
+
+// ── Header ──────────────────────────────────────────────────────────
+
+function FlowHeader({
+  title,
+  leftSlot,
+  rightSlot,
+}: {
+  title: string;
+  leftSlot: React.ReactNode;
+  rightSlot: React.ReactNode;
+}) {
+  return (
+    <header className="grid shrink-0 grid-cols-[48px_1fr_auto] items-center gap-2 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+10px)]">
+      <div className="flex justify-start">{leftSlot}</div>
+      <h1 className="text-center text-[15px] font-black tracking-wide">
+        {title}
+      </h1>
+      <div className="flex justify-end">{rightSlot}</div>
+    </header>
+  );
+}
+
+function CloseButton({
+  label = "Tutup",
+  onClick,
+}: {
+  label?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className="grid h-10 w-10 place-items-center rounded-full text-white/90 transition active:bg-white/10"
+    >
+      <FiX className="h-5 w-5" />
+    </button>
+  );
+}
+
+function BackButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="Kembali"
+      className="grid h-10 w-10 place-items-center rounded-full text-white/90 transition active:bg-white/10"
+    >
+      <FiArrowLeft className="h-5 w-5" />
+    </button>
+  );
+}
+
+function NextButton({
+  onClick,
+  disabled,
+  label = "Next",
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  label?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`rounded-full px-4 py-2 text-sm font-black transition active:scale-[0.97] ${
+        disabled
+          ? "cursor-not-allowed bg-white/10 text-white/35"
+          : "bg-natalo-600 text-white shadow-[0_6px_16px_rgba(30,95,191,0.45)]"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+// ── Step 1: Pilih Video ─────────────────────────────────────────────
+
+function PickScreen({
+  analyzing,
+  error,
+  onClose,
+  onOpenGallery,
+  onOpenCamera,
+}: {
+  analyzing: boolean;
+  error: string | null;
+  onClose: () => void;
+  onOpenGallery: () => void;
+  onOpenCamera: () => void;
+}) {
+  return (
+    <div className="flex min-h-[100dvh] flex-col bg-black text-white">
+      <FlowHeader
+        title="Pilih Video"
+        leftSlot={<CloseButton onClick={onClose} />}
+        rightSlot={
+          <NextButton onClick={() => undefined} disabled label="Next" />
+        }
+      />
+
+      <div className="flex-1 overflow-y-auto px-5 pb-10">
+        {/* Large empty preview card */}
+        <div className="mx-auto mt-2 max-w-md">
+          <button
+            type="button"
+            onClick={onOpenGallery}
+            disabled={analyzing}
+            className="group relative grid w-full place-items-center overflow-hidden rounded-[26px] border border-dashed border-white/15 bg-[#0d0f13] px-6 py-12 text-center transition active:scale-[0.99] disabled:opacity-60"
+            style={{ aspectRatio: "9 / 11" }}
+          >
+            <div className="flex flex-col items-center gap-3">
+              <span className="grid h-16 w-16 place-items-center rounded-2xl bg-natalo-600/15 text-natalo-300 ring-1 ring-natalo-500/30">
+                <FiVideo className="h-7 w-7" />
+              </span>
+              <div>
+                <p className="text-base font-black text-white">
+                  Pilih video untuk Feed
+                </p>
+                <p className="mt-1 text-xs font-semibold text-white/55">
+                  Durasi video 1–45 detik
+                </p>
+              </div>
+              {analyzing && (
+                <p className="mt-2 inline-flex items-center gap-2 text-xs font-bold text-natalo-200">
+                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-natalo-300/40 border-t-natalo-200" />
+                  Memproses video...
+                </p>
+              )}
+            </div>
+          </button>
+
+          {/* Info chip */}
+          <div className="mx-auto mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full border border-natalo-500/25 bg-natalo-600/15 px-4 py-2 text-[12px] font-bold text-natalo-100">
+            <FiInfo className="h-3.5 w-3.5" />
+            Pilih video berdurasi 1–45 detik
+          </div>
+
+          {error && (
+            <p className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 p-3 text-center text-xs font-bold text-red-200">
+              {error}
+            </p>
+          )}
+
+          {/* Action cards */}
+          <div className="mt-6 grid grid-cols-2 gap-3">
+            <ActionCard
+              icon={<FiImage className="h-5 w-5" />}
+              title="Galeri"
+              subtitle="Pilih video dari perangkat"
+              onClick={onOpenGallery}
+              disabled={analyzing}
+            />
+            <ActionCard
+              icon={<FiCamera className="h-5 w-5" />}
+              title="Kamera"
+              subtitle="Rekam video baru"
+              onClick={onOpenCamera}
+              disabled={analyzing}
             />
           </div>
-          <p className="mt-2 text-right text-[11px] font-black text-natalo-700">
-            {progress}%
-          </p>
+
+          {/* Info card */}
+          <div className="mt-5 flex items-start gap-3 rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+            <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-natalo-600/20 text-natalo-200">
+              <FiShield className="h-4 w-4" />
+            </span>
+            <div className="text-[12px] leading-relaxed">
+              <p className="font-black text-white">1 video per posting</p>
+              <p className="mt-0.5 text-white/55">
+                Hanya bisa pilih satu video. Tidak ada multi-select atau grid
+                terbaru.
+              </p>
+            </div>
+          </div>
         </div>
-      )}
-      <p className="mt-2 text-[11px] leading-relaxed text-natalo-700/80">
-        Proses kompresi bisa memakan 10-30 detik, tergantung performa HP.
-      </p>
+      </div>
     </div>
   );
 }
+
+function ActionCard({
+  icon,
+  title,
+  subtitle,
+  onClick,
+  disabled,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="group flex flex-col items-start gap-2 rounded-2xl border border-white/8 bg-[#0d0f13] p-4 text-left transition active:scale-[0.98] disabled:opacity-60"
+    >
+      <span className="grid h-10 w-10 place-items-center rounded-xl bg-natalo-600/15 text-natalo-200 ring-1 ring-natalo-500/25">
+        {icon}
+      </span>
+      <div>
+        <p className="text-sm font-black text-white">{title}</p>
+        <p className="mt-0.5 text-[11px] font-semibold text-white/50">
+          {subtitle}
+        </p>
+      </div>
+    </button>
+  );
+}
+
+// ── Step 2: Preview Video ───────────────────────────────────────────
+
+function PreviewScreen({
+  videoSrc,
+  durationSec,
+  onBack,
+  onChangeVideo,
+  onOpenGallery,
+  onOpenCamera,
+  onNext,
+}: {
+  videoSrc: string;
+  durationSec: number;
+  onBack: () => void;
+  onChangeVideo: () => void;
+  onOpenGallery: () => void;
+  onOpenCamera: () => void;
+  onNext: () => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [playing, setPlaying] = useState(false);
+
+  // Auto-play sekali saat masuk preview supaya user langsung lihat motion.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.muted = true;
+    v.play()
+      .then(() => setPlaying(true))
+      .catch(() => setPlaying(false));
+    return () => {
+      v.pause();
+    };
+  }, []);
+
+  function togglePlay() {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) {
+      v.play()
+        .then(() => setPlaying(true))
+        .catch(() => {});
+    } else {
+      v.pause();
+      setPlaying(false);
+    }
+  }
+
+  function restart() {
+    const v = videoRef.current;
+    if (!v) return;
+    v.currentTime = 0;
+    v.play()
+      .then(() => setPlaying(true))
+      .catch(() => {});
+  }
+
+  return (
+    <div className="flex min-h-[100dvh] flex-col bg-black text-white">
+      <FlowHeader
+        title="Preview Video"
+        leftSlot={<CloseButton onClick={onBack} label="Kembali" />}
+        rightSlot={<NextButton onClick={onNext} />}
+      />
+
+      <div className="flex-1 overflow-y-auto px-4 pb-10">
+        <div className="mx-auto max-w-md">
+          <div
+            className="relative overflow-hidden rounded-[26px] bg-black/60 ring-1 ring-white/10"
+            style={{ aspectRatio: "9 / 12" }}
+          >
+            <video
+              ref={videoRef}
+              src={videoSrc}
+              className="h-full w-full object-cover"
+              playsInline
+              muted
+              loop
+              onPause={() => setPlaying(false)}
+              onPlay={() => setPlaying(true)}
+            />
+            <button
+              type="button"
+              onClick={togglePlay}
+              aria-label={playing ? "Pause" : "Play"}
+              className="absolute inset-0 grid place-items-center"
+            >
+              {!playing && (
+                <span className="grid h-16 w-16 place-items-center rounded-full bg-black/55 text-white backdrop-blur">
+                  <FiPlay className="h-7 w-7" />
+                </span>
+              )}
+            </button>
+            <span className="absolute right-3 top-3 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-black tracking-wide backdrop-blur">
+              {formatClock(durationSec)}
+            </span>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <SecondaryAction
+              icon={<FiVideo className="h-4 w-4" />}
+              label="Ganti Video"
+              onClick={onChangeVideo}
+            />
+            <SecondaryAction
+              icon={<FiRotateCcw className="h-4 w-4" />}
+              label="Putar Ulang"
+              onClick={restart}
+            />
+          </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <SecondaryAction
+              icon={<FiImage className="h-4 w-4" />}
+              label="Galeri"
+              onClick={onOpenGallery}
+              muted
+            />
+            <SecondaryAction
+              icon={<FiCamera className="h-4 w-4" />}
+              label="Kamera"
+              onClick={onOpenCamera}
+              muted
+            />
+          </div>
+
+          <p className="mt-5 text-center text-[11px] font-semibold text-white/45">
+            Cek video sebelum di-trim. Pastikan ini video yang benar.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SecondaryAction({
+  icon,
+  label,
+  onClick,
+  muted = false,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  muted?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-[13px] font-black transition active:scale-[0.98] ${
+        muted
+          ? "border border-white/10 bg-white/[0.03] text-white/75"
+          : "border border-white/12 bg-white/[0.06] text-white"
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+// ── Step 3: Trim Video ──────────────────────────────────────────────
+
+function TrimScreen({
+  videoSrc,
+  durationSec,
+  trimStart,
+  trimEnd,
+  finalDuration,
+  isValid,
+  onTrimStartChange,
+  onTrimEndChange,
+  onReset,
+  onBack,
+  onNext,
+}: {
+  videoSrc: string;
+  durationSec: number;
+  trimStart: number;
+  trimEnd: number;
+  finalDuration: number;
+  isValid: boolean;
+  onTrimStartChange: (v: number) => void;
+  onTrimEndChange: (v: number) => void;
+  onReset: () => void;
+  onBack: () => void;
+  onNext: () => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [playing, setPlaying] = useState(false);
+
+  // Loop preview dalam segment yang dipilih.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.currentTime < trimStart || v.currentTime >= trimEnd) {
+      v.currentTime = trimStart;
+    }
+  }, [trimStart, trimEnd]);
+
+  function togglePlay() {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) {
+      if (v.currentTime < trimStart || v.currentTime >= trimEnd) {
+        v.currentTime = trimStart;
+      }
+      v.play()
+        .then(() => setPlaying(true))
+        .catch(() => {});
+    } else {
+      v.pause();
+      setPlaying(false);
+    }
+  }
+
+  function onTimeUpdate() {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.currentTime >= trimEnd) {
+      v.currentTime = trimStart;
+    }
+  }
+
+  const invalidMsg =
+    finalDuration < USER_VIDEO_CONFIG.minDuration
+      ? "Durasi terlalu pendek. Minimal 1 detik."
+      : "Durasi terlalu panjang. Maksimal 45 detik.";
+
+  return (
+    <div className="flex min-h-[100dvh] flex-col bg-black text-white">
+      <FlowHeader
+        title="Trim Video"
+        leftSlot={<CloseButton onClick={onBack} label="Kembali" />}
+        rightSlot={<NextButton onClick={onNext} disabled={!isValid} />}
+      />
+
+      <div className="flex-1 overflow-y-auto px-4 pb-[calc(28px+env(safe-area-inset-bottom))]">
+        <div className="mx-auto max-w-md">
+          {/* Preview */}
+          <div
+            className="relative overflow-hidden rounded-[26px] bg-black/60 ring-1 ring-white/10"
+            style={{ aspectRatio: "9 / 12" }}
+          >
+            <video
+              ref={videoRef}
+              src={videoSrc}
+              className="h-full w-full object-cover"
+              playsInline
+              muted
+              loop
+              onPause={() => setPlaying(false)}
+              onPlay={() => setPlaying(true)}
+              onTimeUpdate={onTimeUpdate}
+            />
+            <button
+              type="button"
+              onClick={togglePlay}
+              aria-label={playing ? "Pause" : "Play"}
+              className="absolute inset-0 grid place-items-center"
+            >
+              {!playing && (
+                <span className="grid h-14 w-14 place-items-center rounded-full bg-black/55 text-white backdrop-blur">
+                  <FiPlay className="h-6 w-6" />
+                </span>
+              )}
+            </button>
+            <span className="absolute right-3 top-3 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-black tracking-wide backdrop-blur">
+              {formatClock(durationSec)}
+            </span>
+          </div>
+
+          <p className="mt-5 text-center text-[12px] font-semibold leading-relaxed text-white/55">
+            Atur bagian video yang ingin diposting
+            <br />
+            <span className="font-black text-white/80">1–45 detik</span>
+          </p>
+
+          {/* Time markers */}
+          <div className="mt-5 flex items-center justify-between px-1 text-[11px] font-black text-white/60">
+            <span>{formatClock(trimStart)}</span>
+            <span className="text-natalo-200">{formatClock(finalDuration)}</span>
+            <span>{formatClock(durationSec)}</span>
+          </div>
+
+          {/* Filmstrip with handles */}
+          <Filmstrip
+            videoSrc={videoSrc}
+            durationSec={durationSec}
+            trimStart={trimStart}
+            trimEnd={trimEnd}
+            onTrimStartChange={onTrimStartChange}
+            onTrimEndChange={onTrimEndChange}
+          />
+
+          {/* Selected duration / validation */}
+          <p
+            className={`mt-4 text-center text-[13px] font-black ${
+              isValid ? "text-white" : "text-amber-300"
+            }`}
+          >
+            {isValid ? (
+              <>
+                Durasi terpilih{" "}
+                <span className="text-natalo-300">{formatClock(finalDuration)}</span>
+              </>
+            ) : (
+              invalidMsg
+            )}
+          </p>
+
+          {/* Action row */}
+          <div className="mt-6 grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={onReset}
+              className="rounded-full border border-white/12 bg-white/[0.04] py-3 text-sm font-black text-white/85 transition active:scale-[0.98]"
+            >
+              Reset
+            </button>
+            <button
+              type="button"
+              onClick={onNext}
+              disabled={!isValid}
+              className={`rounded-full py-3 text-sm font-black transition active:scale-[0.98] ${
+                isValid
+                  ? "bg-natalo-600 text-white shadow-[0_6px_18px_rgba(30,95,191,0.5)]"
+                  : "cursor-not-allowed bg-white/10 text-white/35"
+              }`}
+            >
+              Selesai
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Filmstrip({
+  videoSrc,
+  durationSec,
+  trimStart,
+  trimEnd,
+  onTrimStartChange,
+  onTrimEndChange,
+}: {
+  videoSrc: string;
+  durationSec: number;
+  trimStart: number;
+  trimEnd: number;
+  onTrimStartChange: (v: number) => void;
+  onTrimEndChange: (v: number) => void;
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [frames, setFrames] = useState<string[]>([]);
+
+  // Generate filmstrip thumbnails sekali per videoSrc. Pakai canvas drawing
+  // dari <video> element — ringan, tidak butuh ffmpeg.wasm.
+  useEffect(() => {
+    let cancelled = false;
+    const urls: string[] = [];
+    setFrames([]);
+
+    const v = document.createElement("video");
+    v.src = videoSrc;
+    v.crossOrigin = "anonymous";
+    v.muted = true;
+    v.playsInline = true;
+    v.preload = "auto";
+
+    const cleanup = () => {
+      try {
+        v.src = "";
+        v.load();
+      } catch {}
+    };
+
+    v.onloadedmetadata = async () => {
+      if (cancelled) return cleanup();
+      const totalDur = Number.isFinite(v.duration) ? v.duration : durationSec;
+      const canvas = document.createElement("canvas");
+      const targetWidth = 96;
+      const aspect = v.videoHeight && v.videoWidth ? v.videoHeight / v.videoWidth : 16 / 9;
+      canvas.width = targetWidth;
+      canvas.height = Math.round(targetWidth * aspect);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return cleanup();
+
+      for (let i = 0; i < FILMSTRIP_FRAMES; i++) {
+        if (cancelled) return cleanup();
+        const t = (totalDur / FILMSTRIP_FRAMES) * (i + 0.5);
+        try {
+          await seekTo(v, Math.min(Math.max(0, t), Math.max(0, totalDur - 0.05)));
+          ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+          urls.push(dataUrl);
+          if (!cancelled) setFrames([...urls]);
+        } catch {
+          // Skip frame ini, lanjut.
+        }
+      }
+      cleanup();
+    };
+    v.onerror = () => cleanup();
+
+    return () => {
+      cancelled = true;
+      cleanup();
+    };
+  }, [videoSrc, durationSec]);
+
+  // Position handles dalam %.
+  const startPct = Math.max(0, Math.min(100, (trimStart / Math.max(0.001, durationSec)) * 100));
+  const endPct = Math.max(0, Math.min(100, (trimEnd / Math.max(0.001, durationSec)) * 100));
+
+  // Pointer drag.
+  function startDrag(
+    event: React.PointerEvent<HTMLDivElement>,
+    handle: "start" | "end",
+  ) {
+    event.preventDefault();
+    const track = trackRef.current;
+    if (!track) return;
+    const rect = track.getBoundingClientRect();
+    const targetEl = event.currentTarget;
+    try {
+      targetEl.setPointerCapture(event.pointerId);
+    } catch {}
+
+    function compute(clientX: number) {
+      const x = Math.max(rect.left, Math.min(rect.right, clientX));
+      const pct = (x - rect.left) / rect.width;
+      return pct * durationSec;
+    }
+
+    function onMove(e: PointerEvent) {
+      const value = compute(e.clientX);
+      if (handle === "start") onTrimStartChange(value);
+      else onTrimEndChange(value);
+    }
+    function onUp() {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+
+    // Move once immediately.
+    onMove(event.nativeEvent);
+  }
+
+  return (
+    <div className="mt-3 select-none">
+      <div
+        ref={trackRef}
+        className="relative h-16 overflow-hidden rounded-2xl bg-white/[0.04] ring-1 ring-white/10"
+      >
+        {/* Filmstrip frames */}
+        <div className="absolute inset-0 flex">
+          {Array.from({ length: FILMSTRIP_FRAMES }).map((_, i) => (
+            <div key={i} className="relative h-full flex-1 overflow-hidden">
+              {frames[i] ? (
+                <img
+                  src={frames[i]}
+                  alt=""
+                  className="h-full w-full object-cover opacity-90"
+                />
+              ) : (
+                <div className="h-full w-full bg-[linear-gradient(90deg,#0a1530,#152a55,#0a1530)] opacity-70" />
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Dim overlay outside selected range */}
+        <div
+          className="absolute inset-y-0 left-0 bg-black/55 backdrop-blur-[1px]"
+          style={{ width: `${startPct}%` }}
+        />
+        <div
+          className="absolute inset-y-0 right-0 bg-black/55 backdrop-blur-[1px]"
+          style={{ width: `${100 - endPct}%` }}
+        />
+
+        {/* Selected window border */}
+        <div
+          className="pointer-events-none absolute inset-y-0 border-y-[3px] border-natalo-400"
+          style={{
+            left: `${startPct}%`,
+            width: `${Math.max(0, endPct - startPct)}%`,
+          }}
+        />
+
+        {/* Left handle */}
+        <div
+          role="slider"
+          aria-label="Mulai trim"
+          aria-valuemin={0}
+          aria-valuemax={durationSec}
+          aria-valuenow={trimStart}
+          onPointerDown={(e) => startDrag(e, "start")}
+          className="absolute inset-y-0 flex w-6 -translate-x-1/2 cursor-ew-resize items-center justify-center"
+          style={{ left: `${startPct}%` }}
+        >
+          <span className="h-full w-1.5 rounded-r bg-natalo-400" />
+          <span className="absolute inset-y-1 left-1/2 grid w-3 -translate-x-1/2 place-items-center rounded-full bg-natalo-400">
+            <span className="h-5 w-0.5 rounded bg-natalo-900/70" />
+          </span>
+        </div>
+        {/* Right handle */}
+        <div
+          role="slider"
+          aria-label="Akhir trim"
+          aria-valuemin={0}
+          aria-valuemax={durationSec}
+          aria-valuenow={trimEnd}
+          onPointerDown={(e) => startDrag(e, "end")}
+          className="absolute inset-y-0 flex w-6 -translate-x-1/2 cursor-ew-resize items-center justify-center"
+          style={{ left: `${endPct}%` }}
+        >
+          <span className="h-full w-1.5 rounded-l bg-natalo-400" />
+          <span className="absolute inset-y-1 left-1/2 grid w-3 -translate-x-1/2 place-items-center rounded-full bg-natalo-400">
+            <span className="h-5 w-0.5 rounded bg-natalo-900/70" />
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function seekTo(video: HTMLVideoElement, time: number) {
+  return new Promise<void>((resolve, reject) => {
+    const onSeeked = () => {
+      video.removeEventListener("seeked", onSeeked);
+      video.removeEventListener("error", onError);
+      resolve();
+    };
+    const onError = () => {
+      video.removeEventListener("seeked", onSeeked);
+      video.removeEventListener("error", onError);
+      reject(new Error("seek error"));
+    };
+    video.addEventListener("seeked", onSeeked);
+    video.addEventListener("error", onError);
+    try {
+      video.currentTime = time;
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+// ── Step 4: Detail Postingan ────────────────────────────────────────
+
+function DetailScreen({
+  thumbnailPreviewUrl,
+  finalDuration,
+  caption,
+  onCaptionChange,
+  selectedProduct,
+  onOpenProductPicker,
+  onClearProduct,
+  petType,
+  onPetChange,
+  uploading,
+  uploadStage,
+  uploadProgress,
+  uploadLabel,
+  submitError,
+  onBack,
+  onSubmit,
+}: {
+  thumbnailPreviewUrl: string;
+  finalDuration: number;
+  caption: string;
+  onCaptionChange: (v: string) => void;
+  selectedProduct: PinnableProduct | null;
+  onOpenProductPicker: () => void;
+  onClearProduct: () => void;
+  petType: PetType;
+  onPetChange: (v: PetType) => void;
+  uploading: boolean;
+  uploadStage: "submitting" | "compressing" | "uploading" | null;
+  uploadProgress: number;
+  uploadLabel: string;
+  submitError: string | null;
+  onBack: () => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <div className="flex min-h-[100dvh] flex-col bg-black text-white">
+      <FlowHeader
+        title="Detail Postingan"
+        leftSlot={<BackButton onClick={onBack} />}
+        rightSlot={
+          <NextButton
+            onClick={onSubmit}
+            disabled={uploading}
+            label={uploading ? "Mengirim..." : "Posting"}
+          />
+        }
+      />
+
+      <div className="flex-1 overflow-y-auto px-4 pb-[calc(24px+env(safe-area-inset-bottom))]">
+        <div className="mx-auto max-w-md space-y-4">
+          {/* Caption row + thumbnail */}
+          <div className="flex gap-3 rounded-2xl border border-white/8 bg-white/[0.03] p-3">
+            <div className="relative h-24 w-20 shrink-0 overflow-hidden rounded-xl bg-white/5">
+              <Image
+                src={thumbnailPreviewUrl}
+                alt="Preview"
+                fill
+                sizes="80px"
+                className="object-cover"
+                unoptimized
+              />
+              <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-black">
+                {formatClock(finalDuration)}
+              </span>
+            </div>
+            <div className="flex flex-1 flex-col">
+              <textarea
+                value={caption}
+                onChange={(e) =>
+                  onCaptionChange(e.target.value.slice(0, MAX_CAPTION_LENGTH))
+                }
+                disabled={uploading}
+                placeholder="Tulis caption..."
+                rows={4}
+                className="flex-1 resize-none bg-transparent text-sm font-medium leading-relaxed text-white placeholder:text-white/35 focus:outline-none disabled:opacity-50"
+              />
+              <p className="text-right text-[11px] font-bold text-white/40">
+                {caption.length}/{MAX_CAPTION_LENGTH}
+              </p>
+            </div>
+          </div>
+
+          {/* Tag produk */}
+          <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-black text-white">Tag Produk</h2>
+              <button
+                type="button"
+                onClick={onOpenProductPicker}
+                disabled={uploading}
+                className="text-[12px] font-black text-natalo-300 transition active:opacity-70 disabled:opacity-50"
+              >
+                Ubah ›
+              </button>
+            </div>
+
+            {selectedProduct ? (
+              <div className="mt-3 flex items-center gap-3 rounded-xl bg-white/[0.04] p-2.5 ring-1 ring-white/8">
+                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-natalo-600/15 text-natalo-200 ring-1 ring-natalo-500/25">
+                  <FiPackage className="h-5 w-5" />
+                </div>
+                <p className="line-clamp-2 flex-1 text-[13px] font-extrabold text-white">
+                  {selectedProduct.name}
+                </p>
+                <button
+                  type="button"
+                  onClick={onClearProduct}
+                  disabled={uploading}
+                  aria-label="Hapus tag produk"
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-white/60 transition active:bg-white/10"
+                >
+                  <FiX className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <p className="mt-2 text-[12px] leading-relaxed text-white/50">
+                Opsional. Tag produk dari pesanan kamu agar pengguna lain bisa
+                langsung lihat produknya.
+              </p>
+            )}
+          </section>
+
+          {/* Info Pet */}
+          <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+            <h2 className="text-sm font-black text-white">Info Pet</h2>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <PetChip
+                active={petType === "cat"}
+                label="Kucing"
+                icon="🐱"
+                onClick={() => onPetChange(petType === "cat" ? null : "cat")}
+                disabled={uploading}
+              />
+              <PetChip
+                active={petType === "dog"}
+                label="Anjing"
+                icon="🐶"
+                onClick={() => onPetChange(petType === "dog" ? null : "dog")}
+                disabled={uploading}
+              />
+              <PetChip
+                active={petType === "other"}
+                label="Lainnya"
+                icon="•••"
+                onClick={() => onPetChange(petType === "other" ? null : "other")}
+                disabled={uploading}
+              />
+            </div>
+          </section>
+
+          {/* Review notice */}
+          <div className="flex items-start gap-3 rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+            <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-natalo-600/20 text-natalo-200">
+              <FiShield className="h-4 w-4" />
+            </span>
+            <p className="text-[12px] leading-relaxed text-white/65">
+              Postingan akan ditinjau admin sebelum tayang.
+            </p>
+          </div>
+
+          {uploading && (
+            <div className="rounded-2xl border border-natalo-500/25 bg-natalo-600/10 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black text-natalo-100">
+                    {uploadLabel || "Memproses..."}
+                  </p>
+                  <p className="mt-1 text-[11px] font-semibold text-natalo-200/80">
+                    {uploadStage === "compressing"
+                      ? "Sedang memotong video..."
+                      : uploadStage === "uploading"
+                        ? "Mengunggah ke cloud..."
+                        : "Menyimpan postingan..."}
+                  </p>
+                </div>
+                <div className="h-6 w-6 shrink-0 animate-spin rounded-full border-2 border-natalo-300/30 border-t-natalo-200" />
+              </div>
+              {(uploadStage === "compressing" || uploadStage === "uploading") && (
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className="h-full rounded-full bg-natalo-400 transition-[width]"
+                    style={{ width: `${Math.max(0, Math.min(100, uploadProgress))}%` }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {submitError && (
+            <p className="rounded-2xl border border-red-500/25 bg-red-500/10 p-3 text-center text-xs font-bold text-red-200">
+              {submitError}
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={uploading}
+            className={`w-full rounded-full py-3.5 text-sm font-black transition active:scale-[0.98] ${
+              uploading
+                ? "cursor-not-allowed bg-white/10 text-white/40"
+                : "bg-natalo-600 text-white shadow-[0_6px_18px_rgba(30,95,191,0.45)]"
+            }`}
+          >
+            {uploading ? uploadLabel || "Mengirim..." : "Posting"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PetChip({
+  active,
+  label,
+  icon,
+  onClick,
+  disabled,
+}: {
+  active: boolean;
+  label: string;
+  icon: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[12px] font-black transition active:scale-[0.97] ${
+        active
+          ? "bg-natalo-600 text-white shadow-[0_4px_12px_rgba(30,95,191,0.45)]"
+          : "border border-white/12 bg-white/[0.04] text-white/75"
+      } ${disabled ? "opacity-60" : ""}`}
+    >
+      <span aria-hidden>{icon}</span>
+      {label}
+    </button>
+  );
+}
+
+// ── Step 5: Menunggu Review ─────────────────────────────────────────
+
+function SuccessScreen({
+  thumbnailPreviewUrl,
+  finalDuration,
+  postId,
+  onBackToFeed,
+  onViewMyPosts,
+}: {
+  thumbnailPreviewUrl: string | null;
+  finalDuration: number;
+  postId: string | null;
+  onBackToFeed: () => void;
+  onViewMyPosts: () => void;
+}) {
+  return (
+    <div className="flex min-h-[100dvh] flex-col bg-black text-white">
+      <FlowHeader
+        title=""
+        leftSlot={<span />}
+        rightSlot={<span />}
+      />
+      <div className="flex flex-1 flex-col items-center justify-center px-6 pb-[calc(40px+env(safe-area-inset-bottom))] text-center">
+        <div className="relative grid h-24 w-24 place-items-center rounded-full bg-emerald-500/15 ring-1 ring-emerald-400/40">
+          <span className="grid h-16 w-16 place-items-center rounded-full bg-emerald-500 text-black shadow-[0_0_40px_rgba(16,185,129,0.45)]">
+            <FiCheck className="h-8 w-8" strokeWidth={3} />
+          </span>
+        </div>
+
+        <h1 className="mt-6 text-xl font-black text-white">
+          Postingan berhasil dikirim
+        </h1>
+        <p className="mt-2 max-w-xs text-sm font-medium leading-relaxed text-white/60">
+          Postingan kamu sedang menunggu review admin.
+        </p>
+
+        {thumbnailPreviewUrl && (
+          <div className="relative mt-7 h-44 w-32 overflow-hidden rounded-2xl ring-1 ring-white/10">
+            <Image
+              src={thumbnailPreviewUrl}
+              alt="Preview postingan"
+              fill
+              sizes="128px"
+              className="object-cover"
+              unoptimized
+            />
+            <span className="absolute bottom-2 left-2 rounded-md bg-black/70 px-2 py-0.5 text-[11px] font-black">
+              {formatClock(finalDuration)}
+            </span>
+          </div>
+        )}
+
+        <div className="mt-10 w-full max-w-xs space-y-3">
+          <button
+            type="button"
+            onClick={onBackToFeed}
+            className="w-full rounded-full bg-natalo-600 py-3.5 text-sm font-black text-white shadow-[0_6px_18px_rgba(30,95,191,0.45)] transition active:scale-[0.98]"
+          >
+            Kembali ke Feed
+          </button>
+          <button
+            type="button"
+            onClick={onViewMyPosts}
+            className="w-full rounded-full py-3 text-sm font-black text-white/80 transition active:bg-white/5"
+          >
+            Lihat Postingan Saya
+          </button>
+        </div>
+        {postId && (
+          <p className="mt-4 text-[10px] font-bold text-white/30">
+            ID #{postId.slice(0, 8)}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Product picker bottom sheet ─────────────────────────────────────
 
 function ProductPickerSheet({
   open,
@@ -972,7 +1625,7 @@ function ProductPickerSheet({
   onSelect: (product: PinnableProduct) => void;
 }) {
   return (
-    <BottomSheet open={open} onClose={onClose} title="Pilih Produk">
+    <BottomSheet open={open} onClose={onClose} title="Tag Produk">
       <div className="space-y-3">
         {loading && (
           <p className="py-8 text-center text-xs font-bold text-gray-400">
@@ -982,7 +1635,7 @@ function ProductPickerSheet({
         {!loading && products.length === 0 && (
           <div className="rounded-2xl bg-gray-50 p-4 text-center">
             <p className="text-sm font-extrabold text-gray-700">
-              Belum ada produk yang bisa di-pin
+              Belum ada produk yang bisa di-tag
             </p>
             <p className="mt-1 text-xs leading-relaxed text-gray-500">
               Produk akan muncul setelah pesanan kamu selesai dan berstatus
@@ -1030,11 +1683,26 @@ function ProductPickerSheet({
   );
 }
 
+// ── Helpers ─────────────────────────────────────────────────────────
+
+function formatClock(sec: number) {
+  const total = Math.max(0, Math.round(sec));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
 /**
- * PUT the raw video bytes to Bunny with upload progress events. Uses
- * XMLHttpRequest specifically because `fetch()` doesn't yet have an
- * upload-progress API on iOS WKWebView (only download-progress via
- * streams). Bunny accepts a plain PUT with the API key header.
+ * PUT bytes ke Bunny — XHR untuk upload progress (fetch tidak punya
+ * upload-progress di iOS WKWebView).
  */
 function uploadToBunnyWithProgress(params: {
   uploadUrl: string;
@@ -1063,10 +1731,3 @@ function uploadToBunnyWithProgress(params: {
   });
 }
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("id-ID", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
