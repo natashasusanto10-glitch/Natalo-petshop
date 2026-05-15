@@ -41,7 +41,15 @@ const MIN_VIDEO_DURATION = 15;
 const MAX_VIDEO_DURATION = 30;
 const MAX_CAPTION_LENGTH = 300;
 const MAX_PINNED_PRODUCTS = 3;
-const ACCEPT_VIDEO = "video/mp4,video/webm,video/quicktime";
+// Gallery picker accepts semua format umum (webm dipakai Android Chrome).
+// Camera recorder (capture="environment") pakai accept terpisah "video/*"
+// karena iOS WKFileUploadPanel crash kalau accept-list mengandung MIME yang
+// tidak punya UTI mapping (mis. video/webm — iOS tidak support WebM native).
+// Pakai "video/*" memberi WKWebView signal generic → UIImagePickerController
+// langsung dibuka dengan mediaTypes = [kUTTypeMovie] dan iOS rekam dalam
+// format native-nya sendiri (.mov / quicktime).
+const ACCEPT_VIDEO_GALLERY = "video/mp4,video/webm,video/quicktime";
+const ACCEPT_VIDEO_CAMERA = "video/*";
 
 type FlowStep = "pick" | "trim" | "detail" | "success" | "status";
 type UploadStage = "compressing" | "uploading-video" | "uploading-thumbnail" | "submitting" | null;
@@ -590,14 +598,14 @@ function PickVideoStep({
           <input
             ref={galleryInputRef}
             type="file"
-            accept={ACCEPT_VIDEO}
+            accept={ACCEPT_VIDEO_GALLERY}
             className="hidden"
             onChange={(event) => onPick(event.target.files?.[0] ?? null)}
           />
           <input
             ref={cameraInputRef}
             type="file"
-            accept={ACCEPT_VIDEO}
+            accept={ACCEPT_VIDEO_CAMERA}
             capture="environment"
             className="hidden"
             onChange={(event) => onPick(event.target.files?.[0] ?? null)}
