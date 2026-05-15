@@ -42,6 +42,19 @@ export async function listFeedPosts({
       // Soft-deleted posts stay in DB for audit/restore but must never
       // surface in the public feed.
       deletedAt: null,
+      // Defensive: skip posts whose video assets are missing. This can
+      // happen when an admin hide/reject runs cleanup against an already-
+      // active post and then unhides — the row comes back ACTIVE but its
+      // videoUrl was wiped by deleteFeedAssets(). Without this guard the
+      // feed shows a black card with no playable content.
+      OR: [
+        // Video posts must have both url + thumbnail.
+        { videoUrl: { not: null }, thumbnailUrl: { not: null } },
+        // Product-only / promo cards have no video but still have a
+        // productId to render against.
+        { kind: "PRODUCT_ONLY" },
+        { kind: "PROMO", productId: { not: null } },
+      ],
       ...(tab ? { tab } : {}),
     },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],

@@ -153,12 +153,13 @@ export async function PATCH(
     note: noteStr || null,
   });
 
-  // Storage cleanup. Reject + Hide free the video + thumbnail from
-  // UploadThing since the post is no longer publicly visible. NOTE: unhide
-  // after hide will leave a broken video URL — unhide should be reserved
-  // for the same-day "oops" case before this cleanup batch lands. If you
-  // need a reversible soft-hide, narrow this to only `action === "reject"`.
-  if (action === "reject" || action === "hide") {
+  // Storage cleanup. Reject is terminal — free the video + thumbnail from
+  // UploadThing since the post will never come back. Hide is reversible
+  // via unhide so we KEEP the assets; otherwise an admin hide/unhide round
+  // trip leaves an ACTIVE post with no playable video. The weekly storage
+  // GC cron (/api/cron/feed-storage-gc) catches truly orphan hidden posts
+  // after they sit untouched for a while.
+  if (action === "reject") {
     void deleteFeedAssets({
       videoUrl: post.videoUrl,
       thumbnailUrl: post.thumbnailUrl,
