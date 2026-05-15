@@ -243,7 +243,7 @@ export function FeedUploadClient() {
   }
 
   async function handleUpload() {
-    if (!file || !metadata || !thumbnailBlob) return;
+    if (!file || !metadata) return;
     if (title.trim().length < 3) {
       setError("Judul minimal 3 karakter.");
       return;
@@ -252,77 +252,63 @@ export function FeedUploadClient() {
     setError(null);
 
     try {
-      setProcessingStage("compressing");
-      setProcessingProgress(0);
-      setUploadProgress("Memproses video...");
-      const { compressVideo } = await import("@/lib/feed/video-compressor");
-      const compressedFile = await compressVideo(file, {
-        config: USER_VIDEO_CONFIG,
-        // Trim values picked in the "trim" step — pass through so ffmpeg
-        // only encodes the selected slice and the final clip lands in
-        // the 1-45s server-side window.
-        trimStartSec: trimStart,
-        trimDurationSec: finalDuration,
-        onProgress: (progress) => {
-          setProcessingProgress(progress);
-        },
-      });
-      if (compressedFile.size > USER_VIDEO_CONFIG.maxFileSize) {
-        throw new Error(
-          `Hasil kompresi masih ${formatFileSize(compressedFile.size)}. Maksimal ${formatFileSize(USER_VIDEO_CONFIG.maxFileSize)}.`,
-        );
-      }
-
-      // 1. Upload video terkompresi
-      setProcessingStage("uploading");
-      setProcessingProgress(0);
-      setUploadProgress("Mengunggah video...");
-      const videoForm = new FormData();
-      videoForm.append("file", compressedFile);
-      const videoRes = await fetch("/api/feed/upload-video", {
-        method: "POST",
-        body: videoForm,
-      });
-      const videoData = await videoRes.json();
-      if (!videoRes.ok) throw new Error(videoData.error ?? "Upload video gagal.");
-
-      // 2. Upload thumbnail
-      setUploadProgress("Mengunggah thumbnail...");
-      const thumbForm = new FormData();
-      thumbForm.append(
-        "file",
-        new File([thumbnailBlob], "thumbnail.jpg", { type: "image/jpeg" }),
-      );
-      const thumbRes = await fetch("/api/feed/upload-thumbnail", {
-        method: "POST",
-        body: thumbForm,
-      });
-      const thumbData = await thumbRes.json();
-      if (!thumbRes.ok) throw new Error(thumbData.error ?? "Upload thumbnail gagal.");
-
-      // 3. Create post — server set kind=COMMUNITY, status=PENDING_REVIEW.
+      // 1. Server creates Bunny video record + FeedPost row. Returns the
+      //    direct-upload URL the client PUTs the raw bytes to.
       setProcessingStage("submitting");
-      setUploadProgress("Menyimpan...");
-      const postRes = await fetch("/api/feed/posts", {
+      setProcessingProgress(0);
+      setUploadProgress("Menyiapkan unggahan...");
+      const urlRes = await fetch("/api/feed/bunny/upload-url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: title.trim(),
           description: description.trim() || null,
-          videoUrl: videoData.url,
-          thumbnailUrl: thumbData.url,
-          videoMimeType: videoData.mimeType,
-          videoSizeBytes: videoData.sizeBytes,
-          // Final clip duration after trim, not source duration. Server
-          // validates this against 1-45s and would reject a 60s source.
-          videoDurationSec: Math.max(1, Math.round(finalDuration)),
-          videoWidth: metadata.width,
-          videoHeight: metadata.height,
-          productId: selectedProduct?.productId ?? null,
+          productIds: selectedProduct ? [selectedProduct.productId] : [],
         }),
       });
-      const postData = await postRes.json();
-      if (!postRes.ok) throw new Error(postData.error ?? "Gagal membuat post.");
+      const urlData = (await urlRes.json()) as {
+        error?: string;
+        postId?: string;
+        videoGuid?: string;
+        uploadUrl?: string;
+        uploadHeaders?: Record<string, string>;
+      };
+      if (!urlRes.ok || !urlData.uploadUrl) {
+        throw new Error(urlData.error ?? "Gagal menyiapkan unggahan.");
+      }
+
+      // 2. Trim the source first if the user picked a sub-range. ffmpeg.wasm
+      //    handles cutting (cheap, no full re-encode needed). If the user
+      //    kept the whole clip, skip this step and upload the raw file
+      //    directly — far faster + no WASM crash risk for big sources.
+      let uploadBlob: Blob = file;
+      const wantsTrim =
+        trimStart > 0.1 || finalDuration < metadata.durationSec - 0.1;
+      if (wantsTrim) {
+        setProcessingStage("compressing");
+        setProcessingProgress(0);
+        setUploadProgress("Memotong video...");
+        // Dynamic import — keep ffmpeg.wasm out of the initial bundle.
+        const { trimVideo } = await import("@/lib/feed/video-trimmer");
+        uploadBlob = await trimVideo(file, {
+          trimStartSec: trimStart,
+          trimDurationSec: finalDuration,
+          onProgress: setProcessingProgress,
+        });
+      }
+
+      // 3. Upload raw (or trimmed) video bytes directly to Bunny. No
+      //    client-side re-encoding — Bunny handles HLS variants in the
+      //    cloud after this PUT lands.
+      setProcessingStage("uploading");
+      setProcessingProgress(0);
+      setUploadProgress("Mengunggah video...");
+      await uploadToBunnyWithProgress({
+        uploadUrl: urlData.uploadUrl,
+        headers: urlData.uploadHeaders ?? {},
+        body: uploadBlob,
+        onProgress: setProcessingProgress,
+      });
 
       hapticSuccess();
       setStep("success");
@@ -346,7 +332,9 @@ export function FeedUploadClient() {
         </h1>
         <p className="mt-3 max-w-sm text-sm leading-relaxed text-gray-600">
           Terima kasih sudah berbagi pengalaman bersama komunitas Natalo.
-          Tim kami akan review videomu sebelum tampil di tab Komunitas.
+          Videomu sedang diproses di cloud (encoding HLS adaptive bitrate
+          ~1-2 menit), lalu admin akan review sebelum tampil di Feed.
+          Kamu akan dapat notifikasi saat status berubah.
         </p>
         <div className="mt-8 flex w-full max-w-xs flex-col gap-2">
           <button
@@ -1040,6 +1028,39 @@ function ProductPickerSheet({
       </div>
     </BottomSheet>
   );
+}
+
+/**
+ * PUT the raw video bytes to Bunny with upload progress events. Uses
+ * XMLHttpRequest specifically because `fetch()` doesn't yet have an
+ * upload-progress API on iOS WKWebView (only download-progress via
+ * streams). Bunny accepts a plain PUT with the API key header.
+ */
+function uploadToBunnyWithProgress(params: {
+  uploadUrl: string;
+  headers: Record<string, string>;
+  body: Blob;
+  onProgress?: (pct: number) => void;
+}): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", params.uploadUrl, true);
+    for (const [key, value] of Object.entries(params.headers)) {
+      xhr.setRequestHeader(key, value);
+    }
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && params.onProgress) {
+        params.onProgress(Math.round((event.loaded / event.total) * 100));
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error(`Bunny upload failed (HTTP ${xhr.status})`));
+    };
+    xhr.onerror = () => reject(new Error("Bunny upload network error"));
+    xhr.onabort = () => reject(new Error("Bunny upload aborted"));
+    xhr.send(params.body);
+  });
 }
 
 function formatDate(iso: string) {

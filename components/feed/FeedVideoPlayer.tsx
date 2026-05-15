@@ -5,6 +5,11 @@ import { useFeedActiveVideo } from "./FeedActiveVideoContext";
 import { getPreloadTier } from "@/lib/feed/runtime-config";
 import { useVideoMetrics } from "./useVideoMetrics";
 
+function isHlsUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return url.includes(".m3u8");
+}
+
 type Props = {
   postId: string;
   /** List position passed by parent feed so we can derive distance-from-active. */
@@ -45,6 +50,46 @@ export function FeedVideoPlayer({
   // Telemetry — collects canPlay / firstFrame / buffer counts and flushes
   // to /api/feed/metrics when this card stops being active or unmounts.
   useVideoMetrics({ videoRef, postId, isActive, videoDurationSec: durationSec });
+
+  // HLS playback. Bunny serves .m3u8 playlists with adaptive bitrate
+  // variants. Safari (iOS + macOS) plays HLS natively via the standard
+  // <video src> path so we do nothing there. Other browsers (Android
+  // Chrome / desktop Chrome / Firefox) need hls.js to translate the
+  // playlist into MediaSource Extensions chunks. Dynamic import keeps
+  // the ~120KB hls.js bundle out of the initial page chunk.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (!loadSrc || farFromViewport) return;
+    if (!isHlsUrl(videoUrl)) return;
+    // Safari has native HLS — just let `<video src>` handle it.
+    if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      video.src = videoUrl;
+      return;
+    }
+    let destroyed = false;
+    let hlsInstance: import("hls.js").default | null = null;
+    void import("hls.js").then(({ default: Hls }) => {
+      if (destroyed) return;
+      if (!Hls.isSupported()) return;
+      const hls = new Hls({
+        maxBufferLength: 10,
+        maxMaxBufferLength: 30,
+        // Match preload tier — current card downloads more aggressively.
+        startLevel: -1,
+        capLevelToPlayerSize: true,
+      });
+      hls.loadSource(videoUrl);
+      hls.attachMedia(video);
+      hlsInstance = hls;
+    });
+    return () => {
+      destroyed = true;
+      hlsInstance?.destroy();
+    };
+  }, [videoUrl, loadSrc, farFromViewport]);
+
+  const isHls = isHlsUrl(videoUrl);
 
   // Track when the active card changes via IntersectionObserver. Pass both
   // id and index so context can compute neighbours for preload decisions.
@@ -151,7 +196,10 @@ export function FeedVideoPlayer({
 
       <video
         ref={videoRef}
-        src={loadSrc && !farFromViewport ? videoUrl : undefined}
+        // For HLS we let the effect above attach the source (Safari native
+        // sets src direct, other browsers hand the stream to hls.js).
+        // For progressive MP4 we use the native <video src> path.
+        src={loadSrc && !farFromViewport && !isHls ? videoUrl : undefined}
         poster={thumbnailUrl ?? undefined}
         playsInline
         muted

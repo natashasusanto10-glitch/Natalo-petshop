@@ -95,6 +95,7 @@ export async function PATCH(
       publishedAt: true,
       videoUrl: true,
       thumbnailUrl: true,
+      videoGuid: true,
     },
   });
   if (!post) {
@@ -163,6 +164,7 @@ export async function PATCH(
     void deleteFeedAssets({
       videoUrl: post.videoUrl,
       thumbnailUrl: post.thumbnailUrl,
+      videoGuid: post.videoGuid,
       context: `${action} ${postId}`,
     });
   }
@@ -208,7 +210,14 @@ export async function DELETE(
 
   const existing = await prisma.feedPost.findUnique({
     where: { id: postId },
-    select: { id: true, status: true, videoUrl: true, thumbnailUrl: true, deletedAt: true },
+    select: {
+      id: true,
+      status: true,
+      videoUrl: true,
+      thumbnailUrl: true,
+      videoGuid: true,
+      deletedAt: true,
+    },
   });
   if (!existing) {
     return NextResponse.json({ error: "Post tidak ditemukan." }, { status: 404 });
@@ -222,6 +231,7 @@ export async function DELETE(
     void deleteFeedAssets({
       videoUrl: existing.videoUrl,
       thumbnailUrl: existing.thumbnailUrl,
+      videoGuid: existing.videoGuid,
       context: `hard-delete ${postId}`,
     });
     return NextResponse.json({ ok: true, mode: "hard" });
@@ -260,6 +270,7 @@ export async function DELETE(
   void deleteFeedAssets({
     videoUrl: existing.videoUrl,
     thumbnailUrl: existing.thumbnailUrl,
+    videoGuid: existing.videoGuid,
     context: `soft-delete ${postId}`,
   });
 

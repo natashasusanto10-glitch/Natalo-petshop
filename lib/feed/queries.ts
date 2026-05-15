@@ -42,6 +42,10 @@ export async function listFeedPosts({
       // Soft-deleted posts stay in DB for audit/restore but must never
       // surface in the public feed.
       deletedAt: null,
+      // Bunny videos in `uploading` / `processing` / `failed` are not
+      // playable — exclude them. Legacy UploadThing posts default to
+      // `ready` so they continue to surface.
+      encodingStatus: "ready",
       // Defensive: skip posts whose video assets are missing. This can
       // happen when an admin hide/reject runs cleanup against an already-
       // active post and then unhides — the row comes back ACTIVE but its

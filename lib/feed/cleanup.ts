@@ -12,6 +12,7 @@
  */
 
 import { utapi } from "@/lib/uploadthing";
+import { deleteBunnyVideo } from "@/lib/feed/bunny";
 
 /**
  * Pull the UploadThing file key out of a ufsUrl. Returns null when the URL
@@ -38,23 +39,36 @@ export function extractUploadThingKey(url: string | null | undefined): string | 
 export async function deleteFeedAssets(params: {
   videoUrl?: string | null;
   thumbnailUrl?: string | null;
+  /** Bunny video GUID, when the post was uploaded through Bunny Stream. */
+  videoGuid?: string | null;
   context?: string;
 }): Promise<number> {
+  // Bunny Stream — delete the whole video record (covers playlist + every
+  // bitrate variant + auto thumbnails). This is the primary path for new
+  // customer uploads going forward.
+  if (params.videoGuid) {
+    void deleteBunnyVideo(params.videoGuid);
+  }
+
+  // UploadThing legacy — keys are encoded in the ufsUrl segments. Only
+  // applies to posts created before the Bunny migration; videoUrl from a
+  // Bunny post is an HLS playlist on the b-cdn.net domain and won't
+  // match the /f/ regex anyway.
   const keys = [
     extractUploadThingKey(params.videoUrl),
     extractUploadThingKey(params.thumbnailUrl),
   ].filter((k): k is string => Boolean(k));
 
-  if (keys.length === 0) return 0;
+  if (keys.length === 0) return params.videoGuid ? 1 : 0;
 
   try {
     await utapi.deleteFiles(keys);
-    return keys.length;
+    return keys.length + (params.videoGuid ? 1 : 0);
   } catch (err) {
     console.warn(
       `[feed-cleanup] deleteFiles failed${params.context ? ` (${params.context})` : ""}:`,
       err,
     );
-    return 0;
+    return params.videoGuid ? 1 : 0;
   }
 }

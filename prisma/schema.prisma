@@ -686,6 +686,16 @@ model FeedPost {
   videoWidth      Int?
   videoHeight     Int?
   thumbnailUrl    String?         // Wajib kalau ada videoUrl
+  // Bunny Stream integration. NULL = post pakai UploadThing direct URL
+  // (legacy). Saat di-set, videoUrl menyimpan playlist.m3u8 dari Bunny CDN
+  // dan playback pakai HLS adaptive bitrate.
+  videoGuid       String?         @unique
+  // Encoding lifecycle untuk Bunny videos.
+  //   "ready"      — playable (default untuk UploadThing legacy posts)
+  //   "uploading"  — user sedang upload raw file ke Bunny
+  //   "processing" — Bunny sedang encode HLS variants
+  //   "failed"     — Bunny encode gagal, post tidak boleh tayang
+  encodingStatus  String          @default("ready")
 
   // Product linkage — nullable untuk VIDEO_ONLY + COMMUNITY tanpa tag.
   // COMMUNITY user yg tag produk: arahkan ke produk resmi (bukan toko user).
