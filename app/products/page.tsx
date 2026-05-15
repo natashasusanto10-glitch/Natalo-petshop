@@ -79,8 +79,14 @@ export default async function ProductsPage({
           : "pb-[calc(6rem+env(safe-area-inset-bottom))] md:py-10"
       }`}
     >
+      {/* Sticky search + filter row. pt-0 di mobile non-search supaya jarak
+          header → search ~10px (sisa whitespace dari .nat-header-inner
+          min-height 60px + items-center vs logo h-10). Sebelumnya pt-1
+          bikin total gap ~14px yang terasa terlalu lega. Filter chips
+          tetap di bawah search bar (mb-1.5 di wrapper search) dan padding
+          bawah sticky (pb-2.5) tidak diubah karena di luar scope. */}
       <div
-        className={`sticky z-50 -mx-4 mb-3 bg-white px-4 pb-2.5 pt-1 shadow-[0_8px_24px_rgba(15,23,42,0.06)] ${
+        className={`sticky z-50 -mx-4 mb-3 bg-white px-4 pb-2.5 pt-0 shadow-[0_8px_24px_rgba(15,23,42,0.06)] ${
           isSearchResult
             ? "top-0 [padding-top:calc(0.5rem+env(safe-area-inset-top))]"
             : "top-[calc(var(--natalo-mobile-header-min-height)+env(safe-area-inset-top))] rounded-b-3xl"
