@@ -40,6 +40,7 @@ export function useInfiniteProducts({
   const hasMoreRef = useRef(true);
   const loadingRef = useRef(false);
   const requestIdRef = useRef(0);
+  const allProductsSeedRef = useRef<string | null>(null);
 
   const loadProducts = useCallback(
     async ({ reset = false } = {}) => {
@@ -62,6 +63,13 @@ export function useInfiniteProducts({
         if (brand) params.set("brand", brand);
         if (newFilter) params.set("new", newFilter);
         if (popularFilter) params.set("popular", popularFilter);
+        if (!search.trim() && (!category || category === "all") && !brand && !newFilter && !popularFilter) {
+          allProductsSeedRef.current ??=
+            typeof crypto !== "undefined" && "randomUUID" in crypto
+              ? crypto.randomUUID()
+              : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          params.set("seed", allProductsSeedRef.current);
+        }
 
         const res = await fetch(`/api/products?${params.toString()}`, {
           cache: "no-store",

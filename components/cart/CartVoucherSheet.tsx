@@ -16,9 +16,12 @@
  * @capacitor/keyboard untuk iOS native.
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { formatRupiah } from "@/lib/format";
+
+const DRAG_CLOSE_THRESHOLD = 96;
+const SNAP_BACK_DURATION_MS = 220;
 
 export type MemberVoucherItem = {
   id: string;
@@ -62,6 +65,14 @@ export function CartVoucherSheet({
   const [memberUnavailable, setMemberUnavailable] = useState<MemberVoucherItem[]>([]);
   const [memberLoading, setMemberLoading] = useState(false);
   const [memberError, setMemberError] = useState("");
+  const sheetRef = useRef<HTMLDivElement | null>(null);
+  const dragStartYRef = useRef(0);
+  const dragYRef = useRef(0);
+  const isDraggingRef = useRef(false);
+  const snapBackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [dragY, setDragY] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isSnappingBack, setIsSnappingBack] = useState(false);
 
   // Lock body scroll + hide bottom-nav saat sheet open
   useEffect(() => {
@@ -158,6 +169,114 @@ export function CartVoucherSheet({
       .finally(() => setMemberLoading(false));
   }, [open, isLoggedIn, subtotal]);
 
+  useEffect(() => {
+    if (!open) {
+      dragStartYRef.current = 0;
+      dragYRef.current = 0;
+      isDraggingRef.current = false;
+      setDragY(0);
+      setIsDragging(false);
+      setIsSnappingBack(false);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    return () => {
+      if (snapBackTimerRef.current) {
+        clearTimeout(snapBackTimerRef.current);
+      }
+    };
+  }, []);
+
+  const clearSnapBackTimer = useCallback(() => {
+    if (snapBackTimerRef.current) {
+      clearTimeout(snapBackTimerRef.current);
+      snapBackTimerRef.current = null;
+    }
+  }, []);
+
+  const beginDrag = useCallback((target: EventTarget | null, clientY: number) => {
+    if (target instanceof HTMLElement && target.closest("button")) return;
+    clearSnapBackTimer();
+    dragStartYRef.current = clientY;
+    dragYRef.current = 0;
+    isDraggingRef.current = true;
+    setDragY(0);
+    setIsDragging(true);
+    setIsSnappingBack(false);
+  }, [clearSnapBackTimer]);
+
+  const updateDrag = useCallback((clientY: number) => {
+    if (!isDraggingRef.current) return;
+    const nextDragY = Math.max(0, clientY - dragStartYRef.current);
+    dragYRef.current = nextDragY;
+    setDragY(nextDragY);
+  }, []);
+
+  const finishDrag = useCallback(() => {
+    if (!isDraggingRef.current) return;
+
+    isDraggingRef.current = false;
+    setIsDragging(false);
+
+    const sheetHeight = sheetRef.current?.getBoundingClientRect().height ?? DRAG_CLOSE_THRESHOLD;
+    const closeThreshold = Math.min(DRAG_CLOSE_THRESHOLD, sheetHeight * 0.28);
+
+    if (dragYRef.current >= closeThreshold) {
+      onClose();
+      return;
+    }
+
+    dragYRef.current = 0;
+    setDragY(0);
+    setIsSnappingBack(true);
+    clearSnapBackTimer();
+    snapBackTimerRef.current = setTimeout(() => {
+      setIsSnappingBack(false);
+      snapBackTimerRef.current = null;
+    }, SNAP_BACK_DURATION_MS);
+  }, [clearSnapBackTimer, onClose]);
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    function onMouseMove(event: MouseEvent) {
+      updateDrag(event.clientY);
+    }
+
+    function onMouseUp() {
+      finishDrag();
+    }
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [finishDrag, isDragging, updateDrag]);
+
+  function handleHeaderMouseDown(event: React.MouseEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    beginDrag(event.target, event.clientY);
+  }
+
+  function handleHeaderTouchStart(event: React.TouchEvent<HTMLDivElement>) {
+    const touch = event.touches[0];
+    if (!touch) return;
+    beginDrag(event.target, touch.clientY);
+  }
+
+  function handleHeaderTouchMove(event: React.TouchEvent<HTMLDivElement>) {
+    const touch = event.touches[0];
+    if (!touch || !isDraggingRef.current) return;
+    updateDrag(touch.clientY);
+    if (dragYRef.current > 0 && event.cancelable) {
+      event.preventDefault();
+    }
+  }
+
   if (!open || typeof document === "undefined") return null;
 
   return createPortal(
@@ -169,9 +288,27 @@ export function CartVoucherSheet({
         aria-modal="true"
         aria-label="Pilih Voucher"
       >
-        <div className="voucher-sheet">
+        <div
+          ref={sheetRef}
+          className="voucher-sheet"
+          style={{
+            transform: dragY > 0 ? `translate3d(0, ${dragY}px, 0)` : undefined,
+            transition: isDragging
+              ? "none"
+              : isSnappingBack
+              ? `transform ${SNAP_BACK_DURATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`
+              : undefined,
+          }}
+        >
           {/* Drag handle + header */}
-          <div className="shrink-0 border-b border-zinc-100 bg-white">
+          <div
+            className="shrink-0 cursor-grab touch-none select-none border-b border-zinc-100 bg-white active:cursor-grabbing"
+            onMouseDown={handleHeaderMouseDown}
+            onTouchStart={handleHeaderTouchStart}
+            onTouchMove={handleHeaderTouchMove}
+            onTouchEnd={finishDrag}
+            onTouchCancel={finishDrag}
+          >
             <div className="flex justify-center pt-2">
               <span className="block h-1 w-10 rounded-full bg-zinc-200" />
             </div>

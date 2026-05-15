@@ -26,6 +26,11 @@ type Notification = {
   ctaLabel?: string | null;
   createdAt: string;
   read: boolean;
+  reviewSummary?: {
+    totalItems: number;
+    reviewedItems: number;
+    allReviewed: boolean;
+  } | null;
 };
 
 type FetchResponse = {
@@ -119,24 +124,37 @@ function IconBadge({ type }: { type: NotificationType }) {
   );
 }
 
-function RatingStrip({ onOpen, disabled }: { onOpen: () => void; disabled?: boolean }) {
+function RatingStrip({
+  onOpen,
+  disabled,
+  allReviewed,
+}: {
+  onOpen: () => void;
+  disabled?: boolean;
+  allReviewed?: boolean;
+}) {
   return (
     <button
       type="button"
       onClick={onOpen}
       disabled={disabled}
       className="mt-4 block w-full rounded-xl bg-emerald-50 px-3 py-3 text-left transition active:scale-[0.99] active:bg-emerald-100 disabled:opacity-60"
-      aria-label="Beri rating dan ulasan"
+      aria-label={allReviewed ? "Semua produk sudah direview" : "Beri rating dan ulasan"}
     >
       <div className="flex items-center gap-1" aria-hidden="true">
         {[1, 2, 3, 4, 5].map((value) => (
-          <span key={value} className="text-2xl leading-none text-slate-300">
-            {"★"}
+          <span
+            key={value}
+            className={`text-2xl leading-none ${allReviewed ? "text-amber-400" : "text-slate-300"}`}
+          >
+            {allReviewed ? "\u2605" : "\u2606"}
           </span>
         ))}
       </div>
       <p className="mt-2 text-xs font-semibold text-emerald-900">
-        Bantu beri rating & ulasan untuk produk yang kamu beli
+        {allReviewed
+          ? "Semua produk di pesanan ini sudah direview"
+          : "Bantu beri rating & ulasan untuk produk yang kamu beli"}
       </p>
     </button>
   );
@@ -145,13 +163,16 @@ function RatingStrip({ onOpen, disabled }: { onOpen: () => void; disabled?: bool
 function NotificationCard({
   item,
   onRead,
+  onRefresh,
 }: {
   item: Notification;
   onRead: (item: Notification) => void;
+  onRefresh: () => void;
 }) {
   const type = notificationType(item);
   const reviewPrompt = isReviewPrompt(item);
   const orderNumber = extractOrderNumber(item);
+  const allReviewed = Boolean(item.reviewSummary?.allReviewed);
   const [reviewSheetOpen, setReviewSheetOpen] = useState(false);
   const ctaLabel =
     type === "announcement"
@@ -199,6 +220,7 @@ function NotificationCard({
                 if (orderNumber) setReviewSheetOpen(true);
               }}
               disabled={!orderNumber}
+              allReviewed={allReviewed}
             />
           )}
 
@@ -232,6 +254,10 @@ function NotificationCard({
         <NotificationReviewSheet
           orderNumber={orderNumber}
           onClose={() => setReviewSheetOpen(false)}
+          onSubmitted={() => {
+            onRefresh();
+            window.dispatchEvent(new CustomEvent("notifications-updated"));
+          }}
         />
       )}
     </article>
@@ -354,7 +380,7 @@ export function NotificationsList() {
           <ul className="nat-content-fade-in nat-content-fade-in--stagger space-y-3">
             {filteredItems.map((item) => (
               <li key={item.id}>
-                <NotificationCard item={item} onRead={handleRead} />
+                <NotificationCard item={item} onRead={handleRead} onRefresh={() => void load()} />
               </li>
             ))}
           </ul>

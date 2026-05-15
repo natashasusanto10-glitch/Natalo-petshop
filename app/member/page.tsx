@@ -4,6 +4,7 @@ import {
   FiCheckCircle,
   FiChevronRight,
   FiCreditCard,
+  FiEdit3,
   FiHeart,
   FiHelpCircle,
   FiHome,
@@ -42,7 +43,7 @@ function CountBadge({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
     <span className="absolute right-3 top-3 grid h-5 min-w-5 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-black leading-none text-white">
-      {count > 99 ? "99+" : count}
+      {count > 9 ? "9+" : count}
     </span>
   );
 }
@@ -133,8 +134,9 @@ function SettingsRow({
 
 export default async function MemberPage() {
   const session = await requireCustomerSession();
+  const recentDoneSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-  const [totalPoints, orderGroups, user] = await Promise.all([
+  const [totalPoints, orderGroups, recentDoneCount, user] = await Promise.all([
     prisma.customerPoint.aggregate({
       where: { userId: session.sub },
       _sum: { points: true },
@@ -143,6 +145,13 @@ export default async function MemberPage() {
       by: ["status"],
       where: { userId: session.sub },
       _count: { _all: true },
+    }),
+    prisma.order.count({
+      where: {
+        userId: session.sub,
+        status: "DELIVERED",
+        updatedAt: { gte: recentDoneSince },
+      },
     }),
     prisma.user.findUnique({
       where: { id: session.sub },
@@ -154,7 +163,7 @@ export default async function MemberPage() {
   const unpaidCount = orderCount(orderGroups, ["PENDING"]);
   const processingCount = orderCount(orderGroups, ["PAID", "PROCESSING"]);
   const shippedCount = orderCount(orderGroups, ["SHIPPED"]);
-  const doneCount = orderCount(orderGroups, ["DELIVERED"]);
+  const doneCount = recentDoneCount;
   const displayName = user?.name ?? session.name ?? "Member";
   const initial = displayName.charAt(0).toUpperCase() || "N";
   const memberSince = formatMemberSince(user?.createdAt);
@@ -203,36 +212,39 @@ export default async function MemberPage() {
   return (
     <main className="min-h-screen bg-slate-50 px-4 pb-[calc(120px+env(safe-area-inset-bottom))] pt-4">
       <div className="mx-auto max-w-4xl space-y-5">
-        <section className="overflow-hidden rounded-[24px] bg-gradient-to-br from-[#1677FF] to-[#0F4EAF] p-5 text-white shadow-[0_8px_24px_rgba(16,24,40,0.08)]">
-          <div className="flex items-start gap-4">
-            <div className="relative grid h-16 w-16 shrink-0 place-items-center rounded-full bg-white/18 text-2xl font-black ring-1 ring-white/20">
+        <section className="overflow-hidden rounded-[24px] bg-gradient-to-br from-[#1677FF] to-[#0F4EAF] p-4 text-white shadow-[0_8px_24px_rgba(16,24,40,0.08)]">
+          <div className="flex items-start gap-3">
+            <div className="relative grid h-14 w-14 shrink-0 place-items-center rounded-full bg-white/18 text-xl font-black ring-1 ring-white/20">
               {initial}
-              <span className="absolute -right-1 -top-1 grid h-7 w-7 place-items-center rounded-full bg-white text-sm text-[#1677FF] shadow-sm">
-                <FiCheckCircle className="h-4 w-4" aria-hidden="true" />
+              <span className="absolute -right-1 -top-1 grid h-6 w-6 place-items-center rounded-full bg-white text-sm text-[#1677FF] shadow-sm">
+                <FiCheckCircle className="h-3.5 w-3.5" aria-hidden="true" />
               </span>
             </div>
             <div className="min-w-0 flex-1">
-              <span className="inline-flex rounded-full bg-white/16 px-3 py-1 text-xs font-black text-white ring-1 ring-white/20">
-                Member Resmi
-              </span>
-              <h1 className="mt-2 text-2xl font-black leading-tight tracking-tight">
+              <div className="flex items-start justify-between gap-2">
+                <span className="inline-flex rounded-full bg-white/16 px-2.5 py-0.5 text-[11px] font-black text-white ring-1 ring-white/20">
+                  Member Resmi
+                </span>
+                <Link
+                  href="/member/profile"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-black text-white/90 ring-1 ring-white/15 transition active:scale-[0.98]"
+                >
+                  <FiEdit3 className="h-3.5 w-3.5" aria-hidden="true" />
+                  Edit Profil
+                </Link>
+              </div>
+              <h1 className="mt-1.5 text-xl font-black leading-tight tracking-tight">
                 Halo, {displayName}!
               </h1>
-              <p className="mt-1 text-sm font-semibold leading-5 text-blue-50">
-                Senang melihatmu kembali di Natalo 🐾
+              <p className="mt-0.5 text-sm font-semibold leading-5 text-blue-50">
+                Senang melihatmu kembali di Natalo
               </p>
-              <Link
-                href="/member/profile"
-                className="mt-4 inline-flex rounded-2xl bg-white px-4 py-2 text-sm font-black text-[#1677FF] shadow-sm transition active:scale-[0.98]"
-              >
-                Edit Profil
-              </Link>
             </div>
           </div>
 
-          <div className="mt-5 grid grid-cols-2 gap-2 border-t border-white/18 pt-4">
+          <div className="mt-4 grid grid-cols-2 gap-2 border-t border-white/18 pt-3">
             <div>
-              <p className="text-2xl font-black leading-none">{points.toLocaleString("id-ID")}</p>
+              <p className="text-xl font-black leading-none">{points.toLocaleString("id-ID")}</p>
               <p className="mt-1 text-[11px] font-bold text-blue-50">Loyalty Point</p>
             </div>
             <div>
@@ -283,7 +295,7 @@ export default async function MemberPage() {
             <OrderStatusItem href="/member/orders" icon={FiCreditCard} label="Belum Bayar" count={unpaidCount} />
             <OrderStatusItem href="/member/orders" icon={FiPackage} label="Diproses" count={processingCount} />
             <OrderStatusItem href="/member/orders" icon={FiTruck} label="Dikirim" count={shippedCount} />
-            <OrderStatusItem href="/member/orders" icon={FiCheckCircle} label="Selesai" count={0} />
+            <OrderStatusItem href="/member/orders" icon={FiCheckCircle} label="Selesai" count={doneCount} />
           </div>
         </section>
 

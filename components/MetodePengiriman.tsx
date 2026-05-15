@@ -31,6 +31,7 @@ interface Props {
   selected: Rate | null;
   onSelect: (rate: Rate) => void;
   freeShipping?: boolean;
+  instantUnavailableReason?: string;
 }
 
 export const SELF_PICKUP_RATE: Rate = {
@@ -51,15 +52,20 @@ const GROUPS: {
   icon: string;
   hint: string;
 }[] = [
-  { key: "instant", serviceTypes: ["instant"], label: "Instant", icon: "EXP", hint: "Estimasi jam ini" },
-  { key: "same_day", serviceTypes: ["same_day"], label: "Same Day", icon: "DAY", hint: "Estimasi hari ini" },
+  { key: "instant", serviceTypes: ["instant", "same_day"], label: "Instant", icon: "INST", hint: "Estimasi hari ini" },
   { key: "regular", serviceTypes: ["regular", "next_day"], label: "Reguler", icon: "REG", hint: "Estimasi 1-3 hari" },
   { key: "economy", serviceTypes: ["economy"], label: "Ekonomi", icon: "ECO", hint: "Estimasi 3-7 hari" },
 ];
 
 const ALLOWED_DELIVERY_RATES = new Set([
   "gojek:instant",
+  "gojek:gosend",
+  "gojek:go_send",
+  "gojek:same_day",
   "grab:instant",
+  "grab:grabexpress",
+  "grab:grab_express",
+  "grab:same_day",
   "jne:reg",
   "jne:regular",
   "jne:yes",
@@ -94,8 +100,17 @@ export function MetodePengiriman({
   selected,
   onSelect,
   freeShipping = false,
+  instantUnavailableReason,
 }: Props) {
   const visibleRates = rates.filter(isAllowedDeliveryRate);
+  const instantRates = visibleRates.filter((rate) => {
+    const courierCode = normalizeRateKeyPart(rate.courier_code);
+    return (
+      (courierCode === "gojek" || courierCode === "grab") &&
+      (rate.service_type === "instant" || rate.service_type === "same_day") &&
+      rate.available
+    );
+  });
   const groups = GROUPS.map((g) => ({
     ...g,
     items: visibleRates.filter(
@@ -106,6 +121,11 @@ export function MetodePengiriman({
   const disabledRates = visibleRates.filter((r) => !r.available);
   const noResult = !loading && !error && visibleRates.length === 0;
   const selfPickupSelected = isSelfPickupMethod(selected?.courier_code);
+  const showInstantHelper =
+    !loading &&
+    !error &&
+    instantRates.length === 0 &&
+    Boolean(instantUnavailableReason);
 
   return (
     <BottomSheet
@@ -217,6 +237,23 @@ export function MetodePengiriman({
             Kamu tetap bisa memilih Ambil Sendiri di Toko tanpa ongkir.
           </p>
         </div>
+      )}
+
+      {showInstantHelper && (
+        <section className="mb-5">
+          <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-zinc-700">
+            <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-black text-zinc-600">
+              INST
+            </span>
+            <span>Instant</span>
+            <span className="text-xs font-normal text-zinc-400">
+              - Estimasi hari ini
+            </span>
+          </h3>
+          <div className="rounded-2xl border border-dashed border-blue-100 bg-blue-50/60 p-4 text-sm font-semibold text-blue-800">
+            {instantUnavailableReason}
+          </div>
+        </section>
       )}
 
       {!loading && !error && groups.length > 0 && (

@@ -94,8 +94,8 @@ export default async function ProductsPage({
             </p>
           </div>
         )}
-        <div className="mb-3">
-          <Suspense fallback={<div className="h-12 w-full animate-pulse rounded-2xl bg-gray-100" />}>
+        <div className="mb-2">
+          <Suspense fallback={<div className="h-10 w-full animate-pulse rounded-full bg-gray-100" />}>
             <ProductSearchBar defaultValue={q ?? ""} showBackButton={isSearchResult} />
           </Suspense>
         </div>

@@ -54,6 +54,7 @@ export async function GET(request: NextRequest) {
   const brand = (sp.get("brand") ?? "").trim();
   const newFilter = asNewFilter(sp.get("new"));
   const popularFilter = asPopularFilter(sp.get("popular"));
+  const seed = (sp.get("seed") ?? "").trim().slice(0, 80);
   const excludeIds = parseIdList(sp.get("exclude"));
   const inStockOnly = parseBooleanFlag(sp.get("inStock"));
   const withImageOnly = parseBooleanFlag(sp.get("withImage"));
@@ -66,6 +67,8 @@ export async function GET(request: NextRequest) {
       search: search || undefined,
       newFilter,
       popularFilter,
+      randomSeed:
+        seed && !category && !brand && !search && !newFilter && !popularFilter ? seed : undefined,
       take: limit,
       skip: cursor,
       excludeIds,

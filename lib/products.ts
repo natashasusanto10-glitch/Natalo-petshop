@@ -66,6 +66,58 @@ const variantInclude = {
   },
 };
 
+const productListInclude = {
+  category: { select: { slug: true } },
+  variants: {
+    where: { deletedAt: null, isActive: true },
+    select: { price: true, stock: true },
+  },
+} satisfies Prisma.ProductInclude;
+
+type ProductListRecord = Prisma.ProductGetPayload<{ include: typeof productListInclude }>;
+
+function mapProductListRecord(p: ProductListRecord): StoreProduct {
+  if (p.hasVariants && p.variants.length > 0) {
+    const prices = p.variants.map((v) => v.price);
+    const totalStock = p.variants.reduce((s, v) => s + v.stock, 0);
+    return {
+      id: p.id,
+      name: p.name,
+      slug: p.slug,
+      description: p.description,
+      price: Math.min(...prices),
+      discountPrice: null,
+      memberPrice: p.memberPrice,
+      stock: totalStock,
+      weightGram: normalizeProductWeight(p.name, p.slug, p.weightGram),
+      imageUrl: p.imageUrl,
+      gallery: p.gallery ?? [],
+      hasVariants: true,
+      avgRating: p.avgRating,
+      reviewCount: p.reviewCount,
+      categorySlug: p.category?.slug ?? null,
+    };
+  }
+
+  return {
+    id: p.id,
+    name: p.name,
+    slug: p.slug,
+    description: p.description,
+    price: p.price,
+    discountPrice: p.discountPrice,
+    memberPrice: p.memberPrice,
+    stock: p.stock,
+    weightGram: normalizeProductWeight(p.name, p.slug, p.weightGram),
+    imageUrl: p.imageUrl,
+    gallery: p.gallery ?? [],
+    hasVariants: false,
+    avgRating: p.avgRating,
+    reviewCount: p.reviewCount,
+    categorySlug: p.category?.slug ?? null,
+  };
+}
+
 /**
  * Filter "Produk Baru" → window createdAt sejak titik waktu tertentu.
  * Helper untuk konvert ke Date threshold.
@@ -123,6 +175,7 @@ export async function getProducts(opts?: {
   skip?: number;
   newFilter?: NewProductFilter;
   popularFilter?: PopularFilter;
+  randomSeed?: string;
   excludeIds?: string[];
   hasPriceOnly?: boolean;
   inStockOnly?: boolean;
@@ -136,6 +189,7 @@ export async function getProducts(opts?: {
     skip,
     newFilter,
     popularFilter,
+    randomSeed,
     excludeIds,
     hasPriceOnly,
     inStockOnly,
@@ -154,18 +208,46 @@ export async function getProducts(opts?: {
   });
 
   try {
+    if (
+      randomSeed &&
+      !category &&
+      !brand &&
+      !search &&
+      !newFilter &&
+      !popularFilter &&
+      !excludeIds?.length &&
+      !hasPriceOnly &&
+      !inStockOnly &&
+      !withImageOnly
+    ) {
+      const idRows = await prisma.$queryRaw<{ id: string }[]>`
+        SELECT "id"
+        FROM "Product"
+        WHERE "isActive" = true
+        ORDER BY md5("id" || ${randomSeed}) ASC
+        LIMIT ${take ?? 24}
+        OFFSET ${skip ?? 0}
+      `;
+      const ids = idRows.map((row) => row.id);
+      if (!ids.length) return [];
+
+      const order = new Map(ids.map((id, index) => [id, index]));
+      const products = await prisma.product.findMany({
+        where: { id: { in: ids } },
+        include: productListInclude,
+      });
+
+      return products
+        .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
+        .map(mapProductListRecord);
+    }
+
     const products = await prisma.product.findMany({
       where,
       orderBy: buildOrderBy(newFilter, popularFilter),
       take,
       skip,
-      include: {
-        category: { select: { slug: true } },
-        variants: {
-          where: { deletedAt: null, isActive: true },
-          select: { price: true, stock: true },
-        },
-      },
+      include: productListInclude,
     });
 
     if (!products.length) {
@@ -173,47 +255,9 @@ export async function getProducts(opts?: {
       return sampleProducts;
     }
 
-    return products.map((p) => {
-      if (p.hasVariants && p.variants.length > 0) {
-        const prices = p.variants.map((v) => v.price);
-        const totalStock = p.variants.reduce((s, v) => s + v.stock, 0);
-        return {
-          id: p.id,
-          name: p.name,
-          slug: p.slug,
-          description: p.description,
-          price: Math.min(...prices),
-          discountPrice: null,
-          memberPrice: p.memberPrice,
-          stock: totalStock,
-          weightGram: normalizeProductWeight(p.name, p.slug, p.weightGram),
-          imageUrl: p.imageUrl,
-          gallery: p.gallery ?? [],
-          hasVariants: true,
-          avgRating: p.avgRating,
-          reviewCount: p.reviewCount,
-          categorySlug: p.category?.slug ?? null,
-        };
-      }
-      return {
-        id: p.id,
-        name: p.name,
-        slug: p.slug,
-        description: p.description,
-        price: p.price,
-        discountPrice: p.discountPrice,
-        memberPrice: p.memberPrice,
-        stock: p.stock,
-        weightGram: normalizeProductWeight(p.name, p.slug, p.weightGram),
-        imageUrl: p.imageUrl,
-        gallery: p.gallery ?? [],
-        hasVariants: false,
-        avgRating: p.avgRating,
-        reviewCount: p.reviewCount,
-        categorySlug: p.category?.slug ?? null,
-      };
-    });
+    return products.map(mapProductListRecord);
   } catch {
+    if (randomSeed) return [];
     if (category || brand || search) return [];
     return sampleProducts;
   }

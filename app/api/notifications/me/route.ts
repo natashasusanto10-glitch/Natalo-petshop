@@ -26,6 +26,15 @@ import { prisma } from "@/lib/prisma";
 
 const MAX_ITEMS = 50;
 
+function extractOrderNumberFromNotification(item: {
+  title: string;
+  body: string;
+  url: string | null;
+}) {
+  const match = `${item.title} ${item.body} ${item.url ?? ""}`.match(/ORD-[A-Z0-9-]+/i);
+  return match?.[0] ?? null;
+}
+
 export async function GET() {
   try {
     const session = await getSession("CUSTOMER");
@@ -128,13 +137,65 @@ export async function GET() {
       createdAt: a.createdAt.toISOString(),
       read: a.reads.length > 0,
     }));
-    const unreadCount = mapped.filter((i) => !i.read).length;
+    const orderNumbers = Array.from(
+      new Set(
+        mapped
+          .map(extractOrderNumberFromNotification)
+          .filter((orderNumber): orderNumber is string => Boolean(orderNumber)),
+      ),
+    );
+
+    const reviewSummaryByOrder = new Map<
+      string,
+      { totalItems: number; reviewedItems: number; allReviewed: boolean }
+    >();
+
+    if (orderNumbers.length > 0) {
+      const orders = await prisma.order.findMany({
+        where: {
+          userId,
+          orderNumber: { in: orderNumbers },
+        },
+        select: {
+          orderNumber: true,
+          items: {
+            select: {
+              id: true,
+              reviews: {
+                where: { status: { not: "DELETED" } },
+                select: { id: true },
+                take: 1,
+              },
+            },
+          },
+        },
+      });
+
+      for (const order of orders) {
+        const totalItems = order.items.length;
+        const reviewedItems = order.items.filter((item) => item.reviews.length > 0).length;
+        reviewSummaryByOrder.set(order.orderNumber, {
+          totalItems,
+          reviewedItems,
+          allReviewed: totalItems > 0 && reviewedItems === totalItems,
+        });
+      }
+    }
+
+    const itemsWithReviewSummary = mapped.map((item) => {
+      const orderNumber = extractOrderNumberFromNotification(item);
+      return {
+        ...item,
+        reviewSummary: orderNumber ? reviewSummaryByOrder.get(orderNumber) ?? null : null,
+      };
+    });
+    const unreadCount = itemsWithReviewSummary.filter((i) => !i.read).length;
 
     return NextResponse.json({
       ok: true,
       loggedIn: true,
       unreadCount,
-      items: mapped,
+      items: itemsWithReviewSummary,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal error";

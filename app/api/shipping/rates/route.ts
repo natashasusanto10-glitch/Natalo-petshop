@@ -44,7 +44,7 @@ export type RateOption = {
   description?: string;
 };
 
-const COURIERS = "jne,jnt,sicepat,anteraja";
+const COURIERS = "gojek,grab,jne,jnt";
 
 function numberOrNull(value: unknown) {
   const n = Number(value);
@@ -96,6 +96,9 @@ export async function POST(request: Request) {
   const destinationAreaId = String(body.destinationAreaId ?? "").trim();
   const destinationLatitude = numberOrNull(body.destinationLatitude);
   const destinationLongitude = numberOrNull(body.destinationLongitude);
+  const originHasCoordinates = originLatitude !== null && originLongitude !== null;
+  const destinationHasCoordinates =
+    destinationLatitude !== null && destinationLongitude !== null;
 
   if (!destinationAreaId) {
     return NextResponse.json(
@@ -124,10 +127,10 @@ export async function POST(request: Request) {
         origin_area_id: originAreaId,
         destination_area_id: destinationAreaId,
         ...(destinationPostal ? { destination_postal_code: Number(destinationPostal) } : {}),
-        ...(originLatitude !== null && originLongitude !== null
+        ...(originHasCoordinates
           ? { origin_latitude: originLatitude, origin_longitude: originLongitude }
           : {}),
-        ...(destinationLatitude !== null && destinationLongitude !== null
+        ...(destinationHasCoordinates
           ? { destination_latitude: destinationLatitude, destination_longitude: destinationLongitude }
           : {}),
         couriers: COURIERS,
@@ -169,7 +172,23 @@ export async function POST(request: Request) {
       };
     });
 
-    return NextResponse.json({ rates });
+    const hasInstantRates = rates.some((rate) => {
+      const courierCode = rate.courier_code.toLowerCase();
+      return (
+        (courierCode === "gojek" || courierCode === "grab") &&
+        (rate.service_type === "instant" || rate.service_type === "same_day") &&
+        rate.available
+      );
+    });
+
+    return NextResponse.json({
+      rates,
+      instantUnavailableReason: hasInstantRates
+        ? null
+        : !destinationHasCoordinates
+        ? "Lengkapi titik lokasi alamat agar Gojek Instant dan Grab Instant tersedia."
+        : "Gojek Instant dan Grab Instant belum tersedia untuk alamat ini.",
+    });
   } catch (e) {
     console.error("[shipping] error:", e);
     return NextResponse.json(
@@ -202,8 +221,10 @@ function normalizeServiceType(raw?: string, duration?: string, courierType?: str
   if (t.trim() === "next_day") return "next_day";
   if (t.trim() === "regular") return "regular";
   if (t.trim() === "economy") return "economy";
+  if (t.includes("go_send") || t.includes("gosend") || t.includes("grab_express") || t.includes("grabexpress")) return "instant";
+  if (t.includes("jtr") || t.includes("trucking") || t.includes("cargo")) return "economy";
   if (t.includes("instant")) return "instant";
-  if (t.includes("same_day") || t.includes("sameday")) return "same_day";
+  if (t.includes("same_day") || t.includes("sameday") || t.includes("same day")) return "same_day";
 
   const d = (duration ?? "").toLowerCase();
   if (d.includes("hour") || d.includes("jam")) return "instant";

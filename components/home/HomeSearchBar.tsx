@@ -30,7 +30,7 @@ export function HomeSearchBar({
           type="button"
           onClick={() => setOpen(true)}
           aria-label="Buka pencarian"
-          className="flex h-10 w-full items-center gap-2 rounded-full border border-natalo-200 bg-natalo-50/60 px-3 text-left shadow-sm transition active:bg-natalo-100/60"
+          className="flex h-10 w-full items-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-left shadow-sm transition active:bg-slate-50"
         >
           <svg
             viewBox="0 0 24 24"
@@ -39,13 +39,13 @@ export function HomeSearchBar({
             strokeWidth={2}
             strokeLinecap="round"
             strokeLinejoin="round"
-            className="h-4 w-4 shrink-0 text-natalo-500"
+            className="h-4 w-4 shrink-0 text-slate-400"
             aria-hidden
           >
             <circle cx="11" cy="11" r="7" />
             <path d="m20 20-3.5-3.5" />
           </svg>
-          <span className="flex-1 truncate text-sm font-semibold text-gray-400">
+          <span className="flex-1 truncate text-sm font-semibold text-slate-400">
             Cari produk, brand, atau kategori...
           </span>
         </button>

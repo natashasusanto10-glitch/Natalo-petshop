@@ -105,6 +105,15 @@ function hasUsablePinpoint(latitude?: number | null, longitude?: number | null) 
   );
 }
 
+function isInstantCheckoutRate(rate: RateOption) {
+  const courierCode = rate.courier_code.toLowerCase();
+  return (
+    (courierCode === "gojek" || courierCode === "grab") &&
+    (rate.service_type === "instant" || rate.service_type === "same_day") &&
+    rate.available
+  );
+}
+
 export default function CheckoutPage() {
   const router = useRouter();
   const [items, setItems] = useState<CartItem[]>([]);
@@ -113,6 +122,7 @@ export default function CheckoutPage() {
   const [selectedRate, setSelectedRate] = useState<RateOption | null>(null);
   const [shippingSheetOpen, setShippingSheetOpen] = useState(false);
   const [shippingError, setShippingError] = useState("");
+  const [instantShippingHint, setInstantShippingHint] = useState("");
   const [payment, setPayment] = useState<PaymentSelection | null>(null);
   const paymentMethod = payment?.provider ?? null;
   const [ratesLoading, setRatesLoading] = useState(false);
@@ -921,11 +931,13 @@ export default function CheckoutPage() {
         "Kurir belum tersedia untuk alamat ini. Kamu tetap bisa memilih Ambil Sendiri di Toko tanpa ongkir."
       );
       setRates([]);
+      setInstantShippingHint("");
       setRatesLoading(false);
       return;
     }
 
     setShippingError("");
+    setInstantShippingHint("");
     setRates([]);
     setRatesLoading(true);
 
@@ -940,6 +952,7 @@ export default function CheckoutPage() {
         setShippingError(toCustomerShippingErrorMessage(originData?.message));
         setSelectedRate(null);
         setPayment(null);
+        setInstantShippingHint("");
         return;
       }
 
@@ -967,12 +980,24 @@ export default function CheckoutPage() {
       if (!res.ok) {
         setShippingError(toCustomerShippingErrorMessage(data.message));
         setRates([]);
+        setInstantShippingHint("");
       } else {
-        setRates(data.rates || []);
+        const nextRates: RateOption[] = data.rates || [];
+        setRates(nextRates);
+        const instantHint =
+          typeof data.instantUnavailableReason === "string"
+            ? data.instantUnavailableReason
+            : nextRates.some(isInstantCheckoutRate)
+            ? ""
+            : hasUsablePinpoint(form.shippingLatitude, form.shippingLongitude)
+            ? "Gojek Instant dan Grab Instant belum tersedia untuk alamat ini."
+            : "Lengkapi titik lokasi alamat agar Gojek Instant dan Grab Instant tersedia.";
+        setInstantShippingHint(instantHint || "");
       }
     } catch {
       setShippingError("Gagal memuat ongkir, coba lagi.");
       setRates([]);
+      setInstantShippingHint("");
     } finally {
       setRatesLoading(false);
     }
@@ -1687,6 +1712,7 @@ export default function CheckoutPage() {
         loading={ratesLoading}
         error={shippingError || undefined}
         selected={selectedRate}
+        instantUnavailableReason={instantShippingHint || undefined}
         onSelect={(r) => {
           setSelectedRate(r as RateOption);
           setShippingError("");

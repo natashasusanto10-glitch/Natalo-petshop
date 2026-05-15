@@ -89,7 +89,7 @@ export function ProductSearchBar({
           type="button"
           onClick={handleBack}
           aria-label="Kembali"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-800 transition active:bg-slate-100"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-800 transition active:bg-slate-100"
         >
           <svg
             viewBox="0 0 24 24"
@@ -104,13 +104,13 @@ export function ProductSearchBar({
         </button>
       )}
       <form onSubmit={handleSubmit} className="min-w-0 flex-1">
-      <div className="flex h-12 w-full items-center rounded-2xl border border-slate-200 bg-white px-4 shadow-sm">
+      <div className="flex h-10 w-full items-center rounded-full border border-slate-200 bg-white px-3 shadow-sm">
         <svg
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
           strokeWidth={2}
-          className="mr-3 h-5 w-5 shrink-0 text-slate-400"
+          className="mr-2 h-4 w-4 shrink-0 text-slate-400"
           aria-hidden
         >
           <circle cx="11" cy="11" r="8" />
@@ -130,7 +130,7 @@ export function ProductSearchBar({
             type="button"
             aria-label="Hapus pencarian"
             onClick={handleClear}
-            className="ml-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-slate-400 transition active:bg-slate-100 active:text-slate-600"
+            className="ml-2 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-400 transition active:bg-slate-100 active:text-slate-600"
           >
             <svg
               viewBox="0 0 24 24"
