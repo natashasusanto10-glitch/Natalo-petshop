@@ -211,6 +211,8 @@ export function Header() {
       className={
         isProductDetail
           ? "product-detail-header nat-site-header bg-white md:sticky md:z-50 md:shadow-sm"
+          : currentPath === "/products"
+          ? "nat-site-header hidden bg-white md:block md:sticky"
           : isHome || isProductsCatalog
           ? "nat-site-header mobile-sticky-header md:sticky"
           : "nat-site-header mobile-sticky-header md:sticky"
