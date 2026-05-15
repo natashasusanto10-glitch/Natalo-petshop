@@ -37,6 +37,7 @@ import {
 } from "@/lib/feed/video-config";
 import { hapticSuccess, hapticTap, hapticWarning } from "@/lib/native/haptics";
 import { isIOS } from "@/lib/native-platform";
+import { useFeedUpload } from "@/components/feed/FeedUploadProvider";
 
 // Source-of-truth lives in USER_VIDEO_CONFIG (lib/feed/video-config.ts).
 // Mirror locally for terse references inside this component.
@@ -121,6 +122,7 @@ export function FeedCreatePostSheet({ open, onClose }: Props) {
   const [formError, setFormError] = useState<string | null>(null);
   const [uploadStage, setUploadStage] = useState<UploadStage>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const feedUpload = useFeedUpload();
   const [submittedPost, setSubmittedPost] = useState<SubmittedPost | null>(null);
 
   const finalDuration = Math.max(0, trimEnd - trimStart);
@@ -334,99 +336,35 @@ export function FeedCreatePostSheet({ open, onClose }: Props) {
     });
   }
 
-  async function submitPost() {
+  function submitPost() {
     if (!selectedVideo || !canPost) return;
-    setFormError(null);
-    setUploadStage("compressing");
-    setUploadProgress(0);
-
-    try {
-      const { compressVideo } = await import("@/lib/feed/video-compressor");
-      const compressedFile = await compressVideo(selectedVideo.file, {
-        config: USER_VIDEO_CONFIG,
-        trimStartSec: trimStart,
-        trimDurationSec: finalDuration,
-        onProgress: setUploadProgress,
-      });
-
-      setUploadStage("uploading-video");
-      const videoForm = new FormData();
-      videoForm.append("file", compressedFile);
-      const videoRes = await fetch("/api/feed/upload-video", {
-        method: "POST",
-        body: videoForm,
-      });
-      const videoData = await videoRes.json().catch(() => ({}));
-      if (!videoRes.ok) {
-        throw new Error(
-          typeof videoData?.error === "string" ? videoData.error : "Upload video gagal.",
-        );
-      }
-
-      setUploadStage("uploading-thumbnail");
-      const thumbForm = new FormData();
-      thumbForm.append(
-        "file",
-        new File([selectedVideo.thumbnailBlob], "thumbnail.jpg", { type: "image/jpeg" }),
-      );
-      const thumbRes = await fetch("/api/feed/upload-thumbnail", {
-        method: "POST",
-        body: thumbForm,
-      });
-      const thumbData = await thumbRes.json().catch(() => ({}));
-      if (!thumbRes.ok) {
-        throw new Error(
-          typeof thumbData?.error === "string" ? thumbData.error : "Upload thumbnail gagal.",
-        );
-      }
-
-      setUploadStage("submitting");
-      const petInfo = [petType, petName.trim()].filter(Boolean).join(" · ");
-      const descriptionParts = [
-        caption.trim(),
-        petInfo ? `Info peliharaan: ${petInfo}` : "",
-      ].filter(Boolean);
-      const description = descriptionParts.join("\n\n") || null;
-      const title = caption.trim().slice(0, 80) || "Video Feed Natalo";
-
-      const postRes = await fetch("/api/feed/posts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title,
-          description,
-          videoUrl: videoData.url,
-          thumbnailUrl: thumbData.url,
-          videoMimeType: videoData.mimeType,
-          videoSizeBytes: videoData.sizeBytes,
-          videoDurationSec: Math.round(finalDuration),
-          videoWidth: selectedVideo.metadata.width,
-          videoHeight: selectedVideo.metadata.height,
-          productId: selectedProductIds[0] ?? null,
-          productIds: selectedProductIds,
-        }),
-      });
-      const postData = await postRes.json().catch(() => ({}));
-      if (!postRes.ok) {
-        throw new Error(
-          typeof postData?.error === "string" ? postData.error : "Gagal membuat postingan.",
-        );
-      }
-
-      setSubmittedPost({
-        id: String(postData?.post?.id ?? ""),
-        status: String(postData?.post?.status ?? "PENDING_REVIEW"),
-      });
-      setStep("success");
-      void hapticSuccess();
-    } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Gagal mengirim postingan.");
-      setStep("detail");
+    if (feedUpload.state.active && feedUpload.state.stage !== "done" && feedUpload.state.stage !== "error") {
+      // Another upload is still running in the background — let the user
+      // know rather than silently queuing a second one.
+      setFormError("Upload sebelumnya masih berjalan. Tunggu sebentar ya.");
       void hapticWarning();
-    } finally {
-      setUploadStage(null);
-      setUploadProgress(0);
+      return;
     }
+    setFormError(null);
+    void hapticSuccess();
+
+    // Hand the heavy work off to the background provider so the sheet can
+    // dismiss immediately. The floating <FeedUploadToast> renders progress
+    // and a final "Postingan terkirim" pill while the user keeps browsing.
+    feedUpload.start({
+      videoFile: selectedVideo.file,
+      thumbnailBlob: selectedVideo.thumbnailBlob,
+      trimStartSec: trimStart,
+      trimDurationSec: finalDuration,
+      videoWidth: selectedVideo.metadata.width,
+      videoHeight: selectedVideo.metadata.height,
+      caption,
+      petType,
+      petName,
+      selectedProductIds,
+    });
+
+    resetAndClose();
   }
 
   function resetAndClose() {
@@ -512,11 +450,9 @@ export function FeedCreatePostSheet({ open, onClose }: Props) {
           onSubmit={submitPost}
         />
       )}
-      {uploadStage && (
-        <div className="absolute inset-0 z-[2] grid place-items-center bg-black/70 px-6 backdrop-blur-sm">
-          <UploadingStep stage={uploadStage} progress={uploadProgress} />
-        </div>
-      )}
+      {/* Inline uploading overlay removed — background uploads are handled by
+          <FeedUploadProvider> + the floating <FeedUploadToast> so the sheet
+          can dismiss as soon as the user taps "Posting". */}
       {step === "success" && selectedVideo && (
         <SuccessStep
           selectedVideo={selectedVideo}

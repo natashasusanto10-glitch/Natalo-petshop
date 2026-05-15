@@ -24,6 +24,8 @@ import { NetworkStatusBanner } from "@/components/NetworkStatusBanner";
 import { DeepLinkHandler } from "@/components/DeepLinkHandler";
 import { ViewTransitionsProvider } from "@/components/ViewTransitionsProvider";
 import { PushNotificationManager } from "@/components/PushNotificationManager";
+import { FeedUploadProvider } from "@/components/feed/FeedUploadProvider";
+import { FeedUploadToast } from "@/components/feed/FeedUploadToast";
 
 const nunito = Nunito({
   subsets: ["latin"],
@@ -282,9 +284,14 @@ export default function RootLayout({
             <Header />
           </Suspense>
         </StoreOnly>
-        <main className="nat-main-shell">
-          <SwipeBackProvider>{children}</SwipeBackProvider>
-        </main>
+        <FeedUploadProvider>
+          <main className="nat-main-shell">
+            <SwipeBackProvider>{children}</SwipeBackProvider>
+          </main>
+          <StoreOnly>
+            <FeedUploadToast />
+          </StoreOnly>
+        </FeedUploadProvider>
         <StoreOnly>
           {/* Footer hanya tampil di web/PWA. Di Capacitor native shell (iOS
               .ipa / Android APK), bottom navigation + halaman /bantuan sudah
