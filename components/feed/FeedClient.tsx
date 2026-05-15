@@ -7,7 +7,14 @@
  * but the customer-facing app no longer exposes Rekomendasi/Promo/Komunitas
  * columns. All ACTIVE posts are mixed in one snap-scrolling feed.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { FiPlus } from "react-icons/fi";
 import type { FeedListResponse, FeedPostListItem } from "@/lib/feed/types";
 import { FeedActiveVideoProvider } from "./FeedActiveVideoContext";
@@ -26,6 +33,7 @@ export function FeedClient() {
   const [commentPostId, setCommentPostId] = useState<string | null>(null);
   const [createPostOpen, setCreatePostOpen] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  useFeedChrome();
 
   useEffect(() => {
     let cancelled = false;
@@ -91,6 +99,7 @@ export function FeedClient() {
   }, [loadMore, hasMore]);
 
   const commentSheetOpen = useMemo(() => commentPostId !== null, [commentPostId]);
+  const showEmpty = !loading && !error && posts.length === 0;
 
   return (
     <FeedActiveVideoProvider>
@@ -104,7 +113,13 @@ export function FeedClient() {
           <FiPlus className="h-8 w-8" />
         </button>
 
-        <div className="min-h-0 flex-1 snap-y snap-mandatory overflow-y-auto overscroll-contain pb-[calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+0.75rem)] [-ms-overflow-style:none] [scrollbar-width:none] md:space-y-3 md:px-2 md:pb-4 md:pt-2 [&::-webkit-scrollbar]:hidden">
+        <div
+          className={`min-h-0 flex-1 snap-y snap-mandatory overflow-y-auto overscroll-contain [-ms-overflow-style:none] [scrollbar-width:none] md:space-y-3 md:px-2 md:pb-4 md:pt-2 [&::-webkit-scrollbar]:hidden ${
+            showEmpty
+              ? "pb-0"
+              : "pb-[calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+0.75rem)]"
+          }`}
+        >
           {loading && <FeedSkeleton />}
 
           {!loading && error && (
@@ -120,7 +135,7 @@ export function FeedClient() {
             </div>
           )}
 
-          {!loading && !error && posts.length === 0 && <EmptyFeedState />}
+          {showEmpty && <EmptyFeedState />}
 
           {posts.map((post) => (
             <FeedVideoCard
@@ -155,6 +170,76 @@ export function FeedClient() {
   );
 }
 
+function useFeedChrome() {
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    const body = document.body;
+    const previousRootFeedRoute = root.dataset.feedRoute;
+    const previousBodyFeedRoute = body.dataset.feedRoute;
+    const previousRootBackground = root.style.backgroundColor;
+    const previousBodyBackground = body.style.backgroundColor;
+    const previousRootOverscroll = root.style.overscrollBehavior;
+    const previousBodyOverscroll = body.style.overscrollBehavior;
+
+    root.dataset.feedRoute = "true";
+    body.dataset.feedRoute = "true";
+    root.style.backgroundColor = "#000000";
+    body.style.backgroundColor = "#000000";
+    root.style.overscrollBehavior = "none";
+    body.style.overscrollBehavior = "none";
+
+    let cancelled = false;
+
+    async function applyNativeChrome() {
+      try {
+        const { StatusBar, Style } = await import("@capacitor/status-bar");
+        if (cancelled) return;
+        await StatusBar.setOverlaysWebView({ overlay: true });
+        if (cancelled) return;
+        await StatusBar.setBackgroundColor({ color: "#00000000" });
+        if (cancelled) return;
+        await StatusBar.setStyle({ style: Style.Dark });
+      } catch {
+        // Browser/PWA tanpa Capacitor: cukup pakai CSS route background.
+      }
+    }
+
+    void applyNativeChrome();
+    const raf = window.requestAnimationFrame(() => void applyNativeChrome());
+    const timer = window.setTimeout(() => void applyNativeChrome(), 350);
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(raf);
+      window.clearTimeout(timer);
+
+      if (previousRootFeedRoute === undefined) {
+        delete root.dataset.feedRoute;
+      } else {
+        root.dataset.feedRoute = previousRootFeedRoute;
+      }
+      if (previousBodyFeedRoute === undefined) {
+        delete body.dataset.feedRoute;
+      } else {
+        body.dataset.feedRoute = previousBodyFeedRoute;
+      }
+      root.style.backgroundColor = previousRootBackground;
+      body.style.backgroundColor = previousBodyBackground;
+      root.style.overscrollBehavior = previousRootOverscroll;
+      body.style.overscrollBehavior = previousBodyOverscroll;
+
+      (async () => {
+        try {
+          const { StatusBar, Style } = await import("@capacitor/status-bar");
+          await StatusBar.setOverlaysWebView({ overlay: false });
+          await StatusBar.setBackgroundColor({ color: "#ffffff" });
+          await StatusBar.setStyle({ style: Style.Light });
+        } catch {}
+      })();
+    };
+  }, []);
+}
+
 function FeedSkeleton() {
   return (
     <>
@@ -183,7 +268,7 @@ function FeedSkeleton() {
 
 function EmptyFeedState() {
   return (
-    <div className="flex min-h-full items-center justify-center px-6 [padding-bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+1rem)] [padding-top:calc(env(safe-area-inset-top)+5rem)]">
+    <div className="box-border flex h-full items-center justify-center px-6 [padding-bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+1rem)] [padding-top:env(safe-area-inset-top)]">
       <p className="text-lg font-black tracking-normal text-white/90">Segera Hadir</p>
     </div>
   );
