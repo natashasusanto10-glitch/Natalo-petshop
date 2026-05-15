@@ -5,6 +5,8 @@ import { CompressionFailedError } from "./video-errors";
 export type CompressOptions = {
   config: FeedVideoConfig;
   onProgress?: (progress: number) => void;
+  trimStartSec?: number;
+  trimDurationSec?: number;
 };
 
 function getInputName(file: File) {
@@ -16,7 +18,7 @@ function getInputName(file: File) {
 }
 
 export async function compressVideo(file: File, options: CompressOptions): Promise<File> {
-  const { config, onProgress } = options;
+  const { config, onProgress, trimStartSec, trimDurationSec } = options;
   const inputName = getInputName(file);
   const outputName = `output-${Date.now()}.mp4`;
   const ffmpeg = await getFFmpeg();
@@ -30,7 +32,18 @@ export async function compressVideo(file: File, options: CompressOptions): Promi
     ffmpeg.on("progress", handleProgress);
     await ffmpeg.writeFile(inputName, await fetchVideoFile(file));
 
+    const trimArgs =
+      Number.isFinite(trimStartSec) && Number.isFinite(trimDurationSec)
+        ? [
+            "-ss",
+            String(Math.max(0, trimStartSec ?? 0)),
+            "-t",
+            String(Math.max(0.1, trimDurationSec ?? 0.1)),
+          ]
+        : [];
+
     await ffmpeg.exec([
+      ...trimArgs,
       "-i",
       inputName,
       "-c:v",

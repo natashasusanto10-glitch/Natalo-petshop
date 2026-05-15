@@ -22,6 +22,8 @@ import { prisma } from "@/lib/prisma";
 import { listFeedPosts } from "@/lib/feed/queries";
 
 const VALID_TABS: ReadonlyArray<FeedPostTab> = ["REKOMENDASI", "PROMO", "KOMUNITAS"];
+const CUSTOMER_MIN_VIDEO_DURATION_SEC = 15;
+const CUSTOMER_MAX_VIDEO_DURATION_SEC = 30;
 
 function isValidTab(value: string | null): value is FeedPostTab {
   return value !== null && (VALID_TABS as ReadonlyArray<string>).includes(value);
@@ -172,13 +174,26 @@ export async function POST(request: NextRequest) {
   }
 
   if (kind === "VIDEO_ONLY" || kind === "VIDEO_PRODUCT" || kind === "COMMUNITY") {
-    if (kind !== "COMMUNITY" && (!videoUrl || !thumbnailUrl)) {
+    if (!videoUrl || !thumbnailUrl) {
       return NextResponse.json(
         { error: "Video + thumbnail wajib." },
         { status: 400 },
       );
     }
-    if (kind === "COMMUNITY" && ((videoUrl && !thumbnailUrl) || (!videoUrl && thumbnailUrl))) {
+    if (kind === "COMMUNITY" && !isAdmin) {
+      const durationSec = Number(body.videoDurationSec);
+      if (
+        !Number.isFinite(durationSec) ||
+        durationSec < CUSTOMER_MIN_VIDEO_DURATION_SEC ||
+        durationSec > CUSTOMER_MAX_VIDEO_DURATION_SEC
+      ) {
+        return NextResponse.json(
+          { error: "Durasi video Feed harus 15-30 detik." },
+          { status: 400 },
+        );
+      }
+    }
+    if ((videoUrl && !thumbnailUrl) || (!videoUrl && thumbnailUrl)) {
       return NextResponse.json(
         { error: "Video + thumbnail harus lengkap." },
         { status: 400 },

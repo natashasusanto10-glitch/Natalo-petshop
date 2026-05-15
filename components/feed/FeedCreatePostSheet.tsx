@@ -5,26 +5,46 @@ import {
   useMemo,
   useRef,
   useState,
-  type MouseEvent,
-  type TouchEvent,
+  type ReactNode,
+  type RefObject,
 } from "react";
-import { Drawer } from "vaul";
 import {
   FiAlertCircle,
+  FiArrowLeft,
+  FiCamera,
   FiCheck,
+  FiClock,
+  FiFilm,
+  FiImage,
   FiInfo,
   FiPackage,
+  FiPause,
+  FiPlay,
   FiPlus,
+  FiUploadCloud,
   FiX,
 } from "react-icons/fi";
 import { formatRupiah } from "@/lib/format";
+import {
+  extractVideoThumbnail,
+  readVideoMetadata,
+  type VideoMetadata,
+} from "@/lib/feed/video-thumbnail";
+import {
+  formatFileSize,
+  MAX_SOURCE_VIDEO_SIZE,
+  USER_VIDEO_CONFIG,
+} from "@/lib/feed/video-config";
 import { hapticSuccess, hapticTap, hapticWarning } from "@/lib/native/haptics";
 
+const MIN_VIDEO_DURATION = 15;
+const MAX_VIDEO_DURATION = 30;
 const MAX_CAPTION_LENGTH = 300;
 const MAX_PINNED_PRODUCTS = 3;
-const DRAG_CLOSE_THRESHOLD = 80;
-const SNAP_BACK_MS = 260;
-const SNAP_BACK_EASE = "cubic-bezier(0.34, 1.26, 0.64, 1)";
+const ACCEPT_VIDEO = "video/mp4,video/webm,video/quicktime";
+
+type FlowStep = "pick" | "trim" | "detail" | "success" | "status";
+type UploadStage = "compressing" | "uploading-video" | "uploading-thumbnail" | "submitting" | null;
 
 type PinnableProduct = {
   productId: string;
@@ -40,6 +60,24 @@ type PinnableProduct = {
   orderNumber: string;
 };
 
+type SelectedVideo = {
+  file: File;
+  previewUrl: string;
+  thumbnailBlob: Blob;
+  thumbnailUrl: string;
+  metadata: VideoMetadata;
+};
+
+type SubmittedPost = {
+  id: string;
+  status: string;
+};
+
+type Props = {
+  open: boolean;
+  onClose: () => void;
+};
+
 const PET_TYPES = [
   "🐶 Anjing",
   "🐱 Kucing",
@@ -48,16 +86,17 @@ const PET_TYPES = [
   "🐰 Lainnya",
 ];
 
-type Props = {
-  open: boolean;
-  onClose: () => void;
-};
-
 export function FeedCreatePostSheet({ open, onClose }: Props) {
-  const dragStartYRef = useRef(0);
-  const dragYRef = useRef(0);
-  const isDraggingRef = useRef(false);
-  const snapBackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const previewVideoRef = useRef<HTMLVideoElement>(null);
+  const [step, setStep] = useState<FlowStep>("pick");
+  const [selectedVideo, setSelectedVideo] = useState<SelectedVideo | null>(null);
+  const [selecting, setSelecting] = useState(false);
+  const [videoError, setVideoError] = useState<string | null>(null);
+  const [trimStart, setTrimStart] = useState(0);
+  const [trimEnd, setTrimEnd] = useState(MAX_VIDEO_DURATION);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [caption, setCaption] = useState("");
   const [petType, setPetType] = useState<string | null>(null);
   const [petName, setPetName] = useState("");
@@ -67,12 +106,21 @@ export function FeedCreatePostSheet({ open, onClose }: Props) {
   const [productsLoading, setProductsLoading] = useState(false);
   const [productsLoaded, setProductsLoaded] = useState(false);
   const [productsError, setProductsError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [formMessage, setFormMessage] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  const [dragY, setDragY] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const [isSnappingBack, setIsSnappingBack] = useState(false);
+  const [uploadStage, setUploadStage] = useState<UploadStage>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [submittedPost, setSubmittedPost] = useState<SubmittedPost | null>(null);
+
+  const finalDuration = Math.max(0, trimEnd - trimStart);
+  const hasValidFinalDuration =
+    finalDuration >= MIN_VIDEO_DURATION && finalDuration <= MAX_VIDEO_DURATION;
+  const selectedNeedsTrim =
+    selectedVideo ? selectedVideo.metadata.durationSec > MAX_VIDEO_DURATION : false;
+  const selectedTooShort =
+    selectedVideo ? selectedVideo.metadata.durationSec < MIN_VIDEO_DURATION : false;
+  const selectedCanContinue =
+    Boolean(selectedVideo) && !selectedTooShort && (hasValidFinalDuration || selectedNeedsTrim);
+  const canPost = Boolean(selectedVideo) && hasValidFinalDuration && !uploadStage;
 
   const selectedProducts = useMemo(
     () =>
@@ -82,7 +130,13 @@ export function FeedCreatePostSheet({ open, onClose }: Props) {
     [products, selectedProductIds],
   );
 
-  const canSubmit = caption.trim().length > 0;
+  useEffect(() => {
+    if (!open) return;
+    document.body.classList.add("nat-modal-open", "nat-scroll-locked");
+    return () => {
+      document.body.classList.remove("nat-modal-open", "nat-scroll-locked");
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open || productsLoaded) return;
@@ -124,142 +178,136 @@ export function FeedCreatePostSheet({ open, onClose }: Props) {
   }, [open, productsLoaded]);
 
   useEffect(() => {
-    if (!open) return;
-    document.body.classList.add("nat-modal-open", "bottom-sheet-open");
-    return () => {
-      document.body.classList.remove("nat-modal-open", "bottom-sheet-open");
-    };
-  }, [open]);
-
-  useEffect(() => {
     if (!open) {
-      setDragY(0);
-      dragYRef.current = 0;
-      isDraggingRef.current = false;
-      setIsDragging(false);
-      setIsSnappingBack(false);
+      stopPreview();
+      setStep("pick");
+      setSelecting(false);
+      setVideoError(null);
+      setFormError(null);
+      setUploadStage(null);
+      setUploadProgress(0);
+      setSubmittedPost(null);
     }
   }, [open]);
 
   useEffect(() => {
-    if (!isDragging) return;
-
-    function handleMouseMove(event: globalThis.MouseEvent) {
-      if (!isDraggingRef.current) return;
-      const nextDragY = Math.max(0, event.clientY - dragStartYRef.current);
-      dragYRef.current = nextDragY;
-      setDragY(nextDragY);
-      if (dragYRef.current > 0) event.preventDefault();
-    }
-
-    function handleMouseUp() {
-      if (!isDraggingRef.current) return;
-      isDraggingRef.current = false;
-      setIsDragging(false);
-
-      if (dragYRef.current > DRAG_CLOSE_THRESHOLD) {
-        if (!submitting) onClose();
-        return;
-      }
-
-      setIsSnappingBack(true);
-      dragYRef.current = 0;
-      setDragY(0);
-      snapBackTimerRef.current = setTimeout(() => {
-        setIsSnappingBack(false);
-      }, SNAP_BACK_MS);
-    }
-
-    document.addEventListener("mousemove", handleMouseMove, { passive: false });
-    document.addEventListener("mouseup", handleMouseUp);
     return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
+      if (selectedVideo?.previewUrl) URL.revokeObjectURL(selectedVideo.previewUrl);
+      if (selectedVideo?.thumbnailUrl) URL.revokeObjectURL(selectedVideo.thumbnailUrl);
     };
-  }, [isDragging, onClose, submitting]);
+  }, [selectedVideo]);
 
-  useEffect(() => {
-    return () => {
-      if (snapBackTimerRef.current) clearTimeout(snapBackTimerRef.current);
-    };
-  }, []);
+  if (!open) return null;
 
-  function closeSheet() {
-    if (submitting) return;
+  function closeFlow() {
+    if (uploadStage) return;
     onClose();
   }
 
-  function beginDrag(target: EventTarget | null, clientY: number) {
-    if (target instanceof HTMLElement && target.closest("button")) return;
+  function resetVideo(next?: SelectedVideo) {
+    stopPreview();
+    if (selectedVideo?.previewUrl) URL.revokeObjectURL(selectedVideo.previewUrl);
+    if (selectedVideo?.thumbnailUrl) URL.revokeObjectURL(selectedVideo.thumbnailUrl);
+    setSelectedVideo(next ?? null);
+  }
 
-    const active = document.activeElement;
-    if (
-      active instanceof HTMLElement &&
-      (active.tagName === "INPUT" || active.tagName === "TEXTAREA")
-    ) {
-      active.blur();
-      return;
+  async function handleVideoPick(file: File | null) {
+    if (!file) return;
+    setSelecting(true);
+    setVideoError(null);
+    setFormError(null);
+
+    try {
+      if (!file.type.startsWith("video/")) {
+        throw new Error("File harus berupa video.");
+      }
+      if (file.size > MAX_SOURCE_VIDEO_SIZE) {
+        throw new Error(`Ukuran video maksimal ${formatFileSize(MAX_SOURCE_VIDEO_SIZE)}.`);
+      }
+
+      const metadata = await readVideoMetadata(file);
+      const thumbnailBlob = await extractVideoThumbnail(file, {
+        targetTimeSec: Math.min(1, Math.max(0, metadata.durationSec / 2)),
+      });
+      const previewUrl = URL.createObjectURL(file);
+      const thumbnailUrl = URL.createObjectURL(thumbnailBlob);
+      const duration = Math.max(0, metadata.durationSec);
+      const nextStart = 0;
+      const nextEnd = Math.min(duration, MAX_VIDEO_DURATION);
+
+      resetVideo({ file, previewUrl, thumbnailBlob, thumbnailUrl, metadata });
+      setTrimStart(nextStart);
+      setTrimEnd(nextEnd);
+
+      if (duration < MIN_VIDEO_DURATION) {
+        setVideoError("Video terlalu pendek. Upload video minimal 15 detik.");
+        void hapticWarning();
+      } else if (duration > MAX_VIDEO_DURATION) {
+        setVideoError("Video maksimal 30 detik. Potong video terlebih dahulu sebelum lanjut.");
+        void hapticTap();
+      } else {
+        void hapticTap();
+      }
+    } catch (err) {
+      setVideoError(err instanceof Error ? err.message : "Gagal membaca video.");
+      void hapticWarning();
+    } finally {
+      setSelecting(false);
+      if (galleryInputRef.current) galleryInputRef.current.value = "";
+      if (cameraInputRef.current) cameraInputRef.current.value = "";
     }
-
-    if (snapBackTimerRef.current) clearTimeout(snapBackTimerRef.current);
-    dragStartYRef.current = clientY;
-    dragYRef.current = 0;
-    isDraggingRef.current = true;
-    setDragY(0);
-    setIsDragging(true);
-    setIsSnappingBack(false);
   }
 
-  function updateDrag(clientY: number) {
-    if (!isDraggingRef.current) return;
-    const nextDragY = Math.max(0, clientY - dragStartYRef.current);
-    dragYRef.current = nextDragY;
-    setDragY(nextDragY);
-  }
-
-  function finishDrag() {
-    if (!isDraggingRef.current) return;
-    isDraggingRef.current = false;
-    setIsDragging(false);
-
-    if (dragYRef.current > DRAG_CLOSE_THRESHOLD) {
-      closeSheet();
-      return;
+  function goNextFromPicker() {
+    if (!selectedVideo || selectedTooShort) return;
+    if (selectedVideo.metadata.durationSec > MAX_VIDEO_DURATION) {
+      setStep("trim");
+    } else {
+      setStep("detail");
     }
-
-    setIsSnappingBack(true);
-    dragYRef.current = 0;
-    setDragY(0);
-    snapBackTimerRef.current = setTimeout(() => setIsSnappingBack(false), SNAP_BACK_MS);
   }
 
-  function handleMouseDown(event: MouseEvent<HTMLDivElement>) {
-    if (event.button !== 0) return;
-    beginDrag(event.target, event.clientY);
+  function updateTrimStart(value: number) {
+    if (!selectedVideo) return;
+    const duration = selectedVideo.metadata.durationSec;
+    const nextStart = Math.max(0, Math.min(value, duration - 0.5));
+    const nextEnd = Math.max(nextStart + 0.5, trimEnd);
+    setTrimStart(nextStart);
+    setTrimEnd(Math.min(duration, nextEnd));
   }
 
-  function handleTouchStart(event: TouchEvent<HTMLDivElement>) {
-    const touch = event.touches[0];
-    if (!touch) return;
-    beginDrag(event.target, touch.clientY);
+  function updateTrimEnd(value: number) {
+    if (!selectedVideo) return;
+    const duration = selectedVideo.metadata.durationSec;
+    const nextEnd = Math.max(0.5, Math.min(value, duration));
+    setTrimEnd(Math.max(nextEnd, trimStart + 0.5));
   }
 
-  function handleTouchMove(event: TouchEvent<HTMLDivElement>) {
-    const touch = event.touches[0];
-    if (!touch) return;
-    updateDrag(touch.clientY);
-    if (dragYRef.current > 0 && event.cancelable) event.preventDefault();
+  function togglePreview() {
+    const video = previewVideoRef.current;
+    if (!video) return;
+    if (video.paused) {
+      void video.play();
+      setIsPlaying(true);
+    } else {
+      video.pause();
+      setIsPlaying(false);
+    }
+  }
+
+  function stopPreview() {
+    const video = previewVideoRef.current;
+    if (video) video.pause();
+    setIsPlaying(false);
   }
 
   function updateCaption(value: string) {
     setCaption(value.slice(0, MAX_CAPTION_LENGTH));
     setFormError(null);
-    setFormMessage(null);
   }
 
   function toggleProduct(productId: string) {
     setFormError(null);
-    setFormMessage(null);
     setSelectedProductIds((current) => {
       if (current.includes(productId)) {
         return current.filter((id) => id !== productId);
@@ -275,250 +323,828 @@ export function FeedCreatePostSheet({ open, onClose }: Props) {
   }
 
   async function submitPost() {
-    if (submitting) return;
-    if (!canSubmit) {
-      setFormError("Isi caption dulu sebelum posting.");
-      void hapticWarning();
-      return;
-    }
-
-    setSubmitting(true);
+    if (!selectedVideo || !canPost) return;
     setFormError(null);
-    setFormMessage(null);
-
-    const petInfo = [petType, petName.trim()].filter(Boolean).join(" · ");
-    const description = petInfo
-      ? `${caption.trim()}\n\nInfo peliharaan: ${petInfo}`
-      : caption.trim();
+    setUploadStage("compressing");
+    setUploadProgress(0);
 
     try {
-      const res = await fetch("/api/feed/posts", {
+      const { compressVideo } = await import("@/lib/feed/video-compressor");
+      const compressedFile = await compressVideo(selectedVideo.file, {
+        config: USER_VIDEO_CONFIG,
+        trimStartSec: trimStart,
+        trimDurationSec: finalDuration,
+        onProgress: setUploadProgress,
+      });
+
+      setUploadStage("uploading-video");
+      const videoForm = new FormData();
+      videoForm.append("file", compressedFile);
+      const videoRes = await fetch("/api/feed/upload-video", {
+        method: "POST",
+        body: videoForm,
+      });
+      const videoData = await videoRes.json().catch(() => ({}));
+      if (!videoRes.ok) {
+        throw new Error(
+          typeof videoData?.error === "string" ? videoData.error : "Upload video gagal.",
+        );
+      }
+
+      setUploadStage("uploading-thumbnail");
+      const thumbForm = new FormData();
+      thumbForm.append(
+        "file",
+        new File([selectedVideo.thumbnailBlob], "thumbnail.jpg", { type: "image/jpeg" }),
+      );
+      const thumbRes = await fetch("/api/feed/upload-thumbnail", {
+        method: "POST",
+        body: thumbForm,
+      });
+      const thumbData = await thumbRes.json().catch(() => ({}));
+      if (!thumbRes.ok) {
+        throw new Error(
+          typeof thumbData?.error === "string" ? thumbData.error : "Upload thumbnail gagal.",
+        );
+      }
+
+      setUploadStage("submitting");
+      const petInfo = [petType, petName.trim()].filter(Boolean).join(" · ");
+      const descriptionParts = [
+        caption.trim(),
+        petInfo ? `Info peliharaan: ${petInfo}` : "",
+      ].filter(Boolean);
+      const description = descriptionParts.join("\n\n") || null;
+      const title = caption.trim().slice(0, 80) || "Video Feed Natalo";
+
+      const postRes = await fetch("/api/feed/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: "Postingan Natalo",
+          title,
           description,
+          videoUrl: videoData.url,
+          thumbnailUrl: thumbData.url,
+          videoMimeType: videoData.mimeType,
+          videoSizeBytes: videoData.sizeBytes,
+          videoDurationSec: Math.round(finalDuration),
+          videoWidth: selectedVideo.metadata.width,
+          videoHeight: selectedVideo.metadata.height,
           productId: selectedProductIds[0] ?? null,
           productIds: selectedProductIds,
         }),
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
+      const postData = await postRes.json().catch(() => ({}));
+      if (!postRes.ok) {
         throw new Error(
-          typeof data?.error === "string" ? data.error : "Gagal membuat postingan.",
+          typeof postData?.error === "string" ? postData.error : "Gagal membuat postingan.",
         );
       }
 
-      setCaption("");
-      setPetType(null);
-      setPetName("");
-      setSelectedProductIds([]);
-      setProductPickerOpen(false);
-      setFormMessage("Postingan menunggu review admin dan belum tayang di Feed.");
+      setSubmittedPost({
+        id: String(postData?.post?.id ?? ""),
+        status: String(postData?.post?.status ?? "PENDING_REVIEW"),
+      });
+      setStep("success");
       void hapticSuccess();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Gagal membuat postingan.");
+      setFormError(err instanceof Error ? err.message : "Gagal mengirim postingan.");
+      setStep("detail");
       void hapticWarning();
     } finally {
-      setSubmitting(false);
+      setUploadStage(null);
+      setUploadProgress(0);
     }
   }
 
+  function resetAndClose() {
+    resetVideo();
+    setCaption("");
+    setPetType(null);
+    setPetName("");
+    setSelectedProductIds([]);
+    setProductPickerOpen(false);
+    setSubmittedPost(null);
+    setStep("pick");
+    onClose();
+  }
+
   return (
-    <Drawer.Root
-      open={open}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen) closeSheet();
-      }}
-      direction="bottom"
-      modal
-      dismissible
-      closeThreshold={0.28}
-      scrollLockTimeout={350}
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={getStepTitle(step)}
+      data-no-swipe-back="true"
+      className="fixed inset-0 z-[2000] bg-black text-white"
     >
-      <Drawer.Portal>
-        <Drawer.Overlay
-          data-no-pull
-          data-no-swipe-back="true"
-          className="fixed inset-0 z-[2000] bg-black/55"
+      {step === "pick" && (
+        <PickVideoStep
+          galleryInputRef={galleryInputRef}
+          cameraInputRef={cameraInputRef}
+          selectedVideo={selectedVideo}
+          selecting={selecting}
+          videoError={videoError}
+          canContinue={selectedCanContinue}
+          onClose={closeFlow}
+          onPick={handleVideoPick}
+          onNext={goNextFromPicker}
         />
-        <Drawer.Content
-          data-no-pull
-          data-no-swipe-back="true"
-          data-no-tap-press="true"
-          aria-describedby={undefined}
-          className="fixed inset-x-0 bottom-0 z-[2001] mx-auto flex w-full max-w-2xl flex-col overflow-hidden rounded-t-[28px] bg-gray-50 shadow-[0_-22px_55px_rgba(0,0,0,0.32)] outline-none"
-          style={{
-            maxHeight: "min(88dvh, calc(100dvh - env(safe-area-inset-top) - 10px))",
-            transform:
-              isDragging || isSnappingBack ? `translate3d(0, ${dragY}px, 0)` : undefined,
-            transition: isDragging
-              ? "none"
-              : isSnappingBack
-                ? `transform ${SNAP_BACK_MS}ms ${SNAP_BACK_EASE}`
-                : undefined,
+      )}
+      {step === "trim" && selectedVideo && (
+        <TrimVideoStep
+          selectedVideo={selectedVideo}
+          videoRef={previewVideoRef}
+          isPlaying={isPlaying}
+          trimStart={trimStart}
+          trimEnd={trimEnd}
+          finalDuration={finalDuration}
+          isValid={hasValidFinalDuration}
+          onBack={() => {
+            stopPreview();
+            setStep("pick");
           }}
-          onOpenAutoFocus={(event) => event.preventDefault()}
-        >
-          <div
-            className="shrink-0 cursor-grab bg-white px-4 pb-3 pt-2 active:cursor-grabbing"
-            onMouseDown={handleMouseDown}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={finishDrag}
-            onTouchCancel={finishDrag}
-          >
-            <div className="flex justify-center py-1.5">
-              <div className="h-1.5 w-11 rounded-full bg-zinc-300" />
-            </div>
-            <div className="grid grid-cols-[44px_1fr_auto] items-center gap-2">
-              <button
-                type="button"
-                onClick={closeSheet}
-                aria-label="Tutup"
-                className="grid h-11 w-11 place-items-center rounded-full bg-zinc-100 text-zinc-700 transition active:scale-95"
-              >
-                <FiX className="h-5 w-5" />
-              </button>
-              <Drawer.Title className="text-center text-base font-black text-zinc-950">
-                Buat Postingan
-              </Drawer.Title>
-              <button
-                type="button"
-                onClick={submitPost}
-                disabled={!canSubmit || submitting}
-                className="rounded-full bg-natalo-600 px-4 py-2.5 text-sm font-black text-white shadow-sm transition active:scale-95 disabled:cursor-not-allowed disabled:bg-zinc-300 disabled:shadow-none"
-              >
-                {submitting ? "..." : "Posting"}
-              </button>
-            </div>
+          onNext={() => {
+            stopPreview();
+            if (hasValidFinalDuration) setStep("detail");
+          }}
+          onTogglePlay={togglePreview}
+          onTrimStartChange={updateTrimStart}
+          onTrimEndChange={updateTrimEnd}
+        />
+      )}
+      {step === "detail" && selectedVideo && (
+        <DetailPostStep
+          selectedVideo={selectedVideo}
+          caption={caption}
+          petType={petType}
+          petName={petName}
+          selectedProducts={selectedProducts}
+          selectedProductIds={selectedProductIds}
+          products={products}
+          productsLoading={productsLoading}
+          productsError={productsError}
+          productPickerOpen={productPickerOpen}
+          finalDuration={finalDuration}
+          canPost={canPost}
+          formError={formError}
+          onBack={() => setStep(selectedNeedsTrim ? "trim" : "pick")}
+          onChangeVideo={() => setStep("pick")}
+          onCaptionChange={updateCaption}
+          onPetTypeChange={setPetType}
+          onPetNameChange={(value) => setPetName(value.slice(0, 80))}
+          onToggleProductPicker={() => {
+            setProductPickerOpen((value) => !value);
+            void hapticTap();
+          }}
+          onToggleProduct={toggleProduct}
+          onSubmit={submitPost}
+        />
+      )}
+      {uploadStage && (
+        <div className="absolute inset-0 z-[2] grid place-items-center bg-black/70 px-6 backdrop-blur-sm">
+          <UploadingStep stage={uploadStage} progress={uploadProgress} />
+        </div>
+      )}
+      {step === "success" && selectedVideo && (
+        <SuccessStep
+          selectedVideo={selectedVideo}
+          finalDuration={finalDuration}
+          status={submittedPost?.status ?? "PENDING_REVIEW"}
+          onViewStatus={() => setStep("status")}
+          onBackToFeed={resetAndClose}
+        />
+      )}
+      {step === "status" && selectedVideo && (
+        <StatusStep
+          selectedVideo={selectedVideo}
+          caption={caption}
+          finalDuration={finalDuration}
+          onBack={() => setStep("success")}
+          onBackToFeed={resetAndClose}
+        />
+      )}
+    </div>
+  );
+}
+
+function PickVideoStep({
+  galleryInputRef,
+  cameraInputRef,
+  selectedVideo,
+  selecting,
+  videoError,
+  canContinue,
+  onClose,
+  onPick,
+  onNext,
+}: {
+  galleryInputRef: RefObject<HTMLInputElement | null>;
+  cameraInputRef: RefObject<HTMLInputElement | null>;
+  selectedVideo: SelectedVideo | null;
+  selecting: boolean;
+  videoError: string | null;
+  canContinue: boolean;
+  onClose: () => void;
+  onPick: (file: File | null) => void;
+  onNext: () => void;
+}) {
+  return (
+    <div className="flex h-full flex-col bg-black">
+      <DarkHeader
+        title="Pilih Video"
+        leftIcon={<FiX className="h-5 w-5" />}
+        leftLabel="Tutup"
+        onLeft={onClose}
+        rightLabel="Next"
+        rightDisabled={!canContinue || selecting}
+        onRight={onNext}
+      />
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(24px+env(safe-area-inset-bottom))]">
+        <div className="mx-auto max-w-2xl">
+          <div className="grid grid-cols-2 gap-3 pt-4">
+            <button
+              type="button"
+              onClick={() => galleryInputRef.current?.click()}
+              className="rounded-3xl border border-white/10 bg-white/10 p-4 text-left transition active:scale-[0.98]"
+            >
+              <FiImage className="h-6 w-6 text-natalo-300" />
+              <p className="mt-3 text-sm font-black">Galeri</p>
+              <p className="mt-1 text-xs font-semibold text-white/55">
+                Pilih video dari perangkat
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => cameraInputRef.current?.click()}
+              className="rounded-3xl border border-white/10 bg-white/10 p-4 text-left transition active:scale-[0.98]"
+            >
+              <FiCamera className="h-6 w-6 text-natalo-300" />
+              <p className="mt-3 text-sm font-black">Kamera</p>
+              <p className="mt-1 text-xs font-semibold text-white/55">
+                Rekam video baru
+              </p>
+            </button>
           </div>
 
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 [padding-bottom:calc(18px+env(safe-area-inset-bottom))]">
-            {formMessage && (
-              <div className="flex items-start gap-2 rounded-3xl border border-emerald-100 bg-emerald-50 p-3 text-xs font-bold leading-relaxed text-emerald-800">
-                <FiCheck className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{formMessage}</span>
-              </div>
-            )}
-            {formError && (
-              <div className="flex items-start gap-2 rounded-3xl border border-red-100 bg-red-50 p-3 text-xs font-bold leading-relaxed text-red-700">
-                <FiAlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{formError}</span>
-              </div>
-            )}
+          <input
+            ref={galleryInputRef}
+            type="file"
+            accept={ACCEPT_VIDEO}
+            className="hidden"
+            onChange={(event) => onPick(event.target.files?.[0] ?? null)}
+          />
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept={ACCEPT_VIDEO}
+            capture="environment"
+            className="hidden"
+            onChange={(event) => onPick(event.target.files?.[0] ?? null)}
+          />
 
-            <section className="rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-sm font-black text-zinc-950">✍️ Caption</h2>
-                <span className="text-xs font-extrabold text-zinc-400">
-                  {caption.length} / {MAX_CAPTION_LENGTH}
-                </span>
-              </div>
-              <textarea
-                value={caption}
-                onChange={(event) => updateCaption(event.target.value)}
-                maxLength={MAX_CAPTION_LENGTH}
-                rows={5}
-                placeholder="Ceritakan pengalamanmu bersama hewan peliharaan & produk Natalo..."
-                className="mt-3 w-full resize-none rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm font-semibold leading-relaxed text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-natalo-500 focus:bg-white"
-              />
-            </section>
+          <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-natalo-600/20 px-3 py-2 text-xs font-black text-natalo-100 ring-1 ring-natalo-400/30">
+            <FiInfo className="h-4 w-4" />
+            Pilih video berdurasi 15-30 detik
+          </div>
 
-            <section className="rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
-              <h2 className="text-sm font-black text-zinc-950">
-                🛒 Pin Produk yang Dipakai
-              </h2>
-              <p className="mt-1 text-xs font-semibold leading-relaxed text-zinc-500">
-                Maksimal 3 produk · Hanya dari riwayat pembelianmu yang sudah diterima
-              </p>
+          {selecting && (
+            <div className="mt-4 rounded-3xl border border-white/10 bg-white/10 p-4 text-sm font-bold text-white/70">
+              Membaca video...
+            </div>
+          )}
 
-              {selectedProducts.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {selectedProducts.map((product) => (
-                    <button
-                      key={product.productId}
-                      type="button"
-                      onClick={() => toggleProduct(product.productId)}
-                      className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-natalo-200 bg-natalo-50 px-3 py-1.5 text-left text-[11px] font-extrabold text-natalo-700"
-                    >
-                      <span className="truncate">{product.name}</span>
-                      <FiX className="h-3.5 w-3.5 shrink-0" />
-                    </button>
-                  ))}
-                </div>
-              )}
+          {videoError && (
+            <div className="mt-4 flex items-start gap-2 rounded-3xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm font-bold leading-relaxed text-amber-100">
+              <FiAlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{videoError}</span>
+            </div>
+          )}
 
+          <div className="mt-5 flex items-center justify-between">
+            <h2 className="text-sm font-black">Terbaru</h2>
+            <span className="text-xs font-bold text-white/45">Video terbaru tampil dulu</span>
+          </div>
+
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            {selectedVideo ? (
               <button
                 type="button"
-                onClick={() => {
-                  setProductPickerOpen((value) => !value);
-                  void hapticTap();
-                }}
-                className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-natalo-400 bg-natalo-50 px-3 py-3 text-sm font-black text-natalo-700 transition active:scale-[0.99]"
+                onClick={() => void hapticTap()}
+                className="relative aspect-[3/4] overflow-hidden rounded-2xl border-2 border-natalo-500 bg-white/10 text-left shadow-[0_0_0_1px_rgba(255,255,255,0.08)]"
               >
-                <FiPlus className="h-4 w-4" />
-                Pilih Produk dari Riwayat Pembelian
-              </button>
-
-              {productPickerOpen && (
-                <ProductPickerPanel
-                  products={products}
-                  selectedProductIds={selectedProductIds}
-                  loading={productsLoading}
-                  error={productsError}
-                  onToggleProduct={toggleProduct}
+                <img
+                  src={selectedVideo.thumbnailUrl}
+                  alt=""
+                  className="h-full w-full object-cover"
                 />
-              )}
-            </section>
-
-            <section className="rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
-              <h2 className="text-sm font-black text-zinc-950">🐾 Info Peliharaan</h2>
-              <p className="mt-1 text-xs font-semibold text-zinc-500">
-                Bantu viewer kenal lebih dekat
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {PET_TYPES.map((type) => {
-                  const selected = petType === type;
-                  return (
-                    <button
-                      key={type}
-                      type="button"
-                      onClick={() => {
-                        setPetType(selected ? null : type);
-                        void hapticTap();
-                      }}
-                      className={`rounded-full border px-3 py-2 text-xs font-black transition active:scale-95 ${
-                        selected
-                          ? "border-natalo-500 bg-natalo-50 text-natalo-700"
-                          : "border-zinc-200 bg-zinc-100 text-zinc-600"
-                      }`}
-                    >
-                      {type}
-                    </button>
-                  );
-                })}
-              </div>
-              <input
-                type="text"
-                value={petName}
-                onChange={(event) => setPetName(event.target.value.slice(0, 80))}
-                placeholder="Nama peliharaan & jenis ras (cth: Miko · Persian)"
-                className="mt-3 w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm font-semibold text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-natalo-500 focus:bg-white"
+                <span className="absolute bottom-1.5 right-1.5 rounded-full bg-black/70 px-2 py-1 text-[11px] font-black text-white">
+                  {formatDuration(selectedVideo.metadata.durationSec)}
+                </span>
+                <span className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-natalo-600 text-white">
+                  <FiCheck className="h-4 w-4" />
+                </span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => galleryInputRef.current?.click()}
+                className="flex aspect-[3/4] flex-col items-center justify-center rounded-2xl border border-dashed border-white/20 bg-white/[0.06] text-center text-white/55"
+              >
+                <FiFilm className="h-7 w-7" />
+                <span className="mt-2 px-2 text-xs font-black">Pilih video</span>
+              </button>
+            )}
+            {Array.from({ length: selectedVideo ? 5 : 8 }).map((_, index) => (
+              <div
+                key={index}
+                className="aspect-[3/4] rounded-2xl border border-white/5 bg-white/[0.04]"
+                aria-hidden="true"
               />
-            </section>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-            <div className="flex items-start gap-2 rounded-3xl border border-amber-200 bg-amber-50 p-4 text-xs font-bold leading-relaxed text-amber-900">
-              <FiInfo className="mt-0.5 h-4 w-4 shrink-0" />
-              <p>
-                Postingan akan ditinjau admin sebelum tayang di Feed (max. 1×24
-                jam). Pastikan konten sesuai pedoman komunitas Natalo.
+function TrimVideoStep({
+  selectedVideo,
+  videoRef,
+  isPlaying,
+  trimStart,
+  trimEnd,
+  finalDuration,
+  isValid,
+  onBack,
+  onNext,
+  onTogglePlay,
+  onTrimStartChange,
+  onTrimEndChange,
+}: {
+  selectedVideo: SelectedVideo;
+  videoRef: RefObject<HTMLVideoElement | null>;
+  isPlaying: boolean;
+  trimStart: number;
+  trimEnd: number;
+  finalDuration: number;
+  isValid: boolean;
+  onBack: () => void;
+  onNext: () => void;
+  onTogglePlay: () => void;
+  onTrimStartChange: (value: number) => void;
+  onTrimEndChange: (value: number) => void;
+}) {
+  const duration = selectedVideo.metadata.durationSec;
+  const invalidText =
+    finalDuration < MIN_VIDEO_DURATION
+      ? "Video terlalu pendek. Upload minimal 15 detik."
+      : "Video terlalu panjang. Maksimal 30 detik.";
+
+  return (
+    <div className="flex h-full flex-col bg-black">
+      <DarkHeader
+        title="Trim Video"
+        leftIcon={<FiArrowLeft className="h-5 w-5" />}
+        leftLabel="Kembali"
+        onLeft={onBack}
+        rightLabel="Next"
+        rightDisabled={!isValid}
+        onRight={onNext}
+      />
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(24px+env(safe-area-inset-bottom))]">
+        <div className="mx-auto max-w-2xl pt-4">
+          <div className="relative overflow-hidden rounded-[28px] bg-white/10">
+            <video
+              ref={videoRef}
+              src={selectedVideo.previewUrl}
+              className="aspect-[9/14] w-full object-cover"
+              playsInline
+              muted
+              onEnded={() => {
+                const video = videoRef.current;
+                if (video) video.currentTime = trimStart;
+              }}
+            />
+            <button
+              type="button"
+              onClick={onTogglePlay}
+              aria-label={isPlaying ? "Pause video" : "Play video"}
+              className="absolute bottom-4 left-4 grid h-12 w-12 place-items-center rounded-full bg-black/55 text-white backdrop-blur"
+            >
+              {isPlaying ? <FiPause className="h-5 w-5" /> : <FiPlay className="h-5 w-5" />}
+            </button>
+            <span className="absolute bottom-5 left-1/2 -translate-x-1/2 rounded-full bg-black/55 px-3 py-1.5 text-sm font-black">
+              {formatDuration(finalDuration)} / {formatDuration(duration)}
+            </span>
+          </div>
+
+          <div className="mt-5 rounded-3xl border border-white/10 bg-white/10 p-4">
+            <div className="mb-3 flex items-center justify-between text-xs font-black text-white/65">
+              <span>{formatDuration(trimStart)}</span>
+              <span>{formatDuration(trimEnd)}</span>
+            </div>
+            <div className="rounded-2xl border border-natalo-400/70 bg-black/50 p-3">
+              <div className="h-14 overflow-hidden rounded-xl bg-[linear-gradient(90deg,rgba(30,95,191,.55),rgba(255,255,255,.14),rgba(30,95,191,.55))]" />
+              <label className="mt-4 block text-xs font-black text-white/60">
+                Mulai trim
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(0, duration - 0.5)}
+                  step={0.1}
+                  value={trimStart}
+                  onChange={(event) => onTrimStartChange(Number(event.target.value))}
+                  className="mt-2 w-full accent-natalo-500"
+                />
+              </label>
+              <label className="mt-3 block text-xs font-black text-white/60">
+                Akhir trim
+                <input
+                  type="range"
+                  min={0.5}
+                  max={duration}
+                  step={0.1}
+                  value={trimEnd}
+                  onChange={(event) => onTrimEndChange(Number(event.target.value))}
+                  className="mt-2 w-full accent-natalo-500"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-3xl bg-natalo-600/25 p-4 text-sm font-black text-natalo-50 ring-1 ring-natalo-400/30">
+            Durasi final harus 15-30 detik
+          </div>
+          <div
+            className={`mt-3 flex items-center gap-3 rounded-3xl p-4 text-sm font-black ${
+              isValid
+                ? "bg-emerald-500/15 text-emerald-200"
+                : "bg-amber-400/10 text-amber-100"
+            }`}
+          >
+            {isValid ? (
+              <span className="grid h-9 w-9 place-items-center rounded-full bg-emerald-500 text-white">
+                <FiCheck className="h-5 w-5" />
+              </span>
+            ) : (
+              <FiAlertCircle className="h-5 w-5 shrink-0" />
+            )}
+            <span>{isValid ? "Durasi valid" : invalidText}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailPostStep({
+  selectedVideo,
+  caption,
+  petType,
+  petName,
+  selectedProducts,
+  selectedProductIds,
+  products,
+  productsLoading,
+  productsError,
+  productPickerOpen,
+  finalDuration,
+  canPost,
+  formError,
+  onBack,
+  onChangeVideo,
+  onCaptionChange,
+  onPetTypeChange,
+  onPetNameChange,
+  onToggleProductPicker,
+  onToggleProduct,
+  onSubmit,
+}: {
+  selectedVideo: SelectedVideo;
+  caption: string;
+  petType: string | null;
+  petName: string;
+  selectedProducts: PinnableProduct[];
+  selectedProductIds: string[];
+  products: PinnableProduct[];
+  productsLoading: boolean;
+  productsError: string | null;
+  productPickerOpen: boolean;
+  finalDuration: number;
+  canPost: boolean;
+  formError: string | null;
+  onBack: () => void;
+  onChangeVideo: () => void;
+  onCaptionChange: (value: string) => void;
+  onPetTypeChange: (value: string | null) => void;
+  onPetNameChange: (value: string) => void;
+  onToggleProductPicker: () => void;
+  onToggleProduct: (productId: string) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <div className="flex h-full flex-col bg-zinc-50 text-zinc-950">
+      <LightHeader
+        title="Detail Postingan"
+        leftIcon={<FiArrowLeft className="h-5 w-5" />}
+        leftLabel="Kembali"
+        onLeft={onBack}
+        rightLabel="Posting"
+        rightDisabled={!canPost}
+        onRight={onSubmit}
+      />
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(24px+env(safe-area-inset-bottom))]">
+        <div className="mx-auto max-w-2xl space-y-4 pt-4">
+          {formError && (
+            <div className="flex items-start gap-2 rounded-3xl border border-red-100 bg-red-50 p-3 text-xs font-bold leading-relaxed text-red-700">
+              <FiAlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{formError}</span>
+            </div>
+          )}
+
+          <section className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-3xl border border-zinc-100 bg-white p-3 shadow-sm">
+            <div className="relative aspect-[4/3] overflow-hidden rounded-2xl bg-zinc-100">
+              <img
+                src={selectedVideo.thumbnailUrl}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+              <span className="absolute bottom-2 left-2 rounded-full bg-black/70 px-2 py-1 text-xs font-black text-white">
+                {formatDuration(finalDuration)}
+              </span>
+              <span className="absolute inset-0 m-auto grid h-10 w-10 place-items-center rounded-full bg-black/45 text-white">
+                <FiPlay className="h-4 w-4" />
+              </span>
+            </div>
+            <div className="flex w-28 flex-col justify-center">
+              <p className="text-sm font-black text-zinc-950">{formatDuration(finalDuration)}</p>
+              <p className="mt-1 text-xs font-bold leading-relaxed text-zinc-500">
+                Video siap diupload
+              </p>
+              <button
+                type="button"
+                onClick={onChangeVideo}
+                className="mt-3 rounded-xl border border-natalo-500 px-3 py-2 text-xs font-black text-natalo-600"
+              >
+                Ganti Video
+              </button>
+            </div>
+          </section>
+
+          <section className="rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-sm font-black text-zinc-950">✍️ Caption</h2>
+              <span className="text-xs font-extrabold text-zinc-400">
+                {caption.length} / {MAX_CAPTION_LENGTH}
+              </span>
+            </div>
+            <textarea
+              value={caption}
+              onChange={(event) => onCaptionChange(event.target.value)}
+              maxLength={MAX_CAPTION_LENGTH}
+              rows={4}
+              placeholder="Ceritakan pengalamanmu bersama hewan peliharaan & produk Natalo..."
+              className="mt-3 w-full resize-none rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm font-semibold leading-relaxed text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-natalo-500 focus:bg-white"
+            />
+          </section>
+
+          <section className="rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
+            <h2 className="text-sm font-black text-zinc-950">🛒 Pin Produk yang Dipakai</h2>
+            <p className="mt-1 text-xs font-semibold leading-relaxed text-zinc-500">
+              Maksimal 3 produk · Hanya dari riwayat pembelianmu yang sudah diterima
+            </p>
+
+            {selectedProducts.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {selectedProducts.map((product) => (
+                  <button
+                    key={product.productId}
+                    type="button"
+                    onClick={() => onToggleProduct(product.productId)}
+                    className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-natalo-200 bg-natalo-50 px-3 py-1.5 text-left text-[11px] font-extrabold text-natalo-700"
+                  >
+                    <span className="truncate">{product.name}</span>
+                    <FiX className="h-3.5 w-3.5 shrink-0" />
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={onToggleProductPicker}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-natalo-400 bg-natalo-50 px-3 py-3 text-sm font-black text-natalo-700 transition active:scale-[0.99]"
+            >
+              <FiPlus className="h-4 w-4" />
+              Pilih Produk dari Riwayat Pembelian
+            </button>
+
+            {productPickerOpen && (
+              <ProductPickerPanel
+                products={products}
+                selectedProductIds={selectedProductIds}
+                loading={productsLoading}
+                error={productsError}
+                onToggleProduct={onToggleProduct}
+              />
+            )}
+          </section>
+
+          <section className="rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
+            <h2 className="text-sm font-black text-zinc-950">🐾 Info Peliharaan</h2>
+            <p className="mt-1 text-xs font-semibold text-zinc-500">
+              Bantu viewer kenal lebih dekat
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {PET_TYPES.map((type) => {
+                const selected = petType === type;
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => {
+                      onPetTypeChange(selected ? null : type);
+                      void hapticTap();
+                    }}
+                    className={`rounded-xl border px-3 py-2 text-xs font-black transition active:scale-95 ${
+                      selected
+                        ? "border-natalo-500 bg-natalo-50 text-natalo-700"
+                        : "border-zinc-200 bg-zinc-100 text-zinc-600"
+                    }`}
+                  >
+                    {type}
+                  </button>
+                );
+              })}
+            </div>
+            <input
+              type="text"
+              value={petName}
+              onChange={(event) => onPetNameChange(event.target.value)}
+              placeholder="Nama peliharaan & jenis ras (cth: Miko · Persian)"
+              className="mt-3 w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm font-semibold text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-natalo-500 focus:bg-white"
+            />
+          </section>
+
+          <div className="flex items-start gap-2 rounded-3xl border border-amber-200 bg-amber-50 p-4 text-xs font-bold leading-relaxed text-amber-900">
+            <FiInfo className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>
+              Postingan akan ditinjau admin sebelum tayang di Feed (max. 1×24 jam).
+              Pastikan konten sesuai pedoman komunitas Natalo.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SuccessStep({
+  selectedVideo,
+  finalDuration,
+  status,
+  onViewStatus,
+  onBackToFeed,
+}: {
+  selectedVideo: SelectedVideo;
+  finalDuration: number;
+  status: string;
+  onViewStatus: () => void;
+  onBackToFeed: () => void;
+}) {
+  return (
+    <div className="flex h-full flex-col bg-white px-5 pb-[calc(24px+env(safe-area-inset-bottom))] pt-[calc(54px+env(safe-area-inset-top))] text-center text-zinc-950">
+      <div className="mx-auto flex min-h-0 w-full max-w-md flex-1 flex-col justify-center">
+        <div className="mx-auto grid h-32 w-32 place-items-center rounded-full bg-[linear-gradient(135deg,#1e5fbf,#38d5aa)] text-white shadow-xl">
+          <FiCheck className="h-16 w-16" />
+        </div>
+        <h1 className="mt-7 text-xl font-black">Postingan Berhasil Dikirim</h1>
+        <p className="mx-auto mt-2 max-w-xs text-sm font-semibold leading-relaxed text-zinc-500">
+          Video kamu sudah masuk antrean review admin.
+        </p>
+
+        <div className="mt-6 flex items-center gap-3 rounded-3xl border border-zinc-100 bg-white p-3 text-left shadow-sm">
+          <img
+            src={selectedVideo.thumbnailUrl}
+            alt=""
+            className="h-24 w-24 rounded-2xl object-cover"
+          />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-black text-zinc-950">Video Feed</p>
+            <p className="mt-1 text-sm font-bold text-zinc-500">{formatDuration(finalDuration)}</p>
+            <span className="mt-3 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-700">
+              {status.toLowerCase() === "pending_review" ||
+              status.toUpperCase() === "PENDING_REVIEW"
+                ? "pending_review"
+                : status}
+            </span>
+          </div>
+        </div>
+
+        <div className="mt-4 space-y-3 rounded-3xl border border-zinc-100 bg-white p-4 text-left text-sm font-bold shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <span className="inline-flex items-center gap-2 text-zinc-600">
+              <FiClock className="h-4 w-4" />
+              Estimasi review:
+            </span>
+            <span>max. 1×24 jam</span>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <span className="inline-flex items-center gap-2 text-zinc-600">
+              <FiPackage className="h-4 w-4" />
+              Status awal:
+            </span>
+            <span className="text-amber-600">Menunggu Review</span>
+          </div>
+        </div>
+
+        <div className="mt-6 space-y-3">
+          <button
+            type="button"
+            onClick={onViewStatus}
+            className="w-full rounded-2xl bg-natalo-600 py-3.5 text-sm font-black text-white"
+          >
+            Lihat Status
+          </button>
+          <button
+            type="button"
+            onClick={onBackToFeed}
+            className="w-full rounded-2xl bg-zinc-100 py-3.5 text-sm font-black text-zinc-950"
+          >
+            Kembali ke Feed
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatusStep({
+  selectedVideo,
+  caption,
+  finalDuration,
+  onBack,
+  onBackToFeed,
+}: {
+  selectedVideo: SelectedVideo;
+  caption: string;
+  finalDuration: number;
+  onBack: () => void;
+  onBackToFeed: () => void;
+}) {
+  return (
+    <div className="flex h-full flex-col bg-zinc-50 text-zinc-950">
+      <LightHeader
+        title="Video Saya"
+        leftIcon={<FiArrowLeft className="h-5 w-5" />}
+        leftLabel="Kembali"
+        onLeft={onBack}
+      />
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(24px+env(safe-area-inset-bottom))]">
+        <div className="mx-auto max-w-2xl space-y-4 pt-4">
+          <div className="flex gap-3 rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
+            <img
+              src={selectedVideo.thumbnailUrl}
+              alt=""
+              className="h-36 w-28 rounded-2xl object-cover"
+            />
+            <div className="min-w-0 flex-1">
+              <h1 className="text-sm font-black leading-snug">
+                {caption.trim() || "Pengalaman bersama Natalo"}
+              </h1>
+              <p className="mt-2 text-xs font-bold text-zinc-500">Baru saja</p>
+              <span className="mt-3 inline-flex rounded-full bg-amber-100 px-3 py-1.5 text-xs font-black text-amber-700">
+                Menunggu Review
+              </span>
+              <p className="mt-4 text-xs font-semibold leading-relaxed text-zinc-500">
+                Akan tayang di Feed setelah disetujui admin.
               </p>
             </div>
           </div>
-        </Drawer.Content>
-      </Drawer.Portal>
-    </Drawer.Root>
+
+          <div className="rounded-3xl bg-natalo-50 p-4 text-sm font-semibold leading-relaxed text-zinc-800">
+            <div className="flex gap-3">
+              <FiInfo className="mt-0.5 h-5 w-5 shrink-0 text-natalo-600" />
+              <ul className="space-y-2">
+                <li>Durasi video valid 15-30 detik ({formatDuration(finalDuration)})</li>
+                <li>Review admin maksimal 1×24 jam</li>
+                <li>Notifikasi akan dikirim saat status berubah</li>
+              </ul>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onBackToFeed}
+            className="fixed inset-x-4 bottom-[calc(18px+env(safe-area-inset-bottom))] mx-auto max-w-2xl rounded-2xl bg-natalo-600 py-3.5 text-sm font-black text-white shadow-lg"
+          >
+            Kembali ke Feed
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -555,10 +1181,7 @@ function ProductPickerPanel({
     return (
       <div className="mt-3 rounded-2xl bg-zinc-50 p-4 text-center">
         <p className="text-sm font-black text-zinc-700">
-          Belum ada produk yang bisa dipilih
-        </p>
-        <p className="mt-1 text-xs font-semibold leading-relaxed text-zinc-500">
-          Produk akan muncul setelah pesananmu sudah diterima.
+          Belum ada produk yang bisa dipilih dari riwayat pembelian.
         </p>
       </div>
     );
@@ -615,6 +1238,139 @@ function ProductPickerPanel({
       })}
     </div>
   );
+}
+
+function UploadingStep({ stage, progress }: { stage: UploadStage; progress: number }) {
+  const label =
+    stage === "compressing"
+      ? "Memproses video..."
+      : stage === "uploading-video"
+        ? "Mengunggah video..."
+        : stage === "uploading-thumbnail"
+          ? "Mengunggah thumbnail..."
+          : "Menyimpan postingan...";
+
+  return (
+    <div className="w-full max-w-xs rounded-3xl bg-white p-5 text-center text-zinc-950 shadow-xl">
+      <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-natalo-50 text-natalo-600">
+        <FiUploadCloud className="h-7 w-7" />
+      </div>
+      <p className="mt-4 text-sm font-black">{label}</p>
+      <div className="mt-4 h-2 overflow-hidden rounded-full bg-zinc-100">
+        <div
+          className="h-full rounded-full bg-natalo-600 transition-[width]"
+          style={{ width: `${stage === "compressing" ? progress : 100}%` }}
+        />
+      </div>
+      <p className="mt-2 text-xs font-bold text-zinc-500">
+        {stage === "compressing" ? `${progress}%` : "Mohon tunggu sebentar"}
+      </p>
+    </div>
+  );
+}
+
+function DarkHeader({
+  title,
+  leftIcon,
+  leftLabel,
+  onLeft,
+  rightLabel,
+  rightDisabled,
+  onRight,
+}: {
+  title: string;
+  leftIcon: ReactNode;
+  leftLabel: string;
+  onLeft: () => void;
+  rightLabel?: string;
+  rightDisabled?: boolean;
+  onRight?: () => void;
+}) {
+  return (
+    <header className="grid h-[calc(56px+env(safe-area-inset-top))] shrink-0 grid-cols-[64px_1fr_64px] items-end px-2 pb-2 pt-[env(safe-area-inset-top)]">
+      <button
+        type="button"
+        onClick={onLeft}
+        aria-label={leftLabel}
+        className="grid h-11 w-11 place-items-center rounded-full text-white/90"
+      >
+        {leftIcon}
+      </button>
+      <h1 className="pb-3 text-center text-sm font-black text-white">{title}</h1>
+      {rightLabel ? (
+        <button
+          type="button"
+          onClick={onRight}
+          disabled={rightDisabled}
+          className="justify-self-end rounded-full px-2 py-3 text-sm font-black text-natalo-400 disabled:text-white/35"
+        >
+          {rightLabel}
+        </button>
+      ) : (
+        <span />
+      )}
+    </header>
+  );
+}
+
+function LightHeader({
+  title,
+  leftIcon,
+  leftLabel,
+  onLeft,
+  rightLabel,
+  rightDisabled,
+  onRight,
+}: {
+  title: string;
+  leftIcon: ReactNode;
+  leftLabel: string;
+  onLeft: () => void;
+  rightLabel?: string;
+  rightDisabled?: boolean;
+  onRight?: () => void;
+}) {
+  return (
+    <header className="grid h-[calc(56px+env(safe-area-inset-top))] shrink-0 grid-cols-[64px_1fr_82px] items-end border-b border-zinc-100 bg-white px-2 pb-2 pt-[env(safe-area-inset-top)]">
+      <button
+        type="button"
+        onClick={onLeft}
+        aria-label={leftLabel}
+        className="grid h-11 w-11 place-items-center rounded-full text-zinc-950"
+      >
+        {leftIcon}
+      </button>
+      <h1 className="pb-3 text-center text-sm font-black text-zinc-950">{title}</h1>
+      {rightLabel ? (
+        <button
+          type="button"
+          onClick={onRight}
+          disabled={rightDisabled}
+          className="justify-self-end rounded-xl bg-natalo-600 px-3 py-2 text-sm font-black text-white disabled:bg-zinc-300"
+        >
+          {rightLabel}
+        </button>
+      ) : (
+        <span />
+      )}
+    </header>
+  );
+}
+
+function getStepTitle(step: FlowStep) {
+  if (step === "pick") return "Pilih Video";
+  if (step === "trim") return "Trim Video";
+  if (step === "detail") return "Detail Postingan";
+  if (step === "success") return "Postingan Berhasil Dikirim";
+  if (step === "status") return "Video Saya";
+  return "Mengunggah";
+}
+
+function formatDuration(seconds: number) {
+  const safeSeconds = Math.max(0, Math.round(seconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const rest = safeSeconds % 60;
+  return `${minutes}:${String(rest).padStart(2, "0")}`;
 }
 
 function formatDate(iso: string) {
