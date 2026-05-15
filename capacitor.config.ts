@@ -67,7 +67,10 @@ const config: CapacitorConfig = {
   ios: {
     // Status bar default: dark icons di atas white bg (selaras dgn header
     // putih web). Lihat plugins.StatusBar di bawah untuk runtime config.
-    contentInset: "automatic",
+    // Jangan biarkan WKWebView menambah safe-area inset native sendiri.
+    // App sudah memakai env(safe-area-inset-*) di CSS; "automatic" bikin
+    // iOS menambah top/bottom inset kedua yang terlihat putih di Feed.
+    contentInset: "never",
     // Kalau pakai cookie auth (jose JWT lewat httpOnly cookie),
     // biarkan WebView pakai shared cookie store iOS.
     limitsNavigationsToAppBoundDomains: false,
