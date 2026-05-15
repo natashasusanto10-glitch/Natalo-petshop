@@ -200,6 +200,7 @@ export function FeedUploadClient() {
               ? {
                   name: thumbnailError.name,
                   message: thumbnailError.message,
+                  stack: thumbnailError.stack,
                 }
               : { message: String(thumbnailError) },
           usedFallback: true,
@@ -218,6 +219,7 @@ export function FeedUploadClient() {
               ? {
                   name: thumbnailError.name,
                   message: thumbnailError.message,
+                  stack: thumbnailError.stack,
                 }
               : { message: String(thumbnailError) },
         });
@@ -267,7 +269,7 @@ export function FeedUploadClient() {
         return;
       }
 
-      // Seed trim range — full clip kalau ≤45s, else 45s pertama.
+      // Seed trim range from the valid source clip; no compression/transcode here.
       setTrimStart(0);
       setTrimEnd(Math.min(meta.durationSec, USER_VIDEO_CONFIG.maxDuration));
 

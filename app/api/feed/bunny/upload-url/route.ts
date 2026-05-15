@@ -67,6 +67,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const isAdmin = session.role === "ADMIN";
+
   // Rate limit — same logic as legacy upload-video.
   if (!isAdmin) {
     const since = new Date(Date.now() - RATE_LIMIT_WINDOW_MS);
@@ -97,8 +99,6 @@ export async function POST(request: NextRequest) {
     promoStartsAt?: string | null;
     promoEndsAt?: string | null;
   };
-  const isAdmin = session.role === "ADMIN";
-
   // Caption (mapped ke `title` di DB) sekarang opsional sesuai flow baru —
   // kalau user tidak isi caption, kita pakai placeholder "Postingan baru"
   // supaya kolom title (NOT NULL di DB) tetap valid. Caption full disimpan
