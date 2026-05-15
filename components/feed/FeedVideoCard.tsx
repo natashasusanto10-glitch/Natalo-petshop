@@ -132,60 +132,74 @@ export function FeedVideoCard({ post, index, onOpenComments }: Props) {
         )}
       </div>
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-[260px] bg-gradient-to-t from-black/85 via-black/52 to-transparent" />
-      <div className="pointer-events-none absolute right-0 top-0 bottom-[calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+1.5rem)] z-[1] w-24 bg-gradient-to-l from-black/28 to-transparent" />
+      {/* Subtle gradient at the bottom for caption readability — Reels
+          uses a much lighter gradient than TikTok because object-contain
+          leaves the bottom edge of the video well clear of the caption. */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-[220px] bg-gradient-to-t from-black/70 via-black/35 to-transparent" />
 
-      <div className="absolute right-3.5 z-[2] flex flex-col items-center gap-[22px] [bottom:calc(env(safe-area-inset-bottom)+245px)] md:bottom-10">
+      {/* Right action rail — Instagram Reels styling. Smaller icons (28px),
+          tighter gap (18px), counts in compact font under each icon.
+          Positioned just above the product pill / caption block. */}
+      <div className="absolute right-3 z-[2] flex flex-col items-center gap-[18px] [bottom:calc(env(safe-area-inset-bottom)+200px)] md:bottom-10">
         <ActionButton
           label={formatEngagementCount(likeCount)}
           ariaLabel={liked ? "Batal suka" : "Suka"}
           pressed={liked}
           onClick={toggleLike}
         >
-          <FiHeart className={`h-[34px] w-[34px] ${liked ? "fill-[#FF3040] stroke-[#FF3040]" : ""}`} />
+          <FiHeart className={`h-[28px] w-[28px] ${liked ? "fill-[#FF3040] stroke-[#FF3040]" : "stroke-[2.2]"}`} />
         </ActionButton>
         <ActionButton
           label={formatEngagementCount(post.commentCount)}
           ariaLabel="Komentar"
           onClick={() => onOpenComments(post.id)}
         >
-          <FiMessageCircle className="h-[34px] w-[34px]" />
+          <FiMessageCircle className="h-[28px] w-[28px] stroke-[2.2]" />
         </ActionButton>
         <ActionButton
           label={formatEngagementCount(shareCount)}
           ariaLabel="Bagikan"
           onClick={handleShare}
         >
-          <FiSend className="h-[34px] w-[34px]" />
+          <FiSend className="h-[28px] w-[28px] stroke-[2.2]" />
         </ActionButton>
       </div>
 
-      <div className="absolute left-[18px] right-[88px] z-[2] flex min-w-0 items-center gap-3 [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+5.125rem)] md:bottom-24">
-        <div className="grid h-[54px] w-[54px] shrink-0 place-items-center rounded-full bg-natalo-600 text-base font-black text-white ring-1 ring-white/25">
-          {isAdmin ? "NL" : post.author.name.charAt(0).toUpperCase()}
-        </div>
-        <div className="min-w-0">
-          <p className="truncate text-[18px] font-bold leading-tight text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]">
+      {/* Bottom-left caption block — Instagram Reels layout:
+          line 1: small avatar (32px) inline with username (bold) on the
+          same baseline
+          line 2: caption underneath, smaller weight
+          Compact, sits just above the product pill. */}
+      <div className="absolute left-4 right-[72px] z-[2] [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+5rem)] md:bottom-24">
+        <div className="flex items-center gap-2">
+          <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-natalo-600 text-[11px] font-black text-white ring-[1.5px] ring-white">
+            {isAdmin ? "NL" : post.author.name.charAt(0).toUpperCase()}
+          </div>
+          <p className="truncate text-[14px] font-bold leading-tight text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
             {isAdmin ? "Natalo Petshop" : post.author.name}
-          </p>
-          <p className="mt-0.5 line-clamp-2 text-[15px] font-normal leading-snug text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]">
-            {post.description?.trim() || post.title}
-            {isAdmin ? " 💙" : ""}
+            {isAdmin && (
+              <span className="ml-1 inline-flex h-[14px] w-[14px] -translate-y-px items-center justify-center rounded-full bg-[#1A8CD8] text-[9px] font-black text-white">
+                ✓
+              </span>
+            )}
           </p>
         </div>
+        <p className="mt-1.5 line-clamp-2 text-[13.5px] font-normal leading-snug text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
+          {post.description?.trim() || post.title}
+        </p>
       </div>
 
       {product && (
         <button
           type="button"
           onClick={() => setProductSheetOpen(true)}
-          className="absolute left-[18px] right-[72px] z-[2] flex h-[42px] items-center gap-2 rounded-full border border-white/22 bg-black/60 px-3.5 text-left text-white shadow-sm shadow-black/10 backdrop-blur-xl transition [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+1.625rem)] active:scale-[0.98] md:bottom-8"
+          className="absolute left-4 right-[64px] z-[2] flex h-9 items-center gap-2 rounded-lg border border-white/15 bg-black/55 px-3 text-left text-white shadow-sm shadow-black/10 backdrop-blur-xl transition [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+1.5rem)] active:scale-[0.98] md:bottom-8"
         >
-          <FiPackage className="h-4 w-4 shrink-0 text-white" />
-          <span className="shrink-0 text-sm font-medium text-white">
+          <FiPackage className="h-3.5 w-3.5 shrink-0 text-white/85" />
+          <span className="shrink-0 text-[12px] font-semibold text-white/85">
             {isCommunity ? "Produk digunakan" : "Produk terkait"}
           </span>
-          <span className="truncate text-sm font-bold text-[#8EC5FF]">
+          <span className="truncate text-[12.5px] font-bold text-[#8EC5FF]">
             {product.name}
           </span>
         </button>
@@ -222,12 +236,15 @@ function ActionButton({
       aria-label={ariaLabel}
       aria-pressed={pressed}
       onClick={onClick}
-      className="flex min-w-11 flex-col items-center justify-center gap-[5px] text-[13px] font-medium text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)] transition active:scale-95"
+      // Instagram Reels rail: icon ~28px, tiny count below in semi-bold.
+      // No background pill — just icon + count with text shadow for
+      // readability over any video frame.
+      className="flex min-w-[44px] flex-col items-center justify-center gap-1 text-[12px] font-semibold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)] transition active:scale-95"
     >
-      <span className="grid h-[34px] w-[34px] place-items-center">
+      <span className="grid h-[28px] w-[28px] place-items-center">
         {children}
       </span>
-      {label && <span className="leading-none">{label}</span>}
+      {label && <span className="leading-none tabular-nums">{label}</span>}
     </button>
   );
 }
