@@ -39,6 +39,36 @@ export function FeedClient() {
   const scrollRef = useRef<HTMLDivElement>(null);
   useFeedChrome();
 
+  // iOS Capacitor WKWebView ships with
+  // `mediaTypesRequiringUserActionForPlayback = .all`, which blocks the
+  // initial muted autoplay until the user has touched anything inside the
+  // web view. The native side gets fixed by FeedAutoplayViewController
+  // (Swift override) but that needs a TestFlight rebuild to take effect.
+  // Meanwhile: on the very first touch anywhere inside the scroll
+  // container, kick off play() on every visible video so the user only
+  // ever has to tap once (and that tap can be a swipe — touchstart fires
+  // before the gesture is interpreted as scroll, so even swipes count).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    let armed = true;
+    const handler = () => {
+      if (!armed) return;
+      armed = false;
+      el.querySelectorAll("video").forEach((video) => {
+        if (video.paused && video.muted) {
+          video.play().catch(() => {});
+        }
+      });
+    };
+    el.addEventListener("touchstart", handler, { passive: true, once: true });
+    el.addEventListener("pointerdown", handler, { passive: true, once: true });
+    return () => {
+      el.removeEventListener("touchstart", handler);
+      el.removeEventListener("pointerdown", handler);
+    };
+  }, []);
+
   // CSS scroll-snap-mandatory is supposed to force snapping, but iOS
   // Capacitor's WKWebView occasionally lets a flick rest mid-way between
   // two cards (Apple's snap engine treats `scroll-snap-stop: always` as a
