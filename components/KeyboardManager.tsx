@@ -4,8 +4,8 @@ import { useEffect } from "react";
 
 /**
  * Keyboard manager untuk shell native. Feed/Reels comment sheet mengatur
- * keyboard inset sendiri, jadi iOS WebView tidak boleh auto-resize atau
- * auto-scroll ke focused input.
+ * keyboard inset sendiri, tetapi WebView scroll harus tetap aktif untuk
+ * halaman normal seperti Produk, Akun, Cart, dan Checkout.
  */
 export function KeyboardManager() {
   useEffect(() => {
@@ -21,7 +21,7 @@ export function KeyboardManager() {
         if (Capacitor.getPlatform() !== "ios") return;
 
         await Keyboard.setResizeMode({ mode: KeyboardResize.None });
-        await Keyboard.setScroll({ isDisabled: true });
+        await Keyboard.setScroll({ isDisabled: false });
 
         if (process.env.NODE_ENV !== "production") {
           // Membantu validasi di TestFlight/devtools tanpa mengubah UX.
