@@ -15,7 +15,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
-import { FiExternalLink, FiPlus, FiTrash2 } from "react-icons/fi";
+import { FiEdit2, FiExternalLink, FiPlus, FiTrash2 } from "react-icons/fi";
 
 type AdminFilter =
   | "all"
@@ -408,6 +408,14 @@ function AdminFeedRow({
             onClick={() => onModerate("unhide")}
             busy={busy}
           />
+        )}
+        {post.author.role === "ADMIN" && (
+          <Link
+            href={`/admin/feed/${post.id}/edit`}
+            className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1.5 text-[11px] font-extrabold text-blue-700 transition active:bg-blue-100"
+          >
+            <FiEdit2 className="h-3 w-3" /> Edit
+          </Link>
         )}
         <button
           type="button"

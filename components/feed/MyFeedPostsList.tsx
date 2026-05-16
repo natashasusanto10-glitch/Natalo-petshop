@@ -319,6 +319,14 @@ export function MyFeedPostActions({
               <FiChevronRight className="h-5 w-5 text-slate-300" aria-hidden="true" />
             </Link>
           )}
+          <Link
+            href={`/akun/postingan-saya/${postId}/edit`}
+            onClick={() => setMenuOpen(false)}
+            className="flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-black text-slate-900 transition active:bg-slate-50"
+          >
+            Edit caption / tag
+            <FiChevronRight className="h-5 w-5 text-slate-300" aria-hidden="true" />
+          </Link>
           <button
             type="button"
             onClick={() => {
