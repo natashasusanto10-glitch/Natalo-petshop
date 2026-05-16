@@ -90,6 +90,17 @@ export function FeedVideoPlayer({
   const [isPlaying, setIsPlaying] = useState(false);
   const [showLoadingIndicator, setShowLoadingIndicator] = useState(false);
   const [playbackProgress, setPlaybackProgress] = useState(0);
+  // Crossfade gate untuk transition opacity slot A/B. ON saat loop-swap
+  // (slot A ending → slot B starting, butuh 150ms blend supaya tidak
+  // ada black flash di paint buffer iOS). OFF di waktu lain — termasuk
+  // saat card baru masuk viewport (initial activation), supaya slot
+  // langsung snap ke opacity 1 begitu first frame ready. Tanpa gate
+  // ini, opacity fade-in 0→1 selama 150ms di iOS terlihat seperti
+  // "fade dari hitam" walaupun video sudah siap.
+  const [crossfading, setCrossfading] = useState(false);
+  // Timeout handle untuk reset crossfading state — clear kalau component
+  // unmount atau swap berikutnya datang sebelum yang lama selesai.
+  const crossfadeTimerRef = useRef<number | null>(null);
 
   // Resolve HLS → MP4 for Bunny posts so the player benefits from single-file
   // CDN caching. New posts already come through as MP4 from the webhook; this
@@ -120,6 +131,28 @@ export function FeedVideoPlayer({
     activeIndex == null ? Infinity : Math.abs(index - activeIndex);
   // Network-aware tier: WiFi gets aggressive prefetch, cellular-slow holds back.
   const preloadMode = getPreloadTier(distance);
+
+  // Pre-decode poster thumbnail untuk card adjacent (distance ≤ 1) supaya
+  // saat user scroll ke sini, gambar sudah ter-decode di compositor cache.
+  // Tanpa ini, `decoding="sync"` di <img> bawah masih decode at paint
+  // time saat card snap masuk viewport — bisa block paint 5-20ms di iOS
+  // → terlihat sebagai black flash. img.decode() shift decode work ke
+  // background sebelum user perlu lihat gambarnya.
+  useEffect(() => {
+    if (!thumbnailUrl) return;
+    if (distance > 1) return;
+    let cancelled = false;
+    const img = new Image();
+    img.src = thumbnailUrl;
+    void img.decode().catch(() => {
+      // decode() bisa reject untuk image yang corrupted / CORS — safe ignore,
+      // visible <img> tag akan tetap coba decode sync di paint time.
+      if (cancelled) return;
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [thumbnailUrl, distance]);
 
   // Helper: refs accessor by slot.
   const getRef = useCallback(
@@ -164,6 +197,17 @@ export function FeedVideoPlayer({
     videoDurationSec: durationSec,
   });
 
+  // Cleanup crossfade timer pada unmount supaya tidak setState pada
+  // component yang sudah ke-detach (React warning + memory leak kecil).
+  useEffect(() => {
+    return () => {
+      if (crossfadeTimerRef.current !== null) {
+        window.clearTimeout(crossfadeTimerRef.current);
+        crossfadeTimerRef.current = null;
+      }
+    };
+  }, []);
+
   // Teardown — pause + drop src on both slots when route leaves /feed so iOS
   // doesn't keep the AVPlayer alive in the background.
   useEffect(() => {
@@ -173,6 +217,11 @@ export function FeedVideoPlayer({
       setPlaybackProgress(0);
       setLoadSrc(false);
       setFarFromViewport(true);
+      setCrossfading(false);
+      if (crossfadeTimerRef.current !== null) {
+        window.clearTimeout(crossfadeTimerRef.current);
+        crossfadeTimerRef.current = null;
+      }
       for (const slot of ["A", "B"] as const) {
         const v = getRef(slot);
         if (!v) continue;
@@ -466,6 +515,20 @@ export function FeedVideoPlayer({
         // on top. Old slot fades out via opacity, but it KEEPS playing
         // (audibly silent because muted will flip true below). The browser
         // crossfades smoothly because both slots are decoding & painting.
+        //
+        // Enable crossfading gate sebelum setActiveSlot supaya kedua
+        // update flush di 1 React render — browser apply transition:150ms
+        // + opacity flip dalam frame yang sama (smooth blend, bukan snap).
+        // React 18+ auto-batch dalam event handler → kedua setState di
+        // bawah ini ter-flush bareng.
+        setCrossfading(true);
+        if (crossfadeTimerRef.current !== null) {
+          window.clearTimeout(crossfadeTimerRef.current);
+        }
+        crossfadeTimerRef.current = window.setTimeout(() => {
+          setCrossfading(false);
+          crossfadeTimerRef.current = null;
+        }, 200); // sedikit lebih lama dari transition 150ms supaya safe
         setPlaybackProgress(1);
         setActiveSlot((cur) => (cur === "A" ? "B" : "A"));
         window.requestAnimationFrame(() => setPlaybackProgress(0));
@@ -612,7 +675,13 @@ export function FeedVideoPlayer({
           alt=""
           loading="eager"
           fetchPriority="high"
-          decoding="async"
+          // decoding="sync" — force iOS decode + paint poster sebelum
+          // composite frame berikutnya. Default "async" boleh skip paint
+          // saat WKWebView sibuk scroll-snap layer reflow → user lihat
+          // bg-black tembus dari container. Sync lebih mahal di main
+          // thread (image decode block) tapi worth it untuk poster
+          // tunggal ~50-200 KB.
+          decoding="sync"
           className={`absolute inset-0 h-full w-full ${videoObjectFit}`}
           onError={(event) => {
             event.currentTarget.style.display = "none";
@@ -642,12 +711,15 @@ export function FeedVideoPlayer({
           // mid-swap (where back slot might be the new front).
           if (activeSlot === "A") setIsPlaying(false);
         }}
-        // 150ms crossfade — slot transitions visible-to-hidden when activeSlot
-        // flips. Both slots are decoding during the overlap; user sees a
-        // smooth blend rather than seek-clear black.
+        // Conditional transition: 150ms crossfade HANYA saat loop swap
+        // (crossfading=true). Saat card baru aktif (initial play), snap
+        // instant 0→1 supaya tidak terlihat "fade dari hitam" di iOS.
+        // Lihat komentar di state `crossfading` untuk konteks.
         style={{
           opacity: activeSlot === "A" && isPlaying ? 1 : 0,
-          transition: "opacity 150ms ease-out",
+          transition: crossfading
+            ? "opacity 150ms ease-out"
+            : "opacity 0ms",
         }}
       />
 
@@ -670,7 +742,9 @@ export function FeedVideoPlayer({
         }}
         style={{
           opacity: activeSlot === "B" && isPlaying ? 1 : 0,
-          transition: "opacity 150ms ease-out",
+          transition: crossfading
+            ? "opacity 150ms ease-out"
+            : "opacity 0ms",
         }}
       />
 
