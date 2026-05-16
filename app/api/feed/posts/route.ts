@@ -3,16 +3,17 @@
  * POST /api/feed/posts  — create post (auth required)
  *
  * Create routing:
- * - Admin session: bisa create kind VIDEO_ONLY / PRODUCT_ONLY / VIDEO_PRODUCT / PROMO
+ * - Admin session: bisa create kind VIDEO_ONLY / VIDEO_PRODUCT / PROMO
  *   ke tab REKOMENDASI atau PROMO. status auto-ACTIVE + publishedAt=now.
+ *   PRODUCT_ONLY deprecated dari create — feed sekarang video-first.
+ *   Existing PRODUCT_ONLY post di DB tetap render (backward compat).
  * - Customer session: hanya bisa create kind COMMUNITY ke tab KOMUNITAS.
  *   status auto-PENDING_REVIEW (admin moderasi sebelum tampil).
  *
- * Validasi per kind (lihat schema spec section 4 + 5):
+ * Validasi per kind:
  * - VIDEO_ONLY / COMMUNITY: wajib videoUrl + thumbnailUrl, optional productId
- * - PRODUCT_ONLY: wajib productId, NO video fields
  * - VIDEO_PRODUCT: wajib videoUrl + thumbnailUrl + productId
- * - PROMO: wajib productId + promoOriginalPrice + promoDiscountPrice; video opsional
+ * - PROMO: wajib productId + (productPromos atau legacy promoOriginal/Discount)
  */
 import { NextRequest, NextResponse } from "next/server";
 import type { FeedPostKind, FeedPostTab } from "@prisma/client";
@@ -90,9 +91,13 @@ type CreatePostBody = {
   tab?: string;
 };
 
+// PRODUCT_ONLY sengaja TIDAK termasuk — admin create sekarang video-first
+// (lihat AdminFeedCreateClient header). Existing PRODUCT_ONLY post di DB
+// tetap render di feed untuk backward compat, tapi tidak bisa create baru
+// lewat API. Banner produk tanpa video → arahkan ke landing page produk
+// atau banner homepage.
 const ADMIN_KINDS: ReadonlyArray<FeedPostKind> = [
   "VIDEO_ONLY",
-  "PRODUCT_ONLY",
   "VIDEO_PRODUCT",
   "PROMO",
 ];
@@ -238,7 +243,7 @@ export async function POST(request: NextRequest) {
       );
     }
   }
-  if (kind === "PRODUCT_ONLY" || kind === "VIDEO_PRODUCT" || kind === "PROMO") {
+  if (kind === "VIDEO_PRODUCT" || kind === "PROMO") {
     if (!productId) {
       return NextResponse.json(
         { error: "Produk wajib di-tag untuk kind ini." },
@@ -246,12 +251,9 @@ export async function POST(request: NextRequest) {
       );
     }
   }
-  if (kind === "PRODUCT_ONLY" && videoUrl) {
-    return NextResponse.json(
-      { error: "PRODUCT_ONLY tidak boleh ada video." },
-      { status: 400 },
-    );
-  }
+  // PRODUCT_ONLY (card produk tanpa video) sudah deprecated dari create
+  // path — di-reject upfront via ADMIN_KINDS allow-list. Lihat header
+  // comment di file ini.
 
   let promoOriginalPrice: number | null = null;
   let promoDiscountPrice: number | null = null;

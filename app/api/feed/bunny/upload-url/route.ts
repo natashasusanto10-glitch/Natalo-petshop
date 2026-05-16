@@ -174,9 +174,11 @@ export async function POST(request: NextRequest) {
     : null;
   const videoDurationSec = Number(body.videoDurationSec);
 
-  // Admin can publish to other kinds/tabs (VIDEO_ONLY, PRODUCT_ONLY,
-  // VIDEO_PRODUCT, PROMO). Customer is always COMMUNITY → KOMUNITAS.
-  const ADMIN_KINDS: FeedPostKind[] = ["VIDEO_ONLY", "PRODUCT_ONLY", "VIDEO_PRODUCT", "PROMO"];
+  // Admin can publish kind VIDEO_ONLY / VIDEO_PRODUCT / PROMO via Bunny
+  // upload flow. PRODUCT_ONLY sengaja TIDAK termasuk — upload flow ini
+  // wajib video (yang di-upload ke Bunny), dan feed sudah video-first
+  // (lihat AdminFeedCreateClient). Customer always COMMUNITY → KOMUNITAS.
+  const ADMIN_KINDS: FeedPostKind[] = ["VIDEO_ONLY", "VIDEO_PRODUCT", "PROMO"];
   let kind: FeedPostKind = "COMMUNITY";
   let tab: FeedPostTab = "KOMUNITAS";
   if (isAdmin) {

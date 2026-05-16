@@ -3,15 +3,19 @@
 /**
  * Admin create post form. Mendukung 4 jenis (spec section 4):
  *   1. VIDEO_ONLY     → video edukasi/info tanpa produk (tab REKOMENDASI)
- *   2. PRODUCT_ONLY   → card produk tanpa video (tab REKOMENDASI)
- *   3. VIDEO_PRODUCT  → video jualan dgn produk terkait (tab REKOMENDASI)
- *   4. PROMO          → banner/video promo dgn pricing diskon (auto tab PROMO)
+ *   2. VIDEO_PRODUCT  → video jualan dgn produk terkait (tab REKOMENDASI)
+ *   3. PROMO          → video promo dgn pricing diskon (auto tab PROMO)
+ *
+ * Note: PRODUCT_ONLY (card produk tanpa video) sengaja DIHAPUS dari UI
+ * create — feed sekarang video-first. Kalau ingin showcase produk
+ * tanpa video, pakai banner homepage atau landing page produk.
+ * Existing PRODUCT_ONLY post tetap render di feed (backward compat).
  *
  * Flow:
  *   - Pilih kind
  *   - Isi title + description
  *   - Pilih video (untuk VIDEO_* dan PROMO opsional) → client-side thumb extract
- *   - Pilih produk (untuk PRODUCT_ONLY, VIDEO_PRODUCT, PROMO)
+ *   - Pilih produk (untuk VIDEO_PRODUCT, PROMO)
  *   - Promo fields (untuk PROMO)
  *   - Submit → POST /api/feed/posts → auto-ACTIVE
  */
@@ -31,7 +35,12 @@ import {
   MAX_SOURCE_VIDEO_SIZE,
 } from "@/lib/feed/video-config";
 
-type Kind = "VIDEO_ONLY" | "PRODUCT_ONLY" | "VIDEO_PRODUCT" | "PROMO";
+// PRODUCT_ONLY sengaja TIDAK dimasukkan ke union ini — admin create hanya
+// support kind yang punya video (VIDEO_ONLY, VIDEO_PRODUCT, PROMO).
+// Existing PRODUCT_ONLY post tetap render di feed untuk backward compat,
+// tapi tidak ada UI untuk create baru. Showcase produk tanpa video → pakai
+// banner homepage / product landing page.
+type Kind = "VIDEO_ONLY" | "VIDEO_PRODUCT" | "PROMO";
 
 type ProductSummary = {
   id: string;
@@ -76,9 +85,15 @@ export function AdminFeedCreateClient() {
   const [compressProgress, setCompressProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
+  // Semua kind yang admin bisa create sekarang punya video — PRODUCT_ONLY
+  // di-hapus dari opsi UI (lihat header comment). needsVideo bisa di-
+  // simplify jadi true, tapi explicit list dibiarkan supaya lebih jelas
+  // saat baca code.
   const needsVideo = kind === "VIDEO_ONLY" || kind === "VIDEO_PRODUCT" || kind === "PROMO";
-  const needsProduct = kind === "PRODUCT_ONLY" || kind === "VIDEO_PRODUCT" || kind === "PROMO";
-  const videoOptional = kind === "PROMO"; // PROMO bisa banner-only tanpa video
+  const needsProduct = kind === "VIDEO_PRODUCT" || kind === "PROMO";
+  // PROMO sekarang wajib video juga — tidak lagi banner-only — karena
+  // PRODUCT_ONLY (use case banner) sudah dihapus.
+  const videoOptional = false;
 
   // Reset state irrelevant saat kind berubah. Compute needs* di sini supaya
   // tidak butuh dependencies tambahan di effect.
@@ -87,7 +102,7 @@ export function AdminFeedCreateClient() {
     const stillNeedsVideo =
       kind === "VIDEO_ONLY" || kind === "VIDEO_PRODUCT" || kind === "PROMO";
     const stillNeedsProduct =
-      kind === "PRODUCT_ONLY" || kind === "VIDEO_PRODUCT" || kind === "PROMO";
+      kind === "VIDEO_PRODUCT" || kind === "PROMO";
     if (!stillNeedsVideo) {
       setVideoFile(null);
       setVideoMeta(null);
@@ -447,8 +462,7 @@ export function AdminFeedCreateClient() {
             [
               { v: "VIDEO_ONLY", l: "Video Edukasi", d: "Tanpa produk" },
               { v: "VIDEO_PRODUCT", l: "Video + Produk", d: "Konten jualan" },
-              { v: "PRODUCT_ONLY", l: "Produk Saja", d: "Card tanpa video" },
-              { v: "PROMO", l: "Promo Produk", d: "Diskon + pricing" },
+              { v: "PROMO", l: "Promo Produk", d: "Diskon per-produk" },
             ] as { v: Kind; l: string; d: string }[]
           ).map((opt) => (
             <button
