@@ -381,8 +381,8 @@ export function NotificationsList() {
   }
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-2xl bg-slate-50">
-      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 px-4 pb-4 pt-[calc(0.75rem+env(safe-area-inset-top))] backdrop-blur">
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-2xl flex-col overflow-hidden bg-slate-50">
+      <header className="z-40 shrink-0 border-b border-slate-200 bg-white/95 px-4 pb-4 pt-[calc(0.75rem+env(safe-area-inset-top))] backdrop-blur">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -400,7 +400,10 @@ export function NotificationsList() {
           </div>
         </div>
 
-        <nav className="mt-4 flex gap-6 overflow-x-auto border-b border-slate-100" aria-label="Kategori notifikasi">
+        <nav
+          className="mt-4 flex touch-pan-x gap-6 overflow-x-auto border-b border-slate-100 overscroll-x-contain"
+          aria-label="Kategori notifikasi"
+        >
           {TABS.map((tab) => {
             const active = activeTab === tab.id;
             return (
@@ -421,7 +424,10 @@ export function NotificationsList() {
         </nav>
       </header>
 
-      <section className="px-4 py-4">
+      <section
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 pb-[calc(env(safe-area-inset-bottom)+24px)]"
+        style={{ WebkitOverflowScrolling: "touch" }}
+      >
         {error && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
             {error}

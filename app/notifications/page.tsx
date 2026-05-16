@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function NotificationsPage() {
   return (
-    <main className="min-h-screen bg-slate-50 pb-[calc(6rem+env(safe-area-inset-bottom))]">
+    <main className="h-[100dvh] overflow-hidden bg-slate-50">
       <NotificationsList />
     </main>
   );
