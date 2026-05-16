@@ -311,6 +311,14 @@ export function SwipeBackProvider({ children }: Props) {
 
       const needsConfirm = document.body.dataset.swipeBackConfirm === "true";
       if (needsConfirm) {
+        const customEventName = document.body.dataset.swipeBackConfirmEvent;
+        if (customEventName) {
+          animateCancel(x, () => {
+            window.dispatchEvent(new CustomEvent(customEventName));
+          });
+          return;
+        }
+
         const customTitle = document.body.dataset.swipeBackConfirmTitle;
         const customMsg = document.body.dataset.swipeBackConfirmMessage;
         if (customTitle) setConfirmTitle(customTitle);

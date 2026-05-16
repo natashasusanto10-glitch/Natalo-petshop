@@ -2,11 +2,13 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Script from "next/script";
+import { FiArrowLeft, FiGift } from "react-icons/fi";
 import { formatRupiah, formatShippingDuration } from "@/lib/format";
 import { toCustomerShippingErrorMessage } from "@/lib/shipping-messages";
+import { BottomSheet } from "@/components/BottomSheet";
 import { MetodePengiriman } from "@/components/MetodePengiriman";
 import {
   DELIVERY_METHOD,
@@ -70,6 +72,13 @@ type CheckoutRecalculateResponse = CheckoutPricing & {
   invalidated_message?: string | null;
   customer_voucher_error?: string | null;
   manual_voucher_error?: string | null;
+};
+
+type CheckoutBenefit = {
+  key: string;
+  label: string;
+  value: string;
+  amount?: number;
 };
 
 declare global {
@@ -186,6 +195,7 @@ export default function CheckoutPage() {
   const [draftReady, setDraftReady] = useState(false);
   const [stockIssues, setStockIssues] = useState<CartStockIssue[]>([]);
   const [stockRefreshing, setStockRefreshing] = useState(false);
+  const [backConfirmOpen, setBackConfirmOpen] = useState(false);
 
   useEffect(() => {
     let restoredDraft: {
@@ -574,6 +584,99 @@ export default function CheckoutPage() {
   const subtotal = checkoutPricing?.subtotal ?? localSubtotal;
   const discount = checkoutPricing?.discount ?? voucherApplied?.discount ?? 0;
   const total = checkoutPricing?.total ?? Math.max(subtotal + shippingCost - discount, 0);
+  const checkoutBenefits = useMemo<CheckoutBenefit[]>(() => {
+    const benefits: CheckoutBenefit[] = [];
+    const customerVoucherDiscount = voucherApplied?.discount ?? 0;
+    const manualVoucherDiscount = manualVoucherApplied?.discount ?? 0;
+
+    if (customerVoucherDiscount > 0) {
+      benefits.push({
+        key: "customer-voucher",
+        label: "Hemat Voucher",
+        value: formatRupiah(customerVoucherDiscount),
+        amount: customerVoucherDiscount,
+      });
+    }
+
+    if (manualVoucherDiscount > 0) {
+      benefits.push({
+        key: "manual-voucher",
+        label: "Voucher khusus",
+        value: formatRupiah(manualVoucherDiscount),
+        amount: manualVoucherDiscount,
+      });
+    }
+
+    const unclassifiedDiscount = Math.max(
+      0,
+      discount - customerVoucherDiscount - manualVoucherDiscount,
+    );
+    if (unclassifiedDiscount > 0) {
+      benefits.push({
+        key: "promo-discount",
+        label: "Diskon promo",
+        value: formatRupiah(unclassifiedDiscount),
+        amount: unclassifiedDiscount,
+      });
+    }
+
+    const serverShippingFee = checkoutPricing?.shipping_fee ?? shippingCost;
+    const shippingDiscount =
+      selectedRate && !isSelfPickup
+        ? Math.max(0, selectedRate.price - serverShippingFee)
+        : 0;
+
+    if (shippingDiscount > 0) {
+      benefits.push({
+        key: "shipping-discount",
+        label: "Subsidi ongkir",
+        value: formatRupiah(shippingDiscount),
+        amount: shippingDiscount,
+      });
+    } else if (selectedRate && !isSelfPickup && serverShippingFee === 0 && selectedRate.price === 0) {
+      benefits.push({
+        key: "free-shipping",
+        label: "Ongkir",
+        value: "Gratis",
+      });
+    }
+
+    return benefits;
+  }, [
+    checkoutPricing?.shipping_fee,
+    discount,
+    isSelfPickup,
+    manualVoucherApplied?.discount,
+    selectedRate,
+    shippingCost,
+    voucherApplied?.discount,
+  ]);
+  const checkoutBenefitSavings = checkoutBenefits.reduce(
+    (sum, benefit) => sum + (benefit.amount ?? 0),
+    0,
+  );
+  const checkoutBackCopy = useMemo(() => {
+    if (checkoutBenefits.length === 0) {
+      return {
+        title: "Yakin kembali ke keranjang?",
+        message:
+          "Pesanan kamu belum selesai. Kamu bisa lanjut checkout atau kembali mengatur keranjang.",
+      };
+    }
+
+    const onlyVoucher =
+      checkoutBenefits.length === 1 &&
+      (checkoutBenefits[0].key === "customer-voucher" ||
+        checkoutBenefits[0].key === "manual-voucher");
+
+    return {
+      title: onlyVoucher ? "Voucher kamu masih aktif!" : "Kamu masih punya promo aktif!",
+      message:
+        checkoutBenefitSavings > 0
+          ? `Kamu sedang hemat ${formatRupiah(checkoutBenefitSavings)} di checkout ini. Lanjutkan checkout agar benefit tidak terlewat.`
+          : "Ada benefit aktif di checkout ini. Lanjutkan checkout agar benefit tidak terlewat.",
+    };
+  }, [checkoutBenefitSavings, checkoutBenefits]);
   const totalItemCount = items.reduce((sum, item) => sum + item.quantity, 0);
   const visibleCheckoutItems = showAllCheckoutItems ? items : items.slice(0, 4);
   const hiddenCheckoutItemCount = Math.max(items.length - visibleCheckoutItems.length, 0);
@@ -822,43 +925,57 @@ export default function CheckoutPage() {
     paymentMethod,
   ]);
 
-  // Opt-in confirmation modal saat swipe-back / back-button kalau ada data
-  // checkout berisiko hilang. SwipeBackProvider baca body dataset ini
-  // untuk trigger modal "Keluar dari checkout?".
+  const openBackToCartConfirmation = useCallback(() => {
+    setBackConfirmOpen(true);
+  }, []);
+
+  const continueCheckout = useCallback(() => {
+    setBackConfirmOpen(false);
+  }, []);
+
+  const confirmBackToCart = useCallback(() => {
+    setBackConfirmOpen(false);
+    router.push("/cart");
+  }, [router]);
+
+  // Checkout selalu meminta konfirmasi khusus saat user mencoba back.
+  // SwipeBackProvider dispatch event ini untuk gesture iOS, sementara
+  // popstate di bawah menangani browser/Android back.
   useEffect(() => {
-    const hasRiskyData = Boolean(
-      form.shippingAddress?.trim() ||
-        form.voucherCode ||
-        form.manualVoucherCode ||
-        form.notes?.trim() ||
-        selectedRate ||
-        payment,
-    );
-    if (hasRiskyData) {
-      document.body.dataset.swipeBackConfirm = "true";
-      document.body.dataset.swipeBackConfirmTitle = "Keluar dari checkout?";
-      document.body.dataset.swipeBackConfirmMessage =
-        "Data checkout yang belum disimpan mungkin hilang.";
-    } else {
-      delete document.body.dataset.swipeBackConfirm;
-      delete document.body.dataset.swipeBackConfirmTitle;
-      delete document.body.dataset.swipeBackConfirmMessage;
+    const eventName = "checkout:back-to-cart";
+    function handleCheckoutBackRequest() {
+      openBackToCartConfirmation();
     }
+
+    window.addEventListener(eventName, handleCheckoutBackRequest);
+    document.body.dataset.swipeBackConfirm = "true";
+    document.body.dataset.swipeBackConfirmEvent = eventName;
+    document.body.dataset.swipeBackConfirmTitle = "Yakin kembali ke keranjang?";
+    document.body.dataset.swipeBackConfirmMessage = "Pesanan kamu belum selesai.";
+
     return () => {
-      // Cleanup saat unmount (user navigate keluar) supaya tidak nyangkut
-      // di halaman lain.
+      window.removeEventListener(eventName, handleCheckoutBackRequest);
       delete document.body.dataset.swipeBackConfirm;
+      delete document.body.dataset.swipeBackConfirmEvent;
       delete document.body.dataset.swipeBackConfirmTitle;
       delete document.body.dataset.swipeBackConfirmMessage;
     };
-  }, [
-    form.shippingAddress,
-    form.voucherCode,
-    form.manualVoucherCode,
-    form.notes,
-    selectedRate,
-    payment,
-  ]);
+  }, [openBackToCartConfirmation]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const guardState = { checkoutBackGuard: true };
+    window.history.pushState(guardState, "", window.location.href);
+
+    function handlePopState() {
+      window.history.pushState(guardState, "", window.location.href);
+      openBackToCartConfirmation();
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [openBackToCartConfirmation]);
 
   // Bersihkan pesan invalidated saat user pilih voucher baru
   function applyVoucherFromList(
@@ -1219,11 +1336,26 @@ export default function CheckoutPage() {
         />
       )}
 
+      <header className="sticky top-0 z-50 border-b border-zinc-100 bg-white [padding-top:env(safe-area-inset-top)]">
+        <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-3 lg:px-4">
+          <button
+            type="button"
+            onClick={openBackToCartConfirmation}
+            aria-label="Kembali ke keranjang"
+            className="-ml-1 grid h-10 w-10 shrink-0 place-items-center rounded-full text-zinc-900 transition active:bg-zinc-100"
+          >
+            <FiArrowLeft className="h-5 w-5" aria-hidden="true" />
+          </button>
+          <h1 className="min-w-0 flex-1 truncate text-base font-black text-zinc-950">
+            Checkout
+          </h1>
+          <span aria-hidden className="h-10 w-10 shrink-0" />
+        </div>
+      </header>
+
       <div className="mx-auto max-w-6xl gap-8 px-3 py-3 pb-32 lg:grid lg:grid-cols-[1fr_360px] lg:px-4 lg:py-10 lg:pb-10">
         <div>
-          <h1 className="hidden text-2xl font-black tracking-tight text-zinc-950 lg:block lg:text-3xl">Checkout</h1>
-
-          <form id="checkout-form" onSubmit={handleOrder} className="space-y-3 lg:mt-8 lg:space-y-4">
+          <form id="checkout-form" onSubmit={handleOrder} className="space-y-3 lg:space-y-4">
             <section className={`overflow-hidden rounded-2xl border border-zinc-100 bg-white shadow-sm ${addressMode === "select" ? "hidden" : ""}`}>
               {addressBookLoading ? (
                 <div className="px-4 py-3 text-sm font-semibold text-zinc-500">
@@ -1718,6 +1850,63 @@ export default function CheckoutPage() {
           setShippingError("");
         }}
       />
+
+      <BottomSheet
+        open={backConfirmOpen}
+        onClose={continueCheckout}
+        footer={
+          <div className="grid gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={continueCheckout}
+              className="flex h-12 items-center justify-center rounded-full bg-natalo-600 px-5 text-sm font-black text-white transition hover:bg-natalo-700 active:scale-[0.98]"
+            >
+              Lanjut Checkout
+            </button>
+            <button
+              type="button"
+              onClick={confirmBackToCart}
+              className="flex h-12 items-center justify-center rounded-full border border-zinc-200 bg-white px-5 text-sm font-black text-zinc-700 transition hover:bg-zinc-50 active:scale-[0.98]"
+            >
+              Kembali ke Keranjang
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-5">
+          <div className="flex items-start gap-3">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-natalo-50 text-natalo-600">
+              <FiGift className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-lg font-black text-zinc-950">
+                {checkoutBackCopy.title}
+              </h2>
+              <p className="mt-1 text-sm leading-6 text-zinc-500">
+                {checkoutBackCopy.message}
+              </p>
+            </div>
+          </div>
+
+          {checkoutBenefits.length > 0 && (
+            <div className="rounded-2xl border border-natalo-100 bg-natalo-50/70 p-4">
+              <div className="space-y-3">
+                {checkoutBenefits.map((benefit) => (
+                  <div
+                    key={benefit.key}
+                    className="flex items-center justify-between gap-4 text-sm"
+                  >
+                    <span className="font-semibold text-zinc-600">{benefit.label}</span>
+                    <span className="shrink-0 font-black text-natalo-700">
+                      {benefit.value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </BottomSheet>
 
       {/* Mobile sticky bottom CTA */}
       {items.length > 0 && (

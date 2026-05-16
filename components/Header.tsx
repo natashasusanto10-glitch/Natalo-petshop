@@ -77,6 +77,7 @@ export function Header() {
   const isProductDetail = /^\/products\/[^/]+$/.test(currentPath);
   const isOrderDetail = /^\/pesanan\/[^/]+$/.test(currentPath);
   const isOrderSuccess = /^\/pesanan\/[^/]+\/success$/.test(currentPath);
+  const isCheckoutPage = currentPath === "/checkout";
   const isCheckoutAddressPicker = currentPath === "/checkout/addresses";
   const authTitle = AUTH_PATHS[currentPath];
   const isAuthPage = authTitle !== undefined;
@@ -176,6 +177,7 @@ export function Header() {
     isNotificationCenter ||
     isFocusedAccountPage ||
     isAccountSubPageWithoutBrandHeader ||
+    isCheckoutPage ||
     isCheckoutAddressPicker ||
     isOrderDetail ||
     isOrderSuccess
