@@ -485,7 +485,7 @@ function PinnedProductSheet({
       ? `${products.length} Produk di Video`
       : "Produk di Video";
   return (
-    <BottomSheet open={open} onClose={onClose} title={title}>
+    <BottomSheet open={open} onClose={onClose} title={title} variant="dark">
       <div className="space-y-3">
         {products.map((product) => {
           const price = product.discountPrice ?? product.price;
@@ -493,10 +493,10 @@ function PinnedProductSheet({
             <Link
               key={product.id}
               href={`/products/${product.slug}`}
-              className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white p-3 transition active:bg-gray-50"
+              className="flex items-center gap-3 rounded-2xl border border-[#242B33] bg-[#111820] p-3 transition hover:bg-[#151F2A] active:bg-[#172230]"
             >
               {product.imageUrl ? (
-                <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-gray-100">
+                <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-white">
                   <Image
                     src={product.imageUrl}
                     alt={product.name}
@@ -508,24 +508,24 @@ function PinnedProductSheet({
                   />
                 </div>
               ) : (
-                <div className="grid h-20 w-20 shrink-0 place-items-center rounded-2xl bg-gray-100 text-natalo-600">
+                <div className="grid h-20 w-20 shrink-0 place-items-center rounded-2xl bg-white/[0.08] text-natalo-300">
                   <FiPackage className="h-7 w-7" />
                 </div>
               )}
               <div className="min-w-0 flex-1">
-                <p className="line-clamp-2 text-sm font-black text-gray-900">
+                <p className="line-clamp-2 text-sm font-black text-white">
                   {product.name}
                 </p>
-                <p className="mt-1 text-base font-black text-natalo-600">
+                <p className="mt-1 text-base font-black text-natalo-300">
                   {formatRupiah(price)}
                 </p>
                 <p
-                  className={`mt-1 text-xs font-bold ${product.stock > 0 ? "text-emerald-600" : "text-red-500"}`}
+                  className={`mt-1 text-xs font-bold ${product.stock > 0 ? "text-emerald-400" : "text-red-400"}`}
                 >
                   {product.stock > 0 ? `Stok ${product.stock}` : "Stok Habis"}
                 </p>
               </div>
-              <FiChevronRight className="h-5 w-5 shrink-0 text-gray-400" aria-hidden />
+              <FiChevronRight className="h-5 w-5 shrink-0 text-zinc-300" aria-hidden />
             </Link>
           );
         })}

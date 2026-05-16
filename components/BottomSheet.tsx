@@ -17,6 +17,7 @@ interface Props {
   children: ReactNode;
   /** Tombol di footer, optional. Misal "Apply" / "Reset" */
   footer?: ReactNode;
+  variant?: "light" | "dark";
 }
 
 const DRAG_CLOSE_THRESHOLD = 120;
@@ -96,7 +97,14 @@ function unlockPageScroll() {
  * Backdrop klik untuk close. Esc juga close.
  * Body scroll di-lock saat open, including iOS fixed-position locking.
  */
-export function BottomSheet({ open, onClose, title, children, footer }: Props) {
+export function BottomSheet({
+  open,
+  onClose,
+  title,
+  children,
+  footer,
+  variant = "light",
+}: Props) {
   const sheetRef = useRef<HTMLDivElement | null>(null);
   const dragStartYRef = useRef(0);
   const dragYRef = useRef(0);
@@ -215,6 +223,8 @@ export function BottomSheet({ open, onClose, title, children, footer }: Props) {
 
   if (!open || typeof document === "undefined") return null;
 
+  const isDark = variant === "dark";
+
   return (
     <Drawer.Root
       open={open}
@@ -241,7 +251,11 @@ export function BottomSheet({ open, onClose, title, children, footer }: Props) {
           data-no-pull
           data-no-swipe-back="true"
           aria-describedby={undefined}
-          className="nat-bottom-sheet fixed inset-x-0 bottom-0 z-[2001] ml-auto mr-auto flex w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl outline-none"
+          className={`nat-bottom-sheet fixed inset-x-0 bottom-0 z-[2001] ml-auto mr-auto flex w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl outline-none ${
+            isDark
+              ? "bg-[#0B0F14] text-white shadow-[0_-18px_45px_rgba(0,0,0,0.45)]"
+              : "bg-white shadow-2xl"
+          }`}
           onOpenAutoFocus={(event) => event.preventDefault()}
           style={{
             maxHeight: "min(90dvh, calc(100dvh - env(safe-area-inset-top)))",
@@ -264,19 +278,31 @@ export function BottomSheet({ open, onClose, title, children, footer }: Props) {
             onTouchCancel={finishDrag}
           >
             <div className="flex justify-center py-2">
-              <div className="h-1.5 w-10 rounded-full bg-zinc-300" />
+              <div
+                className={`h-1.5 w-10 rounded-full ${
+                  isDark ? "bg-zinc-600" : "bg-zinc-300"
+                }`}
+              />
             </div>
 
             {title && (
               <div className="flex items-center justify-between gap-4">
-                <Drawer.Title className="text-lg font-black text-zinc-950">
+                <Drawer.Title
+                  className={`text-lg font-black ${
+                    isDark ? "text-white" : "text-zinc-950"
+                  }`}
+                >
                   {title}
                 </Drawer.Title>
                 <button
                   type="button"
                   aria-label="Tutup"
                   onClick={onClose}
-                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-950 active:bg-zinc-100"
+                  className={`grid h-9 w-9 shrink-0 place-items-center rounded-full transition ${
+                    isDark
+                      ? "text-zinc-300 hover:bg-white/10 hover:text-white active:bg-white/10"
+                      : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-950 active:bg-zinc-100"
+                  }`}
                 >
                   <svg
                     viewBox="0 0 24 24"
@@ -294,12 +320,24 @@ export function BottomSheet({ open, onClose, title, children, footer }: Props) {
             )}
           </div>
 
-          <div className="nat-bottom-sheet-scroll min-h-0 flex-1 overflow-y-auto border-t border-zinc-100 p-5">
+          <div
+            className={`nat-bottom-sheet-scroll min-h-0 flex-1 overflow-y-auto border-t p-5 ${
+              isDark
+                ? "border-[#242B33] bg-[#0B0F14]"
+                : "border-zinc-100 bg-white"
+            }`}
+          >
             {children}
           </div>
 
           {footer && (
-            <div className="sticky bottom-0 z-10 shrink-0 border-t border-zinc-100 bg-white px-4 pt-4 [padding-bottom:calc(16px+env(safe-area-inset-bottom))]">
+            <div
+              className={`sticky bottom-0 z-10 shrink-0 border-t px-4 pt-4 [padding-bottom:calc(16px+env(safe-area-inset-bottom))] ${
+                isDark
+                  ? "border-[#242B33] bg-[#0B0F14]"
+                  : "border-zinc-100 bg-white"
+              }`}
+            >
               {footer}
             </div>
           )}
