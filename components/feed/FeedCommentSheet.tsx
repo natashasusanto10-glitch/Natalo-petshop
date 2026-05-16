@@ -33,6 +33,7 @@ const SNAP_BACK_MS = 280;
 const SNAP_BACK_EASE = "cubic-bezier(0.34, 1.26, 0.64, 1)";
 const KEYBOARD_INSET_THRESHOLD = 120;
 const COMMENT_COMPOSER_HEIGHT = 76;
+const COMMENT_REPLY_COMPOSER_HEIGHT = 118;
 
 export function FeedCommentSheet({
   open,
@@ -46,10 +47,12 @@ export function FeedCommentSheet({
   const [error, setError] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [draft, setDraft] = useState("");
+  const [replyTo, setReplyTo] = useState<FeedCommentItem | null>(null);
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
   const sheetRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const viewportBaselineRef = useRef(0);
   const dragStartYRef = useRef(0);
   const dragYRef = useRef(0);
@@ -140,6 +143,7 @@ export function FeedCommentSheet({
       setNextCursor(null);
       setError(null);
       setDraft("");
+      setReplyTo(null);
       setPostError(null);
       return;
     }
@@ -175,6 +179,7 @@ export function FeedCommentSheet({
       isDraggingRef.current = false;
       setIsDragging(false);
       setIsSnappingBack(false);
+      setReplyTo(null);
     }
   }, [open]);
 
@@ -192,7 +197,6 @@ export function FeedCommentSheet({
       viewportBaselineRef.current = 0;
       document.body.classList.remove("keyboard-open");
       document.documentElement.style.removeProperty("--kb");
-      document.documentElement.style.removeProperty("--feed-comment-composer-h");
       document.documentElement.style.removeProperty("--feed-comment-sheet-height");
       return;
     }
@@ -211,7 +215,6 @@ export function FeedCommentSheet({
       setKeyboardOpen(nextKeyboardOpen);
       body.classList.toggle("keyboard-open", nextKeyboardOpen);
       root.style.setProperty("--kb", `${keyboardHeight}px`);
-      root.style.setProperty("--feed-comment-composer-h", `${COMMENT_COMPOSER_HEIGHT}px`);
       root.style.setProperty(
         "--feed-comment-sheet-height",
         nextKeyboardOpen ? "42dvh" : "56dvh",
@@ -283,7 +286,6 @@ export function FeedCommentSheet({
       removeKeyboardListeners?.();
       body.classList.remove("keyboard-open");
       root.style.removeProperty("--kb");
-      root.style.removeProperty("--feed-comment-composer-h");
       root.style.removeProperty("--feed-comment-sheet-height");
     };
   }, [open]);
@@ -349,7 +351,10 @@ export function FeedCommentSheet({
       const res = await fetch(`/api/feed/posts/${postId}/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({
+          content,
+          parentCommentId: replyTo?.id ?? undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -360,9 +365,20 @@ export function FeedCommentSheet({
         }
         return;
       }
-      // Prepend new comment ke list
-      setComments((prev) => [data.comment, ...prev]);
+      if (data.comment.parentCommentId) {
+        setComments((prev) =>
+          prev.map((item) =>
+            item.id === data.comment.parentCommentId
+              ? { ...item, replyCount: (item.replyCount ?? 0) + 1 }
+              : item,
+          ),
+        );
+      } else {
+        // Prepend new top-level comment ke list
+        setComments((prev) => [data.comment, ...prev]);
+      }
       setDraft("");
+      setReplyTo(null);
       hapticTap();
     } catch {
       setPostError("Tidak bisa terhubung. Coba lagi.");
@@ -395,57 +411,89 @@ export function FeedCommentSheet({
     blurCommentInput();
   }
 
+  function handleReply(comment: FeedCommentItem) {
+    setReplyTo(comment);
+    hapticTap();
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+    });
+  }
+
+  const replyAuthorName = replyTo ? getCommentAuthorName(replyTo) : null;
+  const composerHeight = replyTo ? COMMENT_REPLY_COMPOSER_HEIGHT : COMMENT_COMPOSER_HEIGHT;
+
   const commentFooter = (
-    <div className="flex w-full items-end gap-2">
-      <div className="mb-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/10 text-[11px] font-black text-white ring-1 ring-white/10">
-        K
-      </div>
-      <button
-        type="button"
-        aria-label="Emoji"
-        className="mb-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full text-white/55 transition active:scale-95 active:bg-white/10"
-      >
-        <FiSmile className="h-5 w-5" />
-      </button>
-      <textarea
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onFocus={() => {
-          document.documentElement.style.setProperty(
-            "--feed-comment-sheet-height",
-            "42dvh",
-          );
-        }}
-        onBlur={() => {
-          window.setTimeout(() => {
-            if (!document.body.classList.contains("keyboard-open")) {
-              document.documentElement.style.setProperty(
-                "--feed-comment-sheet-height",
-                "56dvh",
-              );
+    <div className="w-full">
+      {replyAuthorName && (
+        <div className="mb-2 flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-bold text-white/68">
+          <span className="min-w-0 truncate">Membalas {replyAuthorName}</span>
+          <button
+            type="button"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setReplyTo(null);
+            }}
+            className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-white/58 transition active:bg-white/10 active:text-white"
+            aria-label="Batal balas"
+          >
+            <FiX className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+      <div className="flex w-full items-end gap-2">
+        <div className="mb-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/10 text-[11px] font-black text-white ring-1 ring-white/10">
+          K
+        </div>
+        <button
+          type="button"
+          aria-label="Emoji"
+          className="mb-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full text-white/55 transition active:scale-95 active:bg-white/10"
+        >
+          <FiSmile className="h-5 w-5" />
+        </button>
+        <textarea
+          ref={inputRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onFocus={() => {
+            document.documentElement.style.setProperty(
+              "--feed-comment-sheet-height",
+              "42dvh",
+            );
+          }}
+          onBlur={() => {
+            window.setTimeout(() => {
+              if (!document.body.classList.contains("keyboard-open")) {
+                document.documentElement.style.setProperty(
+                  "--feed-comment-sheet-height",
+                  "56dvh",
+                );
+              }
+            }, 80);
+          }}
+          placeholder={replyAuthorName ? `Balas ${replyAuthorName}...` : "Tulis komentar..."}
+          rows={1}
+          maxLength={1000}
+          className="max-h-28 min-h-10 flex-1 resize-none rounded-2xl border border-white/10 bg-white/[0.08] px-3 py-2.5 text-sm leading-5 text-white placeholder:text-white/42 focus:border-white/25 focus:bg-white/[0.12] focus:outline-none"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              submitComment();
             }
-          }, 80);
-        }}
-        placeholder="Tulis komentar..."
-        rows={1}
-        maxLength={1000}
-        className="max-h-28 min-h-10 flex-1 resize-none rounded-2xl border border-white/10 bg-white/[0.08] px-3 py-2.5 text-sm leading-5 text-white placeholder:text-white/42 focus:border-white/25 focus:bg-white/[0.12] focus:outline-none"
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            submitComment();
-          }
-        }}
-      />
-      <button
-        type="button"
-        onClick={submitComment}
-        disabled={!draft.trim() || posting}
-        aria-label="Kirim komentar"
-        className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-natalo-600 text-white shadow-lg shadow-natalo-950/30 transition active:scale-95 disabled:cursor-not-allowed disabled:bg-white/12 disabled:text-white/35 disabled:shadow-none"
-      >
-        <FiSend className="h-4 w-4" />
-      </button>
+          }}
+        />
+        <button
+          type="button"
+          onClick={submitComment}
+          disabled={!draft.trim() || posting}
+          aria-label="Kirim komentar"
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-natalo-600 text-white shadow-lg shadow-natalo-950/30 transition active:scale-95 disabled:cursor-not-allowed disabled:bg-white/12 disabled:text-white/35 disabled:shadow-none"
+        >
+          <FiSend className="h-4 w-4" />
+        </button>
+      </div>
     </div>
   );
 
@@ -472,7 +520,7 @@ export function FeedCommentSheet({
         className="feed-comment-sheet fixed inset-x-0 z-[9010] mx-auto flex w-full max-w-2xl flex-col overflow-hidden rounded-t-[28px] border border-white/10 bg-[#111418]/[0.98] text-white shadow-[0_-28px_80px_rgba(0,0,0,0.5)] outline-none backdrop-blur-xl"
         style={{
           height: "var(--feed-comment-sheet-height, 56dvh)",
-          bottom: "calc(var(--feed-comment-composer-h, 76px) + var(--kb, 0px))",
+          bottom: `calc(${composerHeight}px + var(--kb, 0px))`,
           transform:
             isDragging || isSnappingBack
               ? `translate3d(0, ${dragY}px, 0)`
@@ -541,7 +589,7 @@ export function FeedCommentSheet({
                 </p>
               )}
               {comments.map((c) => (
-                <CommentRow key={c.id} comment={c} />
+                <CommentRow key={c.id} comment={c} onReply={handleReply} />
               ))}
               {nextCursor && (
                 <button
@@ -566,7 +614,7 @@ export function FeedCommentSheet({
         style={{
           bottom: 0,
           transform: "translate3d(0, calc(var(--kb, 0px) * -1), 0)",
-          height: "var(--feed-comment-composer-h, 76px)",
+          height: `${composerHeight}px`,
           transition: "transform 280ms cubic-bezier(0.22, 1, 0.36, 1)",
           willChange: "transform",
         }}
@@ -578,7 +626,13 @@ export function FeedCommentSheet({
   );
 }
 
-function CommentRow({ comment }: { comment: FeedCommentItem }) {
+function CommentRow({
+  comment,
+  onReply,
+}: {
+  comment: FeedCommentItem;
+  onReply: (comment: FeedCommentItem) => void;
+}) {
   const [liked, setLiked] = useState(comment.viewerLiked);
   const [likeCount, setLikeCount] = useState(comment.likeCount);
   const [busy, setBusy] = useState(false);
@@ -606,7 +660,7 @@ function CommentRow({ comment }: { comment: FeedCommentItem }) {
   }
 
   return (
-    <div className="flex gap-3">
+    <div className="relative z-[3] flex gap-3 [pointer-events:auto]">
       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-xs font-black text-white ring-1 ring-white/10">
         {comment.author.role === "ADMIN" ? "N" : comment.author.name.charAt(0).toUpperCase()}
       </div>
@@ -627,10 +681,16 @@ function CommentRow({ comment }: { comment: FeedCommentItem }) {
         <p className="mt-0.5 break-words text-sm leading-relaxed text-white/82">
           {comment.content}
         </p>
-        <div className="mt-1.5 flex items-center gap-4">
+        <div className="relative z-[4] mt-1.5 flex items-center gap-4 [pointer-events:auto]">
           <button
             type="button"
-            className="text-[11px] font-bold text-white/38 transition active:text-white/70"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onReply(comment);
+            }}
+            className="-ml-2 rounded-full px-2 py-1.5 text-[11px] font-bold text-white/38 transition [pointer-events:auto] [touch-action:manipulation] active:text-white/70"
           >
             Balas
           </button>
@@ -650,6 +710,10 @@ function CommentRow({ comment }: { comment: FeedCommentItem }) {
       </div>
     </div>
   );
+}
+
+function getCommentAuthorName(comment: FeedCommentItem) {
+  return comment.author.role === "ADMIN" ? "Natalo Petshop" : comment.author.name;
 }
 
 function formatCommentCount(count: number) {
