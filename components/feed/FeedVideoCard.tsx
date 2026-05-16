@@ -262,9 +262,48 @@ export function FeedVideoCard({
         </div>
       )}
 
-      {/* Bottom-left content: product tag carousel, creator name, caption. */}
+      {/* Bottom-left content: promo badge → product tag carousel → creator → caption */}
       {!commentMode && (
         <div className="absolute left-4 right-[76px] z-[2] [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+1.5rem)] md:bottom-24">
+          {/* PROMO badge — cuma kalau kind=PROMO dan promo pricing ter-set.
+              Tampilkan: discount % off + harga coret + harga baru +
+              CTA "Beli Sekarang". Tap → open product sheet. */}
+          {post.kind === "PROMO" && post.promo && (
+            <button
+              type="button"
+              onClick={() => setProductSheetOpen(true)}
+              className="mb-2.5 flex w-full max-w-full items-stretch gap-0 overflow-hidden rounded-2xl bg-gradient-to-r from-red-600 to-rose-500 text-left text-white shadow-lg shadow-red-900/30 transition active:scale-[0.98]"
+            >
+              <div className="grid place-items-center bg-white/15 px-2.5 py-2">
+                <span className="text-[10px] font-black uppercase tracking-wider">
+                  Promo
+                </span>
+                <span className="text-base font-black leading-none">
+                  {Math.round(
+                    ((post.promo.originalPrice - post.promo.discountPrice) /
+                      post.promo.originalPrice) *
+                      100,
+                  )}
+                  %
+                </span>
+                <span className="text-[9px] font-bold uppercase">Off</span>
+              </div>
+              <div className="flex min-w-0 flex-1 flex-col justify-center px-3 py-1.5">
+                <p className="truncate text-[11px] font-semibold text-white/85 line-through">
+                  {formatRupiah(post.promo.originalPrice)}
+                </p>
+                <p className="truncate text-base font-black leading-tight">
+                  {formatRupiah(post.promo.discountPrice)}
+                </p>
+              </div>
+              <div className="grid shrink-0 place-items-center bg-white/15 px-3 py-2">
+                <FiShoppingCart className="h-5 w-5" aria-hidden />
+                <span className="mt-0.5 text-[9px] font-black uppercase tracking-wide">
+                  Beli
+                </span>
+              </div>
+            </button>
+          )}
           {currentCarouselProduct && (
             <button
               type="button"

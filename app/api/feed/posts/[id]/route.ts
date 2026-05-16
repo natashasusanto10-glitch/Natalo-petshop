@@ -86,6 +86,9 @@ export async function PATCH(
     description?: string | null;
     petType?: string | null;
     productIds?: unknown;
+    // Admin-only fields
+    promoOriginalPrice?: number | null;
+    promoDiscountPrice?: number | null;
   };
 
   // Validate fields
@@ -94,7 +97,23 @@ export async function PATCH(
     description?: string | null;
     productId?: string | null;
     status?: typeof post.status;
+    promoOriginalPrice?: number | null;
+    promoDiscountPrice?: number | null;
   } = {};
+
+  // Admin promo pricing — cuma valid kalau post kind=PROMO + admin session.
+  if (isAdmin && post.kind === "PROMO") {
+    if (typeof body.promoOriginalPrice !== "undefined") {
+      const v = body.promoOriginalPrice;
+      updates.promoOriginalPrice =
+        v === null ? null : Number.isFinite(Number(v)) ? Number(v) : null;
+    }
+    if (typeof body.promoDiscountPrice !== "undefined") {
+      const v = body.promoDiscountPrice;
+      updates.promoDiscountPrice =
+        v === null ? null : Number.isFinite(Number(v)) ? Number(v) : null;
+    }
+  }
 
   if (typeof body.title === "string") {
     const t = body.title.trim();

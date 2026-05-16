@@ -69,6 +69,8 @@ export default async function AdminEditFeedPostPage({ params }: PageProps) {
         videoDurationSec={post.videoDurationSec}
         kind={post.kind}
         tab={post.tab}
+        initialPromoOriginalPrice={post.promoOriginalPrice}
+        initialPromoDiscountPrice={post.promoDiscountPrice}
       />
     </main>
   );

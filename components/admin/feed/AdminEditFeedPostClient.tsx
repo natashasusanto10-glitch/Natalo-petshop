@@ -38,6 +38,8 @@ type Props = {
   videoDurationSec: number | null;
   kind: string;
   tab: string;
+  initialPromoOriginalPrice: number | null;
+  initialPromoDiscountPrice: number | null;
 };
 
 export function AdminEditFeedPostClient({
@@ -49,10 +51,18 @@ export function AdminEditFeedPostClient({
   videoDurationSec,
   kind,
   tab,
+  initialPromoOriginalPrice,
+  initialPromoDiscountPrice,
 }: Props) {
   const router = useRouter();
   const [title, setTitle] = useState(initialTitle);
   const [description, setDescription] = useState(initialDescription);
+  const [promoOriginalPrice, setPromoOriginalPrice] = useState(
+    initialPromoOriginalPrice?.toString() ?? "",
+  );
+  const [promoDiscountPrice, setPromoDiscountPrice] = useState(
+    initialPromoDiscountPrice?.toString() ?? "",
+  );
   const [selectedProducts, setSelectedProducts] =
     useState<TaggedProduct[]>(initialProducts);
   const [searchQuery, setSearchQuery] = useState("");
@@ -95,6 +105,12 @@ export function AdminEditFeedPostClient({
           title: title.trim() || "Postingan baru",
           description: description.trim() || null,
           productIds: selectedProducts.map((p) => p.productId),
+          ...(kind === "PROMO"
+            ? {
+                promoOriginalPrice: Number(promoOriginalPrice) || null,
+                promoDiscountPrice: Number(promoDiscountPrice) || null,
+              }
+            : {}),
         }),
       });
       const data = await res.json();
@@ -197,6 +213,61 @@ export function AdminEditFeedPostClient({
           </p>
         </label>
       </section>
+
+      {kind === "PROMO" && (
+        <section className="mt-4 rounded-2xl border border-rose-200 bg-rose-50/40 p-4">
+          <h2 className="text-sm font-black text-rose-900">
+            Harga Promo
+            <span className="ml-2 rounded-full bg-rose-200 px-2 py-0.5 text-[10px] uppercase text-rose-700">
+              kind=PROMO
+            </span>
+          </h2>
+          <p className="mt-1 text-[11px] text-rose-700">
+            Harga ini muncul di Feed sebagai discount badge.
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="text-[11px] font-bold text-gray-600">
+                Harga Asli (Rp)
+              </span>
+              <input
+                type="number"
+                inputMode="numeric"
+                value={promoOriginalPrice}
+                onChange={(e) => setPromoOriginalPrice(e.target.value)}
+                disabled={busy}
+                placeholder="100000"
+                className="mt-0.5 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm focus:border-natalo-500 focus:outline-none disabled:opacity-50"
+              />
+            </label>
+            <label className="block">
+              <span className="text-[11px] font-bold text-gray-600">
+                Harga Discount (Rp)
+              </span>
+              <input
+                type="number"
+                inputMode="numeric"
+                value={promoDiscountPrice}
+                onChange={(e) => setPromoDiscountPrice(e.target.value)}
+                disabled={busy}
+                placeholder="75000"
+                className="mt-0.5 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm focus:border-natalo-500 focus:outline-none disabled:opacity-50"
+              />
+            </label>
+          </div>
+          {promoOriginalPrice && promoDiscountPrice && Number(promoDiscountPrice) < Number(promoOriginalPrice) && (
+            <p className="mt-2 text-[11px] font-bold text-rose-800">
+              Discount{" "}
+              {Math.round(
+                ((Number(promoOriginalPrice) - Number(promoDiscountPrice)) /
+                  Number(promoOriginalPrice)) *
+                  100,
+              )}
+              % off — akan muncul sebagai badge di Feed
+            </p>
+          )}
+        </section>
+      )}
 
       <section className="mt-4 rounded-2xl border border-gray-100 bg-white p-4">
         <div className="flex items-center justify-between">
