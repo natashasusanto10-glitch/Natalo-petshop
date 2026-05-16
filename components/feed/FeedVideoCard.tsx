@@ -59,6 +59,8 @@ export function FeedVideoCard({
           stock: product.stock,
           imageUrl: product.imageUrl,
           position: 0,
+          // Legacy single-product fallback — no per-product promo set.
+          promoPrice: null,
         },
       ];
     }
@@ -266,45 +268,76 @@ export function FeedVideoCard({
       {/* Bottom-left content: promo badge → product tag carousel → creator → caption */}
       {!commentMode && (
         <div className="absolute left-4 right-[76px] z-[2] [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+1.5rem)] md:bottom-24">
-          {/* PROMO badge — cuma kalau kind=PROMO dan promo pricing ter-set.
-              Tampilkan: discount % off + harga coret + harga baru +
-              CTA "Beli Sekarang". Tap → open product sheet. */}
-          {post.kind === "PROMO" && post.promo && (
-            <button
-              type="button"
-              onClick={() => setProductSheetOpen(true)}
-              className="mb-2.5 flex w-full max-w-full items-stretch gap-0 overflow-hidden rounded-2xl bg-gradient-to-r from-red-600 to-rose-500 text-left text-white shadow-lg shadow-red-900/30 transition active:scale-[0.98]"
-            >
-              <div className="grid place-items-center bg-white/15 px-2.5 py-2">
-                <span className="text-[10px] font-black uppercase tracking-wider">
-                  Promo
-                </span>
-                <span className="text-base font-black leading-none">
-                  {Math.round(
-                    ((post.promo.originalPrice - post.promo.discountPrice) /
-                      post.promo.originalPrice) *
-                      100,
-                  )}
-                  %
-                </span>
-                <span className="text-[9px] font-bold uppercase">Off</span>
-              </div>
-              <div className="flex min-w-0 flex-1 flex-col justify-center px-3 py-1.5">
-                <p className="truncate text-[11px] font-semibold text-white/85 line-through">
-                  {formatRupiah(post.promo.originalPrice)}
-                </p>
-                <p className="truncate text-base font-black leading-tight">
-                  {formatRupiah(post.promo.discountPrice)}
-                </p>
-              </div>
-              <div className="grid shrink-0 place-items-center bg-white/15 px-3 py-2">
-                <FiShoppingCart className="h-5 w-5" aria-hidden />
-                <span className="mt-0.5 text-[9px] font-black uppercase tracking-wide">
-                  Beli
-                </span>
-              </div>
-            </button>
-          )}
+          {/* PROMO badge — sync dengan carousel produk. Setiap tagged
+              product punya promoPrice sendiri (set admin) yang dibanding
+              ke product.price (harga katalog). Badge auto-switch saat
+              carousel rotate ke produk berikutnya. Fallback ke legacy
+              post.promo kalau current product belum di-set promoPrice.
+              Tap → open product sheet untuk beli. */}
+          {post.kind === "PROMO" &&
+            (() => {
+              // Resolve harga asli + diskon untuk produk yang sedang
+              // di-display di carousel.
+              let originalPrice: number | null = null;
+              let discountPrice: number | null = null;
+              if (
+                currentCarouselProduct &&
+                currentCarouselProduct.promoPrice != null &&
+                currentCarouselProduct.promoPrice <
+                  currentCarouselProduct.price
+              ) {
+                originalPrice = currentCarouselProduct.price;
+                discountPrice = currentCarouselProduct.promoPrice;
+              } else if (post.promo) {
+                // Legacy single-price fallback untuk post lama yg belum
+                // di-migrate ke per-product pricing.
+                originalPrice = post.promo.originalPrice;
+                discountPrice = post.promo.discountPrice;
+              }
+              if (originalPrice === null || discountPrice === null) return null;
+              const off = Math.round(
+                ((originalPrice - discountPrice) / originalPrice) * 100,
+              );
+              return (
+                <button
+                  type="button"
+                  onClick={() => setProductSheetOpen(true)}
+                  // Key by current product so React mounts ulang tiap
+                  // rotation → animation re-trigger + visual cue ke user.
+                  key={currentCarouselProduct?.id ?? "legacy"}
+                  className="mb-2.5 flex w-full max-w-full items-stretch gap-0 overflow-hidden rounded-2xl bg-gradient-to-r from-red-600 to-rose-500 text-left text-white shadow-lg shadow-red-900/30 transition active:scale-[0.98]"
+                  style={{
+                    animation: hasMultipleProducts
+                      ? "natalo-feed-product-fade 4000ms ease-in-out infinite"
+                      : undefined,
+                  }}
+                >
+                  <div className="grid place-items-center bg-white/15 px-2.5 py-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider">
+                      Promo
+                    </span>
+                    <span className="text-base font-black leading-none">
+                      {off}%
+                    </span>
+                    <span className="text-[9px] font-bold uppercase">Off</span>
+                  </div>
+                  <div className="flex min-w-0 flex-1 flex-col justify-center px-3 py-1.5">
+                    <p className="truncate text-[11px] font-semibold text-white/85 line-through">
+                      {formatRupiah(originalPrice)}
+                    </p>
+                    <p className="truncate text-base font-black leading-tight">
+                      {formatRupiah(discountPrice)}
+                    </p>
+                  </div>
+                  <div className="grid shrink-0 place-items-center bg-white/15 px-3 py-2">
+                    <FiShoppingCart className="h-5 w-5" aria-hidden />
+                    <span className="mt-0.5 text-[9px] font-black uppercase tracking-wide">
+                      Beli
+                    </span>
+                  </div>
+                </button>
+              );
+            })()}
           {currentCarouselProduct && (
             <button
               type="button"
@@ -528,7 +561,21 @@ function PinnedProductSheet({
     <BottomSheet open={open} onClose={onClose} title={title} variant="dark">
       <div className="space-y-3">
         {products.map((product) => {
-          const price = product.discountPrice ?? product.price;
+          // Priority: per-product promoPrice (kind=PROMO admin set) >
+          // catalog discountPrice > base price. Kalau ada promoPrice
+          // valid, tampilkan harga normal coret + badge diskon.
+          const promoPrice =
+            "promoPrice" in product && product.promoPrice != null
+              ? product.promoPrice
+              : null;
+          const hasPromo = promoPrice != null && promoPrice < product.price;
+          const displayPrice = hasPromo
+            ? promoPrice
+            : product.discountPrice ?? product.price;
+          const showStrike = hasPromo;
+          const discountPct = hasPromo
+            ? Math.round(((product.price - promoPrice) / product.price) * 100)
+            : 0;
           return (
             <Link
               key={product.id}
@@ -556,9 +603,21 @@ function PinnedProductSheet({
                 <p className="line-clamp-2 text-sm font-black text-white">
                   {product.name}
                 </p>
-                <p className="mt-1 text-base font-black text-natalo-300">
-                  {formatRupiah(price)}
-                </p>
+                <div className="mt-1 flex items-baseline gap-2">
+                  <p className="text-base font-black text-natalo-300">
+                    {formatRupiah(displayPrice)}
+                  </p>
+                  {showStrike && (
+                    <>
+                      <span className="text-xs font-semibold text-zinc-500 line-through">
+                        {formatRupiah(product.price)}
+                      </span>
+                      <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-[10px] font-black text-red-300">
+                        -{discountPct}%
+                      </span>
+                    </>
+                  )}
+                </div>
                 <p
                   className={`mt-1 text-xs font-bold ${product.stock > 0 ? "text-emerald-400" : "text-red-400"}`}
                 >

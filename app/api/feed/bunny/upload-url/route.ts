@@ -107,6 +107,9 @@ export async function POST(request: NextRequest) {
     promoDiscountPrice?: number | null;
     promoStartsAt?: string | null;
     promoEndsAt?: string | null;
+    // Per-product promo pricing. Map productId → discountPrice. null =
+    // no discount untuk produk itu (display harga normal).
+    productPromos?: Record<string, number | null>;
   };
   // Caption (mapped ke `title` di DB) sekarang opsional sesuai flow baru —
   // kalau user tidak isi caption, kita pakai placeholder "Postingan baru"
@@ -242,12 +245,29 @@ export async function POST(request: NextRequest) {
       select: { id: true },
     });
     if (productIdsToStore.length > 0) {
+      // Resolve per-product promo price untuk setiap tagged product. Hanya
+      // admin yang post kind=PROMO yang boleh set promoPrice. Untuk
+      // customer / non-PROMO, promoPrice di-paksa null (no discount badge).
+      const promoMap =
+        isAdmin && kind === "PROMO" && body.productPromos
+          ? body.productPromos
+          : null;
       await tx.feedPostProduct.createMany({
-        data: productIdsToStore.map((productId, position) => ({
-          feedPostId: created.id,
-          productId,
-          position,
-        })),
+        data: productIdsToStore.map((productId, position) => {
+          const rawPromo = promoMap ? promoMap[productId] : null;
+          const promoPrice =
+            rawPromo === null || rawPromo === undefined
+              ? null
+              : Number.isFinite(Number(rawPromo))
+                ? Number(rawPromo)
+                : null;
+          return {
+            feedPostId: created.id,
+            productId,
+            position,
+            promoPrice,
+          };
+        }),
         skipDuplicates: true,
       });
     }

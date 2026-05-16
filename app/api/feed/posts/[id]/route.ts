@@ -86,7 +86,10 @@ export async function PATCH(
     description?: string | null;
     petType?: string | null;
     productIds?: unknown;
-    // Admin-only fields
+    // Per-product promo pricing untuk video PROMO (admin only).
+    // Map productId → promoPrice (null = clear discount).
+    productPromos?: Record<string, number | null>;
+    // Legacy admin-only fields (single promo) — backward compat.
     promoOriginalPrice?: number | null;
     promoDiscountPrice?: number | null;
   };
@@ -205,8 +208,38 @@ export async function PATCH(
             feedPostId: post.id,
             productId,
             position,
+            // Pre-fill promoPrice langsung saat replace, supaya admin yang
+            // submit productIds + productPromos di 1 PATCH tidak butuh 2
+            // round trip. Null = no discount for that product.
+            promoPrice:
+              isAdmin && body.productPromos && productId in body.productPromos
+                ? body.productPromos[productId] === null
+                  ? null
+                  : Number.isFinite(Number(body.productPromos[productId]))
+                    ? Number(body.productPromos[productId])
+                    : null
+                : null,
           })),
           skipDuplicates: true,
+        });
+      }
+    }
+
+    // Per-product promo pricing — admin only. Update existing
+    // FeedPostProduct rows tanpa replace (kalau productIds tidak ikut
+    // di-update). Iterate kecil (max 5 produk) — pakai updateMany
+    // satu-satu supaya kena composite (feedPostId, productId).
+    if (isAdmin && body.productPromos && newProductIds === null) {
+      for (const [productId, rawPromo] of Object.entries(body.productPromos)) {
+        const promoPrice =
+          rawPromo === null
+            ? null
+            : Number.isFinite(Number(rawPromo))
+              ? Number(rawPromo)
+              : null;
+        await tx.feedPostProduct.updateMany({
+          where: { feedPostId: post.id, productId },
+          data: { promoPrice },
         });
       }
     }

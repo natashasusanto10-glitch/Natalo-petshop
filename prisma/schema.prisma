@@ -769,8 +769,10 @@ model FeedPost {
 }
 
 // Shop the Look — many-to-many ke produk yang di-tag di video.
-// Sampai 3 produk per post (enforced di API layer, bukan DB constraint).
+// Sampai 3 produk per post customer / 5 admin (enforced di API layer).
 // Position menentukan urutan carousel di feed UI.
+// promoPrice: optional discount price per produk untuk PROMO video.
+// Original price ambil dari Product.price (no need to denormalize).
 model FeedPostProduct {
   id          String   @id @default(cuid())
   feedPostId  String
@@ -778,6 +780,8 @@ model FeedPostProduct {
   productId   String
   product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   position    Int      @default(0) // 0..2 untuk urutan tampilan
+  promoPrice  Int?     // Discount price untuk produk ini di video PROMO.
+                       // null = no per-product discount (gunakan price normal).
   createdAt   DateTime @default(now())
 
   // Tidak boleh tag produk sama dua kali di post yang sama.

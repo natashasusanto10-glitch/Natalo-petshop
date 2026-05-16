@@ -19,6 +19,10 @@ type TaggedProduct = {
   name: string;
   price: number;
   imageUrl: string | null;
+  // Per-product discount untuk video PROMO. Null = no discount (display
+  // harga normal). Set per-produk supaya 1 video bisa diskon banyak
+  // produk dengan harga discount masing-masing.
+  promoPrice: number | null;
 };
 
 type AdminProduct = {
@@ -38,8 +42,6 @@ type Props = {
   videoDurationSec: number | null;
   kind: string;
   tab: string;
-  initialPromoOriginalPrice: number | null;
-  initialPromoDiscountPrice: number | null;
 };
 
 export function AdminEditFeedPostClient({
@@ -51,17 +53,20 @@ export function AdminEditFeedPostClient({
   videoDurationSec,
   kind,
   tab,
-  initialPromoOriginalPrice,
-  initialPromoDiscountPrice,
 }: Props) {
   const router = useRouter();
   const [title, setTitle] = useState(initialTitle);
   const [description, setDescription] = useState(initialDescription);
-  const [promoOriginalPrice, setPromoOriginalPrice] = useState(
-    initialPromoOriginalPrice?.toString() ?? "",
-  );
-  const [promoDiscountPrice, setPromoDiscountPrice] = useState(
-    initialPromoDiscountPrice?.toString() ?? "",
+  // Per-product promo price (string supaya bisa edit input + null state).
+  // Key = productId. Empty string = no discount (null saat submit).
+  const [productPromos, setProductPromos] = useState<Record<string, string>>(
+    () =>
+      Object.fromEntries(
+        initialProducts.map((p) => [
+          p.productId,
+          p.promoPrice != null ? String(p.promoPrice) : "",
+        ]),
+      ),
   );
   const [selectedProducts, setSelectedProducts] =
     useState<TaggedProduct[]>(initialProducts);
@@ -98,6 +103,21 @@ export function AdminEditFeedPostClient({
     setBusy(true);
     setError(null);
     try {
+      // Build productPromos map — only include products yang masih terpilih
+      // (skip orphan entry kalau admin remove produk). Empty string → null.
+      const productPromosPayload: Record<string, number | null> = {};
+      if (kind === "PROMO") {
+        for (const p of selectedProducts) {
+          const raw = (productPromos[p.productId] ?? "").trim();
+          if (raw === "") {
+            productPromosPayload[p.productId] = null;
+          } else {
+            const n = Number(raw);
+            productPromosPayload[p.productId] = Number.isFinite(n) ? n : null;
+          }
+        }
+      }
+
       const res = await fetch(`/api/feed/posts/${postId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -105,12 +125,7 @@ export function AdminEditFeedPostClient({
           title: title.trim() || "Postingan baru",
           description: description.trim() || null,
           productIds: selectedProducts.map((p) => p.productId),
-          ...(kind === "PROMO"
-            ? {
-                promoOriginalPrice: Number(promoOriginalPrice) || null,
-                promoDiscountPrice: Number(promoDiscountPrice) || null,
-              }
-            : {}),
+          ...(kind === "PROMO" ? { productPromos: productPromosPayload } : {}),
         }),
       });
       const data = await res.json();
@@ -214,67 +229,15 @@ export function AdminEditFeedPostClient({
         </label>
       </section>
 
-      {kind === "PROMO" && (
-        <section className="mt-4 rounded-2xl border border-rose-200 bg-rose-50/40 p-4">
-          <h2 className="text-sm font-black text-rose-900">
-            Harga Promo
-            <span className="ml-2 rounded-full bg-rose-200 px-2 py-0.5 text-[10px] uppercase text-rose-700">
-              kind=PROMO
-            </span>
-          </h2>
-          <p className="mt-1 text-[11px] text-rose-700">
-            Harga ini muncul di Feed sebagai discount badge.
-          </p>
-          <div className="mt-3 grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="text-[11px] font-bold text-gray-600">
-                Harga Asli (Rp)
-              </span>
-              <input
-                type="number"
-                inputMode="numeric"
-                value={promoOriginalPrice}
-                onChange={(e) => setPromoOriginalPrice(e.target.value)}
-                disabled={busy}
-                placeholder="100000"
-                className="mt-0.5 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm focus:border-natalo-500 focus:outline-none disabled:opacity-50"
-              />
-            </label>
-            <label className="block">
-              <span className="text-[11px] font-bold text-gray-600">
-                Harga Discount (Rp)
-              </span>
-              <input
-                type="number"
-                inputMode="numeric"
-                value={promoDiscountPrice}
-                onChange={(e) => setPromoDiscountPrice(e.target.value)}
-                disabled={busy}
-                placeholder="75000"
-                className="mt-0.5 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm focus:border-natalo-500 focus:outline-none disabled:opacity-50"
-              />
-            </label>
-          </div>
-          {promoOriginalPrice && promoDiscountPrice && Number(promoDiscountPrice) < Number(promoOriginalPrice) && (
-            <p className="mt-2 text-[11px] font-bold text-rose-800">
-              Discount{" "}
-              {Math.round(
-                ((Number(promoOriginalPrice) - Number(promoDiscountPrice)) /
-                  Number(promoOriginalPrice)) *
-                  100,
-              )}
-              % off — akan muncul sebagai badge di Feed
-            </p>
-          )}
-        </section>
-      )}
-
       <section className="mt-4 rounded-2xl border border-gray-100 bg-white p-4">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-sm font-black text-gray-900">Tag Produk</h2>
             <p className="text-[11px] font-semibold text-gray-500">
               {selectedProducts.length}/{MAX_PRODUCTS} produk
+              {kind === "PROMO"
+                ? " · set harga promo per-produk di bawah"
+                : ""}
             </p>
           </div>
           <button
@@ -288,37 +251,91 @@ export function AdminEditFeedPostClient({
         </div>
         {selectedProducts.length > 0 && (
           <ul className="mt-3 space-y-2">
-            {selectedProducts.map((p, idx) => (
-              <li
-                key={p.productId}
-                className="flex items-center gap-3 rounded-xl bg-gray-50 p-2.5"
-              >
-                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-natalo-600/10 text-natalo-600">
-                  <FiPackage className="h-5 w-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="line-clamp-2 text-[13px] font-extrabold text-gray-900">
-                    {p.name}
-                  </p>
-                  <p className="text-[11px] font-semibold text-gray-500">
-                    Tag #{idx + 1} · {formatRupiah(p.price)}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setSelectedProducts((prev) =>
-                      prev.filter((x) => x.productId !== p.productId),
-                    )
-                  }
-                  disabled={busy}
-                  aria-label={`Hapus ${p.name}`}
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-gray-400"
+            {selectedProducts.map((p, idx) => {
+              const promoRaw = productPromos[p.productId] ?? "";
+              const promoNum = Number(promoRaw);
+              const hasValidPromo =
+                promoRaw.trim() !== "" &&
+                Number.isFinite(promoNum) &&
+                promoNum > 0 &&
+                promoNum < p.price;
+              const discountPct = hasValidPromo
+                ? Math.round(((p.price - promoNum) / p.price) * 100)
+                : 0;
+              return (
+                <li
+                  key={p.productId}
+                  className="rounded-xl bg-gray-50 p-2.5"
                 >
-                  <FiX className="h-4 w-4" />
-                </button>
-              </li>
-            ))}
+                  <div className="flex items-center gap-3">
+                    <div className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-natalo-600/10 text-natalo-600">
+                      <FiPackage className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="line-clamp-2 text-[13px] font-extrabold text-gray-900">
+                        {p.name}
+                      </p>
+                      <p className="text-[11px] font-semibold text-gray-500">
+                        Tag #{idx + 1} · Harga normal {formatRupiah(p.price)}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedProducts((prev) =>
+                          prev.filter((x) => x.productId !== p.productId),
+                        );
+                        setProductPromos((prev) => {
+                          const next = { ...prev };
+                          delete next[p.productId];
+                          return next;
+                        });
+                      }}
+                      disabled={busy}
+                      aria-label={`Hapus ${p.name}`}
+                      className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-gray-400"
+                    >
+                      <FiX className="h-4 w-4" />
+                    </button>
+                  </div>
+                  {kind === "PROMO" && (
+                    <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50/60 p-2.5">
+                      <label className="block">
+                        <span className="text-[11px] font-bold text-rose-800">
+                          Harga Promo (Rp) — kosongkan kalau tidak diskon
+                        </span>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          value={promoRaw}
+                          onChange={(e) =>
+                            setProductPromos((prev) => ({
+                              ...prev,
+                              [p.productId]: e.target.value,
+                            }))
+                          }
+                          disabled={busy}
+                          placeholder={`< ${p.price}`}
+                          className="mt-0.5 w-full rounded-lg border border-rose-200 bg-white px-3 py-2 text-sm focus:border-rose-500 focus:outline-none disabled:opacity-50"
+                        />
+                      </label>
+                      {hasValidPromo ? (
+                        <p className="mt-1.5 text-[11px] font-bold text-rose-800">
+                          Hemat {formatRupiah(p.price - promoNum)} ·{" "}
+                          {discountPct}% off
+                        </p>
+                      ) : promoRaw.trim() !== "" &&
+                        Number.isFinite(promoNum) &&
+                        promoNum >= p.price ? (
+                        <p className="mt-1.5 text-[11px] font-bold text-amber-700">
+                          Harga promo harus lebih kecil dari harga normal.
+                        </p>
+                      ) : null}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
@@ -372,8 +389,19 @@ export function AdminEditFeedPostClient({
                         name: product.name,
                         price: product.price,
                         imageUrl: product.imageUrl,
+                        promoPrice: null,
                       },
                     ];
+                  });
+                  // Keep productPromos in sync — toggle off = clear entry,
+                  // toggle on = empty string (no discount default).
+                  setProductPromos((prev) => {
+                    if (selected) {
+                      const next = { ...prev };
+                      delete next[product.id];
+                      return next;
+                    }
+                    return { ...prev, [product.id]: prev[product.id] ?? "" };
                   });
                 }}
                 className={`flex w-full items-center gap-3 rounded-2xl border p-3 text-left transition active:bg-gray-50 ${

@@ -60,8 +60,13 @@ export function AdminFeedCreateClient() {
   const [selectedProducts, setSelectedProducts] = useState<ProductSummary[]>([]);
   const [productLoading, setProductLoading] = useState(false);
 
-  const [promoOriginal, setPromoOriginal] = useState("");
-  const [promoDiscount, setPromoDiscount] = useState("");
+  // Per-product promo pricing untuk kind=PROMO. Key = productId,
+  // value = string input (kosong = no discount untuk produk itu).
+  // Tujuan: 1 video PROMO bisa diskon banyak produk dengan harga
+  // discount masing-masing yang admin set di sini.
+  const [productPromos, setProductPromos] = useState<Record<string, string>>(
+    {},
+  );
   const [promoStarts, setPromoStarts] = useState("");
   const [promoEnds, setPromoEnds] = useState("");
 
@@ -147,6 +152,11 @@ export function AdminFeedCreateClient() {
     setSelectedProducts((current) =>
       current.filter((product) => product.id !== productId),
     );
+    setProductPromos((prev) => {
+      const next = { ...prev };
+      delete next[productId];
+      return next;
+    });
   }
 
   async function handleVideoPick(file: File | null) {
@@ -208,11 +218,30 @@ export function AdminFeedCreateClient() {
       return;
     }
     if (kind === "PROMO") {
-      const orig = Number(promoOriginal);
-      const disc = Number(promoDiscount);
-      if (!orig || !disc || disc >= orig) {
-        setError("Harga promo harus lebih kecil dari harga normal.");
+      // Setidaknya 1 produk harus punya promoPrice valid (> 0, < harga normal).
+      const anyValid = selectedProducts.some((p) => {
+        const raw = (productPromos[p.id] ?? "").trim();
+        if (raw === "") return false;
+        const n = Number(raw);
+        return Number.isFinite(n) && n > 0 && n < p.price;
+      });
+      if (!anyValid) {
+        setError(
+          "Set minimal 1 harga promo per-produk (lebih kecil dari harga normal).",
+        );
         return;
+      }
+      // Validate setiap nilai non-empty: harus < harga produknya.
+      for (const p of selectedProducts) {
+        const raw = (productPromos[p.id] ?? "").trim();
+        if (raw === "") continue;
+        const n = Number(raw);
+        if (!Number.isFinite(n) || n <= 0 || n >= p.price) {
+          setError(
+            `Harga promo "${p.name}" harus angka positif < ${p.price}.`,
+          );
+          return;
+        }
       }
     }
 
@@ -224,6 +253,21 @@ export function AdminFeedCreateClient() {
       // + videoUrl when transcoding completes. No client-side compression
       // — admin desktops would hang for minutes on long videos, and Bunny
       // handles every codec we throw at it.
+      // Build per-product promo map untuk PROMO kind. Skip empty string
+      // entries → null (no discount untuk produk itu).
+      const productPromosPayload: Record<string, number | null> = {};
+      if (kind === "PROMO") {
+        for (const p of selectedProducts) {
+          const raw = (productPromos[p.id] ?? "").trim();
+          productPromosPayload[p.id] =
+            raw === ""
+              ? null
+              : Number.isFinite(Number(raw))
+                ? Number(raw)
+                : null;
+        }
+      }
+
       if (videoFile) {
         setProgress("Menyiapkan upload...");
         const provisionBody = {
@@ -233,8 +277,10 @@ export function AdminFeedCreateClient() {
           tab: kind === "PROMO" ? "PROMO" : "REKOMENDASI",
           productId: selectedProducts[0]?.id ?? null,
           productIds: selectedProductIds,
-          promoOriginalPrice: kind === "PROMO" ? Number(promoOriginal) || null : null,
-          promoDiscountPrice: kind === "PROMO" ? Number(promoDiscount) || null : null,
+          // Legacy single-price fields kosong — per-product di productPromos.
+          promoOriginalPrice: null,
+          promoDiscountPrice: null,
+          productPromos: kind === "PROMO" ? productPromosPayload : undefined,
           promoStartsAt: kind === "PROMO" && promoStarts ? promoStarts : null,
           promoEndsAt: kind === "PROMO" && promoEnds ? promoEnds : null,
         };
@@ -353,8 +399,10 @@ export function AdminFeedCreateClient() {
         videoHeight: null,
         productId: selectedProducts[0]?.id ?? null,
         productIds: selectedProductIds,
-        promoOriginalPrice: kind === "PROMO" ? Number(promoOriginal) : null,
-        promoDiscountPrice: kind === "PROMO" ? Number(promoDiscount) : null,
+        // Legacy single-price kosong — pakai productPromos map.
+        promoOriginalPrice: null,
+        promoDiscountPrice: null,
+        productPromos: kind === "PROMO" ? productPromosPayload : undefined,
         promoStartsAt: kind === "PROMO" && promoStarts ? promoStarts : null,
         promoEndsAt: kind === "PROMO" && promoEnds ? promoEnds : null,
       };
@@ -519,39 +567,89 @@ export function AdminFeedCreateClient() {
 
           {selectedProducts.length > 0 && (
             <div className="mb-3 space-y-2">
-              {selectedProducts.map((product, index) => (
-                <div
-                  key={product.id}
-                  className="flex items-center gap-3 rounded-xl bg-natalo-50 p-2"
-                >
-                  {product.imageUrl && (
-                    <Image
-                      src={product.imageUrl}
-                      alt=""
-                      width={40}
-                      height={40}
-                      className="h-10 w-10 rounded-lg object-cover"
-                    />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-extrabold text-natalo-800">
-                      {product.name}
-                    </p>
-                    <p className="text-[11px] font-semibold text-natalo-600">
-                      {index === 0 ? "Produk utama · " : ""}
-                      {formatRupiah(product.price)}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeSelectedProduct(product.id)}
-                    className="grid h-8 w-8 place-items-center rounded-full text-natalo-700 transition active:bg-natalo-100"
-                    aria-label={`Hapus ${product.name}`}
+              {selectedProducts.map((product, index) => {
+                const promoRaw = productPromos[product.id] ?? "";
+                const promoNum = Number(promoRaw);
+                const hasValidPromo =
+                  promoRaw.trim() !== "" &&
+                  Number.isFinite(promoNum) &&
+                  promoNum > 0 &&
+                  promoNum < product.price;
+                const discountPct = hasValidPromo
+                  ? Math.round(
+                      ((product.price - promoNum) / product.price) * 100,
+                    )
+                  : 0;
+                return (
+                  <div
+                    key={product.id}
+                    className="rounded-xl bg-natalo-50 p-2"
                   >
-                    <FiX className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
+                    <div className="flex items-center gap-3">
+                      {product.imageUrl && (
+                        <Image
+                          src={product.imageUrl}
+                          alt=""
+                          width={40}
+                          height={40}
+                          className="h-10 w-10 rounded-lg object-cover"
+                        />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-extrabold text-natalo-800">
+                          {product.name}
+                        </p>
+                        <p className="text-[11px] font-semibold text-natalo-600">
+                          {index === 0 ? "Produk utama · " : ""}
+                          Harga normal {formatRupiah(product.price)}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeSelectedProduct(product.id)}
+                        className="grid h-8 w-8 place-items-center rounded-full text-natalo-700 transition active:bg-natalo-100"
+                        aria-label={`Hapus ${product.name}`}
+                      >
+                        <FiX className="h-4 w-4" />
+                      </button>
+                    </div>
+                    {kind === "PROMO" && (
+                      <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50/70 p-2.5">
+                        <label className="block">
+                          <span className="text-[11px] font-bold text-rose-800">
+                            Harga Promo (Rp) — kosongkan kalau tidak diskon
+                          </span>
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            value={promoRaw}
+                            onChange={(e) =>
+                              setProductPromos((prev) => ({
+                                ...prev,
+                                [product.id]: e.target.value,
+                              }))
+                            }
+                            placeholder={`< ${product.price}`}
+                            className="mt-0.5 w-full rounded-lg border border-rose-200 bg-white px-3 py-2 text-sm focus:border-rose-500 focus:outline-none"
+                          />
+                        </label>
+                        {hasValidPromo ? (
+                          <p className="mt-1.5 text-[11px] font-bold text-rose-800">
+                            Hemat {formatRupiah(product.price - promoNum)} ·{" "}
+                            {discountPct}% off
+                          </p>
+                        ) : promoRaw.trim() !== "" &&
+                          Number.isFinite(promoNum) &&
+                          promoNum >= product.price ? (
+                          <p className="mt-1.5 text-[11px] font-bold text-amber-700">
+                            Harus lebih kecil dari harga normal.
+                          </p>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -613,33 +711,19 @@ export function AdminFeedCreateClient() {
         </section>
       )}
 
-      {/* Promo fields */}
+      {/* Promo schedule (per-product pricing diset di list produk di atas) */}
       {kind === "PROMO" && (
         <section className="space-y-3 rounded-2xl border border-gray-100 bg-white p-3">
-          <p className="text-xs font-extrabold text-gray-700">Detail promo</p>
+          <div>
+            <p className="text-xs font-extrabold text-gray-700">
+              Jadwal promo (opsional)
+            </p>
+            <p className="text-[11px] font-semibold text-gray-500">
+              Harga promo set per-produk di daftar produk di atas. Promo
+              tetap aktif tanpa jadwal.
+            </p>
+          </div>
           <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[11px] font-bold text-gray-600">
-                Harga Normal <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="number"
-                value={promoOriginal}
-                onChange={(e) => setPromoOriginal(e.target.value)}
-                className="mt-0.5 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] font-bold text-gray-600">
-                Harga Promo <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="number"
-                value={promoDiscount}
-                onChange={(e) => setPromoDiscount(e.target.value)}
-                className="mt-0.5 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm"
-              />
-            </div>
             <div>
               <label className="text-[11px] font-bold text-gray-600">Mulai</label>
               <input

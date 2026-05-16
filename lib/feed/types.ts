@@ -27,6 +27,8 @@ export type FeedPostProduct = {
 // Shop the Look — non-nullable variant. Setiap item di taggedProducts
 // pasti ada produknya (skip kalau product di-soft-delete). Position 0..2
 // untuk urutan carousel di feed UI.
+// promoPrice: discount per-product yang admin set di video PROMO. Kalau
+// null, gunakan price normal (no discount badge per-product).
 export type FeedPostTaggedProduct = {
   id: string;
   slug: string;
@@ -36,6 +38,7 @@ export type FeedPostTaggedProduct = {
   stock: number;
   imageUrl: string | null;
   position: number;
+  promoPrice: number | null;
 };
 
 export type FeedPostListItem = {

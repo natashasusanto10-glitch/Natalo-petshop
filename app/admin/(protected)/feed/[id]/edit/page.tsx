@@ -31,6 +31,7 @@ export default async function AdminEditFeedPostPage({ params }: PageProps) {
       taggedProducts: {
         select: {
           position: true,
+          promoPrice: true,
           product: {
             select: {
               id: true,
@@ -56,6 +57,7 @@ export default async function AdminEditFeedPostPage({ params }: PageProps) {
       name: tp.product!.name,
       price: tp.product!.price,
       imageUrl: tp.product!.imageUrl,
+      promoPrice: tp.promoPrice,
     }));
 
   return (
@@ -69,8 +71,6 @@ export default async function AdminEditFeedPostPage({ params }: PageProps) {
         videoDurationSec={post.videoDurationSec}
         kind={post.kind}
         tab={post.tab}
-        initialPromoOriginalPrice={post.promoOriginalPrice}
-        initialPromoDiscountPrice={post.promoDiscountPrice}
       />
     </main>
   );

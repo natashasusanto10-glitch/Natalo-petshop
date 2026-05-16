@@ -83,6 +83,9 @@ type CreatePostBody = {
   promoDiscountPrice?: number | null;
   promoStartsAt?: string | null;
   promoEndsAt?: string | null;
+  // Per-product promo pricing (admin-only kind=PROMO). Map productId →
+  // discount price; null = no discount.
+  productPromos?: Record<string, number | null>;
   // Admin-only: tentukan tab tujuan (REKOMENDASI vs PROMO). User auto-KOMUNITAS.
   tab?: string;
 };
@@ -256,25 +259,44 @@ export async function POST(request: NextRequest) {
   let promoEndsAt: Date | null = null;
 
   if (kind === "PROMO") {
-    promoOriginalPrice = Number(body.promoOriginalPrice);
-    promoDiscountPrice = Number(body.promoDiscountPrice);
-    if (
-      !Number.isFinite(promoOriginalPrice) ||
-      !Number.isFinite(promoDiscountPrice) ||
-      promoOriginalPrice <= 0 ||
-      promoDiscountPrice <= 0
-    ) {
+    // Per-product pricing is the new default — single promoOriginal/
+    // promoDiscount fields jadi opsional (legacy backward-compat). Kalau
+    // admin submit productPromos map, skip required validation di sini.
+    const hasPerProductPromo =
+      body.productPromos &&
+      typeof body.productPromos === "object" &&
+      Object.values(body.productPromos).some(
+        (v) => v !== null && v !== undefined && Number.isFinite(Number(v)),
+      );
+
+    const rawOrig = Number(body.promoOriginalPrice);
+    const rawDisc = Number(body.promoDiscountPrice);
+    const hasLegacyPromo =
+      Number.isFinite(rawOrig) &&
+      Number.isFinite(rawDisc) &&
+      rawOrig > 0 &&
+      rawDisc > 0;
+
+    if (hasLegacyPromo) {
+      if (rawDisc >= rawOrig) {
+        return NextResponse.json(
+          { error: "Harga promo harus lebih kecil dari harga normal." },
+          { status: 400 },
+        );
+      }
+      promoOriginalPrice = rawOrig;
+      promoDiscountPrice = rawDisc;
+    } else if (!hasPerProductPromo) {
+      // Neither legacy nor per-product promo set — invalid PROMO post.
       return NextResponse.json(
-        { error: "Harga promo tidak valid." },
+        {
+          error:
+            "Set minimal 1 harga promo per-produk untuk video PROMO.",
+        },
         { status: 400 },
       );
     }
-    if (promoDiscountPrice >= promoOriginalPrice) {
-      return NextResponse.json(
-        { error: "Harga promo harus lebih kecil dari harga normal." },
-        { status: 400 },
-      );
-    }
+
     if (body.promoStartsAt) {
       const d = new Date(body.promoStartsAt);
       if (!Number.isNaN(d.getTime())) promoStartsAt = d;
@@ -376,12 +398,27 @@ export async function POST(request: NextRequest) {
     });
 
     if (productIdsToStore.length > 0) {
+      // Per-product promo pricing — admin kind=PROMO only.
+      const promoMap =
+        isAdmin && kind === "PROMO" && body.productPromos
+          ? body.productPromos
+          : null;
       await tx.feedPostProduct.createMany({
-        data: productIdsToStore.map((taggedProductId, position) => ({
-          feedPostId: created.id,
-          productId: taggedProductId,
-          position,
-        })),
+        data: productIdsToStore.map((taggedProductId, position) => {
+          const rawPromo = promoMap ? promoMap[taggedProductId] : null;
+          const promoPrice =
+            rawPromo === null || rawPromo === undefined
+              ? null
+              : Number.isFinite(Number(rawPromo))
+                ? Number(rawPromo)
+                : null;
+          return {
+            feedPostId: created.id,
+            productId: taggedProductId,
+            position,
+            promoPrice,
+          };
+        }),
         skipDuplicates: true,
       });
     }

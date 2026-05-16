@@ -109,10 +109,11 @@ export async function listFeedPosts({
           imageUrl: true,
         },
       },
-      // Shop the Look — multi-tag carousel.
+      // Shop the Look — multi-tag carousel dengan per-product promoPrice.
       taggedProducts: {
         select: {
           position: true,
+          promoPrice: true,
           product: {
             select: {
               id: true,
@@ -171,7 +172,7 @@ export async function listFeedPosts({
         }
       : null,
     // Shop the Look: filter out inactive products (admin deactivate) +
-    // map ke flat shape. Sorted by position ASC.
+    // map ke flat shape with per-product promoPrice. Sorted by position ASC.
     taggedProducts: p.taggedProducts
       .filter((tp) => tp.product && tp.product.isActive)
       .map((tp) => ({
@@ -183,6 +184,7 @@ export async function listFeedPosts({
         stock: tp.product!.stock,
         imageUrl: tp.product!.imageUrl,
         position: tp.position,
+        promoPrice: tp.promoPrice ?? null,
       })),
     promo:
       p.kind === "PROMO" && p.promoOriginalPrice != null && p.promoDiscountPrice != null
