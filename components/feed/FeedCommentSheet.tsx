@@ -16,6 +16,7 @@ import {
   type MouseEvent,
   type TouchEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import { FiHeart, FiSend, FiSmile, FiX } from "react-icons/fi";
 import { hapticTap } from "@/lib/native/haptics";
 import type { FeedCommentItem, FeedCommentsResponse } from "@/lib/feed/types";
@@ -174,6 +175,14 @@ export function FeedCommentSheet({
       setIsDragging(false);
       setIsSnappingBack(false);
     }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || typeof document === "undefined") return;
+    document.body.classList.add("comments-open");
+    return () => {
+      document.body.classList.remove("comments-open");
+    };
   }, [open]);
 
   useEffect(() => {
@@ -438,12 +447,12 @@ export function FeedCommentSheet({
 
   if (!open || typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <>
       <div
         data-no-pull
         data-no-swipe-back="true"
-        className="fixed inset-0 z-[150] bg-black/76 backdrop-blur-[1px]"
+        className="fixed inset-0 z-[9000] bg-black/76 backdrop-blur-[1px]"
         onClick={() => {
           if (keyboardOpen && blurCommentInput()) return;
           onClose();
@@ -456,7 +465,7 @@ export function FeedCommentSheet({
         role="dialog"
         aria-modal="false"
         aria-label={title}
-        className="feed-comment-sheet fixed inset-x-0 z-[200] mx-auto flex w-full max-w-2xl flex-col overflow-hidden rounded-t-[28px] border border-white/10 bg-[#111418]/[0.98] text-white shadow-[0_-28px_80px_rgba(0,0,0,0.5)] outline-none backdrop-blur-xl"
+        className="feed-comment-sheet fixed inset-x-0 z-[9010] mx-auto flex w-full max-w-2xl flex-col overflow-hidden rounded-t-[28px] border border-white/10 bg-[#111418]/[0.98] text-white shadow-[0_-28px_80px_rgba(0,0,0,0.5)] outline-none backdrop-blur-xl"
         style={{
           height: "var(--feed-comment-sheet-height, 56dvh)",
           bottom: 0,
@@ -548,7 +557,7 @@ export function FeedCommentSheet({
         ref={composerRef}
         data-no-pull
         data-no-swipe-back="true"
-        className="feed-comment-composer pointer-events-auto fixed inset-x-0 z-[210] mx-auto flex h-[76px] w-full max-w-2xl items-center border-t border-white/10 bg-[#111418] px-4 py-2.5 text-white shadow-[0_-16px_36px_rgba(0,0,0,0.35)]"
+        className="feed-comment-composer pointer-events-auto fixed inset-x-0 z-[9020] mx-auto flex h-[76px] w-full max-w-2xl items-center border-t border-white/10 bg-[#111418] px-4 py-2.5 text-white shadow-[0_-16px_36px_rgba(0,0,0,0.35)]"
         onPointerDown={(event) => event.stopPropagation()}
         style={{
           bottom: keyboardOpen ? "0px" : "env(safe-area-inset-bottom)",
@@ -559,7 +568,8 @@ export function FeedCommentSheet({
       >
         {commentFooter}
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
 
