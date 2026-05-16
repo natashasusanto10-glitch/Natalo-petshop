@@ -56,22 +56,12 @@ export function FeedCommentSheet({
   const [dragY, setDragY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [isSnappingBack, setIsSnappingBack] = useState(false);
-  const [keyboardInset, setKeyboardInset] = useState(0);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
-  const [visualViewportHeight, setVisualViewportHeight] = useState(0);
 
   const title = useMemo(() => {
     const total = Math.max(Number(commentCount ?? comments.length) || 0, comments.length);
     return total > 0 ? `Komentar ${formatCommentCount(total)}` : "Komentar";
   }, [commentCount, comments.length]);
-  const effectiveViewportHeight = visualViewportHeight || 520;
-  const keyboardSheetHeight = Math.round(
-    Math.min(
-      Math.max(292, effectiveViewportHeight * 0.64),
-      Math.max(280, effectiveViewportHeight - 72),
-    ),
-  );
-  const sheetHeight = keyboardOpen ? `${keyboardSheetHeight}px` : "min(58dvh, 560px)";
 
   const updateDrag = useCallback((clientY: number) => {
     if (!isDraggingRef.current) return;
@@ -188,14 +178,15 @@ export function FeedCommentSheet({
 
   useEffect(() => {
     if (!open || typeof window === "undefined") {
-      setKeyboardInset(0);
       setKeyboardOpen(false);
-      setVisualViewportHeight(0);
       viewportBaselineRef.current = 0;
+      document.documentElement.style.removeProperty("--feed-keyboard-height");
+      document.documentElement.style.removeProperty("--feed-comment-sheet-height");
       return;
     }
 
     const visualViewport = window.visualViewport;
+    const root = document.documentElement;
 
     function updateKeyboardInset() {
       const visibleHeight = visualViewport?.height ?? window.innerHeight;
@@ -212,13 +203,19 @@ export function FeedCommentSheet({
       const viewportLoss = Math.max(0, viewportBaselineRef.current - visibleHeight);
       const nextKeyboardOpen =
         Math.max(overlayInset, viewportLoss) > KEYBOARD_INSET_THRESHOLD;
-
-      setVisualViewportHeight(Math.round(visibleHeight));
-      setKeyboardOpen(nextKeyboardOpen);
-      setKeyboardInset(
+      const keyboardHeight =
         nextKeyboardOpen && overlayInset > KEYBOARD_INSET_THRESHOLD
           ? Math.round(overlayInset)
-          : 0,
+          : 0;
+
+      setKeyboardOpen(nextKeyboardOpen);
+      root.style.setProperty(
+        "--feed-keyboard-height",
+        keyboardHeight > 0 ? `${keyboardHeight}px` : "0px",
+      );
+      root.style.setProperty(
+        "--feed-comment-sheet-height",
+        nextKeyboardOpen ? "42dvh" : "56dvh",
       );
     }
 
@@ -230,6 +227,8 @@ export function FeedCommentSheet({
       visualViewport?.removeEventListener("resize", updateKeyboardInset);
       visualViewport?.removeEventListener("scroll", updateKeyboardInset);
       window.removeEventListener("resize", updateKeyboardInset);
+      root.style.removeProperty("--feed-keyboard-height");
+      root.style.removeProperty("--feed-comment-sheet-height");
     };
   }, [open]);
 
@@ -406,11 +405,11 @@ export function FeedCommentSheet({
           data-no-pull
           data-no-swipe-back="true"
           aria-describedby={undefined}
-          className="fixed inset-x-0 bottom-0 z-[200] mx-auto flex w-full max-w-2xl flex-col overflow-hidden rounded-t-[28px] border border-white/10 bg-[#111418]/[0.98] text-white shadow-[0_-28px_80px_rgba(0,0,0,0.5)] outline-none backdrop-blur-xl"
+          className="feed-comment-sheet fixed inset-x-0 z-[200] mx-auto flex w-full max-w-2xl flex-col overflow-hidden rounded-t-[28px] border border-white/10 bg-[#111418]/[0.98] text-white shadow-[0_-28px_80px_rgba(0,0,0,0.5)] outline-none backdrop-blur-xl"
           onOpenAutoFocus={(event) => event.preventDefault()}
           style={{
-            height: sheetHeight,
-            bottom: keyboardInset > 0 ? `${keyboardInset}px` : "0px",
+            height: "var(--feed-comment-sheet-height, 56dvh)",
+            bottom: "var(--feed-keyboard-height, 0px)",
             transform:
               isDragging || isSnappingBack
                 ? `translate3d(0, ${dragY}px, 0)`
@@ -431,9 +430,9 @@ export function FeedCommentSheet({
             onTouchCancel={finishDrag}
           >
             <div className="flex justify-center py-2">
-              <div className="h-1.5 w-10 rounded-full bg-white/24" />
+              <div className="feed-comment-handle h-1.5 w-10 rounded-full bg-white/24" />
             </div>
-            <div className="grid grid-cols-[40px_1fr_40px] items-center">
+            <div className="feed-comment-header grid min-h-12 grid-cols-[40px_1fr_40px] items-center">
               <span aria-hidden />
               <Drawer.Title className="text-center text-base font-black tracking-normal text-white">
                 {title}
@@ -450,7 +449,7 @@ export function FeedCommentSheet({
           </div>
 
           <div
-            className="min-h-0 flex-1 overflow-y-auto border-t border-white/8 px-5 py-4 [-webkit-overflow-scrolling:touch]"
+            className="feed-comment-list min-h-0 flex-1 overflow-y-auto border-t border-white/8 px-5 py-4 [-webkit-overflow-scrolling:touch]"
             onPointerDown={(event) => dismissKeyboardFromSheet(event.target)}
           >
             <div className="space-y-4">
@@ -491,7 +490,7 @@ export function FeedCommentSheet({
           </div>
 
           <div
-            className={`sticky bottom-0 z-10 shrink-0 border-t border-white/10 bg-[#111418]/95 px-4 pt-3 ${
+            className={`feed-comment-composer mt-auto shrink-0 border-t border-white/10 bg-[#111418]/95 px-4 pt-3 ${
               keyboardOpen
                 ? "pb-3"
                 : "[padding-bottom:calc(14px+env(safe-area-inset-bottom))]"
