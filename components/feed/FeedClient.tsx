@@ -311,11 +311,25 @@ function FeedPostsList({
   posts: FeedPostListItem[];
   onOpenComments: (postId: string) => void;
 }) {
-  const { activeIndex, setActive } = useFeedActiveVideo();
+  const { activeId, activeIndex, setActive } = useFeedActiveVideo();
   const cardRefs = useRef<Map<number, HTMLElement | null>>(new Map());
   // Read once per mount — deviceMemory is constant for the session, no
   // point in re-evaluating on every render.
   const virtualWindow = useMemo(() => getVirtualWindow(), []);
+
+  // Eager-activate post 0 saat posts pertama datang, tanpa nunggu
+  // IntersectionObserver. IO delay di iOS WKWebView 100-500ms — selama
+  // window itu `activeId === null` → `isActive === false` →
+  // `autoPlay={false}` di <video>. autoplay attribute HANYA trigger playback
+  // saat video element CREATED dengan autoplay=true; flip dari false→true
+  // setelah elemen sudah mount + src loaded tidak otomatis start play di iOS.
+  // Set active eager supaya video pertama render dengan autoplay=true dari
+  // first paint → browser handle muted-autoplay native sesuai Swift config.
+  useEffect(() => {
+    if (posts.length === 0) return;
+    if (activeId !== null) return;
+    setActive(posts[0].id, 0);
+  }, [posts, activeId, setActive]);
 
   useEffect(() => {
     if (posts.length === 0) return;
