@@ -182,13 +182,13 @@ export function SearchOverlay({ open, onClose }: Props) {
     suggest.products.length > 0 || suggest.categories.length > 0 || suggest.brands.length > 0;
 
   return (
-    <div className="fixed inset-0 z-[9999] flex flex-col bg-white">
+    <div className="fixed inset-0 z-[9999] flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-white">
       <form
         onSubmit={(event) => {
           event.preventDefault();
           commit(query);
         }}
-        className="flex items-center gap-2 border-b border-gray-100 bg-white px-3 py-2.5"
+        className="sticky top-0 z-20 flex shrink-0 items-center gap-2 border-b border-gray-100 bg-white/95 px-3 py-2.5 shadow-[0_4px_14px_rgba(15,23,42,0.04)] backdrop-blur"
         style={{ paddingTop: "max(0.625rem, env(safe-area-inset-top))" }}
       >
         <button
@@ -231,7 +231,7 @@ export function SearchOverlay({ open, onClose }: Props) {
         </div>
       </form>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-8">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(2rem+env(safe-area-inset-bottom))] [scroll-padding-top:0.75rem] [-webkit-overflow-scrolling:touch]">
         {query.trim().length >= 2 && (
           <section className="pt-3">
             <h4 className="text-xs font-black uppercase tracking-wide text-gray-400">

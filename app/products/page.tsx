@@ -20,9 +20,16 @@ export const metadata: Metadata = {
   },
 };
 
-const NEW_FILTERS: NewProductFilter[] = ["today", "this-week", "this-month", "newest"];
+const NEW_FILTERS: NewProductFilter[] = [
+  "today",
+  "this-week",
+  "this-month",
+  "last-30-days",
+  "newest",
+];
 const POPULAR_FILTERS: PopularFilter[] = [
   "best-seller",
+  "trending",
   "most-searched",
   "highest-rating",
   "most-bought",

@@ -49,6 +49,7 @@ export function Header() {
   const pathname = usePathname();
   const currentPath = normalizePathname(pathname);
   const isHome = currentPath === "/";
+  const isMemberHome = currentPath === "/member";
   const isProductsCatalog =
     currentPath === "/products" || currentPath === "/produk" || currentPath === "/kategori";
   const isProductSearchResult =
@@ -57,6 +58,7 @@ export function Header() {
   const isCartPage = currentPath === "/cart";
   const isBrandsDirectory = currentPath === "/brands";
   const isNotificationCenter = /^\/notifications(\/|$)/.test(currentPath);
+  const isAboutPage = currentPath === "/tentang-kami";
   const isFeedRoute = /^\/feed(\/|$)/.test(currentPath);
   const isAccountSubPageWithoutBrandHeader =
     currentPath === "/wishlist" ||
@@ -175,6 +177,7 @@ export function Header() {
     isFeedRoute ||
     isBrandsDirectory ||
     isNotificationCenter ||
+    isAboutPage ||
     isFocusedAccountPage ||
     isAccountSubPageWithoutBrandHeader ||
     isCheckoutPage ||
@@ -216,6 +219,10 @@ export function Header() {
           ? "product-detail-header nat-site-header bg-white md:sticky md:z-50 md:shadow-sm"
           : currentPath === "/products"
           ? "nat-site-header hidden bg-white md:block md:sticky"
+          : isHome
+          ? "nat-site-header home-sticky-header"
+          : isMemberHome
+          ? "nat-site-header account-sticky-header"
           : isHome || isProductsCatalog
           ? "nat-site-header mobile-sticky-header md:sticky"
           : "nat-site-header mobile-sticky-header md:sticky"

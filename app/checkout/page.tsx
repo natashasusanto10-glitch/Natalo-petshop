@@ -1355,7 +1355,7 @@ export default function CheckoutPage() {
         />
       )}
 
-      <header className="sticky top-0 z-50 border-b border-zinc-100 bg-white [padding-top:env(safe-area-inset-top)]">
+      <header className="sticky top-0 z-[1050] border-b border-slate-200/80 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.06)] [padding-top:env(safe-area-inset-top)]">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-3 lg:px-4">
           <button
             type="button"

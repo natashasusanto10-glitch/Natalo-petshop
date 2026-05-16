@@ -6,7 +6,7 @@
  * 4 section utama:
  * 1. Semua — reset semua filter, tutup drawer
  * 2. Kategori (accordion) — list dari DB categories
- * 3. Produk Baru (accordion) — today/this-week/this-month/newest
+ * 3. Produk Baru (accordion) — today/this-week/last-30-days
  * 4. Populer (accordion) — best-seller/most-searched/highest-rating/most-bought
  *
  * Klik item pilihan: set filter via URL params + tutup drawer + scroll up.
@@ -48,12 +48,12 @@ type Props = {
 const NEW_OPTIONS = [
   { id: "today", label: "Hari Ini" },
   { id: "this-week", label: "Minggu Ini" },
-  { id: "this-month", label: "Bulan Ini" },
-  { id: "newest", label: "Produk Terbaru" },
+  { id: "last-30-days", label: "30 Hari Terakhir" },
 ];
 
 const POPULAR_OPTIONS = [
   { id: "best-seller", label: "Terlaris" },
+  { id: "trending", label: "Trending" },
   { id: "most-searched", label: "Paling Dicari" },
   { id: "highest-rating", label: "Rating Tertinggi" },
   { id: "most-bought", label: "Paling Banyak Dibeli" },

@@ -425,7 +425,7 @@ export function OrderDetailView({
       className="min-h-dvh overflow-x-clip bg-gray-50 [padding-bottom:calc(1.25rem+env(safe-area-inset-bottom))]"
     >
       <PageStatusBar iconColor="dark" themeColor="#f8fafc" />
-      <header className="sticky top-0 z-[80] border-b border-slate-200/80 bg-white px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
+      <header className="sticky top-0 z-[1050] border-b border-slate-200/80 bg-white px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
         <div className="mx-auto flex h-11 w-full max-w-4xl items-center gap-3">
           <button
             type="button"

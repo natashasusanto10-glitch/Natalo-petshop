@@ -37,7 +37,7 @@ export default async function MemberProfilePage() {
         overlaysWebView={false}
       />
       <header
-        className="profile-header sticky top-0 z-50 border-b border-zinc-100 bg-white px-4 pb-3 shadow-sm"
+        className="profile-header sticky top-0 z-[1050] border-b border-slate-200/80 bg-white px-4 pb-3 shadow-[0_8px_24px_rgba(15,23,42,0.06)]"
         style={{
           minHeight: "calc(56px + env(safe-area-inset-top))",
           paddingTop: "calc(env(safe-area-inset-top) + 10px)",

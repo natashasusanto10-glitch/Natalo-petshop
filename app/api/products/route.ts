@@ -8,9 +8,16 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const NEW_FILTERS: NewProductFilter[] = ["today", "this-week", "this-month", "newest"];
+const NEW_FILTERS: NewProductFilter[] = [
+  "today",
+  "this-week",
+  "this-month",
+  "last-30-days",
+  "newest",
+];
 const POPULAR_FILTERS: PopularFilter[] = [
   "best-seller",
+  "trending",
   "most-searched",
   "highest-rating",
   "most-bought",
@@ -81,6 +88,7 @@ export async function GET(request: NextRequest) {
       brand: brand || undefined,
       search: search || undefined,
       newFilter,
+      popularFilter,
       excludeIds,
       hasPriceOnly,
       inStockOnly,

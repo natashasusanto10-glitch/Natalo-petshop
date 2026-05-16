@@ -136,8 +136,29 @@ input, textarea, select, button {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
 }
 
+.account-sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 1100;
+  background: #ffffff;
+  padding-top: env(safe-area-inset-top);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05);
+}
+
+.home-sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 1100;
+  background: #ffffff;
+  padding-top: env(safe-area-inset-top);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
+}
+
 body[data-review-modal-open="true"] .nat-site-header,
 body[data-review-modal-open="true"] .mobile-sticky-header,
+body[data-review-modal-open="true"] .account-sticky-header,
+body[data-review-modal-open="true"] .home-sticky-header,
 body[data-review-modal-open="true"] .product-detail-header {
   position: static !important;
 }
@@ -199,10 +220,10 @@ body[data-review-modal-open="true"] .product-detail-header {
 .sticky-back-title {
   position: sticky;
   top: calc(var(--natalo-mobile-header-min-height) + env(safe-area-inset-top));
-  z-index: 40;
+  z-index: 1050;
   background: #ffffff;
   padding: 16px max(1rem, env(safe-area-inset-right)) 12px max(1rem, env(safe-area-inset-left));
-  border-bottom: 1px solid rgba(226, 232, 240, 0.7);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.8);
   transition: box-shadow 180ms ease;
 }
 

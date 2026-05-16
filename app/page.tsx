@@ -64,10 +64,10 @@ const SHORTCUT_ITEMS: {
   color: string;
   external?: boolean;
 }[] = [
-  { icon: "sparkles", label: "Produk Baru", href: "/products?sort=newest", bg: "bg-blue-50", color: "text-blue-600" },
-  { icon: "medal", label: "Terlaris", href: "/products?sort=popular", bg: "bg-amber-50", color: "text-amber-600" },
+  { icon: "sparkles", label: "Produk Baru", href: "/products?new=last-30-days", bg: "bg-blue-50", color: "text-blue-600" },
+  { icon: "medal", label: "Terlaris", href: "/products?popular=best-seller", bg: "bg-amber-50", color: "text-amber-600" },
   { icon: "voucher-pet", label: "Voucher", href: "/member", bg: "bg-pink-50", color: "text-pink-600" },
-  { icon: "flame", label: "Trending", href: "/products?promo=1", bg: "bg-red-50", color: "text-red-600" },
+  { icon: "flame", label: "Trending", href: "/products?popular=trending", bg: "bg-red-50", color: "text-red-600" },
   {
     icon: "house-call-grooming",
     label: "House Call Grooming",
@@ -540,99 +540,12 @@ async function getFlashSaleProducts(limit = 7): Promise<StoreProduct[]> {
 }
 
 async function getBestSellerProducts(limit = 6): Promise<StoreProduct[]> {
-  try {
-    const soldRows = await prisma.orderItem.groupBy({
-      by: ["productId"],
-      where: {
-        order: {
-          paymentStatus: "PAID",
-          status: { in: VALID_BEST_SELLER_ORDER_STATUSES },
-        },
-        product: { isActive: true },
-      },
-      _sum: { quantity: true },
-      orderBy: { _sum: { quantity: "desc" } },
-      take: Math.max(limit * 4, limit),
-    });
-
-    const productIds = soldRows.map((row) => row.productId);
-    if (productIds.length === 0) return [];
-
-    const soldCountByProduct = new Map(
-      soldRows.map((row) => [row.productId, row._sum?.quantity ?? 0]),
-    );
-
-    const soldProducts = await prisma.product.findMany({
-      where: {
-        id: { in: productIds },
-        isActive: true,
-      },
-      include: {
-        category: { select: { slug: true } },
-        variants: {
-          where: { deletedAt: null, isActive: true },
-          select: { price: true, stock: true },
-        },
-      },
-    });
-
-    return soldProducts
-      .sort((a, b) => {
-        const soldDiff =
-          (soldCountByProduct.get(b.id) ?? 0) -
-          (soldCountByProduct.get(a.id) ?? 0);
-        if (soldDiff !== 0) return soldDiff;
-        if (b.avgRating !== a.avgRating) return b.avgRating - a.avgRating;
-        return b.createdAt.getTime() - a.createdAt.getTime();
-      })
-      .slice(0, limit)
-      .map((product) => {
-        if (product.hasVariants && product.variants.length > 0) {
-          const prices = product.variants.map((variant) => variant.price);
-          const totalStock = product.variants.reduce(
-            (sum, variant) => sum + variant.stock,
-            0,
-          );
-          return {
-            id: product.id,
-            name: product.name,
-            slug: product.slug,
-            description: product.description,
-            price: Math.min(...prices),
-            discountPrice: null,
-            memberPrice: product.memberPrice,
-            stock: totalStock,
-            weightGram: product.weightGram,
-            imageUrl: product.imageUrl,
-            gallery: product.gallery ?? [],
-            hasVariants: true,
-            avgRating: product.avgRating,
-            reviewCount: product.reviewCount,
-            categorySlug: product.category?.slug ?? null,
-          };
-        }
-
-        return {
-          id: product.id,
-          name: product.name,
-          slug: product.slug,
-          description: product.description,
-          price: product.price,
-          discountPrice: product.discountPrice,
-          memberPrice: product.memberPrice,
-          stock: product.stock,
-          weightGram: product.weightGram,
-          imageUrl: product.imageUrl,
-          gallery: product.gallery ?? [],
-          hasVariants: false,
-          avgRating: product.avgRating,
-          reviewCount: product.reviewCount,
-          categorySlug: product.category?.slug ?? null,
-        };
-      });
-  } catch {
-    return [];
-  }
+  return getProducts({
+    take: limit,
+    popularFilter: "best-seller",
+    hasPriceOnly: true,
+    inStockOnly: true,
+  });
 }
 
 export default async function HomePage() {
@@ -919,7 +832,7 @@ export default async function HomePage() {
       <section className="mt-5">
         <div className="flex items-end justify-between px-4">
           <h2 className="text-base font-black text-zinc-900 sm:text-lg">🏆 Produk Terlaris</h2>
-          <Link href="/products?sort=popular" className="text-xs font-bold text-blue-600">
+          <Link href="/products?popular=best-seller" className="text-xs font-bold text-blue-600">
             Lihat semua
           </Link>
         </div>

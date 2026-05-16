@@ -1,12 +1,14 @@
 export default function CartLoading() {
   return (
-    <div className="mx-auto max-w-3xl px-4 py-4 pb-[calc(150px+env(safe-area-inset-bottom))] md:py-10 md:pb-10">
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-2">
-          <div className="h-7 w-40 animate-pulse rounded-lg bg-gray-100 md:h-8 md:w-48" />
-          <div className="h-4 w-44 animate-pulse rounded bg-gray-100" />
+    <div className="mx-auto max-w-3xl px-4 pb-[calc(150px+env(safe-area-inset-bottom))] md:pb-10">
+      <div className="sticky top-0 z-[1050] -mx-4 border-b border-slate-200/80 bg-white px-4 pb-3 shadow-[0_8px_24px_rgba(15,23,42,0.06)] [padding-top:calc(12px+env(safe-area-inset-top))]">
+        <div className="mx-auto flex max-w-3xl items-start justify-between gap-4">
+          <div className="space-y-2">
+            <div className="h-7 w-40 animate-pulse rounded-lg bg-gray-100 md:h-8 md:w-48" />
+            <div className="h-4 w-44 animate-pulse rounded bg-gray-100" />
+          </div>
+          <div className="h-10 w-24 animate-pulse rounded-full bg-gray-100" />
         </div>
-        <div className="h-10 w-24 animate-pulse rounded-full bg-gray-100" />
       </div>
 
       <section className="mt-4 overflow-hidden rounded-2xl border border-gray-100 bg-white md:mt-8">

@@ -25,12 +25,14 @@ import { hapticTap } from "@/lib/native/haptics";
 const NEW_LABELS: Record<string, string> = {
   today: "Hari Ini",
   "this-week": "Minggu Ini",
-  "this-month": "Bulan Ini",
+  "this-month": "30 Hari Terakhir",
+  "last-30-days": "30 Hari Terakhir",
   newest: "Produk Terbaru",
 };
 
 const POPULAR_LABELS: Record<string, string> = {
   "best-seller": "Terlaris",
+  trending: "Trending",
   "most-searched": "Paling Dicari",
   "highest-rating": "Rating Tertinggi",
   "most-bought": "Paling Banyak Dibeli",

@@ -511,7 +511,7 @@ export function OrderHistoryClient({ orders }: Props) {
           "radial-gradient(1200px 600px at 10% -10%, #DBEAFE 0%, transparent 60%), radial-gradient(900px 500px at 100% 100%, #E0F2FE 0%, transparent 55%), #F6F7FB",
       }}
     >
-      <header className="sticky top-0 z-50 border-b border-slate-200/70 bg-white/90 px-4 py-3 shadow-[0_8px_24px_-20px_rgba(15,23,42,0.4)] backdrop-blur [padding-top:calc(0.75rem+env(safe-area-inset-top))]">
+      <header className="sticky top-0 z-[1050] border-b border-slate-200/80 bg-white px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.06)] [padding-top:calc(0.75rem+env(safe-area-inset-top))]">
         <div className="mx-auto flex max-w-4xl items-center gap-3">
           <Link
             href="/member"
