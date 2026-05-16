@@ -491,7 +491,10 @@ export function FeedUploadClient() {
 
   // ── Render ────────────────────────────────────────────────────────
   return (
-    <div className="relative min-h-[100dvh] w-full overflow-x-hidden bg-black text-white">
+    <div
+      className="relative min-h-[100dvh] w-full overflow-x-hidden bg-black text-white"
+      style={{ backgroundColor: "#000" }}
+    >
       {/* Hidden inputs — satu untuk galeri, satu untuk kamera. */}
       <input
         ref={galleryInputRef}
@@ -659,7 +662,11 @@ function StepFrame({
 
   return (
     <>
-      <div key={stepKey} className={`${animClass} min-h-[100dvh]`}>
+      <div
+        key={stepKey}
+        className={`${animClass} min-h-[100dvh] bg-black text-white`}
+        style={{ backgroundColor: "#000" }}
+      >
         {children}
       </div>
       <style>{`
@@ -1914,7 +1921,10 @@ function SuccessScreen({
   onViewMyPosts: () => void;
 }) {
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-black text-white">
+    <div
+      className="flex min-h-[100dvh] flex-col bg-black text-white"
+      style={{ backgroundColor: "#000" }}
+    >
       <FlowHeader
         title=""
         leftSlot={<span />}

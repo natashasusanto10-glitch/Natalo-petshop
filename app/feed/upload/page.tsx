@@ -24,10 +24,10 @@ export default async function FeedUploadPage() {
       <PageStatusBar
         iconColor="light"
         themeColor="#000000"
-        nativeBackgroundColor="#00000000"
+        nativeBackgroundColor="#000000"
         overlaysWebView
       />
-      <div className="feed-upload-page-enter min-h-[100dvh]">
+      <div className="feed-upload-page-enter min-h-[100dvh] bg-black">
         <FeedUploadClient />
       </div>
       <style>{`
