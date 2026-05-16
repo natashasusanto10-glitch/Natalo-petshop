@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFeedActiveVideo } from "./FeedActiveVideoContext";
 import { getPreloadTier } from "@/lib/feed/runtime-config";
 import { useVideoMetrics } from "./useVideoMetrics";
@@ -26,7 +26,8 @@ function resolvePlaybackUrl(url: string): string {
 
 type Props = {
   postId: string;
-  /** List position passed by parent feed so we can derive distance-from-active. */
+  /** Position in the parent feed list. Threaded down so we can derive
+   *  distance-from-active for preload tier decisions. */
   index: number;
   videoUrl: string;
   thumbnailUrl: string | null;
@@ -35,11 +36,22 @@ type Props = {
   className?: string;
 };
 
-// Longer delay than feels right because pre-buffered MP4 usually transitions
-// from `isActive=true` → `isPlaying=true` in 50-200ms. Showing a spinner
-// in that window would cause a one-frame flash on every swipe even when
+// Showing a spinner shorter than this would flash on every swipe even when
 // playback is effectively instant.
 const LOADING_INDICATOR_DELAY_MS = 1200;
+
+// Start the "swap to next slot" sequence this long before the natural end.
+// Browser play() on the prepared slot at currentTime=0 takes ~50-150ms to
+// produce its first frame; SWAP_LEAD_TIME_SEC gives that window so the
+// crossfade has content on both sides.
+const SWAP_LEAD_TIME_SEC = 0.25;
+
+// After a swap, the previous slot stays mounted at the active position for
+// this long (in case the new slot's play() rejects and we need to fall
+// back). Then it's rewound + paused so it's ready for the NEXT swap cycle.
+const SWAP_CLEANUP_MS = 400;
+
+type Slot = "A" | "B";
 
 export function FeedVideoPlayer({
   postId,
@@ -52,13 +64,17 @@ export function FeedVideoPlayer({
 }: Props) {
   const { activeId, activeIndex, setActive, paused, soundOn, toggleSound } =
     useFeedActiveVideo();
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoARef = useRef<HTMLVideoElement>(null);
+  const videoBRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  // Initial loadSrc=true untuk card di index 0 supaya video element CREATED
-  // dengan src dari first paint. iOS WebKit cek autoplay attribute + src saat
-  // element mount; src yang di-attach belakangan (via setState) sering tidak
-  // trigger autoplay heuristic, akibatnya video stuck di poster sampai user
-  // klik manual.
+  // 2-video swap state: A or B is currently the "front" (visible + playing).
+  // The other is paused at currentTime=0, ready to swap in at end-of-loop.
+  // Approach inspired by Instagram Reels — avoids the WKWebView seek-clear
+  // black flash that pre-seek mid-frame still showed.
+  const [activeSlot, setActiveSlot] = useState<Slot>("A");
+  // src is attached to both video elements from first paint for the active
+  // card (index 0). Cards further away wait for IntersectionObserver before
+  // attaching — saves memory + bandwidth on long feeds.
   const [loadSrc, setLoadSrc] = useState(index === 0);
   const [farFromViewport, setFarFromViewport] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -68,14 +84,12 @@ export function FeedVideoPlayer({
   // CDN caching. New posts already come through as MP4 from the webhook; this
   // covers older rows still pointing at playlist.m3u8.
   const playbackUrl = useMemo(() => resolvePlaybackUrl(videoUrl), [videoUrl]);
+  const isHls = isHlsUrl(playbackUrl);
 
-  // Treat card di index 0 sebagai active sampai IntersectionObserver atau
-  // scroll fire setActive untuk card lain. Tanpa ini, first render punya
-  // isActive=false → autoPlay=false → video element mount dengan autoplay
-  // attribute kosong → iOS tidak trigger playback otomatis. Setelah eager-
-  // activate useEffect di FeedPostsList fire (setActive sets activeId), case
-  // ini tidak lagi diperlukan untuk re-render karena activeId === postId
-  // sudah cocok untuk post 0.
+  // Treat card di index 0 sebagai active sampai IntersectionObserver fire
+  // setActive untuk card lain. Tanpa ini, first render punya isActive=false
+  // → autoPlay=false → video element mount tanpa autoplay attribute → iOS
+  // tidak trigger playback otomatis.
   const isFallbackActiveForFirstCard = activeId === null && index === 0;
   const isActive = (activeId === postId || isFallbackActiveForFirstCard) && !paused;
   // Distance from the currently-active card. Unknown active → treat as far.
@@ -84,41 +98,63 @@ export function FeedVideoPlayer({
   // Network-aware tier: WiFi gets aggressive prefetch, cellular-slow holds back.
   const preloadMode = getPreloadTier(distance);
 
-  // Telemetry — collects canPlay / firstFrame / buffer counts and flushes
-  // to /api/feed/metrics when this card stops being active or unmounts.
-  useVideoMetrics({ videoRef, postId, isActive, videoDurationSec: durationSec });
+  // Helper: refs accessor by slot.
+  const getRef = useCallback(
+    (slot: Slot): HTMLVideoElement | null =>
+      slot === "A" ? videoARef.current : videoBRef.current,
+    [],
+  );
 
+  // Telemetry — collects canPlay / firstFrame / buffer counts. Hook only
+  // accepts one ref; pass the currently-active slot so metrics track the
+  // visible playback.
+  const metricsRef = useRef<HTMLVideoElement>(
+    null,
+  ) as React.MutableRefObject<HTMLVideoElement | null>;
+  useEffect(() => {
+    metricsRef.current = getRef(activeSlot);
+  }, [activeSlot, getRef]);
+  useVideoMetrics({
+    videoRef: metricsRef as React.RefObject<HTMLVideoElement | null>,
+    postId,
+    isActive,
+    videoDurationSec: durationSec,
+  });
+
+  // Teardown — pause + drop src on both slots when route leaves /feed so iOS
+  // doesn't keep the AVPlayer alive in the background.
   useEffect(() => {
     function onTeardown() {
-      const video = videoRef.current;
       setShowLoadingIndicator(false);
       setIsPlaying(false);
       setLoadSrc(false);
       setFarFromViewport(true);
-      if (!video) return;
-
-      try {
-        video.pause();
-        video.removeAttribute("autoplay");
-        video.removeAttribute("src");
-        video.preload = "none";
-        video.load();
-      } catch {
-        // Media teardown is best-effort and must not block route changes.
+      for (const slot of ["A", "B"] as const) {
+        const v = getRef(slot);
+        if (!v) continue;
+        try {
+          v.pause();
+          v.removeAttribute("autoplay");
+          v.removeAttribute("src");
+          v.preload = "none";
+          v.load();
+        } catch {
+          // Media teardown is best-effort and must not block route changes.
+        }
       }
     }
-
     window.addEventListener(FEED_PLAYBACK_TEARDOWN_EVENT, onTeardown);
     return () => window.removeEventListener(FEED_PLAYBACK_TEARDOWN_EVENT, onTeardown);
-  }, []);
+  }, [getRef]);
 
-  // HLS fallback path. New Bunny posts now ship as MP4 progressive (much
-  // better cache behaviour for short feed clips), and legacy Bunny rows are
-  // rewritten to MP4 via resolvePlaybackUrl() above. Only legacy posts that
-  // we cannot rewrite (e.g. external HLS providers in the future) hit this
-  // path: Safari plays HLS natively, other browsers fall back to hls.js.
+  // HLS fallback path. New Bunny posts ship as MP4 progressive (much better
+  // cache behaviour for short feed clips). Only legacy posts that we cannot
+  // rewrite (e.g. external HLS providers in the future) hit this path: Safari
+  // plays HLS natively, other browsers fall back to hls.js. Note: HLS attach
+  // only to slot A — HLS legacy content doesn't benefit from 2-video swap
+  // (it's old, low-priority for smoothness).
   useEffect(() => {
-    const video = videoRef.current;
+    const video = videoARef.current;
     if (!video) return;
     if (!loadSrc || farFromViewport) return;
     if (!isHlsUrl(playbackUrl)) return;
@@ -147,10 +183,7 @@ export function FeedVideoPlayer({
     };
   }, [playbackUrl, loadSrc, farFromViewport]);
 
-  const isHls = isHlsUrl(playbackUrl);
-
-  // Track when the active card changes via IntersectionObserver. Pass both
-  // id and index so context can compute neighbours for preload decisions.
+  // IO observer: track when this card becomes the ≥60% visible one.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -168,12 +201,9 @@ export function FeedVideoPlayer({
     return () => obs.disconnect();
   }, [postId, index, setActive]);
 
-  // Far-from-viewport guard so we can drop the video src entirely when the
-  // card is way off-screen — meaningful memory savings on long feeds.
-  // 300% root margin (one full viewport on each side of the visible card)
-  // means ±1 cards are always within "load src" range so by the time the
-  // user swipes to them, the browser already has the manifest + first chunk
-  // buffered. Removes the loading flash on swipe that the user reported.
+  // Far-from-viewport guard — drop src + preload="none" for cards way off
+  // screen to free memory. 300% rootMargin means ±1 cards stay loaded so
+  // swipe is instant.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -195,118 +225,140 @@ export function FeedVideoPlayer({
     return () => obs.disconnect();
   }, []);
 
-  // Play / pause based on active state. When the user swipes to a new card,
-  // isActive flips true and we call play() immediately — but if the browser
-  // hasn't buffered enough yet, play() rejects silently and the video sits
-  // paused on the poster ("loading screen" the user reported). Listen to
-  // `canplay` so the moment the browser has the first frame ready we kick
-  // playback again. With distance-±1 preload="auto" the gap between
-  // becoming active and `canplay` firing is usually milliseconds on WiFi.
+  // Play active slot, pause inactive slot, ensure inactive is rewound to 0.
+  // Runs whenever isActive, activeSlot, or soundOn change.
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    // muted property: active video follow soundOn (user choice), inactive
-    // videos always muted (saving CPU + cegah audio leak antar video).
-    // First-time autoplay still works karena saat soundOn=false (default),
-    // video muted → WebKit allow muted-autoplay tanpa user gesture.
-    // Saat user toggle soundOn=true via tap, browser sudah dapat user-gesture
-    // sebelumnya → unmute allowed.
-    video.muted = !isActive || !soundOn;
+    const activeV = getRef(activeSlot);
+    const inactiveV = getRef(activeSlot === "A" ? "B" : "A");
+    if (!activeV) return;
+
+    // Inactive slot: always muted (cegah audio leak ke video lain) + paused
+    // + rewound. Ready to swap in.
+    if (inactiveV) {
+      inactiveV.muted = true;
+      if (!inactiveV.paused) {
+        try {
+          inactiveV.pause();
+        } catch {}
+      }
+      if (inactiveV.currentTime > 0.05) {
+        try {
+          inactiveV.currentTime = 0;
+        } catch {}
+      }
+    }
+
+    // Active slot follows soundOn (user choice).
+    activeV.muted = !isActive || !soundOn;
+
     if (!isActive) {
-      video.pause();
+      try {
+        activeV.pause();
+      } catch {}
       setIsPlaying(false);
       return;
     }
+
     let cancelled = false;
     const tryPlay = () => {
       if (cancelled) return;
-      // Re-assert muted state before play() — defensive.
-      video.muted = !soundOn;
-      const p = video.play();
+      // Re-assert muted before play() — defensive.
+      activeV.muted = !soundOn;
+      const p = activeV.play();
       if (p && typeof p.then === "function") {
         p.catch(() => {
-          // Silent — iOS sometimes rejects first play() attempt when buffer
-          // not yet ready. canplay/loadeddata listeners retry below.
+          // Silent — iOS rejects first play() when buffer not ready. Event
+          // listeners retry.
         });
       }
     };
     tryPlay();
-    // Multiple events sebagai retry trigger — iOS WKWebView kadang fire
-    // loadedmetadata duluan, browser lain canplay duluan. canplaythrough
-    // untuk safety net kalau yang lain miss. Semua aman dipanggil berulang.
-    video.addEventListener("loadedmetadata", tryPlay);
-    video.addEventListener("canplay", tryPlay);
-    video.addEventListener("loadeddata", tryPlay);
-    video.addEventListener("canplaythrough", tryPlay);
+    // Retry on multiple events because iOS WKWebView fires loadedmetadata
+    // before canplay sometimes, and other browsers vice versa.
+    activeV.addEventListener("loadedmetadata", tryPlay);
+    activeV.addEventListener("canplay", tryPlay);
+    activeV.addEventListener("loadeddata", tryPlay);
+    activeV.addEventListener("canplaythrough", tryPlay);
     return () => {
       cancelled = true;
-      video.removeEventListener("loadedmetadata", tryPlay);
-      video.removeEventListener("canplay", tryPlay);
-      video.removeEventListener("loadeddata", tryPlay);
-      video.removeEventListener("canplaythrough", tryPlay);
+      activeV.removeEventListener("loadedmetadata", tryPlay);
+      activeV.removeEventListener("canplay", tryPlay);
+      activeV.removeEventListener("loadeddata", tryPlay);
+      activeV.removeEventListener("canplaythrough", tryPlay);
     };
-  }, [isActive, soundOn]);
+  }, [isActive, activeSlot, soundOn, getRef]);
 
-  // Delayed loading indicator. Only surface a spinner if the video stays
-  // genuinely un-playable for >LOADING_INDICATOR_DELAY_MS. iOS WKWebView
-  // kadang miss `onPlay` event sehingga isPlaying state stuck di false meski
-  // video sebenarnya jalan. Gunakan video.readyState + video.paused sebagai
-  // source of truth — cek di interval kecil. Kalau readyState >= HAVE_FUTURE_DATA
-  // (3) dan tidak paused, video pasti playing regardless onPlay event.
+  // Spinner: show only when active card stays genuinely un-playable for
+  // >LOADING_INDICATOR_DELAY_MS. Source of truth = video.readyState + paused,
+  // not the isPlaying React state (which can lag on iOS WKWebView).
   useEffect(() => {
     if (!isActive) {
       setShowLoadingIndicator(false);
       return;
     }
     const t = window.setTimeout(() => {
-      const video = videoRef.current;
+      const video = getRef(activeSlot);
       if (!video) {
         setShowLoadingIndicator(true);
         return;
       }
-      // HAVE_FUTURE_DATA (3) = playback bisa lanjut at least 1 frame
-      // HAVE_ENOUGH_DATA (4) = enough buffered untuk play through smoothly
-      // Kalau salah satu tercapai dan tidak paused, sembunyikan spinner.
       const isReallyPlaying = !video.paused && video.readyState >= 3;
       setShowLoadingIndicator(!isReallyPlaying);
     }, LOADING_INDICATOR_DELAY_MS);
     return () => window.clearTimeout(t);
-  }, [isActive, isPlaying]);
+  }, [isActive, isPlaying, activeSlot, getRef]);
 
-  // timeupdate listener: dua tugas.
-  //   1. Signal isPlaying — fires continuously saat video advancing,
-  //      paling reliable signal di iOS WKWebView (kadang miss onPlay).
-  //   2. Manual loop dengan cover: pre-seek + brief setIsPlaying(false)
-  //      supaya video fade ke opacity 0 → poster (di belakang) cover
-  //      black paint dari WKWebView seek. Setelah seek complete +
-  //      currentTime advances, timeupdate set isPlaying=true lagi → fade in.
+  // 2-video swap: timeupdate on active slot watches for end-of-clip, kicks
+  // off play() on the other slot, swaps active. This avoids HTML5 video's
+  // seek-to-0 which clears WKWebView's paint buffer (the "black flash").
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    let lastTime = video.currentTime;
-    let looping = false;
+    const active = getRef(activeSlot);
+    const next = getRef(activeSlot === "A" ? "B" : "A");
+    if (!active || !next) return;
+    let swapping = false;
+    let lastTime = active.currentTime;
+
     function onTimeUpdate() {
-      const v = videoRef.current;
-      if (!v) return;
-      // Manual loop: pre-seek 150ms sebelum natural end. Sebelum seek,
-      // hide video (setIsPlaying false → opacity 0) supaya poster yang
-      // visible — bukan black frame dari WKWebView seek-clear.
+      const v = active;
+      if (!v || !next) return;
       if (
-        !looping &&
+        !swapping &&
         v.duration &&
         Number.isFinite(v.duration) &&
         v.duration > 0.5 &&
-        v.duration - v.currentTime < 0.15
+        v.duration - v.currentTime < SWAP_LEAD_TIME_SEC
       ) {
-        looping = true;
-        setIsPlaying(false); // hide video → poster shown
-        v.currentTime = 0;
-        lastTime = 0;
-        // Reset looping flag setelah short window. Begitu video advance
-        // dari 0, timeupdate set isPlaying=true lagi → fade in.
+        swapping = true;
+        // Prep + play the next slot starting from 0. Its src has been
+        // preloaded since mount (same playbackUrl as active slot, browser
+        // cache hit → no extra network round-trip).
+        try {
+          if (next.currentTime > 0.05) next.currentTime = 0;
+        } catch {}
+        next.muted = !soundOn;
+        const p = next.play();
+        if (p && typeof p.then === "function") {
+          p.catch(() => {
+            // play() rejected on the prep slot — likely buffer not ready.
+            // Don't swap; let the OLD slot keep playing past natural end
+            // and the `ended` fallback below handles loop the old way.
+            swapping = false;
+          });
+        }
+        // Swap active slot immediately so render shows next slot's element
+        // on top. Old slot fades out via opacity, but it KEEPS playing
+        // (audibly silent because muted will flip true below). The browser
+        // crossfades smoothly because both slots are decoding & painting.
+        setActiveSlot((cur) => (cur === "A" ? "B" : "A"));
+        // After SWAP_CLEANUP_MS, pause + rewind the old slot so it's ready
+        // for NEXT loop. By then the crossfade is done.
         window.setTimeout(() => {
-          looping = false;
-        }, 300);
+          try {
+            active.pause();
+            active.currentTime = 0;
+            active.muted = true;
+          } catch {}
+        }, SWAP_CLEANUP_MS);
         return;
       }
       if (v.currentTime !== lastTime) {
@@ -315,41 +367,57 @@ export function FeedVideoPlayer({
         setShowLoadingIndicator(false);
       }
     }
+
     function onPlaying() {
       setIsPlaying(true);
       setShowLoadingIndicator(false);
     }
-    function onEnded() {
-      // Safety net kalau timeupdate miss the pre-seek window. Same
-      // pattern: hide video → seek → play.
-      const v = videoRef.current;
-      if (!v) return;
-      setIsPlaying(false);
-      v.currentTime = 0;
-      v.play().catch(() => {});
-    }
-    video.addEventListener("timeupdate", onTimeUpdate);
-    video.addEventListener("playing", onPlaying);
-    video.addEventListener("ended", onEnded);
-    return () => {
-      video.removeEventListener("timeupdate", onTimeUpdate);
-      video.removeEventListener("playing", onPlaying);
-      video.removeEventListener("ended", onEnded);
-    };
-  }, []);
 
+    function onEnded() {
+      // Safety net: if timeupdate's SWAP_LEAD_TIME_SEC window was missed
+      // (rare — timeupdate fires ~4x/s in iOS), fall back to the simple
+      // loop on the SAME slot. Yes this might flash black, but it's
+      // strictly better than the video stopping.
+      const v = active;
+      if (!v) return;
+      try {
+        v.currentTime = 0;
+        v.play().catch(() => {});
+      } catch {}
+    }
+
+    active.addEventListener("timeupdate", onTimeUpdate);
+    active.addEventListener("playing", onPlaying);
+    active.addEventListener("ended", onEnded);
+    return () => {
+      active.removeEventListener("timeupdate", onTimeUpdate);
+      active.removeEventListener("playing", onPlaying);
+      active.removeEventListener("ended", onEnded);
+    };
+  }, [activeSlot, soundOn, getRef]);
+
+  // Tap anywhere on the video toggles play/pause of the active slot.
+  // Speaker icon's onClick stops propagation so it doesn't pause.
   function togglePlay() {
-    const video = videoRef.current;
-    if (!video) return;
-    if (video.paused) {
+    const active = getRef(activeSlot);
+    if (!active) return;
+    if (active.paused) {
       setActive(postId, index);
-      video.play().catch(() => {
-        setIsPlaying(false);
-      });
+      active.play().catch(() => setIsPlaying(false));
     } else {
-      video.pause();
+      try {
+        active.pause();
+      } catch {}
     }
   }
+
+  // src attached to BOTH video elements when within preload range. Same URL
+  // → browser shares the underlying byte cache; no double-download.
+  const attachSrc = loadSrc && !farFromViewport && !isHls;
+  const elementSrc = attachSrc ? playbackUrl : undefined;
+  // Slot A handles HLS via the dedicated effect above. Slot B always uses
+  // MP4 direct src (HLS legacy content gets simple loop, not seamless).
+  const slotBSrc = attachSrc ? playbackUrl : undefined;
 
   return (
     <div
@@ -358,10 +426,9 @@ export function FeedVideoPlayer({
       className={`relative w-full overflow-hidden bg-black ${className}`}
       style={{
         aspectRatio: `${aspectRatio}`,
-        // Pakai poster URL sebagai container background — fallback final
-        // kalau <img> element belum loaded atau video element render
-        // transparent/black. CSS background-image cache instan dari Bunny
-        // CDN, jadi swipe ke card baru tidak pernah expose bg-black raw.
+        // Container background = thumbnail. CSS bg-image cache instan dari
+        // Bunny CDN, jadi tidak pernah expose bg-black raw saat <img>
+        // poster element atau video element belum render frame.
         backgroundImage: thumbnailUrl ? `url("${thumbnailUrl}")` : undefined,
         backgroundSize: "cover",
         backgroundPosition: "center",
@@ -372,13 +439,6 @@ export function FeedVideoPlayer({
         <img
           src={thumbnailUrl}
           alt=""
-          // `object-cover` (TikTok-style fill). Every feed cell is exactly
-          // one viewport (100dvh) and the video must fill it edge-to-edge
-          // — no black letterbox bars, no chance of the next card peeking
-          // through dead space.
-          // `loading="eager"` + `fetchPriority="high"` supaya poster siap
-          // SAAT user swipe cepat — sebelumnya pakai lazy default yang
-          // bikin poster blank → bg-black bleed through saat transisi.
           loading="eager"
           fetchPriority="high"
           decoding="async"
@@ -386,62 +446,64 @@ export function FeedVideoPlayer({
           onError={(event) => {
             event.currentTarget.style.display = "none";
           }}
-          // Poster STAY VISIBLE selama video belum playing. Tidak ada
-          // transition fade-out — instant disappear saat video opaque
-          // covers it. Sebelumnya pakai 200ms fade yang overlap dengan
-          // video fade-in window 150ms → keduanya di opacity 0.5 di
-          // tengah transisi → bg-black bleed.
+          // Poster visible sampai SALAH SATU slot playing. Instant disappear
+          // (no transition) saat video opaque covers it.
           style={{ opacity: isPlaying ? 0 : 1 }}
         />
       )}
 
+      {/* Slot A — primary video element. Receives HLS via hls.js when
+          applicable. */}
       <video
-        ref={videoRef}
+        ref={videoARef}
         data-feed-video
-        // For HLS we let the effect above attach the source (Safari native
-        // sets src direct, other browsers hand the stream to hls.js).
-        // For progressive MP4 we use the native <video src> path.
-        src={loadSrc && !farFromViewport && !isHls ? playbackUrl : undefined}
+        data-slot="A"
+        src={isHls ? undefined : elementSrc}
         poster={thumbnailUrl ?? undefined}
         playsInline
-        // `muted` declarative React prop kadang TIDAK apply
-        // `video.muted = true` properly di iOS WKWebView (known React quirk
-        // — issue facebook/react#10389). Imperative set via ref di useEffect
-        // di bawah. HTML attribute tetap di sini sebagai safety net untuk
-        // SSR + first paint.
         muted
-        // SENGAJA TIDAK `loop` HTML attribute — WKWebView seek-at-frame-boundary
-        // saat loop trigger bikin black flash. Manual loop via timeupdate pre-seek
-        // di useEffect (lebih smooth karena seek mid-frame).
-        autoPlay={isActive}
-        preload={loadSrc && !farFromViewport ? preloadMode : "none"}
-        // See thumbnail comment — object-cover so the video always fills
-        // the snap cell completely, matching TikTok-style hard-paged feed.
+        autoPlay={isActive && activeSlot === "A"}
+        preload={attachSrc ? preloadMode : "none"}
         className="absolute inset-0 h-full w-full object-cover"
         onPlay={() => setIsPlaying(true)}
-        onPause={() => setIsPlaying(false)}
-        // SENGAJA tidak handle onWaiting — di iOS WKWebView event ini fire
-        // spuriously (saat normal buffering yang tidak interrupt playback),
-        // bikin isPlaying reset ke false padahal video lanjut jalan.
-        // Spinner logic pakai readyState check (lihat useEffect di atas).
-        //
-        // Conditional opacity: video hidden sampai timeupdate confirm
-        // playing. Sebelumnya pakai opacity 1 selalu, tapi itu expose
-        // first-frame video (yang sering BLACK di MP4 source) saat swipe
-        // ke video belum playing → user lihat black flash. Sekarang poster
-        // (di belakang) tetap visible sampai video genuinely advancing.
-        // isPlaying di-set via timeupdate (reliable), bukan onPlay event
-        // (miss-prone di iOS) — jadi opacity transition fire tepat saat
-        // video benar-benar paint content.
+        onPause={() => {
+          // Only mark not-playing if THIS is the front slot AND we're not
+          // mid-swap (where back slot might be the new front).
+          if (activeSlot === "A") setIsPlaying(false);
+        }}
+        // 150ms crossfade — slot transitions visible-to-hidden when activeSlot
+        // flips. Both slots are decoding during the overlap; user sees a
+        // smooth blend rather than seek-clear black.
         style={{
-          opacity: isPlaying ? 1 : 0,
+          opacity: activeSlot === "A" && isPlaying ? 1 : 0,
           transition: "opacity 150ms ease-out",
         }}
       />
 
-      {/* Loading indicator only appears after the configurable delay — fast
-          loads never flash, slow loads get a subtle spinner instead of a
-          black hole. */}
+      {/* Slot B — secondary video element. Mounted alongside slot A for the
+          seamless loop swap. Same src → browser shares cache. */}
+      <video
+        ref={videoBRef}
+        data-feed-video
+        data-slot="B"
+        src={slotBSrc}
+        poster={thumbnailUrl ?? undefined}
+        playsInline
+        muted
+        autoPlay={isActive && activeSlot === "B"}
+        preload={attachSrc ? preloadMode : "none"}
+        className="absolute inset-0 h-full w-full object-cover"
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => {
+          if (activeSlot === "B") setIsPlaying(false);
+        }}
+        style={{
+          opacity: activeSlot === "B" && isPlaying ? 1 : 0,
+          transition: "opacity 150ms ease-out",
+        }}
+      />
+
+      {/* Loading indicator — only after the configurable delay. */}
       {showLoadingIndicator && (
         <div
           data-feed-loading-overlay
@@ -470,11 +532,8 @@ export function FeedVideoPlayer({
         </div>
       )}
 
-      {/* Sound toggle — hanya active video. Posisi di bawah safe-area-inset
-          + offset 64px supaya tidak tabrak status bar iPhone (47-59px notch)
-          dan tidak tabrak juga tombol + di FeedClient (yang sudah di
-          safe-area + 14px = 76px max). Stop propagation supaya tap di icon
-          tidak juga trigger togglePlay (yang akan pause video). */}
+      {/* Sound toggle — hanya active card. Position di bawah safe-area-inset
+          supaya tidak tabrak status bar iPhone. */}
       {isActive && (
         <button
           type="button"
