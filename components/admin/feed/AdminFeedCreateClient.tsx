@@ -269,22 +269,22 @@ export function AdminFeedCreateClient() {
 
         // Done with PUT. Bunny will encode + fire webhook → encodingStatus=
         // ready. Admin gets ACTIVE+publishedAt set already by upload-url
-        // endpoint, jadi post muncul di feed begitu encoding finish.
-        //
-        // Tapi Bunny webhook kadang miss (network blip, server cold-start)
-        // → admin post stuck di encodingStatus="uploading" forever, tidak
-        // muncul di feed. Untuk admin (yang tidak ada approve flow yang
-        // auto-reconcile), poll bunny-reconcile endpoint sampai post ready
-        // atau timeout. Customer post pakai approve-flow reconcile yang
-        // sudah ada.
+        // endpoint. Tapi Bunny webhook kadang miss → post stuck di
+        // encodingStatus="uploading". Auto-poll bunny-reconcile endpoint
+        // sampai ready/failed atau timeout.
         const postId = provisionData.postId as string | undefined;
         if (postId) {
-          setProgress("Memfinalisasi encoding...");
-          // 5x retry @ ~2-3s interval = ~13s window. Untuk short clip
-          // <30 detik biasanya Bunny encode jadi ~5-10 detik. Kalau masih
-          // belum ready, fallback to weekly storage GC cron + manual
-          // /api/feed/diag?force=1 trigger.
-          const RETRY_DELAYS_MS = [1500, 2500, 3500, 4500, 5500];
+          setProgress("Memfinalisasi encoding (bisa sampai 1 menit)...");
+          // ~60 detik max retry window. Bunny encode short clip biasanya
+          // 5-15s tapi video panjang dengan multi-variant (240/360/480/
+          // 720/1080) bisa 30-60s. Tunggu cukup lama supaya admin post
+          // langsung tampil di feed setelah submit. Adaptive delay:
+          // cepat di awal, melambat di akhir untuk hemat API call.
+          const RETRY_DELAYS_MS = [
+            1500, 2000, 2500, 3000, 3500, 4000, 5000, 5000, 5000, 5000,
+            5000, 5000, 5000, 5000, 5000,
+          ]; // total ~62s
+          let settled = false;
           for (const delay of RETRY_DELAYS_MS) {
             await new Promise((r) => setTimeout(r, delay));
             try {
@@ -297,15 +297,36 @@ export function AdminFeedCreateClient() {
                 },
               );
               if (reconcileRes.ok) {
+                // Endpoint return shape: { ok, scanned, results: [{postId, action}] }
+                // Sebelumnya saya baca "reconciled" — wrong key, bug yang
+                // bikin loop tidak break early walau sudah ready.
                 const reconcileData = (await reconcileRes.json()) as {
-                  reconciled?: Array<{ action?: string }>;
+                  results?: Array<{ action?: string }>;
+                  scanned?: number;
                 };
-                const result = reconcileData.reconciled?.[0]?.action;
-                if (result === "ready" || result === "failed") break;
+                const result = reconcileData.results?.[0]?.action;
+                if (result === "ready" || result === "failed") {
+                  settled = true;
+                  break;
+                }
+                // scanned=0 berarti post sudah ready sebelumnya (filter
+                // di endpoint cuma include encodingStatus=uploading). Anggap
+                // settled — webhook duluan menang race.
+                if (reconcileData.scanned === 0) {
+                  settled = true;
+                  break;
+                }
               }
             } catch {
               // Network glitch — keep retrying.
             }
+          }
+          if (!settled) {
+            // Window habis tapi belum ready. Tidak block redirect — post
+            // sudah ACTIVE di DB, cron weekly + manual reconcile via
+            // /api/feed/diag?force=1 akan handle nanti.
+            setProgress("Encoding masih proses di background...");
+            await new Promise((r) => setTimeout(r, 1000));
           }
         }
 
