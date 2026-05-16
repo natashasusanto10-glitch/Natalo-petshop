@@ -10,6 +10,14 @@
  * posts still in encodingStatus="uploading" and finalize them) and
  * migrate (rewrite legacy HLS rows to MP4). Idempotent. Remove this
  * route once the migration is stable.
+ *
+ * GET /api/feed/diag?gc=1 — dry-run Bunny orphan sweep. Returns count
+ * + bytes of orphan videos di Bunny library (yang tidak referenced oleh
+ * non-deleted FeedPost). Tidak delete apa-apa.
+ *
+ * GET /api/feed/diag?gc=1&force=1 — execute Bunny orphan sweep. Delete
+ * orphan Bunny videos. Idempotent. Cron-based sweep di
+ * /api/cron/feed-storage-gc juga jalan setiap minggu otomatis.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -19,13 +27,24 @@ import {
   bunnyThumbnailUrl,
   getBunnyVideo,
 } from "@/lib/feed/bunny";
+import { sweepBunnyOrphans, type BunnyGcResult } from "@/lib/feed/bunny-gc";
 import { sendFeedPendingReviewNotification } from "@/lib/feed/notifications";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   const force = request.nextUrl.searchParams.get("force") === "1";
+  // ?gc=1 → run Bunny orphan sweep. Default dry-run kalau tidak ?force=1
+  // supaya bisa cek hasil dulu sebelum execute delete.
+  const gc = request.nextUrl.searchParams.get("gc") === "1";
   const actions: Array<{ postId: string; action: string; detail?: string }> = [];
+  let bunnyGc: BunnyGcResult | null = null;
+
+  if (gc) {
+    // Kalau ?force=1 juga ada, delete benar-benar dilakukan.
+    // Kalau cuma ?gc=1, dry-run report orphan count + bytes tanpa delete.
+    bunnyGc = await sweepBunnyOrphans({ dryRun: !force });
+  }
 
   if (force) {
     // 1. Reconcile any posts still stuck in encodingStatus=uploading.
@@ -137,5 +156,11 @@ export async function GET(request: NextRequest) {
     deletedAt: p.deletedAt,
     title: p.title,
   }));
-  return NextResponse.json({ ok: true, count: summary.length, actions, recent: summary });
+  return NextResponse.json({
+    ok: true,
+    count: summary.length,
+    actions,
+    recent: summary,
+    bunnyGc, // null kalau ?gc bukan ?gc=1; result kalau di-trigger.
+  });
 }

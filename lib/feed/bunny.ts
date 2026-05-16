@@ -214,6 +214,46 @@ export function bunnyUploadUrl(guid: string): string {
 }
 
 /**
+ * List videos di Bunny Stream library — paginated.
+ * Dipakai oleh storage GC cron untuk identify orphan (video di Bunny tapi
+ * tidak lagi di-reference oleh FeedPost aktif di DB).
+ *
+ * Bunny API: GET /library/{id}/videos?page=N&itemsPerPage=100
+ *   returns { items: [...], totalItems: N, itemsPerPage: 100, ... }
+ *
+ * Helper return one page at a time — caller iterate sampai items.length=0.
+ */
+export async function listBunnyLibraryVideos(
+  page: number = 1,
+  itemsPerPage: number = 100,
+): Promise<Array<{ guid: string; title: string; storageSize: number; dateUploaded: string }> | null> {
+  const cfg = getBunnyConfig();
+  if (!cfg) return null;
+  try {
+    const res = await fetch(
+      `${BUNNY_API_BASE}/library/${cfg.libraryId}/videos?page=${page}&itemsPerPage=${itemsPerPage}&orderBy=date`,
+      { headers: { AccessKey: cfg.apiKey, accept: "application/json" } },
+    );
+    if (!res.ok) {
+      console.warn(`[bunny] listVideos failed: ${res.status}`);
+      return null;
+    }
+    const data = (await res.json()) as {
+      items?: Array<{
+        guid: string;
+        title: string;
+        storageSize: number;
+        dateUploaded: string;
+      }>;
+    };
+    return data.items ?? [];
+  } catch (err) {
+    console.warn("[bunny] listVideos error:", err);
+    return null;
+  }
+}
+
+/**
  * Bunny's webhook status codes — exported so the webhook handler can read
  * the numeric `Status` field semantically.
  */

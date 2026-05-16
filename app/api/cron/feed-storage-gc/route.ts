@@ -23,6 +23,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { utapi } from "@/lib/uploadthing";
 import { prisma } from "@/lib/prisma";
 import { extractUploadThingKey } from "@/lib/feed/cleanup";
+import { sweepBunnyOrphans } from "@/lib/feed/bunny-gc";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -42,9 +43,20 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // 1. UploadThing sweep (legacy posts pre-Bunny migration).
   const referencedKeys = await collectReferencedKeys();
-  const summary = await sweepOrphans(referencedKeys);
-  return NextResponse.json({ ok: true, ...summary });
+  const uploadthingSummary = await sweepOrphans(referencedKeys);
+
+  // 2. Bunny Stream sweep (current Feed storage backend). Catch orphans
+  //    dari upload failure mid-flow + soft-deleted posts yang cleanup
+  //    hook miss/failed di delete time.
+  const bunnySummary = await sweepBunnyOrphans({ dryRun: false });
+
+  return NextResponse.json({
+    ok: true,
+    uploadthing: uploadthingSummary,
+    bunny: bunnySummary,
+  });
 }
 
 /**

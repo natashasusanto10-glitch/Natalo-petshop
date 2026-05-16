@@ -228,6 +228,10 @@ export function FeedClient() {
   }, [loadMore, hasMore]);
 
   const commentSheetOpen = useMemo(() => commentPostId !== null, [commentPostId]);
+  const activeCommentCount = useMemo(() => {
+    if (!commentPostId) return 0;
+    return posts.find((post) => post.id === commentPostId)?.commentCount ?? 0;
+  }, [commentPostId, posts]);
   const showEmpty = !loading && !error && posts.length === 0;
 
   function startUploadFlow() {
@@ -277,7 +281,11 @@ export function FeedClient() {
 
           {showEmpty && <EmptyFeedState />}
 
-          <FeedPostsList posts={posts} onOpenComments={setCommentPostId} />
+          <FeedPostsList
+            posts={posts}
+            commentPostId={commentPostId}
+            onOpenComments={setCommentPostId}
+          />
 
           {hasMore && !loading && (
             <div ref={sentinelRef} className="h-8 snap-start" aria-hidden="true">
@@ -294,6 +302,7 @@ export function FeedClient() {
       <FeedCommentSheet
         open={commentSheetOpen}
         postId={commentPostId}
+        commentCount={activeCommentCount}
         onClose={() => setCommentPostId(null)}
       />
     </FeedActiveVideoProvider>
@@ -311,9 +320,11 @@ export function FeedClient() {
  */
 function FeedPostsList({
   posts,
+  commentPostId,
   onOpenComments,
 }: {
   posts: FeedPostListItem[];
+  commentPostId: string | null;
   onOpenComments: (postId: string) => void;
 }) {
   const { activeId, activeIndex, setActive } = useFeedActiveVideo();
@@ -405,6 +416,7 @@ function FeedPostsList({
               <FeedVideoCard
                 post={post}
                 index={index}
+                commentMode={commentPostId === post.id}
                 onOpenComments={onOpenComments}
               />
             ) : (

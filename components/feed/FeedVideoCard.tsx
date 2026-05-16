@@ -26,10 +26,16 @@ type Props = {
   /** Position in the parent feed list. Threaded down to FeedVideoPlayer so
    * it can compute distance-from-active and pick the right preload tier. */
   index: number;
+  commentMode?: boolean;
   onOpenComments: (postId: string) => void;
 };
 
-export function FeedVideoCard({ post, index, onOpenComments }: Props) {
+export function FeedVideoCard({
+  post,
+  index,
+  commentMode = false,
+  onOpenComments,
+}: Props) {
   const [liked, setLiked] = useState(post.viewerLiked);
   const [likeCount, setLikeCount] = useState(post.likeCount);
   const [likeBusy, setLikeBusy] = useState(false);
@@ -158,9 +164,25 @@ export function FeedVideoCard({ post, index, onOpenComments }: Props) {
     }
   }
 
+  const videoAspectRatio =
+    post.videoWidth && post.videoHeight
+      ? `${post.videoWidth} / ${post.videoHeight}`
+      : "9 / 16";
+
   return (
-    <article className="relative min-h-full snap-start overflow-hidden bg-black text-white shadow-sm md:rounded-[28px]">
-      <div className="absolute inset-x-0 top-0 [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom))] md:bottom-0">
+    <article
+      className={`relative min-h-full snap-start overflow-hidden bg-black text-white shadow-sm transition-colors duration-300 md:rounded-[28px] ${
+        commentMode ? "z-[170]" : ""
+      }`}
+    >
+      <div
+        className={
+          commentMode
+            ? "absolute left-1/2 top-[calc(env(safe-area-inset-top)+44px)] z-[180] w-[min(34vw,176px)] -translate-x-1/2 overflow-hidden rounded-[24px] bg-black shadow-[0_22px_70px_rgba(0,0,0,0.55)] ring-1 ring-white/15 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] md:w-[min(28vw,210px)]"
+            : "absolute inset-x-0 top-0 overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom))] md:bottom-0"
+        }
+        style={commentMode ? { aspectRatio: videoAspectRatio } : undefined}
+      >
         {hasVideo && post.videoUrl ? (
           <FeedVideoPlayer
             postId={post.id}
@@ -201,88 +223,96 @@ export function FeedVideoCard({ post, index, onOpenComments }: Props) {
       {/* Subtle gradient at the bottom for caption readability — Reels
           uses a much lighter gradient than TikTok because object-contain
           leaves the bottom edge of the video well clear of the caption. */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-[220px] bg-gradient-to-t from-black/70 via-black/35 to-transparent" />
+      {!commentMode && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-[220px] bg-gradient-to-t from-black/70 via-black/35 to-transparent" />
+      )}
 
       {/* Right action rail — fixed grid: 30px icon + 16px count slot.
           Slot height tetap walau count = 0, supaya jarak vertical antar
           tombol identik di semua video (sebelumnya icon loncat naik kalau
           count kosong karena gap-1 tidak render). */}
-      <div className="absolute right-3 z-[2] flex flex-col items-center gap-5 [bottom:calc(env(safe-area-inset-bottom)+200px)] md:bottom-10">
-        <ActionButton
-          label={formatEngagementCount(likeCount)}
-          ariaLabel={liked ? "Batal suka" : "Suka"}
-          pressed={liked}
-          onClick={toggleLike}
-        >
-          <FiHeart className={`h-[30px] w-[30px] ${liked ? "fill-[#FF3040] stroke-[#FF3040]" : "stroke-[2.2]"}`} />
-        </ActionButton>
-        <ActionButton
-          label={formatEngagementCount(post.commentCount)}
-          ariaLabel="Komentar"
-          onClick={() => onOpenComments(post.id)}
-        >
-          <FiMessageCircle className="h-[30px] w-[30px] stroke-[2.2]" />
-        </ActionButton>
-        <ActionButton
-          label={formatEngagementCount(shareCount)}
-          ariaLabel="Bagikan"
-          onClick={handleShare}
-        >
-          <FiSend className="h-[30px] w-[30px] stroke-[2.2]" />
-        </ActionButton>
-      </div>
+      {!commentMode && (
+        <div className="absolute right-3 z-[2] flex flex-col items-center gap-5 [bottom:calc(env(safe-area-inset-bottom)+200px)] md:bottom-10">
+          <ActionButton
+            label={formatEngagementCount(likeCount)}
+            ariaLabel={liked ? "Batal suka" : "Suka"}
+            pressed={liked}
+            onClick={toggleLike}
+          >
+            <FiHeart
+              className={`h-[30px] w-[30px] ${
+                liked ? "fill-[#FF3040] stroke-[#FF3040]" : "stroke-[2.2]"
+              }`}
+            />
+          </ActionButton>
+          <ActionButton
+            label={formatEngagementCount(post.commentCount)}
+            ariaLabel="Komentar"
+            onClick={() => onOpenComments(post.id)}
+          >
+            <FiMessageCircle className="h-[30px] w-[30px] stroke-[2.2]" />
+          </ActionButton>
+          <ActionButton
+            label={formatEngagementCount(shareCount)}
+            ariaLabel="Bagikan"
+            onClick={handleShare}
+          >
+            <FiSend className="h-[30px] w-[30px] stroke-[2.2]" />
+          </ActionButton>
+        </div>
+      )}
 
       {/* Bottom-left content: product tag carousel, creator name, caption. */}
-      <div className="absolute left-4 right-[76px] z-[2] [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+1.5rem)] md:bottom-24">
-        {currentCarouselProduct && (
-          <button
-            type="button"
-            onClick={() => setProductSheetOpen(true)}
-            className="mb-2.5 inline-flex h-9 max-w-full items-center gap-2 rounded-[10px] border border-white/15 bg-black/50 px-3 text-left text-white shadow-sm shadow-black/10 backdrop-blur-xl transition active:scale-[0.98]"
-            key={currentCarouselProduct.id}
-            style={{
-              animation: hasMultipleProducts
-                ? "natalo-feed-product-fade 4000ms ease-in-out infinite"
-                : undefined,
-            }}
-          >
-            <FiShoppingBag className="h-4 w-4 shrink-0 text-white/90" aria-hidden="true" />
-            <span className="shrink-0 text-[13px] font-semibold text-white/90">
-              {hasMultipleProducts
-                ? `${taggedProducts.length} produk`
-                : "Produk digunakan"}
-            </span>
-            <span className="min-w-0 truncate text-[13px] font-bold text-white">
-              {currentCarouselProduct.name}
-            </span>
-            <FiChevronRight className="h-4 w-4 shrink-0 text-white/85" aria-hidden="true" />
-          </button>
-        )}
-        {/* Dot indicator — hanya saat multi-product */}
-        {hasMultipleProducts && (
-          <div className="mb-2 flex gap-1">
-            {taggedProducts.map((p, idx) => (
-              <span
-                key={p.id}
-                className={`h-1 rounded-full transition-all ${
-                  idx === carouselIndex
-                    ? "w-4 bg-white"
-                    : "w-1 bg-white/40"
-                }`}
-                aria-hidden
-              />
-            ))}
-          </div>
-        )}
-        <p className="truncate text-[17px] font-bold leading-tight text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
-          {creatorName}
-        </p>
-        {caption && (
-          <p className="mt-1.5 line-clamp-2 text-[15px] font-normal leading-snug text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
-            {caption}
+      {!commentMode && (
+        <div className="absolute left-4 right-[76px] z-[2] [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+1.5rem)] md:bottom-24">
+          {currentCarouselProduct && (
+            <button
+              type="button"
+              onClick={() => setProductSheetOpen(true)}
+              className="mb-2.5 inline-flex h-9 max-w-full items-center gap-2 rounded-[10px] border border-white/15 bg-black/50 px-3 text-left text-white shadow-sm shadow-black/10 backdrop-blur-xl transition active:scale-[0.98]"
+              key={currentCarouselProduct.id}
+              style={{
+                animation: hasMultipleProducts
+                  ? "natalo-feed-product-fade 4000ms ease-in-out infinite"
+                  : undefined,
+              }}
+            >
+              <FiShoppingBag className="h-4 w-4 shrink-0 text-white/90" aria-hidden="true" />
+              <span className="shrink-0 text-[13px] font-semibold text-white/90">
+                {hasMultipleProducts
+                  ? `${taggedProducts.length} produk`
+                  : "Produk digunakan"}
+              </span>
+              <span className="min-w-0 truncate text-[13px] font-bold text-white">
+                {currentCarouselProduct.name}
+              </span>
+              <FiChevronRight className="h-4 w-4 shrink-0 text-white/85" aria-hidden="true" />
+            </button>
+          )}
+          {/* Dot indicator — hanya saat multi-product */}
+          {hasMultipleProducts && (
+            <div className="mb-2 flex gap-1">
+              {taggedProducts.map((p, idx) => (
+                <span
+                  key={p.id}
+                  className={`h-1 rounded-full transition-all ${
+                    idx === carouselIndex ? "w-4 bg-white" : "w-1 bg-white/40"
+                  }`}
+                  aria-hidden
+                />
+              ))}
+            </div>
+          )}
+          <p className="truncate text-[17px] font-bold leading-tight text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
+            {creatorName}
           </p>
-        )}
-      </div>
+          {caption && (
+            <p className="mt-1.5 line-clamp-2 text-[15px] font-normal leading-snug text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
+              {caption}
+            </p>
+          )}
+        </div>
+      )}
 
       {taggedProducts.length > 0 && (
         <PinnedProductSheet
