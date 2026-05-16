@@ -51,6 +51,9 @@ const nextConfig: NextConfig = {
       // UploadThing CDN
       { protocol: "https", hostname: "utfs.io" },
       { protocol: "https", hostname: "**.ufs.sh" },
+      // Bunny CDN — thumbnail + MP4 dari Bunny Stream library
+      // (URL pattern: https://vz-xxxxx.b-cdn.net/{guid}/thumbnail.jpg)
+      { protocol: "https", hostname: "**.b-cdn.net" },
       // Shopee CDN — sumber gambar produk di prisma/products_import.json
       // (URL pattern: https://cf.shopee.co.id/file/...)
       { protocol: "https", hostname: "cf.shopee.co.id" },
