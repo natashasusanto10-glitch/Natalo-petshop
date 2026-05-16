@@ -45,6 +45,37 @@ export function FeedActiveVideoProvider({ children }: { children: React.ReactNod
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, []);
 
+  // Capacitor App listener — iOS WKWebView kadang tidak fire visibilitychange
+  // saat user swipe ke app switcher / lock screen. Pakai native App plugin
+  // sebagai second layer supaya video benar-benar pause saat app background.
+  // Lazy-import: di browser/PWA tanpa Capacitor, import fail dan listener
+  // di-skip. Tidak ada side-effect di non-Capacitor build.
+  useEffect(() => {
+    let detach: (() => void) | null = null;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const { App } = await import("@capacitor/app");
+        if (cancelled) return;
+        const handle = await App.addListener("appStateChange", ({ isActive }) => {
+          setPaused(!isActive);
+        });
+        detach = () => {
+          void handle.remove();
+        };
+      } catch {
+        // Capacitor App plugin not available (web/PWA) — visibilitychange
+        // listener di atas sudah cukup.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      detach?.();
+    };
+  }, []);
+
   const setActive = useCallback((id: string | null, index: number | null) => {
     setActiveIdState((current) => (current === id ? current : id));
     setActiveIndexState((current) => (current === index ? current : index));
