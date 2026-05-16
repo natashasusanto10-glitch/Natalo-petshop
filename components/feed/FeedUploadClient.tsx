@@ -130,7 +130,6 @@ export function FeedUploadClient() {
     "submitting" | "trimming" | "uploading" | null
   >(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [resultPostId, setResultPostId] = useState<string | null>(null);
 
   // ── Cleanup blob URLs ─────────────────────────────────────────────
   useEffect(() => {
@@ -463,7 +462,6 @@ export function FeedUploadClient() {
         onProgress: setUploadProgress,
       });
 
-      setResultPostId(urlData.postId ?? null);
       void hapticSuccess();
       setDirection("forward");
       setStep("success");
@@ -604,7 +602,6 @@ export function FeedUploadClient() {
           <SuccessScreen
             thumbnailPreviewUrl={thumbnailPreviewUrl}
             finalDuration={finalDuration}
-            postId={resultPostId}
             onBackToFeed={handleCloseFlow}
             onViewMyPosts={() => router.replace("/akun/postingan-saya")}
           />
@@ -1844,13 +1841,11 @@ function DetailScreen({
 function SuccessScreen({
   thumbnailPreviewUrl,
   finalDuration,
-  postId,
   onBackToFeed,
   onViewMyPosts,
 }: {
   thumbnailPreviewUrl: string | null;
   finalDuration: number;
-  postId: string | null;
   onBackToFeed: () => void;
   onViewMyPosts: () => void;
 }) {
@@ -1930,11 +1925,6 @@ function SuccessScreen({
             Kembali ke Feed
           </button>
         </div>
-        {postId && (
-          <p className="mt-4 text-[10px] font-bold text-white/30">
-            ID #{postId.slice(0, 8)}
-          </p>
-        )}
       </div>
     </div>
   );
