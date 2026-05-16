@@ -53,7 +53,12 @@ export function FeedVideoPlayer({
   const { activeId, activeIndex, setActive, paused } = useFeedActiveVideo();
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [loadSrc, setLoadSrc] = useState(false);
+  // Initial loadSrc=true untuk card di index 0 supaya video element CREATED
+  // dengan src dari first paint. iOS WebKit cek autoplay attribute + src saat
+  // element mount; src yang di-attach belakangan (via setState) sering tidak
+  // trigger autoplay heuristic, akibatnya video stuck di poster sampai user
+  // klik manual.
+  const [loadSrc, setLoadSrc] = useState(index === 0);
   const [farFromViewport, setFarFromViewport] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [showLoadingIndicator, setShowLoadingIndicator] = useState(false);
@@ -63,7 +68,15 @@ export function FeedVideoPlayer({
   // covers older rows still pointing at playlist.m3u8.
   const playbackUrl = useMemo(() => resolvePlaybackUrl(videoUrl), [videoUrl]);
 
-  const isActive = activeId === postId && !paused;
+  // Treat card di index 0 sebagai active sampai IntersectionObserver atau
+  // scroll fire setActive untuk card lain. Tanpa ini, first render punya
+  // isActive=false → autoPlay=false → video element mount dengan autoplay
+  // attribute kosong → iOS tidak trigger playback otomatis. Setelah eager-
+  // activate useEffect di FeedPostsList fire (setActive sets activeId), case
+  // ini tidak lagi diperlukan untuk re-render karena activeId === postId
+  // sudah cocok untuk post 0.
+  const isFallbackActiveForFirstCard = activeId === null && index === 0;
+  const isActive = (activeId === postId || isFallbackActiveForFirstCard) && !paused;
   // Distance from the currently-active card. Unknown active → treat as far.
   const distance =
     activeIndex == null ? Infinity : Math.abs(index - activeIndex);
