@@ -26,9 +26,9 @@ export function FeedPostPlaceholder({ thumbnailUrl }: Props) {
           src={thumbnailUrl}
           alt=""
           loading="lazy"
-          // Match the active card's `object-cover` so scrolling between a
-          // placeholder and the real video doesn't visibly re-frame.
-          className="absolute inset-0 h-full w-full object-cover"
+          // Match the active card's clipped media frame so thumbnails do not
+          // paint behind the fixed bottom navigation on Feed.
+          className="absolute inset-x-0 top-0 w-full object-cover [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom))] md:bottom-0"
           onError={(event) => {
             event.currentTarget.style.display = "none";
           }}

@@ -160,7 +160,7 @@ export function FeedVideoCard({ post, index, onOpenComments }: Props) {
 
   return (
     <article className="relative min-h-full snap-start overflow-hidden bg-black text-white shadow-sm md:rounded-[28px]">
-      <div className="absolute inset-0">
+      <div className="absolute inset-x-0 top-0 [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom))] md:bottom-0">
         {hasVideo && post.videoUrl ? (
           <FeedVideoPlayer
             postId={post.id}

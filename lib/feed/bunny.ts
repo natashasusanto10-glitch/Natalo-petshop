@@ -164,7 +164,10 @@ export function bunnyPlaylistUrl(guid: string): string {
  * 720p is a safe default for portrait phone video — picture stays sharp,
  * file size stays small (~5-10 MB for a 15-second clip).
  */
-export function bunnyMp4Url(guid: string, height: 240 | 360 | 480 | 720 = 720): string {
+export function bunnyMp4Url(
+  guid: string,
+  height: 240 | 360 | 480 | 720 | 1080 = 720,
+): string {
   const cfg = getBunnyConfig();
   if (!cfg) return "";
   return `https://${cfg.cdnHostname}/${guid}/play_${height}p.mp4`;
@@ -177,7 +180,10 @@ export function bunnyMp4Url(guid: string, height: 240 | 360 | 480 | 720 = 720): 
  * without a DB migration. Returns null when the URL doesn't match the
  * Bunny HLS pattern so callers can fall back to the original src.
  */
-export function bunnyHlsToMp4(hlsUrl: string | null | undefined, height: 240 | 360 | 480 | 720 = 720): string | null {
+export function bunnyHlsToMp4(
+  hlsUrl: string | null | undefined,
+  height: 240 | 360 | 480 | 720 | 1080 = 720,
+): string | null {
   if (!hlsUrl) return null;
   const match = hlsUrl.match(/^(https?:\/\/[^/]+)\/([a-f0-9-]+)\/playlist\.m3u8(?:\?.*)?$/i);
   if (!match) return null;

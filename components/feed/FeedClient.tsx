@@ -253,14 +253,10 @@ export function FeedClient() {
           // bows out instead of stealing vertical touch gestures from the
           // feed's snap-scroller. Keeps swipe-up-for-next-video instant.
           //
-          // Critical for TikTok-style hard-paged feed: NO padding-bottom
-          // here even though the bottom nav sits below. The nav uses
-          // position: fixed and overlays the video card edge-to-edge; if
-          // we add padding the scroll content shifts up and the snap cells
-          // are no longer exactly one viewport tall, letting the next card
-          // peek through. The action buttons / caption / product pill
-          // inside the card already account for the nav height with their
-          // own bottom offsets so they stay visible above the overlay.
+          // Critical for TikTok-style hard-paged feed: keep the snap cells
+          // exactly one viewport tall. The media layer inside each card is
+          // clipped above the fixed bottom nav, while the approved overlay UI
+          // keeps its own bottom offsets.
           data-no-pull
           className="min-h-0 flex-1 snap-y snap-mandatory overflow-y-auto overscroll-contain [-ms-overflow-style:none] [scrollbar-width:none] md:space-y-3 md:px-2 md:py-2 [&::-webkit-scrollbar]:hidden"
         >

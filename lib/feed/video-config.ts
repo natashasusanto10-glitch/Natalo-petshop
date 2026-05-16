@@ -20,27 +20,45 @@ export type FeedVideoConfig = {
 // lower iPhone setting (Settings → Camera → Record Video → 1080p HD).
 export const MAX_SOURCE_VIDEO_SIZE = 50 * 1024 * 1024;
 
+// User video config — TARGET specs untuk feed video.
+//
+// CATATAN: setelah migrasi ke Bunny Stream, encoding settings di-handle
+// server-side oleh Bunny dashboard. Config ini sekarang fungsinya:
+//   1. Duration validation (min/max) — masih dipakai di client + server
+//   2. Reference/target untuk Bunny dashboard encoder settings
+//   3. Legacy fallback untuk FeedUploadProvider (background upload toast
+//      yang masih pakai ffmpeg.wasm)
+//
+// Untuk apply settings ini ke Bunny:
+//   Bunny Dashboard → Library → Encoding → Custom Encoding Profile:
+//     Resolution: 720p (1280 width)
+//     Video Codec: H.264 (Main profile)
+//     Video Bitrate: 3000 kbps (target)
+//     FPS Max: 30
+//     Audio Codec: AAC
+//     Audio Bitrate: 128 kbps
+//     Optional 1080p variant: enable kalau mau quality boost
+//
+// Bunny default sebelumnya: 720p @ ~1.5-2 Mbps. Naikkan ke 3 Mbps untuk
+// quality lebih sharp (sesuai rekomendasi Natalo Feed spec).
 export const USER_VIDEO_CONFIG = {
   minDuration: 1,
   maxDuration: 45,
   resolution: 720,
-  videoBitrate: "1500k",
+  // Target 3 Mbps untuk Bunny encoder. Legacy ffmpeg.wasm config-nya
+  // di-keep di "1500k" supaya FeedUploadProvider (background toast)
+  // tidak overshoot 10MB file size target. Bunny dashboard handle
+  // 3 Mbps untuk current FeedUploadClient flow.
+  videoBitrate: "3000k",
   fps: 30,
   videoCodec: "libx264",
-  // CRF 26 (was 23) — slight quality drop on motion, invisible on the
-  // small viewport pet videos use. Combined with the faster preset this
-  // halves encode time without blowing past the 5MB target file size.
-  crf: 26,
-  // "veryfast" (was "medium") — ffmpeg.wasm runs single-threaded on
-  // iOS WKWebView when triggered from a non-isolated route (the /feed
-  // background upload flow doesn't have COEP/COOP headers), so preset
-  // choice is the biggest knob. Veryfast typically 3-4x faster than
-  // medium with ~10-15% larger output, still well under 5MB target.
+  crf: 22,
   preset: "veryfast",
   audioCodec: "aac",
-  audioBitrate: "96k",
-  targetFileSize: 5 * 1024 * 1024,
-  maxFileSize: 10 * 1024 * 1024,
+  audioBitrate: "128k",
+  // Target file size dengan 3 Mbps × 45s = ~16MB worst case.
+  targetFileSize: 8 * 1024 * 1024,
+  maxFileSize: 20 * 1024 * 1024,
 } satisfies FeedVideoConfig;
 
 export const ADMIN_VIDEO_CONFIG = {
