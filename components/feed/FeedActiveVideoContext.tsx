@@ -48,7 +48,20 @@ export function FeedActiveVideoProvider({ children }: { children: React.ReactNod
 
   useEffect(() => {
     function onTeardown() {
-      setPaused(true);
+      // JANGAN setPaused(true) di sini. Bug yang user laporkan: app open
+      // di / (homepage) → BottomNavigation effect fire teardown karena
+      // bukan di /feed → setPaused(true) → user navigate ke /feed →
+      // paused masih true → isActive selalu false → autoPlay tidak pernah
+      // trigger meski video sudah ready.
+      //
+      // `paused` flag dimaksudkan untuk visibility/app-background (browser
+      // tab hidden, app di switcher / lock screen). Teardown event purpose-nya
+      // memaksa pause video element BEFORE FeedClient unmount — itu sudah
+      // dilakukan langsung di FeedVideoPlayer.onTeardown via video.pause()
+      // + removeAttribute("src"). Tidak perlu state global.
+      //
+      // Cuma reset activeId/index supaya saat user balik ke /feed,
+      // IntersectionObserver re-acquire active card dengan benar.
       setActiveIdState(null);
       setActiveIndexState(null);
       lastActiveIdRef.current = null;

@@ -95,10 +95,18 @@ export function BottomNavigation() {
   const hideNav = shouldHideBottomNav(pathname) || (pathname === "/products" && Boolean(searchParams.get("q")?.trim()));
   const isFeedRoute = pathname === "/feed";
 
+  // Track previous isFeedRoute supaya teardown HANYA fire saat transition
+  // dari /feed → non-/feed, bukan saat first mount di halaman non-/feed.
+  // Sebelumnya fire on-mount: user open app di homepage → teardown fire →
+  // context setPaused(true) → user navigate ke /feed → paused stuck true →
+  // autoplay tidak pernah trigger. Effect-of-effect chain ini yang bikin
+  // video stuck loading.
+  const wasOnFeedRef = useRef(false);
   useEffect(() => {
-    if (!isFeedRoute) {
+    if (wasOnFeedRef.current && !isFeedRoute) {
       teardownFeedPlaybackNow("route-left-feed");
     }
+    wasOnFeedRef.current = isFeedRoute;
   }, [isFeedRoute]);
 
   // Sync body data attribute supaya CSS bisa adjust .nat-main-shell
