@@ -61,8 +61,6 @@ type Step =
 
 type Direction = "forward" | "back";
 
-type PetType = "cat" | "dog" | "other" | null;
-
 type PinnableProduct = {
   productId: string;
   slug: string;
@@ -116,14 +114,13 @@ export function FeedUploadClient() {
     finalDuration >= USER_VIDEO_CONFIG.minDuration &&
     finalDuration <= USER_VIDEO_CONFIG.maxDuration;
 
-  // Caption / tag / pet
+  // Caption / tag
   const [caption, setCaption] = useState("");
   // Shop the Look — sampai 3 produk. Position di array = position di carousel.
   const [selectedProducts, setSelectedProducts] = useState<PinnableProduct[]>([]);
   const [productPickerOpen, setProductPickerOpen] = useState(false);
   const [pinnableProducts, setPinnableProducts] = useState<PinnableProduct[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
-  const [petType, setPetType] = useState<PetType>(null);
 
   // Upload
   const [uploading, setUploading] = useState(false);
@@ -423,7 +420,6 @@ export function FeedUploadClient() {
         body: JSON.stringify({
           title: caption.trim().slice(0, 200),
           description: caption.trim() || null,
-          petType: petType ?? null,
           productIds: selectedProducts.map((p) => p.productId),
           thumbnailUrl: pendingThumbnailUrl,
           videoDurationSec: Math.round(finalDuration),
@@ -595,8 +591,6 @@ export function FeedUploadClient() {
                 current.filter((p) => p.productId !== productId),
               )
             }
-            petType={petType}
-            onPetChange={setPetType}
             uploading={uploading}
             uploadStage={uploadStage}
             uploadProgress={uploadProgress}
@@ -1088,16 +1082,18 @@ function PreviewScreen({
           </div>
 
           {/* Info banner — kalau video bukan portrait 9:16, kasih tau user
-              bahwa di Feed akan tampil dengan blur background. Tidak block
-              upload, cuma informational. */}
+              bahwa di Feed akan tampil dengan bars hitam (object-contain).
+              Tidak block upload, cuma informational. */}
           {orientationLabel && (
             <div className="mt-3 flex items-start gap-2 rounded-2xl border border-natalo-500/30 bg-natalo-500/10 p-3 text-natalo-100">
               <FiInfo className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
               <p className="text-[12px] leading-relaxed">
-                Video kamu {orientationLabel}. Di Feed akan tampil dengan{" "}
-                <span className="font-bold">background blur</span> agar tetap
-                rapi. Untuk tampilan immersive penuh, gunakan video portrait
-                9:16 (orientasi vertikal HP).
+                Video kamu {orientationLabel}. Di Feed akan tampil di tengah
+                dengan{" "}
+                <span className="font-bold">background hitam</span> agar
+                seluruh isi video terlihat (tidak di-crop). Untuk tampilan
+                immersive penuh layar, gunakan video portrait 9:16
+                (orientasi vertikal HP).
               </p>
             </div>
           )}
@@ -1607,8 +1603,6 @@ function DetailScreen({
   selectedProducts,
   onOpenProductPicker,
   onRemoveProduct,
-  petType,
-  onPetChange,
   uploading,
   uploadStage,
   uploadProgress,
@@ -1626,8 +1620,6 @@ function DetailScreen({
   selectedProducts: PinnableProduct[];
   onOpenProductPicker: () => void;
   onRemoveProduct: (productId: string) => void;
-  petType: PetType;
-  onPetChange: (v: PetType) => void;
   uploading: boolean;
   uploadStage: "submitting" | "trimming" | "uploading" | null;
   uploadProgress: number;
@@ -1785,34 +1777,6 @@ function DetailScreen({
             )}
           </section>
 
-          {/* Info Pet */}
-          <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-            <h2 className="text-sm font-black text-white">Info Pet</h2>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <PetChip
-                active={petType === "cat"}
-                label="Kucing"
-                icon="🐱"
-                onClick={() => onPetChange(petType === "cat" ? null : "cat")}
-                disabled={uploading}
-              />
-              <PetChip
-                active={petType === "dog"}
-                label="Anjing"
-                icon="🐶"
-                onClick={() => onPetChange(petType === "dog" ? null : "dog")}
-                disabled={uploading}
-              />
-              <PetChip
-                active={petType === "other"}
-                label="Lainnya"
-                icon="•••"
-                onClick={() => onPetChange(petType === "other" ? null : "other")}
-                disabled={uploading}
-              />
-            </div>
-          </section>
-
           {/* Review notice */}
           <div className="flex items-start gap-3 rounded-2xl border border-white/8 bg-white/[0.03] p-4">
             <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-natalo-600/20 text-natalo-200">
@@ -1872,36 +1836,6 @@ function DetailScreen({
         </div>
       </div>
     </div>
-  );
-}
-
-function PetChip({
-  active,
-  label,
-  icon,
-  onClick,
-  disabled,
-}: {
-  active: boolean;
-  label: string;
-  icon: string;
-  onClick: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[12px] font-black transition active:scale-[0.97] ${
-        active
-          ? "bg-natalo-600 text-white shadow-[0_4px_12px_rgba(30,95,191,0.45)]"
-          : "border border-white/12 bg-white/[0.04] text-white/75"
-      } ${disabled ? "opacity-60" : ""}`}
-    >
-      <span aria-hidden>{icon}</span>
-      {label}
-    </button>
   );
 }
 

@@ -598,39 +598,13 @@ export function FeedVideoPlayer({
       ref={containerRef}
       data-feed-video-player
       className={`relative w-full overflow-hidden bg-black ${className}`}
-      style={{
-        aspectRatio: `${aspectRatio}`,
-        // Container background = thumbnail. CSS bg-image cache instan dari
-        // Bunny CDN, jadi tidak pernah expose bg-black raw saat <img>
-        // poster element atau video element belum render frame.
-        backgroundImage: thumbnailUrl ? `url("${thumbnailUrl}")` : undefined,
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-      }}
+      style={{ aspectRatio: `${aspectRatio}` }}
       onClick={handleSurfaceClick}
     >
-      {/* Blurred backdrop layer — HANYA untuk non-portrait video.
-          Thumbnail (Bunny auto-generated) di-stretch fill viewport + blur
-          + slight scale untuk hide blur edge artifact. Pakai poster karena:
-            1. Cache instan dari Bunny CDN (sudah preload)
-            2. Tidak butuh extra video decoder (memory-friendly)
-            3. Bg static — orang fokus ke video center yang motion
-          Instagram pattern: blur backdrop hampir tidak terlihat sebagai
-          "static" karena user fokus ke center content. */}
-      {!isPortrait && thumbnailUrl && (
-        <div
-          aria-hidden
-          className="absolute inset-0"
-          style={{
-            backgroundImage: `url("${thumbnailUrl}")`,
-            backgroundSize: "cover",
-            backgroundPosition: "center",
-            filter: "blur(40px) saturate(1.4) brightness(0.85)",
-            transform: "scale(1.15)",
-          }}
-        />
-      )}
-
+      {/* Background: pure black via `bg-black` class. Untuk non-portrait
+          video, bars muncul dari object-contain di atas/bawah (landscape)
+          atau kiri/kanan (square) — bars-nya pure black, 1 warna dengan
+          Feed page yang gelap, lebih clean daripada blur backdrop. */}
       {thumbnailUrl && (
         <img
           src={thumbnailUrl}
