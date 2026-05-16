@@ -32,6 +32,7 @@ const DRAG_CLOSE_THRESHOLD = 96;
 const SNAP_BACK_MS = 280;
 const SNAP_BACK_EASE = "cubic-bezier(0.34, 1.26, 0.64, 1)";
 const KEYBOARD_INSET_THRESHOLD = 120;
+const COMMENT_COMPOSER_HEIGHT = 76;
 
 export function FeedCommentSheet({
   open,
@@ -191,6 +192,7 @@ export function FeedCommentSheet({
       viewportBaselineRef.current = 0;
       document.body.classList.remove("keyboard-open");
       document.documentElement.style.removeProperty("--kb");
+      document.documentElement.style.removeProperty("--feed-comment-composer-h");
       document.documentElement.style.removeProperty("--feed-comment-sheet-height");
       return;
     }
@@ -209,6 +211,7 @@ export function FeedCommentSheet({
       setKeyboardOpen(nextKeyboardOpen);
       body.classList.toggle("keyboard-open", nextKeyboardOpen);
       root.style.setProperty("--kb", `${keyboardHeight}px`);
+      root.style.setProperty("--feed-comment-composer-h", `${COMMENT_COMPOSER_HEIGHT}px`);
       root.style.setProperty(
         "--feed-comment-sheet-height",
         nextKeyboardOpen ? "42dvh" : "56dvh",
@@ -280,6 +283,7 @@ export function FeedCommentSheet({
       removeKeyboardListeners?.();
       body.classList.remove("keyboard-open");
       root.style.removeProperty("--kb");
+      root.style.removeProperty("--feed-comment-composer-h");
       root.style.removeProperty("--feed-comment-sheet-height");
     };
   }, [open]);
@@ -468,7 +472,7 @@ export function FeedCommentSheet({
         className="feed-comment-sheet fixed inset-x-0 z-[9010] mx-auto flex w-full max-w-2xl flex-col overflow-hidden rounded-t-[28px] border border-white/10 bg-[#111418]/[0.98] text-white shadow-[0_-28px_80px_rgba(0,0,0,0.5)] outline-none backdrop-blur-xl"
         style={{
           height: "var(--feed-comment-sheet-height, 56dvh)",
-          bottom: 0,
+          bottom: "calc(var(--feed-comment-composer-h, 76px) + var(--kb, 0px))",
           transform:
             isDragging || isSnappingBack
               ? `translate3d(0, ${dragY}px, 0)`
@@ -510,8 +514,8 @@ export function FeedCommentSheet({
           <div
             className="feed-comment-list min-h-0 flex-1 overflow-y-auto border-t border-white/8 px-5 py-4 [-webkit-overflow-scrolling:touch]"
             style={{
-              paddingBottom: "calc(96px + var(--kb, 0px))",
-              scrollPaddingBottom: "calc(96px + var(--kb, 0px))",
+              paddingBottom: "16px",
+              scrollPaddingBottom: "16px",
             }}
             onPointerDown={(event) => dismissKeyboardFromSheet(event.target)}
           >
@@ -560,9 +564,10 @@ export function FeedCommentSheet({
         className="feed-comment-composer pointer-events-auto fixed inset-x-0 z-[9020] mx-auto flex h-[76px] w-full max-w-2xl items-center border-t border-white/10 bg-[#111418] px-4 py-2.5 text-white shadow-[0_-16px_36px_rgba(0,0,0,0.35)]"
         onPointerDown={(event) => event.stopPropagation()}
         style={{
-          bottom: keyboardOpen ? "0px" : "env(safe-area-inset-bottom)",
+          bottom: 0,
           transform: "translate3d(0, calc(var(--kb, 0px) * -1), 0)",
-          transition: "transform 280ms cubic-bezier(0.22, 1, 0.36, 1), bottom 220ms cubic-bezier(0.22, 1, 0.36, 1)",
+          height: "var(--feed-comment-composer-h, 76px)",
+          transition: "transform 280ms cubic-bezier(0.22, 1, 0.36, 1)",
           willChange: "transform",
         }}
       >
