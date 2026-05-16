@@ -297,15 +297,13 @@ export function FeedUploadClient() {
     setPickError(null);
 
     if (!picked.type.startsWith("video/")) {
-      setPickError("Format video belum didukung.");
+      setPickError("Format video belum didukung. Pilih file MP4, MOV, atau WebM.");
       void hapticWarning();
       return;
     }
     if (picked.size > MAX_SOURCE_VIDEO_SIZE) {
       setPickError(
-        `Ukuran video terlalu besar (${formatFileSize(
-          picked.size,
-        )}). Maksimal ${formatFileSize(MAX_SOURCE_VIDEO_SIZE)}.`,
+        `Ukuran video terlalu besar (${formatFileSize(picked.size)}). Maksimal ${formatFileSize(MAX_SOURCE_VIDEO_SIZE)} — coba pilih video lebih pendek atau rekam dengan kualitas 1080p.`,
       );
       void hapticWarning();
       return;

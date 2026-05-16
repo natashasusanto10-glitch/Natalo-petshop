@@ -1436,7 +1436,9 @@ function validatePickedVideoFile(file: File) {
     throw new Error("File video belum bisa dibaca.");
   }
   if (file.size > MAX_SOURCE_VIDEO_SIZE) {
-    throw new Error(`Ukuran video maksimal ${formatFileSize(MAX_SOURCE_VIDEO_SIZE)}.`);
+    throw new Error(
+      `Ukuran video terlalu besar (${formatFileSize(file.size)}). Maksimal ${formatFileSize(MAX_SOURCE_VIDEO_SIZE)} — coba pilih video lebih pendek atau rekam dengan kualitas 1080p.`,
+    );
   }
 }
 

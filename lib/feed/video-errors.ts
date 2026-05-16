@@ -14,7 +14,9 @@ export class VideoTooLongError extends Error {
 
 export class VideoTooLargeError extends Error {
   constructor(maxSizeLabel: string) {
-    super(`File video terlalu besar. Maksimal ${maxSizeLabel}.`);
+    super(
+      `Ukuran video terlalu besar. Maksimal ${maxSizeLabel} — coba pilih video lebih pendek atau rekam dengan kualitas 1080p.`,
+    );
     this.name = "VideoTooLargeError";
   }
 }

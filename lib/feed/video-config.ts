@@ -13,12 +13,22 @@ export type FeedVideoConfig = {
   maxFileSize: number;
 };
 
-// 50 MB ceiling. iOS WKWebView's ffmpeg.wasm sandbox runs out of memory
-// decoding the raw frames of a larger 4K HEVC clip from a recent iPhone
-// (a 22s 4K MOV is ~42MB — already at the edge in real-world testing).
-// Anything past this should be trimmed by the user or recorded at a
-// lower iPhone setting (Settings → Camera → Record Video → 1080p HD).
-export const MAX_SOURCE_VIDEO_SIZE = 50 * 1024 * 1024;
+// 200 MB ceiling. Sejak migrasi ke Bunny direct upload, video tidak lagi
+// di-decode di device (ffmpeg.wasm) — di-PUT raw ke Bunny via signed URL,
+// jadi memory iOS WKWebView bukan bottleneck lagi. Bottleneck baru adalah
+// bandwidth: 200 MB di 4G Indonesia (~5 Mbps) butuh ~5 menit upload, di
+// sinyal lemah bisa 15-25 menit.
+//
+// Kenapa 200 MB dan bukan lebih besar:
+//   - iPhone 1080p HD × 45s ≈ 80-120 MB → fit dengan headroom
+//   - iPhone 4K HEVC × 45s ≈ 200-300 MB → masih kena cap untuk kasus
+//     ekstrem, user disarankan turunkan ke 1080p
+//   - XHR PUT belum resumable (no TUS) — file >200 MB upload putus di
+//     mid-way = mulai dari 0, UX-nya rusak
+//
+// Kalau mau naik ke 500 MB+, wajib pakai TUS resumable upload dulu
+// (tus-js-client + Bunny TUS endpoint). Lihat saran upload flow di chat.
+export const MAX_SOURCE_VIDEO_SIZE = 200 * 1024 * 1024;
 
 // User video config — TARGET specs untuk feed video.
 //

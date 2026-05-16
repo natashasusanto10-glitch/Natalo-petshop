@@ -178,11 +178,13 @@ export function AdminFeedCreateClient() {
     if (!file) return;
     setError(null);
     if (!file.type.startsWith("video/")) {
-      setError("File harus video.");
+      setError("File yang dipilih bukan video. Pilih file format MP4, MOV, atau WebM.");
       return;
     }
     if (file.size > MAX_SOURCE_VIDEO_SIZE) {
-      setError(`Video mentah maksimal ${formatFileSize(MAX_SOURCE_VIDEO_SIZE)}.`);
+      setError(
+        `Ukuran video terlalu besar (${formatFileSize(file.size)}). Maksimal ${formatFileSize(MAX_SOURCE_VIDEO_SIZE)} — coba turunkan kualitas kamera ke 1080p (Settings → Camera → Record Video).`,
+      );
       return;
     }
     setVideoFile(file);
@@ -190,13 +192,17 @@ export function AdminFeedCreateClient() {
     try {
       const meta = await readVideoMetadata(file);
       if (meta.durationSec < ADMIN_VIDEO_CONFIG.minDuration) {
-        setError(`Video terlalu pendek. Minimal ${ADMIN_VIDEO_CONFIG.minDuration} detik.`);
+        setError(
+          `Video terlalu pendek (${Math.round(meta.durationSec)}s). Feed butuh minimal ${ADMIN_VIDEO_CONFIG.minDuration} detik.`,
+        );
         setVideoFile(null);
         setVideoMeta(null);
         return;
       }
       if (meta.durationSec > ADMIN_VIDEO_CONFIG.maxDuration) {
-        setError(`Video terlalu panjang. Maksimal ${ADMIN_VIDEO_CONFIG.maxDuration} detik.`);
+        setError(
+          `Video terlalu panjang (${Math.round(meta.durationSec)}s). Maksimal ${ADMIN_VIDEO_CONFIG.maxDuration} detik untuk feed.`,
+        );
         setVideoFile(null);
         setVideoMeta(null);
         return;
@@ -309,7 +315,15 @@ export function AdminFeedCreateClient() {
           throw new Error(provisionData.error ?? "Gagal menyiapkan upload.");
         }
 
-        setProgress("Mengunggah video...");
+        // Hint untuk file besar: 200 MB di 4G ~5 menit, di sinyal lemah
+        // bisa 15+ menit. Tampilkan ke user supaya tidak tutup tab.
+        const sizeMB = videoFile.size / 1024 / 1024;
+        const isLargeFile = sizeMB > 50;
+        setProgress(
+          isLargeFile
+            ? `Mengunggah video ${sizeMB.toFixed(0)} MB — jangan tutup halaman...`
+            : "Mengunggah video...",
+        );
         await new Promise<void>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
           xhr.open("PUT", provisionData.uploadUrl, true);
@@ -322,9 +336,29 @@ export function AdminFeedCreateClient() {
           };
           xhr.onload = () => {
             if (xhr.status >= 200 && xhr.status < 300) resolve();
-            else reject(new Error(`Upload gagal (HTTP ${xhr.status})`));
+            else
+              reject(
+                new Error(
+                  `Upload gagal (HTTP ${xhr.status}). Coba lagi dengan koneksi yang lebih stabil.`,
+                ),
+              );
           };
-          xhr.onerror = () => reject(new Error("Network error saat upload."));
+          xhr.onerror = () =>
+            reject(
+              new Error(
+                "Upload terputus. Coba lagi dengan koneksi yang lebih stabil — atau gunakan WiFi.",
+              ),
+            );
+          xhr.ontimeout = () =>
+            reject(
+              new Error(
+                "Upload terlalu lama (timeout). Coba lagi dengan koneksi yang lebih cepat.",
+              ),
+            );
+          // Default XHR timeout = none (tunggu selamanya). Set 30 menit
+          // ceiling supaya kalau koneksi stuck total, gagal explicit
+          // dengan message manusiawi, bukan hang forever.
+          xhr.timeout = 30 * 60 * 1000;
           xhr.send(videoFile);
         });
 
@@ -335,16 +369,28 @@ export function AdminFeedCreateClient() {
         // sampai ready/failed atau timeout.
         const postId = provisionData.postId as string | undefined;
         if (postId) {
-          setProgress("Memfinalisasi encoding (bisa sampai 1 menit)...");
-          // ~60 detik max retry window. Bunny encode short clip biasanya
-          // 5-15s tapi video panjang dengan multi-variant (240/360/480/
-          // 720/1080) bisa 30-60s. Tunggu cukup lama supaya admin post
-          // langsung tampil di feed setelah submit. Adaptive delay:
-          // cepat di awal, melambat di akhir untuk hemat API call.
-          const RETRY_DELAYS_MS = [
+          // Encoding window dinamis: file kecil (≤50 MB) butuh ~30-60s,
+          // file besar (>50 MB) bisa 1-3 menit di Bunny karena multi-
+          // variant encode (480/720/1080) + audio remux. Naikkan window
+          // ke 2 menit total untuk file besar supaya kebanyakan post bisa
+          // settle sebelum redirect.
+          setProgress(
+            isLargeFile
+              ? "Memfinalisasi encoding (bisa sampai 2 menit)..."
+              : "Memfinalisasi encoding (bisa sampai 1 menit)...",
+          );
+          // Adaptive delay: cepat di awal (1.5s polling), melambat di
+          // akhir (5s polling). File kecil total ~62s, file besar ~125s.
+          const SHORT_DELAYS = [
             1500, 2000, 2500, 3000, 3500, 4000, 5000, 5000, 5000, 5000,
             5000, 5000, 5000, 5000, 5000,
           ]; // total ~62s
+          const LONG_DELAYS = [
+            ...SHORT_DELAYS,
+            5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000,
+            5000, 5000, 5000,
+          ]; // total ~127s
+          const RETRY_DELAYS_MS = isLargeFile ? LONG_DELAYS : SHORT_DELAYS;
           let settled = false;
           for (const delay of RETRY_DELAYS_MS) {
             await new Promise((r) => setTimeout(r, delay));
@@ -530,7 +576,7 @@ export function AdminFeedCreateClient() {
                 <FiUploadCloud className="h-4 w-4" />
                 {analyzing
                   ? "Memproses..."
-                  : `Pilih video (${ADMIN_VIDEO_CONFIG.minDuration}-${ADMIN_VIDEO_CONFIG.maxDuration}s, raw max ${formatFileSize(MAX_SOURCE_VIDEO_SIZE)})`}
+                  : `Pilih video (${ADMIN_VIDEO_CONFIG.minDuration}-${ADMIN_VIDEO_CONFIG.maxDuration}s · maks ${formatFileSize(MAX_SOURCE_VIDEO_SIZE)})`}
               </button>
             </>
           )}
