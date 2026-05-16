@@ -586,6 +586,7 @@ export function FeedVideoPlayer({
   // Slot A handles HLS via the dedicated effect above. Slot B always uses
   // MP4 direct src (HLS legacy content gets simple loop, not seamless).
   const slotBSrc = attachSrc ? playbackUrl : undefined;
+  const showSoundToggle = isActive && !isPlaying && !showLoadingIndicator;
 
   // Video object-fit decision:
   //   - Portrait 9:16 → cover (fill viewport, edge-to-edge Reels feel)
@@ -740,9 +741,9 @@ export function FeedVideoPlayer({
 
       <VideoProgressBar progress={playbackProgress} />
 
-      {/* Sound toggle — hanya active card. Position di bawah safe-area-inset
-          supaya tidak tabrak status bar iPhone. */}
-      {isActive && (
+      {/* Sound toggle — hanya muncul saat video pause supaya feed tetap clean
+          ketika playback berjalan. */}
+      {showSoundToggle && (
         <button
           type="button"
           aria-label={soundOn ? "Matikan suara" : "Nyalakan suara"}
@@ -750,7 +751,7 @@ export function FeedVideoPlayer({
             e.stopPropagation();
             toggleSound();
           }}
-          className="absolute right-3 z-[3] grid h-11 w-11 place-items-center text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.72)] transition active:scale-95"
+          className="absolute right-3 z-[3] grid h-10 w-10 place-items-center rounded-full bg-black/40 text-white shadow-[0_8px_20px_rgba(0,0,0,0.28)] backdrop-blur-md transition active:scale-95"
           style={{ top: "calc(env(safe-area-inset-top, 0px) + 76px)" }}
         >
           {soundOn ? (

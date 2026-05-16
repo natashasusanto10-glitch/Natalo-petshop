@@ -21,6 +21,8 @@ export type FeedPostProduct = {
   price: number;
   discountPrice: number | null;
   stock: number;
+  weightGram: number;
+  isAvailable: boolean;
   imageUrl: string | null;
 } | null;
 
@@ -36,6 +38,8 @@ export type FeedPostTaggedProduct = {
   price: number;
   discountPrice: number | null;
   stock: number;
+  weightGram: number;
+  isAvailable: boolean;
   imageUrl: string | null;
   position: number;
   promoPrice: number | null;
@@ -54,9 +58,9 @@ export type FeedPostListItem = {
   videoWidth: number | null;
   videoHeight: number | null;
   product: FeedPostProduct;
-  // Shop the Look — semua produk yang di-tag user (max 3). Sorted by
-  // position ascending. `product` (single) tetap dipertahankan untuk
-  // backward-compat — biasanya = taggedProducts[0] kalau ada.
+  // Shop the Look — semua produk yang di-tag (admin max 5, user max 3).
+  // Sorted by position ascending. `product` (single) tetap dipertahankan
+  // untuk backward-compat — biasanya = taggedProducts[0] kalau ada.
   taggedProducts: FeedPostTaggedProduct[];
   promo: {
     originalPrice: number;

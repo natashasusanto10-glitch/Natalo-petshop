@@ -106,6 +106,8 @@ export async function listFeedPosts({
           price: true,
           discountPrice: true,
           stock: true,
+          weightGram: true,
+          isActive: true,
           imageUrl: true,
         },
       },
@@ -122,6 +124,7 @@ export async function listFeedPosts({
               price: true,
               discountPrice: true,
               stock: true,
+              weightGram: true,
               imageUrl: true,
               isActive: true,
             },
@@ -168,13 +171,15 @@ export async function listFeedPosts({
           price: p.product.price,
           discountPrice: p.product.discountPrice,
           stock: p.product.stock,
+          weightGram: p.product.weightGram,
+          isAvailable: p.product.isActive,
           imageUrl: p.product.imageUrl,
         }
       : null,
-    // Shop the Look: filter out inactive products (admin deactivate) +
-    // map ke flat shape with per-product promoPrice. Sorted by position ASC.
+    // Shop the Look: keep inactive tagged products visible for context, but
+    // mark them unavailable so UI can disable commerce safely.
     taggedProducts: p.taggedProducts
-      .filter((tp) => tp.product && tp.product.isActive)
+      .filter((tp) => tp.product)
       .map((tp) => ({
         id: tp.product!.id,
         slug: tp.product!.slug,
@@ -182,6 +187,8 @@ export async function listFeedPosts({
         price: tp.product!.price,
         discountPrice: tp.product!.discountPrice,
         stock: tp.product!.stock,
+        weightGram: tp.product!.weightGram,
+        isAvailable: tp.product!.isActive,
         imageUrl: tp.product!.imageUrl,
         position: tp.position,
         promoPrice: tp.promoPrice ?? null,

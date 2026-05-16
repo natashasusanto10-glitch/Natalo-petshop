@@ -15,19 +15,16 @@ import {
   useRef,
   useState,
 } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { FiPlus } from "react-icons/fi";
+import { useSearchParams } from "next/navigation";
 import type { FeedListResponse, FeedPostListItem } from "@/lib/feed/types";
 import { FeedActiveVideoProvider, useFeedActiveVideo } from "./FeedActiveVideoContext";
 import { FeedVideoCard } from "./FeedVideoCard";
 import { FeedPostPlaceholder } from "./FeedPostPlaceholder";
 import { FeedCommentSheet } from "./FeedCommentSheet";
 import { getVirtualWindow } from "@/lib/feed/runtime-config";
-import { hapticTap } from "@/lib/native/haptics";
 import { FEED_PLAYBACK_TEARDOWN_EVENT } from "@/lib/feed/teardown";
 
 export function FeedClient() {
-  const router = useRouter();
   // Shop the Look — saat user buka /feed?product=<slug> dari product page,
   // feed cuma show posts yang tag produk itu. Null = main feed (semua).
   const searchParams = useSearchParams();
@@ -117,10 +114,6 @@ export function FeedClient() {
     window.addEventListener("app-refresh", handler);
     return () => window.removeEventListener("app-refresh", handler);
   }, []);
-
-  useEffect(() => {
-    router.prefetch("/feed/upload");
-  }, [router]);
 
   useEffect(() => {
     function onTeardown() {
@@ -234,23 +227,9 @@ export function FeedClient() {
   }, [commentPostId, posts]);
   const showEmpty = !loading && !error && posts.length === 0;
 
-  function startUploadFlow() {
-    void hapticTap();
-    router.push("/feed/upload");
-  }
-
   return (
     <FeedActiveVideoProvider>
       <div className="relative mx-auto flex h-full max-w-2xl flex-col">
-        <button
-          type="button"
-          onClick={startUploadFlow}
-          aria-label="Buat postingan"
-          className="absolute right-[22px] top-[calc(env(safe-area-inset-top)+18px)] z-30 grid h-8 w-8 place-items-center text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)] transition active:scale-95"
-        >
-          <FiPlus className="h-8 w-8" />
-        </button>
-
         <div
           ref={scrollRef}
           // data-no-pull → PullToRefresh in the root layout sees this and

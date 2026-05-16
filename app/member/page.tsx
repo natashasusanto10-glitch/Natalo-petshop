@@ -12,6 +12,7 @@ import {
   FiMapPin,
   FiPackage,
   FiPlayCircle,
+  FiPlus,
   FiShield,
   FiShoppingBag,
   FiTag,
@@ -374,8 +375,15 @@ export default async function MemberPage() {
 
         <section>
           <h2 className="px-1 text-lg font-black text-[#101A33]">Feed Saya</h2>
-          <div className="mt-3">
+          <div className="mt-3 space-y-3">
             <FeedSayaCard pendingCount={pendingFeedPostCount} />
+            <Link
+              href="/feed/upload"
+              className="flex w-full items-center justify-center gap-2 rounded-[18px] bg-natalo-600 px-4 py-3 text-sm font-black text-white shadow-[0_10px_24px_rgba(30,95,191,0.24)] transition active:scale-[0.98]"
+            >
+              <FiPlus className="h-5 w-5" aria-hidden="true" />
+              Upload Video
+            </Link>
           </div>
         </section>
 

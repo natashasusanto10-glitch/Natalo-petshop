@@ -3,7 +3,8 @@
 import Link from "next/link";
 import Image from "next/image";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   FiChevronRight,
   FiCheckCircle,
@@ -12,12 +13,16 @@ import {
   FiShoppingCart,
 } from "react-icons/fi";
 import { BottomSheet } from "@/components/BottomSheet";
+import { addItemToCart } from "@/lib/cart-actions";
+import type { CartItem } from "@/lib/cart";
 import { formatRupiah } from "@/lib/format";
 import { hapticTap } from "@/lib/native/haptics";
 import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
 import { shareContent } from "@/lib/share";
 import type { FeedPostListItem } from "@/lib/feed/types";
 import { FeedVideoPlayer } from "./FeedVideoPlayer";
+
+const CHECKOUT_SELECTION_KEY = "checkout:selectedCartItems";
 
 type Props = {
   post: FeedPostListItem;
@@ -46,7 +51,7 @@ export function FeedVideoCard({
   // `product` untuk legacy posts yang belum di-migrate ke FeedPostProduct.
   const taggedProducts = useMemo(() => {
     if (post.taggedProducts && post.taggedProducts.length > 0) {
-      return post.taggedProducts;
+      return post.taggedProducts.slice(0, 5);
     }
     if (product) {
       return [
@@ -57,6 +62,8 @@ export function FeedVideoCard({
           price: product.price,
           discountPrice: product.discountPrice,
           stock: product.stock,
+          weightGram: product.weightGram,
+          isAvailable: product.isAvailable,
           imageUrl: product.imageUrl,
           position: 0,
           // Legacy single-product fallback — no per-product promo set.
@@ -67,23 +74,21 @@ export function FeedVideoCard({
     return [];
   }, [post.taggedProducts, product]);
   const hasMultipleProducts = taggedProducts.length > 1;
-  const [carouselIndex, setCarouselIndex] = useState(0);
-  const currentCarouselProduct = taggedProducts[carouselIndex] ?? null;
+  const currentCarouselProduct = taggedProducts[0] ?? null;
+  const productPillPromo = taggedProducts
+    .map((item) => getFeedProductPricing(item, post.promo))
+    .find((pricing) => pricing.hasPromo && pricing.discountPct > 0);
+  const productSummary =
+    hasMultipleProducts && taggedProducts.length > 0
+      ? `${taggedProducts
+          .slice(0, 2)
+          .map((item) => item.name)
+          .join(", ")}${taggedProducts.length > 2 ? ", ..." : ""}`
+      : currentCarouselProduct?.name;
   const hasVideo = Boolean(post.videoUrl);
   const productHref = product ? `/products/${product.slug}` : "#";
   const creatorName = isAdmin ? "Natalo Petshop" : post.author.name;
   const caption = cleanFeedCaption(post.description, post.title);
-
-  // Auto-rotate carousel — fade dari produk satu ke berikutnya tiap 4s.
-  // Skip rotation kalau cuma 1 produk atau sheet lagi open (jangan
-  // mengganggu user saat lihat detail).
-  useEffect(() => {
-    if (!hasMultipleProducts || productSheetOpen) return;
-    const t = window.setInterval(() => {
-      setCarouselIndex((i) => (i + 1) % taggedProducts.length);
-    }, 4000);
-    return () => window.clearInterval(t);
-  }, [hasMultipleProducts, productSheetOpen, taggedProducts.length]);
 
   async function toggleLike() {
     if (likeBusy) return;
@@ -265,100 +270,56 @@ export function FeedVideoCard({
         </div>
       )}
 
-      {/* Bottom-left content: promo badge → product tag carousel → creator → caption */}
+      {/* Bottom-left content: compact product pill → creator → caption */}
       {!commentMode && (
         <div className="absolute left-4 right-[76px] z-[2] [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+1.5rem)] md:bottom-24">
-          {/* PROMO badge — sync dengan carousel produk. Setiap tagged
-              product punya promoPrice sendiri (set admin) yang dibanding
-              ke product.price (harga katalog). Badge auto-switch saat
-              carousel rotate ke produk berikutnya. Fallback ke legacy
-              post.promo kalau current product belum di-set promoPrice.
-              Tap → open product sheet untuk beli. */}
-          {post.kind === "PROMO" &&
-            (() => {
-              // Resolve harga asli + diskon untuk produk yang sedang
-              // di-display di carousel.
-              let originalPrice: number | null = null;
-              let discountPrice: number | null = null;
-              if (
-                currentCarouselProduct &&
-                currentCarouselProduct.promoPrice != null &&
-                currentCarouselProduct.promoPrice <
-                  currentCarouselProduct.price
-              ) {
-                originalPrice = currentCarouselProduct.price;
-                discountPrice = currentCarouselProduct.promoPrice;
-              } else if (post.promo) {
-                // Legacy single-price fallback untuk post lama yg belum
-                // di-migrate ke per-product pricing.
-                originalPrice = post.promo.originalPrice;
-                discountPrice = post.promo.discountPrice;
-              }
-              if (originalPrice === null || discountPrice === null) return null;
-              const off = Math.round(
-                ((originalPrice - discountPrice) / originalPrice) * 100,
-              );
-              return (
-                <button
-                  type="button"
-                  onClick={() => setProductSheetOpen(true)}
-                  // Key by current product so React mounts ulang tiap
-                  // rotation → animation re-trigger + visual cue ke user.
-                  key={currentCarouselProduct?.id ?? "legacy"}
-                  className="mb-2.5 flex w-full max-w-full items-stretch gap-0 overflow-hidden rounded-2xl bg-gradient-to-r from-red-600 to-rose-500 text-left text-white shadow-lg shadow-red-900/30 transition active:scale-[0.98]"
-                  style={{
-                    animation: hasMultipleProducts
-                      ? "natalo-feed-product-fade 4000ms ease-in-out infinite"
-                      : undefined,
-                  }}
-                >
-                  <div className="grid place-items-center bg-white/15 px-2.5 py-2">
-                    <span className="text-[10px] font-black uppercase tracking-wider">
-                      Promo
-                    </span>
-                    <span className="text-base font-black leading-none">
-                      {off}%
-                    </span>
-                    <span className="text-[9px] font-bold uppercase">Off</span>
-                  </div>
-                  <div className="flex min-w-0 flex-1 flex-col justify-center px-3 py-1.5">
-                    <p className="truncate text-[11px] font-semibold text-white/85 line-through">
-                      {formatRupiah(originalPrice)}
-                    </p>
-                    <p className="truncate text-base font-black leading-tight">
-                      {formatRupiah(discountPrice)}
-                    </p>
-                  </div>
-                  <div className="grid shrink-0 place-items-center bg-white/15 px-3 py-2">
-                    <FiShoppingCart className="h-5 w-5" aria-hidden />
-                    <span className="mt-0.5 text-[9px] font-black uppercase tracking-wide">
-                      Beli
-                    </span>
-                  </div>
-                </button>
-              );
-            })()}
           {currentCarouselProduct && (
             <button
               type="button"
               onClick={() => setProductSheetOpen(true)}
-              className="mb-2.5 inline-flex h-10 max-w-full items-center gap-2 rounded-[14px] border border-[#D6A84A]/20 bg-black/[0.22] px-3 text-left text-white shadow-sm shadow-black/10 backdrop-blur-[14px] transition active:scale-[0.98]"
+              className="mb-2.5 inline-flex h-10 max-w-full items-center gap-2 rounded-[16px] border border-white/15 bg-black/[0.24] px-3 text-left text-white shadow-sm shadow-black/10 backdrop-blur-[16px] transition active:scale-[0.98]"
               key={currentCarouselProduct.id}
-              style={{
-                animation: hasMultipleProducts
-                  ? "natalo-feed-product-fade 4000ms ease-in-out infinite"
-                  : undefined,
-              }}
             >
               <FiShoppingBag className="h-4 w-4 shrink-0 text-white/75" aria-hidden="true" />
+              {hasMultipleProducts && (
+                <span className="hidden shrink-0 -space-x-1 sm:flex" aria-hidden="true">
+                  {taggedProducts.slice(0, 3).map((item) => (
+                    <span
+                      key={item.id}
+                      className="relative block h-5 w-5 overflow-hidden rounded-full border border-white/20 bg-white/10"
+                    >
+                      {item.imageUrl ? (
+                        <Image
+                          src={item.imageUrl}
+                          alt=""
+                          fill
+                          sizes="20px"
+                          placeholder="blur"
+                          blurDataURL={IMAGE_BLUR_GRAY}
+                          className="object-cover"
+                        />
+                      ) : (
+                        <span className="grid h-full w-full place-items-center">
+                          <FiPackage className="h-2.5 w-2.5 text-white/60" />
+                        </span>
+                      )}
+                    </span>
+                  ))}
+                </span>
+              )}
               <span className="shrink-0 text-[12px] font-semibold text-white/90">
                 {hasMultipleProducts
                   ? `${taggedProducts.length} produk`
                   : "Produk digunakan"}
               </span>
               <span className="min-w-0 truncate text-[12px] font-semibold text-white/85">
-                {currentCarouselProduct.name}
+                {productSummary}
               </span>
+              {productPillPromo && (
+                <span className="shrink-0 rounded-full bg-rose-500/85 px-2 py-0.5 text-[10px] font-black leading-none text-white shadow-sm shadow-rose-950/25">
+                  PROMO {productPillPromo.discountPct}%
+                </span>
+              )}
               <FiChevronRight className="h-4 w-4 shrink-0 text-white/65" aria-hidden="true" />
             </button>
           )}
@@ -391,19 +352,10 @@ export function FeedVideoCard({
         <PinnedProductSheet
           open={productSheetOpen}
           products={taggedProducts}
-          isAdmin={isAdmin}
+          legacyPromo={post.promo}
           onClose={() => setProductSheetOpen(false)}
         />
       )}
-
-      <style>{`
-        @keyframes natalo-feed-product-fade {
-          0% { opacity: 0; transform: translateY(4px); }
-          8% { opacity: 1; transform: translateY(0); }
-          92% { opacity: 1; transform: translateY(0); }
-          100% { opacity: 0; transform: translateY(-4px); }
-        }
-      `}</style>
     </article>
   );
 }
@@ -541,106 +493,210 @@ function ActionButton({
 }
 
 type SheetProduct = NonNullable<FeedPostListItem["product"]> | FeedPostListItem["taggedProducts"][number];
+type LegacyPromo = FeedPostListItem["promo"];
+
+function getFeedProductPricing(product: SheetProduct, legacyPromo?: LegacyPromo) {
+  let originalPrice = product.price;
+  let displayPrice = product.price;
+
+  if (product.discountPrice != null && product.discountPrice > 0 && product.discountPrice < product.price) {
+    displayPrice = product.discountPrice;
+  }
+
+  const promoPrice =
+    "promoPrice" in product && product.promoPrice != null
+      ? product.promoPrice
+      : null;
+
+  if (promoPrice != null && promoPrice > 0 && promoPrice < product.price) {
+    displayPrice = promoPrice;
+  } else if (
+    legacyPromo &&
+    legacyPromo.discountPrice > 0 &&
+    legacyPromo.discountPrice < legacyPromo.originalPrice
+  ) {
+    originalPrice = legacyPromo.originalPrice;
+    displayPrice = legacyPromo.discountPrice;
+  }
+
+  const hasPromo = displayPrice < originalPrice;
+  const discountPct = hasPromo
+    ? Math.max(1, Math.round(((originalPrice - displayPrice) / originalPrice) * 100))
+    : 0;
+
+  return { originalPrice, displayPrice, hasPromo, discountPct };
+}
+
+function buildFeedCartItem(product: SheetProduct, price: number): CartItem {
+  return {
+    productId: product.id,
+    slug: product.slug,
+    variantId: null,
+    variantLabel: null,
+    name: product.name,
+    price,
+    quantity: 1,
+    subtotal: price,
+    weightGram: product.weightGram,
+    imageUrl: product.imageUrl,
+    stock: product.stock,
+  };
+}
 
 function PinnedProductSheet({
   open,
   products,
-  isAdmin,
+  legacyPromo,
   onClose,
 }: {
   open: boolean;
   products: SheetProduct[];
-  isAdmin: boolean;
+  legacyPromo: LegacyPromo;
   onClose: () => void;
 }) {
-  const title =
-    products.length > 1
-      ? `${products.length} Produk di Video`
-      : "Produk di Video";
+  const router = useRouter();
+
+  function handleAddProduct(product: SheetProduct, redirectToCheckout = false) {
+    if (!product.isAvailable || product.stock <= 0) return;
+    hapticTap();
+
+    const pricing = getFeedProductPricing(product, legacyPromo);
+    const cartItem = buildFeedCartItem(product, pricing.displayPrice);
+    const result = addItemToCart(cartItem, {
+      showToast: !redirectToCheckout,
+      successMessage: "Produk dari video berhasil ditambahkan",
+    });
+
+    if (!result.ok || !redirectToCheckout) return;
+
+    const cartKey = `${product.id}:`;
+    try {
+      sessionStorage.setItem(
+        CHECKOUT_SELECTION_KEY,
+        JSON.stringify([{ ...cartItem, quantity: 1, subtotal: pricing.displayPrice }]),
+      );
+    } catch {
+      // Checkout masih bisa membaca item dari cart lokal kalau sessionStorage gagal.
+    }
+
+    onClose();
+    router.push(`/checkout?cart_item_ids=${encodeURIComponent(cartKey)}`);
+  }
+
   return (
-    <BottomSheet open={open} onClose={onClose} title={title} variant="dark">
+    <BottomSheet open={open} onClose={onClose} title="Produk di Video" variant="dark">
       <div className="space-y-3">
-        {products.map((product) => {
-          // Priority: per-product promoPrice (kind=PROMO admin set) >
-          // catalog discountPrice > base price. Kalau ada promoPrice
-          // valid, tampilkan harga normal coret + badge diskon.
-          const promoPrice =
-            "promoPrice" in product && product.promoPrice != null
-              ? product.promoPrice
-              : null;
-          const hasPromo = promoPrice != null && promoPrice < product.price;
-          const displayPrice = hasPromo
-            ? promoPrice
-            : product.discountPrice ?? product.price;
-          const showStrike = hasPromo;
-          const discountPct = hasPromo
-            ? Math.round(((product.price - promoPrice) / product.price) * 100)
-            : 0;
-          return (
-            <Link
-              key={product.id}
-              href={`/products/${product.slug}`}
-              className="flex items-center gap-3 rounded-2xl border border-[#242B33] bg-[#111820] p-3 transition hover:bg-[#151F2A] active:bg-[#172230]"
-            >
-              {product.imageUrl ? (
-                <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-white">
-                  <Image
-                    src={product.imageUrl}
-                    alt={product.name}
-                    fill
-                    sizes="80px"
-                    placeholder="blur"
-                    blurDataURL={IMAGE_BLUR_GRAY}
-                    className="object-cover"
-                  />
-                </div>
-              ) : (
-                <div className="grid h-20 w-20 shrink-0 place-items-center rounded-2xl bg-white/[0.08] text-natalo-300">
-                  <FiPackage className="h-7 w-7" />
-                </div>
-              )}
-              <div className="min-w-0 flex-1">
-                <p className="line-clamp-2 text-sm font-black text-white">
-                  {product.name}
-                </p>
-                <div className="mt-1 flex items-baseline gap-2">
-                  <p className="text-base font-black text-natalo-300">
-                    {formatRupiah(displayPrice)}
-                  </p>
-                  {showStrike && (
-                    <>
-                      <span className="text-xs font-semibold text-zinc-500 line-through">
-                        {formatRupiah(product.price)}
-                      </span>
-                      <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-[10px] font-black text-red-300">
-                        -{discountPct}%
-                      </span>
-                    </>
-                  )}
-                </div>
-                <p
-                  className={`mt-1 text-xs font-bold ${product.stock > 0 ? "text-emerald-400" : "text-red-400"}`}
-                >
-                  {product.stock > 0 ? `Stok ${product.stock}` : "Stok Habis"}
-                </p>
-              </div>
-              <FiChevronRight className="h-5 w-5 shrink-0 text-zinc-300" aria-hidden />
-            </Link>
-          );
-        })}
-        {/* CTA umum — kalau cuma 1 produk, langsung "Lihat / Beli" dengan
-            slug yang spesifik. Kalau multi, anchor scroll back ke list di atas. */}
-        {products.length === 1 && (
-          <Link
-            href={`/products/${products[0].slug}`}
-            className="flex w-full items-center justify-center gap-2 rounded-full bg-natalo-600 py-3 text-sm font-black text-white transition active:scale-[0.98]"
-          >
-            <FiShoppingCart className="h-4 w-4" />
-            {isAdmin ? "Beli Sekarang" : "Lihat Produk"}
-          </Link>
+        {products.length > 1 && (
+          <p className="text-xs font-semibold text-zinc-400">
+            {products.length} produk ditag di video ini.
+          </p>
         )}
+        {products.map((product) => (
+          <PinnedProductSheetCard
+            key={product.id}
+            product={product}
+            legacyPromo={legacyPromo}
+            onAdd={() => handleAddProduct(product, false)}
+            onBuy={() => handleAddProduct(product, true)}
+          />
+        ))}
       </div>
     </BottomSheet>
+  );
+}
+
+function PinnedProductSheetCard({
+  product,
+  legacyPromo,
+  onAdd,
+  onBuy,
+}: {
+  product: SheetProduct;
+  legacyPromo: LegacyPromo;
+  onAdd: () => void;
+  onBuy: () => void;
+}) {
+  const pricing = getFeedProductPricing(product, legacyPromo);
+  const unavailable = !product.isAvailable || product.stock <= 0;
+
+  return (
+    <div className="rounded-2xl border border-[#242B33] bg-[#111820] p-3 shadow-[0_10px_28px_rgba(0,0,0,0.18)]">
+      <div className="flex items-center gap-3">
+        <Link
+          href={`/products/${product.slug}`}
+          className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-white transition active:scale-[0.98]"
+          aria-label={`Buka detail ${product.name}`}
+        >
+          {product.imageUrl ? (
+            <Image
+              src={product.imageUrl}
+              alt={product.name}
+              fill
+              sizes="80px"
+              placeholder="blur"
+              blurDataURL={IMAGE_BLUR_GRAY}
+              className="object-cover"
+            />
+          ) : (
+            <span className="grid h-full w-full place-items-center bg-white/[0.08] text-natalo-300">
+              <FiPackage className="h-7 w-7" />
+            </span>
+          )}
+        </Link>
+
+        <Link
+          href={`/products/${product.slug}`}
+          className="min-w-0 flex-1 transition active:opacity-80"
+        >
+          <div className="flex items-start gap-2">
+            <p className="line-clamp-2 flex-1 text-sm font-black leading-snug text-white">
+              {product.name}
+            </p>
+            <FiChevronRight className="mt-0.5 h-5 w-5 shrink-0 text-zinc-400" aria-hidden />
+          </div>
+          <div className="mt-1 flex flex-wrap items-baseline gap-2">
+            <p className="text-base font-black text-natalo-300">
+              {formatRupiah(pricing.displayPrice)}
+            </p>
+            {pricing.hasPromo && (
+              <>
+                <span className="text-xs font-semibold text-zinc-500 line-through">
+                  {formatRupiah(pricing.originalPrice)}
+                </span>
+                <span className="rounded-full bg-rose-500/18 px-2 py-0.5 text-[10px] font-black text-rose-200 ring-1 ring-rose-400/25">
+                  PROMO {pricing.discountPct}%
+                </span>
+              </>
+            )}
+          </div>
+          <p
+            className={`mt-1 text-xs font-bold ${unavailable ? "text-red-400" : "text-emerald-400"}`}
+          >
+            {unavailable ? "Produk tidak tersedia" : `Stok tersedia: ${product.stock}`}
+          </p>
+        </Link>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={onAdd}
+          disabled={unavailable}
+          className="flex h-10 items-center justify-center gap-2 rounded-full border border-white/12 bg-white/[0.06] px-3 text-xs font-black text-white transition active:scale-[0.98] disabled:cursor-not-allowed disabled:border-white/5 disabled:bg-white/[0.03] disabled:text-zinc-600 disabled:active:scale-100"
+        >
+          <FiShoppingCart className="h-4 w-4" aria-hidden />
+          Tambah Keranjang
+        </button>
+        <button
+          type="button"
+          onClick={onBuy}
+          disabled={unavailable}
+          className="h-10 rounded-full bg-natalo-600 px-3 text-xs font-black text-white shadow-lg shadow-natalo-950/30 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400 disabled:shadow-none disabled:active:scale-100"
+        >
+          Beli Sekarang
+        </button>
+      </div>
+    </div>
   );
 }
 
