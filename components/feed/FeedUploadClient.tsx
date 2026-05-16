@@ -102,6 +102,7 @@ export function FeedUploadClient() {
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
   const [metadata, setMetadata] = useState<VideoMetadata | null>(null);
   const [thumbnailPreviewUrl, setThumbnailPreviewUrl] = useState<string | null>(null);
+  const [thumbnailBlob, setThumbnailBlob] = useState<Blob | null>(null);
   const [thumbnailIsFallback, setThumbnailIsFallback] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzingLabel, setAnalyzingLabel] = useState("Menyiapkan video...");
@@ -178,6 +179,7 @@ export function FeedUploadClient() {
     setFilePreviewUrl(null);
     setMetadata(null);
     setThumbnailPreviewUrl(null);
+    setThumbnailBlob(null);
     setThumbnailIsFallback(false);
     setTrimStart(0);
     setTrimEnd(USER_VIDEO_CONFIG.maxDuration);
@@ -211,6 +213,7 @@ export function FeedUploadClient() {
         if (thumbnailJobRef.current !== jobId) return;
         const prev = thumbnailPreviewUrl;
         setThumbnailPreviewUrl(URL.createObjectURL(thumb.blob));
+        setThumbnailBlob(thumb.blob);
         setThumbnailIsFallback(thumb.usedFallback);
         // Revoke setelah React swap supaya tidak race dengan <Image> yang
         // masih pegang URL lama.
@@ -253,6 +256,7 @@ export function FeedUploadClient() {
       .then((thumb) => {
         if (thumbnailJobRef.current !== jobId) return;
         setThumbnailPreviewUrl(URL.createObjectURL(thumb.blob));
+        setThumbnailBlob(thumb.blob);
         setThumbnailIsFallback(thumb.usedFallback);
       })
       .catch((thumbnailError) => {
@@ -331,6 +335,49 @@ export function FeedUploadClient() {
     }
   }
 
+  async function ensureThumbnailForUpload(sourceFile: File, meta: VideoMetadata) {
+    if (thumbnailBlob?.size) return thumbnailBlob;
+
+    const thumb = await extractVideoThumbnailSafe(sourceFile, meta, {
+      targetTimeSec: Math.min(
+        Math.max(0.1, trimStart + 0.1),
+        Math.max(0.1, meta.durationSec - 0.05),
+      ),
+      maxWidth: 480,
+      timeoutMs: THUMBNAIL_BACKGROUND_TIMEOUT_MS,
+    });
+    setThumbnailBlob(thumb.blob);
+    setThumbnailIsFallback(thumb.usedFallback);
+
+    const prev = thumbnailPreviewUrl;
+    setThumbnailPreviewUrl(URL.createObjectURL(thumb.blob));
+    if (prev) {
+      setTimeout(() => URL.revokeObjectURL(prev), 500);
+    }
+
+    return thumb.blob;
+  }
+
+  async function uploadPendingThumbnail(thumb: Blob | null) {
+    if (!thumb?.size) return null;
+
+    const thumbForm = new FormData();
+    thumbForm.append(
+      "file",
+      new File([thumb], "thumbnail.jpg", { type: "image/jpeg" }),
+    );
+    const thumbRes = await fetch("/api/feed/upload-thumbnail", {
+      method: "POST",
+      body: thumbForm,
+    });
+    const thumbData = (await thumbRes.json().catch(() => ({}))) as {
+      url?: string;
+    };
+
+    if (!thumbRes.ok || !thumbData.url) return null;
+    return thumbData.url;
+  }
+
   async function handleSubmit() {
     if (!file || !metadata) return;
     if (uploading) return;
@@ -341,7 +388,14 @@ export function FeedUploadClient() {
     setUploadLabel("Menyiapkan unggahan...");
 
     try {
-      // 1) Buat record di Bunny + FeedPost row.
+      // 1) Persist thumbnail + duration before Bunny finishes encoding so
+      // Postingan Saya can show the user's real preview while review is pending.
+      setUploadLabel("Menyiapkan thumbnail...");
+      const pendingThumbnailBlob = await ensureThumbnailForUpload(file, metadata);
+      const pendingThumbnailUrl = await uploadPendingThumbnail(pendingThumbnailBlob);
+
+      // 2) Buat record di Bunny + FeedPost row.
+      setUploadLabel("Menyiapkan unggahan...");
       const urlRes = await fetch("/api/feed/bunny/upload-url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -350,6 +404,8 @@ export function FeedUploadClient() {
           description: caption.trim() || null,
           petType: petType ?? null,
           productIds: selectedProduct ? [selectedProduct.productId] : [],
+          thumbnailUrl: pendingThumbnailUrl,
+          videoDurationSec: Math.round(finalDuration),
         }),
       });
       const urlData = (await urlRes.json().catch(() => ({}))) as {
@@ -363,7 +419,7 @@ export function FeedUploadClient() {
         throw new Error(urlData.error ?? "Gagal menyiapkan unggahan.");
       }
 
-      // 2) Trim source kalau user pilih sub-range. Else skip — upload raw.
+      // 3) Trim source kalau user pilih sub-range. Else skip — upload raw.
       let uploadBlob: Blob = file;
       const wantsTrim =
         trimStart > 0.1 || finalDuration < metadata.durationSec - 0.1;
@@ -379,7 +435,7 @@ export function FeedUploadClient() {
         });
       }
 
-      // 3) PUT bytes ke Bunny.
+      // 4) PUT bytes ke Bunny.
       setUploadStage("uploading");
       setUploadProgress(0);
       setUploadLabel("Mengunggah video...");

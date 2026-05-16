@@ -183,7 +183,11 @@ function PostCard({
       <Link href={detailHref} className="shrink-0 transition active:scale-[0.99]">
         <PostThumbnail
           src={post.thumbnailUrl}
-          duration={formatFeedDuration(post.videoDurationSec)}
+          duration={
+            post.videoDurationSec && post.videoDurationSec > 0
+              ? formatFeedDuration(post.videoDurationSec)
+              : null
+          }
         />
       </Link>
       <div className="min-w-0 flex-1 py-1">
@@ -379,7 +383,7 @@ export function MyFeedPostActions({
   );
 }
 
-function PostThumbnail({ src, duration }: { src: string | null; duration: string }) {
+function PostThumbnail({ src, duration }: { src: string | null; duration: string | null }) {
   return (
     <span className="relative block h-[150px] w-[112px] shrink-0 overflow-hidden rounded-2xl bg-slate-900">
       {src ? (
@@ -400,9 +404,11 @@ function PostThumbnail({ src, duration }: { src: string | null; duration: string
           <FiPlay className="ml-0.5 h-5 w-5" />
         </span>
       </span>
-      <span className="absolute bottom-2 left-2 rounded-md bg-black/70 px-2 py-0.5 text-[11px] font-black text-white">
-        {duration}
-      </span>
+      {duration && (
+        <span className="absolute bottom-2 left-2 rounded-md bg-black/70 px-2 py-0.5 text-[11px] font-black text-white">
+          {duration}
+        </span>
+      )}
     </span>
   );
 }

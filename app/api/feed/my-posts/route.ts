@@ -21,6 +21,7 @@ import {
   MY_FEED_VISIBLE_STATUSES,
   normalizeMyFeedFilter,
 } from "@/lib/feed/my-posts";
+import { bunnyThumbnailUrl } from "@/lib/feed/bunny";
 
 export async function GET(request: NextRequest) {
   const session = await getSession("CUSTOMER");
@@ -57,6 +58,7 @@ export async function GET(request: NextRequest) {
         title: true,
         description: true,
         thumbnailUrl: true,
+        videoGuid: true,
         videoUrl: true,
         videoDurationSec: true,
         createdAt: true,
@@ -75,7 +77,9 @@ export async function GET(request: NextRequest) {
       id: post.id,
       title: post.title,
       description: post.description,
-      thumbnailUrl: post.thumbnailUrl,
+      thumbnailUrl:
+        post.thumbnailUrl ??
+        (post.videoGuid ? bunnyThumbnailUrl(post.videoGuid) || null : null),
       videoUrl: post.videoUrl,
       videoDurationSec: post.videoDurationSec,
       createdAt: post.createdAt.toISOString(),

@@ -19,6 +19,8 @@
  *     petType?:        string | null
  *     petName?:        string
  *     productIds?:     string[] (max 3, must belong to user's order history)
+ *     thumbnailUrl?:   string | null (client-generated preview)
+ *     videoDurationSec?: number | null
  *   }
  *
  * Response:
@@ -89,6 +91,8 @@ export async function POST(request: NextRequest) {
     petType?: string | null;
     petName?: string;
     productIds?: unknown;
+    thumbnailUrl?: string | null;
+    videoDurationSec?: number | null;
     // Admin-only fields. Customer sessions always create COMMUNITY posts to
     // the KOMUNITAS tab regardless of what's sent.
     kind?: string;
@@ -146,6 +150,10 @@ export async function POST(request: NextRequest) {
   const descParts = [description ?? "", petInfo ? `Info peliharaan: ${petInfo}` : ""]
     .filter(Boolean);
   const finalDescription = descParts.join("\n\n") || null;
+  const thumbnailUrl = body.thumbnailUrl
+    ? String(body.thumbnailUrl).trim()
+    : null;
+  const videoDurationSec = Number(body.videoDurationSec);
 
   // Admin can publish to other kinds/tabs (VIDEO_ONLY, PRODUCT_ONLY,
   // VIDEO_PRODUCT, PROMO). Customer is always COMMUNITY → KOMUNITAS.
@@ -195,6 +203,11 @@ export async function POST(request: NextRequest) {
       publishedAt: isAdmin ? new Date() : null,
       title,
       description: finalDescription,
+      thumbnailUrl,
+      videoDurationSec:
+        Number.isFinite(videoDurationSec) && videoDurationSec > 0
+          ? Math.round(videoDurationSec)
+          : null,
       videoGuid: created.guid,
       encodingStatus: "uploading",
       productId: productIdSingle,

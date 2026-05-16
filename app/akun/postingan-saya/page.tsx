@@ -19,6 +19,7 @@ import {
   normalizeMyFeedFilter,
   type MyFeedFilter,
 } from "@/lib/feed/my-posts";
+import { bunnyThumbnailUrl } from "@/lib/feed/bunny";
 
 export const metadata: Metadata = {
   title: "Postingan Saya",
@@ -88,6 +89,7 @@ export default async function MyFeedPostsPage({ searchParams }: PageProps) {
         title: true,
         description: true,
         thumbnailUrl: true,
+        videoGuid: true,
         videoDurationSec: true,
         createdAt: true,
         status: true,
@@ -100,10 +102,14 @@ export default async function MyFeedPostsPage({ searchParams }: PageProps) {
     prisma.feedPost.count({ where: baseWhere }),
   ]);
 
-  const posts: MyFeedPostListItem[] = rawPosts.map((post) => ({
-    ...post,
-    createdAt: post.createdAt.toISOString(),
-  }));
+  const posts: MyFeedPostListItem[] = rawPosts.map((post) => {
+    const bunnyThumbnail = post.videoGuid ? bunnyThumbnailUrl(post.videoGuid) : "";
+    return {
+      ...post,
+      thumbnailUrl: post.thumbnailUrl ?? (bunnyThumbnail || null),
+      createdAt: post.createdAt.toISOString(),
+    };
+  });
   const isCompletelyEmpty = totalCount === 0;
   const deleteSuccess = deletedSuccessCopy(deleted);
 
