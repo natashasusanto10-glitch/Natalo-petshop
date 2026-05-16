@@ -90,17 +90,6 @@ export function FeedVideoPlayer({
   const [isPlaying, setIsPlaying] = useState(false);
   const [showLoadingIndicator, setShowLoadingIndicator] = useState(false);
   const [playbackProgress, setPlaybackProgress] = useState(0);
-  // Crossfade gate untuk transition opacity slot A/B. ON saat loop-swap
-  // (slot A ending → slot B starting, butuh 150ms blend supaya tidak
-  // ada black flash di paint buffer iOS). OFF di waktu lain — termasuk
-  // saat card baru masuk viewport (initial activation), supaya slot
-  // langsung snap ke opacity 1 begitu first frame ready. Tanpa gate
-  // ini, opacity fade-in 0→1 selama 150ms di iOS terlihat seperti
-  // "fade dari hitam" walaupun video sudah siap.
-  const [crossfading, setCrossfading] = useState(false);
-  // Timeout handle untuk reset crossfading state — clear kalau component
-  // unmount atau swap berikutnya datang sebelum yang lama selesai.
-  const crossfadeTimerRef = useRef<number | null>(null);
 
   // Resolve HLS → MP4 for Bunny posts so the player benefits from single-file
   // CDN caching. New posts already come through as MP4 from the webhook; this
@@ -197,17 +186,6 @@ export function FeedVideoPlayer({
     videoDurationSec: durationSec,
   });
 
-  // Cleanup crossfade timer pada unmount supaya tidak setState pada
-  // component yang sudah ke-detach (React warning + memory leak kecil).
-  useEffect(() => {
-    return () => {
-      if (crossfadeTimerRef.current !== null) {
-        window.clearTimeout(crossfadeTimerRef.current);
-        crossfadeTimerRef.current = null;
-      }
-    };
-  }, []);
-
   // Teardown — pause + drop src on both slots when route leaves /feed so iOS
   // doesn't keep the AVPlayer alive in the background.
   useEffect(() => {
@@ -217,11 +195,6 @@ export function FeedVideoPlayer({
       setPlaybackProgress(0);
       setLoadSrc(false);
       setFarFromViewport(true);
-      setCrossfading(false);
-      if (crossfadeTimerRef.current !== null) {
-        window.clearTimeout(crossfadeTimerRef.current);
-        crossfadeTimerRef.current = null;
-      }
       for (const slot of ["A", "B"] as const) {
         const v = getRef(slot);
         if (!v) continue;
@@ -515,20 +488,6 @@ export function FeedVideoPlayer({
         // on top. Old slot fades out via opacity, but it KEEPS playing
         // (audibly silent because muted will flip true below). The browser
         // crossfades smoothly because both slots are decoding & painting.
-        //
-        // Enable crossfading gate sebelum setActiveSlot supaya kedua
-        // update flush di 1 React render — browser apply transition:150ms
-        // + opacity flip dalam frame yang sama (smooth blend, bukan snap).
-        // React 18+ auto-batch dalam event handler → kedua setState di
-        // bawah ini ter-flush bareng.
-        setCrossfading(true);
-        if (crossfadeTimerRef.current !== null) {
-          window.clearTimeout(crossfadeTimerRef.current);
-        }
-        crossfadeTimerRef.current = window.setTimeout(() => {
-          setCrossfading(false);
-          crossfadeTimerRef.current = null;
-        }, 200); // sedikit lebih lama dari transition 150ms supaya safe
         setPlaybackProgress(1);
         setActiveSlot((cur) => (cur === "A" ? "B" : "A"));
         window.requestAnimationFrame(() => setPlaybackProgress(0));
@@ -686,9 +645,14 @@ export function FeedVideoPlayer({
           onError={(event) => {
             event.currentTarget.style.display = "none";
           }}
-          // Poster visible sampai SALAH SATU slot playing. Instant disappear
-          // (no transition) saat video opaque covers it.
-          style={{ opacity: isPlaying ? 0 : 1 }}
+          // Poster ALWAYS visible — letakkan di paling belakang sebagai
+          // "safety net" supaya kalau video element belum punya frame
+          // (decode lag, scroll-snap composite, dll), user lihat poster
+          // tidak bg-black. Video on top akan cover poster saat ready.
+          // Sebelumnya pakai isPlaying gate + opacity 0/1 — bikin flicker
+          // saat scroll antar card karena ada window mana poster sudah
+          // hilang tapi video belum siap.
+          style={{ opacity: 1 }}
         />
       )}
 
@@ -711,15 +675,19 @@ export function FeedVideoPlayer({
           // mid-swap (where back slot might be the new front).
           if (activeSlot === "A") setIsPlaying(false);
         }}
-        // Conditional transition: 150ms crossfade HANYA saat loop swap
-        // (crossfading=true). Saat card baru aktif (initial play), snap
-        // instant 0→1 supaya tidak terlihat "fade dari hitam" di iOS.
-        // Lihat komentar di state `crossfading` untuk konteks.
+        // Opacity gated by activeSlot saja (TANPA isPlaying gate). Reasoning:
+        // - Slot active selalu opacity 1, browser native pakai `poster`
+        //   attribute (= thumbnailUrl) sebagai placeholder sampai first
+        //   frame decode. Plus ada <img> overlay behind sebagai safety
+        //   net tambahan. User tidak pernah lihat bg-black tembus karena
+        //   ada 2 layer poster (native + img) dan video on top.
+        // - Transition 150ms always-on. Initial mount sudah opacity 1
+        //   (tidak transition dari 0), jadi tidak ada "fade from black"
+        //   di card pertama kali aktif. Yang trigger transition cuma
+        //   loop swap (activeSlot A↔B) — exactly what we want.
         style={{
-          opacity: activeSlot === "A" && isPlaying ? 1 : 0,
-          transition: crossfading
-            ? "opacity 150ms ease-out"
-            : "opacity 0ms",
+          opacity: activeSlot === "A" ? 1 : 0,
+          transition: "opacity 150ms ease-out",
         }}
       />
 
@@ -741,10 +709,8 @@ export function FeedVideoPlayer({
           if (activeSlot === "B") setIsPlaying(false);
         }}
         style={{
-          opacity: activeSlot === "B" && isPlaying ? 1 : 0,
-          transition: crossfading
-            ? "opacity 150ms ease-out"
-            : "opacity 0ms",
+          opacity: activeSlot === "B" ? 1 : 0,
+          transition: "opacity 150ms ease-out",
         }}
       />
 
