@@ -64,6 +64,52 @@ export function PullToRefresh({ disabled = false }: { disabled?: boolean }) {
   useEffect(() => {
     if (disabled) return;
 
+    function isFeedRoute(): boolean {
+      return (
+        document.documentElement.dataset.feedRoute === "true" ||
+        document.body.dataset.feedRoute === "true"
+      );
+    }
+
+    function hasBlockingModal(): boolean {
+      const classList = document.body.classList;
+      return (
+        classList.contains("nat-modal-open") ||
+        classList.contains("bottom-sheet-open") ||
+        classList.contains("nat-scroll-locked")
+      );
+    }
+
+    function hasFocusedInput(): boolean {
+      const activeElement = document.activeElement;
+      return (
+        activeElement instanceof HTMLElement &&
+        activeElement.matches("input, textarea, [contenteditable='true'], [contenteditable]")
+      );
+    }
+
+    function canPullFromTarget(target: EventTarget | null): boolean {
+      if (refreshingRef.current) return false;
+      if (hasBlockingModal()) return false;
+      if (hasFocusedInput()) return false;
+
+      if (isFeedRoute()) {
+        return document.body.dataset.feedCanPullToRefresh === "true";
+      }
+
+      if (!isAtTop()) return false;
+      if (target instanceof HTMLElement && target.closest?.("[data-no-pull]")) {
+        return false;
+      }
+      return true;
+    }
+
+    function cancelPull() {
+      isPullingRef.current = false;
+      wasPastThresholdRef.current = false;
+      setPullDistance(0);
+    }
+
     function isAtTop(): boolean {
       const scrollTop =
         window.scrollY ||
@@ -74,12 +120,7 @@ export function PullToRefresh({ disabled = false }: { disabled?: boolean }) {
     }
 
     function handleTouchStart(e: TouchEvent) {
-      if (refreshingRef.current) return;
-      if (document.body.classList.contains("nat-modal-open")) return;
-      if (!isAtTop()) return;
-      // Skip kalau gesture origin di element scrollable (mis. carousel)
-      const target = e.target as HTMLElement;
-      if (target.closest?.("[data-no-pull]")) return;
+      if (!canPullFromTarget(e.target)) return;
       startYRef.current = e.touches[0].clientY;
       isPullingRef.current = true;
       wasPastThresholdRef.current = false; // Reset state per-gesture
@@ -87,9 +128,8 @@ export function PullToRefresh({ disabled = false }: { disabled?: boolean }) {
 
     function handleTouchMove(e: TouchEvent) {
       if (!isPullingRef.current || refreshingRef.current) return;
-      if (document.body.classList.contains("nat-modal-open")) {
-        isPullingRef.current = false;
-        setPullDistance(0);
+      if (!canPullFromTarget(e.target)) {
+        cancelPull();
         return;
       }
 

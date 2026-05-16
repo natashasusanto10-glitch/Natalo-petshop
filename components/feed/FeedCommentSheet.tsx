@@ -31,6 +31,7 @@ type Props = {
 const DRAG_CLOSE_THRESHOLD = 96;
 const SNAP_BACK_MS = 280;
 const SNAP_BACK_EASE = "cubic-bezier(0.34, 1.26, 0.64, 1)";
+const KEYBOARD_INSET_THRESHOLD = 80;
 
 export function FeedCommentSheet({
   open,
@@ -47,6 +48,7 @@ export function FeedCommentSheet({
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
   const sheetRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const dragStartYRef = useRef(0);
   const dragYRef = useRef(0);
   const isDraggingRef = useRef(false);
@@ -54,11 +56,16 @@ export function FeedCommentSheet({
   const [dragY, setDragY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [isSnappingBack, setIsSnappingBack] = useState(false);
+  const [keyboardInset, setKeyboardInset] = useState(0);
 
   const title = useMemo(() => {
     const total = Math.max(Number(commentCount ?? comments.length) || 0, comments.length);
     return total > 0 ? `Komentar ${formatCommentCount(total)}` : "Komentar";
   }, [commentCount, comments.length]);
+  const keyboardOpen = keyboardInset > 0;
+  const sheetTop = keyboardOpen
+    ? "clamp(calc(env(safe-area-inset-top) + 238px), 34dvh, calc(env(safe-area-inset-top) + 300px))"
+    : "clamp(calc(env(safe-area-inset-top) + 286px), 42dvh, calc(env(safe-area-inset-top) + 374px))";
 
   const updateDrag = useCallback((clientY: number) => {
     if (!isDraggingRef.current) return;
@@ -174,6 +181,38 @@ export function FeedCommentSheet({
   }, [open]);
 
   useEffect(() => {
+    if (!open || typeof window === "undefined") {
+      setKeyboardInset(0);
+      return;
+    }
+
+    const visualViewport = window.visualViewport;
+
+    function updateKeyboardInset() {
+      if (!visualViewport) {
+        setKeyboardInset(0);
+        return;
+      }
+
+      const rawInset = Math.max(
+        0,
+        window.innerHeight - visualViewport.height - visualViewport.offsetTop,
+      );
+      setKeyboardInset(rawInset > KEYBOARD_INSET_THRESHOLD ? Math.round(rawInset) : 0);
+    }
+
+    updateKeyboardInset();
+    visualViewport?.addEventListener("resize", updateKeyboardInset);
+    visualViewport?.addEventListener("scroll", updateKeyboardInset);
+    window.addEventListener("resize", updateKeyboardInset);
+    return () => {
+      visualViewport?.removeEventListener("resize", updateKeyboardInset);
+      visualViewport?.removeEventListener("scroll", updateKeyboardInset);
+      window.removeEventListener("resize", updateKeyboardInset);
+    };
+  }, [open]);
+
+  useEffect(() => {
     if (!isDragging) return;
 
     function handleMouseMove(event: globalThis.MouseEvent) {
@@ -256,6 +295,29 @@ export function FeedCommentSheet({
     }
   }
 
+  function blurCommentInput() {
+    const activeElement = document.activeElement;
+    if (
+      activeElement instanceof HTMLElement &&
+      sheetRef.current?.contains(activeElement)
+    ) {
+      activeElement.blur();
+      return true;
+    }
+    return false;
+  }
+
+  function dismissKeyboardFromSheet(target: EventTarget | null) {
+    if (!keyboardOpen) return;
+    if (
+      target instanceof HTMLElement &&
+      target.closest("textarea, input, button, a")
+    ) {
+      return;
+    }
+    blurCommentInput();
+  }
+
   const commentFooter = (
     <div className="flex items-end gap-2">
       <div className="mb-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/10 text-[11px] font-black text-white ring-1 ring-white/10">
@@ -269,8 +331,14 @@ export function FeedCommentSheet({
         <FiSmile className="h-5 w-5" />
       </button>
       <textarea
+        ref={inputRef}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
+        onFocus={() => {
+          window.setTimeout(() => {
+            inputRef.current?.scrollIntoView({ block: "nearest" });
+          }, 80);
+        }}
         placeholder="Tulis komentar..."
         rows={1}
         maxLength={1000}
@@ -313,7 +381,10 @@ export function FeedCommentSheet({
           data-no-pull
           data-no-swipe-back="true"
           className="fixed inset-0 z-[150] bg-black/76 backdrop-blur-[1px]"
-          onClick={onClose}
+          onClick={() => {
+            if (keyboardOpen && blurCommentInput()) return;
+            onClose();
+          }}
         />
         <Drawer.Content
           ref={sheetRef}
@@ -323,8 +394,8 @@ export function FeedCommentSheet({
           className="fixed inset-x-0 bottom-0 z-[200] mx-auto flex w-full max-w-2xl flex-col overflow-hidden rounded-t-[28px] border border-white/10 bg-[#111418]/[0.98] text-white shadow-[0_-28px_80px_rgba(0,0,0,0.5)] outline-none backdrop-blur-xl"
           onOpenAutoFocus={(event) => event.preventDefault()}
           style={{
-            top:
-              "clamp(calc(env(safe-area-inset-top) + 286px), 42dvh, calc(env(safe-area-inset-top) + 374px))",
+            top: sheetTop,
+            bottom: keyboardOpen ? `${keyboardInset}px` : "0px",
             transform:
               isDragging || isSnappingBack
                 ? `translate3d(0, ${dragY}px, 0)`
@@ -332,8 +403,8 @@ export function FeedCommentSheet({
             transition: isDragging
               ? "none"
               : isSnappingBack
-                ? `transform ${SNAP_BACK_MS}ms ${SNAP_BACK_EASE}`
-                : undefined,
+                ? `transform ${SNAP_BACK_MS}ms ${SNAP_BACK_EASE}, top 220ms cubic-bezier(0.22, 1, 0.36, 1), bottom 220ms cubic-bezier(0.22, 1, 0.36, 1)`
+                : "top 220ms cubic-bezier(0.22, 1, 0.36, 1), bottom 220ms cubic-bezier(0.22, 1, 0.36, 1)",
           }}
         >
           <div
@@ -363,7 +434,10 @@ export function FeedCommentSheet({
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto border-t border-white/8 px-5 py-4 [-webkit-overflow-scrolling:touch]">
+          <div
+            className="min-h-0 flex-1 overflow-y-auto border-t border-white/8 px-5 py-4 [-webkit-overflow-scrolling:touch]"
+            onPointerDown={(event) => dismissKeyboardFromSheet(event.target)}
+          >
             <div className="space-y-4">
               {postError && (
                 <p className="rounded-2xl bg-red-500/12 p-2.5 text-xs font-bold text-red-200 ring-1 ring-red-400/20">
@@ -401,7 +475,13 @@ export function FeedCommentSheet({
             </div>
           </div>
 
-          <div className="sticky bottom-0 z-10 shrink-0 border-t border-white/10 bg-[#111418]/95 px-4 pt-3 [padding-bottom:calc(14px+env(safe-area-inset-bottom))]">
+          <div
+            className={`sticky bottom-0 z-10 shrink-0 border-t border-white/10 bg-[#111418]/95 px-4 pt-3 ${
+              keyboardOpen
+                ? "pb-3"
+                : "[padding-bottom:calc(14px+env(safe-area-inset-bottom))]"
+            }`}
+          >
             {commentFooter}
           </div>
         </Drawer.Content>

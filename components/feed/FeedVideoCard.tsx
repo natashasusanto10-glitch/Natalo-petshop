@@ -677,23 +677,25 @@ function PinnedProductSheetCard({
         </Link>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2">
+      <div className="mt-3 flex items-center gap-3">
         <button
           type="button"
+          aria-label={`Tambahkan ${product.name} ke keranjang`}
           onClick={onAdd}
           disabled={unavailable}
-          className="flex h-10 items-center justify-center gap-2 rounded-full border border-white/12 bg-white/[0.06] px-3 text-xs font-black text-white transition active:scale-[0.98] disabled:cursor-not-allowed disabled:border-white/5 disabled:bg-white/[0.03] disabled:text-zinc-600 disabled:active:scale-100"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-[18px] border border-natalo-400/35 bg-slate-950/35 text-white/90 shadow-[0_0_20px_rgba(48,141,255,0.18),inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur-md transition active:scale-95 disabled:cursor-not-allowed disabled:border-white/5 disabled:bg-white/[0.03] disabled:text-zinc-600 disabled:shadow-none disabled:active:scale-100"
         >
-          <FiShoppingCart className="h-4 w-4" aria-hidden />
-          Tambah Keranjang
+          <FiShoppingCart className="h-5 w-5" aria-hidden />
         </button>
         <button
           type="button"
           onClick={onBuy}
           disabled={unavailable}
-          className="h-10 rounded-full bg-natalo-600 px-3 text-xs font-black text-white shadow-lg shadow-natalo-950/30 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400 disabled:shadow-none disabled:active:scale-100"
+          className="relative h-11 min-w-0 flex-1 overflow-hidden rounded-full border border-sky-200/55 bg-[linear-gradient(180deg,rgba(95,191,255,0.96)_0%,rgba(30,135,255,0.94)_44%,rgba(18,97,218,0.96)_100%)] px-5 text-sm font-black text-white shadow-[0_0_26px_rgba(57,154,255,0.46),0_10px_28px_rgba(0,83,189,0.34),inset_0_1px_0_rgba(255,255,255,0.68),inset_0_-2px_8px_rgba(0,52,132,0.34)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:border-white/8 disabled:bg-none disabled:bg-zinc-700 disabled:text-zinc-400 disabled:shadow-none disabled:active:scale-100"
         >
-          Beli Sekarang
+          <span className="pointer-events-none absolute inset-x-4 top-1 h-3 rounded-full bg-white/38 blur-[5px]" />
+          <span className="pointer-events-none absolute inset-x-2 bottom-1 h-1 rounded-full bg-sky-200/35 blur-sm" />
+          <span className="relative">Beli Sekarang</span>
         </button>
       </div>
     </div>

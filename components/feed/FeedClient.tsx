@@ -37,6 +37,8 @@ export function FeedClient() {
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [commentPostId, setCommentPostId] = useState<string | null>(null);
+  const [currentFeedIndex, setCurrentFeedIndex] = useState(0);
+  const { keyboardVisible, inputFocused } = useFeedKeyboardGuard();
   const sentinelRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const initialFetchAbortRef = useRef<AbortController | null>(null);
@@ -221,26 +223,39 @@ export function FeedClient() {
   }, [loadMore, hasMore]);
 
   const commentSheetOpen = useMemo(() => commentPostId !== null, [commentPostId]);
+  const canPullToRefreshFeed =
+    currentFeedIndex === 0 &&
+    !commentSheetOpen &&
+    !keyboardVisible &&
+    !inputFocused;
   const activeCommentCount = useMemo(() => {
     if (!commentPostId) return 0;
     return posts.find((post) => post.id === commentPostId)?.commentCount ?? 0;
   }, [commentPostId, posts]);
   const showEmpty = !loading && !error && posts.length === 0;
 
+  useEffect(() => {
+    document.body.dataset.feedCanPullToRefresh = canPullToRefreshFeed ? "true" : "false";
+    return () => {
+      delete document.body.dataset.feedCanPullToRefresh;
+    };
+  }, [canPullToRefreshFeed]);
+
   return (
     <FeedActiveVideoProvider>
       <div className="relative mx-auto flex h-full max-w-2xl flex-col">
         <div
           ref={scrollRef}
-          // data-no-pull → PullToRefresh in the root layout sees this and
-          // bows out instead of stealing vertical touch gestures from the
-          // feed's snap-scroller. Keeps swipe-up-for-next-video instant.
+          // data-no-pull is enabled except when the feed is on the very
+          // first item and no sheet/input/keyboard is active. That keeps
+          // swipe-up paging instant while still allowing native-feeling
+          // refresh from the top of the feed only.
           //
           // Critical for TikTok-style hard-paged feed: keep the snap cells
           // exactly one viewport tall. The media layer inside each card is
           // clipped above the fixed bottom nav, while the approved overlay UI
           // keeps its own bottom offsets.
-          data-no-pull
+          data-no-pull={canPullToRefreshFeed ? undefined : true}
           className={`min-h-0 flex-1 snap-y snap-mandatory overscroll-contain [-ms-overflow-style:none] [scrollbar-width:none] md:space-y-3 md:px-2 md:py-2 [&::-webkit-scrollbar]:hidden ${
             commentSheetOpen ? "overflow-hidden pointer-events-none" : "overflow-y-auto"
           }`}
@@ -265,6 +280,7 @@ export function FeedClient() {
           <FeedPostsList
             posts={posts}
             commentPostId={commentPostId}
+            onActiveIndexChange={setCurrentFeedIndex}
             onOpenComments={setCommentPostId}
           />
 
@@ -302,10 +318,12 @@ export function FeedClient() {
 function FeedPostsList({
   posts,
   commentPostId,
+  onActiveIndexChange,
   onOpenComments,
 }: {
   posts: FeedPostListItem[];
   commentPostId: string | null;
+  onActiveIndexChange: (index: number) => void;
   onOpenComments: (postId: string) => void;
 }) {
   const { activeId, activeIndex, setActive } = useFeedActiveVideo();
@@ -327,6 +345,10 @@ function FeedPostsList({
     if (activeId !== null) return;
     setActive(posts[0].id, 0);
   }, [posts, activeId, setActive]);
+
+  useEffect(() => {
+    onActiveIndexChange(activeIndex ?? 0);
+  }, [activeIndex, onActiveIndexChange]);
 
   useEffect(() => {
     if (posts.length === 0) return;
@@ -408,6 +430,69 @@ function FeedPostsList({
       })}
     </>
   );
+}
+
+function useFeedKeyboardGuard() {
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [inputFocused, setInputFocused] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const visualViewport = window.visualViewport;
+    let baselineHeight = visualViewport?.height ?? window.innerHeight;
+
+    function updateKeyboardState() {
+      const viewportHeight = visualViewport?.height ?? window.innerHeight;
+      const viewportOffset = visualViewport?.offsetTop ?? 0;
+      const rawInset = visualViewport
+        ? Math.max(0, window.innerHeight - viewportHeight - viewportOffset)
+        : Math.max(0, baselineHeight - window.innerHeight);
+      const nextKeyboardVisible =
+        rawInset > 80 || viewportHeight < baselineHeight - 120;
+
+      setKeyboardVisible(nextKeyboardVisible);
+      if (!nextKeyboardVisible) {
+        baselineHeight = Math.max(baselineHeight, viewportHeight);
+      }
+    }
+
+    function handleFocusIn(event: FocusEvent) {
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        target.matches("input, textarea, [contenteditable='true'], [contenteditable]")
+      ) {
+        setInputFocused(true);
+      }
+    }
+
+    function handleFocusOut() {
+      window.setTimeout(() => {
+        const activeElement = document.activeElement;
+        setInputFocused(
+          activeElement instanceof HTMLElement &&
+            activeElement.matches("input, textarea, [contenteditable='true'], [contenteditable]"),
+        );
+      }, 0);
+    }
+
+    updateKeyboardState();
+    visualViewport?.addEventListener("resize", updateKeyboardState);
+    visualViewport?.addEventListener("scroll", updateKeyboardState);
+    window.addEventListener("resize", updateKeyboardState);
+    document.addEventListener("focusin", handleFocusIn);
+    document.addEventListener("focusout", handleFocusOut);
+    return () => {
+      visualViewport?.removeEventListener("resize", updateKeyboardState);
+      visualViewport?.removeEventListener("scroll", updateKeyboardState);
+      window.removeEventListener("resize", updateKeyboardState);
+      document.removeEventListener("focusin", handleFocusIn);
+      document.removeEventListener("focusout", handleFocusOut);
+    };
+  }, []);
+
+  return { keyboardVisible, inputFocused };
 }
 
 function useFeedChrome() {
