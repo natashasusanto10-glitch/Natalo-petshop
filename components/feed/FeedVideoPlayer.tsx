@@ -276,28 +276,37 @@ export function FeedVideoPlayer({
   // timeupdate listener: dua tugas.
   //   1. Signal isPlaying — fires continuously saat video advancing,
   //      paling reliable signal di iOS WKWebView (kadang miss onPlay).
-  //   2. Manual loop — seek ke 0 sebelum natural end. WKWebView's automatic
-  //      `loop` attribute trigger seek di frame boundary yang flash black;
-  //      pre-seek mid-playback (~120ms sebelum end) lebih smooth karena
-  //      WebKit seek mid-frame tidak clear paint buffer.
+  //   2. Manual loop dengan cover: pre-seek + brief setIsPlaying(false)
+  //      supaya video fade ke opacity 0 → poster (di belakang) cover
+  //      black paint dari WKWebView seek. Setelah seek complete +
+  //      currentTime advances, timeupdate set isPlaying=true lagi → fade in.
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     let lastTime = video.currentTime;
+    let looping = false;
     function onTimeUpdate() {
       const v = videoRef.current;
       if (!v) return;
-      // Manual loop: pre-seek 120ms sebelum natural end → smooth, no black flash.
+      // Manual loop: pre-seek 150ms sebelum natural end. Sebelum seek,
+      // hide video (setIsPlaying false → opacity 0) supaya poster yang
+      // visible — bukan black frame dari WKWebView seek-clear.
       if (
+        !looping &&
         v.duration &&
         Number.isFinite(v.duration) &&
         v.duration > 0.5 &&
-        v.duration - v.currentTime < 0.12
+        v.duration - v.currentTime < 0.15
       ) {
+        looping = true;
+        setIsPlaying(false); // hide video → poster shown
         v.currentTime = 0;
-        // Tidak call play() — video sudah playing, currentTime change
-        // tidak interrupt playback, browser lanjut auto.
         lastTime = 0;
+        // Reset looping flag setelah short window. Begitu video advance
+        // dari 0, timeupdate set isPlaying=true lagi → fade in.
+        window.setTimeout(() => {
+          looping = false;
+        }, 300);
         return;
       }
       if (v.currentTime !== lastTime) {
@@ -311,10 +320,11 @@ export function FeedVideoPlayer({
       setShowLoadingIndicator(false);
     }
     function onEnded() {
-      // Safety net kalau timeupdate miss the pre-seek window. Kalau video
-      // genuinely reach end, restart dari 0.
+      // Safety net kalau timeupdate miss the pre-seek window. Same
+      // pattern: hide video → seek → play.
       const v = videoRef.current;
       if (!v) return;
+      setIsPlaying(false);
       v.currentTime = 0;
       v.play().catch(() => {});
     }
@@ -346,7 +356,16 @@ export function FeedVideoPlayer({
       ref={containerRef}
       data-feed-video-player
       className={`relative w-full overflow-hidden bg-black ${className}`}
-      style={{ aspectRatio: `${aspectRatio}` }}
+      style={{
+        aspectRatio: `${aspectRatio}`,
+        // Pakai poster URL sebagai container background — fallback final
+        // kalau <img> element belum loaded atau video element render
+        // transparent/black. CSS background-image cache instan dari Bunny
+        // CDN, jadi swipe ke card baru tidak pernah expose bg-black raw.
+        backgroundImage: thumbnailUrl ? `url("${thumbnailUrl}")` : undefined,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+      }}
       onClick={togglePlay}
     >
       {thumbnailUrl && (
