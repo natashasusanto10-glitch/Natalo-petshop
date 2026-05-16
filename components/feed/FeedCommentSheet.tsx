@@ -180,26 +180,26 @@ export function FeedCommentSheet({
     if (!open || typeof window === "undefined") {
       setKeyboardOpen(false);
       viewportBaselineRef.current = 0;
-      document.documentElement.style.removeProperty("--feed-keyboard-height");
+      document.body.classList.remove("keyboard-open");
+      document.documentElement.style.removeProperty("--kb");
       document.documentElement.style.removeProperty("--feed-comment-sheet-height");
       return;
     }
 
     const visualViewport = window.visualViewport;
     const root = document.documentElement;
+    const body = document.body;
     let pluginKeyboardHeight = 0;
     let cancelled = false;
 
-    function applyKeyboardLayout(height: number, source: "plugin" | "viewport") {
+    function setKeyboardState(height: number, source: "plugin" | "viewport") {
       if (cancelled) return;
       const nextKeyboardOpen = height > KEYBOARD_INSET_THRESHOLD;
       const keyboardHeight = nextKeyboardOpen ? Math.round(height) : 0;
 
       setKeyboardOpen(nextKeyboardOpen);
-      root.style.setProperty(
-        "--feed-keyboard-height",
-        keyboardHeight > 0 ? `${keyboardHeight}px` : "0px",
-      );
+      body.classList.toggle("keyboard-open", nextKeyboardOpen);
+      root.style.setProperty("--kb", `${keyboardHeight}px`);
       root.style.setProperty(
         "--feed-comment-sheet-height",
         nextKeyboardOpen ? "42dvh" : "56dvh",
@@ -227,7 +227,7 @@ export function FeedCommentSheet({
       if (pluginKeyboardHeight > 0 && estimatedKeyboardHeight < KEYBOARD_INSET_THRESHOLD) {
         return;
       }
-      applyKeyboardLayout(estimatedKeyboardHeight, "viewport");
+      setKeyboardState(estimatedKeyboardHeight, "viewport");
     }
 
     updateKeyboardInset();
@@ -241,16 +241,16 @@ export function FeedCommentSheet({
         const { Keyboard } = await import("@capacitor/keyboard");
         if (cancelled) return;
         const willShow = await Keyboard.addListener("keyboardWillShow", (info) => {
-          applyKeyboardLayout(info.keyboardHeight, "plugin");
+          setKeyboardState(info.keyboardHeight, "plugin");
         });
         const didShow = await Keyboard.addListener("keyboardDidShow", (info) => {
-          applyKeyboardLayout(info.keyboardHeight, "plugin");
+          setKeyboardState(info.keyboardHeight, "plugin");
         });
         const willHide = await Keyboard.addListener("keyboardWillHide", () => {
-          applyKeyboardLayout(0, "plugin");
+          setKeyboardState(0, "plugin");
         });
         const didHide = await Keyboard.addListener("keyboardDidHide", () => {
-          applyKeyboardLayout(0, "plugin");
+          setKeyboardState(0, "plugin");
         });
         removeKeyboardListeners = () => {
           void willShow.remove();
@@ -269,7 +269,8 @@ export function FeedCommentSheet({
       visualViewport?.removeEventListener("scroll", updateKeyboardInset);
       window.removeEventListener("resize", updateKeyboardInset);
       removeKeyboardListeners?.();
-      root.style.removeProperty("--feed-keyboard-height");
+      body.classList.remove("keyboard-open");
+      root.style.removeProperty("--kb");
       root.style.removeProperty("--feed-comment-sheet-height");
     };
   }, [open]);
@@ -381,7 +382,7 @@ export function FeedCommentSheet({
   }
 
   const commentFooter = (
-    <div className="flex items-end gap-2">
+    <div className="flex w-full items-end gap-2">
       <div className="mb-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/10 text-[11px] font-black text-white ring-1 ring-white/10">
         K
       </div>
@@ -395,6 +396,22 @@ export function FeedCommentSheet({
       <textarea
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
+        onFocus={() => {
+          document.documentElement.style.setProperty(
+            "--feed-comment-sheet-height",
+            "42dvh",
+          );
+        }}
+        onBlur={() => {
+          window.setTimeout(() => {
+            if (!document.body.classList.contains("keyboard-open")) {
+              document.documentElement.style.setProperty(
+                "--feed-comment-sheet-height",
+                "56dvh",
+              );
+            }
+          }, 80);
+        }}
         placeholder="Tulis komentar..."
         rows={1}
         maxLength={1000}
@@ -451,7 +468,7 @@ export function FeedCommentSheet({
           onOpenAutoFocus={(event) => event.preventDefault()}
           style={{
             height: "var(--feed-comment-sheet-height, 56dvh)",
-            bottom: "var(--feed-keyboard-height, 0px)",
+            bottom: 0,
             transform:
               isDragging || isSnappingBack
                 ? `translate3d(0, ${dragY}px, 0)`
@@ -459,8 +476,8 @@ export function FeedCommentSheet({
             transition: isDragging
               ? "none"
               : isSnappingBack
-                ? `transform ${SNAP_BACK_MS}ms ${SNAP_BACK_EASE}, height 220ms cubic-bezier(0.22, 1, 0.36, 1), bottom 220ms cubic-bezier(0.22, 1, 0.36, 1)`
-                : "height 220ms cubic-bezier(0.22, 1, 0.36, 1), bottom 220ms cubic-bezier(0.22, 1, 0.36, 1)",
+                ? `transform ${SNAP_BACK_MS}ms ${SNAP_BACK_EASE}, height 220ms cubic-bezier(0.22, 1, 0.36, 1)`
+                : "height 220ms cubic-bezier(0.22, 1, 0.36, 1)",
           }}
         >
           <div
@@ -492,6 +509,10 @@ export function FeedCommentSheet({
 
           <div
             className="feed-comment-list min-h-0 flex-1 overflow-y-auto border-t border-white/8 px-5 py-4 [-webkit-overflow-scrolling:touch]"
+            style={{
+              paddingBottom: "calc(96px + var(--kb, 0px))",
+              scrollPaddingBottom: "calc(96px + var(--kb, 0px))",
+            }}
             onPointerDown={(event) => dismissKeyboardFromSheet(event.target)}
           >
             <div className="space-y-4">
@@ -531,16 +552,20 @@ export function FeedCommentSheet({
             </div>
           </div>
 
-          <div
-            className={`feed-comment-composer mt-auto shrink-0 border-t border-white/10 bg-[#111418]/95 px-4 pt-3 ${
-              keyboardOpen
-                ? "pb-3"
-                : "[padding-bottom:calc(14px+env(safe-area-inset-bottom))]"
-            }`}
-          >
-            {commentFooter}
-          </div>
         </Drawer.Content>
+        <div
+          data-no-pull
+          data-no-swipe-back="true"
+          className="feed-comment-composer fixed inset-x-0 z-[210] mx-auto flex h-[76px] w-full max-w-2xl items-center border-t border-white/10 bg-[#111418] px-4 py-2.5 text-white shadow-[0_-16px_36px_rgba(0,0,0,0.35)]"
+          style={{
+            bottom: keyboardOpen ? "0px" : "env(safe-area-inset-bottom)",
+            transform: "translate3d(0, calc(var(--kb, 0px) * -1), 0)",
+            transition: "transform 280ms cubic-bezier(0.22, 1, 0.36, 1), bottom 220ms cubic-bezier(0.22, 1, 0.36, 1)",
+            willChange: "transform",
+          }}
+        >
+          {commentFooter}
+        </div>
       </Drawer.Portal>
     </Drawer.Root>
   );
