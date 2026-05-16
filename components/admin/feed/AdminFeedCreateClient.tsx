@@ -267,10 +267,48 @@ export function AdminFeedCreateClient() {
           xhr.send(videoFile);
         });
 
-        // Done. Bunny will encode + fire webhook → encodingStatus=ready.
-        // Admin gets ACTIVE+publishedAt set already by the upload-url
-        // endpoint, so the post will appear in the feed as soon as
-        // encoding finishes (usually <1 min for short clips).
+        // Done with PUT. Bunny will encode + fire webhook → encodingStatus=
+        // ready. Admin gets ACTIVE+publishedAt set already by upload-url
+        // endpoint, jadi post muncul di feed begitu encoding finish.
+        //
+        // Tapi Bunny webhook kadang miss (network blip, server cold-start)
+        // → admin post stuck di encodingStatus="uploading" forever, tidak
+        // muncul di feed. Untuk admin (yang tidak ada approve flow yang
+        // auto-reconcile), poll bunny-reconcile endpoint sampai post ready
+        // atau timeout. Customer post pakai approve-flow reconcile yang
+        // sudah ada.
+        const postId = provisionData.postId as string | undefined;
+        if (postId) {
+          setProgress("Memfinalisasi encoding...");
+          // 5x retry @ ~2-3s interval = ~13s window. Untuk short clip
+          // <30 detik biasanya Bunny encode jadi ~5-10 detik. Kalau masih
+          // belum ready, fallback to weekly storage GC cron + manual
+          // /api/feed/diag?force=1 trigger.
+          const RETRY_DELAYS_MS = [1500, 2500, 3500, 4500, 5500];
+          for (const delay of RETRY_DELAYS_MS) {
+            await new Promise((r) => setTimeout(r, delay));
+            try {
+              const reconcileRes = await fetch(
+                "/api/admin/feed/bunny-reconcile",
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ postId }),
+                },
+              );
+              if (reconcileRes.ok) {
+                const reconcileData = (await reconcileRes.json()) as {
+                  reconciled?: Array<{ action?: string }>;
+                };
+                const result = reconcileData.reconciled?.[0]?.action;
+                if (result === "ready" || result === "failed") break;
+              }
+            } catch {
+              // Network glitch — keep retrying.
+            }
+          }
+        }
+
         router.push("/admin/feed");
         router.refresh();
         return;
