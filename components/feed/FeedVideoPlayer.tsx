@@ -174,18 +174,24 @@ export function FeedVideoPlayer({
     let cancelled = false;
     const tryPlay = () => {
       if (cancelled) return;
+      // `autoPlay` HTML attribute biasanya sudah trigger playback duluan,
+      // tapi imperative play() sebagai pengaman: kalau buffer sempat habis
+      // (network glitch, re-mount setelah pause global) atau saat user
+      // active video index berubah karena tap, kita re-trigger play.
       video.play().catch(() => {
         if (!cancelled) setIsPlaying(false);
       });
     };
     tryPlay();
-    // canplay/loadeddata fire when the video has buffered enough to play.
-    // We don't know which one fires first across browsers — both work as
-    // retry triggers.
+    // Multiple events sebagai retry trigger — iOS WKWebView kadang fire
+    // loadedmetadata duluan, browser lain canplay duluan. Semua aman dipanggil
+    // berulang karena play() pada video yang sudah playing = noop.
+    video.addEventListener("loadedmetadata", tryPlay);
     video.addEventListener("canplay", tryPlay);
     video.addEventListener("loadeddata", tryPlay);
     return () => {
       cancelled = true;
+      video.removeEventListener("loadedmetadata", tryPlay);
       video.removeEventListener("canplay", tryPlay);
       video.removeEventListener("loadeddata", tryPlay);
     };
@@ -254,6 +260,13 @@ export function FeedVideoPlayer({
         playsInline
         muted
         loop
+        // `autoPlay` HTML attribute > imperative video.play() di iOS
+        // WKWebView. Saat `muted + playsInline + autoPlay`, WebKit handle
+        // start playback tanpa butuh user gesture — sebelumnya user laporkan
+        // "harus klik beberapa kali baru jalan" karena play() reject silently
+        // saat belum ada interaksi. Kombinasi 3 atribut ini whitelist
+        // muted-autoplay native di WKWebView.
+        autoPlay={isActive}
         preload={loadSrc && !farFromViewport ? preloadMode : "none"}
         // See thumbnail comment — object-cover so the video always fills
         // the snap cell completely, matching TikTok-style hard-paged feed.
