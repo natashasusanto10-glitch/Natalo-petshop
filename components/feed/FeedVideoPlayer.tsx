@@ -394,13 +394,19 @@ export function FeedVideoPlayer({
         // spuriously (saat normal buffering yang tidak interrupt playback),
         // bikin isPlaying reset ke false padahal video lanjut jalan.
         // Spinner logic pakai readyState check (lihat useEffect di atas).
-        // SELALU opacity 1 — sebelumnya `isPlaying ? 1 : 0` bikin video
-        // invisible kalau onPlay event belum fire. Di iOS WKWebView, onPlay
-        // kadang delayed atau missed → user lihat poster + loading spinner
-        // padahal video sebenarnya sudah jalan di belakang. Dengan opacity
-        // selalu 1, kalau video play user langsung lihat motion;
-        // kalau belum buffer, poster (di belakang) yang tetap visible.
-        style={{ opacity: 1 }}
+        //
+        // Conditional opacity: video hidden sampai timeupdate confirm
+        // playing. Sebelumnya pakai opacity 1 selalu, tapi itu expose
+        // first-frame video (yang sering BLACK di MP4 source) saat swipe
+        // ke video belum playing → user lihat black flash. Sekarang poster
+        // (di belakang) tetap visible sampai video genuinely advancing.
+        // isPlaying di-set via timeupdate (reliable), bukan onPlay event
+        // (miss-prone di iOS) — jadi opacity transition fire tepat saat
+        // video benar-benar paint content.
+        style={{
+          opacity: isPlaying ? 1 : 0,
+          transition: "opacity 150ms ease-out",
+        }}
       />
 
       {/* Loading indicator only appears after the configurable delay — fast
