@@ -17,7 +17,6 @@ import {
   type TouchEvent,
 } from "react";
 import { FiHeart, FiSend, FiSmile, FiX } from "react-icons/fi";
-import { Drawer } from "vaul";
 import { hapticTap } from "@/lib/native/haptics";
 import type { FeedCommentItem, FeedCommentsResponse } from "@/lib/feed/types";
 
@@ -48,6 +47,7 @@ export function FeedCommentSheet({
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
   const sheetRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLDivElement | null>(null);
   const viewportBaselineRef = useRef(0);
   const dragStartYRef = useRef(0);
   const dragYRef = useRef(0);
@@ -362,7 +362,8 @@ export function FeedCommentSheet({
     const activeElement = document.activeElement;
     if (
       activeElement instanceof HTMLElement &&
-      sheetRef.current?.contains(activeElement)
+      (sheetRef.current?.contains(activeElement) ||
+        composerRef.current?.contains(activeElement))
     ) {
       activeElement.blur();
       return true;
@@ -438,48 +439,38 @@ export function FeedCommentSheet({
   if (!open || typeof document === "undefined") return null;
 
   return (
-    <Drawer.Root
-      open={open}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen) onClose();
-      }}
-      direction="bottom"
-      modal={false}
-      dismissible={false}
-      handleOnly
-      noBodyStyles
-    >
-      <Drawer.Portal>
-        <Drawer.Overlay
-          data-no-pull
-          data-no-swipe-back="true"
-          className="fixed inset-0 z-[150] bg-black/76 backdrop-blur-[1px]"
-          onClick={() => {
-            if (keyboardOpen && blurCommentInput()) return;
-            onClose();
-          }}
-        />
-        <Drawer.Content
-          ref={sheetRef}
-          data-no-pull
-          data-no-swipe-back="true"
-          aria-describedby={undefined}
-          className="feed-comment-sheet fixed inset-x-0 z-[200] mx-auto flex w-full max-w-2xl flex-col overflow-hidden rounded-t-[28px] border border-white/10 bg-[#111418]/[0.98] text-white shadow-[0_-28px_80px_rgba(0,0,0,0.5)] outline-none backdrop-blur-xl"
-          onOpenAutoFocus={(event) => event.preventDefault()}
-          style={{
-            height: "var(--feed-comment-sheet-height, 56dvh)",
-            bottom: 0,
-            transform:
-              isDragging || isSnappingBack
-                ? `translate3d(0, ${dragY}px, 0)`
-                : undefined,
-            transition: isDragging
-              ? "none"
-              : isSnappingBack
-                ? `transform ${SNAP_BACK_MS}ms ${SNAP_BACK_EASE}, height 220ms cubic-bezier(0.22, 1, 0.36, 1)`
-                : "height 220ms cubic-bezier(0.22, 1, 0.36, 1)",
-          }}
-        >
+    <>
+      <div
+        data-no-pull
+        data-no-swipe-back="true"
+        className="fixed inset-0 z-[150] bg-black/76 backdrop-blur-[1px]"
+        onClick={() => {
+          if (keyboardOpen && blurCommentInput()) return;
+          onClose();
+        }}
+      />
+      <section
+        ref={sheetRef}
+        data-no-pull
+        data-no-swipe-back="true"
+        role="dialog"
+        aria-modal="false"
+        aria-label={title}
+        className="feed-comment-sheet fixed inset-x-0 z-[200] mx-auto flex w-full max-w-2xl flex-col overflow-hidden rounded-t-[28px] border border-white/10 bg-[#111418]/[0.98] text-white shadow-[0_-28px_80px_rgba(0,0,0,0.5)] outline-none backdrop-blur-xl"
+        style={{
+          height: "var(--feed-comment-sheet-height, 56dvh)",
+          bottom: 0,
+          transform:
+            isDragging || isSnappingBack
+              ? `translate3d(0, ${dragY}px, 0)`
+              : undefined,
+          transition: isDragging
+            ? "none"
+            : isSnappingBack
+              ? `transform ${SNAP_BACK_MS}ms ${SNAP_BACK_EASE}, height 220ms cubic-bezier(0.22, 1, 0.36, 1)`
+              : "height 220ms cubic-bezier(0.22, 1, 0.36, 1)",
+        }}
+      >
           <div
             className="shrink-0 px-5 pb-3 pt-2"
             onMouseDown={handleMouseDown}
@@ -493,9 +484,9 @@ export function FeedCommentSheet({
             </div>
             <div className="feed-comment-header grid min-h-12 grid-cols-[40px_1fr_40px] items-center">
               <span aria-hidden />
-              <Drawer.Title className="text-center text-base font-black tracking-normal text-white">
+              <h3 className="text-center text-base font-black tracking-normal text-white">
                 {title}
-              </Drawer.Title>
+              </h3>
               <button
                 type="button"
                 aria-label="Tutup komentar"
@@ -552,22 +543,23 @@ export function FeedCommentSheet({
             </div>
           </div>
 
-        </Drawer.Content>
-        <div
-          data-no-pull
-          data-no-swipe-back="true"
-          className="feed-comment-composer fixed inset-x-0 z-[210] mx-auto flex h-[76px] w-full max-w-2xl items-center border-t border-white/10 bg-[#111418] px-4 py-2.5 text-white shadow-[0_-16px_36px_rgba(0,0,0,0.35)]"
-          style={{
-            bottom: keyboardOpen ? "0px" : "env(safe-area-inset-bottom)",
-            transform: "translate3d(0, calc(var(--kb, 0px) * -1), 0)",
-            transition: "transform 280ms cubic-bezier(0.22, 1, 0.36, 1), bottom 220ms cubic-bezier(0.22, 1, 0.36, 1)",
-            willChange: "transform",
-          }}
-        >
-          {commentFooter}
-        </div>
-      </Drawer.Portal>
-    </Drawer.Root>
+      </section>
+      <div
+        ref={composerRef}
+        data-no-pull
+        data-no-swipe-back="true"
+        className="feed-comment-composer pointer-events-auto fixed inset-x-0 z-[210] mx-auto flex h-[76px] w-full max-w-2xl items-center border-t border-white/10 bg-[#111418] px-4 py-2.5 text-white shadow-[0_-16px_36px_rgba(0,0,0,0.35)]"
+        onPointerDown={(event) => event.stopPropagation()}
+        style={{
+          bottom: keyboardOpen ? "0px" : "env(safe-area-inset-bottom)",
+          transform: "translate3d(0, calc(var(--kb, 0px) * -1), 0)",
+          transition: "transform 280ms cubic-bezier(0.22, 1, 0.36, 1), bottom 220ms cubic-bezier(0.22, 1, 0.36, 1)",
+          willChange: "transform",
+        }}
+      >
+        {commentFooter}
+      </div>
+    </>
   );
 }
 
