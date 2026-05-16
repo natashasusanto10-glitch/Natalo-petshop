@@ -32,7 +32,37 @@ import { sendFeedPendingReviewNotification } from "@/lib/feed/notifications";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * GET /api/feed/diag?notifsFor=<userId>&limit=10
+ *   Returns the latest feed-related Announcement rows targeted at that
+ *   user — lets the developer see whether moderation/like/comment
+ *   notifications actually got created (and if so, when). When the row
+ *   is present but push didn't show on the phone, the issue is delivery;
+ *   when the row is missing, the issue is the server-side trigger logic.
+ */
 export async function GET(request: NextRequest) {
+  const notifsFor = request.nextUrl.searchParams.get("notifsFor");
+  if (notifsFor) {
+    const rows = await prisma.announcement.findMany({
+      where: {
+        targetUserId: notifsFor,
+        source: "feed",
+      },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      select: {
+        id: true,
+        eventType: true,
+        title: true,
+        body: true,
+        feedPostId: true,
+        feedStatus: true,
+        createdAt: true,
+      },
+    });
+    return NextResponse.json({ ok: true, userId: notifsFor, count: rows.length, notifs: rows });
+  }
+
   const force = request.nextUrl.searchParams.get("force") === "1";
   // ?gc=1 → run Bunny orphan sweep. Default dry-run kalau tidak ?force=1
   // supaya bisa cek hasil dulu sebelum execute delete.
