@@ -6,13 +6,25 @@ export async function GET() {
   const session = await getSession("CUSTOMER");
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.sub },
-    select: { id: true, name: true, email: true, phone: true, birthDate: true, createdAt: true },
-  });
+  // Fetch user + aggregated loyalty points secara paralel. Points di-include
+  // di response profile supaya mobile/Flutter app cukup 1 call untuk dapat
+  // semua data dashboard member (nama, kontak, saldo poin).
+  const [user, pointsAgg] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: session.sub },
+      select: { id: true, name: true, email: true, phone: true, birthDate: true, createdAt: true },
+    }),
+    prisma.customerPoint
+      .aggregate({
+        where: { userId: session.sub },
+        _sum: { points: true },
+      })
+      .catch(() => ({ _sum: { points: 0 } })),
+  ]);
 
   if (!user) return NextResponse.json({ error: "User tidak ditemukan." }, { status: 404 });
-  return NextResponse.json({ user });
+  const points = pointsAgg._sum.points ?? 0;
+  return NextResponse.json({ user: { ...user, points } });
 }
 
 export async function PUT(request: Request) {
