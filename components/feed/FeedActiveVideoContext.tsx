@@ -24,6 +24,13 @@ type FeedActiveVideoContextValue = {
    * autoplay decision.
    */
   paused: boolean;
+  /**
+   * Sound preference per session. Default false (muted) karena iOS WKWebView
+   * block unmuted autoplay tanpa user gesture. User tap speaker icon untuk
+   * toggle — setelah ada user gesture, unmute allowed.
+   */
+  soundOn: boolean;
+  toggleSound: () => void;
 };
 
 const FeedActiveVideoContext = createContext<FeedActiveVideoContextValue | null>(null);
@@ -114,9 +121,37 @@ export function FeedActiveVideoProvider({ children }: { children: React.ReactNod
     }
   }, []);
 
+  // Sound state (per session) + persistence via sessionStorage supaya
+  // pilihan user persist saat user navigate keluar /feed dan balik lagi.
+  const [soundOn, setSoundOn] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.sessionStorage.getItem("natalo-feed-sound") === "on";
+    } catch {
+      return false;
+    }
+  });
+  const toggleSound = useCallback(() => {
+    setSoundOn((prev) => {
+      const next = !prev;
+      try {
+        if (typeof window !== "undefined") {
+          window.sessionStorage.setItem(
+            "natalo-feed-sound",
+            next ? "on" : "off",
+          );
+        }
+      } catch {
+        // Ignore — session storage might be blocked in WebView edge cases.
+      }
+      void hapticTap();
+      return next;
+    });
+  }, []);
+
   const value = useMemo(
-    () => ({ activeId, activeIndex, setActive, paused }),
-    [activeId, activeIndex, setActive, paused],
+    () => ({ activeId, activeIndex, setActive, paused, soundOn, toggleSound }),
+    [activeId, activeIndex, setActive, paused, soundOn, toggleSound],
   );
 
   return (

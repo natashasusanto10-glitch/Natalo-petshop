@@ -50,7 +50,8 @@ export function FeedVideoPlayer({
   aspectRatio = 9 / 16,
   className = "",
 }: Props) {
-  const { activeId, activeIndex, setActive, paused } = useFeedActiveVideo();
+  const { activeId, activeIndex, setActive, paused, soundOn, toggleSound } =
+    useFeedActiveVideo();
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   // Initial loadSrc=true untuk card di index 0 supaya video element CREATED
@@ -204,11 +205,13 @@ export function FeedVideoPlayer({
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    // Force muted property imperatively — React's declarative muted prop
-    // kadang tidak apply property correctly di iOS WKWebView. Tanpa
-    // muted=true property, autoplay diblok oleh WebKit autoplay policy
-    // (meski mediaTypesRequiringUserActionForPlayback=[] di config).
-    video.muted = true;
+    // muted property: active video follow soundOn (user choice), inactive
+    // videos always muted (saving CPU + cegah audio leak antar video).
+    // First-time autoplay still works karena saat soundOn=false (default),
+    // video muted → WebKit allow muted-autoplay tanpa user gesture.
+    // Saat user toggle soundOn=true via tap, browser sudah dapat user-gesture
+    // sebelumnya → unmute allowed.
+    video.muted = !isActive || !soundOn;
     if (!isActive) {
       video.pause();
       setIsPlaying(false);
@@ -217,9 +220,8 @@ export function FeedVideoPlayer({
     let cancelled = false;
     const tryPlay = () => {
       if (cancelled) return;
-      // Always re-assert muted before play() — defensive against any code
-      // path yang reset muted state.
-      video.muted = true;
+      // Re-assert muted state before play() — defensive.
+      video.muted = !soundOn;
       const p = video.play();
       if (p && typeof p.then === "function") {
         p.catch(() => {
@@ -243,7 +245,7 @@ export function FeedVideoPlayer({
       video.removeEventListener("loadeddata", tryPlay);
       video.removeEventListener("canplaythrough", tryPlay);
     };
-  }, [isActive]);
+  }, [isActive, soundOn]);
 
   // Delayed loading indicator. Only surface a spinner if the video stays
   // genuinely un-playable for >LOADING_INDICATOR_DELAY_MS. iOS WKWebView
@@ -438,6 +440,30 @@ export function FeedVideoPlayer({
         <div className="pointer-events-none absolute bottom-2 right-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-bold text-white">
           {formatDuration(durationSec)}
         </div>
+      )}
+
+      {/* Sound toggle — hanya active video. Stop propagation supaya tap di
+          icon tidak juga trigger togglePlay (yang akan pause video). */}
+      {isActive && (
+        <button
+          type="button"
+          aria-label={soundOn ? "Matikan suara" : "Nyalakan suara"}
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleSound();
+          }}
+          className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-black/55 text-white backdrop-blur-sm transition active:scale-95"
+        >
+          {soundOn ? (
+            <svg viewBox="0 0 24 24" className="h-4 w-4 fill-white" aria-hidden>
+              <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4.03v8.05A4.5 4.5 0 0 0 16.5 12zM14 3.23v2.06A7.01 7.01 0 0 1 19 12a7 7 0 0 1-5 6.71v2.06A9 9 0 0 0 21 12a9 9 0 0 0-7-8.77z" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" className="h-4 w-4 fill-white" aria-hidden>
+              <path d="M16.5 12a4.5 4.5 0 0 0-2.5-4.03v2.21l2.45 2.45c.03-.21.05-.42.05-.63zm2.5 0a6.97 6.97 0 0 1-1.06 3.7l1.52 1.52A8.99 8.99 0 0 0 21 12c0-4.28-3-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.51-1.42.93-2.25 1.18v2.06a8.99 8.99 0 0 0 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4 9.91 6.09 12 8.18V4z" />
+            </svg>
+          )}
+        </button>
       )}
     </div>
   );
