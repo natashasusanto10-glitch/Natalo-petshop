@@ -170,12 +170,12 @@ export function FeedVideoCard({ post, index, onOpenComments }: Props) {
       </div>
 
       {/* Bottom-left content: product tag, creator name, clean caption. */}
-      <div className="absolute left-4 right-[76px] z-[2] [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+5rem)] md:bottom-24">
+      <div className="absolute left-4 right-[76px] z-[2] [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+1.5rem)] md:bottom-24">
         {product && (
           <button
             type="button"
             onClick={() => setProductSheetOpen(true)}
-            className="mb-3 inline-flex h-9 max-w-full items-center gap-2 rounded-[10px] border border-white/15 bg-black/50 px-3 text-left text-white shadow-sm shadow-black/10 backdrop-blur-xl transition active:scale-[0.98]"
+            className="mb-2.5 inline-flex h-9 max-w-full items-center gap-2 rounded-[10px] border border-white/15 bg-black/50 px-3 text-left text-white shadow-sm shadow-black/10 backdrop-blur-xl transition active:scale-[0.98]"
           >
             <FiShoppingBag className="h-4 w-4 shrink-0 text-white/90" aria-hidden="true" />
             <span className="shrink-0 text-[13px] font-semibold text-white/90">
@@ -191,7 +191,7 @@ export function FeedVideoCard({ post, index, onOpenComments }: Props) {
           {creatorName}
         </p>
         {caption && (
-          <p className="mt-2 line-clamp-2 text-[15px] font-normal leading-snug text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
+          <p className="mt-1.5 line-clamp-2 text-[15px] font-normal leading-snug text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
             {caption}
           </p>
         )}
