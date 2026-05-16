@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
   FiChevronRight,
+  FiCheckCircle,
   FiPackage,
   FiShoppingBag,
   FiShoppingCart,
@@ -308,7 +309,7 @@ export function FeedVideoCard({
             <button
               type="button"
               onClick={() => setProductSheetOpen(true)}
-              className="mb-2.5 inline-flex h-9 max-w-full items-center gap-2 rounded-[10px] border border-white/15 bg-black/50 px-3 text-left text-white shadow-sm shadow-black/10 backdrop-blur-xl transition active:scale-[0.98]"
+              className="mb-2.5 inline-flex h-10 max-w-full items-center gap-2 rounded-[14px] border border-[#D6A84A]/20 bg-black/[0.22] px-3 text-left text-white shadow-sm shadow-black/10 backdrop-blur-[14px] transition active:scale-[0.98]"
               key={currentCarouselProduct.id}
               style={{
                 animation: hasMultipleProducts
@@ -316,35 +317,35 @@ export function FeedVideoCard({
                   : undefined,
               }}
             >
-              <FiShoppingBag className="h-4 w-4 shrink-0 text-white/90" aria-hidden="true" />
-              <span className="shrink-0 text-[13px] font-semibold text-white/90">
+              <FiShoppingBag className="h-4 w-4 shrink-0 text-white/75" aria-hidden="true" />
+              <span className="shrink-0 text-[12px] font-semibold text-white/90">
                 {hasMultipleProducts
                   ? `${taggedProducts.length} produk`
                   : "Produk digunakan"}
               </span>
-              <span className="min-w-0 truncate text-[13px] font-bold text-white">
+              <span className="min-w-0 truncate text-[12px] font-semibold text-white/85">
                 {currentCarouselProduct.name}
               </span>
-              <FiChevronRight className="h-4 w-4 shrink-0 text-white/85" aria-hidden="true" />
+              <FiChevronRight className="h-4 w-4 shrink-0 text-white/65" aria-hidden="true" />
             </button>
           )}
-          {/* Dot indicator — hanya saat multi-product */}
-          {hasMultipleProducts && (
-            <div className="mb-2 flex gap-1">
-              {taggedProducts.map((p, idx) => (
-                <span
-                  key={p.id}
-                  className={`h-1 rounded-full transition-all ${
-                    idx === carouselIndex ? "w-4 bg-white" : "w-1 bg-white/40"
-                  }`}
-                  aria-hidden
-                />
-              ))}
-            </div>
-          )}
-          <p className="truncate text-[17px] font-bold leading-tight text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
-            {creatorName}
-          </p>
+          <div className="flex min-w-0 items-center gap-2">
+            <p
+              className={`truncate text-[17px] leading-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)] ${
+                isAdmin
+                  ? "font-bold text-[#D6A84A]"
+                  : "font-semibold text-white"
+              }`}
+            >
+              {creatorName}
+            </p>
+            {isAdmin && (
+              <span className="inline-flex h-[22px] shrink-0 items-center gap-1 rounded-full border border-[#D6A84A]/35 bg-[#D6A84A]/15 px-2 text-[10.5px] font-semibold text-[#E8C878] backdrop-blur-[8px]">
+                <FiCheckCircle className="h-3 w-3" aria-hidden="true" />
+                Official
+              </span>
+            )}
+          </div>
           {caption && (
             <p className="mt-1.5 line-clamp-2 text-[15px] font-normal leading-snug text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
               {caption}
