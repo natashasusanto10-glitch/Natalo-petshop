@@ -1,3 +1,5 @@
+/// <reference types="@capacitor/keyboard" />
+
 import type { CapacitorConfig } from "@capacitor/cli";
 import { KeyboardResize, KeyboardStyle } from "@capacitor/keyboard";
 
@@ -126,16 +128,11 @@ const config: CapacitorConfig = {
       overlaysWebView: false,
     },
     Keyboard: {
-      // resize Native → iOS WebView TIDAK resize saat keyboard muncul,
-      // keyboard float di atas. Kita handle layout via visualViewport API
-      // + @capacitor/keyboard event keyboardWillShow.keyboardHeight di
-      // CheckoutVoucherCard. Pakai Body bikin window.innerHeight shrink
-      // sehingga kalkulasi keyboard-inset = 0 (visualViewport.height
-      // sudah match innerHeight) — sheet tidak pernah naik.
-      resize: KeyboardResize.Native,
-      // Default follows app theme (light/dark).
-      style: KeyboardStyle.Default,
-      resizeOnFullScreen: true,
+      // Instagram/Reels-like comment sheet: jangan biarkan iOS WKWebView
+      // resize otomatis saat keyboard muncul. Feed comment sheet mengatur
+      // offset sendiri via @capacitor/keyboard + visualViewport fallback.
+      resize: KeyboardResize.None,
+      style: KeyboardStyle.Dark,
     },
   },
 };

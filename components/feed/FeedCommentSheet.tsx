@@ -187,6 +187,28 @@ export function FeedCommentSheet({
 
     const visualViewport = window.visualViewport;
     const root = document.documentElement;
+    let pluginKeyboardHeight = 0;
+    let cancelled = false;
+
+    function applyKeyboardLayout(height: number, source: "plugin" | "viewport") {
+      if (cancelled) return;
+      const nextKeyboardOpen = height > KEYBOARD_INSET_THRESHOLD;
+      const keyboardHeight = nextKeyboardOpen ? Math.round(height) : 0;
+
+      setKeyboardOpen(nextKeyboardOpen);
+      root.style.setProperty(
+        "--feed-keyboard-height",
+        keyboardHeight > 0 ? `${keyboardHeight}px` : "0px",
+      );
+      root.style.setProperty(
+        "--feed-comment-sheet-height",
+        nextKeyboardOpen ? "42dvh" : "56dvh",
+      );
+
+      if (source === "plugin") {
+        pluginKeyboardHeight = keyboardHeight;
+      }
+    }
 
     function updateKeyboardInset() {
       const visibleHeight = visualViewport?.height ?? window.innerHeight;
@@ -201,32 +223,52 @@ export function FeedCommentSheet({
         window.innerHeight - visibleHeight - viewportOffsetTop,
       );
       const viewportLoss = Math.max(0, viewportBaselineRef.current - visibleHeight);
-      const nextKeyboardOpen =
-        Math.max(overlayInset, viewportLoss) > KEYBOARD_INSET_THRESHOLD;
-      const keyboardHeight =
-        nextKeyboardOpen && overlayInset > KEYBOARD_INSET_THRESHOLD
-          ? Math.round(overlayInset)
-          : 0;
-
-      setKeyboardOpen(nextKeyboardOpen);
-      root.style.setProperty(
-        "--feed-keyboard-height",
-        keyboardHeight > 0 ? `${keyboardHeight}px` : "0px",
-      );
-      root.style.setProperty(
-        "--feed-comment-sheet-height",
-        nextKeyboardOpen ? "42dvh" : "56dvh",
-      );
+      const estimatedKeyboardHeight = Math.max(overlayInset, viewportLoss);
+      if (pluginKeyboardHeight > 0 && estimatedKeyboardHeight < KEYBOARD_INSET_THRESHOLD) {
+        return;
+      }
+      applyKeyboardLayout(estimatedKeyboardHeight, "viewport");
     }
 
     updateKeyboardInset();
     visualViewport?.addEventListener("resize", updateKeyboardInset);
     visualViewport?.addEventListener("scroll", updateKeyboardInset);
     window.addEventListener("resize", updateKeyboardInset);
+
+    let removeKeyboardListeners: (() => void) | null = null;
+    void (async () => {
+      try {
+        const { Keyboard } = await import("@capacitor/keyboard");
+        if (cancelled) return;
+        const willShow = await Keyboard.addListener("keyboardWillShow", (info) => {
+          applyKeyboardLayout(info.keyboardHeight, "plugin");
+        });
+        const didShow = await Keyboard.addListener("keyboardDidShow", (info) => {
+          applyKeyboardLayout(info.keyboardHeight, "plugin");
+        });
+        const willHide = await Keyboard.addListener("keyboardWillHide", () => {
+          applyKeyboardLayout(0, "plugin");
+        });
+        const didHide = await Keyboard.addListener("keyboardDidHide", () => {
+          applyKeyboardLayout(0, "plugin");
+        });
+        removeKeyboardListeners = () => {
+          void willShow.remove();
+          void didShow.remove();
+          void willHide.remove();
+          void didHide.remove();
+        };
+      } catch {
+        // Browser/PWA fallback tetap memakai visualViewport.
+      }
+    })();
+
     return () => {
+      cancelled = true;
       visualViewport?.removeEventListener("resize", updateKeyboardInset);
       visualViewport?.removeEventListener("scroll", updateKeyboardInset);
       window.removeEventListener("resize", updateKeyboardInset);
+      removeKeyboardListeners?.();
       root.style.removeProperty("--feed-keyboard-height");
       root.style.removeProperty("--feed-comment-sheet-height");
     };
