@@ -44,7 +44,7 @@ import { createBunnyVideo, getBunnyConfig, bunnyUploadUrl } from "@/lib/feed/bun
 
 export const dynamic = "force-dynamic";
 
-const CUSTOMER_RATE_LIMIT_PER_DAY = 3;
+const CUSTOMER_RATE_LIMIT_PER_DAY = 10;
 const RATE_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MAX_TITLE_LENGTH = 200;
 const MAX_DESC_LENGTH = 2000;

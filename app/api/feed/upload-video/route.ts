@@ -30,7 +30,7 @@ const ALLOWED_TYPES = new Set([
 // Customer-side feed upload limit. Counts posts (FeedPost rows) created
 // in the last 24h by the same user, regardless of moderation status —
 // so a flood of upload→reject loops still counts. Admins exempt.
-const CUSTOMER_RATE_LIMIT_PER_DAY = 3;
+const CUSTOMER_RATE_LIMIT_PER_DAY = 10;
 const RATE_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 export async function POST(request: NextRequest) {
   const csrfReject = assertSameOrigin(request);
@@ -62,11 +62,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Customer rate limit: max 3 uploads / 24h. Admins exempt — they post
+  // Customer rate limit: max 10 uploads / 24h. Admins exempt — they post
   // promo and curated content. Count is over FeedPost (the metadata row
   // that actually gets committed) so a half-finished upload doesn't burn
   // a slot. Net effect: a spammer who tries to flood the moderation
-  // queue gets a 429 after their 3rd successful submission.
+  // queue gets a 429 after their 10th successful submission.
   if (session.role !== "ADMIN") {
     const since = new Date(Date.now() - RATE_LIMIT_WINDOW_MS);
     const recentCount = await prisma.feedPost.count({
