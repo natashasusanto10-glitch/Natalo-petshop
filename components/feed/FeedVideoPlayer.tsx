@@ -97,6 +97,18 @@ export function FeedVideoPlayer({
   const playbackUrl = useMemo(() => resolvePlaybackUrl(videoUrl), [videoUrl]);
   const isHls = isHlsUrl(playbackUrl);
 
+  // Aspect ratio classification — tentukan rendering mode:
+  //   - portrait 9:16 (default Reels) → object-cover, fill viewport
+  //   - non-portrait (landscape/square/odd ratios) → object-contain di tengah
+  //     + blurred thumbnail background fill viewport (Instagram pattern)
+  // Threshold 0.05 toleransi untuk video ~9:16 yang sedikit off (mis. iPhone
+  // 9:19.5 ratio 0.462 vs ideal 9:16 = 0.5625).
+  const isPortrait = useMemo(() => {
+    // aspectRatio passed in dari FeedVideoCard sebagai width/height
+    // (mis. 9/16 = 0.5625 untuk portrait, 16/9 = 1.78 untuk landscape).
+    return aspectRatio <= 0.65;
+  }, [aspectRatio]);
+
   // Treat card di index 0 sebagai active sampai IntersectionObserver fire
   // setActive untuk card lain. Tanpa ini, first render punya isActive=false
   // → autoPlay=false → video element mount tanpa autoplay attribute → iOS
@@ -575,6 +587,12 @@ export function FeedVideoPlayer({
   // MP4 direct src (HLS legacy content gets simple loop, not seamless).
   const slotBSrc = attachSrc ? playbackUrl : undefined;
 
+  // Video object-fit decision:
+  //   - Portrait 9:16 → cover (fill viewport, edge-to-edge Reels feel)
+  //   - Non-portrait (landscape 16:9, square 1:1, dll) → contain
+  //     (no crop, center video + show blur background di sisi kosong)
+  const videoObjectFit = isPortrait ? "object-cover" : "object-contain";
+
   return (
     <div
       ref={containerRef}
@@ -591,6 +609,28 @@ export function FeedVideoPlayer({
       }}
       onClick={handleSurfaceClick}
     >
+      {/* Blurred backdrop layer — HANYA untuk non-portrait video.
+          Thumbnail (Bunny auto-generated) di-stretch fill viewport + blur
+          + slight scale untuk hide blur edge artifact. Pakai poster karena:
+            1. Cache instan dari Bunny CDN (sudah preload)
+            2. Tidak butuh extra video decoder (memory-friendly)
+            3. Bg static — orang fokus ke video center yang motion
+          Instagram pattern: blur backdrop hampir tidak terlihat sebagai
+          "static" karena user fokus ke center content. */}
+      {!isPortrait && thumbnailUrl && (
+        <div
+          aria-hidden
+          className="absolute inset-0"
+          style={{
+            backgroundImage: `url("${thumbnailUrl}")`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            filter: "blur(40px) saturate(1.4) brightness(0.85)",
+            transform: "scale(1.15)",
+          }}
+        />
+      )}
+
       {thumbnailUrl && (
         <img
           src={thumbnailUrl}
@@ -598,7 +638,7 @@ export function FeedVideoPlayer({
           loading="eager"
           fetchPriority="high"
           decoding="async"
-          className="absolute inset-0 h-full w-full object-cover"
+          className={`absolute inset-0 h-full w-full ${videoObjectFit}`}
           onError={(event) => {
             event.currentTarget.style.display = "none";
           }}
@@ -620,7 +660,7 @@ export function FeedVideoPlayer({
         muted
         autoPlay={isActive && activeSlot === "A"}
         preload={attachSrc ? preloadMode : "none"}
-        className="absolute inset-0 h-full w-full object-cover"
+        className={`absolute inset-0 h-full w-full ${videoObjectFit}`}
         onPlay={() => setIsPlaying(true)}
         onPause={() => {
           // Only mark not-playing if THIS is the front slot AND we're not
@@ -648,7 +688,7 @@ export function FeedVideoPlayer({
         muted
         autoPlay={isActive && activeSlot === "B"}
         preload={attachSrc ? preloadMode : "none"}
-        className="absolute inset-0 h-full w-full object-cover"
+        className={`absolute inset-0 h-full w-full ${videoObjectFit}`}
         onPlay={() => setIsPlaying(true)}
         onPause={() => {
           if (activeSlot === "B") setIsPlaying(false);

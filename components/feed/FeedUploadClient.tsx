@@ -502,6 +502,8 @@ export function FeedUploadClient() {
           <PreviewScreen
             videoSrc={filePreviewUrl}
             durationSec={metadata.durationSec}
+            videoWidth={metadata.width}
+            videoHeight={metadata.height}
             onBack={() => {
               resetVideo();
               goBack("pick");
@@ -909,6 +911,8 @@ function ActionCard({
 function PreviewScreen({
   videoSrc,
   durationSec,
+  videoWidth,
+  videoHeight,
   onBack,
   onChangeVideo,
   onOpenGallery,
@@ -917,12 +921,24 @@ function PreviewScreen({
 }: {
   videoSrc: string;
   durationSec: number;
+  videoWidth: number;
+  videoHeight: number;
   onBack: () => void;
   onChangeVideo: () => void;
   onOpenGallery: () => void;
   onOpenCamera: () => void;
   onNext: () => void;
 }) {
+  // Aspect ratio detection untuk info banner. Threshold sama dengan
+  // FeedVideoPlayer (isPortrait: aspectRatio <= 0.65).
+  const aspectRatio = videoHeight > 0 ? videoWidth / videoHeight : 9 / 16;
+  const isPortrait = aspectRatio <= 0.65;
+  const isLandscape = aspectRatio >= 1.3;
+  const orientationLabel = isPortrait
+    ? null
+    : isLandscape
+      ? "landscape (16:9)"
+      : "square (1:1)";
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
   // Start muted — autoplay policy di browser/WKWebView ngeblok audio
@@ -1041,6 +1057,21 @@ function PreviewScreen({
               )}
             </button>
           </div>
+
+          {/* Info banner — kalau video bukan portrait 9:16, kasih tau user
+              bahwa di Feed akan tampil dengan blur background. Tidak block
+              upload, cuma informational. */}
+          {orientationLabel && (
+            <div className="mt-3 flex items-start gap-2 rounded-2xl border border-natalo-500/30 bg-natalo-500/10 p-3 text-natalo-100">
+              <FiInfo className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+              <p className="text-[12px] leading-relaxed">
+                Video kamu {orientationLabel}. Di Feed akan tampil dengan{" "}
+                <span className="font-bold">background blur</span> agar tetap
+                rapi. Untuk tampilan immersive penuh, gunakan video portrait
+                9:16 (orientasi vertikal HP).
+              </p>
+            </div>
+          )}
 
           <div className="mt-4 grid grid-cols-2 gap-3">
             <SecondaryAction
