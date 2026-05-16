@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
-import type { FeedPostStatus } from "@prisma/client";
 import {
   FiArrowLeft,
   FiCalendar,
@@ -12,6 +11,7 @@ import {
   FiPlay,
   FiVideo,
 } from "react-icons/fi";
+import { MyFeedPostActions } from "@/components/feed/MyFeedPostsList";
 import { prisma } from "@/lib/prisma";
 import { requireCustomerSession } from "@/lib/session-guards";
 import {
@@ -87,6 +87,13 @@ export default async function MyFeedPostDetailPage({ params }: PageProps) {
             <FiArrowLeft className="h-5 w-5" aria-hidden="true" />
           </Link>
           <h1 className="text-base font-black text-slate-950">Detail Postingan</h1>
+          <MyFeedPostActions
+            postId={post.id}
+            status={post.status}
+            detailHref={`/akun/postingan-saya/${post.id}`}
+            source="detail"
+            triggerClassName="absolute right-0 grid h-10 w-10 place-items-center rounded-full text-slate-900 transition active:bg-white"
+          />
         </div>
       </header>
 

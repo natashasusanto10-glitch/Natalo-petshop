@@ -31,10 +31,10 @@ export async function GET(
   const post = await prisma.feedPost
     .findUnique({
       where: { id: postId },
-      select: { id: true, status: true },
+      select: { id: true, status: true, deletedAt: true },
     })
     .catch(() => null);
-  if (!post || post.status !== "ACTIVE") {
+  if (!post || post.status !== "ACTIVE" || post.deletedAt) {
     return NextResponse.json({ error: "Post tidak ditemukan" }, { status: 404 });
   }
 
@@ -70,9 +70,9 @@ export async function POST(
 
   const post = await prisma.feedPost.findUnique({
     where: { id: postId },
-    select: { id: true, status: true },
+    select: { id: true, status: true, deletedAt: true },
   });
-  if (!post || post.status !== "ACTIVE") {
+  if (!post || post.status !== "ACTIVE" || post.deletedAt) {
     return NextResponse.json({ error: "Post tidak ditemukan" }, { status: 404 });
   }
 

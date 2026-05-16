@@ -33,12 +33,12 @@ export async function POST(
   try {
     const post = await prisma.feedPost.findUnique({
       where: { id: postId },
-      select: { id: true, status: true },
+      select: { id: true, status: true, deletedAt: true },
     });
 
     // Allow shares of ACTIVE posts only; if the post moved to a non-public
     // status between the user's gesture and this call we shouldn't credit it.
-    if (!post || post.status !== "ACTIVE") {
+    if (!post || post.status !== "ACTIVE" || post.deletedAt) {
       return NextResponse.json(
         { error: "Post tidak ditemukan" },
         { status: 404 },
