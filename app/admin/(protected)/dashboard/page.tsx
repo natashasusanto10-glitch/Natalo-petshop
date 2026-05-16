@@ -354,6 +354,17 @@ export default async function AdminDashboardPage() {
           <ExpiringVoucherPanel vouchers={expiringVouchers} now={now} />
         </aside>
       </div>
+
+      {/* Danger zone link — subtle styling supaya tidak accidentally
+          tapped tapi findable kalau admin perlu wipe data sebelum launch. */}
+      <div className="mt-12 border-t border-zinc-100 pt-6 text-center">
+        <Link
+          href="/admin/danger-zone"
+          className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-4 py-2 text-xs font-bold text-red-700 transition hover:bg-red-50"
+        >
+          ⚠️ Danger Zone — Reset Database
+        </Link>
+      </div>
     </div>
   );
 }
