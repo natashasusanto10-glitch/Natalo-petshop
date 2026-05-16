@@ -776,15 +776,15 @@ export function FeedVideoPlayer({
             e.stopPropagation();
             toggleSound();
           }}
-          className="absolute right-3 z-[3] grid h-11 w-11 place-items-center rounded-full bg-black/55 text-white backdrop-blur-sm transition active:scale-95"
+          className="absolute right-3 z-[3] grid h-11 w-11 place-items-center text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.72)] transition active:scale-95"
           style={{ top: "calc(env(safe-area-inset-top, 0px) + 76px)" }}
         >
           {soundOn ? (
-            <svg viewBox="0 0 24 24" className="h-5 w-5 fill-white" aria-hidden>
+            <svg viewBox="0 0 24 24" className="h-6 w-6 fill-white" aria-hidden>
               <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4.03v8.05A4.5 4.5 0 0 0 16.5 12zM14 3.23v2.06A7.01 7.01 0 0 1 19 12a7 7 0 0 1-5 6.71v2.06A9 9 0 0 0 21 12a9 9 0 0 0-7-8.77z" />
             </svg>
           ) : (
-            <svg viewBox="0 0 24 24" className="h-5 w-5 fill-white" aria-hidden>
+            <svg viewBox="0 0 24 24" className="h-6 w-6 fill-white" aria-hidden>
               <path d="M16.5 12a4.5 4.5 0 0 0-2.5-4.03v2.21l2.45 2.45c.03-.21.05-.42.05-.63zm2.5 0a6.97 6.97 0 0 1-1.06 3.7l1.52 1.52A8.99 8.99 0 0 0 21 12c0-4.28-3-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.51-1.42.93-2.25 1.18v2.06a8.99 8.99 0 0 0 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4 9.91 6.09 12 8.18V4z" />
             </svg>
           )}

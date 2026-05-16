@@ -147,6 +147,28 @@ export function FeedUploadClient() {
     };
   }, [thumbnailPreviewUrl]);
 
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const roots = [
+      document.documentElement,
+      document.body,
+      document.getElementById("__next"),
+      document.getElementById("root"),
+    ].filter(Boolean) as HTMLElement[];
+    const previousBackgrounds = roots.map((node) => node.style.backgroundColor);
+
+    roots.forEach((node) => {
+      node.style.backgroundColor = "#000";
+    });
+
+    return () => {
+      roots.forEach((node, index) => {
+        node.style.backgroundColor = previousBackgrounds[index] ?? "";
+      });
+    };
+  }, []);
+
   // ── Load pinnable products lazily (need them for Detail step) ────
   useEffect(() => {
     let cancelled = false;

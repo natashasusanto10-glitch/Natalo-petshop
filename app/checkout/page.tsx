@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Script from "next/script";
 import { FiArrowLeft, FiGift } from "react-icons/fi";
@@ -196,6 +196,7 @@ export default function CheckoutPage() {
   const [stockIssues, setStockIssues] = useState<CartStockIssue[]>([]);
   const [stockRefreshing, setStockRefreshing] = useState(false);
   const [backConfirmOpen, setBackConfirmOpen] = useState(false);
+  const returningToCartRef = useRef(false);
 
   useEffect(() => {
     let restoredDraft: {
@@ -935,7 +936,24 @@ export default function CheckoutPage() {
 
   const confirmBackToCart = useCallback(() => {
     setBackConfirmOpen(false);
-    router.push("/cart");
+    returningToCartRef.current = true;
+
+    if (typeof window === "undefined" || window.history.length <= 1) {
+      router.replace("/cart");
+      return;
+    }
+
+    let settled = false;
+    const replaceCheckoutEntryWithCart = () => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener("popstate", replaceCheckoutEntryWithCart);
+      router.replace("/cart");
+    };
+
+    window.addEventListener("popstate", replaceCheckoutEntryWithCart, { once: true });
+    window.history.back();
+    window.setTimeout(replaceCheckoutEntryWithCart, 350);
   }, [router]);
 
   // Checkout selalu meminta konfirmasi khusus saat user mencoba back.
@@ -969,6 +987,7 @@ export default function CheckoutPage() {
     window.history.pushState(guardState, "", window.location.href);
 
     function handlePopState() {
+      if (returningToCartRef.current) return;
       window.history.pushState(guardState, "", window.location.href);
       openBackToCartConfirmation();
     }

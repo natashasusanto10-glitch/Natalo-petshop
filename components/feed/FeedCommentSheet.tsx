@@ -324,7 +324,7 @@ export function FeedCommentSheet({
           onOpenAutoFocus={(event) => event.preventDefault()}
           style={{
             top:
-              "clamp(calc(env(safe-area-inset-top) + 264px), 38dvh, calc(env(safe-area-inset-top) + 360px))",
+              "clamp(calc(env(safe-area-inset-top) + 286px), 42dvh, calc(env(safe-area-inset-top) + 374px))",
             transform:
               isDragging || isSnappingBack
                 ? `translate3d(0, ${dragY}px, 0)`

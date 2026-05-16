@@ -6,10 +6,7 @@ import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
   FiChevronRight,
-  FiHeart,
-  FiMessageCircle,
   FiPackage,
-  FiSend,
   FiShoppingBag,
   FiShoppingCart,
 } from "react-icons/fi";
@@ -178,10 +175,17 @@ export function FeedVideoCard({
       <div
         className={
           commentMode
-            ? "absolute left-1/2 top-[calc(env(safe-area-inset-top)+44px)] z-[180] w-[min(34vw,176px)] -translate-x-1/2 overflow-hidden rounded-[24px] bg-black shadow-[0_22px_70px_rgba(0,0,0,0.55)] ring-1 ring-white/15 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] md:w-[min(28vw,210px)]"
+            ? "absolute left-1/2 top-[calc(env(safe-area-inset-top)+18px)] z-[180] w-[min(88vw,410px)] -translate-x-1/2 overflow-hidden rounded-[22px] bg-black shadow-[0_22px_70px_rgba(0,0,0,0.55)] ring-1 ring-white/15 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] md:w-[min(70vw,430px)]"
             : "absolute inset-x-0 top-0 overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom))] md:bottom-0"
         }
-        style={commentMode ? { aspectRatio: videoAspectRatio } : undefined}
+        style={
+          commentMode
+            ? {
+                aspectRatio: videoAspectRatio,
+                height: "clamp(220px, 34dvh, 320px)",
+              }
+            : undefined
+        }
       >
         {hasVideo && post.videoUrl ? (
           <FeedVideoPlayer
@@ -239,25 +243,21 @@ export function FeedVideoCard({
             pressed={liked}
             onClick={toggleLike}
           >
-            <FiHeart
-              className={`h-[30px] w-[30px] ${
-                liked ? "fill-[#FF3040] stroke-[#FF3040]" : "stroke-[2.2]"
-              }`}
-            />
+            <PetLikeIcon active={liked} />
           </ActionButton>
           <ActionButton
             label={formatEngagementCount(post.commentCount)}
             ariaLabel="Komentar"
             onClick={() => onOpenComments(post.id)}
           >
-            <FiMessageCircle className="h-[30px] w-[30px] stroke-[2.2]" />
+            <PetCommentIcon />
           </ActionButton>
           <ActionButton
             label={formatEngagementCount(shareCount)}
             ariaLabel="Bagikan"
             onClick={handleShare}
           >
-            <FiSend className="h-[30px] w-[30px] stroke-[2.2]" />
+            <PetShareIcon />
           </ActionButton>
         </div>
       )}
@@ -335,6 +335,100 @@ export function FeedVideoCard({
   );
 }
 
+function PetLikeIcon({ active }: { active?: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 36 36"
+      className="h-8 w-8 overflow-visible"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M18 30.5S6.2 23.8 4.2 16.7C2.7 11.5 5.6 6.2 10.7 6.2c3 0 5.4 1.7 7.3 4.3 1.9-2.6 4.3-4.3 7.3-4.3 5.1 0 8 5.3 6.5 10.5C29.8 23.8 18 30.5 18 30.5Z"
+        fill={active ? "#FF4D61" : "rgba(255,255,255,0.04)"}
+        stroke={active ? "#FF4D61" : "currentColor"}
+        strokeWidth="2.45"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <g fill={active ? "#fff" : "currentColor"} opacity={active ? 0.96 : 0.94}>
+        <ellipse cx="18" cy="21.1" rx="4.1" ry="3.2" />
+        <ellipse cx="13.5" cy="17.3" rx="1.65" ry="2.05" transform="rotate(-24 13.5 17.3)" />
+        <ellipse cx="16.6" cy="15.3" rx="1.55" ry="2.05" transform="rotate(-8 16.6 15.3)" />
+        <ellipse cx="19.4" cy="15.3" rx="1.55" ry="2.05" transform="rotate(8 19.4 15.3)" />
+        <ellipse cx="22.5" cy="17.3" rx="1.65" ry="2.05" transform="rotate(24 22.5 17.3)" />
+      </g>
+    </svg>
+  );
+}
+
+function PetCommentIcon() {
+  return (
+    <svg
+      viewBox="0 0 36 36"
+      className="h-8 w-8 overflow-visible"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M11.1 9.8 9.4 5.6 14.5 8M24.9 9.8l1.7-4.2L21.5 8"
+        stroke="currentColor"
+        strokeWidth="2.25"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7.2 16.1c0-4.3 3.7-7.8 8.3-7.8h5c4.6 0 8.3 3.5 8.3 7.8v3.1c0 4.3-3.7 7.8-8.3 7.8h-3.6l-5.6 3.5c-.8.5-1.8-.2-1.6-1.1l.7-3.6c-2-1.4-3.2-3.8-3.2-6.6v-3.1Z"
+        fill="rgba(255,255,255,0.04)"
+        stroke="currentColor"
+        strokeWidth="2.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <g fill="currentColor">
+        <ellipse cx="18" cy="20.4" rx="2.75" ry="2.15" />
+        <ellipse cx="14.7" cy="17.6" rx="1.05" ry="1.32" transform="rotate(-20 14.7 17.6)" />
+        <ellipse cx="17" cy="16.3" rx="1" ry="1.3" transform="rotate(-6 17 16.3)" />
+        <ellipse cx="19" cy="16.3" rx="1" ry="1.3" transform="rotate(6 19 16.3)" />
+        <ellipse cx="21.3" cy="17.6" rx="1.05" ry="1.32" transform="rotate(20 21.3 17.6)" />
+      </g>
+    </svg>
+  );
+}
+
+function PetShareIcon() {
+  return (
+    <svg
+      viewBox="0 0 36 36"
+      className="h-8 w-8 overflow-visible"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M5.4 17.6 30.4 6.9 22 29.5l-4.5-9.1-12.1-2.8Z"
+        fill="rgba(255,255,255,0.04)"
+        stroke="currentColor"
+        strokeWidth="2.45"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M17.5 20.4 30.4 6.9"
+        stroke="currentColor"
+        strokeWidth="2.15"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <g fill="currentColor" opacity="0.94">
+        <ellipse cx="8.6" cy="25.4" rx="1.75" ry="1.35" transform="rotate(-22 8.6 25.4)" />
+        <ellipse cx="12.6" cy="28.2" rx="2.35" ry="1.7" transform="rotate(15 12.6 28.2)" />
+        <circle cx="11.2" cy="23.8" r="1" />
+        <circle cx="14.1" cy="24.7" r="0.95" />
+      </g>
+    </svg>
+  );
+}
+
 function ActionButton({
   children,
   label,
@@ -354,13 +448,13 @@ function ActionButton({
       aria-label={ariaLabel}
       aria-pressed={pressed}
       onClick={onClick}
-      // Fixed grid: icon-cell 30px + gap 4px + count-cell 16px = 50px
+      // Fixed grid: icon-cell 32px + gap 4px + count-cell 16px = 52px
       // total. Count-cell tinggi tetap walau label kosong supaya tinggi
       // tombol identik di semua video (cegah icon Like loncat naik saat
       // count = 0 sementara Comment punya angka).
       className="flex min-w-[44px] flex-col items-center text-[12px] font-bold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)] transition active:scale-95"
     >
-      <span className="grid h-[30px] w-[30px] place-items-center">
+      <span className="grid h-8 w-8 place-items-center">
         {children}
       </span>
       <span

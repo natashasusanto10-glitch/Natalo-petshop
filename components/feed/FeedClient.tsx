@@ -262,7 +262,9 @@ export function FeedClient() {
           // clipped above the fixed bottom nav, while the approved overlay UI
           // keeps its own bottom offsets.
           data-no-pull
-          className="min-h-0 flex-1 snap-y snap-mandatory overflow-y-auto overscroll-contain [-ms-overflow-style:none] [scrollbar-width:none] md:space-y-3 md:px-2 md:py-2 [&::-webkit-scrollbar]:hidden"
+          className={`min-h-0 flex-1 snap-y snap-mandatory overscroll-contain [-ms-overflow-style:none] [scrollbar-width:none] md:space-y-3 md:px-2 md:py-2 [&::-webkit-scrollbar]:hidden ${
+            commentSheetOpen ? "overflow-hidden pointer-events-none" : "overflow-y-auto"
+          }`}
         >
           {loading && null}
 

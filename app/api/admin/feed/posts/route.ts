@@ -2,12 +2,16 @@
  * GET /api/admin/feed/posts?filter=...&cursor=...
  *
  * Admin-only listing dgn filter:
- *   - all             → semua post (default)
+ *   - all             → semua post (default, EXCLUDE soft-deleted)
  *   - admin_video     → kind in (VIDEO_ONLY, VIDEO_PRODUCT, PRODUCT_ONLY, PROMO)
  *   - user_video      → kind = COMMUNITY
  *   - pending         → status = PENDING_REVIEW (queue moderasi)
  *   - rejected        → status = REJECTED
  *   - hidden          → status = HIDDEN
+ *   - deleted         → soft-deleted (deletedAt != null) — explicit trash view
+ *
+ * Default: semua filter exclude soft-deleted posts. Filter `deleted`
+ * khusus untuk admin yang mau lihat trash / restore.
  *
  * Sort: PENDING queue oldest-first (FIFO), lainnya newest-first.
  * Return shape mirip FeedListResponse tapi exposed full status + moderation
@@ -26,7 +30,8 @@ type AdminFilter =
   | "user_video"
   | "pending"
   | "rejected"
-  | "hidden";
+  | "hidden"
+  | "deleted";
 
 const VALID_FILTERS: AdminFilter[] = [
   "all",
@@ -35,6 +40,7 @@ const VALID_FILTERS: AdminFilter[] = [
   "pending",
   "rejected",
   "hidden",
+  "deleted",
 ];
 
 const ADMIN_KINDS: FeedPostKind[] = [
@@ -45,20 +51,25 @@ const ADMIN_KINDS: FeedPostKind[] = [
 ];
 
 function buildWhere(filter: AdminFilter): Prisma.FeedPostWhereInput {
+  // Default: exclude soft-deleted post. Filter `deleted` khusus override.
+  const notDeleted: Prisma.FeedPostWhereInput = { deletedAt: null };
   switch (filter) {
     case "admin_video":
-      return { kind: { in: ADMIN_KINDS } };
+      return { ...notDeleted, kind: { in: ADMIN_KINDS } };
     case "user_video":
-      return { kind: "COMMUNITY" };
+      return { ...notDeleted, kind: "COMMUNITY" };
     case "pending":
-      return { status: "PENDING_REVIEW" };
+      return { ...notDeleted, status: "PENDING_REVIEW" };
     case "rejected":
-      return { status: "REJECTED" };
+      return { ...notDeleted, status: "REJECTED" };
     case "hidden":
-      return { status: "HIDDEN" };
+      return { ...notDeleted, status: "HIDDEN" };
+    case "deleted":
+      // Trash view — hanya soft-deleted yang muncul.
+      return { deletedAt: { not: null } };
     case "all":
     default:
-      return {};
+      return notDeleted;
   }
 }
 
@@ -158,10 +169,14 @@ export async function GET(request: NextRequest) {
     createdAt: p.createdAt.toISOString(),
   }));
 
-  // Counts untuk filter badges
-  const [pendingCount, totalCount] = await Promise.all([
-    prisma.feedPost.count({ where: { status: "PENDING_REVIEW" } }),
-    prisma.feedPost.count(),
+  // Counts untuk filter badges. SEMUA count EXCLUDE soft-deleted kecuali
+  // deletedCount yang khusus untuk "deleted" filter badge.
+  const [pendingCount, totalCount, deletedCount] = await Promise.all([
+    prisma.feedPost.count({
+      where: { status: "PENDING_REVIEW", deletedAt: null },
+    }),
+    prisma.feedPost.count({ where: { deletedAt: null } }),
+    prisma.feedPost.count({ where: { deletedAt: { not: null } } }),
   ]);
 
   return NextResponse.json({
@@ -170,6 +185,7 @@ export async function GET(request: NextRequest) {
     counts: {
       pending: pendingCount,
       total: totalCount,
+      deleted: deletedCount,
     },
   });
 }

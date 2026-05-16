@@ -23,7 +23,8 @@ type AdminFilter =
   | "user_video"
   | "pending"
   | "rejected"
-  | "hidden";
+  | "hidden"
+  | "deleted";
 
 type AdminFeedItem = {
   id: string;
@@ -56,7 +57,7 @@ type AdminFeedItem = {
 type AdminFeedResponse = {
   items: AdminFeedItem[];
   nextCursor: string | null;
-  counts: { pending: number; total: number };
+  counts: { pending: number; total: number; deleted: number };
 };
 
 const FILTERS: { value: AdminFilter; label: string }[] = [
@@ -66,6 +67,7 @@ const FILTERS: { value: AdminFilter; label: string }[] = [
   { value: "pending", label: "Menunggu Review" },
   { value: "rejected", label: "Ditolak" },
   { value: "hidden", label: "Disembunyikan" },
+  { value: "deleted", label: "Sampah" },
 ];
 
 export function AdminFeedClient() {
@@ -76,7 +78,7 @@ export function AdminFeedClient() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [counts, setCounts] = useState({ pending: 0, total: 0 });
+  const [counts, setCounts] = useState({ pending: 0, total: 0, deleted: 0 });
   const [actionBusy, setActionBusy] = useState<string | null>(null); // post id
 
   // Refetch saat filter berubah. Inline fn supaya exhaustive-deps tidak
