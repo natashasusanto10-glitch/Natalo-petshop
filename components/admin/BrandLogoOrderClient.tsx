@@ -61,7 +61,7 @@ export function BrandLogoOrderClient({
         onDragEnter={() => reorder(brand.id)}
         onDragOver={(event) => event.preventDefault()}
         onDragEnd={() => setDraggedId(null)}
-        className={`relative flex h-[96px] w-[88px] shrink-0 cursor-grab flex-col items-center justify-center rounded-2xl border bg-zinc-50 px-2 py-2 text-center transition active:cursor-grabbing ${
+        className={`relative flex min-h-[104px] w-full cursor-grab flex-col items-center justify-center rounded-2xl border bg-zinc-50 px-2 py-2 text-center transition active:cursor-grabbing ${
           draggedId === brand.id
             ? "scale-[0.98] border-blue-300 bg-blue-50 opacity-80"
             : "border-zinc-200 hover:border-zinc-300"
@@ -90,9 +90,6 @@ export function BrandLogoOrderClient({
     );
   }
 
-  const firstRow = items.slice(0, 8);
-  const secondRow = items.slice(8, 18);
-
   if (brands.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-zinc-200 bg-white p-5 text-center text-sm font-semibold text-zinc-500">
@@ -119,15 +116,8 @@ export function BrandLogoOrderClient({
         </button>
       </div>
 
-      <div className="mt-4 space-y-2.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className="grid min-w-max grid-cols-8 gap-2.5">
-          {firstRow.map((brand, index) => renderBrandCard(brand, index))}
-        </div>
-        {secondRow.length > 0 && (
-          <div className="grid min-w-max grid-cols-10 gap-2.5">
-            {secondRow.map((brand, index) => renderBrandCard(brand, index + 8))}
-          </div>
-        )}
+      <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-6 xl:grid-cols-9">
+        {items.slice(0, 18).map((brand, index) => renderBrandCard(brand, index))}
       </div>
     </form>
   );
