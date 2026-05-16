@@ -34,7 +34,16 @@ type Props = {
   durationSec: number | null;
   aspectRatio?: number;
   className?: string;
+  /** Called when user double-taps on the video. Parent (FeedVideoCard) owns
+   *  the like state and decides what to do (Instagram pattern: only ever
+   *  SETS liked=true, never unlikes — repeated double-taps just replay the
+   *  heart animation). */
+  onDoubleTap?: () => void;
 };
+
+// Window for detecting double-tap. 300ms standard Instagram pattern;
+// shorter feels too strict, longer makes single-tap feel laggy.
+const DOUBLE_TAP_WINDOW_MS = 300;
 
 // Showing a spinner shorter than this would flash on every swipe even when
 // playback is effectively instant.
@@ -61,6 +70,7 @@ export function FeedVideoPlayer({
   durationSec,
   aspectRatio = 9 / 16,
   className = "",
+  onDoubleTap,
 }: Props) {
   const { activeId, activeIndex, setActive, paused, soundOn, toggleSound } =
     useFeedActiveVideo();
@@ -396,8 +406,15 @@ export function FeedVideoPlayer({
     };
   }, [activeSlot, soundOn, getRef]);
 
-  // Tap anywhere on the video toggles play/pause of the active slot.
-  // Speaker icon's onClick stops propagation so it doesn't pause.
+  // Tap detection: single-tap toggles play/pause, double-tap fires like
+  // callback + heart animation. Single-tap action is DELAYED by
+  // DOUBLE_TAP_WINDOW_MS so we can cancel it if a second tap arrives in
+  // that window (Instagram pattern).
+  const lastTapTimeRef = useRef(0);
+  const singleTapTimerRef = useRef<number | null>(null);
+  const heartAnimIdRef = useRef(0);
+  const [activeHeartId, setActiveHeartId] = useState<number | null>(null);
+
   function togglePlay() {
     const active = getRef(activeSlot);
     if (!active) return;
@@ -410,6 +427,46 @@ export function FeedVideoPlayer({
       } catch {}
     }
   }
+
+  function handleSurfaceClick() {
+    const now = Date.now();
+    if (now - lastTapTimeRef.current < DOUBLE_TAP_WINDOW_MS) {
+      // Double-tap detected — cancel pending single-tap action.
+      if (singleTapTimerRef.current) {
+        window.clearTimeout(singleTapTimerRef.current);
+        singleTapTimerRef.current = null;
+      }
+      lastTapTimeRef.current = 0;
+      // Spawn heart animation (unique id supaya React force re-mount kalau
+      // user double-tap berkali-kali cepat — animation restart, tidak skip).
+      heartAnimIdRef.current += 1;
+      const animId = heartAnimIdRef.current;
+      setActiveHeartId(animId);
+      window.setTimeout(() => {
+        setActiveHeartId((current) => (current === animId ? null : current));
+      }, 850);
+      onDoubleTap?.();
+      return;
+    }
+    lastTapTimeRef.current = now;
+    // Delay togglePlay supaya kita bisa cancel kalau double-tap kedua datang.
+    if (singleTapTimerRef.current) {
+      window.clearTimeout(singleTapTimerRef.current);
+    }
+    singleTapTimerRef.current = window.setTimeout(() => {
+      togglePlay();
+      singleTapTimerRef.current = null;
+    }, DOUBLE_TAP_WINDOW_MS);
+  }
+
+  // Cleanup timer on unmount.
+  useEffect(() => {
+    return () => {
+      if (singleTapTimerRef.current) {
+        window.clearTimeout(singleTapTimerRef.current);
+      }
+    };
+  }, []);
 
   // src attached to BOTH video elements when within preload range. Same URL
   // → browser shares the underlying byte cache; no double-download.
@@ -433,7 +490,7 @@ export function FeedVideoPlayer({
         backgroundSize: "cover",
         backgroundPosition: "center",
       }}
-      onClick={togglePlay}
+      onClick={handleSurfaceClick}
     >
       {thumbnailUrl && (
         <img
@@ -523,6 +580,48 @@ export function FeedVideoPlayer({
               <path d="M8 5v14l11-7z" />
             </svg>
           </div>
+        </div>
+      )}
+
+      {/* Double-tap heart animation. Big pink heart pops di tengah video
+          dengan scale + fade out. Key by animId supaya re-mount tiap
+          double-tap baru (animation restart, tidak nge-skip). */}
+      {activeHeartId !== null && (
+        <div
+          key={activeHeartId}
+          className="pointer-events-none absolute inset-0 z-[2] flex items-center justify-center"
+          aria-hidden="true"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className="h-32 w-32 drop-shadow-[0_8px_24px_rgba(255,48,64,0.55)]"
+            style={{
+              fill: "#FF3040",
+              animation: "natalo-feed-heart-pop 850ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
+            }}
+          >
+            <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+          </svg>
+          <style>{`
+            @keyframes natalo-feed-heart-pop {
+              0% {
+                transform: scale(0.2) rotate(-10deg);
+                opacity: 0;
+              }
+              22% {
+                transform: scale(1.18) rotate(0deg);
+                opacity: 1;
+              }
+              45% {
+                transform: scale(1) rotate(0deg);
+                opacity: 1;
+              }
+              100% {
+                transform: scale(1.5) rotate(8deg);
+                opacity: 0;
+              }
+            }
+          `}</style>
         </div>
       )}
 

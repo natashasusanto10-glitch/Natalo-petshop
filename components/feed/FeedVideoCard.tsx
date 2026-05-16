@@ -65,6 +65,32 @@ export function FeedVideoCard({ post, index, onOpenComments }: Props) {
     }
   }
 
+  // Double-tap pada video: Instagram pattern — selalu SET liked=true, tidak
+  // pernah unlike. Repeated double-tap hanya replay heart animation di
+  // FeedVideoPlayer. Untuk unlike user harus klik tombol heart di rail.
+  async function handleDoubleTapLike() {
+    hapticTap();
+    if (liked || likeBusy) return; // sudah liked atau lagi inflight — skip API call
+    // Sama-sama optimistic update + POST seperti toggleLike, tapi tidak
+    // pernah toggle ke false.
+    setLikeBusy(true);
+    setLiked(true);
+    setLikeCount((prev) => prev + 1);
+    try {
+      const res = await fetch(`/api/feed/posts/${post.id}/like`, { method: "POST" });
+      if (!res.ok) throw new Error("Like failed");
+      const data: { liked: boolean; likeCount: number } = await res.json();
+      setLiked(data.liked);
+      setLikeCount(data.likeCount);
+    } catch {
+      // Revert optimistic update jika gagal.
+      setLiked(false);
+      setLikeCount((prev) => Math.max(0, prev - 1));
+    } finally {
+      setLikeBusy(false);
+    }
+  }
+
   async function handleShare() {
     hapticTap();
     const path = `/feed?post=${post.id}`;
@@ -115,6 +141,7 @@ export function FeedVideoCard({ post, index, onOpenComments }: Props) {
             // for Reels-style letterbox so vertical video plays at its true
             // aspect ratio without crop). Don't force it back to cover here.
             className="h-full min-h-full rounded-none"
+            onDoubleTap={handleDoubleTapLike}
           />
         ) : product?.imageUrl ? (
           <Link href={productHref} className="block h-full">
