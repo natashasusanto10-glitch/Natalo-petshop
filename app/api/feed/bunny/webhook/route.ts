@@ -34,7 +34,7 @@ import {
   getBunnyVideo,
 } from "@/lib/feed/bunny";
 import { sendFeedPendingReviewNotification } from "@/lib/feed/notifications";
-import { USER_VIDEO_CONFIG } from "@/lib/feed/video-config";
+import { ADMIN_VIDEO_CONFIG, USER_VIDEO_CONFIG } from "@/lib/feed/video-config";
 
 export const dynamic = "force-dynamic";
 
@@ -78,7 +78,11 @@ export async function POST(request: NextRequest) {
 
   const post = await prisma.feedPost.findUnique({
     where: { videoGuid: guid },
-    select: { id: true, encodingStatus: true },
+    // authorRole dipakai untuk pilih duration limit yang benar — admin
+    // boleh upload sampai 60s sementara customer 45s. Bug sebelumnya:
+    // webhook pakai USER_VIDEO_CONFIG untuk semua post, jadi video admin
+    // 46-60s di-mark "failed" → tidak muncul di feed.
+    select: { id: true, encodingStatus: true, authorRole: true },
   });
   if (!post) {
     return NextResponse.json({ ok: true, skipped: "unknown-guid" });
@@ -109,16 +113,22 @@ export async function POST(request: NextRequest) {
   // FINISHED — pull real dimensions + duration from Bunny so the feed
   // knows the aspect ratio before the first frame loads.
   const meta = await getBunnyVideo(guid);
+  // Pilih duration config sesuai role author. Admin punya max 60s,
+  // customer max 45s. Sebelumnya hard-coded ke USER_VIDEO_CONFIG yang
+  // bikin video admin 46-60s di-mark failed walaupun frontend admin
+  // izinkan (validasi di AdminFeedCreateClient pakai ADMIN_VIDEO_CONFIG).
+  const durationCfg =
+    post.authorRole === "ADMIN" ? ADMIN_VIDEO_CONFIG : USER_VIDEO_CONFIG;
   if (
     meta?.length &&
-    (meta.length < USER_VIDEO_CONFIG.minDuration ||
-      meta.length > USER_VIDEO_CONFIG.maxDuration)
+    (meta.length < durationCfg.minDuration ||
+      meta.length > durationCfg.maxDuration)
   ) {
     await prisma.feedPost.update({
       where: { id: post.id },
       data: {
         encodingStatus: "failed",
-        moderationNote: `Durasi video harus ${USER_VIDEO_CONFIG.minDuration}–${USER_VIDEO_CONFIG.maxDuration} detik.`,
+        moderationNote: `Durasi video harus ${durationCfg.minDuration}–${durationCfg.maxDuration} detik.`,
       },
     });
     return NextResponse.json({
