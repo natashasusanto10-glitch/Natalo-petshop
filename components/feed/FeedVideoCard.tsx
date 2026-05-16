@@ -5,10 +5,12 @@ import Image from "next/image";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import {
+  FiChevronRight,
   FiHeart,
   FiMessageCircle,
   FiPackage,
   FiSend,
+  FiShoppingBag,
   FiShoppingCart,
 } from "react-icons/fi";
 import { BottomSheet } from "@/components/BottomSheet";
@@ -37,8 +39,9 @@ export function FeedVideoCard({ post, index, onOpenComments }: Props) {
   const isAdmin = post.author.role === "ADMIN";
   const product = post.product;
   const hasVideo = Boolean(post.videoUrl);
-  const isCommunity = post.kind === "COMMUNITY";
   const productHref = product ? `/products/${product.slug}` : "#";
+  const creatorName = isAdmin ? "Natalo Petshop" : post.author.name;
+  const caption = cleanFeedCaption(post.description, post.title);
 
   async function toggleLike() {
     if (likeBusy) return;
@@ -166,46 +169,33 @@ export function FeedVideoCard({ post, index, onOpenComments }: Props) {
         </ActionButton>
       </div>
 
-      {/* Bottom-left creator block — fixed grid template:
-          row 1: avatar 44px + username 16px (vertical-center to avatar)
-          row 2: caption 15px, max 2 lines (fixed height supaya block tidak
-                 shift kalau caption 1 baris)
-          Block anchor bottom konsisten — TIDAK ikut bergerak kalau product
-          pill absent. Pill di slot terpisah di bawah. */}
+      {/* Bottom-left content: product tag, creator name, clean caption. */}
       <div className="absolute left-4 right-[76px] z-[2] [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+5rem)] md:bottom-24">
-        <div className="flex items-center gap-3">
-          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-natalo-600 text-[15px] font-black text-white ring-[1.5px] ring-white shadow-[0_2px_8px_rgba(0,0,0,0.35)]">
-            {isAdmin ? "NL" : post.author.name.charAt(0).toUpperCase()}
-          </div>
-          <p className="truncate text-[16px] font-bold leading-tight text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
-            {isAdmin ? "Natalo Petshop" : post.author.name}
-            {isAdmin && (
-              <span className="ml-1 inline-flex h-[14px] w-[14px] -translate-y-px items-center justify-center rounded-full bg-[#1A8CD8] text-[9px] font-black text-white">
-                ✓
-              </span>
-            )}
-          </p>
-        </div>
-        <p className="mt-2 line-clamp-2 text-[15px] font-normal leading-snug text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
-          {post.description?.trim() || post.title}
+        {product && (
+          <button
+            type="button"
+            onClick={() => setProductSheetOpen(true)}
+            className="mb-3 inline-flex h-9 max-w-full items-center gap-2 rounded-[10px] border border-white/15 bg-black/50 px-3 text-left text-white shadow-sm shadow-black/10 backdrop-blur-xl transition active:scale-[0.98]"
+          >
+            <FiShoppingBag className="h-4 w-4 shrink-0 text-white/90" aria-hidden="true" />
+            <span className="shrink-0 text-[13px] font-semibold text-white/90">
+              Produk digunakan
+            </span>
+            <span className="min-w-0 truncate text-[13px] font-bold text-white">
+              {product.name}
+            </span>
+            <FiChevronRight className="h-4 w-4 shrink-0 text-white/85" aria-hidden="true" />
+          </button>
+        )}
+        <p className="truncate text-[17px] font-bold leading-tight text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
+          {creatorName}
         </p>
+        {caption && (
+          <p className="mt-2 line-clamp-2 text-[15px] font-normal leading-snug text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
+            {caption}
+          </p>
+        )}
       </div>
-
-      {product && (
-        <button
-          type="button"
-          onClick={() => setProductSheetOpen(true)}
-          className="absolute left-4 right-[64px] z-[2] flex h-9 items-center gap-2 rounded-lg border border-white/15 bg-black/55 px-3 text-left text-white shadow-sm shadow-black/10 backdrop-blur-xl transition [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+1.5rem)] active:scale-[0.98] md:bottom-8"
-        >
-          <FiPackage className="h-3.5 w-3.5 shrink-0 text-white/85" />
-          <span className="shrink-0 text-[12px] font-semibold text-white/85">
-            {isCommunity ? "Produk digunakan" : "Produk terkait"}
-          </span>
-          <span className="truncate text-[12.5px] font-bold text-[#8EC5FF]">
-            {product.name}
-          </span>
-        </button>
-      )}
 
       {product && (
         <PinnedProductSheet
@@ -327,4 +317,17 @@ function formatEngagementCount(count: number | null | undefined) {
     return `${(safeCount / 1_000).toFixed(safeCount >= 10_000 ? 0 : 1).replace(/\.0$/, "")}K`;
   }
   return String(safeCount);
+}
+
+function cleanFeedCaption(description: string | null, title: string) {
+  const raw = (description?.trim() || title || "").trim();
+  if (!raw) return "";
+
+  return raw
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => line && !/^info peliharaan\s*:/i.test(line))
+    .join("\n")
+    .replace(/\s*info peliharaan\s*:\s*(cat|dog|other|kucing|anjing|lainnya)\s*$/i, "")
+    .trim();
 }
