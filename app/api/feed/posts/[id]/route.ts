@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
 import { MY_FEED_VISIBLE_STATUSES } from "@/lib/feed/my-posts";
+import { deleteFeedAssets } from "@/lib/feed/cleanup";
 
 export async function DELETE(
   request: NextRequest,
@@ -21,6 +22,10 @@ export async function DELETE(
     return NextResponse.json({ error: "Post ID required" }, { status: 400 });
   }
 
+  // Select juga videoUrl / thumbnailUrl / videoGuid supaya bisa cleanup
+  // Bunny + UploadThing asset setelah soft-delete commit. Sebelumnya cuma
+  // ambil id+status — bug: user delete post tapi video di Bunny tetap
+  // accumulate storage selamanya.
   const post = await prisma.feedPost.findFirst({
     where: {
       id: postId,
@@ -30,7 +35,13 @@ export async function DELETE(
       deletedAt: null,
       status: { in: [...MY_FEED_VISIBLE_STATUSES] },
     },
-    select: { id: true, status: true },
+    select: {
+      id: true,
+      status: true,
+      videoUrl: true,
+      thumbnailUrl: true,
+      videoGuid: true,
+    },
   });
 
   if (!post) {
@@ -58,6 +69,17 @@ export async function DELETE(
       },
     }),
   ]);
+
+  // Cleanup Bunny Stream video record (HLS + MP4 variants + thumbnail
+  // auto-generated) + UploadThing legacy asset. Fire-and-forget — kalau
+  // Bunny unreachable, soft-delete tetap commit; weekly storage GC cron
+  // (/api/cron/feed-storage-gc) catch orphan nanti.
+  void deleteFeedAssets({
+    videoUrl: post.videoUrl,
+    thumbnailUrl: post.thumbnailUrl,
+    videoGuid: post.videoGuid,
+    context: `user-delete ${postId}`,
+  });
 
   return NextResponse.json({ ok: true });
 }

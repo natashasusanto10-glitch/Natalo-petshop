@@ -89,6 +89,7 @@ export function FeedVideoPlayer({
   const [farFromViewport, setFarFromViewport] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [showLoadingIndicator, setShowLoadingIndicator] = useState(false);
+  const [playbackProgress, setPlaybackProgress] = useState(0);
 
   // Resolve HLS → MP4 for Bunny posts so the player benefits from single-file
   // CDN caching. New posts already come through as MP4 from the webhook; this
@@ -115,6 +116,26 @@ export function FeedVideoPlayer({
     [],
   );
 
+  const updatePlaybackProgress = useCallback(() => {
+    const video = getRef(activeSlot);
+    if (!video) return;
+    const duration =
+      Number.isFinite(video.duration) && video.duration > 0
+        ? video.duration
+        : durationSec ?? 0;
+    if (!duration || duration <= 0) {
+      setPlaybackProgress(0);
+      return;
+    }
+    const nextProgress = Math.min(
+      Math.max(video.currentTime / duration, 0),
+      1,
+    );
+    setPlaybackProgress((current) =>
+      Math.abs(current - nextProgress) > 0.002 ? nextProgress : current,
+    );
+  }, [activeSlot, durationSec, getRef]);
+
   // Telemetry — collects canPlay / firstFrame / buffer counts. Hook only
   // accepts one ref; pass the currently-active slot so metrics track the
   // visible playback.
@@ -137,6 +158,7 @@ export function FeedVideoPlayer({
     function onTeardown() {
       setShowLoadingIndicator(false);
       setIsPlaying(false);
+      setPlaybackProgress(0);
       setLoadSrc(false);
       setFarFromViewport(true);
       for (const slot of ["A", "B"] as const) {
@@ -318,6 +340,79 @@ export function FeedVideoPlayer({
     return () => window.clearTimeout(t);
   }, [isActive, isPlaying, activeSlot, getRef]);
 
+  useEffect(() => {
+    setPlaybackProgress(0);
+  }, [postId, videoUrl]);
+
+  // Lightweight running progress for the active Feed video. Event updates
+  // handle pause/buffer/metadata changes, while RAF makes the bar feel smooth
+  // during playback without touching inactive cards.
+  useEffect(() => {
+    const active = getRef(activeSlot);
+    if (!active || !isActive) return;
+    let frame: number | null = null;
+    let cancelled = false;
+
+    const stopLoop = () => {
+      if (frame !== null) {
+        window.cancelAnimationFrame(frame);
+        frame = null;
+      }
+    };
+
+    const tick = () => {
+      if (cancelled) return;
+      updatePlaybackProgress();
+      if (!active.paused && !active.ended) {
+        frame = window.requestAnimationFrame(tick);
+      } else {
+        frame = null;
+      }
+    };
+
+    const startLoop = () => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(tick);
+    };
+
+    const stopAtCurrentPosition = () => {
+      stopLoop();
+      updatePlaybackProgress();
+    };
+
+    const handleEnded = () => {
+      stopLoop();
+      setPlaybackProgress(1);
+    };
+
+    active.addEventListener("loadedmetadata", updatePlaybackProgress);
+    active.addEventListener("durationchange", updatePlaybackProgress);
+    active.addEventListener("timeupdate", updatePlaybackProgress);
+    active.addEventListener("seeked", updatePlaybackProgress);
+    active.addEventListener("play", startLoop);
+    active.addEventListener("playing", startLoop);
+    active.addEventListener("pause", stopAtCurrentPosition);
+    active.addEventListener("waiting", stopAtCurrentPosition);
+    active.addEventListener("ended", handleEnded);
+
+    updatePlaybackProgress();
+    if (!active.paused && !active.ended) startLoop();
+
+    return () => {
+      cancelled = true;
+      stopLoop();
+      active.removeEventListener("loadedmetadata", updatePlaybackProgress);
+      active.removeEventListener("durationchange", updatePlaybackProgress);
+      active.removeEventListener("timeupdate", updatePlaybackProgress);
+      active.removeEventListener("seeked", updatePlaybackProgress);
+      active.removeEventListener("play", startLoop);
+      active.removeEventListener("playing", startLoop);
+      active.removeEventListener("pause", stopAtCurrentPosition);
+      active.removeEventListener("waiting", stopAtCurrentPosition);
+      active.removeEventListener("ended", handleEnded);
+    };
+  }, [activeSlot, getRef, isActive, updatePlaybackProgress]);
+
   // 2-video swap: timeupdate on active slot watches for end-of-clip, kicks
   // off play() on the other slot, swaps active. This avoids HTML5 video's
   // seek-to-0 which clears WKWebView's paint buffer (the "black flash").
@@ -359,7 +454,9 @@ export function FeedVideoPlayer({
         // on top. Old slot fades out via opacity, but it KEEPS playing
         // (audibly silent because muted will flip true below). The browser
         // crossfades smoothly because both slots are decoding & painting.
+        setPlaybackProgress(1);
         setActiveSlot((cur) => (cur === "A" ? "B" : "A"));
+        window.requestAnimationFrame(() => setPlaybackProgress(0));
         // After SWAP_CLEANUP_MS, pause + rewind the old slot so it's ready
         // for NEXT loop. By then the crossfade is done.
         window.setTimeout(() => {
@@ -391,7 +488,9 @@ export function FeedVideoPlayer({
       const v = active;
       if (!v) return;
       try {
+        setPlaybackProgress(1);
         v.currentTime = 0;
+        window.requestAnimationFrame(() => setPlaybackProgress(0));
         v.play().catch(() => {});
       } catch {}
     }
@@ -625,11 +724,7 @@ export function FeedVideoPlayer({
         </div>
       )}
 
-      {durationSec != null && durationSec > 0 && (
-        <div className="pointer-events-none absolute bottom-2 right-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-bold text-white">
-          {formatDuration(durationSec)}
-        </div>
-      )}
+      <VideoProgressBar progress={playbackProgress} />
 
       {/* Sound toggle — hanya active card. Position di bawah safe-area-inset
           supaya tidak tabrak status bar iPhone. */}
@@ -659,8 +754,19 @@ export function FeedVideoPlayer({
   );
 }
 
-function formatDuration(sec: number) {
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  return `${m}:${String(s).padStart(2, "0")}`;
+function VideoProgressBar({ progress }: { progress: number }) {
+  const safeProgress = Math.min(Math.max(progress, 0), 1);
+  return (
+    <div
+      className="pointer-events-none absolute inset-x-0 bottom-0 z-[4] flex h-5 items-end"
+      aria-hidden="true"
+    >
+      <div className="h-[2px] w-full bg-white/20">
+        <div
+          className="h-full origin-left bg-white/90"
+          style={{ transform: `scaleX(${safeProgress})` }}
+        />
+      </div>
+    </div>
+  );
 }
