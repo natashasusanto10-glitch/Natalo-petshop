@@ -19,6 +19,7 @@ import {
   FiUser,
 } from "react-icons/fi";
 import { LogoutButton } from "@/components/LogoutButton";
+import { loadActiveMemberVouchers } from "@/lib/member-vouchers";
 import { prisma } from "@/lib/prisma";
 import { requireCustomerSession } from "@/lib/session-guards";
 
@@ -171,7 +172,13 @@ export default async function MemberPage() {
   const session = await requireCustomerSession();
   const recentDoneSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-  const [totalPoints, orderGroups, recentDoneCount, user, pendingFeedPostCount] = await Promise.all([
+  const [
+    totalPoints,
+    orderGroups,
+    recentDoneCount,
+    user,
+    pendingFeedPostCount,
+  ] = await Promise.all([
     prisma.customerPoint.aggregate({
       where: { userId: session.sub },
       _sum: { points: true },
@@ -252,6 +259,13 @@ export default async function MemberPage() {
       birthdayVoucherCode = code;
     }
   }
+
+  const activeMemberVouchers = await loadActiveMemberVouchers(session.sub);
+  const activeVoucherCount = activeMemberVouchers.length;
+  const voucherSubtitle =
+    activeVoucherCount > 0
+      ? `${activeVoucherCount} voucher aktif`
+      : "Belum ada voucher aktif";
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 pb-6 pt-4">
@@ -352,7 +366,7 @@ export default async function MemberPage() {
               href="/member/vouchers"
               icon={FiTag}
               title="Voucher Member"
-              description="5 voucher aktif"
+              description={voucherSubtitle}
             />
             <MenuCard href="/akun/alamat" icon={FiMapPin} title="Alamat" description="Kelola alamat pengiriman" />
           </div>

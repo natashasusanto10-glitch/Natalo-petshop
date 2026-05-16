@@ -3,9 +3,9 @@ import Link from "next/link";
 import { FiGift } from "react-icons/fi";
 import { StickyBackTitle } from "@/components/StickyBackTitle";
 import { formatRupiah } from "@/lib/format";
-import { prisma } from "@/lib/prisma";
+import { loadActiveMemberVouchers } from "@/lib/member-vouchers";
 import { requireCustomerSession } from "@/lib/session-guards";
-import { getVoucherDisabledReason, shouldHideVoucher } from "@/lib/voucher-helpers";
+import { getVoucherDisabledReason } from "@/lib/voucher-helpers";
 
 export const metadata: Metadata = { title: "Voucher Member" };
 
@@ -35,33 +35,7 @@ function describeVoucher(voucher: {
 export default async function MemberVouchersPage() {
   const session = await requireCustomerSession();
   const now = new Date();
-
-  const [vouchers, usedOrders] = await Promise.all([
-    prisma.voucher.findMany({
-      where: {
-        sourceType: "CUSTOMER",
-        OR: [{ userId: null }, { userId: session.sub }],
-      },
-      orderBy: { createdAt: "desc" },
-    }),
-    prisma.order.findMany({
-      where: {
-        userId: session.sub,
-        OR: [{ voucherCode: { not: null } }, { manualVoucherCode: { not: null } }],
-      },
-      select: { voucherCode: true, manualVoucherCode: true },
-    }),
-  ]);
-
-  const usedCodes = new Set<string>();
-  for (const order of usedOrders) {
-    if (order.voucherCode) usedCodes.add(order.voucherCode);
-    if (order.manualVoucherCode) usedCodes.add(order.manualVoucherCode);
-  }
-
-  const visibleVouchers = vouchers.filter((voucher) =>
-    !shouldHideVoucher(voucher, usedCodes, now),
-  );
+  const visibleVouchers = await loadActiveMemberVouchers(session.sub, now);
 
   return (
     <main className="min-h-screen bg-slate-50">
