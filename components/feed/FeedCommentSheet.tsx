@@ -31,7 +31,7 @@ type Props = {
 const DRAG_CLOSE_THRESHOLD = 96;
 const SNAP_BACK_MS = 280;
 const SNAP_BACK_EASE = "cubic-bezier(0.34, 1.26, 0.64, 1)";
-const KEYBOARD_INSET_THRESHOLD = 80;
+const KEYBOARD_INSET_THRESHOLD = 120;
 
 export function FeedCommentSheet({
   open,
@@ -48,7 +48,7 @@ export function FeedCommentSheet({
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
   const sheetRef = useRef<HTMLDivElement | null>(null);
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const viewportBaselineRef = useRef(0);
   const dragStartYRef = useRef(0);
   const dragYRef = useRef(0);
   const isDraggingRef = useRef(false);
@@ -57,15 +57,21 @@ export function FeedCommentSheet({
   const [isDragging, setIsDragging] = useState(false);
   const [isSnappingBack, setIsSnappingBack] = useState(false);
   const [keyboardInset, setKeyboardInset] = useState(0);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const [visualViewportHeight, setVisualViewportHeight] = useState(0);
 
   const title = useMemo(() => {
     const total = Math.max(Number(commentCount ?? comments.length) || 0, comments.length);
     return total > 0 ? `Komentar ${formatCommentCount(total)}` : "Komentar";
   }, [commentCount, comments.length]);
-  const keyboardOpen = keyboardInset > 0;
-  const sheetTop = keyboardOpen
-    ? "clamp(calc(env(safe-area-inset-top) + 238px), 34dvh, calc(env(safe-area-inset-top) + 300px))"
-    : "clamp(calc(env(safe-area-inset-top) + 286px), 42dvh, calc(env(safe-area-inset-top) + 374px))";
+  const effectiveViewportHeight = visualViewportHeight || 520;
+  const keyboardSheetHeight = Math.round(
+    Math.min(
+      Math.max(292, effectiveViewportHeight * 0.64),
+      Math.max(280, effectiveViewportHeight - 72),
+    ),
+  );
+  const sheetHeight = keyboardOpen ? `${keyboardSheetHeight}px` : "min(58dvh, 560px)";
 
   const updateDrag = useCallback((clientY: number) => {
     if (!isDraggingRef.current) return;
@@ -183,22 +189,37 @@ export function FeedCommentSheet({
   useEffect(() => {
     if (!open || typeof window === "undefined") {
       setKeyboardInset(0);
+      setKeyboardOpen(false);
+      setVisualViewportHeight(0);
+      viewportBaselineRef.current = 0;
       return;
     }
 
     const visualViewport = window.visualViewport;
 
     function updateKeyboardInset() {
-      if (!visualViewport) {
-        setKeyboardInset(0);
-        return;
-      }
-
-      const rawInset = Math.max(
-        0,
-        window.innerHeight - visualViewport.height - visualViewport.offsetTop,
+      const visibleHeight = visualViewport?.height ?? window.innerHeight;
+      const viewportOffsetTop = visualViewport?.offsetTop ?? 0;
+      viewportBaselineRef.current = Math.max(
+        viewportBaselineRef.current,
+        window.innerHeight,
+        visibleHeight,
       );
-      setKeyboardInset(rawInset > KEYBOARD_INSET_THRESHOLD ? Math.round(rawInset) : 0);
+      const overlayInset = Math.max(
+        0,
+        window.innerHeight - visibleHeight - viewportOffsetTop,
+      );
+      const viewportLoss = Math.max(0, viewportBaselineRef.current - visibleHeight);
+      const nextKeyboardOpen =
+        Math.max(overlayInset, viewportLoss) > KEYBOARD_INSET_THRESHOLD;
+
+      setVisualViewportHeight(Math.round(visibleHeight));
+      setKeyboardOpen(nextKeyboardOpen);
+      setKeyboardInset(
+        nextKeyboardOpen && overlayInset > KEYBOARD_INSET_THRESHOLD
+          ? Math.round(overlayInset)
+          : 0,
+      );
     }
 
     updateKeyboardInset();
@@ -331,14 +352,8 @@ export function FeedCommentSheet({
         <FiSmile className="h-5 w-5" />
       </button>
       <textarea
-        ref={inputRef}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
-        onFocus={() => {
-          window.setTimeout(() => {
-            inputRef.current?.scrollIntoView({ block: "nearest" });
-          }, 80);
-        }}
         placeholder="Tulis komentar..."
         rows={1}
         maxLength={1000}
@@ -394,8 +409,8 @@ export function FeedCommentSheet({
           className="fixed inset-x-0 bottom-0 z-[200] mx-auto flex w-full max-w-2xl flex-col overflow-hidden rounded-t-[28px] border border-white/10 bg-[#111418]/[0.98] text-white shadow-[0_-28px_80px_rgba(0,0,0,0.5)] outline-none backdrop-blur-xl"
           onOpenAutoFocus={(event) => event.preventDefault()}
           style={{
-            top: sheetTop,
-            bottom: keyboardOpen ? `${keyboardInset}px` : "0px",
+            height: sheetHeight,
+            bottom: keyboardInset > 0 ? `${keyboardInset}px` : "0px",
             transform:
               isDragging || isSnappingBack
                 ? `translate3d(0, ${dragY}px, 0)`
@@ -403,8 +418,8 @@ export function FeedCommentSheet({
             transition: isDragging
               ? "none"
               : isSnappingBack
-                ? `transform ${SNAP_BACK_MS}ms ${SNAP_BACK_EASE}, top 220ms cubic-bezier(0.22, 1, 0.36, 1), bottom 220ms cubic-bezier(0.22, 1, 0.36, 1)`
-                : "top 220ms cubic-bezier(0.22, 1, 0.36, 1), bottom 220ms cubic-bezier(0.22, 1, 0.36, 1)",
+                ? `transform ${SNAP_BACK_MS}ms ${SNAP_BACK_EASE}, height 220ms cubic-bezier(0.22, 1, 0.36, 1), bottom 220ms cubic-bezier(0.22, 1, 0.36, 1)`
+                : "height 220ms cubic-bezier(0.22, 1, 0.36, 1), bottom 220ms cubic-bezier(0.22, 1, 0.36, 1)",
           }}
         >
           <div
