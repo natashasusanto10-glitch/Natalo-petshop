@@ -204,6 +204,11 @@ export function FeedVideoPlayer({
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
+    // Force muted property imperatively — React's declarative muted prop
+    // kadang tidak apply property correctly di iOS WKWebView. Tanpa
+    // muted=true property, autoplay diblok oleh WebKit autoplay policy
+    // (meski mediaTypesRequiringUserActionForPlayback=[] di config).
+    video.muted = true;
     if (!isActive) {
       video.pause();
       setIsPlaying(false);
@@ -212,26 +217,31 @@ export function FeedVideoPlayer({
     let cancelled = false;
     const tryPlay = () => {
       if (cancelled) return;
-      // `autoPlay` HTML attribute biasanya sudah trigger playback duluan,
-      // tapi imperative play() sebagai pengaman: kalau buffer sempat habis
-      // (network glitch, re-mount setelah pause global) atau saat user
-      // active video index berubah karena tap, kita re-trigger play.
-      video.play().catch(() => {
-        if (!cancelled) setIsPlaying(false);
-      });
+      // Always re-assert muted before play() — defensive against any code
+      // path yang reset muted state.
+      video.muted = true;
+      const p = video.play();
+      if (p && typeof p.then === "function") {
+        p.catch(() => {
+          // Silent — iOS sometimes rejects first play() attempt when buffer
+          // not yet ready. canplay/loadeddata listeners retry below.
+        });
+      }
     };
     tryPlay();
     // Multiple events sebagai retry trigger — iOS WKWebView kadang fire
-    // loadedmetadata duluan, browser lain canplay duluan. Semua aman dipanggil
-    // berulang karena play() pada video yang sudah playing = noop.
+    // loadedmetadata duluan, browser lain canplay duluan. canplaythrough
+    // untuk safety net kalau yang lain miss. Semua aman dipanggil berulang.
     video.addEventListener("loadedmetadata", tryPlay);
     video.addEventListener("canplay", tryPlay);
     video.addEventListener("loadeddata", tryPlay);
+    video.addEventListener("canplaythrough", tryPlay);
     return () => {
       cancelled = true;
       video.removeEventListener("loadedmetadata", tryPlay);
       video.removeEventListener("canplay", tryPlay);
       video.removeEventListener("loadeddata", tryPlay);
+      video.removeEventListener("canplaythrough", tryPlay);
     };
   }, [isActive]);
 
@@ -297,14 +307,13 @@ export function FeedVideoPlayer({
         src={loadSrc && !farFromViewport && !isHls ? playbackUrl : undefined}
         poster={thumbnailUrl ?? undefined}
         playsInline
+        // `muted` declarative React prop kadang TIDAK apply
+        // `video.muted = true` properly di iOS WKWebView (known React quirk
+        // — issue facebook/react#10389). Imperative set via ref di useEffect
+        // di bawah. HTML attribute tetap di sini sebagai safety net untuk
+        // SSR + first paint.
         muted
         loop
-        // `autoPlay` HTML attribute > imperative video.play() di iOS
-        // WKWebView. Saat `muted + playsInline + autoPlay`, WebKit handle
-        // start playback tanpa butuh user gesture — sebelumnya user laporkan
-        // "harus klik beberapa kali baru jalan" karena play() reject silently
-        // saat belum ada interaksi. Kombinasi 3 atribut ini whitelist
-        // muted-autoplay native di WKWebView.
         autoPlay={isActive}
         preload={loadSrc && !farFromViewport ? preloadMode : "none"}
         // See thumbnail comment — object-cover so the video always fills
@@ -313,7 +322,13 @@ export function FeedVideoPlayer({
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
         onWaiting={() => setIsPlaying(false)}
-        style={{ opacity: isPlaying ? 1 : 0, transition: "opacity 200ms" }}
+        // SELALU opacity 1 — sebelumnya `isPlaying ? 1 : 0` bikin video
+        // invisible kalau onPlay event belum fire. Di iOS WKWebView, onPlay
+        // kadang delayed atau missed → user lihat poster + loading spinner
+        // padahal video sebenarnya sudah jalan di belakang. Dengan opacity
+        // selalu 1, kalau video play user langsung lihat motion;
+        // kalau belum buffer, poster (di belakang) yang tetap visible.
+        style={{ opacity: 1 }}
       />
 
       {/* Loading indicator only appears after the configurable delay — fast
