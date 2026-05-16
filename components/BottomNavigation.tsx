@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { IconType } from "react-icons";
 import {
   IoGrid,
@@ -18,6 +18,7 @@ import { bootstrapCartSync } from "@/lib/cart";
 import { prefetchCategories } from "@/lib/client-performance";
 import { hapticTap } from "@/lib/native/haptics";
 import { shouldHideBottomNav } from "@/lib/navigation";
+import { teardownFeedPlaybackNow } from "@/lib/feed/teardown";
 
 type NavIconType = IconType;
 
@@ -71,11 +72,7 @@ export function BottomNavigation() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [optimisticHref, setOptimisticHref] = useState<string | null>(null);
-
-  useEffect(() => {
-    setOptimisticHref(null);
-  }, [pathname]);
+  const lastPressRef = useRef<{ href: string; at: number } | null>(null);
 
   useEffect(() => {
     const id = window.setTimeout(() => {
@@ -91,14 +88,18 @@ export function BottomNavigation() {
   }, [router]);
 
   const activeIndex = useMemo(() => {
-    const i = ITEMS.findIndex((item) =>
-      optimisticHref ? item.href === optimisticHref : isActive(pathname, item.href),
-    );
+    const i = ITEMS.findIndex((item) => isActive(pathname, item.href));
     return i === -1 ? 0 : i;
-  }, [pathname, optimisticHref]);
+  }, [pathname]);
 
   const hideNav = shouldHideBottomNav(pathname) || (pathname === "/products" && Boolean(searchParams.get("q")?.trim()));
   const isFeedRoute = pathname === "/feed";
+
+  useEffect(() => {
+    if (!isFeedRoute) {
+      teardownFeedPlaybackNow("route-left-feed");
+    }
+  }, [isFeedRoute]);
 
   // Sync body data attribute supaya CSS bisa adjust .nat-main-shell
   // padding-bottom (tanpa space kosong saat nav hidden). Effect terpisah
@@ -184,9 +185,25 @@ export function BottomNavigation() {
                 key={item.href}
                 href={item.href}
                 prefetch
-                onClick={() => {
+                onClick={(event) => {
+                  const now = performance.now();
+                  const lastPress = lastPressRef.current;
+                  if (
+                    lastPress &&
+                    lastPress.href === item.href &&
+                    now - lastPress.at < 280
+                  ) {
+                    event.preventDefault();
+                    return;
+                  }
+                  lastPressRef.current = { href: item.href, at: now };
+
                   if (!active) hapticTap();
-                  setOptimisticHref(item.href);
+                  if (isFeedRoute && item.href !== "/feed") {
+                    event.preventDefault();
+                    teardownFeedPlaybackNow("bottom-nav-leave-feed");
+                    router.push(item.href);
+                  }
                 }}
                 onMouseEnter={() => router.prefetch(item.href)}
                 onTouchStart={() => router.prefetch(item.href)}

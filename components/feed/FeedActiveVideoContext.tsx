@@ -12,6 +12,7 @@
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { hapticTap } from "@/lib/native/haptics";
+import { FEED_PLAYBACK_TEARDOWN_EVENT } from "@/lib/feed/teardown";
 
 type FeedActiveVideoContextValue = {
   activeId: string | null;
@@ -43,6 +44,18 @@ export function FeedActiveVideoProvider({ children }: { children: React.ReactNod
     document.addEventListener("visibilitychange", onVisibility);
     onVisibility();
     return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
+
+  useEffect(() => {
+    function onTeardown() {
+      setPaused(true);
+      setActiveIdState(null);
+      setActiveIndexState(null);
+      lastActiveIdRef.current = null;
+    }
+
+    window.addEventListener(FEED_PLAYBACK_TEARDOWN_EVENT, onTeardown);
+    return () => window.removeEventListener(FEED_PLAYBACK_TEARDOWN_EVENT, onTeardown);
   }, []);
 
   // Capacitor App listener — iOS WKWebView kadang tidak fire visibilitychange

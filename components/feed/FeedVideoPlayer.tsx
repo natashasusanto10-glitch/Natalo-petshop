@@ -5,6 +5,7 @@ import { useFeedActiveVideo } from "./FeedActiveVideoContext";
 import { getPreloadTier } from "@/lib/feed/runtime-config";
 import { useVideoMetrics } from "./useVideoMetrics";
 import { bunnyHlsToMp4 } from "@/lib/feed/bunny";
+import { FEED_PLAYBACK_TEARDOWN_EVENT } from "@/lib/feed/teardown";
 
 function isHlsUrl(url: string | null | undefined): boolean {
   if (!url) return false;
@@ -72,6 +73,30 @@ export function FeedVideoPlayer({
   // Telemetry — collects canPlay / firstFrame / buffer counts and flushes
   // to /api/feed/metrics when this card stops being active or unmounts.
   useVideoMetrics({ videoRef, postId, isActive, videoDurationSec: durationSec });
+
+  useEffect(() => {
+    function onTeardown() {
+      const video = videoRef.current;
+      setShowLoadingIndicator(false);
+      setIsPlaying(false);
+      setLoadSrc(false);
+      setFarFromViewport(true);
+      if (!video) return;
+
+      try {
+        video.pause();
+        video.removeAttribute("autoplay");
+        video.removeAttribute("src");
+        video.preload = "none";
+        video.load();
+      } catch {
+        // Media teardown is best-effort and must not block route changes.
+      }
+    }
+
+    window.addEventListener(FEED_PLAYBACK_TEARDOWN_EVENT, onTeardown);
+    return () => window.removeEventListener(FEED_PLAYBACK_TEARDOWN_EVENT, onTeardown);
+  }, []);
 
   // HLS fallback path. New Bunny posts now ship as MP4 progressive (much
   // better cache behaviour for short feed clips), and legacy Bunny rows are
@@ -227,12 +252,12 @@ export function FeedVideoPlayer({
   return (
     <div
       ref={containerRef}
+      data-feed-video-player
       className={`relative w-full overflow-hidden bg-black ${className}`}
       style={{ aspectRatio: `${aspectRatio}` }}
       onClick={togglePlay}
     >
       {thumbnailUrl && (
-        // eslint-disable-next-line @next/next/no-img-element
         <img
           src={thumbnailUrl}
           alt=""
@@ -252,6 +277,7 @@ export function FeedVideoPlayer({
 
       <video
         ref={videoRef}
+        data-feed-video
         // For HLS we let the effect above attach the source (Safari native
         // sets src direct, other browsers hand the stream to hls.js).
         // For progressive MP4 we use the native <video src> path.
@@ -281,7 +307,10 @@ export function FeedVideoPlayer({
           loads never flash, slow loads get a subtle spinner instead of a
           black hole. */}
       {showLoadingIndicator && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <div
+          data-feed-loading-overlay
+          className="pointer-events-none absolute inset-0 flex items-center justify-center"
+        >
           <span
             className="h-9 w-9 animate-spin rounded-full border-[3px] border-white/30 border-t-white/90"
             aria-hidden="true"

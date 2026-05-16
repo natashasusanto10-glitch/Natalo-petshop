@@ -24,6 +24,7 @@ import { FeedPostPlaceholder } from "./FeedPostPlaceholder";
 import { FeedCommentSheet } from "./FeedCommentSheet";
 import { getVirtualWindow } from "@/lib/feed/runtime-config";
 import { hapticTap } from "@/lib/native/haptics";
+import { FEED_PLAYBACK_TEARDOWN_EVENT } from "@/lib/feed/teardown";
 
 export function FeedClient() {
   const router = useRouter();
@@ -37,6 +38,8 @@ export function FeedClient() {
   const [commentPostId, setCommentPostId] = useState<string | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const initialFetchAbortRef = useRef<AbortController | null>(null);
+  const loadMoreAbortRef = useRef<AbortController | null>(null);
   useFeedChrome();
 
   // iOS Capacitor WKWebView ships with
@@ -116,13 +119,36 @@ export function FeedClient() {
   }, [router]);
 
   useEffect(() => {
+    function onTeardown() {
+      initialFetchAbortRef.current?.abort();
+      loadMoreAbortRef.current?.abort();
+      setLoading(false);
+      setLoadingMore(false);
+      setCommentPostId(null);
+    }
+
+    window.addEventListener(FEED_PLAYBACK_TEARDOWN_EVENT, onTeardown);
+    return () => window.removeEventListener(FEED_PLAYBACK_TEARDOWN_EVENT, onTeardown);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      initialFetchAbortRef.current?.abort();
+      loadMoreAbortRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
+    initialFetchAbortRef.current?.abort();
+    initialFetchAbortRef.current = controller;
     setLoading(true);
     setPosts([]);
     setCursor(null);
     setError(null);
 
-    fetch("/api/feed/posts")
+    fetch("/api/feed/posts", { signal: controller.signal })
       .then((res) => {
         if (!res.ok) throw new Error("Gagal memuat feed");
         return res.json() as Promise<FeedListResponse>;
@@ -135,30 +161,44 @@ export function FeedClient() {
       })
       .catch((err) => {
         if (cancelled) return;
+        if (err instanceof DOMException && err.name === "AbortError") return;
         setError(err instanceof Error ? err.message : "Gagal memuat");
       })
       .finally(() => {
+        if (initialFetchAbortRef.current === controller) {
+          initialFetchAbortRef.current = null;
+        }
         if (!cancelled) setLoading(false);
       });
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [reloadKey]);
 
   const loadMore = useCallback(async () => {
     if (!cursor || loadingMore || !hasMore) return;
+    const controller = new AbortController();
+    loadMoreAbortRef.current?.abort();
+    loadMoreAbortRef.current = controller;
     setLoadingMore(true);
     try {
-      const res = await fetch(`/api/feed/posts?cursor=${cursor}`);
+      const res = await fetch(`/api/feed/posts?cursor=${cursor}`, {
+        signal: controller.signal,
+      });
       if (!res.ok) throw new Error();
       const data: FeedListResponse = await res.json();
       setPosts((prev) => [...prev, ...data.items]);
       setCursor(data.nextCursor);
       setHasMore(Boolean(data.nextCursor));
-    } catch {
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       // The sentinel will try again when it re-enters the viewport.
     } finally {
+      if (loadMoreAbortRef.current === controller) {
+        loadMoreAbortRef.current = null;
+      }
       setLoadingMore(false);
     }
   }, [cursor, hasMore, loadingMore]);
