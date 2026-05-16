@@ -24,6 +24,20 @@ export type FeedPostProduct = {
   imageUrl: string | null;
 } | null;
 
+// Shop the Look — non-nullable variant. Setiap item di taggedProducts
+// pasti ada produknya (skip kalau product di-soft-delete). Position 0..2
+// untuk urutan carousel di feed UI.
+export type FeedPostTaggedProduct = {
+  id: string;
+  slug: string;
+  name: string;
+  price: number;
+  discountPrice: number | null;
+  stock: number;
+  imageUrl: string | null;
+  position: number;
+};
+
 export type FeedPostListItem = {
   id: string;
   kind: FeedPostKind;
@@ -37,6 +51,10 @@ export type FeedPostListItem = {
   videoWidth: number | null;
   videoHeight: number | null;
   product: FeedPostProduct;
+  // Shop the Look — semua produk yang di-tag user (max 3). Sorted by
+  // position ascending. `product` (single) tetap dipertahankan untuk
+  // backward-compat — biasanya = taggedProducts[0] kalau ada.
+  taggedProducts: FeedPostTaggedProduct[];
   promo: {
     originalPrice: number;
     discountPrice: number;

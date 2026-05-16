@@ -11,6 +11,7 @@ import { SocialProofRow } from "@/components/products/SocialProofRow";
 import { TrustInfoCard } from "@/components/products/TrustInfoCard";
 import { VoucherCard } from "@/components/products/VoucherCard";
 import { ProductTabs } from "@/components/products/ProductTabs";
+import { ProductFeedPostsSection } from "@/components/products/ProductFeedPostsSection";
 import { ProductViewTracker } from "@/components/product/ProductViewTracker";
 import { formatRupiah } from "@/lib/format";
 import { getProductBySlug, getProducts } from "@/lib/products";
@@ -270,6 +271,9 @@ export default async function ProductDetailPage({
         <section className="mt-2 bg-white md:mt-10 md:rounded-3xl md:border md:border-gray-100">
           <ProductTabs description={product.description} related={related} />
         </section>
+
+        {/* 8.5 Postingan Pelanggan — UGC video review, social proof */}
+        <ProductFeedPostsSection productSlug={product.slug} />
 
         {/* 9. Ulasan tetap section terpisah di bawah agar tab tidak overload */}
         <section className="mt-2 bg-white px-4 py-5 md:mt-10 md:rounded-3xl md:border md:border-gray-100 md:p-6">

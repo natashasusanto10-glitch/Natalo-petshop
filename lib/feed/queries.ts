@@ -24,6 +24,9 @@ type FeedListOptions = {
   tab?: FeedPostTab | null;
   cursor?: string | null;
   viewerUserId?: string | null;
+  /** Filter to only posts that tag this product (Shop the Look + legacy
+   *  productId). Used when entering /feed from a product page. */
+  productSlug?: string | null;
 };
 
 /**
@@ -35,7 +38,23 @@ export async function listFeedPosts({
   tab,
   cursor,
   viewerUserId,
+  productSlug,
 }: FeedListOptions): Promise<FeedListResponse> {
+  // Resolve product slug → id sekali, supaya WHERE clause bisa pakai
+  // productId match (lebih efisien dari nested slug lookup di setiap row).
+  let productIdFilter: string | null = null;
+  if (productSlug) {
+    const product = await prisma.product.findUnique({
+      where: { slug: productSlug },
+      select: { id: true },
+    });
+    if (!product) {
+      // Slug tidak ada — return empty list daripada throw.
+      return { items: [], nextCursor: null };
+    }
+    productIdFilter = product.id;
+  }
+
   const posts = await prisma.feedPost.findMany({
     where: {
       status: "ACTIVE",
@@ -46,20 +65,28 @@ export async function listFeedPosts({
       // playable — exclude them. Legacy UploadThing posts default to
       // `ready` so they continue to surface.
       encodingStatus: "ready",
-      // Defensive: skip posts whose video assets are missing. This can
-      // happen when an admin hide/reject runs cleanup against an already-
-      // active post and then unhides — the row comes back ACTIVE but its
-      // videoUrl was wiped by deleteFeedAssets(). Without this guard the
-      // feed shows a black card with no playable content.
+      // Defensive: skip posts whose video assets are missing.
       OR: [
-        // Video posts must have both url + thumbnail.
         { videoUrl: { not: null }, thumbnailUrl: { not: null } },
-        // Product-only / promo cards have no video but still have a
-        // productId to render against.
         { kind: "PRODUCT_ONLY" },
         { kind: "PROMO", productId: { not: null } },
       ],
       ...(tab ? { tab } : {}),
+      // Shop the Look filter: match BOTH legacy productId AND multi-tag.
+      ...(productIdFilter
+        ? {
+            AND: [
+              {
+                OR: [
+                  { productId: productIdFilter },
+                  {
+                    taggedProducts: { some: { productId: productIdFilter } },
+                  },
+                ],
+              },
+            ],
+          }
+        : {}),
     },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: FEED_PAGE_SIZE + 1,
@@ -81,6 +108,25 @@ export async function listFeedPosts({
           stock: true,
           imageUrl: true,
         },
+      },
+      // Shop the Look — multi-tag carousel.
+      taggedProducts: {
+        select: {
+          position: true,
+          product: {
+            select: {
+              id: true,
+              slug: true,
+              name: true,
+              price: true,
+              discountPrice: true,
+              stock: true,
+              imageUrl: true,
+              isActive: true,
+            },
+          },
+        },
+        orderBy: { position: "asc" },
       },
     },
   });
@@ -124,6 +170,20 @@ export async function listFeedPosts({
           imageUrl: p.product.imageUrl,
         }
       : null,
+    // Shop the Look: filter out inactive products (admin deactivate) +
+    // map ke flat shape. Sorted by position ASC.
+    taggedProducts: p.taggedProducts
+      .filter((tp) => tp.product && tp.product.isActive)
+      .map((tp) => ({
+        id: tp.product!.id,
+        slug: tp.product!.slug,
+        name: tp.product!.name,
+        price: tp.product!.price,
+        discountPrice: tp.product!.discountPrice,
+        stock: tp.product!.stock,
+        imageUrl: tp.product!.imageUrl,
+        position: tp.position,
+      })),
     promo:
       p.kind === "PROMO" && p.promoOriginalPrice != null && p.promoDiscountPrice != null
         ? {

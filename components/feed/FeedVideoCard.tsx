@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   FiChevronRight,
   FiHeart,
@@ -38,10 +38,46 @@ export function FeedVideoCard({ post, index, onOpenComments }: Props) {
 
   const isAdmin = post.author.role === "ADMIN";
   const product = post.product;
+  // Shop the Look — daftar lengkap tagged products. Fallback ke single
+  // `product` untuk legacy posts yang belum di-migrate ke FeedPostProduct.
+  const taggedProducts = useMemo(() => {
+    if (post.taggedProducts && post.taggedProducts.length > 0) {
+      return post.taggedProducts;
+    }
+    if (product) {
+      return [
+        {
+          id: product.id,
+          slug: product.slug,
+          name: product.name,
+          price: product.price,
+          discountPrice: product.discountPrice,
+          stock: product.stock,
+          imageUrl: product.imageUrl,
+          position: 0,
+        },
+      ];
+    }
+    return [];
+  }, [post.taggedProducts, product]);
+  const hasMultipleProducts = taggedProducts.length > 1;
+  const [carouselIndex, setCarouselIndex] = useState(0);
+  const currentCarouselProduct = taggedProducts[carouselIndex] ?? null;
   const hasVideo = Boolean(post.videoUrl);
   const productHref = product ? `/products/${product.slug}` : "#";
   const creatorName = isAdmin ? "Natalo Petshop" : post.author.name;
   const caption = cleanFeedCaption(post.description, post.title);
+
+  // Auto-rotate carousel — fade dari produk satu ke berikutnya tiap 4s.
+  // Skip rotation kalau cuma 1 produk atau sheet lagi open (jangan
+  // mengganggu user saat lihat detail).
+  useEffect(() => {
+    if (!hasMultipleProducts || productSheetOpen) return;
+    const t = window.setInterval(() => {
+      setCarouselIndex((i) => (i + 1) % taggedProducts.length);
+    }, 4000);
+    return () => window.clearInterval(t);
+  }, [hasMultipleProducts, productSheetOpen, taggedProducts.length]);
 
   async function toggleLike() {
     if (likeBusy) return;
@@ -196,23 +232,47 @@ export function FeedVideoCard({ post, index, onOpenComments }: Props) {
         </ActionButton>
       </div>
 
-      {/* Bottom-left content: product tag, creator name, clean caption. */}
+      {/* Bottom-left content: product tag carousel, creator name, caption. */}
       <div className="absolute left-4 right-[76px] z-[2] [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+1.5rem)] md:bottom-24">
-        {product && (
+        {currentCarouselProduct && (
           <button
             type="button"
             onClick={() => setProductSheetOpen(true)}
             className="mb-2.5 inline-flex h-9 max-w-full items-center gap-2 rounded-[10px] border border-white/15 bg-black/50 px-3 text-left text-white shadow-sm shadow-black/10 backdrop-blur-xl transition active:scale-[0.98]"
+            key={currentCarouselProduct.id}
+            style={{
+              animation: hasMultipleProducts
+                ? "natalo-feed-product-fade 4000ms ease-in-out infinite"
+                : undefined,
+            }}
           >
             <FiShoppingBag className="h-4 w-4 shrink-0 text-white/90" aria-hidden="true" />
             <span className="shrink-0 text-[13px] font-semibold text-white/90">
-              Produk digunakan
+              {hasMultipleProducts
+                ? `${taggedProducts.length} produk`
+                : "Produk digunakan"}
             </span>
             <span className="min-w-0 truncate text-[13px] font-bold text-white">
-              {product.name}
+              {currentCarouselProduct.name}
             </span>
             <FiChevronRight className="h-4 w-4 shrink-0 text-white/85" aria-hidden="true" />
           </button>
+        )}
+        {/* Dot indicator — hanya saat multi-product */}
+        {hasMultipleProducts && (
+          <div className="mb-2 flex gap-1">
+            {taggedProducts.map((p, idx) => (
+              <span
+                key={p.id}
+                className={`h-1 rounded-full transition-all ${
+                  idx === carouselIndex
+                    ? "w-4 bg-white"
+                    : "w-1 bg-white/40"
+                }`}
+                aria-hidden
+              />
+            ))}
+          </div>
         )}
         <p className="truncate text-[17px] font-bold leading-tight text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
           {creatorName}
@@ -224,14 +284,23 @@ export function FeedVideoCard({ post, index, onOpenComments }: Props) {
         )}
       </div>
 
-      {product && (
+      {taggedProducts.length > 0 && (
         <PinnedProductSheet
           open={productSheetOpen}
-          product={product}
+          products={taggedProducts}
           isAdmin={isAdmin}
           onClose={() => setProductSheetOpen(false)}
         />
       )}
+
+      <style>{`
+        @keyframes natalo-feed-product-fade {
+          0% { opacity: 0; transform: translateY(4px); }
+          8% { opacity: 1; transform: translateY(0); }
+          92% { opacity: 1; transform: translateY(0); }
+          100% { opacity: 0; transform: translateY(-4px); }
+        }
+      `}</style>
     </article>
   );
 }
@@ -274,61 +343,79 @@ function ActionButton({
   );
 }
 
+type SheetProduct = NonNullable<FeedPostListItem["product"]> | FeedPostListItem["taggedProducts"][number];
+
 function PinnedProductSheet({
   open,
-  product,
+  products,
   isAdmin,
   onClose,
 }: {
   open: boolean;
-  product: NonNullable<FeedPostListItem["product"]>;
+  products: SheetProduct[];
   isAdmin: boolean;
   onClose: () => void;
 }) {
-  const price = product.discountPrice ?? product.price;
+  const title =
+    products.length > 1
+      ? `${products.length} Produk di Video`
+      : "Produk di Video";
   return (
-    <BottomSheet open={open} onClose={onClose} title="Produk di Video">
+    <BottomSheet open={open} onClose={onClose} title={title}>
       <div className="space-y-3">
-        <Link
-          href={`/products/${product.slug}`}
-          className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white p-3 transition active:bg-gray-50"
-        >
-          {product.imageUrl ? (
-            <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-gray-100">
-              <Image
-                src={product.imageUrl}
-                alt={product.name}
-                fill
-                sizes="80px"
-                placeholder="blur"
-                blurDataURL={IMAGE_BLUR_GRAY}
-                className="object-cover"
-              />
-            </div>
-          ) : (
-            <div className="grid h-20 w-20 shrink-0 place-items-center rounded-2xl bg-gray-100 text-natalo-600">
-              <FiPackage className="h-7 w-7" />
-            </div>
-          )}
-          <div className="min-w-0 flex-1">
-            <p className="line-clamp-2 text-sm font-black text-gray-900">
-              {product.name}
-            </p>
-            <p className="mt-1 text-base font-black text-natalo-600">
-              {formatRupiah(price)}
-            </p>
-            <p className={`mt-1 text-xs font-bold ${product.stock > 0 ? "text-emerald-600" : "text-red-500"}`}>
-              {product.stock > 0 ? `Stok ${product.stock}` : "Stok Habis"}
-            </p>
-          </div>
-        </Link>
-        <Link
-          href={`/products/${product.slug}`}
-          className="flex w-full items-center justify-center gap-2 rounded-full bg-natalo-600 py-3 text-sm font-black text-white transition active:scale-[0.98]"
-        >
-          <FiShoppingCart className="h-4 w-4" />
-          {isAdmin ? "Beli Sekarang" : "Lihat Produk"}
-        </Link>
+        {products.map((product) => {
+          const price = product.discountPrice ?? product.price;
+          return (
+            <Link
+              key={product.id}
+              href={`/products/${product.slug}`}
+              className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white p-3 transition active:bg-gray-50"
+            >
+              {product.imageUrl ? (
+                <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-gray-100">
+                  <Image
+                    src={product.imageUrl}
+                    alt={product.name}
+                    fill
+                    sizes="80px"
+                    placeholder="blur"
+                    blurDataURL={IMAGE_BLUR_GRAY}
+                    className="object-cover"
+                  />
+                </div>
+              ) : (
+                <div className="grid h-20 w-20 shrink-0 place-items-center rounded-2xl bg-gray-100 text-natalo-600">
+                  <FiPackage className="h-7 w-7" />
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="line-clamp-2 text-sm font-black text-gray-900">
+                  {product.name}
+                </p>
+                <p className="mt-1 text-base font-black text-natalo-600">
+                  {formatRupiah(price)}
+                </p>
+                <p
+                  className={`mt-1 text-xs font-bold ${product.stock > 0 ? "text-emerald-600" : "text-red-500"}`}
+                >
+                  {product.stock > 0 ? `Stok ${product.stock}` : "Stok Habis"}
+                </p>
+              </div>
+              <FiChevronRight className="h-5 w-5 shrink-0 text-gray-400" aria-hidden />
+            </Link>
+          );
+        })}
+        {/* CTA umum — kalau cuma 1 produk, langsung "Lihat / Beli" dengan
+            slug yang spesifik. Kalau multi, anchor scroll back ke list di atas. */}
+        {products.length === 1 && (
+          <Link
+            href={`/products/${products[0].slug}`}
+            className="flex w-full items-center justify-center gap-2 rounded-full bg-natalo-600 py-3 text-sm font-black text-white transition active:scale-[0.98]"
+          >
+            <FiShoppingCart className="h-4 w-4" />
+            {isAdmin ? "Beli Sekarang" : "Lihat Produk"}
+          </Link>
+        )}
       </div>
     </BottomSheet>
   );

@@ -127,11 +127,12 @@ export async function POST(request: NextRequest) {
 
   // Bunny: create the video record first. If this fails, no DB row is
   // created — caller can retry without orphan.
-  const created = await createBunnyVideo({
+  const bunnyCreated = await createBunnyVideo({
     title: `feed-${session.sub}-${Date.now()}`,
   });
-  if (!created || "error" in created) {
-    const reason = created && "error" in created ? created.error : "no response";
+  if (!bunnyCreated || "error" in bunnyCreated) {
+    const reason =
+      bunnyCreated && "error" in bunnyCreated ? bunnyCreated.error : "no response";
     return NextResponse.json(
       {
         error: "Gagal create video di Bunny.",
@@ -193,37 +194,54 @@ export async function POST(request: NextRequest) {
   // Insert FeedPost row in uploading state. videoUrl + thumbnailUrl filled
   // when webhook reports "ready" (encodingStatus=ready). Until then the
   // feed list query excludes this row.
-  const post = await prisma.feedPost.create({
-    data: {
-      authorId: session.sub,
-      authorRole: isAdmin ? "ADMIN" : "CUSTOMER",
-      kind,
-      tab,
-      status: isAdmin ? "ACTIVE" : "PENDING_REVIEW",
-      publishedAt: isAdmin ? new Date() : null,
-      title,
-      description: finalDescription,
-      thumbnailUrl,
-      videoDurationSec:
-        Number.isFinite(videoDurationSec) && videoDurationSec > 0
-          ? Math.round(videoDurationSec)
-          : null,
-      videoGuid: created.guid,
-      encodingStatus: "uploading",
-      productId: productIdSingle,
-      promoOriginalPrice,
-      promoDiscountPrice,
-      promoStartsAt: promoStartsAt && !Number.isNaN(promoStartsAt.getTime()) ? promoStartsAt : null,
-      promoEndsAt: promoEndsAt && !Number.isNaN(promoEndsAt.getTime()) ? promoEndsAt : null,
-    },
-    select: { id: true },
+  //
+  // Shop the Look: simpan multi-tag ke FeedPostProduct table dalam satu
+  // transaction. FeedPost.productId tetap di-set ke primary product
+  // (productIds[0]) untuk legacy display + product page query.
+  const post = await prisma.$transaction(async (tx) => {
+    const created = await tx.feedPost.create({
+      data: {
+        authorId: session.sub,
+        authorRole: isAdmin ? "ADMIN" : "CUSTOMER",
+        kind,
+        tab,
+        status: isAdmin ? "ACTIVE" : "PENDING_REVIEW",
+        publishedAt: isAdmin ? new Date() : null,
+        title,
+        description: finalDescription,
+        thumbnailUrl,
+        videoDurationSec:
+          Number.isFinite(videoDurationSec) && videoDurationSec > 0
+            ? Math.round(videoDurationSec)
+            : null,
+        videoGuid: bunnyCreated.guid,
+        encodingStatus: "uploading",
+        productId: productIdSingle,
+        promoOriginalPrice,
+        promoDiscountPrice,
+        promoStartsAt: promoStartsAt && !Number.isNaN(promoStartsAt.getTime()) ? promoStartsAt : null,
+        promoEndsAt: promoEndsAt && !Number.isNaN(promoEndsAt.getTime()) ? promoEndsAt : null,
+      },
+      select: { id: true },
+    });
+    if (productIds.length > 0) {
+      await tx.feedPostProduct.createMany({
+        data: productIds.map((productId, position) => ({
+          feedPostId: created.id,
+          productId,
+          position,
+        })),
+        skipDuplicates: true,
+      });
+    }
+    return created;
   });
 
   return NextResponse.json({
     ok: true,
     postId: post.id,
-    videoGuid: created.guid,
-    uploadUrl: bunnyUploadUrl(created.guid),
+    videoGuid: bunnyCreated.guid,
+    uploadUrl: bunnyUploadUrl(bunnyCreated.guid),
     uploadHeaders: {
       AccessKey: cfg.apiKey,
       "Content-Type": "application/octet-stream",

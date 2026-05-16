@@ -15,7 +15,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { FiPlus } from "react-icons/fi";
 import type { FeedListResponse, FeedPostListItem } from "@/lib/feed/types";
 import { FeedActiveVideoProvider, useFeedActiveVideo } from "./FeedActiveVideoContext";
@@ -28,6 +28,10 @@ import { FEED_PLAYBACK_TEARDOWN_EVENT } from "@/lib/feed/teardown";
 
 export function FeedClient() {
   const router = useRouter();
+  // Shop the Look — saat user buka /feed?product=<slug> dari product page,
+  // feed cuma show posts yang tag produk itu. Null = main feed (semua).
+  const searchParams = useSearchParams();
+  const productFilter = searchParams.get("product") || null;
   const [posts, setPosts] = useState<FeedPostListItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
@@ -148,7 +152,10 @@ export function FeedClient() {
     setCursor(null);
     setError(null);
 
-    fetch("/api/feed/posts", { signal: controller.signal })
+    const initialUrl = productFilter
+      ? `/api/feed/posts?product=${encodeURIComponent(productFilter)}`
+      : "/api/feed/posts";
+    fetch(initialUrl, { signal: controller.signal })
       .then((res) => {
         if (!res.ok) throw new Error("Gagal memuat feed");
         return res.json() as Promise<FeedListResponse>;
@@ -175,7 +182,7 @@ export function FeedClient() {
       cancelled = true;
       controller.abort();
     };
-  }, [reloadKey]);
+  }, [reloadKey, productFilter]);
 
   const loadMore = useCallback(async () => {
     if (!cursor || loadingMore || !hasMore) return;
@@ -184,7 +191,9 @@ export function FeedClient() {
     loadMoreAbortRef.current = controller;
     setLoadingMore(true);
     try {
-      const res = await fetch(`/api/feed/posts?cursor=${cursor}`, {
+      const cursorParams = new URLSearchParams({ cursor });
+      if (productFilter) cursorParams.set("product", productFilter);
+      const res = await fetch(`/api/feed/posts?${cursorParams.toString()}`, {
         signal: controller.signal,
       });
       if (!res.ok) throw new Error();
@@ -201,7 +210,7 @@ export function FeedClient() {
       }
       setLoadingMore(false);
     }
-  }, [cursor, hasMore, loadingMore]);
+  }, [cursor, hasMore, loadingMore, productFilter]);
 
   useEffect(() => {
     const el = sentinelRef.current;

@@ -51,12 +51,16 @@ export async function GET(request: NextRequest) {
   const tab = rawTab ? (rawTab as FeedPostTab) : null;
 
   const cursor = searchParams.get("cursor") || null;
+  // Shop the Look — filter feed ke posts yang tag produk tertentu.
+  // Dipakai saat user buka /feed?product=<slug> dari product page.
+  const productSlug = searchParams.get("product") || null;
   const session = await getSession().catch(() => null);
 
   const result = await listFeedPosts({
     tab,
     cursor,
     viewerUserId: session?.sub ?? null,
+    productSlug,
   });
 
   return NextResponse.json(result);

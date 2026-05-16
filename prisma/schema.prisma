@@ -159,6 +159,9 @@ model Product {
   recommendationTargets ProductRecommendationRule[] @relation("RecommendationTarget")
   // Feed posts yang tag/link ke produk ini (admin product card, promo, video+product).
   feedPosts         FeedPost[]
+  // Shop the Look back-relation — semua feed post (multi-tag) yang
+  // pakai produk ini, untuk product page "Postingan Pelanggan" tab.
+  feedPostTags      FeedPostProduct[]
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 }
@@ -748,6 +751,10 @@ model FeedPost {
   likes           FeedLike[]
   reports         FeedReport[]
   moderationLogs  FeedModerationLog[]
+  // Shop the Look: many-to-many ke Product (up to 3 tags per post).
+  // FeedPost.productId tetap dipertahankan untuk legacy + primary product
+  // display. taggedProducts adalah source of truth untuk multi-tag carousel.
+  taggedProducts  FeedPostProduct[]
 
   // Index utama untuk feed listing (filter by tab + status + sorted).
   @@index([tab, status, publishedAt])
@@ -759,6 +766,26 @@ model FeedPost {
   @@index([status, createdAt])
   // Soft-deleted listing untuk admin trash view.
   @@index([deletedAt])
+}
+
+// Shop the Look — many-to-many ke produk yang di-tag di video.
+// Sampai 3 produk per post (enforced di API layer, bukan DB constraint).
+// Position menentukan urutan carousel di feed UI.
+model FeedPostProduct {
+  id          String   @id @default(cuid())
+  feedPostId  String
+  feedPost    FeedPost @relation(fields: [feedPostId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  position    Int      @default(0) // 0..2 untuk urutan tampilan
+  createdAt   DateTime @default(now())
+
+  // Tidak boleh tag produk sama dua kali di post yang sama.
+  @@unique([feedPostId, productId])
+  // Index untuk "Postingan Pelanggan" tab di product page —
+  // query: WHERE productId=X JOIN FeedPost sorted by createdAt desc.
+  @@index([productId])
+  @@index([feedPostId, position])
 }
 
 // Audit trail untuk semua moderation transition di FeedPost. Append-only —

@@ -118,9 +118,8 @@ export function FeedUploadClient() {
 
   // Caption / tag / pet
   const [caption, setCaption] = useState("");
-  const [selectedProduct, setSelectedProduct] = useState<PinnableProduct | null>(
-    null,
-  );
+  // Shop the Look — sampai 3 produk. Position di array = position di carousel.
+  const [selectedProducts, setSelectedProducts] = useState<PinnableProduct[]>([]);
   const [productPickerOpen, setProductPickerOpen] = useState(false);
   const [pinnableProducts, setPinnableProducts] = useState<PinnableProduct[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
@@ -403,7 +402,7 @@ export function FeedUploadClient() {
           title: caption.trim().slice(0, 200),
           description: caption.trim() || null,
           petType: petType ?? null,
-          productIds: selectedProduct ? [selectedProduct.productId] : [],
+          productIds: selectedProducts.map((p) => p.productId),
           thumbnailUrl: pendingThumbnailUrl,
           videoDurationSec: Math.round(finalDuration),
         }),
@@ -562,9 +561,13 @@ export function FeedUploadClient() {
             finalDuration={finalDuration}
             caption={caption}
             onCaptionChange={setCaption}
-            selectedProduct={selectedProduct}
+            selectedProducts={selectedProducts}
             onOpenProductPicker={() => setProductPickerOpen(true)}
-            onClearProduct={() => setSelectedProduct(null)}
+            onRemoveProduct={(productId) =>
+              setSelectedProducts((current) =>
+                current.filter((p) => p.productId !== productId),
+              )
+            }
             petType={petType}
             onPetChange={setPetType}
             uploading={uploading}
@@ -590,12 +593,23 @@ export function FeedUploadClient() {
       <ProductPickerSheet
         open={productPickerOpen}
         products={pinnableProducts}
-        selectedProductId={selectedProduct?.productId ?? null}
+        selectedProductIds={selectedProducts.map((p) => p.productId)}
         loading={productsLoading}
+        maxSelection={3}
         onClose={() => setProductPickerOpen(false)}
-        onSelect={(product) => {
-          setSelectedProduct(product);
-          setProductPickerOpen(false);
+        onToggle={(product) => {
+          setSelectedProducts((current) => {
+            const exists = current.find((p) => p.productId === product.productId);
+            if (exists) {
+              return current.filter((p) => p.productId !== product.productId);
+            }
+            if (current.length >= 3) {
+              // Max reached — replace oldest selection? Atau tolak?
+              // Tolak supaya user explicit hapus dulu.
+              return current;
+            }
+            return [...current, product];
+          });
         }}
       />
     </div>
@@ -1530,9 +1544,9 @@ function DetailScreen({
   finalDuration,
   caption,
   onCaptionChange,
-  selectedProduct,
+  selectedProducts,
   onOpenProductPicker,
-  onClearProduct,
+  onRemoveProduct,
   petType,
   onPetChange,
   uploading,
@@ -1549,9 +1563,9 @@ function DetailScreen({
   finalDuration: number;
   caption: string;
   onCaptionChange: (v: string) => void;
-  selectedProduct: PinnableProduct | null;
+  selectedProducts: PinnableProduct[];
   onOpenProductPicker: () => void;
-  onClearProduct: () => void;
+  onRemoveProduct: (productId: string) => void;
   petType: PetType;
   onPetChange: (v: PetType) => void;
   uploading: boolean;
@@ -1654,42 +1668,59 @@ function DetailScreen({
             </div>
           </div>
 
-          {/* Tag produk */}
+          {/* Tag produk — Shop the Look multi-tag (max 3) */}
           <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-black text-white">Tag Produk</h2>
+              <div>
+                <h2 className="text-sm font-black text-white">Tag Produk</h2>
+                <p className="text-[11px] font-semibold text-white/45">
+                  {selectedProducts.length}/3 produk
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={onOpenProductPicker}
                 disabled={uploading}
                 className="text-[12px] font-black text-natalo-300 transition active:opacity-70 disabled:opacity-50"
               >
-                Ubah ›
+                {selectedProducts.length > 0 ? "Ubah ›" : "Pilih ›"}
               </button>
             </div>
 
-            {selectedProduct ? (
-              <div className="mt-3 flex items-center gap-3 rounded-xl bg-white/[0.04] p-2.5 ring-1 ring-white/8">
-                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-natalo-600/15 text-natalo-200 ring-1 ring-natalo-500/25">
-                  <FiPackage className="h-5 w-5" />
-                </div>
-                <p className="line-clamp-2 flex-1 text-[13px] font-extrabold text-white">
-                  {selectedProduct.name}
-                </p>
-                <button
-                  type="button"
-                  onClick={onClearProduct}
-                  disabled={uploading}
-                  aria-label="Hapus tag produk"
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-white/60 transition active:bg-white/10"
-                >
-                  <FiX className="h-4 w-4" />
-                </button>
-              </div>
+            {selectedProducts.length > 0 ? (
+              <ul className="mt-3 space-y-2">
+                {selectedProducts.map((product, idx) => (
+                  <li
+                    key={product.productId}
+                    className="flex items-center gap-3 rounded-xl bg-white/[0.04] p-2.5 ring-1 ring-white/8"
+                  >
+                    <div className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-natalo-600/15 text-natalo-200 ring-1 ring-natalo-500/25">
+                      <FiPackage className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="line-clamp-2 text-[13px] font-extrabold text-white">
+                        {product.name}
+                      </p>
+                      <p className="mt-0.5 text-[11px] font-semibold text-white/45">
+                        Tag #{idx + 1}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onRemoveProduct(product.productId)}
+                      disabled={uploading}
+                      aria-label={`Hapus tag ${product.name}`}
+                      className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-white/60 transition active:bg-white/10"
+                    >
+                      <FiX className="h-4 w-4" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
             ) : (
               <p className="mt-2 text-[12px] leading-relaxed text-white/50">
-                Opsional. Tag produk dari pesanan kamu agar pengguna lain bisa
-                langsung lihat produknya.
+                Opsional. Tag sampai 3 produk dari pesanan kamu — pengguna
+                lain bisa langsung lihat dan beli produknya.
               </p>
             )}
           </section>
@@ -1917,20 +1948,28 @@ function SuccessScreen({
 function ProductPickerSheet({
   open,
   products,
-  selectedProductId,
+  selectedProductIds,
   loading,
+  maxSelection,
   onClose,
-  onSelect,
+  onToggle,
 }: {
   open: boolean;
   products: PinnableProduct[];
-  selectedProductId: string | null;
+  selectedProductIds: string[];
   loading: boolean;
+  maxSelection: number;
   onClose: () => void;
-  onSelect: (product: PinnableProduct) => void;
+  onToggle: (product: PinnableProduct) => void;
 }) {
+  const selectedSet = new Set(selectedProductIds);
+  const atMax = selectedProductIds.length >= maxSelection;
   return (
-    <BottomSheet open={open} onClose={onClose} title="Tag Produk">
+    <BottomSheet
+      open={open}
+      onClose={onClose}
+      title={`Tag Produk (${selectedProductIds.length}/${maxSelection})`}
+    >
       <div className="space-y-3">
         {loading && (
           <p className="py-8 text-center text-xs font-bold text-gray-400">
@@ -1948,17 +1987,26 @@ function ProductPickerSheet({
             </p>
           </div>
         )}
+        {!loading && atMax && (
+          <p className="rounded-xl bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-700">
+            Maksimal {maxSelection} produk. Hapus salah satu untuk mengganti.
+          </p>
+        )}
         {products.map((product) => {
-          const selected = product.productId === selectedProductId;
+          const selected = selectedSet.has(product.productId);
+          const disabled = atMax && !selected;
           return (
             <button
               key={`${product.productId}-${product.orderNumber}`}
               type="button"
-              onClick={() => onSelect(product)}
+              onClick={() => onToggle(product)}
+              disabled={disabled}
               className={`flex w-full items-center gap-3 rounded-2xl border p-3 text-left transition active:bg-gray-50 ${
                 selected
                   ? "border-natalo-500 bg-natalo-50"
-                  : "border-gray-100 bg-white"
+                  : disabled
+                    ? "border-gray-100 bg-gray-50 opacity-50"
+                    : "border-gray-100 bg-white"
               }`}
             >
               <div className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-gray-100 text-natalo-600">
@@ -1975,8 +2023,15 @@ function ProductPickerSheet({
                   Dibeli {formatDate(product.purchasedAt)}
                 </p>
               </div>
-              {selected && (
+              {selected ? (
                 <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-natalo-600 text-white">
+                  <FiCheck className="h-4 w-4" />
+                </span>
+              ) : (
+                <span
+                  aria-hidden
+                  className="grid h-7 w-7 shrink-0 place-items-center rounded-full border-2 border-gray-300 text-transparent"
+                >
                   <FiCheck className="h-4 w-4" />
                 </span>
               )}
