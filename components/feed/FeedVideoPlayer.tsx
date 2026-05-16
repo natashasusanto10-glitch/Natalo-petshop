@@ -271,8 +271,13 @@ export function FeedVideoPlayer({
     return () => window.clearTimeout(t);
   }, [isActive, isPlaying]);
 
-  // Tambah onTimeUpdate listener sebagai tambahan signal isPlaying — fires
-  // continuously saat video advancing, bahkan kalau onPlay event miss di iOS.
+  // timeupdate listener: dua tugas.
+  //   1. Signal isPlaying — fires continuously saat video advancing,
+  //      paling reliable signal di iOS WKWebView (kadang miss onPlay).
+  //   2. Manual loop — seek ke 0 sebelum natural end. WKWebView's automatic
+  //      `loop` attribute trigger seek di frame boundary yang flash black;
+  //      pre-seek mid-playback (~120ms sebelum end) lebih smooth karena
+  //      WebKit seek mid-frame tidak clear paint buffer.
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -280,6 +285,19 @@ export function FeedVideoPlayer({
     function onTimeUpdate() {
       const v = videoRef.current;
       if (!v) return;
+      // Manual loop: pre-seek 120ms sebelum natural end → smooth, no black flash.
+      if (
+        v.duration &&
+        Number.isFinite(v.duration) &&
+        v.duration > 0.5 &&
+        v.duration - v.currentTime < 0.12
+      ) {
+        v.currentTime = 0;
+        // Tidak call play() — video sudah playing, currentTime change
+        // tidak interrupt playback, browser lanjut auto.
+        lastTime = 0;
+        return;
+      }
       if (v.currentTime !== lastTime) {
         lastTime = v.currentTime;
         setIsPlaying(true);
@@ -290,11 +308,21 @@ export function FeedVideoPlayer({
       setIsPlaying(true);
       setShowLoadingIndicator(false);
     }
+    function onEnded() {
+      // Safety net kalau timeupdate miss the pre-seek window. Kalau video
+      // genuinely reach end, restart dari 0.
+      const v = videoRef.current;
+      if (!v) return;
+      v.currentTime = 0;
+      v.play().catch(() => {});
+    }
     video.addEventListener("timeupdate", onTimeUpdate);
     video.addEventListener("playing", onPlaying);
+    video.addEventListener("ended", onEnded);
     return () => {
       video.removeEventListener("timeupdate", onTimeUpdate);
       video.removeEventListener("playing", onPlaying);
+      video.removeEventListener("ended", onEnded);
     };
   }, []);
 
@@ -352,7 +380,9 @@ export function FeedVideoPlayer({
         // di bawah. HTML attribute tetap di sini sebagai safety net untuk
         // SSR + first paint.
         muted
-        loop
+        // SENGAJA TIDAK `loop` HTML attribute — WKWebView seek-at-frame-boundary
+        // saat loop trigger bikin black flash. Manual loop via timeupdate pre-seek
+        // di useEffect (lebih smooth karena seek mid-frame).
         autoPlay={isActive}
         preload={loadSrc && !farFromViewport ? preloadMode : "none"}
         // See thumbnail comment — object-cover so the video always fills
