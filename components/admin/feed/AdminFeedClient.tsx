@@ -153,7 +153,7 @@ export function AdminFeedClient() {
 
   async function moderate(
     postId: string,
-    action: "approve" | "reject" | "hide" | "unhide",
+    action: "approve" | "reject" | "hide" | "unhide" | "restore",
   ) {
     let note: string | undefined;
     if (action === "reject") {
@@ -183,17 +183,31 @@ export function AdminFeedClient() {
   }
 
   async function deletePost(postId: string) {
-    if (!window.confirm("Hapus post ini permanent? Tidak bisa di-undo.")) return;
+    // Dari trash view (filter=deleted), post sudah soft-deleted. DELETE
+    // tanpa ?hard=1 akan no-op (endpoint early-return alreadyDeleted=true),
+    // jadi row "hilang" dari UI tapi nongol lagi saat refetch berikutnya.
+    // Pakai hard=1 supaya row permanently dibuang + cascade FK + Bunny
+    // cleanup. Dari filter lain (all/pending/dst), soft-delete (default)
+    // supaya admin masih punya undo via tab Sampah → Restore.
+    const isTrashView = filter === "deleted";
+    const confirmMsg = isTrashView
+      ? "Hapus permanen dari sampah? Tidak bisa di-undo (post + komentar + likes ikut hilang)."
+      : "Pindahkan post ini ke Sampah? Bisa di-restore dari tab Sampah.";
+    if (!window.confirm(confirmMsg)) return;
     setActionBusy(postId);
     try {
-      const res = await fetch(`/api/admin/feed/posts/${postId}`, {
-        method: "DELETE",
-      });
+      const url = isTrashView
+        ? `/api/admin/feed/posts/${postId}?hard=1`
+        : `/api/admin/feed/posts/${postId}`;
+      const res = await fetch(url, { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error ?? "Gagal hapus");
       }
       setItems((prev) => prev.filter((p) => p.id !== postId));
+      // Counts (esp. "deleted") akan stale setelah hard delete. Refetch
+      // supaya badge "Sampah" up-to-date.
+      refetchCurrent();
     } catch (err) {
       window.alert(err instanceof Error ? err.message : "Gagal");
     } finally {
@@ -279,6 +293,7 @@ export function AdminFeedClient() {
             key={p.id}
             post={p}
             busy={actionBusy === p.id}
+            isTrashView={filter === "deleted"}
             onModerate={(action) => moderate(p.id, action)}
             onDelete={() => deletePost(p.id)}
           />
@@ -302,12 +317,16 @@ export function AdminFeedClient() {
 function AdminFeedRow({
   post,
   busy,
+  isTrashView,
   onModerate,
   onDelete,
 }: {
   post: AdminFeedItem;
   busy: boolean;
-  onModerate: (action: "approve" | "reject" | "hide" | "unhide") => void;
+  isTrashView: boolean;
+  onModerate: (
+    action: "approve" | "reject" | "hide" | "unhide" | "restore",
+  ) => void;
   onDelete: () => void;
 }) {
   const statusLabel: Record<string, { text: string; cls: string }> = {
@@ -377,7 +396,11 @@ function AdminFeedRow({
 
       {/* Actions */}
       <div className="flex flex-wrap items-center gap-1.5 border-t border-gray-100 bg-gray-50 px-3 py-2">
-        {post.status === "PENDING_REVIEW" && (
+        {/* Di trash view, post sudah soft-deleted. Sembunyikan dulu semua
+            moderation buttons (Approve/Reject/Hide/Unhide) yang tidak make
+            sense untuk row yang di sampah — tampilkan tombol Restore saja
+            untuk lift soft-delete + Hapus untuk purge permanen. */}
+        {!isTrashView && post.status === "PENDING_REVIEW" && (
           <>
             <ActionButton
               label="Setujui"
@@ -393,7 +416,7 @@ function AdminFeedRow({
             />
           </>
         )}
-        {post.status === "ACTIVE" && (
+        {!isTrashView && post.status === "ACTIVE" && (
           <ActionButton
             label="Sembunyikan"
             tone="gray"
@@ -401,7 +424,7 @@ function AdminFeedRow({
             busy={busy}
           />
         )}
-        {post.status === "HIDDEN" && (
+        {!isTrashView && post.status === "HIDDEN" && (
           <ActionButton
             label="Tampilkan"
             tone="green"
@@ -409,7 +432,15 @@ function AdminFeedRow({
             busy={busy}
           />
         )}
-        {post.author.role === "ADMIN" && (
+        {isTrashView && (
+          <ActionButton
+            label="Restore"
+            tone="green"
+            onClick={() => onModerate("restore")}
+            busy={busy}
+          />
+        )}
+        {!isTrashView && post.author.role === "ADMIN" && (
           <Link
             href={`/admin/feed/${post.id}/edit`}
             className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1.5 text-[11px] font-extrabold text-blue-700 transition active:bg-blue-100"
@@ -423,7 +454,7 @@ function AdminFeedRow({
           disabled={busy}
           className="inline-flex items-center gap-1 rounded-full bg-red-50 px-3 py-1.5 text-[11px] font-extrabold text-red-700 transition active:bg-red-100 disabled:opacity-50"
         >
-          <FiTrash2 className="h-3 w-3" /> Hapus
+          <FiTrash2 className="h-3 w-3" /> {isTrashView ? "Hapus Permanen" : "Hapus"}
         </button>
         {post.videoUrl && (
           <a
