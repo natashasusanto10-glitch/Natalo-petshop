@@ -290,7 +290,7 @@ export function AdminFeedCreateClient() {
       }
 
       if (videoFile) {
-        setProgress("Menyiapkan upload...");
+        setProgress("Menyiapkan upload, mohon tunggu...");
         const provisionBody = {
           title: title.trim() || "Postingan baru",
           description: description.trim() || null,
@@ -321,8 +321,8 @@ export function AdminFeedCreateClient() {
         const isLargeFile = sizeMB > 50;
         setProgress(
           isLargeFile
-            ? `Mengunggah video ${sizeMB.toFixed(0)} MB — jangan tutup halaman...`
-            : "Mengunggah video...",
+            ? `Mengunggah video ${sizeMB.toFixed(0)} MB — mohon tunggu, jangan tutup halaman...`
+            : "Mengunggah video, mohon tunggu...",
         );
         await new Promise<void>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
@@ -374,10 +374,14 @@ export function AdminFeedCreateClient() {
           // variant encode (480/720/1080) + audio remux. Naikkan window
           // ke 2 menit total untuk file besar supaya kebanyakan post bisa
           // settle sebelum redirect.
+          //
+          // Copy: pakai kata "kompres" yang user pahami, bukan "encoding"
+          // yang jargon. Selama tahap ini Bunny convert raw video ke MP4
+          // H.264 720p ~3 Mbps + generate thumbnail.
           setProgress(
             isLargeFile
-              ? "Memfinalisasi encoding (bisa sampai 2 menit)..."
-              : "Memfinalisasi encoding (bisa sampai 1 menit)...",
+              ? "Mohon tunggu, video sedang dikompres oleh sistem (1-2 menit)..."
+              : "Mohon tunggu, video sedang dikompres oleh sistem (sekitar 1 menit)...",
           );
           // Adaptive delay: cepat di awal (1.5s polling), melambat di
           // akhir (5s polling). File kecil total ~62s, file besar ~125s.
@@ -432,7 +436,7 @@ export function AdminFeedCreateClient() {
             // Window habis tapi belum ready. Tidak block redirect — post
             // sudah ACTIVE di DB, cron weekly + manual reconcile via
             // /api/feed/diag?force=1 akan handle nanti.
-            setProgress("Encoding masih proses di background...");
+            setProgress("Kompresi masih berjalan di background — post akan muncul otomatis di feed saat selesai.");
             await new Promise((r) => setTimeout(r, 1000));
           }
         }
@@ -810,17 +814,49 @@ export function AdminFeedCreateClient() {
         <p className="rounded-2xl bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p>
       )}
 
+      {/* Loading overlay — full-screen blocker saat submitting. Kompres
+          video di Bunny butuh 30s-2 menit, kalau user cuma lihat tombol
+          disabled mereka kemungkinan close tab. Overlay ini bikin jelas:
+          ada proses jalan, jangan ganggu. */}
+      {submitting && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/55 px-6 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-2xl">
+            <div
+              className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-natalo-100 border-t-natalo-600"
+              aria-hidden
+            />
+            <p className="mt-4 text-sm font-extrabold text-gray-900">
+              {progress || "Memproses..."}
+            </p>
+            {/* Progress bar saat upload PUT — compressProgress > 0 hanya
+                terisi di fase XHR upload. */}
+            {compressProgress > 0 && compressProgress < 100 && (
+              <>
+                <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                  <div
+                    className="h-full rounded-full bg-natalo-600 transition-all duration-200"
+                    style={{ width: `${compressProgress}%` }}
+                  />
+                </div>
+                <p className="mt-2 text-xs font-bold text-gray-500">
+                  {compressProgress}%
+                </p>
+              </>
+            )}
+            <p className="mt-4 text-[11px] font-semibold text-gray-400">
+              Mohon jangan tutup halaman ini sampai selesai.
+            </p>
+          </div>
+        </div>
+      )}
+
       <button
         type="button"
         onClick={handleSubmit}
         disabled={submitting}
         className="sticky bottom-4 w-full rounded-full bg-natalo-600 py-3 text-sm font-extrabold text-white shadow-lg transition active:scale-[0.98] disabled:bg-gray-300"
       >
-        {submitting
-          ? progress === "Mengunggah video..." && compressProgress > 0
-            ? `${progress} ${compressProgress}%`
-            : progress || "Memproses..."
-          : "Publish Post"}
+        {submitting ? progress || "Memproses..." : "Publish Post"}
       </button>
     </div>
   );

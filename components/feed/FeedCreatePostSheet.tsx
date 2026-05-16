@@ -1301,11 +1301,13 @@ function ProductPickerPanel({
 }
 
 function UploadingStep({ stage, progress }: { stage: UploadStage; progress: number }) {
+  // Copy: pakai bahasa yang jelas untuk setiap fase + "mohon tunggu"
+  // hint supaya user tidak menutup halaman saat upload jalan.
   const label =
     stage === "compressing"
-      ? "Memproses video..."
+      ? "Mohon tunggu, video sedang dikompres..."
       : stage === "uploading-video"
-        ? "Mengunggah video..."
+        ? "Mengunggah video, mohon tunggu..."
         : stage === "uploading-thumbnail"
           ? "Mengunggah thumbnail..."
           : "Menyimpan postingan...";
