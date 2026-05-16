@@ -42,6 +42,7 @@ type ProductSummary = {
 };
 
 const ACCEPT_VIDEO = "video/mp4,video/webm,video/quicktime";
+const MAX_ADMIN_TAGGED_PRODUCTS = 5;
 
 export function AdminFeedCreateClient() {
   const router = useRouter();
@@ -56,7 +57,7 @@ export function AdminFeedCreateClient() {
   const [thumbPreviewUrl, setThumbPreviewUrl] = useState<string | null>(null);
   const [productQuery, setProductQuery] = useState("");
   const [productResults, setProductResults] = useState<ProductSummary[]>([]);
-  const [selectedProduct, setSelectedProduct] = useState<ProductSummary | null>(null);
+  const [selectedProducts, setSelectedProducts] = useState<ProductSummary[]>([]);
   const [productLoading, setProductLoading] = useState(false);
 
   const [promoOriginal, setPromoOriginal] = useState("");
@@ -91,8 +92,11 @@ export function AdminFeedCreateClient() {
         return null;
       });
     }
-    if (!stillNeedsProduct) setSelectedProduct(null);
+    if (!stillNeedsProduct) setSelectedProducts([]);
   }, [kind]);
+
+  const selectedProductIds = selectedProducts.map((product) => product.id);
+  const selectedProductIdSet = new Set(selectedProductIds);
 
   // Debounced product search
   useEffect(() => {
@@ -124,6 +128,26 @@ export function AdminFeedCreateClient() {
     }, 350);
     return () => window.clearTimeout(timer);
   }, [productQuery, needsProduct]);
+
+  function addSelectedProduct(product: ProductSummary) {
+    setSelectedProducts((current) => {
+      if (current.some((item) => item.id === product.id)) return current;
+      if (current.length >= MAX_ADMIN_TAGGED_PRODUCTS) {
+        setError(`Maksimal ${MAX_ADMIN_TAGGED_PRODUCTS} produk terkait.`);
+        return current;
+      }
+      setError(null);
+      return [...current, product];
+    });
+    setProductQuery("");
+    setProductResults([]);
+  }
+
+  function removeSelectedProduct(productId: string) {
+    setSelectedProducts((current) =>
+      current.filter((product) => product.id !== productId),
+    );
+  }
 
   async function handleVideoPick(file: File | null) {
     if (!file) return;
@@ -179,7 +203,7 @@ export function AdminFeedCreateClient() {
       setError("Video wajib untuk kind ini.");
       return;
     }
-    if (needsProduct && !selectedProduct) {
+    if (needsProduct && selectedProducts.length === 0) {
       setError("Pilih produk yang terkait.");
       return;
     }
@@ -207,7 +231,8 @@ export function AdminFeedCreateClient() {
           description: description.trim() || null,
           kind,
           tab: kind === "PROMO" ? "PROMO" : "REKOMENDASI",
-          productId: selectedProduct?.id ?? null,
+          productId: selectedProducts[0]?.id ?? null,
+          productIds: selectedProductIds,
           promoOriginalPrice: kind === "PROMO" ? Number(promoOriginal) || null : null,
           promoDiscountPrice: kind === "PROMO" ? Number(promoDiscount) || null : null,
           promoStartsAt: kind === "PROMO" && promoStarts ? promoStarts : null,
@@ -267,7 +292,8 @@ export function AdminFeedCreateClient() {
         videoDurationSec: null,
         videoWidth: null,
         videoHeight: null,
-        productId: selectedProduct?.id ?? null,
+        productId: selectedProducts[0]?.id ?? null,
+        productIds: selectedProductIds,
         promoOriginalPrice: kind === "PROMO" ? Number(promoOriginal) : null,
         promoDiscountPrice: kind === "PROMO" ? Number(promoDiscount) : null,
         promoStartsAt: kind === "PROMO" && promoStarts ? promoStarts : null,
@@ -423,41 +449,66 @@ export function AdminFeedCreateClient() {
       {/* Product picker */}
       {needsProduct && (
         <section className="rounded-2xl border border-gray-100 bg-white p-3">
-          <p className="mb-2 text-xs font-extrabold text-gray-700">
-            Produk terkait <span className="text-red-500">*</span>
-          </p>
-          {selectedProduct ? (
-            <div className="flex items-center gap-3 rounded-xl bg-natalo-50 p-2">
-              {selectedProduct.imageUrl && (
-                <Image
-                  src={selectedProduct.imageUrl}
-                  alt=""
-                  width={40}
-                  height={40}
-                  className="h-10 w-10 rounded-lg object-cover"
-                />
-              )}
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-extrabold text-natalo-800">
-                  {selectedProduct.name}
-                </p>
-                <p className="text-[11px] font-semibold text-natalo-600">
-                  {formatRupiah(selectedProduct.price)}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedProduct(null)}
-                className="text-xs font-extrabold text-natalo-700"
-              >
-                Ganti
-              </button>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <p className="text-xs font-extrabold text-gray-700">
+              Produk terkait <span className="text-red-500">*</span>
+            </p>
+            <span className="text-[11px] font-extrabold text-gray-400">
+              {selectedProducts.length}/{MAX_ADMIN_TAGGED_PRODUCTS}
+            </span>
+          </div>
+
+          {selectedProducts.length > 0 && (
+            <div className="mb-3 space-y-2">
+              {selectedProducts.map((product, index) => (
+                <div
+                  key={product.id}
+                  className="flex items-center gap-3 rounded-xl bg-natalo-50 p-2"
+                >
+                  {product.imageUrl && (
+                    <Image
+                      src={product.imageUrl}
+                      alt=""
+                      width={40}
+                      height={40}
+                      className="h-10 w-10 rounded-lg object-cover"
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-extrabold text-natalo-800">
+                      {product.name}
+                    </p>
+                    <p className="text-[11px] font-semibold text-natalo-600">
+                      {index === 0 ? "Produk utama · " : ""}
+                      {formatRupiah(product.price)}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeSelectedProduct(product.id)}
+                    className="grid h-8 w-8 place-items-center rounded-full text-natalo-700 transition active:bg-natalo-100"
+                    aria-label={`Hapus ${product.name}`}
+                  >
+                    <FiX className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
             </div>
+          )}
+
+          {selectedProducts.length >= MAX_ADMIN_TAGGED_PRODUCTS ? (
+            <p className="rounded-xl bg-gray-50 px-3 py-2 text-[11px] font-bold text-gray-500">
+              Maksimal {MAX_ADMIN_TAGGED_PRODUCTS} produk terkait sudah dipilih.
+            </p>
           ) : (
             <>
               <input
                 type="text"
-                placeholder="Cari produk (min 2 huruf)..."
+                placeholder={
+                  selectedProducts.length > 0
+                    ? "Cari produk tambahan..."
+                    : "Cari produk (min 2 huruf)..."
+                }
                 value={productQuery}
                 onChange={(e) => setProductQuery(e.target.value)}
                 className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:border-natalo-500 focus:bg-white focus:outline-none"
@@ -467,31 +518,35 @@ export function AdminFeedCreateClient() {
               )}
               {productResults.length > 0 && (
                 <ul className="mt-2 max-h-60 overflow-y-auto rounded-xl border border-gray-100">
-                  {productResults.map((p) => (
-                    <li key={p.id}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedProduct(p);
-                          setProductQuery("");
-                          setProductResults([]);
-                        }}
-                        className="flex w-full items-center gap-2 border-b border-gray-50 px-2 py-2 text-left text-xs transition last:border-0 hover:bg-gray-50"
-                      >
-                        {p.imageUrl && (
-                          <Image
-                            src={p.imageUrl}
-                            alt=""
-                            width={32}
-                            height={32}
-                            className="h-8 w-8 rounded-lg object-cover"
-                          />
-                        )}
-                        <span className="min-w-0 flex-1 truncate font-bold">{p.name}</span>
-                        <span className="shrink-0 text-natalo-600">{formatRupiah(p.price)}</span>
-                      </button>
-                    </li>
-                  ))}
+                  {productResults.map((p) => {
+                    const selected = selectedProductIdSet.has(p.id);
+                    return (
+                      <li key={p.id}>
+                        <button
+                          type="button"
+                          onClick={() => addSelectedProduct(p)}
+                          disabled={selected}
+                          className="flex w-full items-center gap-2 border-b border-gray-50 px-2 py-2 text-left text-xs transition last:border-0 hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:opacity-60"
+                        >
+                          {p.imageUrl && (
+                            <Image
+                              src={p.imageUrl}
+                              alt=""
+                              width={32}
+                              height={32}
+                              className="h-8 w-8 rounded-lg object-cover"
+                            />
+                          )}
+                          <span className="min-w-0 flex-1 truncate font-bold">
+                            {p.name}
+                          </span>
+                          <span className="shrink-0 text-natalo-600">
+                            {selected ? "Dipilih" : formatRupiah(p.price)}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </>

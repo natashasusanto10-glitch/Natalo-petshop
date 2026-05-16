@@ -98,7 +98,11 @@ export async function POST(request: NextRequest) {
   const csrfReject = assertSameOrigin(request);
   if (csrfReject) return csrfReject;
 
-  const session = await getSession();
+  // Try ADMIN session first — kalau admin user juga punya member cookie,
+  // default getSession() priority MEMBER bikin admin post masuk PENDING_REVIEW
+  // (treated as customer). Lihat lib/auth.ts:66 untuk cookie priority order.
+  const session =
+    (await getSession("ADMIN")) ?? (await getSession("CUSTOMER"));
   if (!session) {
     return NextResponse.json({ error: "Login dulu untuk posting." }, { status: 401 });
   }
@@ -160,32 +164,36 @@ export async function POST(request: NextRequest) {
   // ── Field-level validation per kind ───────────────────────────────
   const videoUrl = body.videoUrl ? String(body.videoUrl).trim() : null;
   const thumbnailUrl = body.thumbnailUrl ? String(body.thumbnailUrl).trim() : null;
+  const maxTaggedProducts = isAdmin ? 5 : 3;
   const productIdsFromBody = Array.isArray(body.productIds)
     ? body.productIds
         .map((value) => String(value ?? "").trim())
         .filter(Boolean)
     : [];
   const productIds = [...new Set(productIdsFromBody)];
-  if (productIdsFromBody.length > 3 || productIds.length > 3) {
+  if (
+    productIdsFromBody.length > maxTaggedProducts ||
+    productIds.length > maxTaggedProducts
+  ) {
     return NextResponse.json(
-      { error: "Maksimal 3 produk yang bisa di-pin." },
+      { error: `Maksimal ${maxTaggedProducts} produk yang bisa di-pin.` },
       { status: 400 },
     );
   }
   const productIdFromBody = body.productId ? String(body.productId).trim() : null;
   const productId =
-    !isAdmin && productIds.length > 0 ? productIds[0] : productIdFromBody;
-  const productIdsToVerify = !isAdmin
-    ? [...new Set([...productIds, ...(productId ? [productId] : [])])]
-    : productId
-      ? [productId]
-      : [];
-  if (!isAdmin && productIdsToVerify.length > 3) {
+    productIds.length > 0 ? productIds[0] : productIdFromBody;
+  const productIdsToVerify = [
+    ...new Set([...productIds, ...(productId ? [productId] : [])]),
+  ];
+  if (productIdsToVerify.length > maxTaggedProducts) {
     return NextResponse.json(
-      { error: "Maksimal 3 produk yang bisa di-pin." },
+      { error: `Maksimal ${maxTaggedProducts} produk yang bisa di-pin.` },
       { status: 400 },
     );
   }
+  const productIdsToStore =
+    productIds.length > 0 ? productIds : productId ? [productId] : [];
 
   if (kind === "VIDEO_ONLY" || kind === "VIDEO_PRODUCT" || kind === "COMMUNITY") {
     if (!videoUrl || !thumbnailUrl) {
@@ -323,47 +331,62 @@ export async function POST(request: NextRequest) {
   const status = isAdmin ? "ACTIVE" : "PENDING_REVIEW";
   const publishedAt = isAdmin ? new Date() : null;
 
-  const post = await prisma.feedPost.create({
-    data: {
-      authorId: session.sub,
-      authorRole: isAdmin ? "ADMIN" : "CUSTOMER",
-      kind,
-      tab,
-      status,
-      title,
-      description,
-      videoUrl,
-      thumbnailUrl,
-      videoMimeType: body.videoMimeType ? String(body.videoMimeType) : null,
-      videoSizeBytes:
-        Number.isFinite(Number(body.videoSizeBytes)) && Number(body.videoSizeBytes) > 0
-          ? Number(body.videoSizeBytes)
-          : null,
-      videoDurationSec:
-        Number.isFinite(Number(body.videoDurationSec)) && Number(body.videoDurationSec) > 0
-          ? Math.floor(Number(body.videoDurationSec))
-          : null,
-      videoWidth:
-        Number.isFinite(Number(body.videoWidth)) && Number(body.videoWidth) > 0
-          ? Math.floor(Number(body.videoWidth))
-          : null,
-      videoHeight:
-        Number.isFinite(Number(body.videoHeight)) && Number(body.videoHeight) > 0
-          ? Math.floor(Number(body.videoHeight))
-          : null,
-      productId,
-      promoOriginalPrice,
-      promoDiscountPrice,
-      promoStartsAt,
-      promoEndsAt,
-      publishedAt,
-    },
-    select: {
-      id: true,
-      status: true,
-      kind: true,
-      tab: true,
-    },
+  const post = await prisma.$transaction(async (tx) => {
+    const created = await tx.feedPost.create({
+      data: {
+        authorId: session.sub,
+        authorRole: isAdmin ? "ADMIN" : "CUSTOMER",
+        kind,
+        tab,
+        status,
+        title,
+        description,
+        videoUrl,
+        thumbnailUrl,
+        videoMimeType: body.videoMimeType ? String(body.videoMimeType) : null,
+        videoSizeBytes:
+          Number.isFinite(Number(body.videoSizeBytes)) && Number(body.videoSizeBytes) > 0
+            ? Number(body.videoSizeBytes)
+            : null,
+        videoDurationSec:
+          Number.isFinite(Number(body.videoDurationSec)) && Number(body.videoDurationSec) > 0
+            ? Math.floor(Number(body.videoDurationSec))
+            : null,
+        videoWidth:
+          Number.isFinite(Number(body.videoWidth)) && Number(body.videoWidth) > 0
+            ? Math.floor(Number(body.videoWidth))
+            : null,
+        videoHeight:
+          Number.isFinite(Number(body.videoHeight)) && Number(body.videoHeight) > 0
+            ? Math.floor(Number(body.videoHeight))
+            : null,
+        productId,
+        promoOriginalPrice,
+        promoDiscountPrice,
+        promoStartsAt,
+        promoEndsAt,
+        publishedAt,
+      },
+      select: {
+        id: true,
+        status: true,
+        kind: true,
+        tab: true,
+      },
+    });
+
+    if (productIdsToStore.length > 0) {
+      await tx.feedPostProduct.createMany({
+        data: productIdsToStore.map((taggedProductId, position) => ({
+          feedPostId: created.id,
+          productId: taggedProductId,
+          position,
+        })),
+        skipDuplicates: true,
+      });
+    }
+
+    return created;
   });
 
   if (!isAdmin && post.status === "PENDING_REVIEW") {

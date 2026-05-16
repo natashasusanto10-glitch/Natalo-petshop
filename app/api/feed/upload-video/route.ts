@@ -36,7 +36,11 @@ export async function POST(request: NextRequest) {
   const csrfReject = assertSameOrigin(request);
   if (csrfReject) return csrfReject;
 
-  const session = await getSession();
+  // Try ADMIN first supaya admin yang upload tidak mis-detect as customer
+  // (legacy bug: getSession() default priority MEMBER cookie kalau admin
+  // juga punya member cookie). Lihat lib/auth.ts:66.
+  const session =
+    (await getSession("ADMIN")) ?? (await getSession("CUSTOMER"));
   if (!session) {
     return NextResponse.json({ error: "Login dulu untuk upload video." }, { status: 401 });
   }

@@ -18,7 +18,7 @@
  *     description?:    string  (optional, max 2000)
  *     petType?:        string | null
  *     petName?:        string
- *     productIds?:     string[] (max 3, must belong to user's order history)
+ *     productIds?:     string[] (customer max 3, admin max 5)
  *     thumbnailUrl?:   string | null (client-generated preview)
  *     videoDurationSec?: number | null
  *   }
@@ -53,7 +53,12 @@ export async function POST(request: NextRequest) {
   const csrfReject = assertSameOrigin(request);
   if (csrfReject) return csrfReject;
 
-  const session = await getSession();
+  // Cek ADMIN session DULU — kalau admin user juga punya member cookie
+  // dari testing-as-customer atau sesi parallel, default getSession() yang
+  // priority MEMBER bikin admin upload masuk PENDING_REVIEW (bug).
+  // Try admin first, fallback customer.
+  const session =
+    (await getSession("ADMIN")) ?? (await getSession("CUSTOMER"));
   if (!session) {
     return NextResponse.json(
       { error: "Login dulu untuk upload video." },
@@ -120,10 +125,20 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const maxTaggedProducts = isAdmin ? 5 : 3;
   const productIdsFromBody = Array.isArray(body.productIds)
     ? body.productIds.map((v) => String(v ?? "").trim()).filter(Boolean)
     : [];
-  const productIds = [...new Set(productIdsFromBody)].slice(0, 3);
+  const productIds = [...new Set(productIdsFromBody)];
+  if (
+    productIdsFromBody.length > maxTaggedProducts ||
+    productIds.length > maxTaggedProducts
+  ) {
+    return NextResponse.json(
+      { error: `Maksimal ${maxTaggedProducts} produk yang bisa di-tag.` },
+      { status: 400 },
+    );
+  }
 
   // Bunny: create the video record first. If this fails, no DB row is
   // created — caller can retry without orphan.
@@ -178,6 +193,8 @@ export async function POST(request: NextRequest) {
   const productIdSingle = isAdmin && body.productId
     ? String(body.productId).trim()
     : productIds[0] ?? null;
+  const productIdsToStore =
+    productIds.length > 0 ? productIds : productIdSingle ? [productIdSingle] : [];
   const promoOriginalPrice =
     isAdmin && kind === "PROMO" && Number.isFinite(Number(body.promoOriginalPrice))
       ? Number(body.promoOriginalPrice)
@@ -224,9 +241,9 @@ export async function POST(request: NextRequest) {
       },
       select: { id: true },
     });
-    if (productIds.length > 0) {
+    if (productIdsToStore.length > 0) {
       await tx.feedPostProduct.createMany({
-        data: productIds.map((productId, position) => ({
+        data: productIdsToStore.map((productId, position) => ({
           feedPostId: created.id,
           productId,
           position,
