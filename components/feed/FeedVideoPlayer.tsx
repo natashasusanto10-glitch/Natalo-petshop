@@ -246,18 +246,57 @@ export function FeedVideoPlayer({
   }, [isActive]);
 
   // Delayed loading indicator. Only surface a spinner if the video stays
-  // un-playable for >500ms while it's the active card; fast loads (cached,
-  // pre-warmed) never flash a spinner — the user perceives instant playback.
+  // genuinely un-playable for >LOADING_INDICATOR_DELAY_MS. iOS WKWebView
+  // kadang miss `onPlay` event sehingga isPlaying state stuck di false meski
+  // video sebenarnya jalan. Gunakan video.readyState + video.paused sebagai
+  // source of truth — cek di interval kecil. Kalau readyState >= HAVE_FUTURE_DATA
+  // (3) dan tidak paused, video pasti playing regardless onPlay event.
   useEffect(() => {
-    if (!isActive || isPlaying) {
+    if (!isActive) {
       setShowLoadingIndicator(false);
       return;
     }
     const t = window.setTimeout(() => {
-      setShowLoadingIndicator(true);
+      const video = videoRef.current;
+      if (!video) {
+        setShowLoadingIndicator(true);
+        return;
+      }
+      // HAVE_FUTURE_DATA (3) = playback bisa lanjut at least 1 frame
+      // HAVE_ENOUGH_DATA (4) = enough buffered untuk play through smoothly
+      // Kalau salah satu tercapai dan tidak paused, sembunyikan spinner.
+      const isReallyPlaying = !video.paused && video.readyState >= 3;
+      setShowLoadingIndicator(!isReallyPlaying);
     }, LOADING_INDICATOR_DELAY_MS);
     return () => window.clearTimeout(t);
   }, [isActive, isPlaying]);
+
+  // Tambah onTimeUpdate listener sebagai tambahan signal isPlaying — fires
+  // continuously saat video advancing, bahkan kalau onPlay event miss di iOS.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    let lastTime = video.currentTime;
+    function onTimeUpdate() {
+      const v = videoRef.current;
+      if (!v) return;
+      if (v.currentTime !== lastTime) {
+        lastTime = v.currentTime;
+        setIsPlaying(true);
+        setShowLoadingIndicator(false);
+      }
+    }
+    function onPlaying() {
+      setIsPlaying(true);
+      setShowLoadingIndicator(false);
+    }
+    video.addEventListener("timeupdate", onTimeUpdate);
+    video.addEventListener("playing", onPlaying);
+    return () => {
+      video.removeEventListener("timeupdate", onTimeUpdate);
+      video.removeEventListener("playing", onPlaying);
+    };
+  }, []);
 
   function togglePlay() {
     const video = videoRef.current;
@@ -321,7 +360,10 @@ export function FeedVideoPlayer({
         className="absolute inset-0 h-full w-full object-cover"
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
-        onWaiting={() => setIsPlaying(false)}
+        // SENGAJA tidak handle onWaiting — di iOS WKWebView event ini fire
+        // spuriously (saat normal buffering yang tidak interrupt playback),
+        // bikin isPlaying reset ke false padahal video lanjut jalan.
+        // Spinner logic pakai readyState check (lihat useEffect di atas).
         // SELALU opacity 1 — sebelumnya `isPlaying ? 1 : 0` bikin video
         // invisible kalau onPlay event belum fire. Di iOS WKWebView, onPlay
         // kadang delayed atau missed → user lihat poster + loading spinner
