@@ -526,7 +526,7 @@ export function FeedUploadClient() {
             finalDuration={finalDuration}
             postId={resultPostId}
             onBackToFeed={handleCloseFlow}
-            onViewMyPosts={() => router.replace("/akun")}
+            onViewMyPosts={() => router.replace("/akun/postingan-saya")}
           />
         )}
       </StepFrame>
@@ -1833,17 +1833,17 @@ function SuccessScreen({
         <div className="mt-10 w-full max-w-xs space-y-3">
           <button
             type="button"
-            onClick={onBackToFeed}
+            onClick={onViewMyPosts}
             className="w-full rounded-full bg-natalo-600 py-3.5 text-sm font-black text-white shadow-[0_6px_18px_rgba(30,95,191,0.45)] transition active:scale-[0.98]"
           >
-            Kembali ke Feed
+            Lihat Postingan Saya
           </button>
           <button
             type="button"
-            onClick={onViewMyPosts}
+            onClick={onBackToFeed}
             className="w-full rounded-full py-3 text-sm font-black text-white/80 transition active:bg-white/5"
           >
-            Lihat Postingan Saya
+            Kembali ke Feed
           </button>
         </div>
         {postId && (

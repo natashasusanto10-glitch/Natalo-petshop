@@ -63,6 +63,7 @@ export function Header() {
     // Semua sub-page alamat (daftar, tambah, edit/[id]) pakai StickyBackTitle
     // sebagai sub-header — tidak butuh brand header (logo + bell + cart).
     /^\/akun\/alamat(\/|$)/.test(currentPath) ||
+    /^\/akun\/postingan-saya(\/|$)/.test(currentPath) ||
     currentPath === "/akun/pengaturan/notifikasi" ||
     currentPath === "/akun/sesi-aktif" ||
     currentPath === "/member/points" ||

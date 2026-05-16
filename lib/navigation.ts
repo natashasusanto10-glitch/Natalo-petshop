@@ -33,6 +33,7 @@ export const HIDDEN_BOTTOM_NAV_PATTERNS: RegExp[] = [
   /^\/account\/loyalty\/redeem$/,
   /^\/notifications(\/|$)/,
   /^\/akun\/alamat(\/|$)/,
+  /^\/akun\/postingan-saya(\/|$)/,
   /^\/akun\/sesi-aktif(\/|$)/,
   /^\/akun\/pengaturan(\/|$)/,
   /^\/akun\/hapus-akun(\/|$)/,

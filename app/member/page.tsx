@@ -11,6 +11,7 @@ import {
   FiLogOut,
   FiMapPin,
   FiPackage,
+  FiPlayCircle,
   FiShield,
   FiShoppingBag,
   FiTag,
@@ -132,11 +133,45 @@ function SettingsRow({
   );
 }
 
+function FeedSayaCard({ pendingCount }: { pendingCount: number }) {
+  const pendingLabel =
+    pendingCount > 0
+      ? `${pendingCount} postingan menunggu review`
+      : "Kelola video Feed yang kamu upload";
+
+  return (
+    <Link
+      href="/akun/postingan-saya"
+      className="flex items-center gap-3 rounded-[20px] border border-[#D9E7FF] bg-white p-4 shadow-[0_8px_24px_rgba(16,24,40,0.06)] transition active:scale-[0.98]"
+    >
+      <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#EAF2FF] text-[#1677FF]">
+        <FiPlayCircle className="h-7 w-7" aria-hidden="true" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-2">
+          <span className="block text-sm font-black text-[#101A33]">
+            Postingan Saya
+          </span>
+          {pendingCount > 0 && (
+            <span className="grid h-5 min-w-5 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-black leading-none text-white">
+              {pendingCount > 9 ? "9+" : pendingCount}
+            </span>
+          )}
+        </span>
+        <span className="mt-0.5 block text-xs font-semibold leading-4 text-slate-500">
+          {pendingLabel}
+        </span>
+      </span>
+      <FiChevronRight className="h-5 w-5 shrink-0 text-slate-700" aria-hidden="true" />
+    </Link>
+  );
+}
+
 export default async function MemberPage() {
   const session = await requireCustomerSession();
   const recentDoneSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-  const [totalPoints, orderGroups, recentDoneCount, user] = await Promise.all([
+  const [totalPoints, orderGroups, recentDoneCount, user, pendingFeedPostCount] = await Promise.all([
     prisma.customerPoint.aggregate({
       where: { userId: session.sub },
       _sum: { points: true },
@@ -156,6 +191,15 @@ export default async function MemberPage() {
     prisma.user.findUnique({
       where: { id: session.sub },
       select: { birthDate: true, birthdayVoucherYear: true, createdAt: true, name: true },
+    }),
+    prisma.feedPost.count({
+      where: {
+        authorId: session.sub,
+        authorRole: "CUSTOMER",
+        kind: "COMMUNITY",
+        status: "PENDING_REVIEW",
+        deletedAt: null,
+      },
     }),
   ]);
 
@@ -311,6 +355,13 @@ export default async function MemberPage() {
               description="5 voucher aktif"
             />
             <MenuCard href="/akun/alamat" icon={FiMapPin} title="Alamat" description="Kelola alamat pengiriman" />
+          </div>
+        </section>
+
+        <section>
+          <h2 className="px-1 text-lg font-black text-[#101A33]">Feed Saya</h2>
+          <div className="mt-3">
+            <FeedSayaCard pendingCount={pendingFeedPostCount} />
           </div>
         </section>
 
