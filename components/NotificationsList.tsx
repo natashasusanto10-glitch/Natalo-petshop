@@ -24,6 +24,13 @@ type Notification = {
   url: string | null;
   segment: string;
   type?: string;
+  category?: string | null;
+  source?: string | null;
+  eventType?: string | null;
+  feedPostId?: string | null;
+  videoId?: string | null;
+  thumbnailUrl?: string | null;
+  status?: string | null;
   ctaLabel?: string | null;
   createdAt: string;
   read: boolean;
@@ -68,12 +75,16 @@ function formatRelativeTime(iso: string): string {
 }
 
 function notificationType(item: Notification): NotificationType {
+  if (
+    item.source === "feed" ||
+    item.category === "feed" ||
+    item.type === "feed" ||
+    item.type?.startsWith("feed_")
+  ) {
+    return "feed";
+  }
   if (item.type === "promo") return "promo";
   if (item.type === "order") return "order";
-  // Feed notifications (moderation status + comment / reply / like-milestone
-  // activity) are stamped with type="feed" by lib/feed/notifications.ts and
-  // lib/feed/activity-notifications.ts when they insert the Announcement row.
-  if (item.type === "feed") return "feed";
   return "announcement";
 }
 
@@ -108,7 +119,13 @@ function EmptyState({ tab }: { tab: TabId }) {
   );
 }
 
-function IconBadge({ type }: { type: NotificationType }) {
+function IconBadge({
+  type,
+  thumbnailUrl,
+}: {
+  type: NotificationType;
+  thumbnailUrl?: string | null;
+}) {
   if (type === "order") {
     return (
       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
@@ -126,6 +143,16 @@ function IconBadge({ type }: { type: NotificationType }) {
   }
 
   if (type === "feed") {
+    if (thumbnailUrl) {
+      return (
+        <span className="relative flex h-10 w-10 shrink-0 overflow-hidden rounded-xl bg-slate-900 text-white">
+          <img src={thumbnailUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+          <span className="absolute inset-0 grid place-items-center bg-black/20">
+            <IoPlayCircleOutline className="h-6 w-6 drop-shadow" aria-hidden="true" />
+          </span>
+        </span>
+      );
+    }
     return (
       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-natalo-50 text-natalo-600">
         <IoPlayCircleOutline className="h-6 w-6" aria-hidden="true" />
@@ -228,7 +255,7 @@ function NotificationCard({
     >
       <span className={`absolute inset-y-0 left-0 w-1.5 ${accent}`} aria-hidden="true" />
       <div className="flex items-start gap-3 pl-1.5">
-        <IconBadge type={type} />
+        <IconBadge type={type} thumbnailUrl={item.thumbnailUrl} />
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">

@@ -16,6 +16,7 @@ import {
   bunnyThumbnailUrl,
   getBunnyVideo,
 } from "./bunny";
+import { sendFeedPendingReviewNotification } from "./notifications";
 
 export type ReconcileResult =
   | { action: "ready"; postId: string }
@@ -63,6 +64,7 @@ export async function reconcileFeedPost(
         videoSizeBytes: meta.storageSize ?? null,
       },
     });
+    void sendFeedPendingReviewNotification({ postId: post.id });
     return { action: "ready", postId };
   }
 

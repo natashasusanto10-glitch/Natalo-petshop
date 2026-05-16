@@ -15,6 +15,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { assertSameOrigin } from "@/lib/csrf";
+import { sendShareNotification } from "@/lib/feed/activity-notifications";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(
@@ -30,20 +31,27 @@ export async function POST(
   }
 
   try {
-    const updated = await prisma.feedPost.update({
+    const post = await prisma.feedPost.findUnique({
       where: { id: postId },
-      data: { shareCount: { increment: 1 } },
-      select: { shareCount: true, status: true },
+      select: { id: true, status: true },
     });
 
     // Allow shares of ACTIVE posts only; if the post moved to a non-public
     // status between the user's gesture and this call we shouldn't credit it.
-    if (updated.status !== "ACTIVE") {
+    if (!post || post.status !== "ACTIVE") {
       return NextResponse.json(
         { error: "Post tidak ditemukan" },
         { status: 404 },
       );
     }
+
+    const updated = await prisma.feedPost.update({
+      where: { id: post.id },
+      data: { shareCount: { increment: 1 } },
+      select: { shareCount: true },
+    });
+
+    void sendShareNotification({ postId: post.id, shareCount: updated.shareCount });
 
     return NextResponse.json({ ok: true, shareCount: updated.shareCount });
   } catch {

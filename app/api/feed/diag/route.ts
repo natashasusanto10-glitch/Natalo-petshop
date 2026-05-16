@@ -19,6 +19,7 @@ import {
   bunnyThumbnailUrl,
   getBunnyVideo,
 } from "@/lib/feed/bunny";
+import { sendFeedPendingReviewNotification } from "@/lib/feed/notifications";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +55,7 @@ export async function GET(request: NextRequest) {
             videoSizeBytes: meta.storageSize ?? null,
           },
         });
+        void sendFeedPendingReviewNotification({ postId: post.id });
         actions.push({ postId: post.id, action: "ready" });
       } else if (meta.status === BUNNY_VIDEO_STATUS.ERROR) {
         await prisma.feedPost.update({

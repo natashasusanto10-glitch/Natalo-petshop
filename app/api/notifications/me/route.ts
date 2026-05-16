@@ -35,6 +35,43 @@ function extractOrderNumberFromNotification(item: {
   return match?.[0] ?? null;
 }
 
+function mapAnnouncement(a: {
+  id: string;
+  title: string;
+  body: string;
+  url: string | null;
+  segment: string;
+  type: string;
+  source: string | null;
+  eventType: string | null;
+  feedPostId: string | null;
+  thumbnailUrl: string | null;
+  feedStatus: string | null;
+  ctaLabel: string | null;
+  createdAt: Date;
+  reads?: Array<{ readAt: Date }>;
+}) {
+  const isFeed = a.source === "feed" || a.type === "feed";
+  return {
+    id: a.id,
+    title: a.title,
+    body: a.body,
+    url: a.url,
+    segment: a.segment,
+    type: isFeed ? (a.eventType ?? a.type) : a.type,
+    category: a.type,
+    source: a.source,
+    eventType: a.eventType,
+    feedPostId: a.feedPostId,
+    videoId: a.feedPostId,
+    thumbnailUrl: a.thumbnailUrl,
+    status: a.feedStatus,
+    ctaLabel: a.ctaLabel,
+    createdAt: a.createdAt.toISOString(),
+    read: (a.reads?.length ?? 0) > 0,
+  };
+}
+
 export async function GET() {
   try {
     const session = await getSession("CUSTOMER");
@@ -63,17 +100,7 @@ export async function GET() {
         ok: true,
         loggedIn: false,
         unreadCount: 0,
-        items: items.map((a) => ({
-          id: a.id,
-          title: a.title,
-          body: a.body,
-          url: a.url,
-          segment: a.segment,
-          type: a.type,
-          ctaLabel: a.ctaLabel,
-          createdAt: a.createdAt.toISOString(),
-          read: false,
-        })),
+        items: items.map((a) => mapAnnouncement(a)),
       });
     }
 
@@ -126,20 +153,7 @@ export async function GET() {
       },
     });
 
-    const mapped = items.map((a) => ({
-      id: a.id,
-      title: a.title,
-      body: a.body,
-      url: a.url,
-      segment: a.segment,
-      // Trust the stored type. Old data without an explicit type defaults
-      // to "announcement" via the Prisma default; new personal notifs
-      // (order, feed) set their own type explicitly when they're created.
-      type: a.type,
-      ctaLabel: a.ctaLabel,
-      createdAt: a.createdAt.toISOString(),
-      read: a.reads.length > 0,
-    }));
+    const mapped = items.map((a) => mapAnnouncement(a));
     const orderNumbers = Array.from(
       new Set(
         mapped

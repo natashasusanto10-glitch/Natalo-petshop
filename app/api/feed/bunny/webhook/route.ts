@@ -33,6 +33,7 @@ import {
   getBunnyConfig,
   getBunnyVideo,
 } from "@/lib/feed/bunny";
+import { sendFeedPendingReviewNotification } from "@/lib/feed/notifications";
 import { USER_VIDEO_CONFIG } from "@/lib/feed/video-config";
 
 export const dynamic = "force-dynamic";
@@ -144,6 +145,7 @@ export async function POST(request: NextRequest) {
       videoSizeBytes: meta?.storageSize ?? null,
     },
   });
+  void sendFeedPendingReviewNotification({ postId: post.id });
 
   return NextResponse.json({ ok: true, encoded: "ready" });
 }

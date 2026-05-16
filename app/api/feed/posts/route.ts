@@ -19,6 +19,7 @@ import type { FeedPostKind, FeedPostTab } from "@prisma/client";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
+import { sendFeedPendingReviewNotification } from "@/lib/feed/notifications";
 import { listFeedPosts } from "@/lib/feed/queries";
 import { ADMIN_VIDEO_CONFIG, USER_VIDEO_CONFIG } from "@/lib/feed/video-config";
 
@@ -360,6 +361,10 @@ export async function POST(request: NextRequest) {
       tab: true,
     },
   });
+
+  if (!isAdmin && post.status === "PENDING_REVIEW") {
+    void sendFeedPendingReviewNotification({ postId: post.id });
+  }
 
   return NextResponse.json({ ok: true, post });
 }

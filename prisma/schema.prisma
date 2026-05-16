@@ -572,12 +572,20 @@ model Announcement {
   body         String
   url          String?            // deep link (default "/")
   segment      String             @default("all")  // "all" | "members" | "active30d"
-  type         String             @default("announcement") // "order" | "promo" | "announcement"
+  type         String             @default("announcement") // "order" | "promo" | "feed" | "announcement"
   ctaLabel     String?
   startsAt     DateTime?
   endsAt       DateTime?
   publishedAt  DateTime?
   status       String             @default("PUBLISHED") // "PUBLISHED" | "DRAFT"
+  /// Optional structured metadata for system-generated notifications.
+  /// Feed keeps `type = "feed"` for Notification Center tab routing and
+  /// writes the specific event into `eventType` (e.g. feed_post_approved).
+  source       String?
+  eventType    String?
+  feedPostId   String?
+  thumbnailUrl String?
+  feedStatus   String?
   /// Kalau di-set, override segment — cuma user ini yang lihat di bell.
   /// Dipakai untuk personal notification (order status, dll).
   targetUserId String?
@@ -588,6 +596,9 @@ model Announcement {
   @@index([segment])
   @@index([type])
   @@index([status])
+  @@index([source])
+  @@index([eventType])
+  @@index([feedPostId])
   @@index([targetUserId])
 }
 

@@ -8,7 +8,8 @@
  * Triggers wired:
  *   - Top-level comment on a user's post  → notify post author
  *   - Reply to a user's comment           → notify parent comment author
- *   - Like milestone crossed on a post    → notify post author (10/100/1000)
+ *   - Like on a user's post               → notify post author (batched)
+ *   - Share on a user's post              → notify post author
  *
  * Self-notify is always skipped — never notify yourself for your own
  * activity. Errors are swallowed (notification helpers never throw)
@@ -17,53 +18,17 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { sendPushToUser, type PushPayload } from "@/lib/push";
-import { sendApnsToUser } from "@/lib/apns";
-import { sendFcmToUser } from "@/lib/fcm";
+import {
+  createFeedNotification,
+  feedPostOwnerUrl,
+  quoteFeedTitle,
+  truncateFeedText,
+} from "@/lib/feed/notification-center";
 
-const FEED_NOTIF_TYPE = "feed";
-// Push notifications fire only when the cumulative like count crosses one
-// of these thresholds. Avoids "Andi liked your post" spam every time
-// somebody taps the heart. Order matters — first match wins.
+// Milestone helper remains available for bulk/broadcast-style summaries.
+// Per-like Notification Center entries are batched below.
 const LIKE_MILESTONES = [10, 50, 100, 500, 1000, 5000, 10000];
-
-function truncate(input: string, limit = 80): string {
-  const trimmed = input.trim();
-  if (trimmed.length <= limit) return trimmed;
-  return `${trimmed.slice(0, limit - 1)}…`;
-}
-
-async function fanout(
-  userId: string,
-  payload: PushPayload,
-  ctaLabel = "Buka di Feed",
-) {
-  try {
-    await Promise.all([
-      sendPushToUser(userId, payload),
-      sendApnsToUser(userId, payload),
-      sendFcmToUser(userId, payload),
-      prisma.announcement
-        .create({
-          data: {
-            title: payload.title,
-            body: payload.body,
-            url: payload.url ?? "/notifications",
-            segment: "all",
-            type: FEED_NOTIF_TYPE,
-            ctaLabel,
-            publishedAt: new Date(),
-            targetUserId: userId,
-          },
-        })
-        .catch((err) => {
-          console.warn("[feed-activity] failed to insert Announcement:", err);
-        }),
-    ]);
-  } catch (err) {
-    console.warn("[feed-activity] fanout failed:", err);
-  }
-}
+const LIKE_BATCH_WINDOW_MS = 30 * 60 * 1000;
 
 /**
  * Top-level comment on someone else's post. Fires once per comment.
@@ -78,7 +43,13 @@ export async function sendCommentNotification(params: {
   try {
     const post = await prisma.feedPost.findUnique({
       where: { id: params.postId },
-      select: { id: true, authorId: true, authorRole: true },
+      select: {
+        id: true,
+        authorId: true,
+        authorRole: true,
+        title: true,
+        thumbnailUrl: true,
+      },
     });
     if (!post || !post.authorId) return;
     if (post.authorRole === "ADMIN") return; // admin posts have no human recipient
@@ -90,19 +61,18 @@ export async function sendCommentNotification(params: {
     });
     const actorName = actor?.name?.trim() || "Seseorang";
 
-    const payload: PushPayload = {
-      title: "Komentar baru di videomu",
-      body: `${actorName}: ${truncate(params.content)}`,
-      url: `/feed?post=${params.postId}`,
-      tag: `feed-comment-${params.postId}`,
-      data: {
-        type: FEED_NOTIF_TYPE,
-        subtype: "comment",
-        post_id: params.postId,
-        comment_id: params.commentId,
-      },
-    };
-    await fanout(post.authorId, payload, "Balas Komentar");
+    await createFeedNotification({
+      userId: post.authorId,
+      eventType: "feed_new_comment",
+      title: "Komentar baru di video kamu",
+      message: `${actorName} mengomentari postingan ${quoteFeedTitle(post.title)}: ${truncateFeedText(params.content)}`,
+      feedPostId: post.id,
+      thumbnailUrl: post.thumbnailUrl,
+      url: feedPostOwnerUrl(post.id),
+      ctaLabel: "Lihat Komentar",
+      tag: `feed-comment-${post.id}`,
+      data: { comment_id: params.commentId },
+    });
   } catch (err) {
     console.warn("[feed-activity] sendCommentNotification:", err);
   }
@@ -133,20 +103,26 @@ export async function sendReplyNotification(params: {
     });
     const actorName = actor?.name?.trim() || "Seseorang";
 
-    const payload: PushPayload = {
-      title: `${actorName} balas komentarmu`,
-      body: truncate(params.content),
-      url: `/feed?post=${params.postId}`,
+    const post = await prisma.feedPost.findUnique({
+      where: { id: params.postId },
+      select: { id: true, title: true, thumbnailUrl: true },
+    });
+
+    await createFeedNotification({
+      userId: parent.authorId,
+      eventType: "feed_new_comment",
+      title: `${actorName} membalas komentarmu`,
+      message: truncateFeedText(params.content),
+      feedPostId: params.postId,
+      thumbnailUrl: post?.thumbnailUrl ?? null,
+      url: feedPostOwnerUrl(params.postId),
+      ctaLabel: "Lihat Balasan",
       tag: `feed-reply-${params.parentCommentId}`,
       data: {
-        type: FEED_NOTIF_TYPE,
-        subtype: "reply",
-        post_id: params.postId,
         parent_comment_id: params.parentCommentId,
         reply_comment_id: params.replyCommentId,
       },
-    };
-    await fanout(parent.authorId, payload, "Lihat Balasan");
+    });
   } catch (err) {
     console.warn("[feed-activity] sendReplyNotification:", err);
   }
@@ -176,28 +152,129 @@ export async function sendLikeMilestoneNotification(params: {
   try {
     const post = await prisma.feedPost.findUnique({
       where: { id: params.postId },
-      select: { id: true, authorId: true, authorRole: true, title: true },
+      select: {
+        id: true,
+        authorId: true,
+        authorRole: true,
+        title: true,
+        thumbnailUrl: true,
+      },
     });
     if (!post || !post.authorId) return;
     if (post.authorRole === "ADMIN") return;
 
-    const emoji = params.milestone >= 1000 ? "🚀" : params.milestone >= 100 ? "🔥" : "🎉";
-    const payload: PushPayload = {
-      title: `${emoji} Postingan kamu ${params.milestone} like!`,
-      body: post.title
-        ? truncate(post.title)
-        : "Video kamu makin disukai komunitas Natalo.",
-      url: `/feed?post=${params.postId}`,
-      tag: `feed-milestone-${params.postId}-${params.milestone}`,
-      data: {
-        type: FEED_NOTIF_TYPE,
-        subtype: "like-milestone",
-        post_id: params.postId,
-        milestone: String(params.milestone),
-      },
-    };
-    await fanout(post.authorId, payload, "Lihat Postingan");
+    await createFeedNotification({
+      userId: post.authorId,
+      eventType: "feed_new_like",
+      title: `${params.milestone} orang menyukai video kamu`,
+      message: `Postingan ${quoteFeedTitle(post.title)} mendapat beberapa like baru.`,
+      feedPostId: post.id,
+      thumbnailUrl: post.thumbnailUrl,
+      url: feedPostOwnerUrl(post.id),
+      ctaLabel: "Lihat Postingan",
+      tag: `feed-milestone-${post.id}-${params.milestone}`,
+      data: { milestone: String(params.milestone) },
+    });
   } catch (err) {
     console.warn("[feed-activity] sendLikeMilestoneNotification:", err);
+  }
+}
+
+export async function sendLikeNotification(params: {
+  postId: string;
+  actorUserId: string;
+  likeCount: number;
+}) {
+  try {
+    const post = await prisma.feedPost.findUnique({
+      where: { id: params.postId },
+      select: {
+        id: true,
+        authorId: true,
+        authorRole: true,
+        title: true,
+        thumbnailUrl: true,
+      },
+    });
+    if (!post || !post.authorId) return;
+    if (post.authorRole === "ADMIN") return;
+    if (post.authorId === params.actorUserId) return;
+
+    const since = new Date(Date.now() - LIKE_BATCH_WINDOW_MS);
+    const recentUnread = await prisma.announcement.findFirst({
+      where: {
+        targetUserId: post.authorId,
+        source: "feed",
+        eventType: "feed_new_like",
+        feedPostId: post.id,
+        createdAt: { gte: since },
+        reads: { none: { userId: post.authorId } },
+      },
+      select: { id: true },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (recentUnread) {
+      await prisma.announcement.update({
+        where: { id: recentUnread.id },
+        data: {
+          title: `${params.likeCount} orang menyukai video kamu`,
+          body: `Postingan ${quoteFeedTitle(post.title)} mendapat beberapa like baru.`,
+          thumbnailUrl: post.thumbnailUrl,
+          publishedAt: new Date(),
+        },
+      });
+      return;
+    }
+
+    await createFeedNotification({
+      userId: post.authorId,
+      eventType: "feed_new_like",
+      title: "Video kamu mendapat like baru",
+      message: `Postingan ${quoteFeedTitle(post.title)} disukai oleh pengguna lain.`,
+      feedPostId: post.id,
+      thumbnailUrl: post.thumbnailUrl,
+      url: feedPostOwnerUrl(post.id),
+      ctaLabel: "Lihat Postingan",
+      tag: `feed-like-${post.id}`,
+      data: { like_count: String(params.likeCount) },
+    });
+  } catch (err) {
+    console.warn("[feed-activity] sendLikeNotification:", err);
+  }
+}
+
+export async function sendShareNotification(params: {
+  postId: string;
+  shareCount: number;
+}) {
+  try {
+    const post = await prisma.feedPost.findUnique({
+      where: { id: params.postId },
+      select: {
+        id: true,
+        authorId: true,
+        authorRole: true,
+        title: true,
+        thumbnailUrl: true,
+      },
+    });
+    if (!post || !post.authorId) return;
+    if (post.authorRole === "ADMIN") return;
+
+    await createFeedNotification({
+      userId: post.authorId,
+      eventType: "feed_new_share",
+      title: "Video kamu dibagikan",
+      message: `Postingan ${quoteFeedTitle(post.title)} baru saja dibagikan.`,
+      feedPostId: post.id,
+      thumbnailUrl: post.thumbnailUrl,
+      url: feedPostOwnerUrl(post.id),
+      ctaLabel: "Lihat Postingan",
+      tag: `feed-share-${post.id}`,
+      data: { share_count: String(params.shareCount) },
+    });
+  } catch (err) {
+    console.warn("[feed-activity] sendShareNotification:", err);
   }
 }

@@ -1,119 +1,133 @@
 /**
- * Feed moderation notifications — hook fired when an admin moderates a
- * customer's feed post. Mirrors the lib/push.ts order-status pattern:
- * fan-out push to web/APNs/FCM + insert a personal Announcement so the
- * notification center (bell icon list) shows the same message even when
- * the user hasn't opted in to push.
+ * Feed status notifications.
+ *
+ * These helpers insert personal Announcement rows for Notification Center
+ * and fan out push through the existing web/APNs/FCM channels. Errors are
+ * swallowed so notification delivery never blocks the Feed action itself.
  */
 
 import { prisma } from "@/lib/prisma";
-import { sendPushToUser, type PushPayload } from "@/lib/push";
-import { sendApnsToUser } from "@/lib/apns";
-import { sendFcmToUser } from "@/lib/fcm";
+import {
+  createFeedNotification,
+  feedPostOwnerUrl,
+  quoteFeedTitle,
+  type FeedNotificationEventType,
+  type FeedNotificationStatus,
+} from "@/lib/feed/notification-center";
 
 export type FeedModerationAction = "approve" | "reject" | "hide" | "unhide";
 
-const FEED_NOTIF_TYPE = "feed";
-
-function buildCopy(
-  action: FeedModerationAction,
-  note: string | null,
-): { title: string; body: string; ctaLabel: string; url: string } | null {
+function eventForAction(action: FeedModerationAction): {
+  eventType: FeedNotificationEventType;
+  status: FeedNotificationStatus | null;
+  title: string;
+  ctaLabel: string;
+} | null {
   switch (action) {
     case "approve":
       return {
-        title: "Postingan disetujui 🎉",
-        body: "Video kamu sekarang tayang di Feed Natalo. Yuk lihat respon komunitas.",
-        ctaLabel: "Lihat di Feed",
-        url: "/feed",
+        eventType: "feed_post_approved",
+        status: "approved",
+        title: "Video kamu sudah tayang",
+        ctaLabel: "Lihat Postingan",
       };
     case "reject":
       return {
-        title: "Postingan ditolak",
-        body: note
-          ? `Alasan: ${note}`
-          : "Postinganmu tidak sesuai pedoman komunitas Natalo.",
-        ctaLabel: "Lihat Status",
-        url: "/notifications",
+        eventType: "feed_post_rejected",
+        status: "rejected",
+        title: "Video kamu ditolak",
+        ctaLabel: "Lihat Alasan",
       };
     case "hide":
-      // Admin took an existing ACTIVE post off the feed — let the user know.
-      return {
-        title: "Postingan disembunyikan",
-        body: note
-          ? `Postinganmu disembunyikan oleh admin. Alasan: ${note}`
-          : "Postinganmu disembunyikan dari Feed oleh admin.",
-        ctaLabel: "Lihat Status",
-        url: "/notifications",
-      };
     case "unhide":
-      return {
-        title: "Postingan tayang kembali",
-        body: "Admin sudah menampilkan postinganmu lagi di Feed Natalo.",
-        ctaLabel: "Lihat di Feed",
-        url: "/feed",
-      };
+      return null;
     default:
       return null;
   }
 }
 
-/**
- * Fire-and-forget — never throw. Caller awaits to enforce ordering but
- * the function itself swallows any errors so a notification failure can't
- * roll back the moderation update itself.
- */
+export async function sendFeedPendingReviewNotification(params: {
+  postId: string;
+}) {
+  try {
+    const post = await prisma.feedPost.findUnique({
+      where: { id: params.postId },
+      select: {
+        id: true,
+        authorId: true,
+        authorRole: true,
+        status: true,
+        title: true,
+        thumbnailUrl: true,
+      },
+    });
+    if (!post || post.authorRole !== "CUSTOMER") return;
+    if (post.status !== "PENDING_REVIEW") return;
+
+    await createFeedNotification({
+      userId: post.authorId,
+      eventType: "feed_review_pending",
+      title: "Video kamu sedang menunggu review",
+      message: `Postingan ${quoteFeedTitle(post.title)} sedang menunggu review admin sebelum tampil di Feed.`,
+      feedPostId: post.id,
+      thumbnailUrl: post.thumbnailUrl,
+      status: "pending",
+      url: feedPostOwnerUrl(post.id),
+      ctaLabel: "Lihat Postingan Saya",
+      dedupeByEvent: true,
+    });
+  } catch (err) {
+    console.warn("[feed-notif] pending failed:", err);
+  }
+}
+
 export async function sendFeedModerationNotification(params: {
   postId: string;
   action: FeedModerationAction;
   note?: string | null;
 }) {
-  const { postId, action, note } = params;
-  const copy = buildCopy(action, note ?? null);
-  if (!copy) return;
+  const event = eventForAction(params.action);
+  if (!event) return;
 
   try {
     const post = await prisma.feedPost.findUnique({
-      where: { id: postId },
-      select: { id: true, userId: true },
-    });
-    if (!post || !post.userId) return; // admin-authored posts have no user to notify
-
-    const payload: PushPayload = {
-      title: copy.title,
-      body: copy.body,
-      url: copy.url,
-      tag: `feed-${postId}`,
-      data: {
-        type: FEED_NOTIF_TYPE,
-        post_id: postId,
-        action,
-        url: copy.url,
+      where: { id: params.postId },
+      select: {
+        id: true,
+        authorId: true,
+        authorRole: true,
+        title: true,
+        thumbnailUrl: true,
       },
-    };
+    });
+    if (!post || post.authorRole !== "CUSTOMER") return;
 
-    await Promise.all([
-      sendPushToUser(post.userId, payload),
-      sendApnsToUser(post.userId, payload),
-      sendFcmToUser(post.userId, payload),
-      prisma.announcement
-        .create({
-          data: {
-            title: copy.title,
-            body: copy.body,
-            url: copy.url,
-            segment: "all", // ignored when targetUserId is set
-            type: FEED_NOTIF_TYPE,
-            ctaLabel: copy.ctaLabel,
-            publishedAt: new Date(),
-            targetUserId: post.userId,
-          },
-        })
-        .catch((err) => {
-          console.warn("[feed-notif] failed to create Announcement:", err);
-        }),
-    ]);
+    let message: string;
+    if (params.action === "approve") {
+      message = `Postingan ${quoteFeedTitle(post.title)} sudah disetujui dan sekarang tampil di Feed.`;
+    } else if (params.action === "reject") {
+      message = `Postingan ${quoteFeedTitle(post.title)} belum bisa ditayangkan. Silakan cek alasannya.`;
+    } else if (params.action === "hide") {
+      message = params.note
+        ? `Postingan ${quoteFeedTitle(post.title)} disembunyikan oleh admin. Alasan: ${params.note}`
+        : `Postingan ${quoteFeedTitle(post.title)} disembunyikan oleh admin.`;
+    } else {
+      message = `Postingan ${quoteFeedTitle(post.title)} sudah ditampilkan kembali di Feed.`;
+    }
+
+    await createFeedNotification({
+      userId: post.authorId,
+      eventType: event.eventType,
+      title: event.title,
+      message,
+      feedPostId: post.id,
+      thumbnailUrl: post.thumbnailUrl,
+      status: event.status,
+      url: feedPostOwnerUrl(post.id),
+      ctaLabel: event.ctaLabel,
+      dedupeByEvent: params.action === "approve" || params.action === "reject",
+    });
   } catch (err) {
-    console.warn("[feed-notif] failed:", err);
+    console.warn("[feed-notif] moderation failed:", err);
   }
 }
