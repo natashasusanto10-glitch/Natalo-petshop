@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -6,76 +5,58 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/product.dart';
 
-/// Recently viewed products — track 12 produk terakhir yang user buka.
-/// Persisted di SharedPreferences supaya survive app restart.
-///
-/// Pattern: tap product detail → `recentlyViewedStore.add(product)` →
-/// Home carousel show 6 terbaru. Bring-back UX, drive repeat sessions.
+/// Local history produk yang user lihat — dipakai untuk carousel di Home
+/// + recommendation engine. Capped 30 item supaya disk usage manageable.
 class RecentlyViewedStore extends ChangeNotifier {
-  static const _kKey = 'natalo_recently_viewed_v1';
-  static const _maxItems = 12;
+  RecentlyViewedStore._();
+
+  static const _key = 'recently_viewed_v1';
+  static const _maxItems = 30;
 
   final List<Product> _items = [];
-  bool _loaded = false;
 
   List<Product> get items => List.unmodifiable(_items);
   int get length => _items.length;
   bool get isEmpty => _items.isEmpty;
-  bool get isNotEmpty => _items.isNotEmpty;
 
   Future<void> loadFromDisk() async {
-    if (_loaded) return;
-    _loaded = true;
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_kKey);
-      if (raw == null || raw.isEmpty) {
-        notifyListeners();
-        return;
-      }
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) return;
-      _items.clear();
-      for (final entry in decoded) {
-        if (entry is Map<String, dynamic>) {
-          try {
-            _items.add(Product.fromApiJson(entry));
-          } catch (_) {}
-        }
-      }
+      final raw = prefs.getString(_key);
+      if (raw == null) return;
+      final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
+      _items
+        ..clear()
+        ..addAll(list.map((j) => Product.fromJson(j)));
       notifyListeners();
-    } catch (e) {
-      if (kDebugMode) debugPrint('[recently_viewed] load failed: $e');
-    }
+    } catch (_) {}
   }
 
-  /// Tambahkan produk ke head of list. Kalau sudah ada di list,
-  /// pindahkan ke depan (most-recent). Max 12 items.
+  Future<void> _persist() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = _items.map((p) => p.toJson()).toList();
+      await prefs.setString(_key, jsonEncode(list));
+    } catch (_) {}
+  }
+
   Future<void> add(Product product) async {
-    // Dedup: remove existing entry kalau ada.
+    // Promote to head, dedupe by id, cap to max.
     _items.removeWhere((p) => p.id == product.id);
     _items.insert(0, product);
-    // Cap to _maxItems.
     if (_items.length > _maxItems) {
       _items.removeRange(_maxItems, _items.length);
     }
     notifyListeners();
-    _persistToDisk();
+    await _persist();
   }
 
   Future<void> clear() async {
+    if (_items.isEmpty) return;
     _items.clear();
     notifyListeners();
-    _persistToDisk();
-  }
-
-  Future<void> _persistToDisk() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final json = jsonEncode(_items.map((p) => p.toJson()).toList());
-      await prefs.setString(_kKey, json);
-    } catch (_) {}
+    await _persist();
   }
 }
 
-final recentlyViewedStore = RecentlyViewedStore();
+final RecentlyViewedStore recentlyViewedStore = RecentlyViewedStore._();

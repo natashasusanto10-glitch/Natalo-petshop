@@ -1,349 +1,254 @@
-import '../config/api_config.dart';
+/// Product + variant model.
+///
+/// Field naming: backend Prisma pakai `name`, tapi screen Flutter di-port
+/// dari Next.js source pakai `title`. Constructor primary pakai `title`,
+/// dengan `name` getter alias supaya kedua naming style work.
+class Product {
+  final String id;
+  final String title;
+  final String slug;
+  final String description;
+  final int price;
+  final int? memberPrice;
+  final int? discountPrice;
+  final int stock;
+  final int weightGram;
+  /// Non-nullable — kalau backend kasih null, default ke '' supaya screen
+  /// code yang akses .isEmpty / .startsWith tetap aman.
+  final String imageUrl;
+  final List<String> gallery;
+  final bool isActive;
+  final bool hasVariants;
+  final double rating;
+  final int reviewCount;
+  final String category;
+  final String brand;
+  final List<VariantAttribute> variantAttrs;
+  final List<ProductVariant> variants;
 
-/// Opsi varian (mis. "500g", "1kg", "Merah", "Biru").
-class ProductVariantOption {
+  const Product({
+    required this.id,
+    required this.title,
+    required this.slug,
+    this.description = '',
+    required this.price,
+    this.memberPrice,
+    this.discountPrice,
+    this.stock = 0,
+    this.weightGram = 500,
+    this.imageUrl = '',
+    this.gallery = const [],
+    this.isActive = true,
+    this.hasVariants = false,
+    this.rating = 0,
+    this.reviewCount = 0,
+    this.category = '',
+    this.brand = '',
+    this.variantAttrs = const [],
+    this.variants = const [],
+  });
+
+  /// Alias — beberapa code pakai `name`, beberapa pakai `title`. Provide both.
+  String get name => title;
+
+  /// Backward-compat — some old code may call `avgRating`.
+  double get avgRating => rating;
+
+  /// Harga final yang ditampilkan: prioritas discountPrice → memberPrice → price.
+  int get finalPrice {
+    if (discountPrice != null && discountPrice! > 0) return discountPrice!;
+    if (memberPrice != null && memberPrice! > 0) return memberPrice!;
+    return price;
+  }
+
+  /// True kalau ada selisih price → finalPrice.
+  bool get hasDiscount => finalPrice < price;
+
+  /// Persentase diskon (0–99). 0 kalau no discount.
+  int get discountPercent {
+    if (!hasDiscount || price <= 0) return 0;
+    final pct = ((price - finalPrice) / price) * 100;
+    return pct.round().clamp(1, 99);
+  }
+
+  /// Apakah barang masih bisa dibeli (stok > 0 + active).
+  bool get isAvailable => isActive && stock > 0;
+
+  factory Product.fromJson(Map<String, dynamic> json) {
+    return Product(
+      id: json['id'] as String,
+      title: (json['title'] ?? json['name']) as String? ?? '',
+      slug: json['slug'] as String? ?? '',
+      description: json['description'] as String? ?? '',
+      price: _asInt(json['price']),
+      memberPrice: _asNullableInt(json['memberPrice']),
+      discountPrice: _asNullableInt(json['discountPrice']),
+      stock: _asInt(json['stock']),
+      weightGram: _asInt(json['weightGram'] ?? 500),
+      imageUrl: (json['imageUrl'] as String?) ?? '',
+      gallery: (json['gallery'] as List?)?.cast<String>() ?? const [],
+      isActive: json['isActive'] as bool? ?? true,
+      hasVariants: json['hasVariants'] as bool? ?? false,
+      rating: (json['rating'] ?? json['avgRating'] as num?)?.toDouble() ?? 0,
+      reviewCount: _asInt(json['reviewCount']),
+      category: _categoryFrom(json['category']) ?? '',
+      brand: _brandFrom(json['brand']) ?? '',
+      variantAttrs: (json['variantAttrs'] as List?)
+              ?.map((e) => VariantAttribute.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          const [],
+      variants: (json['variants'] as List?)
+              ?.map((e) => ProductVariant.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          const [],
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'slug': slug,
+        'description': description,
+        'price': price,
+        if (memberPrice != null) 'memberPrice': memberPrice,
+        if (discountPrice != null) 'discountPrice': discountPrice,
+        'stock': stock,
+        'weightGram': weightGram,
+        if (imageUrl.isNotEmpty) 'imageUrl': imageUrl,
+        'gallery': gallery,
+        'isActive': isActive,
+        'hasVariants': hasVariants,
+        'rating': rating,
+        'reviewCount': reviewCount,
+        if (category.isNotEmpty) 'category': category,
+        if (brand.isNotEmpty) 'brand': brand,
+      };
+}
+
+class VariantAttribute {
+  final String id;
+  final String name;
+  final int position;
+  final List<VariantOption> options;
+
+  const VariantAttribute({
+    required this.id,
+    required this.name,
+    this.position = 0,
+    this.options = const [],
+  });
+
+  factory VariantAttribute.fromJson(Map<String, dynamic> json) {
+    return VariantAttribute(
+      id: json['id'] as String,
+      name: json['name'] as String? ?? '',
+      position: _asInt(json['position']),
+      options: (json['options'] as List?)
+              ?.map((e) => VariantOption.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          const [],
+    );
+  }
+}
+
+class VariantOption {
   final String id;
   final String value;
   final int position;
 
-  const ProductVariantOption({
+  const VariantOption({
     required this.id,
     required this.value,
-    required this.position,
+    this.position = 0,
   });
 
-  factory ProductVariantOption.fromJson(Map<String, dynamic> json) {
-    return ProductVariantOption(
-      id: (json['id'] ?? '').toString(),
-      value: (json['value'] ?? '').toString(),
+  factory VariantOption.fromJson(Map<String, dynamic> json) {
+    return VariantOption(
+      id: json['id'] as String,
+      value: json['value'] as String? ?? '',
       position: _asInt(json['position']),
     );
   }
-
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'value': value,
-        'position': position,
-      };
 }
 
-/// Atribut varian (mis. "Ukuran" dengan opsi 500g/1kg, "Warna" dengan
-/// opsi Merah/Biru). Satu produk bisa punya beberapa atribut — kombinasi
-/// option dari semua atribut menentukan satu Variant konkret.
-class ProductVariantAttribute {
-  final String id;
-  final String name;
-  final int position;
-  final List<ProductVariantOption> options;
-
-  const ProductVariantAttribute({
-    required this.id,
-    required this.name,
-    required this.position,
-    required this.options,
-  });
-
-  factory ProductVariantAttribute.fromJson(Map<String, dynamic> json) {
-    final raw = json['options'];
-    final opts = raw is List
-        ? raw
-            .whereType<Map<String, dynamic>>()
-            .map(ProductVariantOption.fromJson)
-            .toList()
-        : <ProductVariantOption>[];
-    return ProductVariantAttribute(
-      id: (json['id'] ?? '').toString(),
-      name: (json['name'] ?? '').toString(),
-      position: _asInt(json['position']),
-      options: opts,
-    );
-  }
-
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'position': position,
-        'options': options.map((o) => o.toJson()).toList(),
-      };
-}
-
-/// Variant konkret (kombinasi optionId dari semua attribute).
-/// Punya price + stock + SKU spesifik untuk kombinasi itu.
 class ProductVariant {
   final String id;
   final String? sku;
-  final double price;
+  final int price;
   final int stock;
   final int weightGram;
   final String? imageUrl;
-  final bool isActive;
-
-  /// List optionId yang membentuk kombinasi varian ini.
   final List<String> optionIds;
 
   const ProductVariant({
     required this.id,
-    required this.sku,
+    this.sku,
     required this.price,
-    required this.stock,
-    required this.weightGram,
-    required this.imageUrl,
-    required this.isActive,
-    required this.optionIds,
+    this.stock = 0,
+    this.weightGram = 500,
+    this.imageUrl,
+    this.optionIds = const [],
   });
 
   factory ProductVariant.fromJson(Map<String, dynamic> json) {
-    final raw = json['options'];
-    final ids = raw is List
-        ? raw
-            .whereType<Map<String, dynamic>>()
-            .map((entry) => (entry['optionId'] ?? '').toString())
-            .where((id) => id.isNotEmpty)
-            .toList()
-        : <String>[];
+    final options = json['options'] as List?;
+    final ids = <String>[];
+    if (options != null) {
+      for (final opt in options) {
+        if (opt is Map<String, dynamic>) {
+          final id = opt['optionId'] ?? opt['option']?['id'];
+          if (id is String) ids.add(id);
+        }
+      }
+    }
     return ProductVariant(
-      id: (json['id'] ?? '').toString(),
-      sku: (json['sku'] ?? '').toString().isEmpty
-          ? null
-          : json['sku'].toString(),
-      price: _asDouble(json['price']),
+      id: json['id'] as String,
+      sku: json['sku'] as String?,
+      price: _asInt(json['price']),
       stock: _asInt(json['stock']),
-      weightGram: _asInt(json['weightGram'], fallback: 500),
-      imageUrl: (json['imageUrl'] ?? '').toString().isEmpty
-          ? null
-          : _absoluteUrl(json['imageUrl'].toString()),
-      isActive: json['isActive'] != false,
+      weightGram: _asInt(json['weightGram'] ?? 500),
+      imageUrl: json['imageUrl'] as String?,
       optionIds: ids,
     );
   }
-
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'sku': sku,
-        'price': price,
-        'stock': stock,
-        'weightGram': weightGram,
-        'imageUrl': imageUrl,
-        'isActive': isActive,
-        'options': optionIds.map((id) => {'optionId': id}).toList(),
-      };
 }
 
-class Product {
-  final String id;
-  final String slug;
-  final String title;
-  final String category;
-  final String brand;
-  final String imageUrl;
-  final double price;
-  final double? discountPrice;
-  final double? memberPrice;
-  final double rating;
-  final int reviewCount;
-  final int stock;
-  final int weightGram;
-  final bool isNew;
-  final bool isTrending;
-  final bool hasVariants;
-  final List<String> gallery;
-  final String description;
+/// Navigation args untuk ProductsScreen — opsi filter awal.
+class ProductCatalogArgs {
+  final String? selectedBrand;
+  final String? initialQuery;
+  final String? initialCategory;
 
-  /// Atribut + variants — hanya terisi dari /api/products/{slug}.
-  /// List/recommendations endpoint return [] supaya size payload kecil.
-  final List<ProductVariantAttribute> variantAttrs;
-  final List<ProductVariant> variants;
-
-  /// soldCount diisi dari /api/products/{slug}; endpoint lain return 0.
-  final int soldCount;
-
-  Product({
-    required this.id,
-    required this.slug,
-    required this.title,
-    required this.category,
-    required this.brand,
-    required this.imageUrl,
-    required this.price,
-    this.discountPrice,
-    this.memberPrice,
-    required this.rating,
-    required this.reviewCount,
-    required this.stock,
-    this.weightGram = 500,
-    this.isNew = false,
-    this.isTrending = false,
-    this.hasVariants = false,
-    this.gallery = const [],
-    required this.description,
-    this.variantAttrs = const [],
-    this.variants = const [],
-    this.soldCount = 0,
+  const ProductCatalogArgs({
+    this.selectedBrand,
+    this.initialQuery,
+    this.initialCategory,
   });
-
-  factory Product.fromApiJson(Map<String, dynamic> json) {
-    final price = _asDouble(json['price_min'] ?? json['price']);
-    final discountPrice = _nullableDouble(
-      json['discount_price'] ?? json['discountPrice'],
-    );
-    // Endpoint /api/cart/recommendations & /api/cart/recently-viewed return
-    // field 'image' (bukan 'image_url'). Tambah fallback.
-    final image = _absoluteUrl(
-      _string(json['image_url'] ?? json['imageUrl'] ?? json['image']),
-    );
-    final galleryRaw = json['gallery'];
-
-    return Product(
-      id: _string(json['id'], fallback: _string(json['slug'])),
-      slug: _string(json['slug'], fallback: _string(json['id'])),
-      title: _string(json['name'] ?? json['title'], fallback: 'Produk Natalo'),
-      category: _string(
-        // recommendations & recently-viewed API return 'category' sebagai string.
-        json['category_name'] ??
-            json['categorySlug'] ??
-            json['category_slug'] ??
-            json['category'],
-        fallback: 'Produk',
-      ),
-      brand: _string(
-        json['brand_name'] ??
-            json['brandName'] ??
-            json['brand_slug'] ??
-            json['brand'],
-        fallback: 'Natalo',
-      ),
-      imageUrl: image,
-      price: price,
-      discountPrice: discountPrice,
-      memberPrice: _nullableDouble(json['memberPrice'] ?? json['member_price']),
-      rating: _asDouble(
-        json['avg_rating'] ?? json['avgRating'] ?? json['rating'],
-      ),
-      reviewCount: _asInt(json['review_count'] ?? json['reviewCount']),
-      stock: _asInt(json['total_stock'] ?? json['stock']),
-      weightGram:
-          _asInt(json['weight_grams'] ?? json['weightGram'], fallback: 500),
-      isNew: false,
-      isTrending: _asInt(json['review_count'] ?? json['reviewCount']) >= 10,
-      hasVariants: json['has_variants'] == true || json['hasVariants'] == true,
-      gallery: galleryRaw is List
-          ? galleryRaw.map((item) => item.toString()).toList()
-          : const [],
-      description: _string(json['description']),
-      variantAttrs: _parseVariantAttrs(json['variantAttrs']),
-      variants: _parseVariants(json['variants']),
-      soldCount: _asInt(
-        json['soldCount'] ??
-            json['totalSold'] ??
-            json['sold_count'] ??
-            json['total_sold'] ??
-            json['salesCount'] ??
-            json['jumlahTerjual'] ??
-            json['sold'],
-      ),
-    );
-  }
-
-  /// Serialize untuk persist ke local storage (cart cache).
-  /// Key naming match `fromApiJson` accept format supaya bisa round-trip.
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'slug': slug,
-        'name': title,
-        'category_name': category,
-        'brand_name': brand,
-        'image_url': imageUrl,
-        'price': price,
-        'discount_price': discountPrice,
-        'memberPrice': memberPrice,
-        'avgRating': rating,
-        'reviewCount': reviewCount,
-        'stock': stock,
-        'weightGram': weightGram,
-        'hasVariants': hasVariants,
-        'gallery': gallery,
-        'description': description,
-        'variantAttrs': variantAttrs.map((a) => a.toJson()).toList(),
-        'variants': variants.map((v) => v.toJson()).toList(),
-        'soldCount': soldCount,
-      };
-
-  double get finalPrice {
-    final member = memberPrice;
-    if (member != null && member < price) return member;
-
-    final discount = discountPrice;
-    if (discount != null && discount < price) return discount;
-
-    return price;
-  }
-
-  bool get hasDiscount => finalPrice < price;
-
-  int? get discountPercent {
-    if (!hasDiscount || price <= 0) return null;
-    return (((price - finalPrice) / price) * 100).round();
-  }
 }
 
-List<ProductVariantAttribute> _parseVariantAttrs(Object? raw) {
-  if (raw is! List) return const [];
-  return raw
-      .whereType<Map<String, dynamic>>()
-      .map(ProductVariantAttribute.fromJson)
-      .toList()
-    ..sort((a, b) => a.position.compareTo(b.position));
-}
-
-List<ProductVariant> _parseVariants(Object? raw) {
-  if (raw is! List) return const [];
-  return raw
-      .whereType<Map<String, dynamic>>()
-      .map(ProductVariant.fromJson)
-      .where((v) => v.isActive)
-      .toList();
-}
-
-String _string(Object? value, {String fallback = ''}) {
-  if (value == null) return fallback;
-  final text = value.toString();
-  return text.isEmpty ? fallback : text;
-}
-
-double _asDouble(Object? value, {double fallback = 0}) {
-  if (value is num) return value.toDouble();
-  return double.tryParse(value?.toString() ?? '') ?? fallback;
-}
-
-double? _nullableDouble(Object? value) {
-  if (value == null) return null;
-  if (value is num) return value.toDouble();
-  return double.tryParse(value.toString());
-}
-
-int _asInt(Object? value, {int fallback = 0}) {
+// ── helpers ──
+int _asInt(dynamic value) {
   if (value is int) return value;
-  if (value is num) return value.round();
-  return int.tryParse(value?.toString() ?? '') ?? fallback;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value) ?? 0;
+  return 0;
 }
 
-String _absoluteUrl(String url) {
-  if (url.isEmpty || url.startsWith('http')) return url;
-  final asset = _localProductAsset(url);
-  if (asset != null) return asset;
-  final base = Uri.parse(ApiConfig.baseUrl);
-  final origin =
-      '${base.scheme}://${base.host}${base.hasPort ? ':${base.port}' : ''}';
-  return url.startsWith('/') ? '$origin$url' : '$origin/$url';
+int? _asNullableInt(dynamic value) {
+  if (value == null) return null;
+  return _asInt(value);
 }
 
-String? _localProductAsset(String url) {
-  final filename = url.split('/').last;
-  const copiedProductFiles = {
-    'angels-creamy-chicken.png',
-    'angels-creamy-salmon.jpg',
-    'angels-creamy-tuna.png',
-  };
-  if (!copiedProductFiles.contains(filename)) return null;
-  return 'assets/products/$filename';
+String? _categoryFrom(dynamic raw) {
+  if (raw == null) return null;
+  if (raw is String) return raw;
+  if (raw is Map) return raw['name']?.toString();
+  return null;
+}
+
+String? _brandFrom(dynamic raw) {
+  if (raw == null) return null;
+  if (raw is String) return raw;
+  if (raw is Map) return raw['name']?.toString();
+  return null;
 }

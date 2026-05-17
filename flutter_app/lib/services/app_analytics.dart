@@ -2,157 +2,87 @@ import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 
-/// Thin wrapper di sekitar `FirebaseAnalytics` — graceful no-op kalau
-/// Firebase belum di-initialize (mis. dev build tanpa google-services.json).
-///
-/// Strategi log event:
-/// - **Standard events**: pakai metode dedicated (`logViewProduct`, dll)
-///   supaya nama event + parameter schema konsisten di seluruh app.
-/// - **Custom events**: panggil `log(name: ..., parameters: ...)` direct.
-///
-/// Schema event mengikuti convention Firebase recommended events
-/// (snake_case, max 40 chars). Lihat:
-/// https://firebase.google.com/docs/reference/cpp/group/event-names
+/// Wrapper Firebase Analytics — log standard recommended events
+/// (view_item, add_to_cart, begin_checkout, purchase) untuk funnel.
+/// Auto-disable di debug supaya dashboard tidak polluted dev data.
 class AppAnalytics {
+  AppAnalytics._();
+
+  static bool _ready = false;
   static FirebaseAnalytics? _instance;
 
-  /// True kalau Firebase + Analytics aktif (semua log() bakal kirim).
-  static bool get isAvailable {
-    if (kIsWeb) return false;
-    if (Firebase.apps.isEmpty) return false;
-    return _instance != null;
-  }
-
-  /// Initialize — panggil di main() setelah `Firebase.initializeApp()`.
-  /// Idempotent.
   static Future<void> initialize() async {
     try {
-      if (Firebase.apps.isEmpty) return;
+      Firebase.app(); // throws kalau Firebase belum init.
       _instance = FirebaseAnalytics.instance;
-      // Default settings: enable di release, disable di debug supaya tidak
-      // pollute dashboard dengan event dari dev session.
+      _ready = true;
       await _instance!.setAnalyticsCollectionEnabled(!kDebugMode);
-    } catch (_) {
-      // Silent fail — analytics tidak boleh blokir app startup.
+      if (kDebugMode) debugPrint('[AppAnalytics] ready (collection disabled in debug)');
+    } catch (e) {
+      _ready = false;
+      if (kDebugMode) {
+        debugPrint('[AppAnalytics] init skipped — Firebase not ready: $e');
+      }
     }
   }
 
-  /// Set user ID (member ID) saat login. null saat logout.
-  static Future<void> setUserId(String? userId) async {
-    if (!isAvailable) return;
-    try {
-      await _instance!.setUserId(id: userId);
-    } catch (_) {}
+  static Future<void> logEvent(
+    String name, [
+    Map<String, Object>? params,
+  ]) async {
+    if (!_ready || _instance == null) {
+      if (kDebugMode) debugPrint('[Analytics:$name] ${params ?? {}}');
+      return;
+    }
+    await _instance!.logEvent(name: name, parameters: params);
   }
 
-  /// Log custom event. Pakai standard events kalau ada (mis. logAddToCart).
-  static Future<void> log({
-    required String name,
-    Map<String, Object>? parameters,
-  }) async {
-    if (!isAvailable) return;
-    try {
-      await _instance!.logEvent(name: name, parameters: parameters);
-    } catch (_) {}
-  }
-
-  /// Log screen view — panggil di `didChangeDependencies` atau initState
-  /// supaya tau funnel berapa user lihat screen X.
-  static Future<void> logScreenView(String screenName) async {
-    if (!isAvailable) return;
-    try {
-      await _instance!.logScreenView(screenName: screenName);
-    } catch (_) {}
-  }
-
-  // ── Recommended e-commerce events ─────────────────────────────────────
-
-  /// User lihat detail produk. Drive product discovery funnel.
   static Future<void> logViewProduct({
     required String productId,
     required String productName,
-    required num price,
+    required int price,
     String? category,
-  }) async {
-    if (!isAvailable) return;
-    try {
-      await _instance!.logViewItem(
-        currency: 'IDR',
-        value: price.toDouble(),
-        items: [
-          AnalyticsEventItem(
-            itemId: productId,
-            itemName: productName,
-            itemCategory: category,
-            price: price.toDouble(),
-          ),
-        ],
-      );
-    } catch (_) {}
-  }
+  }) =>
+      logEvent('view_item', {
+        'item_id': productId,
+        'item_name': productName,
+        'price': price,
+        if (category != null) 'item_category': category,
+        'currency': 'IDR',
+      });
 
-  /// User tambah produk ke cart.
   static Future<void> logAddToCart({
     required String productId,
     required String productName,
-    required num price,
+    required int price,
     int quantity = 1,
-  }) async {
-    if (!isAvailable) return;
-    try {
-      await _instance!.logAddToCart(
-        currency: 'IDR',
-        value: price.toDouble() * quantity,
-        items: [
-          AnalyticsEventItem(
-            itemId: productId,
-            itemName: productName,
-            price: price.toDouble(),
-            quantity: quantity,
-          ),
-        ],
-      );
-    } catch (_) {}
-  }
+  }) =>
+      logEvent('add_to_cart', {
+        'item_id': productId,
+        'item_name': productName,
+        'price': price,
+        'quantity': quantity,
+        'currency': 'IDR',
+      });
 
-  /// User berhasil checkout / order. Conversion paling penting.
+  static Future<void> logBeginCheckout({required int value}) =>
+      logEvent('begin_checkout', {'value': value, 'currency': 'IDR'});
+
   static Future<void> logPurchase({
-    required String orderNumber,
-    required num value,
-    required int itemCount,
-  }) async {
-    if (!isAvailable) return;
-    try {
-      await _instance!.logPurchase(
-        currency: 'IDR',
-        transactionId: orderNumber,
-        value: value.toDouble(),
-        parameters: {'item_count': itemCount},
-      );
-    } catch (_) {}
-  }
+    required String transactionId,
+    required int value,
+  }) =>
+      logEvent('purchase', {
+        'transaction_id': transactionId,
+        'value': value,
+        'currency': 'IDR',
+      });
 
-  /// User login sukses.
-  static Future<void> logLogin(String method) async {
-    if (!isAvailable) return;
-    try {
-      await _instance!.logLogin(loginMethod: method);
-    } catch (_) {}
-  }
+  static Future<void> logScreenView(String screenName) =>
+      logEvent('screen_view', {'screen_name': screenName});
 
-  /// User register sukses.
-  static Future<void> logSignUp(String method) async {
-    if (!isAvailable) return;
-    try {
-      await _instance!.logSignUp(signUpMethod: method);
-    } catch (_) {}
-  }
-
-  /// User pakai search.
-  static Future<void> logSearch(String query) async {
-    if (!isAvailable) return;
-    try {
-      await _instance!.logSearch(searchTerm: query);
-    } catch (_) {}
+  static Future<void> setUserId(String? userId) async {
+    if (!_ready || _instance == null) return;
+    await _instance!.setUserId(id: userId);
   }
 }

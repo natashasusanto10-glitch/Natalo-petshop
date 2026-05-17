@@ -1,140 +1,61 @@
 import 'package:flutter/material.dart';
-import 'package:lottie/lottie.dart';
 
-import '../theme/app_theme.dart';
+import '../utils/motion_prefs.dart';
 
-class AppLottieAsset extends StatelessWidget {
-  final String asset;
-  final double size;
-  final bool repeat;
+/// Wrapper untuk fade+slide-in entry animation, respect reduce-motion.
+/// Dipakai di list/grid item supaya muncul smooth tanpa popping.
+class AppFadeSlideIn extends StatefulWidget {
+  final Widget child;
+  final Duration delay;
+  final Duration duration;
+  final Offset beginOffset;
 
-  const AppLottieAsset({
+  const AppFadeSlideIn({
     super.key,
-    required this.asset,
-    this.size = 116,
-    this.repeat = true,
+    required this.child,
+    this.delay = Duration.zero,
+    this.duration = const Duration(milliseconds: 320),
+    this.beginOffset = const Offset(0, 0.06),
   });
 
   @override
-  Widget build(BuildContext context) {
-    return Lottie.asset(
-      asset,
-      height: size,
-      width: size,
-      repeat: repeat,
-      fit: BoxFit.contain,
-      frameRate: FrameRate.max,
-    );
-  }
+  State<AppFadeSlideIn> createState() => _AppFadeSlideInState();
 }
 
-class AppLoadingState extends StatelessWidget {
-  final String label;
+class _AppFadeSlideInState extends State<AppFadeSlideIn>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: widget.duration,
+  );
 
-  const AppLoadingState({
-    super.key,
-    this.label = 'Memuat data...',
-  });
+  @override
+  void initState() {
+    super.initState();
+    Future<void>.delayed(widget.delay, () {
+      if (mounted) _ctrl.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const AppLottieAsset(
-              asset: 'assets/lottie/loading_paw.json',
-              size: 112,
-            ),
-            const SizedBox(height: 10),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: AppColors.muted,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ],
-        ),
+    if (MotionPrefs.shouldReduce(context)) {
+      return widget.child;
+    }
+    final curved = CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic);
+    return FadeTransition(
+      opacity: curved,
+      child: SlideTransition(
+        position: Tween<Offset>(begin: widget.beginOffset, end: Offset.zero)
+            .animate(curved),
+        child: widget.child,
       ),
-    );
-  }
-}
-
-class AppEmptyState extends StatelessWidget {
-  final String title;
-  final String body;
-  final String? buttonLabel;
-  final VoidCallback? onPressed;
-
-  const AppEmptyState({
-    super.key,
-    required this.title,
-    required this.body,
-    this.buttonLabel,
-    this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const AppLottieAsset(
-              asset: 'assets/lottie/empty_box.json',
-              size: 132,
-            ),
-            const SizedBox(height: 10),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: AppColors.ink,
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              body,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: AppColors.muted,
-                fontWeight: FontWeight.w700,
-                height: 1.42,
-              ),
-            ),
-            if (buttonLabel != null && onPressed != null) ...[
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: onPressed,
-                child: Text(buttonLabel!),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class AppSuccessMark extends StatelessWidget {
-  final double size;
-
-  const AppSuccessMark({super.key, this.size = 94});
-
-  @override
-  Widget build(BuildContext context) {
-    return AppLottieAsset(
-      asset: 'assets/lottie/success_check.json',
-      size: size,
-      repeat: false,
     );
   }
 }

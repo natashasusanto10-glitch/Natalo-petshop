@@ -1,474 +1,45 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:shimmer/shimmer.dart';
 
-import '../theme/app_theme.dart';
-import 'glass_surface.dart';
+import '../theme/natalo_colors.dart';
 
-class AppPressable extends StatefulWidget {
-  final Widget child;
-  final VoidCallback? onTap;
-  final BorderRadius? borderRadius;
-  final bool enableHaptic;
-  final double pressedScale;
-
-  const AppPressable({
-    super.key,
-    required this.child,
-    this.onTap,
-    this.borderRadius,
-    this.enableHaptic = true,
-    this.pressedScale = 0.975,
-  });
-
-  @override
-  State<AppPressable> createState() => _AppPressableState();
-}
-
-class _AppPressableState extends State<AppPressable> {
-  bool _pressed = false;
-
-  void _setPressed(bool value) {
-    if (!mounted || _pressed == value) return;
-    setState(() => _pressed = value);
-  }
-
-  Future<void> _handleTap() async {
-    if (widget.enableHaptic) {
-      await HapticFeedback.selectionClick();
-    }
-    widget.onTap?.call();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final radius = widget.borderRadius ?? BorderRadius.circular(20);
-    return MouseRegion(
-      cursor:
-          widget.onTap == null ? MouseCursor.defer : SystemMouseCursors.click,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap == null ? null : _handleTap,
-        onTapDown: widget.onTap == null ? null : (_) => _setPressed(true),
-        onTapCancel: () => _setPressed(false),
-        onTapUp: (_) => _setPressed(false),
-        child: AnimatedScale(
-          scale: _pressed ? widget.pressedScale : 1,
-          duration: const Duration(milliseconds: 120),
-          curve: Curves.easeOutCubic,
-          child: ClipRRect(
-            borderRadius: radius,
-            child: widget.child,
-          ),
-        ),
-      ),
-    );
-  }
-}
+/// Kumpulan widget UI primitives generik — header icon button, skeleton list,
+/// empty state, dst. Single file untuk avoid import sprawl.
 
 class AppHeaderIconButton extends StatelessWidget {
-  final String tooltip;
-  final VoidCallback onPressed;
   final Widget child;
+  final VoidCallback? onPressed;
+  final String? tooltip;
 
   const AppHeaderIconButton({
     super.key,
-    required this.tooltip,
-    required this.onPressed,
     required this.child,
+    this.onPressed,
+    this.tooltip,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 4),
-      child: Tooltip(
-        message: tooltip,
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            height: 42,
-            width: 42,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.90),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.94)),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.brandBlue.withValues(alpha: 0.06),
-                  blurRadius: 18,
-                  offset: const Offset(0, 7),
-                ),
-              ],
-            ),
-            child: IconTheme(
-              data: const IconThemeData(color: AppColors.ink, size: 24),
-              child: child,
-            ),
-          ),
-        ),
-      ),
+    final button = IconButton(
+      onPressed: onPressed,
+      icon: child,
     );
+    if (tooltip == null) return button;
+    return Tooltip(message: tooltip!, child: button);
   }
 }
 
-class AppSectionHeader extends StatelessWidget {
-  final String title;
-  final String? subtitle;
-  final String? actionLabel;
-  final VoidCallback? onAction;
-
-  const AppSectionHeader({
-    super.key,
-    required this.title,
-    this.subtitle,
-    this.actionLabel,
-    this.onAction,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  color: AppColors.ink,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              if (subtitle != null) ...[
-                const SizedBox(height: 4),
-                Text(
-                  subtitle!,
-                  style: const TextStyle(
-                    color: AppColors.muted,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-        if (actionLabel != null && onAction != null)
-          TextButton(
-            onPressed: onAction,
-            child: Text(actionLabel!),
-          ),
-      ],
-    );
-  }
-}
-
-class AppSearchField extends StatelessWidget {
-  final TextEditingController controller;
-  final String hintText;
-  final String query;
-  final ValueChanged<String> onChanged;
-  final ValueChanged<String>? onSubmitted;
-  final VoidCallback? onClear;
-  // Voice search button — kalau di-pass DAN query kosong, mic muncul di
-  // suffix. Saat user mulai ketik, suffix swap ke close icon.
-  final VoidCallback? onVoiceTap;
-  // Barcode scanner button — sama kondisi seperti voice. Kalau dua-duanya
-  // di-pass, muncul barcode + mic berdampingan di suffix.
-  final VoidCallback? onBarcodeTap;
-  final bool compact;
-
-  const AppSearchField({
-    super.key,
-    required this.controller,
-    required this.hintText,
-    required this.query,
-    required this.onChanged,
-    this.onSubmitted,
-    this.onClear,
-    this.onVoiceTap,
-    this.onBarcodeTap,
-    this.compact = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    Widget? suffix;
-    if (query.isNotEmpty) {
-      suffix = IconButton(
-        onPressed: onClear ??
-            () {
-              controller.clear();
-              onChanged('');
-            },
-        icon: const Icon(Icons.close_rounded),
-        tooltip: 'Hapus',
-      );
-    } else if (onBarcodeTap != null || onVoiceTap != null) {
-      final actions = <Widget>[
-        if (onBarcodeTap != null)
-          IconButton(
-            onPressed: onBarcodeTap,
-            icon: const Icon(
-              Icons.qr_code_scanner_rounded,
-              color: AppColors.brandBlue,
-            ),
-            tooltip: 'Scan barcode',
-            visualDensity: VisualDensity.compact,
-          ),
-        if (onVoiceTap != null)
-          IconButton(
-            onPressed: onVoiceTap,
-            icon: const Icon(Icons.mic_rounded, color: AppColors.brandBlue),
-            tooltip: 'Cari dengan suara',
-            visualDensity: VisualDensity.compact,
-          ),
-      ];
-      suffix = Row(
-        mainAxisSize: MainAxisSize.min,
-        children: actions,
-      );
-    }
-    final field = TextField(
-      controller: controller,
-      style: TextStyle(fontSize: compact ? 13 : null),
-      onChanged: onChanged,
-      onSubmitted: onSubmitted,
-      textInputAction: TextInputAction.search,
-      decoration: InputDecoration(
-        isDense: compact,
-        hintText: hintText,
-        hintStyle: compact
-            ? const TextStyle(
-                color: Color(0xFF94A3B8),
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              )
-            : null,
-        prefixIcon: Icon(Icons.search_rounded, size: compact ? 20 : null),
-        prefixIconConstraints:
-            compact ? const BoxConstraints(minWidth: 42, minHeight: 40) : null,
-        suffixIcon: suffix,
-        filled: true,
-        fillColor: compact
-            ? const Color(0xFFF8FAFC)
-            : Colors.white.withValues(alpha: 0.90),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(compact ? 14 : 18),
-          borderSide: const BorderSide(color: AppColors.line),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(compact ? 14 : 18),
-          borderSide: const BorderSide(color: AppColors.line),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(compact ? 14 : 18),
-          borderSide: const BorderSide(color: AppColors.brandBlue, width: 1.4),
-        ),
-        contentPadding: EdgeInsets.symmetric(
-          horizontal: compact ? 12 : 0,
-          vertical: compact ? 10 : 14,
-        ),
-      ),
-    );
-    if (!compact) return field;
-    return SizedBox(height: 42, child: field);
-  }
-}
-
-class AppInfoBanner extends StatelessWidget {
-  final IconData icon;
-  final String message;
-  final Color color;
-
-  const AppInfoBanner({
-    super.key,
-    required this.icon,
-    required this.message,
-    this.color = const Color(0xFFF59E0B),
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withValues(alpha: 0.18)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: color, size: 18),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              message,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: color,
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class AppStatusPill extends StatelessWidget {
-  final String label;
-  final Color color;
-  final IconData? icon;
-
-  const AppStatusPill({
-    super.key,
-    required this.label,
-    required this.color,
-    this.icon,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.fromLTRB(icon == null ? 10 : 8, 6, 10, 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.16)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[
-            Icon(icon, size: 14, color: color),
-            const SizedBox(width: 4),
-          ],
-          Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontSize: 11,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class AppAnimatedEntrance extends StatelessWidget {
-  final Widget child;
-  final int index;
-  final double offsetY;
-
-  const AppAnimatedEntrance({
-    super.key,
-    required this.child,
-    this.index = 0,
-    this.offsetY = 18,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: 1),
-      duration: Duration(milliseconds: 240 + (index * 55).clamp(0, 220)),
-      curve: Curves.easeOutCubic,
-      builder: (context, value, child) {
-        return Opacity(
-          opacity: value,
-          child: Transform.translate(
-            offset: Offset(0, (1 - value) * offsetY),
-            child: Transform.scale(
-              scale: 0.985 + (value * 0.015),
-              child: child,
-            ),
-          ),
-        );
-      },
-      child: child,
-    );
-  }
-}
-
-class AppSkeletonBox extends StatefulWidget {
-  final double height;
-  final double width;
-  final double radius;
-
-  const AppSkeletonBox({
-    super.key,
-    required this.height,
-    this.width = double.infinity,
-    this.radius = 18,
-  });
-
-  @override
-  State<AppSkeletonBox> createState() => _AppSkeletonBoxState();
-}
-
-class _AppSkeletonBoxState extends State<AppSkeletonBox>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1250),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, _) {
-        return Container(
-          height: widget.height,
-          width: widget.width,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(widget.radius),
-            gradient: LinearGradient(
-              begin: Alignment(-1.2 + (_controller.value * 2.4), 0),
-              end: Alignment(-0.2 + (_controller.value * 2.4), 0),
-              colors: const [
-                Color(0xFFEFF4FA),
-                Color(0xFFF8FBFF),
-                Color(0xFFEFF4FA),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
+/// Skeleton placeholder untuk list saat loading.
 class AppSkeletonList extends StatelessWidget {
   final int itemCount;
-  final EdgeInsetsGeometry padding;
+  final double itemHeight;
+  final EdgeInsets padding;
 
   const AppSkeletonList({
     super.key,
-    this.itemCount = 4,
-    this.padding = const EdgeInsets.fromLTRB(16, 12, 16, 24),
+    this.itemCount = 6,
+    this.itemHeight = 80,
+    this.padding = const EdgeInsets.all(16),
   });
 
   @override
@@ -477,54 +48,368 @@ class AppSkeletonList extends StatelessWidget {
       padding: padding,
       itemCount: itemCount,
       separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemBuilder: (context, index) {
-        return const GlassSurface(
-          radius: 22,
-          padding: EdgeInsets.all(16),
-          child: Row(
-            children: [
-              AppSkeletonBox(height: 58, width: 58, radius: 18),
-              SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    AppSkeletonBox(height: 16, radius: 999),
-                    SizedBox(height: 10),
-                    AppSkeletonBox(height: 13, width: 170, radius: 999),
-                  ],
-                ),
-              ),
-            ],
+      itemBuilder: (_, __) => Shimmer.fromColors(
+        baseColor: NataloColors.surface,
+        highlightColor: NataloColors.border,
+        child: Container(
+          height: itemHeight,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }
 
-class AppGlassBottomBar extends StatelessWidget {
+/// Tappable wrapper dengan rounded ink splash. Pakai BorderRadius dari
+/// borderRadius kalau dikasih, default circular(12).
+class AppPressable extends StatelessWidget {
   final Widget child;
-  final EdgeInsetsGeometry padding;
+  final VoidCallback? onTap;
+  final BorderRadius? borderRadius;
+  final EdgeInsets padding;
 
-  const AppGlassBottomBar({
+  const AppPressable({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.fromLTRB(16, 10, 16, 12),
+    this.onTap,
+    this.borderRadius,
+    this.padding = EdgeInsets.zero,
   });
 
   @override
   Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: borderRadius ?? BorderRadius.circular(12),
+        child: Padding(padding: padding, child: child),
+      ),
+    );
+  }
+}
+
+/// Sticky bottom bar dengan frosted-glass background — buat CTA persistent
+/// (Beli Sekarang, dll). Diletakkan di Scaffold.bottomNavigationBar.
+class AppGlassBottomBar extends StatelessWidget {
+  final Widget child;
+  final EdgeInsets padding;
+
+  const AppGlassBottomBar({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.fromLTRB(16, 12, 16, 12),
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return SafeArea(
       top: false,
-      child: Padding(
+      child: Container(
+        decoration: BoxDecoration(
+          color: isDark
+              ? Colors.black.withOpacity(0.65)
+              : Colors.white.withOpacity(0.92),
+          border: Border(
+            top: BorderSide(
+              color: isDark ? NataloColors.borderDark : NataloColors.border,
+              width: 1,
+            ),
+          ),
+        ),
         padding: padding,
-        child: GlassSurface(
-          radius: 28,
-          blur: 20,
-          tint: const Color(0xFFFCFEFF),
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          child: child,
+        child: child,
+      ),
+    );
+  }
+}
+
+/// Status pill (label berwarna kecil) — untuk status order, badge filter, dll.
+/// Boleh dipanggil dengan `label` atau `title` (alias).
+class AppStatusPill extends StatelessWidget {
+  final String? label;
+  final String? title;
+  final Color color;
+  final IconData? icon;
+  /// Ukuran font + padding. Default 11px font.
+  final double size;
+
+  const AppStatusPill({
+    super.key,
+    this.label,
+    this.title,
+    this.color = NataloColors.primary,
+    this.icon,
+    this.size = 11,
+  }) : assert(label != null || title != null,
+            'AppStatusPill butuh label atau title');
+
+  String get _text => (label ?? title)!;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: size <= 11 ? 10 : 12,
+        vertical: size <= 11 ? 4 : 6,
+      ),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withOpacity(0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: size + 2, color: color),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            _text,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w800,
+              fontSize: size,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Soft-style ListTile dengan icon kotak + chevron. Dipakai di setting /
+/// detail screens untuk grouped nav rows.
+class SoftIconTile extends StatelessWidget {
+  final IconData icon;
+  /// Title row utama. Boleh dipanggil dengan `title` atau `label`.
+  final String? title;
+  final String? label;
+  final String? subtitle;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+  /// Color untuk icon — boleh `iconColor` atau `color`.
+  final Color? iconColor;
+  final Color? color;
+  /// Ukuran icon container — default 40.
+  final double size;
+
+  const SoftIconTile({
+    super.key,
+    required this.icon,
+    this.title,
+    this.label,
+    this.subtitle,
+    this.trailing,
+    this.onTap,
+    this.iconColor,
+    this.color,
+    this.size = 40,
+  });
+
+  String get _title => title ?? label ?? '';
+
+  @override
+  Widget build(BuildContext context) {
+    final tint = color ?? iconColor ?? NataloColors.primary;
+    return ListTile(
+      leading: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: tint.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(icon, color: tint, size: size * 0.5),
+      ),
+      title: Text(
+        _title,
+        style: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+      subtitle: subtitle == null ? null : Text(subtitle!),
+      trailing: trailing ??
+          (onTap == null ? null : const Icon(Icons.chevron_right_rounded)),
+      onTap: onTap,
+    );
+  }
+}
+
+/// Banner informasi non-blocking, biasanya di-show di top body sebelum konten.
+class AppInfoBanner extends StatelessWidget {
+  final String message;
+  final IconData icon;
+  final Color color;
+
+  const AppInfoBanner({
+    super.key,
+    required this.message,
+    this.icon = Icons.info_outline_rounded,
+    this.color = NataloColors.info,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Wrapper animasi fade+slide untuk list/card entries — versi yang accept
+/// `index` untuk staggered delay sederhana.
+class AppAnimatedEntrance extends StatefulWidget {
+  final Widget child;
+  final int index;
+  final Duration baseDuration;
+
+  const AppAnimatedEntrance({
+    super.key,
+    required this.child,
+    this.index = 0,
+    this.baseDuration = const Duration(milliseconds: 280),
+  });
+
+  @override
+  State<AppAnimatedEntrance> createState() => _AppAnimatedEntranceState();
+}
+
+class _AppAnimatedEntranceState extends State<AppAnimatedEntrance>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: widget.baseDuration,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    final delay = Duration(milliseconds: 40 * widget.index.clamp(0, 8));
+    Future<void>.delayed(delay, () {
+      if (mounted) _ctrl.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final curved = CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic);
+    return FadeTransition(
+      opacity: curved,
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0, 0.06),
+          end: Offset.zero,
+        ).animate(curved),
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+/// Stub Lottie asset — kalau asset file tidak ada di assets/lottie/,
+/// fallback ke icon. Dipakai untuk empty-state animasi.
+class AppLottieAsset extends StatelessWidget {
+  final String asset;
+  final double size;
+  final IconData fallbackIcon;
+
+  const AppLottieAsset({
+    super.key,
+    required this.asset,
+    this.size = 120,
+    this.fallbackIcon = Icons.pets_rounded,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // TODO: pakai package:lottie LottieBuilder.asset(asset) — saat ini
+    // fallback ke icon supaya tidak crash kalau asset belum ada.
+    return Icon(
+      fallbackIcon,
+      size: size,
+      color: NataloColors.textTertiary,
+    );
+  }
+}
+
+/// Empty-state placeholder.
+class AppEmptyState extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final Widget? action;
+
+  const AppEmptyState({
+    super.key,
+    this.icon = Icons.inbox_outlined,
+    required this.title,
+    this.subtitle,
+    this.action,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 56, color: NataloColors.textTertiary),
+            const SizedBox(height: 12),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 16,
+              ),
+            ),
+            if (subtitle != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                subtitle!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: NataloColors.textSecondary),
+              ),
+            ],
+            if (action != null) ...[
+              const SizedBox(height: 16),
+              action!,
+            ],
+          ],
         ),
       ),
     );

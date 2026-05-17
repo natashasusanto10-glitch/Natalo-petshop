@@ -3862,8 +3862,8 @@ class _FeedProductThumb extends StatelessWidget {
 }
 
 class _FeedProductPricing {
-  final double originalPrice;
-  final double displayPrice;
+  final int originalPrice;
+  final int displayPrice;
   final bool hasPromo;
   final int discountPercent;
 

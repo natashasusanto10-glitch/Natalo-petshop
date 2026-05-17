@@ -1,5 +1,9 @@
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import 'firebase_options.dart';
 import 'models/member_profile.dart';
 import 'models/product.dart';
 import 'screens/account_settings_screen.dart';
@@ -62,6 +66,18 @@ late final String _initialRoute;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Firebase core init — wajib sebelum messaging/crashlytics/analytics dipakai.
+  // Pakai DefaultFirebaseOptions yang di-generate FlutterFire CLI dari
+  // google-services.json (Android) + GoogleService-Info.plist (iOS). Wrap
+  // try/catch supaya kalau platform tidak ada config (mis. forgot to
+  // download plist), app tetap boot — Firebase feature jadi no-op.
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    if (kDebugMode) debugPrint('[main] Firebase init failed: $e');
+  }
   // Custom branded error widget — replace Flutter default red "Bad state"
   // screen. Debug build: show full stacktrace. Release: friendly UI +
   // crashlytics report fire-and-forget.

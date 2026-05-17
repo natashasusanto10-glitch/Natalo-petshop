@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Associated Domains untuk iOS Universal Links.
+	  Mirror Android intent-filter di AndroidManifest.xml.
+
+	  iOS akan fetch https://natalopetshop.com/.well-known/apple-app-site-association
+	  saat app pertama install / saat OS verify. File AASA harus serve dengan:
+	    - Content-Type: application/json
+	    - HTTPS (no redirect)
+	    - JSON body sesuai format Apple
+
+	  Endpoint AASA sudah ada di Next.js project:
+	  app/.well-known/apple-app-site-association/route.ts
+	  Pastikan appID di file itu = TeamID.com.natalo.petshop (sesuaikan setelah
+	  Apple Developer Team ID confirmed).
+
+	  Mode `applinks:` = production. `applinks:?mode=developer` untuk testing
+	  via QR code/skip caching (debug build only).
+	-->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:natalopetshop.com</string>
+		<string>applinks:www.natalopetshop.com</string>
+	</array>
+</dict>
+</plist>

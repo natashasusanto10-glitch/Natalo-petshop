@@ -1,79 +1,94 @@
 import 'product.dart';
 
+/// Cart item — embeds Product reference + optional variant + per-line qty.
+/// Disimpan di disk via CartStore. Sync ke server saat user login + online.
 class CartItem {
   final Product product;
-  final int quantity;
-  /// Variant terpilih (kalau produk multi-varian). Null untuk single-variant.
   final ProductVariant? variant;
+  /// Snapshot label varian ("4KG / Beef") — tidak berubah meski varian diedit.
+  final String? variantLabel;
+  /// Override price kalau dikasih — kalau null, derive dari variant.price ?? product.finalPrice.
+  final int _unitPriceOverride;
+  /// Override stock kalau dikasih — kalau null, derive dari variant.stock ?? product.stock.
+  final int _effectiveStockOverride;
+  final int quantity;
 
-  const CartItem({
+  /// Constructor primary — boleh pass variant lengkap atau override per field.
+  CartItem({
     required this.product,
-    required this.quantity,
     this.variant,
-  });
+    this.variantLabel,
+    required this.quantity,
+    int? unitPrice,
+    int? effectiveStock,
+  })  : _unitPriceOverride = unitPrice ?? variant?.price ?? product.finalPrice,
+        _effectiveStockOverride =
+            effectiveStock ?? variant?.stock ?? product.stock;
 
-  /// Cart key — beda untuk tiap variant berbeda dari product yang sama,
-  /// supaya user bisa tambah 2 varian dari produk yang sama.
-  String get key =>
-      variant != null ? '${product.id}::${variant!.id}' : product.id;
+  String? get variantId => variant?.id;
 
-  /// Harga effektif — varian price kalau ada, else product.finalPrice.
-  double get effectivePrice =>
-      variant?.price ?? product.finalPrice;
+  int get unitPrice => _unitPriceOverride;
+  int get effectiveStock => _effectiveStockOverride;
 
-  /// Stok effektif — varian stock kalau ada, else product.stock.
-  int get effectiveStock => variant?.stock ?? product.stock;
+  /// Identitas unik per line.
+  String get key => variantId == null ? product.id : '${product.id}:$variantId';
 
-  /// Label varian untuk display ("Ukuran: 1kg" / "Warna: Merah").
-  /// Resolve dari product.variantAttrs + variant.optionIds.
-  String? get variantLabel {
-    final v = variant;
-    if (v == null) return null;
-    final parts = <String>[];
-    for (final attr in product.variantAttrs) {
-      for (final opt in attr.options) {
-        if (v.optionIds.contains(opt.id)) {
-          parts.add(opt.value);
-        }
-      }
-    }
-    return parts.isEmpty ? null : parts.join(' / ');
-  }
+  /// Subtotal harga × jumlah.
+  int get lineTotal => unitPrice * quantity;
 
-  double get lineTotal => effectivePrice * quantity;
+  /// Backward-compat aliases.
+  int get subtotal => lineTotal;
+  String get lineKey => key;
+  String get name => product.title;
+  String? get imageUrl => product.imageUrl;
+  String? get slug => product.slug;
+  String get productId => product.id;
+  int get weightGram => product.weightGram;
 
   CartItem copyWith({
-    Product? product,
     int? quantity,
-    ProductVariant? variant,
+    int? unitPrice,
+    int? effectiveStock,
   }) {
     return CartItem(
-      product: product ?? this.product,
+      product: product,
+      variant: variant,
+      variantLabel: variantLabel,
+      unitPrice: unitPrice ?? this.unitPrice,
       quantity: quantity ?? this.quantity,
-      variant: variant ?? this.variant,
+      effectiveStock: effectiveStock ?? this.effectiveStock,
     );
   }
 
-  /// Serialize ke local storage untuk persist cart antar app session.
   Map<String, dynamic> toJson() => {
         'product': product.toJson(),
+        if (variantId != null) 'variantId': variantId,
+        if (variantLabel != null) 'variantLabel': variantLabel,
+        'unitPrice': unitPrice,
         'quantity': quantity,
-        if (variant != null) 'variant': variant!.toJson(),
+        'effectiveStock': effectiveStock,
       };
 
   factory CartItem.fromJson(Map<String, dynamic> json) {
-    final productRaw = json['product'];
-    final variantRaw = json['variant'];
+    final productJson = json['product'];
+    final product = productJson is Map<String, dynamic>
+        ? Product.fromJson(productJson)
+        : Product(
+            id: json['productId'] as String? ?? '',
+            title: json['name'] as String? ?? '',
+            slug: json['slug'] as String? ?? '',
+            price: (json['unitPrice'] as num?)?.toInt() ?? 0,
+            imageUrl: (json['imageUrl'] as String?) ?? '',
+            weightGram: (json['weightGram'] as num?)?.toInt() ?? 500,
+            stock: (json['stock'] as num?)?.toInt() ?? 0,
+          );
     return CartItem(
-      product: productRaw is Map<String, dynamic>
-          ? Product.fromApiJson(productRaw)
-          : throw ArgumentError('Invalid product json in CartItem'),
-      quantity: (json['quantity'] is num)
-          ? (json['quantity'] as num).round()
-          : int.tryParse(json['quantity']?.toString() ?? '') ?? 1,
-      variant: variantRaw is Map<String, dynamic>
-          ? ProductVariant.fromJson(variantRaw)
-          : null,
+      product: product,
+      variantLabel: json['variantLabel'] as String?,
+      unitPrice: (json['unitPrice'] as num?)?.toInt() ?? product.finalPrice,
+      quantity: (json['quantity'] as num?)?.toInt() ?? 1,
+      effectiveStock:
+          (json['effectiveStock'] as num?)?.toInt() ?? product.stock,
     );
   }
 }

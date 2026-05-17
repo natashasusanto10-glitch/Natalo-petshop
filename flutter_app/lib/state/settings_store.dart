@@ -1,74 +1,58 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// App-level settings (theme mode, dll) yang persist ke disk.
-/// Match keuntungan native Flutter atas Capacitor: PWA Natalo lock ke
-/// light mode di `globals.css`; Flutter punya kebebasan support 3 mode.
+/// App settings — theme mode (light/dark/system), haptics, dll. Diakses via
+/// AnimatedBuilder di MaterialApp supaya rebuild saat theme switch.
 class AppSettingsStore extends ChangeNotifier {
-  static const _kThemeMode = 'natalo_theme_mode';
-  static const _kFeedAutoplay = 'natalo_feed_autoplay';
-  static const _kFeedVideoQuality = 'natalo_feed_video_quality';
-  static const _kFeedMuted = 'natalo_feed_muted';
+  AppSettingsStore._();
 
-  ThemeMode _themeMode = ThemeMode.light;
+  static const _themeModeKey = 'settings_theme_mode';
+  static const _hapticsKey = 'settings_haptics_enabled';
+  static const _feedAutoplayKey = 'settings_feed_autoplay';
+  static const _feedVideoQualityKey = 'settings_feed_video_quality';
+  static const _feedMutedKey = 'settings_feed_muted';
+
+  ThemeMode _themeMode = ThemeMode.system;
+  bool _hapticsEnabled = true;
+  /// Auto-play video saat masuk viewport feed. Default ON.
   bool _feedAutoplay = true;
+  /// 'auto' (network tier), 'high', 'medium', 'low'. Default 'auto'.
   String _feedVideoQuality = 'auto';
-  bool _feedMuted = false;
+  /// Default mute saat start playback — match Instagram Reels behavior.
+  bool _feedMuted = true;
   bool _initialized = false;
 
   ThemeMode get themeMode => _themeMode;
+  bool get hapticsEnabled => _hapticsEnabled;
   bool get feedAutoplay => _feedAutoplay;
   String get feedVideoQuality => _feedVideoQuality;
   bool get feedMuted => _feedMuted;
-  String get feedVideoQualityLabel {
-    switch (_feedVideoQuality) {
-      case 'data_saver':
-        return 'Hemat Data';
-      case 'high':
-        return 'Tinggi';
-      case 'auto':
-      default:
-        return 'Otomatis';
-    }
-  }
-
   bool get initialized => _initialized;
-  bool get isDarkMode {
-    if (_themeMode == ThemeMode.dark) return true;
-    if (_themeMode == ThemeMode.light) return false;
-    // System mode → check current platform brightness
-    final brightness =
-        WidgetsBinding.instance.platformDispatcher.platformBrightness;
-    return brightness == Brightness.dark;
-  }
 
-  Future<void> initialize() async {
+  /// Sync init — fire-and-forget. Default value sudah masuk akal walau disk
+  /// belum dibaca, jadi first paint tidak salah.
+  void initialize() {
     if (_initialized) return;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_kThemeMode);
-      _themeMode = _parseThemeMode(raw);
-      _feedAutoplay = prefs.getBool(_kFeedAutoplay) ?? true;
-      _feedVideoQuality =
-          _parseFeedVideoQuality(prefs.getString(_kFeedVideoQuality));
-      _feedMuted = prefs.getBool(_kFeedMuted) ?? false;
-    } catch (_) {
-      _themeMode = ThemeMode.light;
-      _feedAutoplay = true;
-      _feedVideoQuality = 'auto';
-      _feedMuted = false;
-    }
     _initialized = true;
-    notifyListeners();
+    _loadFromDisk();
   }
 
-  Future<void> setThemeMode(ThemeMode mode) async {
-    if (_themeMode == mode) return;
-    _themeMode = mode;
-    notifyListeners();
+  Future<void> _loadFromDisk() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_kThemeMode, _encodeThemeMode(mode));
+      final mode = prefs.getString(_themeModeKey);
+      if (mode != null) {
+        _themeMode = ThemeMode.values.firstWhere(
+          (m) => m.name == mode,
+          orElse: () => ThemeMode.system,
+        );
+      }
+      _hapticsEnabled = prefs.getBool(_hapticsKey) ?? true;
+      _feedAutoplay = prefs.getBool(_feedAutoplayKey) ?? true;
+      _feedVideoQuality = prefs.getString(_feedVideoQualityKey) ?? 'auto';
+      _feedMuted = prefs.getBool(_feedMutedKey) ?? true;
+      notifyListeners();
     } catch (_) {}
   }
 
@@ -78,18 +62,17 @@ class AppSettingsStore extends ChangeNotifier {
     notifyListeners();
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(_kFeedAutoplay, value);
+      await prefs.setBool(_feedAutoplayKey, value);
     } catch (_) {}
   }
 
   Future<void> setFeedVideoQuality(String value) async {
-    final parsed = _parseFeedVideoQuality(value);
-    if (_feedVideoQuality == parsed) return;
-    _feedVideoQuality = parsed;
+    if (_feedVideoQuality == value) return;
+    _feedVideoQuality = value;
     notifyListeners();
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_kFeedVideoQuality, parsed);
+      await prefs.setString(_feedVideoQualityKey, value);
     } catch (_) {}
   }
 
@@ -99,43 +82,29 @@ class AppSettingsStore extends ChangeNotifier {
     notifyListeners();
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(_kFeedMuted, value);
+      await prefs.setBool(_feedMutedKey, value);
     } catch (_) {}
   }
 
-  static ThemeMode _parseThemeMode(String? raw) {
-    switch (raw) {
-      case 'dark':
-        return ThemeMode.dark;
-      case 'system':
-        return ThemeMode.system;
-      case 'light':
-      default:
-        return ThemeMode.light;
-    }
+  Future<void> setThemeMode(ThemeMode mode) async {
+    if (_themeMode == mode) return;
+    _themeMode = mode;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_themeModeKey, mode.name);
+    } catch (_) {}
   }
 
-  static String _encodeThemeMode(ThemeMode mode) {
-    switch (mode) {
-      case ThemeMode.dark:
-        return 'dark';
-      case ThemeMode.system:
-        return 'system';
-      case ThemeMode.light:
-        return 'light';
-    }
-  }
-
-  static String _parseFeedVideoQuality(String? raw) {
-    switch (raw) {
-      case 'data_saver':
-      case 'high':
-      case 'auto':
-        return raw!;
-      default:
-        return 'auto';
-    }
+  Future<void> setHapticsEnabled(bool value) async {
+    if (_hapticsEnabled == value) return;
+    _hapticsEnabled = value;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_hapticsKey, value);
+    } catch (_) {}
   }
 }
 
-final appSettingsStore = AppSettingsStore();
+final AppSettingsStore appSettingsStore = AppSettingsStore._();

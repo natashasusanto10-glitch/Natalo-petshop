@@ -1,35 +1,39 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.VIBRATE" />
-    <!-- Voice search (speech_to_text) — record mic + cek paket TTS yang
-         tersedia di device. RECORD_AUDIO runtime-permission di Android 6+. -->
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <uses-permission android:name="android.permission.BLUETOOTH" />
-    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
-    <!-- Barcode scanner (mobile_scanner) — buka camera untuk scan barcode
-         / QR code produk. Camera permission runtime-prompt Android 6+. -->
-    <uses-permission android:name="android.permission.CAMERA" />
-    <uses-feature android:name="android.hardware.camera" android:required="false" />
-    <!-- Biometric auth (local_auth) — fingerprint / Face Unlock. -->
-    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
-    <uses-permission android:name="android.permission.USE_FINGERPRINT" />
-    <!-- GPS lokasi (geolocator) — untuk "Pakai Lokasi Saya" di address form.
-         COARSE = network-based (cellular triangulation, hemat battery).
-         FINE = GPS satellite (lebih akurat, butuh GPS on). User runtime-grant
-         minimal salah satunya supaya app berfungsi. -->
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- ============================================================
+         Permissions — match dengan iOS Info.plist usage descriptions.
+         Plugin Flutter ingest pemissions berikut secara otomatis,
+         tapi tetap declare di sini supaya manifest jelas + audit-able.
+         ============================================================ -->
+    <!-- HTTP fetch ke Next.js backend. WAJIB. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <!-- Kamera — review produk + Feed video record + barcode scanner. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
+    <!-- Mikrofon — audio saat record video Feed. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- Galeri foto/video — image_picker. Android 13+ pakai READ_MEDIA_* per type. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
+    <!-- Legacy untuk Android 12 dan bawah. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
+    <!-- GPS — auto-fill alamat dengan "Pakai Lokasi Saya". -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <!-- Push notification — Android 13+ butuh runtime permission. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Biometric — local_auth plugin. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
+    <uses-permission android:name="android.permission.USE_FINGERPRINT"/>
+    <!-- Vibrator — haptic_feedback plugin. -->
+    <uses-permission android:name="android.permission.VIBRATE"/>
 
     <application
-        android:label="${appLabel}"
+        android:label="Natalo Petshop"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="true">
+        android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"
-            android:label="${appLabel}"
             android:exported="true"
             android:launchMode="singleTop"
             android:taskAffinity=""
@@ -49,24 +53,15 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-            <!-- Deep link: terima URL https://natalopetshop.com/* dan
-                 buka langsung di app (autoVerify untuk App Links resmi).
-                 Match perilaku PWA capacitor.config.ts appUrlOpen. -->
+            <!-- Deep link handler — terima URI natalopetshop.com/* dari
+                 browser/share intent → app_links plugin route ke screen
+                 yang sesuai via DeepLinkService.handleExternalUri. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="https"
-                      android:host="natalopetshop.com"/>
-                <data android:scheme="https"
-                      android:host="www.natalopetshop.com"/>
-            </intent-filter>
-            <!-- Custom scheme natalo:// untuk push notification payload. -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW"/>
-                <category android:name="android.intent.category.DEFAULT"/>
-                <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="natalo"/>
+                <data android:scheme="https" android:host="natalopetshop.com"/>
+                <data android:scheme="https" android:host="www.natalopetshop.com"/>
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
@@ -74,25 +69,6 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-
-        <!-- Prevent Firebase from doing heavy native auto-init before Flutter
-             paints the first frame. main.dart initializes Firebase services
-             after the UI is visible, which avoids emulator ANR on launch. -->
-        <provider
-            android:name="com.google.firebase.provider.FirebaseInitProvider"
-            android:authorities="${applicationId}.firebaseinitprovider"
-            tools:node="remove" />
-
-        <!-- Natalo home screen widget — show cart count + last order status
-             di launcher. User long-press home screen → Widget → drag Natalo. -->
-        <receiver android:name=".NataloHomeWidget"
-                  android:exported="true">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data android:name="android.appwidget.provider"
-                       android:resource="@xml/natalo_widget_info" />
-        </receiver>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
@@ -103,18 +79,6 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="http" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="https" />
-        </intent>
-        <!-- Diperlukan speech_to_text untuk discover SpeechRecognizer service. -->
-        <intent>
-            <action android:name="android.speech.RecognitionService" />
         </intent>
     </queries>
 </manifest>

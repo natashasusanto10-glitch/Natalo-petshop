@@ -15,47 +15,7 @@
 		<key>CFBundleInfoDictionaryVersion</key>
 		<string>6.0</string>
 		<key>CFBundleName</key>
-		<string>Natalo Petshop</string>
-		<key>NSAppTransportSecurity</key>
-		<dict>
-			<key>NSAllowsLocalNetworking</key>
-			<true/>
-		</dict>
-		<key>NSPhotoLibraryUsageDescription</key>
-		<string>Natalo Petshop membutuhkan akses foto untuk mengunggah bukti pembayaran.</string>
-		<key>NSMicrophoneUsageDescription</key>
-		<string>Natalo Petshop perlu mikrofon untuk fitur cari produk dengan suara.</string>
-		<key>NSSpeechRecognitionUsageDescription</key>
-		<string>Natalo Petshop pakai pengenalan suara untuk mempercepat pencarian produk.</string>
-		<key>NSCameraUsageDescription</key>
-		<string>Natalo Petshop perlu akses kamera untuk scan barcode produk.</string>
-		<key>NSFaceIDUsageDescription</key>
-		<string>Login lebih cepat dan aman pakai Face ID.</string>
-		<!-- Lokasi GPS — untuk "Pakai Lokasi Saya" di address form. Hanya
-		     when-in-use (bukan always) karena cuma butuh saat user explicit
-		     tap button. iOS prompt sekali per app install. -->
-		<key>NSLocationWhenInUseUsageDescription</key>
-		<string>Natalo Petshop pakai lokasi untuk mengisi alamat pengiriman otomatis.</string>
-		<!-- LSApplicationQueriesSchemes: iOS 9+ butuh whitelist scheme yg
-		     boleh di-canLaunchUrl. Tanpa ini, url_launcher.canLaunchUrl untuk
-		     wa.me/instagram/gojek/grab return false meskipun app terinstall. -->
-		<key>LSApplicationQueriesSchemes</key>
-		<array>
-			<string>https</string>
-			<string>http</string>
-			<string>tel</string>
-			<string>mailto</string>
-			<string>whatsapp</string>
-			<string>instagram</string>
-			<string>fb</string>
-			<string>tg</string>
-			<string>twitter</string>
-		</array>
-		<!-- ITSAppUsesNonExemptEncryption: false = skip encryption export
-		     disclaimer di App Store Connect (kita tidak pakai custom crypto,
-		     hanya standard HTTPS yang exempt). -->
-		<key>ITSAppUsesNonExemptEncryption</key>
-		<false/>
+		<string>natalo_petshop_flutter</string>
 		<key>CFBundlePackageType</key>
 		<string>APPL</string>
 		<key>CFBundleShortVersionString</key>
@@ -105,6 +65,41 @@
 			<string>UIInterfaceOrientationPortraitUpsideDown</string>
 			<string>UIInterfaceOrientationLandscapeLeft</string>
 			<string>UIInterfaceOrientationLandscapeRight</string>
+		</array>
+		<!-- Skip export compliance prompt di TestFlight — app tidak pakai
+	     enkripsi proprietary, cuma HTTPS standard. -->
+		<key>ITSAppUsesNonExemptEncryption</key>
+		<false/>
+		<!-- Permission usage descriptions — wajib untuk plugin native iOS.
+	     Tanpa keys ini, app akan crash saat akses Camera/Photos/Mic/dll.
+	     Apple mandates. Pesan harus dalam bahasa yang user pahami. -->
+		<key>NSCameraUsageDescription</key>
+		<string>Natalo Petshop butuh akses kamera untuk kamu ambil foto saat menulis review produk dan merekam video untuk Feed.</string>
+		<key>NSMicrophoneUsageDescription</key>
+		<string>Natalo Petshop butuh akses mikrofon untuk merekam audio saat kamu membuat video Feed dari kamera.</string>
+		<key>NSPhotoLibraryUsageDescription</key>
+		<string>Natalo Petshop butuh akses galeri foto untuk kamu pilih foto saat menulis review produk dan video saat membuat postingan Feed.</string>
+		<key>NSPhotoLibraryAddUsageDescription</key>
+		<string>Natalo Petshop butuh izin menyimpan foto ke galeri kamu (untuk save bukti tracking, dll).</string>
+		<!-- Voice search di product list — speech_to_text plugin pakai
+	     SFSpeechRecognizer (Apple) yang butuh speech permission. -->
+		<key>NSSpeechRecognitionUsageDescription</key>
+		<string>Natalo Petshop pakai pencarian suara untuk kamu cari produk dengan bicara, lebih cepat dari mengetik.</string>
+		<!-- GPS lokasi — auto-fill alamat dengan "Pakai Lokasi Saya" di address
+	     form. Geolocator plugin butuh "WhenInUse" untuk foreground only. -->
+		<key>NSLocationWhenInUseUsageDescription</key>
+		<string>Natalo Petshop butuh akses lokasi untuk auto-fill alamat pengiriman dan menampilkan toko terdekat.</string>
+		<!-- Biometric auth (Face ID) — local_auth plugin pakai LocalAuthentication
+	     framework yang butuh usage description di iOS 11+. -->
+		<key>NSFaceIDUsageDescription</key>
+		<string>Login ke akun Natalo Petshop kamu dengan Face ID — lebih cepat dan aman.</string>
+		<!-- Push notifications via firebase_messaging + flutter_local_notifications.
+	     Background mode "remote-notification" supaya APNs payload bisa
+	     wake app untuk fetch content. -->
+		<key>UIBackgroundModes</key>
+		<array>
+			<string>fetch</string>
+			<string>remote-notification</string>
 		</array>
 		<key>UIStatusBarHidden</key>
 		<false/>

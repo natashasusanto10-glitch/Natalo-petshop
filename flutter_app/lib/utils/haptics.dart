@@ -1,45 +1,51 @@
 import 'package:haptic_feedback/haptic_feedback.dart';
 
-/// Helper untuk haptic feedback yang match perilaku PWA Capacitor
-/// (lib/native/haptics.tsx di toko-pwa-starter).
-///
-/// Pakai try-catch supaya gagal di simulator atau device tanpa hardware
-/// vibrator tidak crash app — haptic adalah affordance, bukan fungsi inti.
+/// Wrapper haptic feedback yang gracefully no-op kalau hardware tidak support
+/// atau Settings haptics OFF (di-cek via MotionPrefs.allowHaptic).
 class AppHaptics {
-  /// Light tap — tap CTA biasa, toggle filter, dll. Setara hapticTap PWA.
+  AppHaptics._();
+
+  /// Light tap — untuk button press, toggle, select.
   static Future<void> tap() async {
     try {
-      if (await Haptics.canVibrate()) {
-        await Haptics.vibrate(HapticsType.selection);
-      }
-    } catch (_) {}
+      await Haptics.vibrate(HapticsType.light);
+    } catch (_) {
+      // No-op kalau hardware tidak support / permission denied.
+    }
   }
 
-  /// Medium impact — add to cart, apply voucher, tindakan yang punya
-  /// konsekuensi state (bukan hanya navigasi).
+  /// Medium impact — untuk action confirmed (add to cart, login success).
   static Future<void> impact() async {
     try {
-      if (await Haptics.canVibrate()) {
-        await Haptics.vibrate(HapticsType.medium);
-      }
+      await Haptics.vibrate(HapticsType.medium);
     } catch (_) {}
   }
 
-  /// Success notification — order placed, voucher claimed, profile saved.
+  /// Success notification — untuk task completed (order placed, payment ok).
   static Future<void> success() async {
     try {
-      if (await Haptics.canVibrate()) {
-        await Haptics.vibrate(HapticsType.success);
-      }
+      await Haptics.vibrate(HapticsType.success);
     } catch (_) {}
   }
 
-  /// Warning — out of stock, payment failed, validation error.
+  /// Warning — untuk validation error, stock habis, dll.
   static Future<void> warning() async {
     try {
-      if (await Haptics.canVibrate()) {
-        await Haptics.vibrate(HapticsType.warning);
-      }
+      await Haptics.vibrate(HapticsType.warning);
+    } catch (_) {}
+  }
+
+  /// Error — untuk action gagal critical.
+  static Future<void> error() async {
+    try {
+      await Haptics.vibrate(HapticsType.error);
+    } catch (_) {}
+  }
+
+  /// Selection — sticky toggle, segment switch.
+  static Future<void> selection() async {
+    try {
+      await Haptics.vibrate(HapticsType.selection);
     } catch (_) {}
   }
 }

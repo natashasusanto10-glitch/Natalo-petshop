@@ -1,256 +1,213 @@
-import '../config/api_config.dart';
-
-/// Public feed post — match response API GET /api/feed/posts.
-/// Beda dengan MyFeedPost (yang scope user-owned), FeedPost dipakai untuk
-/// public feed timeline (TikTok-style fullscreen video feed).
-class FeedPost {
-  final String id;
-  final String kind;
-  final String tab;
-  final String status;
-  final String title;
-  final String? description;
-  final String? videoUrl;
-  final String? thumbnailUrl;
-  final String? thumbnailBlurhash;
-  final int? videoDurationSec;
-  final int? videoWidth;
-  final int? videoHeight;
-  final FeedAuthor author;
-  final FeedProductLink? product;
-  final List<FeedProductLink> taggedProducts;
-  final FeedPromo? promo;
-  final int likeCount;
-  final int commentCount;
-  final int viewCount;
-  final int shareCount;
-  final bool viewerLiked;
-  final DateTime? publishedAt;
-  final DateTime createdAt;
-
-  const FeedPost({
-    required this.id,
-    required this.kind,
-    required this.tab,
-    required this.status,
-    required this.title,
-    this.description,
-    this.videoUrl,
-    this.thumbnailUrl,
-    this.thumbnailBlurhash,
-    this.videoDurationSec,
-    this.videoWidth,
-    this.videoHeight,
-    required this.author,
-    this.product,
-    this.taggedProducts = const [],
-    this.promo,
-    required this.likeCount,
-    required this.commentCount,
-    required this.viewCount,
-    required this.shareCount,
-    required this.viewerLiked,
-    this.publishedAt,
-    required this.createdAt,
-  });
-
-  factory FeedPost.fromApiJson(Map<String, dynamic> json) {
-    final video = (json['videoUrl'] ?? '').toString();
-    final thumb = (json['thumbnailUrl'] ?? '').toString();
-    final author = json['author'] is Map<String, dynamic>
-        ? FeedAuthor.fromJson(json['author'] as Map<String, dynamic>)
-        : const FeedAuthor(id: '', name: 'Natalo', role: 'CUSTOMER');
-    final productJson = json['product'];
-    final taggedJson = json['taggedProducts'];
-    final promoJson = json['promo'];
-    final product = productJson is Map<String, dynamic>
-        ? FeedProductLink.fromJson(productJson)
-        : null;
-    final taggedProducts = taggedJson is List
-        ? taggedJson
-            .whereType<Map<String, dynamic>>()
-            .map(FeedProductLink.fromJson)
-            .toList()
-        : <FeedProductLink>[];
-    return FeedPost(
-      id: (json['id'] ?? '').toString(),
-      kind: (json['kind'] ?? 'VIDEO_ONLY').toString(),
-      tab: (json['tab'] ?? 'REKOMENDASI').toString(),
-      status: (json['status'] ?? 'ACTIVE').toString(),
-      title: (json['title'] ?? '').toString(),
-      description: json['description']?.toString(),
-      videoUrl: video.isEmpty ? null : _absoluteUrl(video),
-      thumbnailUrl: thumb.isEmpty ? null : _absoluteUrl(thumb),
-      thumbnailBlurhash: _nullableString(json['thumbnailBlurhash']),
-      videoDurationSec: _nullableInt(json['videoDurationSec']),
-      videoWidth: _nullableInt(json['videoWidth']),
-      videoHeight: _nullableInt(json['videoHeight']),
-      author: author,
-      product: product,
-      taggedProducts: taggedProducts.isNotEmpty
-          ? taggedProducts
-          : [if (product != null) product],
-      promo: promoJson is Map<String, dynamic>
-          ? FeedPromo.fromJson(promoJson)
-          : null,
-      likeCount: _asInt(json['likeCount']),
-      commentCount: _asInt(json['commentCount']),
-      viewCount: _asInt(json['viewCount']),
-      shareCount: _asInt(json['shareCount']),
-      viewerLiked: json['viewerLiked'] == true,
-      publishedAt: DateTime.tryParse((json['publishedAt'] ?? '').toString()),
-      createdAt: DateTime.tryParse((json['createdAt'] ?? '').toString()) ??
-          DateTime.now(),
-    );
-  }
-
-  bool get hasVideo => videoUrl != null && videoUrl!.isNotEmpty;
-  List<FeedProductLink> get productsInVideo => taggedProducts;
-}
+/// Models untuk feed module — port dari Prisma FeedPost + relations.
 
 class FeedAuthor {
   final String id;
   final String name;
-  final String role; // "ADMIN" | "CUSTOMER"
+  final String? username;
+  final String? avatarUrl;
   final String? profilePhotoUrl;
+  final bool isAdmin;
+  final bool isOfficial;
 
   const FeedAuthor({
     required this.id,
     required this.name,
-    required this.role,
+    this.username,
+    this.avatarUrl,
     this.profilePhotoUrl,
+    this.isAdmin = false,
+    this.isOfficial = false,
   });
 
   factory FeedAuthor.fromJson(Map<String, dynamic> json) {
-    final photo = _nullableString(
-      json['profilePhotoUrl'] ??
-          json['profile_photo_url'] ??
-          json['avatarUrl'] ??
-          json['avatar_url'] ??
-          json['imageUrl'] ??
-          json['image_url'],
-    );
+    final avatar = json['avatarUrl'] as String?;
+    final photo = json['profilePhotoUrl'] as String?;
     return FeedAuthor(
-      id: (json['id'] ?? '').toString(),
-      name: (json['name'] ?? 'Pengguna Natalo').toString(),
-      role: (json['role'] ?? 'CUSTOMER').toString(),
-      profilePhotoUrl: photo == null ? null : _absoluteUrl(photo),
+      id: json['id'] as String? ?? '',
+      name: json['name'] as String? ?? 'User',
+      username: json['username'] as String?,
+      avatarUrl: avatar ?? photo,
+      profilePhotoUrl: photo ?? avatar,
+      isAdmin: json['isAdmin'] as bool? ??
+          (json['role']?.toString().toUpperCase() == 'ADMIN'),
+      isOfficial: json['isOfficial'] as bool? ?? false,
     );
   }
-
-  bool get isAdmin => role == 'ADMIN';
 }
 
 class FeedProductLink {
   final String id;
   final String slug;
   final String name;
-  final double price;
-  final double? discountPrice;
-  final double? promoPrice;
+  final String? imageUrl;
+  final int price;
+  final int? discountPrice;
+  final int? promoPrice;
   final int stock;
   final int weightGram;
-  final bool isAvailable;
   final bool hasVariants;
-  final int position;
-  final String? imageUrl;
+  final bool isActive;
 
   const FeedProductLink({
     required this.id,
     required this.slug,
     required this.name,
+    this.imageUrl,
     required this.price,
     this.discountPrice,
     this.promoPrice,
-    required this.stock,
+    this.stock = 0,
     this.weightGram = 500,
-    this.isAvailable = true,
     this.hasVariants = false,
-    this.position = 0,
-    this.imageUrl,
+    this.isActive = true,
   });
+
+  bool get isAvailable => isActive && stock > 0;
 
   factory FeedProductLink.fromJson(Map<String, dynamic> json) {
     return FeedProductLink(
-      id: (json['id'] ?? '').toString(),
-      slug: (json['slug'] ?? '').toString(),
-      name: (json['name'] ?? 'Produk').toString(),
-      price: _asDouble(json['price']),
-      discountPrice: _nullableDouble(json['discountPrice']),
-      promoPrice: _nullableDouble(json['promoPrice']),
-      stock: _asInt(json['stock']),
-      weightGram:
-          _asInt(json['weightGram']) == 0 ? 500 : _asInt(json['weightGram']),
-      isAvailable: json['isAvailable'] != false,
-      hasVariants: json['hasVariants'] == true,
-      position: _asInt(json['position']),
-      imageUrl: (json['imageUrl'] ?? '').toString().isEmpty
-          ? null
-          : _absoluteUrl(json['imageUrl'].toString()),
+      id: json['id'] as String,
+      slug: json['slug'] as String? ?? '',
+      name: (json['name'] ?? json['title']) as String? ?? '',
+      imageUrl: json['imageUrl'] as String?,
+      price: (json['price'] as num?)?.toInt() ?? 0,
+      discountPrice: (json['discountPrice'] as num?)?.toInt(),
+      promoPrice: (json['promoPrice'] as num?)?.toInt(),
+      stock: (json['stock'] as num?)?.toInt() ?? 0,
+      weightGram: (json['weightGram'] as num?)?.toInt() ?? 500,
+      hasVariants: json['hasVariants'] as bool? ?? false,
+      isActive: json['isActive'] as bool? ?? true,
     );
   }
 }
 
-class FeedPromo {
-  final double originalPrice;
-  final double discountPrice;
+/// Single feed post — video/image dengan optional product tags + author.
+class FeedPost {
+  final String id;
+  final String slug;
+  /// Non-nullable — default '' supaya screen yang akses `.isNotEmpty` aman.
+  final String title;
+  final String description;
+  final String? caption;
+  final String videoUrl;
+  final String? thumbnailUrl;
+  final String? blurhash;
+  final String? thumbnailBlurhash;
+  final int durationSec;
+  final double aspectRatio;
+  final int videoWidth;
+  final int videoHeight;
+  final String kind;
+  final FeedAuthor author;
+  final List<FeedProductLink> products;
+  final List<FeedProductLink> productsInVideo;
+  final List<FeedProductLink> taggedProducts;
+  final int likeCount;
+  final int commentCount;
+  final int viewCount;
+  final int shareCount;
+  final bool isLiked;
+  final bool viewerLiked;
+  final DateTime createdAt;
 
-  const FeedPromo({
-    required this.originalPrice,
-    required this.discountPrice,
+  const FeedPost({
+    required this.id,
+    required this.slug,
+    this.title = '',
+    this.description = '',
+    this.caption,
+    required this.videoUrl,
+    this.thumbnailUrl,
+    this.blurhash,
+    this.thumbnailBlurhash,
+    this.durationSec = 0,
+    this.aspectRatio = 9 / 16,
+    this.videoWidth = 0,
+    this.videoHeight = 0,
+    this.kind = 'USER_VIDEO',
+    required this.author,
+    this.products = const [],
+    this.productsInVideo = const [],
+    this.taggedProducts = const [],
+    this.likeCount = 0,
+    this.commentCount = 0,
+    this.viewCount = 0,
+    this.shareCount = 0,
+    this.isLiked = false,
+    this.viewerLiked = false,
+    required this.createdAt,
   });
 
-  factory FeedPromo.fromJson(Map<String, dynamic> json) {
-    return FeedPromo(
-      originalPrice: _asDouble(json['originalPrice']),
-      discountPrice: _asDouble(json['discountPrice']),
+  factory FeedPost.fromJson(Map<String, dynamic> json) {
+    final productsJson = (json['products'] as List?) ??
+        (json['feedPostProducts'] as List?) ??
+        const [];
+    final products = productsJson
+        .whereType<Map<String, dynamic>>()
+        .map((p) => FeedProductLink.fromJson(
+              p['product'] is Map<String, dynamic>
+                  ? p['product'] as Map<String, dynamic>
+                  : p,
+            ))
+        .toList();
+    final videoProductsJson = (json['productsInVideo'] as List?) ?? productsJson;
+    final productsInVideo = videoProductsJson
+        .whereType<Map<String, dynamic>>()
+        .map((p) => FeedProductLink.fromJson(
+              p['product'] is Map<String, dynamic>
+                  ? p['product'] as Map<String, dynamic>
+                  : p,
+            ))
+        .toList();
+    final taggedProductsJson = (json['taggedProducts'] as List?) ?? productsJson;
+    final taggedProducts = taggedProductsJson
+        .whereType<Map<String, dynamic>>()
+        .map((p) => FeedProductLink.fromJson(
+              p['product'] is Map<String, dynamic>
+                  ? p['product'] as Map<String, dynamic>
+                  : p,
+            ))
+        .toList();
+    final liked = json['viewerLiked'] as bool? ?? json['isLiked'] as bool? ?? false;
+    final blurhash =
+        (json['thumbnailBlurhash'] ?? json['blurhash']) as String?;
+    return FeedPost(
+      id: json['id'] as String,
+      slug: (json['slug'] ?? json['id']) as String,
+      title: (json['title'] as String?) ?? '',
+      description: (json['description'] as String?) ?? '',
+      caption: json['caption'] as String?,
+      videoUrl: (json['videoUrl'] ?? json['mediaUrl']) as String? ?? '',
+      thumbnailUrl: json['thumbnailUrl'] as String?,
+      blurhash: blurhash,
+      thumbnailBlurhash: blurhash,
+      durationSec: (json['durationSec'] as num?)?.toInt() ?? 0,
+      aspectRatio: (json['aspectRatio'] as num?)?.toDouble() ?? (9 / 16),
+      videoWidth: (json['videoWidth'] as num?)?.toInt() ?? 0,
+      videoHeight: (json['videoHeight'] as num?)?.toInt() ?? 0,
+      kind: json['kind'] as String? ?? 'USER_VIDEO',
+      author: json['author'] is Map<String, dynamic>
+          ? FeedAuthor.fromJson(json['author'] as Map<String, dynamic>)
+          : const FeedAuthor(id: '', name: 'User'),
+      products: products,
+      productsInVideo: productsInVideo,
+      taggedProducts: taggedProducts,
+      likeCount: (json['likeCount'] as num?)?.toInt() ?? 0,
+      commentCount: (json['commentCount'] as num?)?.toInt() ?? 0,
+      viewCount: (json['viewCount'] as num?)?.toInt() ?? 0,
+      shareCount: (json['shareCount'] as num?)?.toInt() ?? 0,
+      isLiked: liked,
+      viewerLiked: liked,
+      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
+          DateTime.now(),
     );
   }
 }
 
+/// Cursor-paginated feed page.
 class FeedPage {
   final List<FeedPost> items;
   final String? nextCursor;
 
-  const FeedPage({required this.items, this.nextCursor});
-
-  static const empty = FeedPage(items: [], nextCursor: null);
-}
-
-double _asDouble(Object? value) {
-  if (value is num) return value.toDouble();
-  return double.tryParse(value?.toString() ?? '') ?? 0;
-}
-
-double? _nullableDouble(Object? value) {
-  if (value == null) return null;
-  if (value is num) return value.toDouble();
-  return double.tryParse(value.toString());
-}
-
-int _asInt(Object? value) {
-  if (value is int) return value;
-  if (value is num) return value.round();
-  return int.tryParse(value?.toString() ?? '') ?? 0;
-}
-
-int? _nullableInt(Object? value) {
-  if (value == null) return null;
-  if (value is int) return value;
-  if (value is num) return value.round();
-  return int.tryParse(value.toString());
-}
-
-String? _nullableString(Object? value) {
-  final text = value?.toString().trim();
-  if (text == null || text.isEmpty) return null;
-  return text;
-}
-
-String _absoluteUrl(String url) {
-  if (url.isEmpty || url.startsWith('http')) return url;
-  final base = Uri.parse(ApiConfig.baseUrl);
-  final origin =
-      '${base.scheme}://${base.host}${base.hasPort ? ':${base.port}' : ''}';
-  return url.startsWith('/') ? '$origin$url' : '$origin/$url';
+  const FeedPage({this.items = const [], this.nextCursor});
 }

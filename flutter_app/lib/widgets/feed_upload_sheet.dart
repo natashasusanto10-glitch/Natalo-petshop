@@ -177,8 +177,8 @@ class _FeedUploadSheetState extends State<FeedUploadSheet>
         brand: '',
         imageUrl: (p['imageUrl'] ?? '').toString(),
         price: priceRaw is num
-            ? priceRaw.toDouble()
-            : double.tryParse(priceRaw.toString()) ?? 0,
+            ? priceRaw.toInt()
+            : int.tryParse(priceRaw.toString()) ?? 0,
         rating: p['avgRating'] is num ? (p['avgRating'] as num).toDouble() : 0,
         reviewCount:
             p['reviewCount'] is num ? (p['reviewCount'] as num).toInt() : 0,

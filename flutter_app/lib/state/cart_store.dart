@@ -5,235 +5,121 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/cart_item.dart';
 import '../models/product.dart';
-import '../services/app_analytics.dart';
-import '../services/cart_service.dart';
-import '../services/home_widget_service.dart';
+import '../utils/read_only_mode.dart';
 
+/// Cart state store — offline-first. Item disimpan ke SharedPreferences supaya
+/// survive app restart. Sync ke server (`/api/cart`) belum di-implement —
+/// stub `syncToServer()` no-op untuk sekarang.
 class CartStore extends ChangeNotifier {
-  static const _kCartCacheKey = 'natalo_cart_v1';
-  static const _kSavedCacheKey = 'natalo_cart_saved_v1';
+  CartStore._();
 
-  final List<CartItem> _items = [];
-  // Save for later — items dipindahkan dari cart aktif ke saved supaya
-  // tidak hilang & tidak dihitung total checkout. User bisa pindahkan
-  // kembali ke cart kapan saja.
-  final List<CartItem> _saved = [];
-  bool _diskLoaded = false;
+  static const _key = 'cart_items_v2';
 
-  List<CartItem> get items => List.unmodifiable(_items);
-  List<CartItem> get savedItems => List.unmodifiable(_saved);
-  bool get diskLoaded => _diskLoaded;
+  final Map<String, CartItem> _items = {};
 
-  int get totalQuantity {
-    return _items.fold(0, (sum, item) => sum + item.quantity);
+  List<CartItem> get items => _items.values.toList(growable: false);
+  int get count => _items.values.fold(0, (sum, it) => sum + it.quantity);
+  int get subtotal => _items.values.fold(0, (sum, it) => sum + it.lineTotal);
+  bool get isEmpty => _items.isEmpty;
+  bool get isNotEmpty => _items.isNotEmpty;
+
+  /// Alias `count` — beberapa screen pakai totalQuantity, beberapa count.
+  int get totalQuantity => count;
+
+  Future<void> loadFromDisk() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_key);
+      if (raw == null) return;
+      final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
+      _items.clear();
+      for (final json in list) {
+        final item = CartItem.fromJson(json);
+        _items[item.key] = item;
+      }
+      notifyListeners();
+    } catch (_) {
+      // Disk corrupt / format lama — silent reset.
+    }
   }
 
-  double get subtotal {
-    // item.lineTotal sudah pakai effectivePrice (varian price kalau ada).
-    return _items.fold(0, (sum, item) => sum + item.lineTotal);
+  Future<void> _persist() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = _items.values.map((it) => it.toJson()).toList();
+      await prefs.setString(_key, jsonEncode(list));
+    } catch (_) {}
   }
 
-  double get voucherDiscount {
-    if (subtotal < 150000) return 0;
-    return subtotal * 0.08;
-  }
-
-  double get total => (subtotal - voucherDiscount).clamp(0, double.infinity);
-
-  void addProduct(
+  /// Add product langsung — convenience wrapper sekitar [addItem].
+  /// Boleh pass `variant` (full ProductVariant) atau `variantId`/`variantLabel`.
+  Future<void> addProduct(
     Product product, {
     int quantity = 1,
     ProductVariant? variant,
-  }) {
-    // Composite key supaya kalau user pilih 2 varian dari produk yang sama,
-    // masing-masing jadi line item terpisah (tidak menumpuk).
-    final cartKey =
-        variant != null ? '${product.id}::${variant.id}' : product.id;
-    final index = _items.indexWhere((item) => item.key == cartKey);
-    final maxStock = variant?.stock ?? product.stock;
-    if (index == -1) {
-      _items.add(CartItem(
-        product: product,
-        quantity: quantity.clamp(1, maxStock),
-        variant: variant,
-      ));
-    } else {
-      final current = _items[index];
-      final nextQuantity = (current.quantity + quantity).clamp(1, maxStock);
-      _items[index] = current.copyWith(quantity: nextQuantity);
-    }
-    notifyListeners();
-    _persistToDisk();
-    // Analytics — track add_to_cart event untuk funnel analysis.
-    // Gracefully no-op kalau Firebase belum setup.
-    AppAnalytics.logAddToCart(
-      productId: product.id,
-      productName: product.title,
-      price: variant?.price ?? product.price,
+    String? variantId,
+    String? variantLabel,
+    int? overridePrice,
+    int? overrideStock,
+  }) async {
+    final item = CartItem(
+      product: product,
+      variant: variant,
+      variantLabel: variantLabel,
+      unitPrice: overridePrice ?? variant?.price ?? product.finalPrice,
       quantity: quantity,
+      effectiveStock: overrideStock ?? variant?.stock ?? product.stock,
     );
+    await addItem(item);
   }
 
-  void updateQuantity(String key, int quantity) {
-    final index = _items.indexWhere((item) => item.key == key);
-    if (index == -1) return;
+  /// Add cart line (atau increment qty kalau sudah ada).
+  Future<void> addItem(CartItem item) async {
+    readOnlyMode.guard('addItem');
+    final existing = _items[item.key];
+    _items[item.key] = existing == null
+        ? item
+        : existing.copyWith(quantity: existing.quantity + item.quantity);
+    notifyListeners();
+    await _persist();
+  }
 
+  Future<void> updateQuantity(String key, int quantity) async {
+    readOnlyMode.guard('updateQuantity');
+    final item = _items[key];
+    if (item == null) return;
     if (quantity <= 0) {
-      _items.removeAt(index);
+      _items.remove(key);
     } else {
-      final item = _items[index];
-      final nextQuantity = quantity.clamp(1, item.effectiveStock);
-      _items[index] = item.copyWith(quantity: nextQuantity);
+      _items[key] = item.copyWith(quantity: quantity);
     }
     notifyListeners();
-    _persistToDisk();
+    await _persist();
   }
 
-  void remove(String key) {
-    _items.removeWhere((item) => item.key == key);
-    notifyListeners();
-    _persistToDisk();
+  Future<void> remove(String key) async {
+    readOnlyMode.guard('removeItem');
+    if (_items.remove(key) != null) {
+      notifyListeners();
+      await _persist();
+    }
   }
 
-  void restore(CartItem item, {int? index}) {
-    if (_items.any((current) => current.key == item.key)) return;
-    final insertAt = (index ?? _items.length).clamp(0, _items.length);
-    _items.insert(insertAt, item);
-    notifyListeners();
-    _persistToDisk();
-  }
-
-  void clear() {
+  Future<void> clear() async {
+    readOnlyMode.guard('clearCart');
+    if (_items.isEmpty) return;
     _items.clear();
     notifyListeners();
-    _persistToDisk();
+    await _persist();
   }
 
-  /// Pindahkan item dari cart aktif → saved list. Item tidak dihitung
-  /// untuk total checkout, tapi tetap di-persist supaya user bisa
-  /// kembalikan nanti.
-  void moveToSaved(String key) {
-    final index = _items.indexWhere((item) => item.key == key);
-    if (index == -1) return;
-    final item = _items.removeAt(index);
-    // Dedupe — kalau sudah ada di saved, skip insert.
-    if (!_saved.any((s) => s.key == item.key)) {
-      _saved.insert(0, item);
+  /// Sync local cart ke server (`/api/cart`). Stub — TODO real implementation
+  /// setelah backend auth integration ready.
+  Future<void> syncToServer() async {
+    if (kDebugMode) {
+      debugPrint('[CartStore.syncToServer] stub — ${_items.length} items');
     }
-    notifyListeners();
-    _persistToDisk();
-  }
-
-  /// Pindahkan dari saved → cart aktif. Quantity dijaga, atau di-clamp
-  /// ke stock kalau berubah.
-  void moveToCart(String key) {
-    final index = _saved.indexWhere((item) => item.key == key);
-    if (index == -1) return;
-    final item = _saved.removeAt(index);
-    // Dedupe — kalau sudah ada di cart, increment qty.
-    final existingIndex = _items.indexWhere((c) => c.key == item.key);
-    if (existingIndex != -1) {
-      final current = _items[existingIndex];
-      _items[existingIndex] = current.copyWith(
-        quantity:
-            (current.quantity + item.quantity).clamp(1, current.effectiveStock),
-      );
-    } else {
-      _items.add(item);
-    }
-    notifyListeners();
-    _persistToDisk();
-  }
-
-  void removeSaved(String key) {
-    _saved.removeWhere((item) => item.key == key);
-    notifyListeners();
-    _persistToDisk();
-  }
-
-  Future<void> syncToServer() {
-    return cartService.replaceCart(_items);
-  }
-
-  Future<void> loadFromServer() async {
-    final serverItems = await cartService.fetchCart();
-    _items
-      ..clear()
-      ..addAll(serverItems);
-    notifyListeners();
-    _persistToDisk();
-  }
-
-  /// Load cart dari disk (SharedPreferences) — dipanggil sekali di app start.
-  /// Cart yang sudah ditambah user (guest atau pre-login) survive app restart.
-  /// Match keuntungan offline-first Flutter native atas PWA yang re-fetch
-  /// localStorage hanya saat halaman buka.
-  Future<void> loadFromDisk() async {
-    if (_diskLoaded) return;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_kCartCacheKey);
-      if (raw == null || raw.isEmpty) {
-        _diskLoaded = true;
-        return;
-      }
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) {
-        _diskLoaded = true;
-        return;
-      }
-      _items.clear();
-      for (final entry in decoded) {
-        if (entry is Map<String, dynamic>) {
-          try {
-            _items.add(CartItem.fromJson(entry));
-          } catch (_) {
-            // Skip item yang corrupt — lanjut yang lain.
-          }
-        }
-      }
-      // Load saved-for-later list — separate cache key.
-      final savedRaw = prefs.getString(_kSavedCacheKey);
-      if (savedRaw != null && savedRaw.isNotEmpty) {
-        try {
-          final savedDecoded = jsonDecode(savedRaw);
-          if (savedDecoded is List) {
-            _saved.clear();
-            for (final entry in savedDecoded) {
-              if (entry is Map<String, dynamic>) {
-                try {
-                  _saved.add(CartItem.fromJson(entry));
-                } catch (_) {}
-              }
-            }
-          }
-        } catch (_) {}
-      }
-      _diskLoaded = true;
-      notifyListeners();
-    } catch (_) {
-      _diskLoaded = true;
-    }
-  }
-
-  /// Persist cart ke disk — dipanggil setelah setiap mutation.
-  /// Fire-and-forget supaya UI tidak ke-block.
-  Future<void> _persistToDisk() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final json = jsonEncode(_items.map((i) => i.toJson()).toList());
-      await prefs.setString(_kCartCacheKey, json);
-      // Saved list — persist juga supaya survive restart.
-      final savedJson =
-          jsonEncode(_saved.map((i) => i.toJson()).toList());
-      await prefs.setString(_kSavedCacheKey, savedJson);
-    } catch (_) {
-      // Silent — disk write failure tidak boleh blokir cart UX.
-    }
-    // Update Android home widget — fire and forget, silent fail kalau
-    // widget tidak di-pin. iOS no-op via Platform.isAndroid guard.
-    AppHomeWidgetService.updateCartCount(totalQuantity);
   }
 }
 
-final cartStore = CartStore();
+final CartStore cartStore = CartStore._();

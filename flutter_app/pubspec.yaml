@@ -148,7 +148,7 @@ flutter_native_splash:
   # dengan scaffold dark theme di app (#0A0F1A backgroundDark). Sebelumnya
   # color_dark: white = blinding flash di malam hari.
   color_dark: "#0A0F1A"
-  image_dark: assets/native/splash.png
+  image_dark: assets/native/splash-dark.png
   android: true
   ios: true
   web: false

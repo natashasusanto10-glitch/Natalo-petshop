@@ -488,7 +488,7 @@ class _ProductInfo extends StatelessWidget {
 
   const _ProductInfo({required this.product});
 
-  String _formatNumberId(double n) {
+  String _formatNumberId(num n) {
     final integer = n.round();
     final s = integer.toString();
     final buffer = StringBuffer();

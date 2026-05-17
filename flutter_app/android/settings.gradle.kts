@@ -21,7 +21,9 @@ plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
     id("com.android.application") version "8.11.1" apply false
     id("org.jetbrains.kotlin.android") version "2.2.20" apply false
-    // Firebase / FCM — apply false di root, di-apply di app module.
+    // Firebase Cloud Messaging + Crashlytics + Analytics. Plugin ini di-apply
+    // per-module di app/build.gradle.kts. Capacitor `cap sync` inject otomatis;
+    // Flutter tidak — kita declare manual. Version match pin Firebase BoM 33.x.
     id("com.google.gms.google-services") version "4.4.2" apply false
 }
 

@@ -1,68 +1,63 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:quick_actions/quick_actions.dart';
 
-/// Wrap native launcher quick actions (Android App Shortcuts / iOS Quick
-/// Actions) — long-press app icon di home screen → shortcut langsung ke
-/// screen tertentu.
-///
-/// PWA Natalo tidak bisa punya ini karena tidak punya icon native di
-/// launcher. Salah satu capability eksklusif Flutter native.
+/// Launcher quick actions — long-press app icon → shortcut langsung ke
+/// screen tertentu (Cart, Wishlist, Pesanan, Tukar Poin).
 class AppQuickActions {
-  static const _quickActions = QuickActions();
+  AppQuickActions._();
 
-  /// Register 4 shortcut Natalo: Cart, Wishlist, Pesanan, Tukar Poin.
-  /// Dipanggil di main() setelah binding ready. Idempotent.
-  static Future<void> initialize(
-    GlobalKey<NavigatorState> navigatorKey,
-  ) async {
+  static const _shortcuts = <ShortcutItem>[
+    ShortcutItem(
+      type: 'cart',
+      localizedTitle: 'Keranjang',
+      icon: 'ic_shortcut_cart',
+    ),
+    ShortcutItem(
+      type: 'wishlist',
+      localizedTitle: 'Wishlist',
+      icon: 'ic_shortcut_heart',
+    ),
+    ShortcutItem(
+      type: 'orders',
+      localizedTitle: 'Pesanan Saya',
+      icon: 'ic_shortcut_orders',
+    ),
+    ShortcutItem(
+      type: 'loyalty',
+      localizedTitle: 'Tukar Poin',
+      icon: 'ic_shortcut_loyalty',
+    ),
+  ];
+
+  static bool _initialized = false;
+
+  static void initialize(GlobalKey<NavigatorState> navigatorKey) {
+    if (_initialized) return;
+    _initialized = true;
     try {
-      _quickActions.initialize((type) {
-        // Resolve type ke route Flutter.
+      const qa = QuickActions();
+      qa.initialize((type) {
+        final nav = navigatorKey.currentState;
+        if (nav == null) return;
         switch (type) {
           case 'cart':
-            navigatorKey.currentState
-                ?.pushNamedAndRemoveUntil('/cart', (r) => false);
+            nav.pushNamed('/cart');
             break;
           case 'wishlist':
-            navigatorKey.currentState
-                ?.pushNamedAndRemoveUntil('/wishlist', (r) => false);
+            nav.pushNamed('/wishlist');
             break;
           case 'orders':
-            navigatorKey.currentState
-                ?.pushNamedAndRemoveUntil('/member/orders', (r) => false);
+            nav.pushNamed('/member/orders');
             break;
           case 'loyalty':
-            navigatorKey.currentState
-                ?.pushNamedAndRemoveUntil('/member/loyalty', (r) => false);
+            nav.pushNamed('/member/loyalty');
             break;
         }
       });
-
-      // Set shortcut list — muncul saat user long-press icon launcher.
-      await _quickActions.setShortcutItems(<ShortcutItem>[
-        const ShortcutItem(
-          type: 'cart',
-          localizedTitle: 'Keranjang',
-          icon: 'ic_shortcut_cart',
-        ),
-        const ShortcutItem(
-          type: 'wishlist',
-          localizedTitle: 'Wishlist',
-          icon: 'ic_shortcut_wishlist',
-        ),
-        const ShortcutItem(
-          type: 'orders',
-          localizedTitle: 'Pesanan Saya',
-          icon: 'ic_shortcut_orders',
-        ),
-        const ShortcutItem(
-          type: 'loyalty',
-          localizedTitle: 'Tukar Poin',
-          icon: 'ic_shortcut_loyalty',
-        ),
-      ]);
-    } catch (_) {
-      // Silent fail — quick actions adalah affordance, jangan blokir startup.
+      qa.setShortcutItems(_shortcuts);
+    } catch (e) {
+      if (kDebugMode) debugPrint('[QuickActions] init error: $e');
     }
   }
 }

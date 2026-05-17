@@ -1,44 +1,36 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 
 import 'app_analytics.dart';
 import 'app_crashlytics.dart';
 
 /// NavigatorObserver yang auto-log screen view + crashlytics breadcrumb
-/// setiap push/replace/pop. Pasang di `MaterialApp.navigatorObservers`
-/// supaya cover seluruh navigation hierarchy tanpa per-screen edits.
-///
-/// Resolve screen name dari `RouteSettings.name` (route table di main.dart).
-/// Untuk anonymous routes (mis. dialog/sheet), skip — bukan screen view.
+/// setiap push/replace. Pasang di MaterialApp.navigatorObservers supaya
+/// cover semua route tanpa per-screen edits.
 class NataloAnalyticsObserver extends NavigatorObserver {
+  void _track(Route<dynamic>? route, String action) {
+    final name = route?.settings.name;
+    if (name == null || name.isEmpty) return;
+    AppAnalytics.logScreenView(name);
+    AppCrashlytics.log('nav.$action: $name');
+  }
+
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPush(route, previousRoute);
-    _logRoute(route);
+    _track(route, 'push');
   }
 
   @override
   void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
     super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
-    if (newRoute != null) _logRoute(newRoute);
+    _track(newRoute, 'replace');
   }
 
-  void _logRoute(Route<dynamic> route) {
-    final name = route.settings.name;
-    if (name == null || name.isEmpty) return;
-    // Normalize path -> snake_case event name (Firebase Analytics convention).
-    // Mis. '/member/order-detail' → 'member_order_detail'.
-    final normalized = name
-        .replaceAll('/', '_')
-        .replaceAll('-', '_')
-        .replaceAll(RegExp(r'^_+'), '')
-        .toLowerCase();
-    final eventName = normalized.isEmpty ? 'home' : normalized;
-
-    AppAnalytics.logScreenView(eventName);
-    AppCrashlytics.log('Screen: $eventName');
-    AppCrashlytics.setCustomKey('last_screen', eventName);
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPop(route, previousRoute);
+    _track(previousRoute, 'pop');
   }
 }
 
-/// Singleton instance — pasang di MaterialApp.navigatorObservers.
-final nataloAnalyticsObserver = NataloAnalyticsObserver();
+final NataloAnalyticsObserver nataloAnalyticsObserver = NataloAnalyticsObserver();

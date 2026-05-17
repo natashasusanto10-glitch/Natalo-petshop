@@ -1045,7 +1045,7 @@ class _OrderProductTile extends StatelessWidget {
                       runSpacing: 6,
                       children: [
                         _MiniChip(
-                          label: item.variantLabel ?? item.categoryName,
+                          label: item.variantLabel ?? item.categoryName ?? '',
                           icon: Icons.sell_outlined,
                         ),
                         _MiniChip(

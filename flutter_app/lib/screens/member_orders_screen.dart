@@ -8,7 +8,6 @@ import '../services/member_service.dart';
 import '../state/cart_store.dart';
 import '../state/member_store.dart';
 import '../utils/formatters.dart';
-import '../widgets/app_motion.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
@@ -340,9 +339,9 @@ class _OrderCard extends StatelessWidget {
           id: item.productId,
           slug: item.productId,
           title: item.name,
-          category: item.categoryName,
+          category: item.categoryName ?? '',
           brand: 'Natalo',
-          imageUrl: item.imageUrl,
+          imageUrl: item.imageUrl ?? '',
           price: item.price,
           rating: 0,
           reviewCount: 0,

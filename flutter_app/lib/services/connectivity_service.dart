@@ -3,15 +3,14 @@ import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 
-/// Connectivity service — emit ChangeNotifier yang kasih tau widget tree
-/// kalau device offline / online. Auto subscribe ke native connectivity
-/// changes (WiFi on/off, mobile data toggle, airplane mode, dll).
-///
-/// Pakai pattern: `AnimatedBuilder(animation: connectivityService, ...)`
-/// di banner widget. Saat status berubah, builder rebuild.
+/// Subscribe ke native connectivity changes — banner offline auto-show
+/// saat WiFi/data hilang.
 class ConnectivityService extends ChangeNotifier {
-  bool _online = true;
+  ConnectivityService._();
+
+  final Connectivity _connectivity = Connectivity();
   StreamSubscription<List<ConnectivityResult>>? _sub;
+  bool _online = true;
   bool _initialized = false;
 
   bool get isOnline => _online;
@@ -21,23 +20,23 @@ class ConnectivityService extends ChangeNotifier {
     if (_initialized) return;
     _initialized = true;
     try {
-      final initial = await Connectivity().checkConnectivity();
-      _online = _resolveOnline(initial);
-      _sub = Connectivity().onConnectivityChanged.listen((results) {
-        final next = _resolveOnline(results);
+      final initial = await _connectivity.checkConnectivity();
+      _online = _hasNet(initial);
+      _sub = _connectivity.onConnectivityChanged.listen((results) {
+        final next = _hasNet(results);
         if (next != _online) {
           _online = next;
           notifyListeners();
         }
       });
-    } catch (e) {
-      if (kDebugMode) debugPrint('[connectivity] init failed: $e');
+    } catch (_) {
+      // Permission denied / platform tidak support — assume online.
+      _online = true;
     }
+    notifyListeners();
   }
 
-  bool _resolveOnline(List<ConnectivityResult> results) {
-    if (results.isEmpty) return false;
-    // Online kalau setidaknya ada satu connection type yang bukan `none`.
+  bool _hasNet(List<ConnectivityResult> results) {
     return results.any((r) => r != ConnectivityResult.none);
   }
 
@@ -48,4 +47,4 @@ class ConnectivityService extends ChangeNotifier {
   }
 }
 
-final connectivityService = ConnectivityService();
+final ConnectivityService connectivityService = ConnectivityService._();

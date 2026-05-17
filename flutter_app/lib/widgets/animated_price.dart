@@ -2,54 +2,37 @@ import 'package:flutter/material.dart';
 
 import '../utils/formatters.dart';
 
-/// Animated price label — saat [price] berubah (mis. user pilih varian),
-/// angka ber-tween smoothly dari value lama → value baru (~360ms cubic ease).
-///
-/// Capacitor / web: harga langsung ganti (snap) — feels abrupt. Flutter
-/// native bisa tween dengan smooth interpolation yang GPU-accelerated.
-///
-/// Pattern: track [_previousPrice] di state, rebuild dengan
-/// Tween(begin: previous, end: current) saat didUpdateWidget detect change.
-class AnimatedPrice extends StatefulWidget {
-  final double price;
+/// Price text yang animate saat value berubah (mis. ganti varian, qty).
+/// Tween via implicit TweenAnimationBuilder — no manual controller.
+class AnimatedPrice extends StatelessWidget {
+  /// Boleh dipanggil dengan `value` ATAU `price` — same thing.
+  final int? value;
+  final int? price;
   final TextStyle? style;
   final Duration duration;
 
   const AnimatedPrice({
     super.key,
-    required this.price,
+    this.value,
+    this.price,
     this.style,
-    this.duration = const Duration(milliseconds: 360),
-  });
+    this.duration = const Duration(milliseconds: 280),
+  }) : assert(value != null || price != null,
+            'AnimatedPrice butuh value atau price');
 
-  @override
-  State<AnimatedPrice> createState() => _AnimatedPriceState();
-}
-
-class _AnimatedPriceState extends State<AnimatedPrice> {
-  late double _previous = widget.price;
-
-  @override
-  void didUpdateWidget(covariant AnimatedPrice oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.price != widget.price) {
-      _previous = oldWidget.price;
-    }
-  }
+  int get _effectiveValue => (value ?? price)!;
 
   @override
   Widget build(BuildContext context) {
     return TweenAnimationBuilder<double>(
-      tween: Tween<double>(begin: _previous, end: widget.price),
-      duration: widget.duration,
+      tween: Tween<double>(
+        begin: _effectiveValue.toDouble(),
+        end: _effectiveValue.toDouble(),
+      ),
+      duration: duration,
       curve: Curves.easeOutCubic,
-      builder: (context, value, child) {
-        return Text(
-          formatRupiah(value),
-          style: widget.style,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        );
+      builder: (context, v, _) {
+        return Text(formatRupiah(v), style: style);
       },
     );
   }

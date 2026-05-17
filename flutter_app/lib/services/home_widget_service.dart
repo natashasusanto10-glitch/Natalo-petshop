@@ -4,81 +4,39 @@ import 'package:flutter/foundation.dart';
 import 'package:home_widget/home_widget.dart';
 
 import '../models/member_profile.dart';
+import '../state/cart_store.dart';
 
-/// Sync data ke Android home screen widget (long-press launcher → "Widget" →
-/// drag "Natalo Petshop"). Widget tampilkan:
-/// - Jumlah item di cart
-/// - Status pesanan terakhir
-///
-/// Update flow:
-/// 1. Flutter set value via HomeWidget.saveWidgetData(...)
-/// 2. Trigger HomeWidget.updateWidget(...) → broadcast intent ke native
-/// 3. AppWidgetProvider Kotlin read SharedPreferences → render TextView
-///
-/// PWA WebView tidak bisa: tidak ada API untuk write ke widget host.
+/// Android home screen widget bridge — push cart count + last order status
+/// ke launcher widget. iOS silent no-op (iOS widget kit di luar scope).
 class AppHomeWidgetService {
-  static const _kAndroidWidgetName = 'NataloHomeWidget';
-  static const _kAndroidProvider = 'NataloHomeWidget';
+  AppHomeWidgetService._();
 
-  static bool get _supported => !kIsWeb && Platform.isAndroid;
+  static const _androidAppGroup = 'com.natalo.petshop.widget';
 
-  /// Update cart count di widget. Call dari cart_store setiap kali
-  /// items berubah (fire-and-forget, silent fail kalau widget belum
-  /// di-pin user).
-  static Future<void> updateCartCount(int count) async {
-    if (!_supported) return;
+  static Future<void> _setData(String key, Object? value) async {
+    if (!Platform.isAndroid) return;
     try {
-      await HomeWidget.saveWidgetData<int>('cart_count', count);
+      await HomeWidget.setAppGroupId(_androidAppGroup);
+      await HomeWidget.saveWidgetData(key, value);
       await HomeWidget.updateWidget(
-        name: _kAndroidWidgetName,
-        androidName: _kAndroidProvider,
+        name: 'NataloWidgetProvider',
+        androidName: 'NataloWidgetProvider',
       );
     } catch (e) {
-      if (kDebugMode) debugPrint('[home_widget] cart update failed: $e');
+      if (kDebugMode) debugPrint('[HomeWidget] $key error: $e');
     }
   }
 
-  /// Update last order status. Pass null untuk clear (mis. saat logout).
+  static Future<void> updateCartCount() =>
+      _setData('cart_count', cartStore.count);
+
   static Future<void> updateLastOrder(OrderSummary? order) async {
-    if (!_supported) return;
-    try {
-      if (order == null) {
-        await HomeWidget.saveWidgetData<String>('last_order_number', '');
-        await HomeWidget.saveWidgetData<String>('last_order_status', '');
-      } else {
-        await HomeWidget.saveWidgetData<String>(
-          'last_order_number',
-          order.orderNumber,
-        );
-        await HomeWidget.saveWidgetData<String>(
-          'last_order_status',
-          _statusLabel(order.status),
-        );
-      }
-      await HomeWidget.updateWidget(
-        name: _kAndroidWidgetName,
-        androidName: _kAndroidProvider,
-      );
-    } catch (e) {
-      if (kDebugMode) debugPrint('[home_widget] order update failed: $e');
+    if (order == null) {
+      await _setData('last_order_number', '');
+      await _setData('last_order_status', '');
+      return;
     }
-  }
-
-  static String _statusLabel(String status) {
-    switch (status.toUpperCase()) {
-      case 'PENDING':
-        return 'Menunggu Bayar';
-      case 'PROCESSING':
-        return 'Diproses';
-      case 'SHIPPED':
-        return 'Dikirim';
-      case 'DELIVERED':
-      case 'COMPLETED':
-        return 'Selesai';
-      case 'CANCELLED':
-        return 'Dibatalkan';
-      default:
-        return status;
-    }
+    await _setData('last_order_number', order.orderNumber);
+    await _setData('last_order_status', order.status);
   }
 }
