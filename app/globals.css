@@ -467,6 +467,25 @@ body.comments-open .nat-bottom-nav {
   pointer-events: none;
 }
 
+/* iOS Capacitor keyboard guard.
+   KeyboardManager toggles this while a text input is active and the native
+   keyboard is visible. Hide floating bottom UI so form fields, search inputs,
+   and inline cart quantity inputs are not covered by app chrome. */
+body.nat-keyboard-open .bottom-nav,
+body.nat-keyboard-open .nat-bottom-nav,
+body.nat-keyboard-open .nat-whatsapp-float,
+body.nat-keyboard-open .keyboard-hide-on-focus {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+.keyboard-hide-on-focus {
+  transition:
+    opacity 180ms ease,
+    visibility 180ms ease;
+}
+
 body.nat-modal-open .nat-whatsapp-float {
   display: none !important;
   pointer-events: none;

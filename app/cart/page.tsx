@@ -1007,7 +1007,7 @@ export default function CartPage() {
 
       {items.length > 0 && (
         <>
-          <div className="fixed inset-x-0 bottom-0 z-40 flex flex-col bg-white shadow-[0_-8px_24px_rgba(15,23,42,0.08)] md:hidden [padding-bottom:env(safe-area-inset-bottom)]">
+          <div className="keyboard-hide-on-focus fixed inset-x-0 bottom-0 z-40 flex flex-col bg-white shadow-[0_-8px_24px_rgba(15,23,42,0.08)] md:hidden [padding-bottom:env(safe-area-inset-bottom)]">
             <StickyVoucherBar
               selectedCount={selectedCount}
               discountText={stickyVoucherDiscountText}

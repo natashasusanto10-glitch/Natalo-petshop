@@ -299,7 +299,7 @@ export function CheckoutAddressList({ addresses, returnTo }: Props) {
         </div>
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-[950] border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-10px_30px_rgba(15,23,42,0.10)] backdrop-blur [padding-bottom:calc(12px+env(safe-area-inset-bottom))]">
+      <div className="keyboard-hide-on-focus fixed inset-x-0 bottom-0 z-[950] border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-10px_30px_rgba(15,23,42,0.10)] backdrop-blur [padding-bottom:calc(12px+env(safe-area-inset-bottom))]">
         <div className="mx-auto grid max-w-2xl grid-cols-[minmax(92px,0.7fr)_minmax(0,1.3fr)] items-center gap-3">
           <button
             type="button"

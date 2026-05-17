@@ -12,6 +12,8 @@ export type FeedPostAuthor = {
   id: string;
   name: string;
   role: "ADMIN" | "CUSTOMER";
+  profilePhotoUrl?: string | null;
+  avatarUrl?: string | null;
 };
 
 export type FeedPostProduct = {

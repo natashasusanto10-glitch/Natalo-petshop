@@ -1186,7 +1186,7 @@ export default function FormAlamat({ mode = "create", initialAddress = null }) {
           {visibleErrors.label && <p className="mt-1.5 text-xs font-bold text-red-500">{visibleErrors.label}</p>}
         </div>
 
-        <div className="sticky bottom-0 z-50 -mx-4 border-t border-slate-100 bg-white px-4 pb-[calc(12px+env(safe-area-inset-bottom))] pt-3 shadow-[0_-10px_28px_rgba(15,23,42,0.08)] sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none">
+        <div className="keyboard-hide-on-focus sticky bottom-0 z-50 -mx-4 border-t border-slate-100 bg-white px-4 pb-[calc(12px+env(safe-area-inset-bottom))] pt-3 shadow-[0_-10px_28px_rgba(15,23,42,0.08)] sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none">
           <button
             type="submit"
             disabled={submitting || !isValid}

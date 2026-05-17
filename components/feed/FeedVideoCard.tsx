@@ -21,6 +21,7 @@ import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
 import { shareContent } from "@/lib/share";
 import type { FeedPostListItem } from "@/lib/feed/types";
 import { FeedVideoPlayer } from "./FeedVideoPlayer";
+import { FeedCreatorInfo } from "./FeedCreatorInfo";
 
 const CHECKOUT_SELECTION_KEY = "checkout:selectedCartItems";
 
@@ -91,6 +92,8 @@ export function FeedVideoCard({
   const hasVideo = Boolean(post.videoUrl);
   const productHref = product ? `/products/${product.slug}` : "#";
   const creatorName = isAdmin ? "Natalo Petshop" : post.author.name;
+  const creatorProfilePhotoUrl =
+    post.author.profilePhotoUrl ?? post.author.avatarUrl ?? null;
   const caption = cleanFeedCaption(post.description, post.title);
 
   useEffect(() => {
@@ -413,36 +416,22 @@ export function FeedVideoCard({
               </button>
             </div>
           )}
-          <div className="flex min-w-0 items-center gap-2">
-            <p
-              className={`truncate text-[17px] leading-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)] ${
-                isAdmin
-                  ? "font-bold text-[#D6A84A]"
-                  : "font-semibold text-white"
-              }`}
-            >
-              {creatorName}
-            </p>
-            {isAdmin && (
-              <span className="inline-flex h-[22px] shrink-0 items-center gap-1 rounded-full border border-[#D6A84A]/35 bg-[#D6A84A]/15 px-2 text-[10.5px] font-semibold text-[#E8C878] backdrop-blur-[8px]">
-                <FiCheckCircle className="h-3 w-3" aria-hidden="true" />
-                Official
-              </span>
-            )}
-          </div>
-          {caption && (
-            <button
-              type="button"
-              onClick={() => onOpenComments(post.id)}
-              className="mt-1.5 block max-w-full text-left"
-              aria-label="Buka deskripsi dan komentar"
-            >
-              <p className="line-clamp-2 text-[15px] font-normal leading-snug text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
-                {caption}
-                <span className="font-semibold text-white/80"> Selengkapnya</span>
-              </p>
-            </button>
-          )}
+          <FeedCreatorInfo
+            userId={post.author.id}
+            userName={creatorName}
+            profilePhotoUrl={creatorProfilePhotoUrl}
+            isOfficial={isAdmin}
+            caption={caption}
+            onCaptionClick={() => onOpenComments(post.id)}
+            officialBadge={
+              isAdmin ? (
+                <span className="inline-flex h-[22px] shrink-0 items-center gap-1 rounded-full border border-[#D6A84A]/35 bg-[#D6A84A]/15 px-2 text-[10.5px] font-semibold text-[#E8C878] backdrop-blur-[8px]">
+                  <FiCheckCircle className="h-3 w-3" aria-hidden="true" />
+                  Official
+                </span>
+              ) : null
+            }
+          />
         </div>
       )}
 
