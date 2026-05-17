@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_blurhash/flutter_blurhash.dart';
@@ -31,6 +32,7 @@ import '../widgets/feed_upload_sheet.dart';
 
 const _officialGold = Color(0xFFF4D47C);
 const _officialGoldMuted = Color(0xFFD7B55B);
+const _feedBlue = Color(0xFF0B7FEA);
 
 /// Instagram Reels-style fullscreen vertical video feed.
 /// - Fullscreen video/image background per post (cover fit)
@@ -128,44 +130,94 @@ class _FeedScreenState extends State<FeedScreen> {
         appSettingsStore.feedVideoQuality != 'data_saver';
   }
 
-  Future<void> _preloadNext(int index) async {
-    final nextIndex = index + 1;
-    final allowedNextId =
-        nextIndex >= 0 && nextIndex < _posts.length ? _posts[nextIndex].id : '';
-    final staleIds =
-        _preloadedControllers.keys.where((id) => id != allowedNextId).toList();
+  /// Sliding window 3-item — keep prev, current, next controllers hidup
+  /// di RAM. Sesuai Reels/TikTok spec: swipe UP & DOWN dua-duanya smooth,
+  /// no jeda 500ms-2s init saat backward swipe.
+  ///
+  /// State per slot setelah pre-init:
+  ///   - prev (i-1):    paused, seek 0, prepared. Attached saat user
+  ///                    swipe back → instant play tanpa loading spinner.
+  ///   - current (i):   widget _FeedPostView manage sendiri (play loop).
+  ///   - next (i+1):    paused, seek 0, prepared. Attached saat swipe
+  ///                    forward → instant play.
+  ///   - others (jauh): unloaded (dispose), free ~30MB native heap/slot.
+  ///
+  /// Total RAM aktif: 3 controllers × ~30MB = ~90MB. Safe untuk phone
+  /// 2GB+ (Reels/TikTok pakai pattern sama).
+  Future<void> _managePreloadWindow(int activeIndex) async {
+    // Build set of post IDs yang harus di-keep di window.
+    final keepIds = <String>{};
+    for (final offset in const [-1, 0, 1]) {
+      final i = activeIndex + offset;
+      if (i >= 0 && i < _posts.length) {
+        keepIds.add(_posts[i].id);
+      }
+    }
+
+    // Dispose controllers di luar window — free ~30MB per controller +
+    // release native ExoPlayer/AVPlayer slot (limited 4-8 di Android).
+    final staleIds = _preloadedControllers.keys
+        .where((id) => !keepIds.contains(id))
+        .toList();
     for (final id in staleIds) {
       await _preloadedControllers.remove(id)?.dispose();
     }
-    if (!_shouldPreloadNext || nextIndex >= _posts.length) return;
-    final post = _posts[nextIndex];
-    final url = post.videoUrl;
-    if (url == null ||
-        url.isEmpty ||
-        _preloadedControllers.containsKey(post.id)) {
-      return;
-    }
 
-    final thumb = post.thumbnailUrl;
-    if (mounted && thumb != null && thumb.isNotEmpty) {
-      precacheImage(CachedNetworkImageProvider(thumb), context);
-    }
+    if (!_shouldPreloadNext) return;
 
-    // Sprint 2 #7 — Apply network-aware quality rewrite SEBELUM init.
-    // WiFi: pakai HLS playlist (Bunny adaptive bitrate, native HLS via
-    // AVPlayer iOS / ExoPlayer Android). Mobile: MP4 di quality
-    // appropriate (480/720). Saves bandwidth + faster start play di 3G.
-    final resolvedUrl = videoQualityService.resolvePlaybackUrl(url);
-    final controller = VideoPlayerController.networkUrl(Uri.parse(resolvedUrl));
-    _preloadedControllers[post.id] = controller;
-    try {
-      await controller.initialize();
-      await controller.setLooping(true);
-      await controller.setVolume(0);
-    } catch (_) {
-      await _preloadedControllers.remove(post.id)?.dispose();
+    // Pre-init controllers yang masih dalam window tapi belum ada.
+    // Paralel init (Future.wait) supaya prev + next siap bersamaan.
+    final activePost = activeIndex >= 0 && activeIndex < _posts.length
+        ? _posts[activeIndex]
+        : null;
+    final initFutures = <Future<void>>[];
+
+    for (final id in keepIds) {
+      // Skip current — widget _FeedPostView create sendiri di-mount.
+      if (activePost != null && id == activePost.id) continue;
+      if (_preloadedControllers.containsKey(id)) continue;
+
+      FeedPost? post;
+      for (final p in _posts) {
+        if (p.id == id) {
+          post = p;
+          break;
+        }
+      }
+      if (post == null) continue;
+      final url = post.videoUrl;
+      if (url == null || url.isEmpty) continue;
+
+      final thumb = post.thumbnailUrl;
+      if (mounted && thumb != null && thumb.isNotEmpty) {
+        precacheImage(CachedNetworkImageProvider(thumb), context);
+      }
+
+      // Network-aware quality rewrite (Sprint 2 #7).
+      final resolvedUrl = videoQualityService.resolvePlaybackUrl(url);
+      final controller =
+          VideoPlayerController.networkUrl(Uri.parse(resolvedUrl));
+      _preloadedControllers[id] = controller;
+      initFutures.add(
+        controller.initialize().then((_) async {
+          // Prepared state: paused, frame 0 ready, muted, looping prepped.
+          // Saat widget attach via preloadedController prop, tinggal play()
+          // — instant, no init lag.
+          await controller.setLooping(true);
+          await controller.setVolume(0);
+          await controller.seekTo(Duration.zero);
+        }).catchError((Object _) async {
+          await _preloadedControllers.remove(id)?.dispose();
+        }),
+      );
     }
+    await Future.wait(initFutures);
   }
+
+  /// Backward-compat alias — internal callers (_loadInitial,
+  /// _onPageChanged) tetap pakai nama _preloadNext. Forward ke
+  /// _managePreloadWindow yang handle 3-item sliding window.
+  Future<void> _preloadNext(int index) => _managePreloadWindow(index);
 
   void _setFeedInteractionLocked(bool locked) {
     if (!mounted || _interactionLocked == locked) return;
@@ -488,7 +540,14 @@ class _FeedPostView extends StatefulWidget {
 
 class _FeedPostViewState extends State<_FeedPostView>
     with TickerProviderStateMixin {
+  static const double _commentSheetMinExtent = 0.52;
+  static const double _commentSheetInitialExtent = 0.60;
+  static const double _commentSheetMaxExtent = 0.90;
+
   VideoPlayerController? _videoController;
+  final DraggableScrollableController _commentSheetController =
+      DraggableScrollableController();
+  final ValueNotifier<double> _commentSheetProgress = ValueNotifier<double>(0);
   bool _liked = false;
   int _likeCount = 0;
   int _commentCount = 0;
@@ -563,6 +622,8 @@ class _FeedPostViewState extends State<_FeedPostView>
       ),
     ]).animate(_heartBurstController);
 
+    _commentSheetController.addListener(_syncCommentSheetProgress);
+
     _adoptPreloadedController();
     _maybeInitVideo();
     _syncProductRotation();
@@ -601,6 +662,7 @@ class _FeedPostViewState extends State<_FeedPostView>
         _commentAddedCount = 0;
         _featuredProductIndex = 0;
         _commentDragOffset = 0;
+        _commentSheetProgress.value = 0;
         widget.onOverlayStateChanged(false);
         _videoController?.pause();
         _videoController?.seekTo(Duration.zero);
@@ -653,9 +715,23 @@ class _FeedPostViewState extends State<_FeedPostView>
   void dispose() {
     _stopProductRotation();
     cartStore.removeListener(_syncCartCount);
+    _commentSheetController.removeListener(_syncCommentSheetProgress);
+    _commentSheetController.dispose();
+    _commentSheetProgress.dispose();
     _videoController?.dispose();
     _heartBurstController.dispose();
     super.dispose();
+  }
+
+  void _syncCommentSheetProgress() {
+    if (!_commentSheetController.isAttached) return;
+    final size = _commentSheetController.size;
+    final raw = (size - _commentSheetInitialExtent) /
+        (_commentSheetMaxExtent - _commentSheetInitialExtent);
+    final progress = raw.clamp(0.0, 1.0).toDouble();
+    if ((_commentSheetProgress.value - progress).abs() > 0.002) {
+      _commentSheetProgress.value = progress;
+    }
   }
 
   void _syncCartCount() {
@@ -750,8 +826,12 @@ class _FeedPostViewState extends State<_FeedPostView>
       _commentAddedCount = 0;
       _commentDragOffset = 0;
     });
+    _commentSheetProgress.value = 0;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_commentDrawerMounted) return;
+      if (_commentSheetController.isAttached) {
+        _commentSheetController.jumpTo(_commentSheetInitialExtent);
+      }
       setState(() => _commentSheetOpen = true);
     });
   }
@@ -761,6 +841,13 @@ class _FeedPostViewState extends State<_FeedPostView>
     FocusScope.of(context).unfocus();
     AppHaptics.tap();
     final countDelta = math.max(addedCount, _commentAddedCount);
+    if (_commentSheetController.isAttached) {
+      _commentSheetController.animateTo(
+        _commentSheetInitialExtent,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+      );
+    }
     setState(() {
       _commentSheetOpen = false;
       _commentAddedCount = 0;
@@ -771,6 +858,7 @@ class _FeedPostViewState extends State<_FeedPostView>
     });
     Future<void>.delayed(const Duration(milliseconds: 280), () {
       if (!mounted || _commentSheetOpen) return;
+      _commentSheetProgress.value = 0;
       setState(() => _commentDrawerMounted = false);
       widget.onOverlayStateChanged(false);
     });
@@ -778,6 +866,18 @@ class _FeedPostViewState extends State<_FeedPostView>
 
   void _onCommentDragUpdate(DragUpdateDetails details) {
     final delta = details.primaryDelta ?? 0;
+    if (_commentSheetController.isAttached) {
+      final screenHeight = math.max(1.0, MediaQuery.sizeOf(context).height);
+      final currentSize = _commentSheetController.size;
+      if (delta < 0 ||
+          (delta > 0 && currentSize > _commentSheetInitialExtent + 0.012)) {
+        final nextSize = (currentSize - (delta / screenHeight))
+            .clamp(_commentSheetMinExtent, _commentSheetMaxExtent)
+            .toDouble();
+        _commentSheetController.jumpTo(nextSize);
+        return;
+      }
+    }
     if (delta <= 0) return;
     setState(() {
       _commentDragOffset = math.min(150, _commentDragOffset + delta);
@@ -1128,58 +1228,80 @@ class _FeedPostViewState extends State<_FeedPostView>
           final safeTop = MediaQuery.paddingOf(context).top;
           final safeBottom = MediaQuery.paddingOf(context).bottom;
           final keyboard = MediaQuery.viewInsetsOf(context).bottom;
-          // Bottom nav translucent — video boleh edge-to-edge sampai
-          // bawah layar. Sebelumnya safeBottom + 60 bikin gap visible
-          // antara video bottom dan bottom nav.
-          // Saat comment sheet open (minimized), preview tetap perlu
-          // bottom inset supaya tidak ketutup sheet — pakai sheetHeight.
-          const bottomNavInset = 0.0;
           // feedInfoInset + actionRailInset harus kompensasi tinggi nav
           // (58px + safeBottom) supaya icon + caption tidak ketutup nav
           // yang translucent. Sebelumnya inset relatif ke video bottom;
           // sekarang relatif ke screen bottom karena video edge-to-edge.
           final feedInfoInset = safeBottom + 78.0;
           final actionRailInset = safeBottom + 148.0;
-          final targetSheetHeight = constraints.maxHeight *
-              (keyboard > 0 ? 0.52 : FeedCommentSheet.reelsHeightFactor);
-          final minPreviewHeight = keyboard > 0 ? 170.0 : 224.0;
-          final maxSheetHeight = math.max(
-            300.0,
-            constraints.maxHeight - keyboard - safeTop - minPreviewHeight,
-          );
-          final sheetHeight = math.min(targetSheetHeight, maxSheetHeight);
           final minimized = _commentSheetOpen;
-          final previewBottomInset =
-              minimized ? keyboard + sheetHeight + 10 : bottomNavInset;
 
           return ColoredBox(
             color: Colors.black,
             child: Stack(
               fit: StackFit.expand,
               children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 320),
-                  curve: Curves.easeOutCubic,
-                  margin: EdgeInsets.only(
-                    left: minimized ? 14 : 0,
-                    right: minimized ? 14 : 0,
-                    top: minimized ? safeTop + 10 : 0,
-                    bottom: previewBottomInset,
+                if (_commentDrawerMounted)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      ignoring: !_commentSheetOpen,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: _closeComments,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 240),
+                          curve: Curves.easeOutCubic,
+                          color: Colors.black.withValues(
+                            alpha: _commentSheetOpen ? 0.16 : 0,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
-                  clipBehavior: Clip.antiAlias,
-                  decoration: BoxDecoration(
-                    color: Colors.black,
-                    borderRadius: BorderRadius.circular(minimized ? 18 : 0),
-                    boxShadow: minimized
-                        ? [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.42),
-                              blurRadius: 24,
-                              offset: const Offset(0, 14),
+                if (_commentDrawerMounted)
+                  AnimatedSlide(
+                    duration: const Duration(milliseconds: 260),
+                    curve: Curves.easeOutCubic,
+                    offset:
+                        _commentSheetOpen ? Offset.zero : const Offset(0, 1),
+                    child: AnimatedPadding(
+                      duration: const Duration(milliseconds: 180),
+                      curve: Curves.easeOutCubic,
+                      padding: EdgeInsets.only(bottom: keyboard),
+                      child: DraggableScrollableSheet(
+                        controller: _commentSheetController,
+                        initialChildSize: FeedCommentSheet.reelsHeightFactor,
+                        minChildSize: _commentSheetMinExtent,
+                        maxChildSize: _commentSheetMaxExtent,
+                        snap: true,
+                        snapSizes: const [
+                          FeedCommentSheet.reelsHeightFactor,
+                          _commentSheetMaxExtent,
+                        ],
+                        builder: (context, scrollController) {
+                          return Transform.translate(
+                            offset: Offset(0, _commentDragOffset),
+                            child: FeedCommentSheet(
+                              post: widget.post,
+                              applyKeyboardInset: false,
+                              sheetScrollController: scrollController,
+                              onClose: _closeComments,
+                              onAddedCountChanged: (count) {
+                                _commentAddedCount = count;
+                              },
+                              onDragUpdate: _onCommentDragUpdate,
+                              onDragEnd: _onCommentDragEnd,
                             ),
-                          ]
-                        : const [],
+                          );
+                        },
+                      ),
+                    ),
                   ),
+                _CommentVideoFrame(
+                  open: minimized,
+                  progressListenable: _commentSheetProgress,
+                  safeTop: safeTop,
+                  screenSize: constraints.biggest,
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
@@ -1379,84 +1501,13 @@ class _FeedPostViewState extends State<_FeedPostView>
                                   ),
                                   const SizedBox(height: 9),
                                 ],
-                                Row(
-                                  children: [
-                                    Flexible(
-                                      child: Text(
-                                        post.author.isAdmin
-                                            ? 'Natalo Petshop'
-                                            : post.author.name,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: post.author.isAdmin
-                                              ? _officialGold
-                                              : Colors.white,
-                                          fontSize:
-                                              post.author.isAdmin ? 15 : 14,
-                                          fontWeight: post.author.isAdmin
-                                              ? FontWeight.w800
-                                              : FontWeight.w900,
-                                          shadows: const [
-                                            Shadow(
-                                              color: Colors.black54,
-                                              blurRadius: 6,
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                    if (post.author.isAdmin) ...[
-                                      const SizedBox(width: 6),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 7,
-                                          vertical: 3,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: _officialGold.withValues(
-                                              alpha: 0.14),
-                                          borderRadius:
-                                              BorderRadius.circular(999),
-                                          border: Border.all(
-                                            color:
-                                                _officialGoldMuted.withValues(
-                                              alpha: 0.82,
-                                            ),
-                                            width: 1.2,
-                                          ),
-                                        ),
-                                        child: const Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              Icons.check_rounded,
-                                              color: _officialGold,
-                                              size: 12,
-                                            ),
-                                            SizedBox(width: 3),
-                                            Text(
-                                              'Official',
-                                              style: TextStyle(
-                                                color: _officialGold,
-                                                fontSize: 10.5,
-                                                fontWeight: FontWeight.w700,
-                                                height: 1,
-                                                shadows: [
-                                                  Shadow(
-                                                    color: Colors.black54,
-                                                    blurRadius: 5,
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ],
+                                _FeedCreatorIdentity(
+                                  author: post.author,
+                                  displayName: post.author.isAdmin
+                                      ? 'Natalo Petshop'
+                                      : post.author.name,
                                 ),
-                                const SizedBox(height: 6),
+                                const SizedBox(height: 7),
                                 _ExpandableCaption(
                                   text: post.title.isNotEmpty
                                       ? post.title
@@ -1473,45 +1524,6 @@ class _FeedPostViewState extends State<_FeedPostView>
                     ],
                   ),
                 ),
-                if (_commentDrawerMounted)
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      ignoring: !_commentSheetOpen,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: _closeComments,
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 240),
-                          curve: Curves.easeOutCubic,
-                          color: Colors.black.withValues(
-                            alpha: _commentSheetOpen ? 0.16 : 0,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                if (_commentDrawerMounted)
-                  AnimatedPositioned(
-                    duration: const Duration(milliseconds: 280),
-                    curve: Curves.easeOutCubic,
-                    left: 0,
-                    right: 0,
-                    height: sheetHeight,
-                    bottom: _commentSheetOpen ? keyboard : -sheetHeight - 48,
-                    child: Transform.translate(
-                      offset: Offset(0, _commentDragOffset),
-                      child: FeedCommentSheet(
-                        post: widget.post,
-                        applyKeyboardInset: false,
-                        onClose: _closeComments,
-                        onAddedCountChanged: (count) {
-                          _commentAddedCount = count;
-                        },
-                        onDragUpdate: _onCommentDragUpdate,
-                        onDragEnd: _onCommentDragEnd,
-                      ),
-                    ),
-                  ),
               ],
             ),
           );
@@ -1521,7 +1533,264 @@ class _FeedPostViewState extends State<_FeedPostView>
   }
 }
 
+class _CommentVideoFrame extends StatelessWidget {
+  final bool open;
+  final ValueListenable<double> progressListenable;
+  final double safeTop;
+  final Size screenSize;
+  final Widget child;
+
+  const _CommentVideoFrame({
+    required this.open,
+    required this.progressListenable,
+    required this.safeTop,
+    required this.screenSize,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final width = math.max(1.0, screenSize.width);
+    final height = math.max(1.0, screenSize.height);
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(end: open ? 1 : 0),
+      duration: Duration(milliseconds: open ? 260 : 220),
+      curve: open ? Curves.easeOutCubic : Curves.easeInOutCubic,
+      child: RepaintBoundary(child: child),
+      builder: (context, openProgress, child) {
+        return ValueListenableBuilder<double>(
+          valueListenable: progressListenable,
+          child: child,
+          builder: (context, sheetProgress, child) {
+            final clampedProgress = sheetProgress.clamp(0.0, 1.0).toDouble();
+            final previewWidth =
+                (width * ui.lerpDouble(0.46, 0.28, clampedProgress)!)
+                    .clamp(104.0, width - 28)
+                    .toDouble();
+            final previewHeight = previewWidth * 16 / 9;
+            final previewTop = ui.lerpDouble(
+              safeTop + 26,
+              safeTop + 12,
+              clampedProgress,
+            )!;
+            final fullRect = Rect.fromLTWH(0, 0, width, height);
+            final previewRect = Rect.fromLTWH(
+              (width - previewWidth) / 2,
+              previewTop,
+              previewWidth,
+              previewHeight,
+            );
+            final rect = Rect.lerp(fullRect, previewRect, openProgress)!;
+            final previewRadius = ui.lerpDouble(
+              18,
+              10,
+              clampedProgress,
+            )!;
+            final radius = ui.lerpDouble(0, previewRadius, openProgress)!;
+            final shadowOpacity = ui.lerpDouble(0, 0.44, openProgress)!;
+
+            return Positioned.fromRect(
+              rect: rect,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.black,
+                  borderRadius: BorderRadius.circular(radius),
+                  boxShadow: shadowOpacity <= 0
+                      ? const []
+                      : [
+                          BoxShadow(
+                            color: Colors.black.withValues(
+                              alpha: shadowOpacity,
+                            ),
+                            blurRadius: ui.lerpDouble(
+                              0,
+                              22,
+                              openProgress,
+                            )!,
+                            offset: Offset(
+                              0,
+                              ui.lerpDouble(0, 12, openProgress)!,
+                            ),
+                          ),
+                        ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(radius),
+                  child: child,
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
 /// Caption dengan truncate 2 lines + "more" toggle — Reels pattern.
+class _FeedCreatorIdentity extends StatelessWidget {
+  final FeedAuthor author;
+  final String displayName;
+
+  const _FeedCreatorIdentity({
+    required this.author,
+    required this.displayName,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        _FeedCreatorAvatar(
+          name: displayName,
+          profilePhotoUrl: author.profilePhotoUrl,
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            displayName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: author.isAdmin ? _officialGold : Colors.white,
+              fontSize: 15.5,
+              fontWeight: FontWeight.w800,
+              height: 1.1,
+              shadows: const [
+                Shadow(
+                  color: Colors.black54,
+                  blurRadius: 6,
+                  offset: Offset(0, 1),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (author.isAdmin) ...[
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+            decoration: BoxDecoration(
+              color: _officialGold.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: _officialGoldMuted.withValues(alpha: 0.82),
+                width: 1.2,
+              ),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.check_rounded,
+                  color: _officialGold,
+                  size: 12,
+                ),
+                SizedBox(width: 3),
+                Text(
+                  'Official',
+                  style: TextStyle(
+                    color: _officialGold,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    height: 1,
+                    shadows: [
+                      Shadow(
+                        color: Colors.black54,
+                        blurRadius: 5,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _FeedCreatorAvatar extends StatelessWidget {
+  final String name;
+  final String? profilePhotoUrl;
+
+  const _FeedCreatorAvatar({
+    required this.name,
+    required this.profilePhotoUrl,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final url = profilePhotoUrl?.trim();
+    final hasPhoto = url != null && url.isNotEmpty;
+
+    return Container(
+      width: 34,
+      height: 34,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.88),
+          width: 1.4,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.30),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: ClipOval(
+        child: hasPhoto
+            ? CachedNetworkImage(
+                imageUrl: url,
+                fit: BoxFit.cover,
+                placeholder: (_, __) => _AvatarFallback(name: name),
+                errorWidget: (_, __, ___) => _AvatarFallback(name: name),
+              )
+            : _AvatarFallback(name: name),
+      ),
+    );
+  }
+}
+
+class _AvatarFallback extends StatelessWidget {
+  final String name;
+
+  const _AvatarFallback({required this.name});
+
+  @override
+  Widget build(BuildContext context) {
+    final trimmed = name.trim();
+    final initial = trimmed.isEmpty ? 'N' : trimmed[0].toUpperCase();
+    return Container(
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            _feedBlue.withValues(alpha: 0.92),
+            const Color(0xFF38BDF8).withValues(alpha: 0.86),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Text(
+        initial,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 13,
+          fontWeight: FontWeight.w900,
+          height: 1,
+        ),
+      ),
+    );
+  }
+}
+
 class _ExpandableCaption extends StatelessWidget {
   final String text;
   final bool expanded;
