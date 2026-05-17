@@ -51,11 +51,11 @@ body,
 #root {
   margin: 0;
   background: #ffffff;
-  /* Jangan pakai overflow-x:hidden di root: WebKit/iOS bisa membuat
-     position: sticky di header turunannya tidak menempel. overflow:clip
-     tidak membentuk scroll container, jadi lebih aman untuk sticky. */
+  /* Jangan jadikan root sebagai scroll container custom. Di iOS/WKWebView,
+     overflow di html/body bisa membuat sticky header anak halaman gagal
+     menempel ke viewport. Biarkan viewport native yang scroll. */
   overflow-x: visible;
-  overflow-y: auto;
+  overflow-y: visible;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -64,8 +64,8 @@ body,
   body,
   #__next,
   #root {
-    overflow-x: clip;
-    overflow-y: auto;
+    overflow-x: visible;
+    overflow-y: visible;
   }
 }
 
