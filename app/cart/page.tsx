@@ -43,10 +43,6 @@ type CartVoucherOption = {
   minimumOrder: number;
 };
 type VoucherSelectionMode = "auto" | "manual" | null;
-type ManualQuantityState = {
-  item: CartItem;
-  key: string;
-};
 type PendingDeletedItem = {
   id: number;
   item: CartItem;
@@ -54,9 +50,6 @@ type PendingDeletedItem = {
   index: number;
   selected: boolean;
 };
-type QuantityValidationResult =
-  | { valid: false; message: string }
-  | { valid: true; quantity: number; message: "" };
 
 function cartKey(item: CartItem) {
   return `${item.productId}:${item.variantId ?? ""}`;
@@ -65,31 +58,6 @@ function cartKey(item: CartItem) {
 function itemSelectionLabel(kindCount: number, quantityCount: number) {
   if (kindCount <= 0) return "0 jenis produk (0 item)";
   return `${kindCount} jenis produk (${quantityCount} item)`;
-}
-
-function validateQuantityInput(input: string, stock?: number | null): QuantityValidationResult {
-  const value = input.trim();
-  const quantity = Number(value);
-
-  if (!value || !Number.isInteger(quantity) || quantity < 1) {
-    return {
-      valid: false,
-      message: "Jumlah minimal pembelian adalah 1 item",
-    };
-  }
-
-  if (stock != null && quantity > stock) {
-    return {
-      valid: false,
-      message: `Stok hanya tersedia ${stock} item`,
-    };
-  }
-
-  return {
-    valid: true,
-    quantity,
-    message: "",
-  };
 }
 
 function TrashIcon({ className = "h-4 w-4" }: { className?: string }) {
@@ -276,8 +244,6 @@ export default function CartPage() {
   const allSelected = items.length > 0 && selectedKeys.size === items.length;
   const selectionLabel = itemSelectionLabel(selectedCount, selectedQuantity);
   const isCartEmpty = items.length === 0;
-  const stickyVoucherSavings =
-    voucherDiscount > 0 ? formatRupiah(voucherDiscount) : undefined;
   const stickyVoucherDiscountText =
     voucherDiscount > 0 ? `Diskon ${formatRupiah(voucherDiscount)}` : undefined;
   const hasNoEligibleVoucher =
@@ -1092,39 +1058,39 @@ export default function CartPage() {
 
       {items.length > 0 && (
         <>
-          <StickyVoucherBar
-            selectedCount={selectedCount}
-            savingsText={stickyVoucherSavings}
-            discountText={stickyVoucherDiscountText}
-            mode={voucherSelectionMode === "manual" ? "manual" : "auto"}
-            noEligibleVoucher={hasNoEligibleVoucher}
-            onClick={() => setVoucherSheetOpen(true)}
-          />
-          <div className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-100 bg-white px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] md:hidden [padding-bottom:calc(12px+env(safe-area-inset-bottom))]">
-            <div className="mx-auto flex max-w-3xl items-center gap-3">
-              <label className="flex shrink-0 items-center gap-2 text-xs font-bold text-gray-600">
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  onChange={toggleAll}
-                  className="h-5 w-5 rounded border-gray-300 accent-blue-600"
-                />
-                Semua
-              </label>
-              <div className="min-w-0 flex-1 text-right">
-                <p className="text-[11px] font-semibold text-gray-500">
-                  {voucherDiscount > 0 ? `Hemat ${formatRupiah(voucherDiscount)} dgn voucher` : "Total"}
-                </p>
-                <p className="truncate text-base font-black text-gray-900">{formatRupiah(selectedTotal)}</p>
+          <div className="fixed inset-x-0 bottom-0 z-40 flex flex-col bg-white shadow-[0_-8px_24px_rgba(15,23,42,0.08)] md:hidden [padding-bottom:env(safe-area-inset-bottom)]">
+            <StickyVoucherBar
+              selectedCount={selectedCount}
+              discountText={stickyVoucherDiscountText}
+              noEligibleVoucher={hasNoEligibleVoucher}
+              onClick={() => setVoucherSheetOpen(true)}
+            />
+            <div className="border-t border-gray-100 bg-white px-4 py-3">
+              <div className="mx-auto flex max-w-3xl items-center gap-3">
+                <label className="flex shrink-0 items-center gap-2 text-xs font-bold text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleAll}
+                    className="h-5 w-5 rounded border-gray-300 accent-blue-600"
+                  />
+                  Semua
+                </label>
+                <div className="min-w-0 flex-1 text-right">
+                  <p className="text-[11px] font-semibold text-gray-500">
+                    {voucherDiscount > 0 ? `Hemat ${formatRupiah(voucherDiscount)} dgn voucher` : "Total"}
+                  </p>
+                  <p className="truncate text-base font-black text-gray-900">{formatRupiah(selectedTotal)}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={checkoutSelected}
+                  disabled={selectedCount === 0 || stockRefreshing}
+                  className="flex h-12 shrink-0 items-center justify-center rounded-full bg-blue-500 px-5 text-sm font-black text-white transition-transform duration-100 active:scale-95 active:opacity-90 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:active:scale-100"
+                >
+                  {stockRefreshing ? "Cek stok..." : `Checkout (${selectedQuantity})`}
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={checkoutSelected}
-                disabled={selectedCount === 0 || stockRefreshing}
-                className="flex h-12 shrink-0 items-center justify-center rounded-full bg-blue-500 px-5 text-sm font-black text-white transition-transform duration-100 active:scale-95 active:opacity-90 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:active:scale-100"
-              >
-                {stockRefreshing ? "Cek stok..." : `Checkout (${selectedQuantity})`}
-              </button>
             </div>
           </div>
         </>

@@ -6,35 +6,29 @@ import styles from "./StickyVoucherBar.module.css";
 
 type StickyVoucherBarProps = {
   selectedCount: number;
-  savingsText?: string;
   discountText?: string;
   freeShippingText?: string;
   bonusText?: string;
-  mode?: "auto" | "manual";
   noEligibleVoucher?: boolean;
   onClick: () => void;
 };
 
 export function StickyVoucherBar({
   selectedCount,
-  savingsText,
   discountText,
   freeShippingText,
   bonusText,
-  mode = "auto",
   noEligibleVoucher = false,
   onClick,
 }: StickyVoucherBarProps) {
   const hasSelectedProduct = selectedCount > 0;
   const isVisible = useAutoHideOnInteraction({ delay: 950, enabled: true });
   const hasBenefit = Boolean(discountText || freeShippingText || bonusText);
-  const mainText = !hasSelectedProduct
-    ? "Pilih produk dulu untuk pakai voucher"
-    : savingsText
-    ? `${mode === "manual" ? "Voucher pilihanmu terpakai" : "Voucher otomatis terpakai"} • Hemat ${savingsText}`
+  const placeholderChip = !hasSelectedProduct
+    ? "Pilih produk"
     : noEligibleVoucher
-    ? "Belum ada voucher yang cocok"
-    : "Pilih voucher untuk hemat belanja";
+    ? "Belum cocok"
+    : "Pilih voucher";
 
   return (
     <button
@@ -58,18 +52,17 @@ export function StickyVoucherBar({
         </span>
 
         <span className={styles.content}>
-          <span className={styles.mainText}>{mainText}</span>
-          {hasSelectedProduct && hasBenefit && (
-            <span className={styles.chips}>
-              {discountText && (
-                <span className={styles.discountChip}>{discountText}</span>
-              )}
-              {freeShippingText && (
-                <span className={styles.shippingChip}>{freeShippingText}</span>
-              )}
-              {bonusText && <span className={styles.bonusChip}>{bonusText}</span>}
-            </span>
-          )}
+          <span className={styles.mainText}>Voucher untukmu</span>
+          <span className={styles.chips}>
+            {discountText && (
+              <span className={styles.discountChip}>{discountText}</span>
+            )}
+            {freeShippingText && (
+              <span className={styles.shippingChip}>{freeShippingText}</span>
+            )}
+            {bonusText && <span className={styles.bonusChip}>{bonusText}</span>}
+            {!hasBenefit && <span className={styles.placeholderChip}>{placeholderChip}</span>}
+          </span>
         </span>
       </span>
 
