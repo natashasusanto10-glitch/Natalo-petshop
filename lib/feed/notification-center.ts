@@ -20,6 +20,31 @@ export function feedPostOwnerUrl(postId: string) {
   return `/akun/postingan-saya/${encodeURIComponent(postId)}`;
 }
 
+/**
+ * Map event type → APNs notification category. Category match dengan
+ * UNNotificationCategory yang di-register di iOS AppDelegate
+ * (registerNotificationCategories). Trigger action buttons di banner
+ * tray.
+ *
+ * Categories (match dengan ios/App/App/AppDelegate.swift):
+ *   - "feed_review"  → 2 buttons: "Lihat", "Tolak" (admin moderation)
+ *   - "feed_result"  → 1 button: "Lihat" (user dapat hasil approve/reject)
+ *   - null           → default tap-to-open behavior
+ */
+function deriveNotificationCategory(
+  eventType: FeedNotificationEventType,
+): string | null {
+  switch (eventType) {
+    case "feed_review_pending":
+      return "feed_review";
+    case "feed_post_approved":
+    case "feed_post_rejected":
+      return "feed_result";
+    default:
+      return null;
+  }
+}
+
 export function truncateFeedText(input: string | null | undefined, limit = 80) {
   const trimmed = (input ?? "").trim();
   if (trimmed.length <= limit) return trimmed;
@@ -74,12 +99,22 @@ export async function createFeedNotification(params: {
       if (value != null && value !== "") pushData[key] = value;
     }
 
+    // Wave 4 #9: thumbnail post di-pass sebagai imageUrl untuk rich
+    // notification — APNs NSE attach sebagai preview di banner, FCM
+    // tampil sebagai BigPictureStyle di Android, Web Push tampil image
+    // di body notification. Fallback graceful — kalau thumbnail null
+    // (post tanpa video / belum encoding), notif tetap text-only.
     const payload: PushPayload = {
       title: params.title,
       body: params.message,
       url,
       tag: params.tag ?? `${params.eventType}-${params.feedPostId}`,
       data: pushData,
+      imageUrl: params.thumbnailUrl ?? null,
+      // category dipakai untuk action buttons di iOS. Default null —
+      // hanya event yang butuh action (mis. feed_review_pending untuk
+      // admin moderate) yang set.
+      category: deriveNotificationCategory(params.eventType),
     };
 
     await Promise.all([

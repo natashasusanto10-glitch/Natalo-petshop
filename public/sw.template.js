@@ -146,6 +146,11 @@ self.addEventListener("push", (e) => {
       body: payload.body,
       icon: "/icon.svg",
       badge: "/icon.svg",
+      // image — Web Push spec: gambar besar di banner notification. Untuk
+      // post feed approval/reject, tampilkan thumbnail post supaya user
+      // langsung tau video yang mana. Chromium support; Safari Web Push
+      // ignore. Fallback graceful — text-only kalau imageUrl null.
+      image: payload.imageUrl ?? undefined,
       // tag = grouping key. Notification dgn tag sama akan REPLACE existing
       // (mis. order yg status berubah-ubah tidak stack 5 notif).
       tag: payload.tag,

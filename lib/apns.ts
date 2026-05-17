@@ -109,6 +109,18 @@ export type ApnsPayload = {
   url?: string;
   /** Custom data dilewatkan ke app via aps.payload */
   data?: Record<string, unknown>;
+  /** Rich content — image URL untuk attachment di notification banner.
+   *  Wajib HTTPS, format JPEG/PNG/GIF/MP4 (max 10 MB).
+   *  Butuh Notification Service Extension (NSE) di iOS app target untuk
+   *  fetch + attach image. Tanpa NSE, image diabaikan — text-only notif
+   *  tetap di-deliver.
+   *  Sinkron dengan PushPayload.imageUrl di lib/push.ts — caller pass
+   *  field yang sama, sendApnsToUser baca via imageUrl. */
+  imageUrl?: string | null;
+  /** Notification category — match dengan UNNotificationCategory yang
+   *  di-register di AppDelegate. Memunculkan action buttons (Approve/
+   *  Reject untuk admin moderation, dll). */
+  category?: string | null;
 };
 
 /**
@@ -155,9 +167,30 @@ export async function sendApnsToUser(userId: string, payload: ApnsPayload) {
       note.priority = 10;
       note.pushType = "alert";
       note.badge = 1;
+      // mutableContent=true → iOS akan deliver notification ke Notification
+      // Service Extension dulu sebelum tampil. NSE bisa modify body, add
+      // attachment (image preview), localize, dll. Tanpa NSE, flag ini
+      // tidak ada efek (text-only notif tetap tampil normal).
+      if (payload.imageUrl) {
+        note.mutableContent = true;
+      }
+      // category → match dengan UNNotificationCategory yang di-register
+      // di AppDelegate (lihat ios/App/App/AppDelegate.swift). Trigger
+      // action buttons (e.g., "Approve" / "Reject" untuk admin moderation).
+      if (payload.category) {
+        // @parse/node-apn Notification type tidak include `category`
+        // property di TS defs, tapi runtime field di-honor — maps ke
+        // aps.category. Pakai type assertion untuk bypass TS check.
+        (note as unknown as { category: string }).category = payload.category;
+      }
       note.payload = {
         ...(payload.data ?? {}),
         url: payload.url,
+        // NSE di iOS app baca `attachment-url` dari custom payload,
+        // fetch image, lalu attach ke notif sebagai preview.
+        ...(payload.imageUrl
+          ? { "attachment-url": payload.imageUrl }
+          : {}),
       };
 
       try {

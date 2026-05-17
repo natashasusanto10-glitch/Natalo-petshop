@@ -71,6 +71,9 @@ export type FcmPayload = {
   tag?: string;
   /** Custom data dilewatkan ke app (string-only di FCM data payload) */
   data?: Record<string, string>;
+  /** Image URL — Android BigPictureStyle preview di notification tray.
+   *  Wajib HTTPS. Format JPEG/PNG. */
+  imageUrl?: string | null;
 };
 
 /**
@@ -118,6 +121,9 @@ export async function sendFcmToUser(userId: string, payload: FcmPayload) {
       notification: {
         title: payload.title,
         body: payload.body,
+        // imageUrl di top-level notification — FCM auto-render sebagai
+        // BigPictureStyle di Android saat app background. Required HTTPS.
+        ...(payload.imageUrl ? { imageUrl: payload.imageUrl } : {}),
       },
       data: dataPayload,
       android: {
@@ -127,6 +133,10 @@ export async function sendFcmToUser(userId: string, payload: FcmPayload) {
           // Click action akan trigger plugin's pushNotificationActionPerformed
           // listener; app handle navigation ke `data.url` sendiri.
           clickAction: "FCM_PLUGIN_ACTIVITY",
+          // Android-specific big picture URL — duplikat dari notification.
+          // imageUrl di atas. Beberapa launcher (Samsung One UI) pakai
+          // path ini, lainnya pakai notification.imageUrl.
+          ...(payload.imageUrl ? { imageUrl: payload.imageUrl } : {}),
         },
       },
     });

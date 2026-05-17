@@ -13,7 +13,54 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         // saat app open). Tanpa delegate, push delivered tapi tidak visible
         // ke user yang sedang buka app.
         UNUserNotificationCenter.current().delegate = self
+        registerNotificationCategories()
         return true
+    }
+
+    // MARK: - Notification Categories (Wave 4 #9)
+    //
+    // Register UNNotificationCategory dengan action buttons. Server (lib/
+    // feed/notification-center.ts) set `category: "feed_review"` di APNs
+    // payload aps.category — iOS match dengan identifier di sini lalu
+    // tampil buttons sebagai actions di banner tray.
+    //
+    // Categories:
+    //   - feed_review  → 2 buttons: "Lihat" (open app), "Buang" (destructive)
+    //   - feed_result  → 1 button: "Lihat" (open post detail)
+    //
+    // .foreground = action akan launch app to foreground.
+    // .destructive = button dirender merah, butuh confirm tap.
+    // .authenticationRequired = wajib unlock device dulu sebelum trigger.
+    private func registerNotificationCategories() {
+        let viewAction = UNNotificationAction(
+            identifier: "VIEW",
+            title: "Lihat",
+            options: [.foreground]
+        )
+        let dismissAction = UNNotificationAction(
+            identifier: "DISMISS",
+            title: "Buang",
+            options: [.destructive]
+        )
+
+        let reviewCategory = UNNotificationCategory(
+            identifier: "feed_review",
+            actions: [viewAction, dismissAction],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        let resultCategory = UNNotificationCategory(
+            identifier: "feed_result",
+            actions: [viewAction],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        UNUserNotificationCenter.current().setNotificationCategories([
+            reviewCategory,
+            resultCategory,
+        ])
     }
 
     // Called saat push arrive + app FOREGROUND. Default iOS = no banner.

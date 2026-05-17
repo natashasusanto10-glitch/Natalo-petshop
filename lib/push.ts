@@ -22,6 +22,13 @@ export type PushPayload = {
   actions?: Array<{ action: string; title: string }>;
   /** Require user interaction sebelum auto-dismiss */
   requireInteraction?: boolean;
+  /** Image attachment URL — Web Push: shown sebagai image di notification.
+   *  APNs: di-pass ke NSE untuk fetch + attach. FCM: di-set sebagai image
+   *  di notification payload. Format HTTPS JPEG/PNG, max 10 MB. */
+  imageUrl?: string | null;
+  /** Notification category — APNs only, match dengan UNNotificationCategory
+   *  yang di-register di iOS AppDelegate. Trigger action buttons. */
+  category?: string | null;
 };
 
 export async function sendPushToUser(userId: string, payload: PushPayload) {

@@ -858,6 +858,63 @@ export function FeedVideoPlayer({
 
       <VideoProgressBar progress={playbackProgress} />
 
+      {/* Cinema mode — Wave 4 #6 scoped down version.
+          Tap untuk masuk fullscreen native player.
+          iOS: pakai webkitEnterFullscreen() → AVPlayerViewController muncul
+            dengan kontrol native (AirPlay, PIP, scrubbing, picture-in-picture).
+          Android: pakai standard Fullscreen API.
+          Web: same Fullscreen API, browser-native player UI.
+
+          Beda dengan custom Capacitor plugin yang butuh native overlay +
+          1-2 minggu effort: ini ~30 baris JS, no plugin install, no
+          TestFlight rebuild. iOS handle native player rendering otomatis. */}
+      {isActive && (
+        <button
+          type="button"
+          aria-label="Cinema mode — buka di player native"
+          onClick={(e) => {
+            e.stopPropagation();
+            const video = getRef(activeSlot);
+            if (!video) return;
+            // iOS-specific API yang trigger AVPlayerViewController native
+            // (better UX dibanding standard Fullscreen API yang cuma
+            // fullscreen WebView). Cek availability dulu — non-Safari /
+            // non-iOS fallback ke standard requestFullscreen.
+            const v = video as HTMLVideoElement & {
+              webkitEnterFullscreen?: () => void;
+            };
+            if (typeof v.webkitEnterFullscreen === "function") {
+              try {
+                v.webkitEnterFullscreen();
+                return;
+              } catch {
+                // Continue to fallback
+              }
+            }
+            // Fallback: standard Fullscreen API (Android / desktop)
+            if (typeof video.requestFullscreen === "function") {
+              video.requestFullscreen().catch(() => {
+                // Fullscreen rejected — likely permission. Silent fail.
+              });
+            }
+          }}
+          className="absolute right-3 z-[3] grid h-10 w-10 place-items-center rounded-full bg-black/40 text-white shadow-[0_8px_20px_rgba(0,0,0,0.28)] backdrop-blur-md transition active:scale-95"
+          style={{
+            top: showSoundToggle
+              ? "calc(env(safe-area-inset-top, 0px) + 132px)"
+              : "calc(env(safe-area-inset-top, 0px) + 76px)",
+          }}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className="h-5 w-5 fill-white"
+            aria-hidden
+          >
+            <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
+          </svg>
+        </button>
+      )}
+
       {/* Sound toggle — hanya muncul saat video pause supaya feed tetap clean
           ketika playback berjalan. */}
       {showSoundToggle && (
