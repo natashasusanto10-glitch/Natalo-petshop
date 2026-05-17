@@ -117,10 +117,14 @@ input, textarea, select, button {
 }
 
 .nat-site-header {
+  position: -webkit-sticky;
+  position: sticky;
   top: 0;
+  z-index: 1200;
   background: #ffffff;
   padding-top: constant(safe-area-inset-top);
   padding-top: env(safe-area-inset-top);
+  transform: translateZ(0);
 }
 
 .nat-header-inner {
@@ -251,6 +255,8 @@ body[data-review-modal-open="true"] .product-detail-header {
 .produk-sticky-header {
   position: -webkit-sticky;
   position: sticky;
+  top: 0;
+  z-index: 1200;
   background: #ffffff;
   transform: translateZ(0);
 }
@@ -259,6 +265,8 @@ body[data-review-modal-open="true"] .product-detail-header {
 .profile-header {
   position: -webkit-sticky;
   position: sticky;
+  top: 0;
+  z-index: 1200;
   transform: translateZ(0);
 }
 

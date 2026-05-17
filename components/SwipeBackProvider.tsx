@@ -513,7 +513,7 @@ export function SwipeBackProvider({ children }: Props) {
 
   return (
     <>
-      <div className="relative min-h-[100dvh] overflow-x-clip">
+      <div className="relative min-h-[100dvh]">
         <div
           ref={previousLayerRef}
           aria-hidden="true"
