@@ -109,6 +109,10 @@ export async function listFeedPosts({
           weightGram: true,
           isActive: true,
           imageUrl: true,
+          // hasVariants — bedakan quick-add path: kalau false, tap +cart
+          // langsung addItemToCart. Kalau true, harus buka variant picker
+          // dulu (cart tidak boleh skip variant selection).
+          hasVariants: true,
         },
       },
       // Shop the Look — multi-tag carousel dengan per-product promoPrice.
@@ -127,6 +131,7 @@ export async function listFeedPosts({
               weightGram: true,
               imageUrl: true,
               isActive: true,
+              hasVariants: true,
             },
           },
         },
@@ -175,6 +180,7 @@ export async function listFeedPosts({
           weightGram: p.product.weightGram,
           isAvailable: p.product.isActive,
           imageUrl: p.product.imageUrl,
+          hasVariants: p.product.hasVariants,
         }
       : null,
     // Shop the Look: keep inactive tagged products visible for context, but
@@ -193,6 +199,7 @@ export async function listFeedPosts({
         imageUrl: tp.product!.imageUrl,
         position: tp.position,
         promoPrice: tp.promoPrice ?? null,
+        hasVariants: tp.product!.hasVariants,
       })),
     promo:
       p.kind === "PROMO" && p.promoOriginalPrice != null && p.promoDiscountPrice != null

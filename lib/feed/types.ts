@@ -24,6 +24,9 @@ export type FeedPostProduct = {
   weightGram: number;
   isAvailable: boolean;
   imageUrl: string | null;
+  // hasVariants — saat true, in-feed quick add tidak boleh skip variant
+  // picker (user harus pilih size/warna/dll). Saat false, +1 cart langsung.
+  hasVariants: boolean;
 } | null;
 
 // Shop the Look — non-nullable variant. Setiap item di taggedProducts
@@ -43,6 +46,8 @@ export type FeedPostTaggedProduct = {
   imageUrl: string | null;
   position: number;
   promoPrice: number | null;
+  // hasVariants — sama spt FeedPostProduct, gate quick-add path.
+  hasVariants: boolean;
 };
 
 export type FeedPostListItem = {

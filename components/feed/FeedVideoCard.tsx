@@ -68,6 +68,7 @@ export function FeedVideoCard({
           position: 0,
           // Legacy single-product fallback — no per-product promo set.
           promoPrice: null,
+          hasVariants: product.hasVariants,
         },
       ];
     }
@@ -169,6 +170,42 @@ export function FeedVideoCard({
     }
   }
 
+  /**
+   * Quick add to cart langsung dari pill Shop the Look — 1 tap tanpa
+   * buka sheet. Hanya valid untuk produk yang TIDAK punya variants
+   * (single SKU, no size/color picker needed).
+   *
+   * Untuk produk dengan variants: tap "+" jatuh ke sheet supaya user
+   * pilih variant dulu — tanpa variant, addItemToCart akan tambah
+   * parent product ID yang tidak valid di checkout (item tidak match
+   * SKU). UX-nya lebih jelek dibanding extra tap untuk open sheet.
+   *
+   * Stop propagation supaya pill onClick (yg buka sheet) tidak juga
+   * fire — quick add dan open sheet harus mutually exclusive di tap.
+   */
+  function handleQuickAddCurrent(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!currentCarouselProduct) return;
+    if (!currentCarouselProduct.isAvailable || currentCarouselProduct.stock <= 0) {
+      return;
+    }
+    // Produk multi-variant: tidak boleh quick add — open sheet supaya
+    // user pilih variant di sana (atau navigate ke PDP via tap detail).
+    if (currentCarouselProduct.hasVariants) {
+      setProductSheetOpen(true);
+      return;
+    }
+    hapticTap();
+    const pricing = getFeedProductPricing(currentCarouselProduct, post.promo);
+    const cartItem = buildFeedCartItem(
+      currentCarouselProduct,
+      pricing.displayPrice,
+    );
+    addItemToCart(cartItem, {
+      successMessage: `${currentCarouselProduct.name} masuk keranjang`,
+    });
+  }
+
   const videoAspectRatio =
     post.videoWidth && post.videoHeight
       ? `${post.videoWidth} / ${post.videoHeight}`
@@ -240,12 +277,12 @@ export function FeedVideoCard({
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-[220px] bg-gradient-to-t from-black/70 via-black/35 to-transparent" />
       )}
 
-      {/* Right action rail — fixed grid: 30px icon + 16px count slot.
+      {/* Right action rail — compact Reels-style icon + count stack.
           Slot height tetap walau count = 0, supaya jarak vertical antar
           tombol identik di semua video (sebelumnya icon loncat naik kalau
           count kosong karena gap-1 tidak render). */}
       {!commentMode && (
-        <div className="absolute right-3 z-[2] flex flex-col items-center gap-5 [bottom:calc(env(safe-area-inset-bottom)+200px)] md:bottom-10">
+        <div className="absolute right-3.5 z-[2] flex flex-col items-center gap-[18px] [bottom:calc(env(safe-area-inset-bottom)+168px)] md:bottom-8">
           <ActionButton
             label={formatEngagementCount(likeCount)}
             ariaLabel={liked ? "Batal suka" : "Suka"}
@@ -275,54 +312,83 @@ export function FeedVideoCard({
       {!commentMode && (
         <div className="absolute left-4 right-[76px] z-[2] [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+1.5rem)] md:bottom-24">
           {currentCarouselProduct && (
-            <button
-              type="button"
-              onClick={() => setProductSheetOpen(true)}
-              className="mb-2.5 inline-flex h-10 max-w-full items-center gap-2 rounded-[16px] border border-white/15 bg-black/[0.24] px-3 text-left text-white shadow-sm shadow-black/10 backdrop-blur-[16px] transition active:scale-[0.98]"
+            // Pill split jadi 2 area: kiri (info + chevron) buka sheet,
+            // kanan (+ Cart) quick add. Bukan single button supaya nested
+            // <button> tidak invalid HTML.
+            <div
+              className="mb-2.5 inline-flex h-10 max-w-full items-center rounded-[16px] border border-white/15 bg-black/[0.24] text-white shadow-sm shadow-black/10 backdrop-blur-[16px]"
               key={currentCarouselProduct.id}
             >
-              <FiShoppingBag className="h-4 w-4 shrink-0 text-white/75" aria-hidden="true" />
-              {hasMultipleProducts && (
-                <span className="hidden shrink-0 -space-x-1 sm:flex" aria-hidden="true">
-                  {taggedProducts.slice(0, 3).map((item) => (
-                    <span
-                      key={item.id}
-                      className="relative block h-5 w-5 overflow-hidden rounded-full border border-white/20 bg-white/10"
-                    >
-                      {item.imageUrl ? (
-                        <Image
-                          src={item.imageUrl}
-                          alt=""
-                          fill
-                          sizes="20px"
-                          placeholder="blur"
-                          blurDataURL={IMAGE_BLUR_GRAY}
-                          className="object-cover"
-                        />
-                      ) : (
-                        <span className="grid h-full w-full place-items-center">
-                          <FiPackage className="h-2.5 w-2.5 text-white/60" />
-                        </span>
-                      )}
-                    </span>
-                  ))}
+              <button
+                type="button"
+                onClick={() => setProductSheetOpen(true)}
+                className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-l-[16px] px-3 text-left transition active:scale-[0.98]"
+                aria-label={
+                  hasMultipleProducts
+                    ? `Lihat ${taggedProducts.length} produk di video`
+                    : `Lihat detail ${currentCarouselProduct.name}`
+                }
+              >
+                <FiShoppingBag className="h-4 w-4 shrink-0 text-white/75" aria-hidden="true" />
+                {hasMultipleProducts && (
+                  <span className="hidden shrink-0 -space-x-1 sm:flex" aria-hidden="true">
+                    {taggedProducts.slice(0, 3).map((item) => (
+                      <span
+                        key={item.id}
+                        className="relative block h-5 w-5 overflow-hidden rounded-full border border-white/20 bg-white/10"
+                      >
+                        {item.imageUrl ? (
+                          <Image
+                            src={item.imageUrl}
+                            alt=""
+                            fill
+                            sizes="20px"
+                            placeholder="blur"
+                            blurDataURL={IMAGE_BLUR_GRAY}
+                            className="object-cover"
+                          />
+                        ) : (
+                          <span className="grid h-full w-full place-items-center">
+                            <FiPackage className="h-2.5 w-2.5 text-white/60" />
+                          </span>
+                        )}
+                      </span>
+                    ))}
+                  </span>
+                )}
+                <span className="shrink-0 text-[12px] font-semibold text-white/90">
+                  {hasMultipleProducts
+                    ? `${taggedProducts.length} produk`
+                    : "Produk digunakan"}
                 </span>
-              )}
-              <span className="shrink-0 text-[12px] font-semibold text-white/90">
-                {hasMultipleProducts
-                  ? `${taggedProducts.length} produk`
-                  : "Produk digunakan"}
-              </span>
-              <span className="min-w-0 truncate text-[12px] font-semibold text-white/85">
-                {productSummary}
-              </span>
-              {productPillPromo && (
-                <span className="shrink-0 rounded-full bg-rose-500/85 px-2 py-0.5 text-[10px] font-black leading-none text-white shadow-sm shadow-rose-950/25">
-                  PROMO {productPillPromo.discountPct}%
+                <span className="min-w-0 truncate text-[12px] font-semibold text-white/85">
+                  {productSummary}
                 </span>
-              )}
-              <FiChevronRight className="h-4 w-4 shrink-0 text-white/65" aria-hidden="true" />
-            </button>
+                {productPillPromo && (
+                  <span className="shrink-0 rounded-full bg-rose-500/85 px-2 py-0.5 text-[10px] font-black leading-none text-white shadow-sm shadow-rose-950/25">
+                    PROMO {productPillPromo.discountPct}%
+                  </span>
+                )}
+              </button>
+              {/* Quick "+1 Cart" — direct tap tanpa buka sheet untuk
+                  produk no-variant. Multi-variant fall back ke sheet
+                  supaya user pilih varian dulu (handler check sendiri). */}
+              <button
+                type="button"
+                onClick={handleQuickAddCurrent}
+                disabled={
+                  !currentCarouselProduct.isAvailable ||
+                  currentCarouselProduct.stock <= 0
+                }
+                aria-label={`Tambah ${currentCarouselProduct.name} ke keranjang`}
+                className="grid h-full w-10 shrink-0 place-items-center rounded-r-[16px] border-l border-white/15 text-white/90 transition active:scale-95 active:bg-white/5 disabled:cursor-not-allowed disabled:text-white/25"
+              >
+                <FiShoppingCart
+                  className="h-4 w-4"
+                  aria-hidden="true"
+                />
+              </button>
+            </div>
           )}
           <div className="flex min-w-0 items-center gap-2">
             <p
@@ -365,7 +431,7 @@ function PetLikeIcon({ active }: { active?: boolean }) {
   return (
     <svg
       viewBox="0 0 36 36"
-      className="h-8 w-8 overflow-visible"
+      className="h-[30px] w-[30px] overflow-visible"
       fill="none"
       aria-hidden="true"
     >
@@ -392,7 +458,7 @@ function PetCommentIcon() {
   return (
     <svg
       viewBox="0 0 36 36"
-      className="h-8 w-8 overflow-visible"
+      className="h-[30px] w-[30px] overflow-visible"
       fill="none"
       aria-hidden="true"
     >
@@ -426,7 +492,7 @@ function PetShareIcon() {
   return (
     <svg
       viewBox="0 0 36 36"
-      className="h-8 w-8 overflow-visible"
+      className="h-[30px] w-[30px] overflow-visible"
       fill="none"
       aria-hidden="true"
     >
@@ -474,13 +540,13 @@ function ActionButton({
       aria-label={ariaLabel}
       aria-pressed={pressed}
       onClick={onClick}
-      // Fixed grid: icon-cell 32px + gap 4px + count-cell 16px = 52px
-      // total. Count-cell tinggi tetap walau label kosong supaya tinggi
+      // Fixed grid: icon-cell 30px + gap 4px + count-cell 14px = 48px total.
+      // Count-cell tinggi tetap walau label kosong supaya tinggi
       // tombol identik di semua video (cegah icon Like loncat naik saat
       // count = 0 sementara Comment punya angka).
-      className="flex min-w-[44px] flex-col items-center text-[12px] font-bold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)] transition active:scale-95"
+      className="flex min-h-[46px] min-w-[46px] flex-col items-center text-[13px] font-bold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)] transition active:scale-95"
     >
-      <span className="grid h-8 w-8 place-items-center">
+      <span className="grid h-[30px] w-[30px] place-items-center">
         {children}
       </span>
       <span
@@ -528,7 +594,11 @@ function getFeedProductPricing(product: SheetProduct, legacyPromo?: LegacyPromo)
   return { originalPrice, displayPrice, hasPromo, discountPct };
 }
 
-function buildFeedCartItem(product: SheetProduct, price: number): CartItem {
+function buildFeedCartItem(
+  product: SheetProduct,
+  price: number,
+  quantity: number = 1,
+): CartItem {
   return {
     productId: product.id,
     slug: product.slug,
@@ -536,8 +606,8 @@ function buildFeedCartItem(product: SheetProduct, price: number): CartItem {
     variantLabel: null,
     name: product.name,
     price,
-    quantity: 1,
-    subtotal: price,
+    quantity,
+    subtotal: price * quantity,
     weightGram: product.weightGram,
     imageUrl: product.imageUrl,
     stock: product.stock,
@@ -557,15 +627,30 @@ function PinnedProductSheet({
 }) {
   const router = useRouter();
 
-  function handleAddProduct(product: SheetProduct, redirectToCheckout = false) {
+  function handleAddProduct(
+    product: SheetProduct,
+    quantity: number,
+    redirectToCheckout = false,
+  ) {
     if (!product.isAvailable || product.stock <= 0) return;
+    // Multi-variant product: tidak boleh add-to-cart langsung di feed —
+    // server tolak checkout tanpa variantId match. Redirect ke PDP supaya
+    // user pilih varian dulu.
+    if (product.hasVariants) {
+      onClose();
+      router.push(`/products/${product.slug}`);
+      return;
+    }
     hapticTap();
 
     const pricing = getFeedProductPricing(product, legacyPromo);
-    const cartItem = buildFeedCartItem(product, pricing.displayPrice);
+    const cartItem = buildFeedCartItem(product, pricing.displayPrice, quantity);
     const result = addItemToCart(cartItem, {
       showToast: !redirectToCheckout,
-      successMessage: "Produk dari video berhasil ditambahkan",
+      successMessage:
+        quantity > 1
+          ? `${quantity}× ${product.name} masuk keranjang`
+          : `${product.name} masuk keranjang`,
     });
 
     if (!result.ok || !redirectToCheckout) return;
@@ -574,7 +659,9 @@ function PinnedProductSheet({
     try {
       sessionStorage.setItem(
         CHECKOUT_SELECTION_KEY,
-        JSON.stringify([{ ...cartItem, quantity: 1, subtotal: pricing.displayPrice }]),
+        JSON.stringify([
+          { ...cartItem, quantity, subtotal: pricing.displayPrice * quantity },
+        ]),
       );
     } catch {
       // Checkout masih bisa membaca item dari cart lokal kalau sessionStorage gagal.
@@ -597,8 +684,8 @@ function PinnedProductSheet({
             key={product.id}
             product={product}
             legacyPromo={legacyPromo}
-            onAdd={() => handleAddProduct(product, false)}
-            onBuy={() => handleAddProduct(product, true)}
+            onAdd={(qty) => handleAddProduct(product, qty, false)}
+            onBuy={(qty) => handleAddProduct(product, qty, true)}
           />
         ))}
       </div>
@@ -614,9 +701,23 @@ function PinnedProductSheetCard({
 }: {
   product: SheetProduct;
   legacyPromo: LegacyPromo;
-  onAdd: () => void;
-  onBuy: () => void;
+  onAdd: (quantity: number) => void;
+  onBuy: (quantity: number) => void;
 }) {
+  // Quantity stepper state per-card. Default 1. Max = product.stock supaya
+  // user tidak overcommit (cart action sendiri juga cap stock, tapi UI
+  // lebih jelas kalau button "-" disabled saat 1, "+" disabled saat
+  // mencapai stock).
+  const [quantity, setQuantity] = useState(1);
+  const maxQty = Math.max(1, product.stock);
+
+  function decQty() {
+    setQuantity((q) => Math.max(1, q - 1));
+  }
+  function incQty() {
+    setQuantity((q) => Math.min(maxQty, q + 1));
+  }
+
   const pricing = getFeedProductPricing(product, legacyPromo);
   const unavailable = !product.isAvailable || product.stock <= 0;
 
@@ -678,26 +779,79 @@ function PinnedProductSheetCard({
         </Link>
       </div>
 
+      {/* Quantity stepper — hanya muncul untuk produk no-variant yang
+          available. Multi-variant tidak punya qty di sini karena harus
+          ke PDP untuk pilih variant + qty bersamaan. */}
+      {!unavailable && !product.hasVariants && (
+        <div className="mt-3 flex items-center gap-3">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-white/60">
+            Jumlah
+          </span>
+          <div className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] p-1">
+            <button
+              type="button"
+              onClick={decQty}
+              disabled={quantity <= 1}
+              aria-label="Kurangi jumlah"
+              className="grid h-7 w-7 place-items-center rounded-full text-white/85 transition active:scale-90 disabled:text-white/25"
+            >
+              <span className="text-base font-black leading-none">−</span>
+            </button>
+            <span className="min-w-[28px] text-center text-sm font-black tabular-nums text-white">
+              {quantity}
+            </span>
+            <button
+              type="button"
+              onClick={incQty}
+              disabled={quantity >= maxQty}
+              aria-label="Tambah jumlah"
+              className="grid h-7 w-7 place-items-center rounded-full text-white/85 transition active:scale-90 disabled:text-white/25"
+            >
+              <span className="text-base font-black leading-none">+</span>
+            </button>
+          </div>
+          <span className="ml-auto text-[11px] font-semibold text-white/55">
+            Total {formatRupiah(pricing.displayPrice * quantity)}
+          </span>
+        </div>
+      )}
+
       <div className="mt-3 flex items-center gap-3">
-        <button
-          type="button"
-          aria-label={`Tambahkan ${product.name} ke keranjang`}
-          onClick={onAdd}
-          disabled={unavailable}
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-[18px] border border-natalo-400/35 bg-slate-950/35 text-white/90 shadow-[0_0_20px_rgba(48,141,255,0.18),inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur-md transition active:scale-95 disabled:cursor-not-allowed disabled:border-white/5 disabled:bg-white/[0.03] disabled:text-zinc-600 disabled:shadow-none disabled:active:scale-100"
-        >
-          <FiShoppingCart className="h-5 w-5" aria-hidden />
-        </button>
-        <button
-          type="button"
-          onClick={onBuy}
-          disabled={unavailable}
-          className="relative h-11 min-w-0 flex-1 overflow-hidden rounded-full border border-sky-200/55 bg-[linear-gradient(180deg,rgba(95,191,255,0.96)_0%,rgba(30,135,255,0.94)_44%,rgba(18,97,218,0.96)_100%)] px-5 text-sm font-black text-white shadow-[0_0_26px_rgba(57,154,255,0.46),0_10px_28px_rgba(0,83,189,0.34),inset_0_1px_0_rgba(255,255,255,0.68),inset_0_-2px_8px_rgba(0,52,132,0.34)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:border-white/8 disabled:bg-none disabled:bg-zinc-700 disabled:text-zinc-400 disabled:shadow-none disabled:active:scale-100"
-        >
-          <span className="pointer-events-none absolute inset-x-4 top-1 h-3 rounded-full bg-white/38 blur-[5px]" />
-          <span className="pointer-events-none absolute inset-x-2 bottom-1 h-1 rounded-full bg-sky-200/35 blur-sm" />
-          <span className="relative">Beli Sekarang</span>
-        </button>
+        {product.hasVariants ? (
+          // Multi-variant: hanya 1 button "Pilih Varian" yg navigasi ke
+          // PDP. Tidak boleh quick-add tanpa varian — checkout akan reject.
+          <button
+            type="button"
+            onClick={() => onBuy(1)}
+            disabled={unavailable}
+            className="relative h-11 min-w-0 flex-1 overflow-hidden rounded-full border border-sky-200/55 bg-[linear-gradient(180deg,rgba(95,191,255,0.96)_0%,rgba(30,135,255,0.94)_44%,rgba(18,97,218,0.96)_100%)] px-5 text-sm font-black text-white shadow-[0_0_26px_rgba(57,154,255,0.46),0_10px_28px_rgba(0,83,189,0.34),inset_0_1px_0_rgba(255,255,255,0.68),inset_0_-2px_8px_rgba(0,52,132,0.34)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:border-white/8 disabled:bg-none disabled:bg-zinc-700 disabled:text-zinc-400 disabled:shadow-none disabled:active:scale-100"
+          >
+            <span className="pointer-events-none absolute inset-x-4 top-1 h-3 rounded-full bg-white/38 blur-[5px]" />
+            <span className="relative">Pilih Varian</span>
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              aria-label={`Tambahkan ${quantity}× ${product.name} ke keranjang`}
+              onClick={() => onAdd(quantity)}
+              disabled={unavailable}
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-[18px] border border-natalo-400/35 bg-slate-950/35 text-white/90 shadow-[0_0_20px_rgba(48,141,255,0.18),inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur-md transition active:scale-95 disabled:cursor-not-allowed disabled:border-white/5 disabled:bg-white/[0.03] disabled:text-zinc-600 disabled:shadow-none disabled:active:scale-100"
+            >
+              <FiShoppingCart className="h-5 w-5" aria-hidden />
+            </button>
+            <button
+              type="button"
+              onClick={() => onBuy(quantity)}
+              disabled={unavailable}
+              className="relative h-11 min-w-0 flex-1 overflow-hidden rounded-full border border-sky-200/55 bg-[linear-gradient(180deg,rgba(95,191,255,0.96)_0%,rgba(30,135,255,0.94)_44%,rgba(18,97,218,0.96)_100%)] px-5 text-sm font-black text-white shadow-[0_0_26px_rgba(57,154,255,0.46),0_10px_28px_rgba(0,83,189,0.34),inset_0_1px_0_rgba(255,255,255,0.68),inset_0_-2px_8px_rgba(0,52,132,0.34)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:border-white/8 disabled:bg-none disabled:bg-zinc-700 disabled:text-zinc-400 disabled:shadow-none disabled:active:scale-100"
+            >
+              <span className="pointer-events-none absolute inset-x-4 top-1 h-3 rounded-full bg-white/38 blur-[5px]" />
+              <span className="pointer-events-none absolute inset-x-2 bottom-1 h-1 rounded-full bg-sky-200/35 blur-sm" />
+              <span className="relative">Beli Sekarang</span>
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
