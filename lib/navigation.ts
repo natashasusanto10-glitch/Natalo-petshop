@@ -54,6 +54,8 @@ export const HIDDEN_BOTTOM_NAV_PATTERNS: RegExp[] = [
   /^\/member\/orders$/,
   /^\/member\/orders\/[^/]+$/,
   /^\/member\/profile$/,
+  /^\/account\/settings(\/|$)/,
+  /^\/account\/profile(\/|$)/,
   /^\/order-status(\/|$)/,
   /^\/pesanan\/[^/]+$/,
   /^\/pesanan\/[^/]+\/success$/,

@@ -4,22 +4,21 @@ import {
   FiCheckCircle,
   FiChevronRight,
   FiCreditCard,
-  FiEdit3,
+  FiGift,
   FiHeart,
-  FiHelpCircle,
-  FiHome,
-  FiLogOut,
   FiMapPin,
   FiPackage,
   FiPlayCircle,
   FiPlus,
-  FiShield,
+  FiSettings,
   FiShoppingBag,
+  FiStar,
   FiTag,
   FiTruck,
-  FiUser,
 } from "react-icons/fi";
-import { LogoutButton } from "@/components/LogoutButton";
+import type { IconType } from "react-icons";
+import { AccountProfileAvatar } from "@/components/account/AccountProfileAvatar";
+import { PageStatusBar } from "@/components/PageStatusBar";
 import { loadActiveMemberVouchers } from "@/lib/member-vouchers";
 import { prisma } from "@/lib/prisma";
 import { requireCustomerSession } from "@/lib/session-guards";
@@ -45,7 +44,7 @@ function orderCount(
 function CountBadge({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
-    <span className="absolute right-3 top-3 grid h-5 min-w-5 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-black leading-none text-white">
+    <span className="absolute right-2 top-2 grid h-5 min-w-5 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-black leading-none text-white">
       {count > 9 ? "9+" : count}
     </span>
   );
@@ -58,7 +57,7 @@ function OrderStatusItem({
   count,
 }: {
   href: string;
-  icon: typeof FiPackage;
+  icon: IconType;
   label: string;
   count: number;
 }) {
@@ -68,7 +67,7 @@ function OrderStatusItem({
       className="relative flex min-w-0 flex-col items-center gap-2 rounded-[18px] bg-slate-50 px-2 py-3 text-center transition active:scale-[0.98]"
     >
       <CountBadge count={count} />
-      <span className="grid h-10 w-10 place-items-center rounded-2xl bg-white text-natalo-600 shadow-sm">
+      <span className="grid h-10 w-10 place-items-center rounded-2xl bg-[#EAF2FF] text-natalo-600">
         <Icon className="h-5 w-5" aria-hidden="true" />
       </span>
       <span className="text-[12px] font-extrabold leading-tight text-slate-700">{label}</span>
@@ -76,23 +75,23 @@ function OrderStatusItem({
   );
 }
 
-function MenuCard({
+function TransactionMenuItem({
   href,
   icon: Icon,
   title,
   description,
 }: {
   href: string;
-  icon: typeof FiPackage;
+  icon: IconType;
   title: string;
   description: string;
 }) {
   return (
     <Link
       href={href}
-      className="flex min-h-[108px] flex-col justify-between rounded-[18px] border border-slate-100 bg-white p-4 shadow-[0_8px_24px_rgba(16,24,40,0.06)] transition active:scale-[0.98]"
+      className="flex min-h-[104px] flex-col justify-between rounded-[20px] border border-slate-100 bg-white p-4 shadow-[0_8px_24px_rgba(16,24,40,0.05)] transition active:scale-[0.98]"
     >
-      <span className="grid h-10 w-10 place-items-center rounded-2xl bg-[#EEF5FF] text-[#1677FF]">
+      <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#EAF2FF] text-natalo-600">
         <Icon className="h-5 w-5" aria-hidden="true" />
       </span>
       <span>
@@ -105,66 +104,49 @@ function MenuCard({
   );
 }
 
-function SettingsRow({
+function FeedListItem({
   href,
   icon: Icon,
   title,
-  description,
+  subtitle,
+  accent,
+  badgeCount,
 }: {
   href: string;
-  icon: typeof FiBell;
+  icon: IconType;
   title: string;
-  description: string;
+  subtitle: string;
+  accent?: boolean;
+  badgeCount?: number;
 }) {
   return (
     <Link
       href={href}
       className="flex items-center gap-3 px-4 py-4 transition active:bg-slate-50"
     >
-      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-slate-50 text-natalo-600">
+      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#EAF2FF] text-natalo-600">
         <Icon className="h-5 w-5" aria-hidden="true" />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-sm font-black text-slate-950">{title}</span>
+        <span className="flex items-center gap-2">
+          <span
+            className={`block text-sm font-black ${
+              accent ? "text-natalo-700" : "text-slate-950"
+            }`}
+          >
+            {title}
+          </span>
+          {badgeCount ? (
+            <span className="grid h-5 min-w-5 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-black leading-none text-white">
+              {badgeCount > 9 ? "9+" : badgeCount}
+            </span>
+          ) : null}
+        </span>
         <span className="mt-0.5 block text-xs font-semibold leading-4 text-slate-500">
-          {description}
+          {subtitle}
         </span>
       </span>
       <FiChevronRight className="h-5 w-5 shrink-0 text-slate-300" aria-hidden="true" />
-    </Link>
-  );
-}
-
-function FeedSayaCard({ pendingCount }: { pendingCount: number }) {
-  const pendingLabel =
-    pendingCount > 0
-      ? `${pendingCount} postingan menunggu review`
-      : "Kelola video Feed yang kamu upload";
-
-  return (
-    <Link
-      href="/akun/postingan-saya"
-      className="flex items-center gap-3 rounded-[20px] border border-[#D9E7FF] bg-white p-4 shadow-[0_8px_24px_rgba(16,24,40,0.06)] transition active:scale-[0.98]"
-    >
-      <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#EAF2FF] text-[#1677FF]">
-        <FiPlayCircle className="h-7 w-7" aria-hidden="true" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-2">
-          <span className="block text-sm font-black text-[#101A33]">
-            Postingan Saya
-          </span>
-          {pendingCount > 0 && (
-            <span className="grid h-5 min-w-5 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-black leading-none text-white">
-              {pendingCount > 9 ? "9+" : pendingCount}
-            </span>
-          )}
-        </span>
-        <span className="mt-0.5 block text-xs font-semibold leading-4 text-slate-500">
-          {pendingLabel}
-        </span>
-      </span>
-      <FiChevronRight className="h-5 w-5 shrink-0 text-slate-700" aria-hidden="true" />
     </Link>
   );
 }
@@ -173,43 +155,44 @@ export default async function MemberPage() {
   const session = await requireCustomerSession();
   const recentDoneSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-  const [
-    totalPoints,
-    orderGroups,
-    recentDoneCount,
-    user,
-    pendingFeedPostCount,
-  ] = await Promise.all([
-    prisma.customerPoint.aggregate({
-      where: { userId: session.sub },
-      _sum: { points: true },
-    }),
-    prisma.order.groupBy({
-      by: ["status"],
-      where: { userId: session.sub },
-      _count: { _all: true },
-    }),
-    prisma.order.count({
-      where: {
-        userId: session.sub,
-        status: "DELIVERED",
-        updatedAt: { gte: recentDoneSince },
-      },
-    }),
-    prisma.user.findUnique({
-      where: { id: session.sub },
-      select: { birthDate: true, birthdayVoucherYear: true, createdAt: true, name: true },
-    }),
-    prisma.feedPost.count({
-      where: {
-        authorId: session.sub,
-        authorRole: "CUSTOMER",
-        kind: "COMMUNITY",
-        status: "PENDING_REVIEW",
-        deletedAt: null,
-      },
-    }),
-  ]);
+  const [totalPoints, orderGroups, recentDoneCount, user, pendingFeedPostCount] =
+    await Promise.all([
+      prisma.customerPoint.aggregate({
+        where: { userId: session.sub },
+        _sum: { points: true },
+      }),
+      prisma.order.groupBy({
+        by: ["status"],
+        where: { userId: session.sub },
+        _count: { _all: true },
+      }),
+      prisma.order.count({
+        where: {
+          userId: session.sub,
+          status: "DELIVERED",
+          updatedAt: { gte: recentDoneSince },
+        },
+      }),
+      prisma.user.findUnique({
+        where: { id: session.sub },
+        select: {
+          id: true,
+          birthDate: true,
+          birthdayVoucherYear: true,
+          createdAt: true,
+          name: true,
+        },
+      }),
+      prisma.feedPost.count({
+        where: {
+          authorId: session.sub,
+          authorRole: "CUSTOMER",
+          kind: "COMMUNITY",
+          status: "PENDING_REVIEW",
+          deletedAt: null,
+        },
+      }),
+    ]);
 
   const points = totalPoints?._sum.points ?? 0;
   const unpaidCount = orderCount(orderGroups, ["PENDING"]);
@@ -217,7 +200,6 @@ export default async function MemberPage() {
   const shippedCount = orderCount(orderGroups, ["SHIPPED"]);
   const doneCount = recentDoneCount;
   const displayName = user?.name ?? session.name ?? "Member";
-  const initial = displayName.charAt(0).toUpperCase() || "N";
   const memberSince = formatMemberSince(user?.createdAt);
 
   let birthdayVoucherCode: string | null = null;
@@ -269,32 +251,51 @@ export default async function MemberPage() {
       : "Belum ada voucher aktif";
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 pb-6 pt-4">
-      <div className="mx-auto max-w-4xl space-y-5">
-        <section className="overflow-hidden rounded-[24px] bg-gradient-to-br from-[#1677FF] to-[#0F4EAF] p-4 text-white shadow-[0_8px_24px_rgba(16,24,40,0.08)]">
+    <main className="min-h-screen bg-[#F6F9FF] pb-[calc(112px+env(safe-area-inset-bottom))]">
+      <PageStatusBar
+        iconColor="dark"
+        themeColor="#ffffff"
+        nativeBackgroundColor="#ffffff"
+        overlaysWebView={false}
+      />
+
+      <header className="sticky top-0 z-[1050] border-b border-slate-100/80 bg-white px-5 pb-3 shadow-[0_8px_24px_rgba(15,23,42,0.05)] [padding-top:calc(0.75rem+env(safe-area-inset-top))]">
+        <div className="mx-auto flex max-w-4xl items-center gap-3">
+          <h1 className="min-w-0 flex-1 text-2xl font-black tracking-tight text-slate-950">
+            Akun
+          </h1>
+          <Link
+            href="/notifications"
+            aria-label="Buka notifikasi"
+            className="grid h-11 w-11 place-items-center rounded-full bg-slate-50 text-slate-700 transition active:scale-[0.96]"
+          >
+            <FiBell className="h-5 w-5" aria-hidden="true" />
+          </Link>
+          <Link
+            href="/account/settings"
+            aria-label="Buka pengaturan"
+            className="grid h-11 w-11 place-items-center rounded-full bg-slate-50 text-slate-700 transition active:scale-[0.96]"
+          >
+            <FiSettings className="h-5 w-5" aria-hidden="true" />
+          </Link>
+        </div>
+      </header>
+
+      <div className="mx-auto max-w-4xl space-y-5 px-4 py-5">
+        <section className="overflow-hidden rounded-[26px] bg-gradient-to-br from-[#1677FF] via-[#1565D8] to-[#0F4EAF] p-4 text-white shadow-[0_16px_36px_rgba(21,101,216,0.22)]">
           <div className="flex items-start gap-3">
-            <div className="relative grid h-14 w-14 shrink-0 place-items-center rounded-full bg-white/18 text-xl font-black ring-1 ring-white/20">
-              {initial}
-              <span className="absolute -right-1 -top-1 grid h-6 w-6 place-items-center rounded-full bg-white text-sm text-[#1677FF] shadow-sm">
-                <FiCheckCircle className="h-3.5 w-3.5" aria-hidden="true" />
-              </span>
-            </div>
+            <AccountProfileAvatar
+              userId={user?.id ?? session.sub}
+              name={displayName}
+              size="md"
+            />
             <div className="min-w-0 flex-1">
-              <div className="flex items-start justify-between gap-2">
-                <span className="inline-flex rounded-full bg-white/16 px-2.5 py-0.5 text-[11px] font-black text-white ring-1 ring-white/20">
-                  Member Resmi
-                </span>
-                <Link
-                  href="/member/profile"
-                  className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-black text-white/90 ring-1 ring-white/15 transition active:scale-[0.98]"
-                >
-                  <FiEdit3 className="h-3.5 w-3.5" aria-hidden="true" />
-                  Edit Profil
-                </Link>
-              </div>
-              <h1 className="mt-1.5 text-xl font-black leading-tight tracking-tight">
+              <span className="inline-flex rounded-full bg-white/16 px-2.5 py-0.5 text-[11px] font-black text-white ring-1 ring-white/20">
+                Member Natalo
+              </span>
+              <h2 className="mt-1.5 truncate text-xl font-black leading-tight tracking-tight">
                 Halo, {displayName}!
-              </h1>
+              </h2>
               <p className="mt-0.5 text-sm font-semibold leading-5 text-blue-50">
                 Senang melihatmu kembali di Natalo
               </p>
@@ -302,34 +303,14 @@ export default async function MemberPage() {
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-2 border-t border-white/18 pt-3">
-            <div>
+            <div className="rounded-2xl bg-white/12 px-3 py-2 ring-1 ring-white/16">
               <p className="text-xl font-black leading-none">{points.toLocaleString("id-ID")}</p>
               <p className="mt-1 text-[11px] font-bold text-blue-50">Loyalty Point</p>
             </div>
-            <div>
+            <div className="rounded-2xl bg-white/12 px-3 py-2 ring-1 ring-white/16">
               <p className="text-sm font-black leading-tight">{memberSince}</p>
               <p className="mt-1 text-[11px] font-bold text-blue-50">Member sejak</p>
             </div>
-            <Link
-              href="/account/loyalty/redeem"
-              className="flex items-center justify-between gap-1 rounded-2xl bg-white/12 px-3 py-2 text-left ring-1 ring-white/16"
-            >
-              <span>
-                <span className="block text-sm font-black leading-tight">Tukar Poin</span>
-                <span className="block text-[11px] font-bold text-blue-50">Jadi voucher</span>
-              </span>
-              <FiChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />
-            </Link>
-            <Link
-              href="/member/points"
-              className="flex items-center justify-between gap-1 rounded-2xl bg-white/12 px-3 py-2 text-left ring-1 ring-white/16"
-            >
-              <span>
-                <span className="block text-sm font-black leading-tight">Riwayat Poin</span>
-                <span className="block text-[11px] font-bold text-blue-50">Transaksi poin</span>
-              </span>
-              <FiChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />
-            </Link>
           </div>
         </section>
 
@@ -342,11 +323,14 @@ export default async function MemberPage() {
           </section>
         )}
 
-        <section className="rounded-[20px] border border-slate-100 bg-white p-4 shadow-[0_8px_24px_rgba(16,24,40,0.06)]">
+        <section className="rounded-[22px] border border-slate-100 bg-white p-4 shadow-[0_8px_24px_rgba(16,24,40,0.06)]">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-lg font-black text-[#101A33]">Pesanan Saya</h2>
-            <Link href="/member/orders" className="inline-flex items-center gap-1 text-sm font-black text-natalo-600">
-              Lihat Semua
+            <Link
+              href="/member/orders"
+              className="inline-flex items-center gap-1 text-sm font-black text-natalo-600"
+            >
+              Lihat semua
               <FiChevronRight className="h-4 w-4" aria-hidden="true" />
             </Link>
           </div>
@@ -360,59 +344,39 @@ export default async function MemberPage() {
 
         <section>
           <h2 className="px-1 text-lg font-black text-[#101A33]">Menu Transaksi</h2>
-          <div className="mt-3 grid grid-cols-2 gap-3">
-            <MenuCard href="/member/orders" icon={FiShoppingBag} title="Pesanan Saya" description="Lihat riwayat pesanan" />
-            <MenuCard href="/wishlist" icon={FiHeart} title="Wishlist" description="Produk yang kamu favoritkan" />
-            <MenuCard
-              href="/member/vouchers"
-              icon={FiTag}
-              title="Voucher Member"
-              description={voucherSubtitle}
-            />
-            <MenuCard href="/akun/alamat" icon={FiMapPin} title="Alamat" description="Kelola alamat pengiriman" />
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <TransactionMenuItem href="/member/vouchers" icon={FiTag} title="Voucher" description={voucherSubtitle} />
+            <TransactionMenuItem href="/wishlist" icon={FiHeart} title="Wishlist" description="Produk yang kamu favoritkan" />
+            <TransactionMenuItem href="/member/reviews" icon={FiStar} title="Review" description="Ulasan dan rating produk" />
+            <TransactionMenuItem href="/akun/alamat" icon={FiMapPin} title="Alamat" description="Kelola alamat pengiriman" />
+            <TransactionMenuItem href="/account/loyalty/redeem" icon={FiGift} title="Tukar Poin" description="Ubah poin jadi voucher" />
+            <TransactionMenuItem href="/member/points" icon={FiShoppingBag} title="Riwayat Poin" description="Transaksi poin member" />
           </div>
         </section>
 
         <section>
           <h2 className="px-1 text-lg font-black text-[#101A33]">Feed Saya</h2>
-          <div className="mt-3 space-y-3">
-            <FeedSayaCard pendingCount={pendingFeedPostCount} />
-            <Link
+          <div className="mt-3 divide-y divide-slate-100 overflow-hidden rounded-[22px] border border-slate-100 bg-white shadow-[0_8px_24px_rgba(16,24,40,0.06)]">
+            <FeedListItem
+              href="/akun/postingan-saya"
+              icon={FiPlayCircle}
+              title="Postingan Saya"
+              subtitle={
+                pendingFeedPostCount > 0
+                  ? `${pendingFeedPostCount} postingan menunggu review`
+                  : "Kelola video Feed yang kamu upload"
+              }
+              badgeCount={pendingFeedPostCount}
+            />
+            <FeedListItem
               href="/feed/upload"
-              className="flex w-full items-center justify-center gap-2 rounded-[18px] bg-natalo-600 px-4 py-3 text-sm font-black text-white shadow-[0_10px_24px_rgba(30,95,191,0.24)] transition active:scale-[0.98]"
-            >
-              <FiPlus className="h-5 w-5" aria-hidden="true" />
-              Upload Video
-            </Link>
+              icon={FiPlus}
+              title="+ Upload Video"
+              subtitle="Bagikan momen seru hewan peliharaanmu"
+              accent
+            />
           </div>
         </section>
-
-        <section>
-          <h2 className="px-1 text-lg font-black text-[#101A33]">Akun & Pengaturan</h2>
-          <div className="mt-3 divide-y divide-slate-100 overflow-hidden rounded-[20px] border border-slate-100 bg-white shadow-[0_8px_24px_rgba(16,24,40,0.06)]">
-            <SettingsRow href="/akun/pengaturan/notifikasi" icon={FiBell} title="Pengaturan Notifikasi" description="Atur preferensi notifikasi" />
-            <SettingsRow href="/bantuan" icon={FiHelpCircle} title="Bantuan" description="Pusat bantuan dan FAQ" />
-            <SettingsRow href="/akun/sesi-aktif" icon={FiShield} title="Keamanan & sesi aktif" description="Kelola keamanan akun dan perangkat aktif" />
-            <SettingsRow href="/tentang-kami" icon={FiHome} title="Tentang Natalo" description="Informasi aplikasi, syarat & ketentuan" />
-          </div>
-        </section>
-
-        <LogoutButton
-          redirectTo="/member/login"
-          confirmBeforeLogout
-          className="flex w-full items-center gap-3 rounded-[20px] border border-red-100 bg-white p-4 text-left text-red-600 shadow-[0_8px_24px_rgba(16,24,40,0.06)] hover:border-red-200 hover:bg-red-50 hover:text-red-600"
-        >
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-red-50 text-red-500">
-            <FiLogOut className="h-5 w-5" aria-hidden="true" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-black">Keluar dari akun</span>
-            <span className="mt-0.5 block text-xs font-semibold text-red-400">
-              Logout dari akun Natalo Petshop
-            </span>
-          </span>
-          <FiChevronRight className="h-5 w-5 shrink-0 text-red-300" aria-hidden="true" />
-        </LogoutButton>
       </div>
     </main>
   );

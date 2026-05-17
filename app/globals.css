@@ -270,6 +270,28 @@ body[data-review-modal-open="true"] .product-detail-header {
   transform: translateZ(0);
 }
 
+.account-profile-input {
+  display: block;
+  width: 100%;
+  border-radius: 1rem;
+  border: 1px solid rgb(226 232 240);
+  background: #ffffff;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: rgb(15 23 42);
+  outline: none;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background-color 160ms ease;
+}
+
+.account-profile-input:focus {
+  border-color: #1e5fbf;
+  box-shadow: 0 0 0 4px rgba(30, 95, 191, 0.12);
+}
+
 .home-sticky-header,
 .account-sticky-header,
 .cart-sticky-header,

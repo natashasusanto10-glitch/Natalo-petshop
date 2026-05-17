@@ -50,6 +50,8 @@ export function Header() {
   const currentPath = normalizePathname(pathname);
   const isHome = currentPath === "/";
   const isMemberHome = currentPath === "/member";
+  const isAccountSettingsPage = currentPath === "/account/settings";
+  const isAccountProfilePage = currentPath === "/account/profile";
   const isProductsCatalog =
     currentPath === "/products" || currentPath === "/produk" || currentPath === "/kategori";
   const isProductSearchResult =
@@ -174,6 +176,9 @@ export function Header() {
     isSearchPage ||
     isProductSearchResult ||
     isCartPage ||
+    isMemberHome ||
+    isAccountSettingsPage ||
+    isAccountProfilePage ||
     isFeedRoute ||
     isBrandsDirectory ||
     isNotificationCenter ||

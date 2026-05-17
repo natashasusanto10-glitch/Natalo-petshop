@@ -99,10 +99,9 @@ export function LogoutButton({
                 id="logout-confirmation-description"
                 className="mt-2 space-y-2 text-sm font-semibold leading-6 text-slate-500"
               >
-                <p>Kamu akan keluar dari akun Natalo Petshop.</p>
                 <p>
-                  Voucher, poin loyalty, dan benefit member tidak bisa digunakan sampai kamu
-                  login kembali.
+                  Kamu perlu masuk kembali untuk melihat pesanan, poin, voucher, wishlist, dan
+                  data akunmu.
                 </p>
               </div>
 
