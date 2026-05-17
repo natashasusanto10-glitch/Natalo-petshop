@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_app_name">Natalo Petshop</string>
+    <string name="widget_cart_label_empty">Cart kosong</string>
+    <string name="widget_cart_label_filled">Item di cart</string>
+    <string name="widget_last_order_label">PESANAN TERAKHIR</string>
+    <string name="widget_description">Lihat cart &amp; pesanan terakhir Natalo</string>
+</resources>

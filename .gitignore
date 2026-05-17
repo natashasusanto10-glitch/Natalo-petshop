@@ -103,3 +103,7 @@ vendor/bundle/
 
 # Random local xlsx (data imports, exports)
 *.xlsx
+
+# Flutter SDK download (jangan commit, ~3GB)
+/flutter/
+
