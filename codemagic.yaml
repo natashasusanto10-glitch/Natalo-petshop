@@ -1,155 +1,115 @@
 workflows:
   # ============================================================
-  # Workflow 1: CAPACITOR — current production app
+  # Flutter iOS — build .ipa dari folder flutter_app/ → TestFlight
   # ============================================================
-  # Build .ipa dari folder `ios/App/` (Capacitor wrapper di-sync dari
-  # Next.js web build). Pakai SPM (CapApp-SPM, bukan CocoaPods).
-  # Bundle: com.natalo.petshop (production listing di App Store).
-  ios-testflight:
-    name: iOS TestFlight Release (Capacitor)
-    max_build_duration: 60
-    instance_type: mac_mini_m2
-    environment:
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.natalo.petshop
-      vars:
-        XCODE_PROJECT: "ios/App/App.xcodeproj"
-        XCODE_SCHEME: "App"
-        # Set di Codemagic UI > Environment variables setelah app
-        # di-create di App Store Connect.
-        # APP_STORE_APPLE_ID: <numeric Apple ID>
-      node: 20
-      xcode: latest
-      cocoapods: default
-    integrations:
-      app_store_connect: natalo-asc
-    triggering:
-      events:
-        - tag
-      tag_patterns:
-        - pattern: 'ios-v*'
-          include: true
-    scripts:
-      - name: Install npm deps
-        script: npm ci
-      - name: Build Next.js static fallback (out/)
-        script: |
-          if ! npm run build; then
-            echo "next build failed, falling back to placeholder out/"
-            mkdir -p out
-            echo '<!doctype html><meta charset="utf-8"><title>Natalo Petshop</title>' > out/index.html
-          fi
-      - name: Capacitor sync iOS (SPM auto-resolve)
-        script: npx cap sync ios
-      - name: Bump build number from Codemagic BUILD_NUMBER
-        script: |
-          cd ios/App
-          agvtool new-version -all $(($BUILD_NUMBER + 100))
-      - name: Fetch signing files (App + NotificationServiceExtension)
-        script: |
-          app-store-connect fetch-signing-files com.natalo.petshop \
-            --type IOS_APP_STORE --create
-          app-store-connect fetch-signing-files com.natalo.petshop.NotificationServiceExtension \
-            --type IOS_APP_STORE --create
-      - name: Add certs to keychain
-        script: keychain add-certificates
-      - name: Apply provisioning profiles to Xcode project
-        script: xcode-project use-profiles
-      - name: Build .ipa
-        script: |
-          xcode-project build-ipa \
-            --project "$XCODE_PROJECT" \
-            --scheme "$XCODE_SCHEME"
-    artifacts:
-      - build/ios/ipa/*.ipa
-      - /tmp/xcodebuild_logs/*.log
-      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
-      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
-    publishing:
-      app_store_connect:
-        auth: integration
-        submit_to_testflight: true
-      email:
-        recipients:
-          - natasha.susanto10@gmail.com
-        notify:
-          success: true
-          failure: true
-
-  # ============================================================
-  # Workflow 2: FLUTTER — replacement track
-  # ============================================================
-  # Build .ipa dari folder `flutter_app/` (Flutter native app).
-  # Bundle: com.natalo.petshop (SAMA dengan Capacitor — saat publish,
-  # akan replace Capacitor di App Store record yang sama).
-  # Pakai untuk validate Flutter pipeline + TestFlight preview. JANGAN
-  # promote ke production sampai feature-parity tercapai (banyak stub
-  # screen di lib/screens/ belum diport real implementation).
+  # Bundle: com.natalo.petshop (replace Capacitor existing di App Store
+  # record yang sama). Sign via App Store Connect API key integration
+  # `natalo-asc`. Pakai untuk validate Flutter pipeline + TestFlight
+  # preview. JANGAN promote ke production sampai feature-parity tercapai
+  # (banyak stub screen di flutter_app/lib/screens/ belum diport real).
   flutter-ios-testflight:
     name: Flutter iOS — TestFlight
     max_build_duration: 60
     instance_type: mac_mini_m2
+
     environment:
       flutter: stable
       xcode: latest
       cocoapods: default
+      # Code signing — managed otomatis oleh Codemagic via App Store Connect
+      # API key integration. Tidak perlu upload .p12 / .mobileprovision manual.
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.natalo.petshop
       vars:
+        # Working dir untuk semua step Flutter. Repo root berisi Next.js +
+        # Capacitor + folder flutter_app/, jadi semua command flutter harus
+        # di-jalankan dari sini.
         FLUTTER_PROJECT_DIR: "flutter_app"
-        # APP_STORE_APPLE_ID: <set di Codemagic UI env vars>
+        # Apple ID numeric dari URL App Store Connect setelah app di-create:
+        # https://appstoreconnect.apple.com/apps/<APP_ID_NUMERIC>/...
+        # Set di Codemagic UI: App settings → Environment variables.
+        # APP_STORE_APPLE_ID: <set di dashboard>
+
+    # Integration name "natalo-asc" harus persis match dengan App Store
+    # Connect API key yang Anda upload di Codemagic → Settings → Integrations.
     integrations:
       app_store_connect: natalo-asc
+
+    # Trigger build hanya saat push tag yang match pola "flutter-ios-v*"
+    # (mis. flutter-ios-v1.0.1). Lebih aman daripada trigger setiap push
+    # ke main, supaya tidak waste build credit per kecil-kecil commit.
+    # Build pertama tetap bisa dijalankan manual via Codemagic UI ("Start
+    # new build" button) sebelum pakai tag trigger.
     triggering:
       events:
         - tag
       tag_patterns:
         - pattern: 'flutter-ios-v*'
           include: true
+
     scripts:
       - name: Flutter pub get
         script: |
           cd $FLUTTER_PROJECT_DIR
           flutter pub get
+
       - name: Pod install
         script: |
           cd $FLUTTER_PROJECT_DIR/ios
+          # Repo-update tarik index pod terbaru. Tanpa ini, kadang
+          # Firebase pods versi baru tidak ke-resolve.
           pod install --repo-update
+
       - name: Set build number from BUILD_NUMBER
         script: |
           cd $FLUTTER_PROJECT_DIR/ios
-          # Offset +1 supaya tidak bentrok dengan Capacitor build number
-          # (Capacitor pakai offset +100). Range Flutter: 1-99, kemudian
-          # +100 setelah Capacitor di-deprecate.
+          # Offset +1 supaya tidak conflict dengan build sebelumnya yang
+          # mungkin pernah di-upload manual via Xcode.
           agvtool new-version -all $(($BUILD_NUMBER + 1))
-      - name: Fetch signing files
+
+      - name: Fetch signing files (Runner + entitlements check)
         script: |
-          # NOTE: bundle ID sama dengan Capacitor (com.natalo.petshop).
-          # App Store Connect API key re-fetch cert + profile yang sama —
-          # tidak konflik. Tidak ada NotificationServiceExtension di
-          # Flutter side (firebase_messaging + flutter_local_notifications
-          # handle push di main Runner target).
+          # Bundle ID Runner — match dengan ios_signing.bundle_identifier.
+          # --create akan auto-bikin App ID + provisioning kalau belum ada
+          # di Apple Developer portal (butuh Admin role di team).
           app-store-connect fetch-signing-files com.natalo.petshop \
-            --type IOS_APP_STORE --create
+            --type IOS_APP_STORE \
+            --create
+
       - name: Add certs to keychain
         script: keychain add-certificates
-      - name: Apply provisioning profiles
+
+      - name: Apply provisioning profiles to Xcode project
         script: xcode-project use-profiles
+
       - name: Flutter build ipa
         script: |
           cd $FLUTTER_PROJECT_DIR
+          # --export-options-plist generated otomatis oleh xcode-project
+          # use-profiles step di atas — pakai signing yang sudah di-fetch.
           flutter build ipa --release \
             --export-options-plist=/Users/builder/export_options.plist
+
     artifacts:
       - flutter_app/build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
       - flutter_drive.log
+
     publishing:
       app_store_connect:
+        # Auth pakai integration yang sama dengan fetch signing files —
+        # token API key, bukan password Apple ID.
         auth: integration
+        # Auto-submit ke TestFlight processing (tidak langsung public).
+        # Builds yang sudah "Ready to Submit" baru bisa dipromote ke
+        # External Tester / App Store Review secara manual via App Store
+        # Connect UI.
         submit_to_testflight: true
+        # Optional: kirim ke beta group setelah TestFlight ready.
+        # Hapus kalau belum bikin internal testing group.
+        beta_groups:
+          - Internal Testers
       email:
         recipients:
           - natasha.susanto10@gmail.com
