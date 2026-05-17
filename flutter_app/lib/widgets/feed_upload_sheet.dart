@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:video_compress/video_compress.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 
@@ -65,6 +66,9 @@ class _FeedUploadSheetState extends State<FeedUploadSheet>
   Product? _selectedProduct;
   List<Product> _products = const [];
   bool _loadingProducts = false;
+  // Sprint 4 — toggle source produk: false = search all products,
+  // true = pinnable (yang user pernah beli, untuk anti-spam promo).
+  bool _showingPurchased = false;
   bool _uploading = false;
   String _stage = '';
   int _uploadProgressPct = 0;
@@ -85,6 +89,9 @@ class _FeedUploadSheetState extends State<FeedUploadSheet>
     _captionController.dispose();
     _productSearchController.dispose();
     _previewController?.dispose();
+    // Free VideoCompress resources kalau encode masih in-progress saat
+    // user dismiss sheet — hindari leak FFmpeg session di native.
+    VideoCompress.cancelCompression();
     super.dispose();
   }
 
@@ -129,7 +136,10 @@ class _FeedUploadSheetState extends State<FeedUploadSheet>
   }
 
   Future<void> _loadProducts([String query = '']) async {
-    setState(() => _loadingProducts = true);
+    setState(() {
+      _loadingProducts = true;
+      _showingPurchased = false;
+    });
     final result = await productService.fetchProducts(
       query: query,
       limit: 12,
@@ -140,6 +150,44 @@ class _FeedUploadSheetState extends State<FeedUploadSheet>
     if (!mounted) return;
     setState(() {
       _products = result.products.take(12).toList();
+      _loadingProducts = false;
+    });
+  }
+
+  /// Load products yang USER PERNAH BELI (DELIVERED + PAID). Match endpoint
+  /// PWA /api/feed/pinnable-products. Match perilaku Capacitor PWA: user
+  /// hanya bisa tag produk yang punya verified ownership (anti-spam promo).
+  Future<void> _loadPurchasedProducts() async {
+    setState(() {
+      _loadingProducts = true;
+      _showingPurchased = true;
+      _productSearchController.clear();
+    });
+    final pinnable = await feedService.fetchPinnableProducts();
+    if (!mounted) return;
+    // Map JSON ke Product model — pinnable response punya field beda
+    // dari /api/products (productId vs id, name vs title).
+    final products = pinnable.map((p) {
+      final priceRaw = p['price'] ?? p['discountPrice'] ?? 0;
+      return Product(
+        id: (p['productId'] ?? p['id'] ?? '').toString(),
+        slug: (p['slug'] ?? '').toString(),
+        title: (p['name'] ?? p['title'] ?? '').toString(),
+        category: 'Pernah Dibeli',
+        brand: '',
+        imageUrl: (p['imageUrl'] ?? '').toString(),
+        price: priceRaw is num
+            ? priceRaw.toDouble()
+            : double.tryParse(priceRaw.toString()) ?? 0,
+        rating: p['avgRating'] is num ? (p['avgRating'] as num).toDouble() : 0,
+        reviewCount:
+            p['reviewCount'] is num ? (p['reviewCount'] as num).toInt() : 0,
+        stock: p['stock'] is num ? (p['stock'] as num).toInt() : 0,
+        description: '',
+      );
+    }).toList();
+    setState(() {
+      _products = products;
       _loadingProducts = false;
     });
   }
@@ -365,12 +413,65 @@ class _FeedUploadSheetState extends State<FeedUploadSheet>
         throw const ApiException('Upload thumbnail belum mengembalikan URL.');
       }
 
+      // STEP 1.5 — Client-side compression (video_compress).
+      //
+      // Kompres video di device dulu sebelum upload ke Bunny — save 60-
+      // 80% bytes untuk source 4K/1080p, save 3-5 menit waktu upload di
+      // mobile data. Bunny tetap akan re-encode multi-variant di server,
+      // jadi tidak ada quality loss yang signifikan dari double encode.
+      //
+      // Threshold: kompres kalau file >30 MB. File kecil (clip pendek
+      // dari kamera 720p) tidak perlu — save CPU device + waktu encode.
+      //
+      // Output: 720p H.264 ~3 Mbps (match Bunny target profile). Encode
+      // time di iPhone modern ~30-60 detik untuk 45s clip, Android mid
+      // mungkin 60-90 detik.
+      //
+      // Error handling: kalau compress gagal (codec tidak supported,
+      // OOM, dll), fallback ke upload raw original — tidak block flow.
+      final rawVideoFile = File(video.path);
+      final rawVideoSize = await rawVideoFile.length();
+      File videoFile = rawVideoFile;
+      int videoSize = rawVideoSize;
+      final shouldCompress = rawVideoSize > 30 * 1024 * 1024;
+
+      if (shouldCompress) {
+        if (!mounted) return;
+        setState(() {
+          _stage =
+              'Mengompres video ${(rawVideoSize / 1024 / 1024).toStringAsFixed(0)} MB '
+              '— biar upload lebih cepat...';
+          _uploadProgressPct = 0;
+        });
+
+        try {
+          final info = await VideoCompress.compressVideo(
+            video.path,
+            quality: VideoQuality.MediumQuality, // ~720p H.264
+            deleteOrigin: false,
+            includeAudio: true,
+            // frameRate: 30, // default sudah ~30
+          );
+          if (info != null && info.file != null) {
+            final compressedFile = info.file!;
+            final compressedSize = await compressedFile.length();
+            // Kalau hasil kompres LEBIH BESAR dari original (kasus rare:
+            // source sudah kompres tinggi seperti 4K HEVC), pakai original.
+            if (compressedSize > 0 && compressedSize < rawVideoSize) {
+              videoFile = compressedFile;
+              videoSize = compressedSize;
+            }
+          }
+        } catch (_) {
+          // Compress gagal — fallback ke upload raw. Tidak throw supaya
+          // user tetap bisa post.
+        }
+      }
+
       if (!mounted) return;
       setState(() => _stage = 'Menyiapkan upload...');
 
       // STEP 2 — Provision Bunny placeholder + FeedPost row.
-      final videoFile = File(video.path);
-      final videoSize = await videoFile.length();
       final durationSec = (controller.value.duration.inMilliseconds / 1000)
           .round()
           .clamp(
@@ -554,12 +655,39 @@ class _FeedUploadSheetState extends State<FeedUploadSheet>
                       ),
                     ),
                     const SizedBox(height: 8),
+                    // Source toggle: All products vs. Pernah dibeli (verified
+                    // ownership). Capacitor pattern — anti-spam tagging.
+                    Row(
+                      children: [
+                        ChoiceChip(
+                          label: const Text('Semua Produk'),
+                          selected: !_showingPurchased,
+                          onSelected: _uploading
+                              ? null
+                              : (_) => _loadProducts(),
+                        ),
+                        const SizedBox(width: 8),
+                        ChoiceChip(
+                          avatar: const Icon(
+                            Icons.verified_rounded,
+                            size: 16,
+                            color: Color(0xFF0B7FEA),
+                          ),
+                          label: const Text('Pernah Dibeli'),
+                          selected: _showingPurchased,
+                          onSelected: _uploading
+                              ? null
+                              : (_) => _loadPurchasedProducts(),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
                     _ProductPicker(
                       controller: _productSearchController,
                       products: _products,
                       selected: _selectedProduct,
                       loading: _loadingProducts,
-                      enabled: !_uploading,
+                      enabled: !_uploading && !_showingPurchased,
                       onSearch: _loadProducts,
                       onSelected: (product) {
                         AppHaptics.tap();
