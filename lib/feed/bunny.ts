@@ -211,6 +211,22 @@ export function rewriteBunnyMp4Quality(
 }
 
 /**
+ * Convert Bunny MP4 URL → HLS playlist URL. Bunny generate HLS adaptive
+ * stream (multi-bitrate manifest) di sebelah file MP4. Pakai HLS untuk
+ * koneksi WiFi/stable supaya player otomatis switch quality mid-clip
+ * (mis. 480p saat awal saat buffer kosong → 1080p setelah bandwidth
+ * mature). MP4 progressive lebih baik di koneksi unstable atau short
+ * clip yang tidak butuh adaptive.
+ */
+export function bunnyMp4ToHls(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const match = url.match(/^(https?:\/\/[^/]+\/[a-f0-9-]+\/)play_\d{3,4}p\.mp4(\?.*)?$/i);
+  if (!match) return null;
+  const query = match[2] ?? "";
+  return `${match[1]}playlist.m3u8${query}`;
+}
+
+/**
  * Auto-generated thumbnail URL — Bunny pulls a frame at ~10% of the clip
  * by default. Good enough as a placeholder before the video element
  * finishes its first paint.

@@ -700,6 +700,12 @@ model FeedPost {
   videoWidth      Int?
   videoHeight     Int?
   thumbnailUrl    String?         // Wajib kalau ada videoUrl
+  // Blurhash LQIP — string ~30 byte yang di-decode ke canvas 32x32 di
+  // client sebagai placeholder instan sebelum thumbnailUrl fully decoded.
+  // Generated server-side di Bunny webhook saat thumbnail tersedia.
+  // Nullable untuk legacy post yang belum di-backfill — UI fallback ke
+  // bg-black solid.
+  thumbnailBlurhash String?
   // Bunny Stream integration. NULL = post pakai UploadThing direct URL
   // (legacy). Saat di-set, videoUrl menyimpan playlist.m3u8 dari Bunny CDN
   // dan playback pakai HLS adaptive bitrate.

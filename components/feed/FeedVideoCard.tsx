@@ -201,6 +201,7 @@ export function FeedVideoCard({
             index={index}
             videoUrl={post.videoUrl}
             thumbnailUrl={post.thumbnailUrl}
+            thumbnailBlurhash={post.thumbnailBlurhash}
             durationSec={post.videoDurationSec}
             aspectRatio={
               post.videoWidth && post.videoHeight

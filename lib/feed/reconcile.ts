@@ -16,6 +16,7 @@ import {
   bunnyThumbnailUrl,
   getBunnyVideo,
 } from "./bunny";
+import { generateBlurhashFromUrl } from "./blurhash";
 import { sendFeedPendingReviewNotification } from "./notifications";
 
 export type ReconcileResult =
@@ -51,12 +52,17 @@ export async function reconcileFeedPost(
   if (!meta) return { action: "skipped", postId, detail: "bunny-null" };
 
   if (meta.status === BUNNY_VIDEO_STATUS.FINISHED) {
+    const thumbnailUrl = bunnyThumbnailUrl(post.videoGuid);
+    // Best-effort blurhash — sama dengan webhook path supaya post yang
+    // ke-reconcile manual (bukan via webhook) tetap dapat LQIP.
+    const blurhash = await generateBlurhashFromUrl(thumbnailUrl);
     await prisma.feedPost.update({
       where: { id: post.id },
       data: {
         encodingStatus: "ready",
         videoUrl: bunnyMp4Url(post.videoGuid, 720),
-        thumbnailUrl: bunnyThumbnailUrl(post.videoGuid),
+        thumbnailUrl,
+        thumbnailBlurhash: blurhash,
         videoMimeType: "video/mp4",
         videoDurationSec: meta.length ? Math.round(meta.length) : null,
         videoWidth: meta.width ?? null,

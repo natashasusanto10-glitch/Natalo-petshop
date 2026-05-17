@@ -35,6 +35,7 @@ import {
 } from "@/lib/feed/bunny";
 import { sendFeedPendingReviewNotification } from "@/lib/feed/notifications";
 import { ADMIN_VIDEO_CONFIG, USER_VIDEO_CONFIG } from "@/lib/feed/video-config";
+import { generateBlurhashFromUrl } from "@/lib/feed/blurhash";
 
 export const dynamic = "force-dynamic";
 
@@ -142,12 +143,22 @@ export async function POST(request: NextRequest) {
   // play and CDN-cache much better as a single MP4 than as a manifest +
   // dozens of HLS segments. iOS Safari plays it natively with no extra
   // player code. We default to 720p — sharp on portrait phone, ~5-10 MB.
+  const thumbnailUrl = bunnyThumbnailUrl(guid);
+
+  // Generate blurhash LQIP — fetch thumbnail + encode ke string ~30 byte.
+  // Best-effort; kalau gagal (network glitch, sharp error), tetap commit
+  // post tanpa blurhash. UI fallback ke bg-black. Awaited supaya 1 round-
+  // trip ke DB cukup, tapi sudah ada timeout di fetchnya supaya webhook
+  // tidak ngegantung indefinite.
+  const blurhash = await generateBlurhashFromUrl(thumbnailUrl);
+
   await prisma.feedPost.update({
     where: { id: post.id },
     data: {
       encodingStatus: "ready",
       videoUrl: bunnyMp4Url(guid, 720),
-      thumbnailUrl: bunnyThumbnailUrl(guid),
+      thumbnailUrl,
+      thumbnailBlurhash: blurhash,
       videoMimeType: "video/mp4",
       videoDurationSec: meta?.length ? Math.round(meta.length) : null,
       videoWidth: meta?.width ?? null,

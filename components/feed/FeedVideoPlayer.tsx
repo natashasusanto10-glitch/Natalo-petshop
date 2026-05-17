@@ -6,11 +6,17 @@ import {
   getPreloadTier,
   getRecommendedVideoQuality,
   useNetworkTier,
+  type NetworkTier,
   type VideoQuality,
 } from "@/lib/feed/runtime-config";
 import { useVideoMetrics } from "./useVideoMetrics";
-import { bunnyHlsToMp4, rewriteBunnyMp4Quality } from "@/lib/feed/bunny";
+import {
+  bunnyHlsToMp4,
+  bunnyMp4ToHls,
+  rewriteBunnyMp4Quality,
+} from "@/lib/feed/bunny";
 import { FEED_PLAYBACK_TEARDOWN_EVENT } from "@/lib/feed/teardown";
+import { BlurhashCanvas } from "./BlurhashCanvas";
 
 function isHlsUrl(url: string | null | undefined): boolean {
   if (!url) return false;
@@ -18,22 +24,45 @@ function isHlsUrl(url: string | null | undefined): boolean {
 }
 
 /**
- * Pick the best playback URL for this post.
+ * Pick the best playback URL for this post, network-aware:
  *
- * 1. HLS playlist (legacy / Bunny default) → rewrite ke MP4 progressive
- *    di quality yang sesuai network (240/480/720/1080).
- * 2. Existing MP4 URL (stored di DB sebagai play_720p.mp4) → rewrite
- *    ke quality sesuai network kalau bisa, atau return as-is.
- * 3. Non-Bunny URL → return as-is (legacy UploadThing, dll).
+ *   WiFi (stable, high bandwidth)    → HLS playlist (adaptive bitrate,
+ *                                      player switch quality mid-clip)
+ *   4G / cellular-fast / unknown     → MP4 progressive di quality sesuai
+ *                                      (single-file CDN cache, no manifest
+ *                                      overhead — better untuk clip ≤45s)
+ *   3G / cellular-slow / save-data   → MP4 progressive di low quality
+ *                                      (240/360/480p, hindari HLS overhead)
+ *   Offline                          → return as-is, biar player error
+ *                                      handler tangani fallback
  *
- * Quality dipilih oleh getRecommendedVideoQuality() berdasarkan
- * navigator.connection effectiveType + downlink + saveData.
+ * Rasional: HLS unggul untuk video panjang dengan kondisi network yang
+ * berubah. Untuk feed ≤45s di network stabil, MP4 progressive lebih cepat
+ * start play (1 file fetch, no manifest parse) dan lebih cache-friendly.
+ * Cuma WiFi tier yang dapat HLS karena di sana adaptive bitrate worth
+ * the overhead.
  */
-function resolvePlaybackUrl(url: string, quality: VideoQuality): string {
+function resolvePlaybackUrl(
+  url: string,
+  quality: VideoQuality,
+  tier: NetworkTier,
+): string {
+  const wantsHls = tier === "wifi";
+
   if (isHlsUrl(url)) {
-    return bunnyHlsToMp4(url, quality) ?? url;
+    // Stored as HLS (legacy atau future webhook change). Kalau network
+    // slow, rewrite ke MP4 di quality yang aman. Lainnya pakai HLS.
+    if (tier === "cellular-slow") {
+      return bunnyHlsToMp4(url, quality) ?? url;
+    }
+    return url;
   }
-  // Stored MP4 URL — coba rewrite quality kalau cocok Bunny pattern.
+
+  // Stored MP4 (current webhook default). Upgrade ke HLS untuk WiFi
+  // supaya adaptive bitrate aktif. Sisanya rewrite quality MP4.
+  if (wantsHls) {
+    return bunnyMp4ToHls(url) ?? rewriteBunnyMp4Quality(url, quality) ?? url;
+  }
   return rewriteBunnyMp4Quality(url, quality) ?? url;
 }
 
@@ -44,6 +73,10 @@ type Props = {
   index: number;
   videoUrl: string;
   thumbnailUrl: string | null;
+  /** Blurhash LQIP — render sebagai canvas placeholder paling belakang
+   *  supaya user tidak pernah lihat bg-black tembus walaupun thumbnail
+   *  network masih loading. Null untuk legacy post yang belum di-backfill. */
+  thumbnailBlurhash?: string | null;
   durationSec: number | null;
   aspectRatio?: number;
   className?: string;
@@ -80,6 +113,7 @@ export function FeedVideoPlayer({
   index,
   videoUrl,
   thumbnailUrl,
+  thumbnailBlurhash,
   durationSec,
   aspectRatio = 9 / 16,
   className = "",
@@ -117,12 +151,13 @@ export function FeedVideoPlayer({
     },
     [networkTier],
   );
-  // Resolve HLS → MP4 for Bunny posts + rewrite ke quality sesuai network.
-  // Saat user pindah dari WiFi (720p) ke 3G (480p), URL otomatis re-derive
-  // dan video element re-load pas src berubah.
+  // Pilih playback URL berdasarkan network tier + quality. WiFi dapat HLS
+  // adaptive, mobile dapat MP4 progressive di quality network-appropriate.
+  // Re-derive saat user pindah jaringan (mis. WiFi → 4G) supaya stream
+  // ganti dari HLS ke MP4 720p tanpa wait next post.
   const playbackUrl = useMemo(
-    () => resolvePlaybackUrl(videoUrl, videoQuality),
-    [videoUrl, videoQuality],
+    () => resolvePlaybackUrl(videoUrl, videoQuality, networkTier),
+    [videoUrl, videoQuality, networkTier],
   );
   const isHls = isHlsUrl(playbackUrl);
 
@@ -653,6 +688,19 @@ export function FeedVideoPlayer({
       style={{ aspectRatio: `${aspectRatio}` }}
       onClick={handleSurfaceClick}
     >
+      {/* Layer 0: Blurhash LQIP placeholder — di-decode instan dari ~30
+          byte hash, render ke canvas 32x32 yang CSS scale-up jadi blur
+          smooth. Visible saat thumbnail real masih loading dari Bunny CDN.
+          Saat thumbnailUrl <img> ter-load, dia render on top dan cover
+          blurhash. Saat video first frame painted, video element cover
+          poster. 3 layer stacking yang gradual ke tajam. */}
+      {thumbnailBlurhash && (
+        <BlurhashCanvas
+          hash={thumbnailBlurhash}
+          className={`absolute inset-0 h-full w-full ${videoObjectFit}`}
+        />
+      )}
+
       {/* Background: pure black via `bg-black` class. Untuk non-portrait
           video, bars muncul dari object-contain di atas/bawah (landscape)
           atau kiri/kanan (square) — bars-nya pure black, 1 warna dengan

@@ -160,6 +160,7 @@ export async function listFeedPosts({
     description: p.description,
     videoUrl: p.videoUrl,
     thumbnailUrl: p.thumbnailUrl,
+    thumbnailBlurhash: p.thumbnailBlurhash,
     videoDurationSec: p.videoDurationSec,
     videoWidth: p.videoWidth,
     videoHeight: p.videoHeight,

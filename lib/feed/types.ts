@@ -54,6 +54,10 @@ export type FeedPostListItem = {
   description: string | null;
   videoUrl: string | null;
   thumbnailUrl: string | null;
+  // Blurhash LQIP placeholder — di-decode di client jadi canvas 32x32
+  // sebagai placeholder instan sebelum thumbnail real load. Null untuk
+  // legacy post yang belum di-backfill — UI fallback ke bg-black solid.
+  thumbnailBlurhash: string | null;
   videoDurationSec: number | null;
   videoWidth: number | null;
   videoHeight: number | null;
