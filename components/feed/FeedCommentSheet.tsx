@@ -17,10 +17,7 @@ import {
   type TouchEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import Image from "next/image";
-import Link from "next/link";
-import { FiCheckCircle, FiHeart, FiSend, FiShoppingBag, FiSmile, FiX } from "react-icons/fi";
-import { formatRupiah } from "@/lib/format";
+import { FiCheckCircle, FiHeart, FiSend, FiSmile, FiX } from "react-icons/fi";
 import { hapticTap } from "@/lib/native/haptics";
 import type {
   FeedCommentItem,
@@ -35,10 +32,6 @@ type Props = {
   commentCount?: number | null;
   onClose: () => void;
 };
-
-type CommentSheetProduct =
-  | NonNullable<FeedPostListItem["product"]>
-  | FeedPostListItem["taggedProducts"][number];
 
 const DRAG_CLOSE_THRESHOLD = 96;
 const SNAP_BACK_MS = 280;
@@ -78,7 +71,6 @@ export function FeedCommentSheet({
 
   const visibleCommentTotal = useMemo(() => countThreadedComments(comments), [comments]);
   const creatorCaption = useMemo(() => getFeedPostCaption(post), [post]);
-  const sheetProduct = useMemo(() => getFeedSheetProduct(post), [post]);
 
   const title = useMemo(() => {
     const total = Math.max(Number(commentCount ?? visibleCommentTotal) || 0, visibleCommentTotal);
@@ -583,10 +575,6 @@ export function FeedCommentSheet({
             </div>
           </div>
 
-          {sheetProduct && (
-            <CommentProductPreview product={sheetProduct} onOpen={onClose} />
-          )}
-
           <div
             className="feed-comment-list min-h-0 flex-1 overflow-y-auto border-t border-white/8 px-5 py-4 [-webkit-overflow-scrolling:touch]"
             style={{
@@ -719,54 +707,6 @@ function CreatorCaptionSection({
   );
 }
 
-function CommentProductPreview({
-  product,
-  onOpen,
-}: {
-  product: CommentSheetProduct;
-  onOpen: () => void;
-}) {
-  const displayPrice = getCommentSheetProductPrice(product);
-
-  return (
-    <Link
-      href={`/products/${product.slug}`}
-      onClick={onOpen}
-      className="flex shrink-0 items-center gap-3 border-t border-white/8 bg-white/[0.035] px-5 py-3 text-left transition active:bg-white/[0.07]"
-    >
-      <div className="relative grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-xl bg-white/8 text-white/55 ring-1 ring-white/10">
-        {product.imageUrl ? (
-          <Image
-            src={product.imageUrl}
-            alt={product.name}
-            width={56}
-            height={56}
-            sizes="56px"
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <FiShoppingBag className="h-5 w-5" aria-hidden="true" />
-        )}
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-extrabold text-white">
-          {product.name}
-        </p>
-        {typeof displayPrice === "number" && (
-          <p className="mt-0.5 text-sm font-black text-sky-200">
-            {formatRupiah(displayPrice)}
-          </p>
-        )}
-      </div>
-
-      <span className="text-2xl font-light text-white/45" aria-hidden="true">
-        ›
-      </span>
-    </Link>
-  );
-}
-
 function CommentRow({
   comment,
   onReply,
@@ -896,18 +836,6 @@ function getFeedPostCaption(post: FeedPostListItem | null | undefined) {
 
 function getFeedPostAuthorName(post: FeedPostListItem) {
   return post.author.role === "ADMIN" ? "Natalo Petshop" : post.author.name;
-}
-
-function getFeedSheetProduct(post: FeedPostListItem | null | undefined): CommentSheetProduct | null {
-  if (!post) return null;
-  return post.taggedProducts[0] ?? post.product ?? null;
-}
-
-function getCommentSheetProductPrice(product: CommentSheetProduct) {
-  if ("promoPrice" in product && typeof product.promoPrice === "number") {
-    return product.promoPrice;
-  }
-  return product.discountPrice ?? product.price;
 }
 
 function getInitial(name: string) {

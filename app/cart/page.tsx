@@ -35,7 +35,14 @@ const CHECKOUT_SELECTION_KEY = "checkout:selectedCartItems";
 const CART_VOUCHER_KEY = "cart:voucher";
 
 type CartAppliedMember = { code: string; discount: number; description: string };
-type CartVoucherPreview = { discount: number; minimumOrder: number };
+type CartVoucherOption = {
+  id: string;
+  code: string;
+  description: string | null;
+  discount: number;
+  minimumOrder: number;
+};
+type VoucherSelectionMode = "auto" | "manual" | null;
 type ManualQuantityState = {
   item: CartItem;
   key: string;
@@ -143,7 +150,10 @@ export default function CartPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [voucherSheetOpen, setVoucherSheetOpen] = useState(false);
   const [memberVoucher, setMemberVoucher] = useState<CartAppliedMember | null>(null);
-  const [memberVoucherPreview, setMemberVoucherPreview] = useState<CartVoucherPreview | null>(null);
+  const [memberVoucherPreview, setMemberVoucherPreview] = useState<CartVoucherOption | null>(null);
+  const [voucherSelectionMode, setVoucherSelectionMode] = useState<VoucherSelectionMode>(null);
+  const [voucherLookupComplete, setVoucherLookupComplete] = useState(false);
+  const manualVoucherSignatureRef = useRef("");
 
   // Delete confirmation modal state
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -166,7 +176,10 @@ export default function CartPage() {
           member?: CartAppliedMember | null;
           private?: unknown;
         };
-        if (parsed.member) setMemberVoucher(parsed.member);
+        if (parsed.member) {
+          setMemberVoucher(parsed.member);
+          setVoucherSelectionMode("manual");
+        }
         if (parsed.private) {
           sessionStorage.setItem(
             CART_VOUCHER_KEY,
@@ -242,6 +255,14 @@ export default function CartPage() {
     () => items.filter((item) => selectedKeys.has(cartKey(item))),
     [items, selectedKeys]
   );
+  const selectedVoucherSignature = useMemo(
+    () =>
+      selectedItems
+        .map((item) => `${cartKey(item)}:${item.quantity}`)
+        .sort()
+        .join("|"),
+    [selectedItems],
+  );
   const selectedCount = selectedItems.length;
   const selectedQuantity = selectedItems.reduce((sum, item) => sum + item.quantity, 0);
   const selectedSubtotal = selectedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -255,35 +276,95 @@ export default function CartPage() {
   const allSelected = items.length > 0 && selectedKeys.size === items.length;
   const selectionLabel = itemSelectionLabel(selectedCount, selectedQuantity);
   const isCartEmpty = items.length === 0;
-  const stickyVoucherText =
+  const stickyVoucherSavings =
+    voucherDiscount > 0 ? formatRupiah(voucherDiscount) : undefined;
+  const stickyVoucherDiscountText =
     voucherDiscount > 0 ? `Diskon ${formatRupiah(voucherDiscount)}` : undefined;
+  const hasNoEligibleVoucher =
+    selectedCount > 0 &&
+    selectedSubtotal > 0 &&
+    isLoggedIn &&
+    voucherLookupComplete &&
+    !memberVoucher &&
+    !memberVoucherPreview;
 
   useEffect(() => {
-    if (!isLoggedIn) {
+    if (!isLoggedIn || selectedCount === 0 || selectedSubtotal <= 0) {
       setMemberVoucherPreview(null);
+      setVoucherLookupComplete(false);
+      setMemberVoucher(null);
+      setVoucherSelectionMode(null);
       return;
     }
 
     let active = true;
+    setVoucherLookupComplete(false);
     fetch(`/api/cart/vouchers?subtotal=${selectedSubtotal}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!active) return;
-        const vouchers = [
-          ...((Array.isArray(data?.available) ? data.available : []) as CartVoucherPreview[]),
-          ...((Array.isArray(data?.unavailable) ? data.unavailable : []) as CartVoucherPreview[]),
-        ].filter((voucher) => voucher.discount > 0);
-        vouchers.sort((a, b) => b.discount - a.discount);
-        setMemberVoucherPreview(vouchers[0] ?? null);
+        const available = ((Array.isArray(data?.available) ? data.available : []) as CartVoucherOption[])
+          .filter((voucher) => voucher.code && voucher.discount > 0)
+          .sort((a, b) => b.discount - a.discount);
+        const bestVoucher = available[0] ?? null;
+        const toAppliedVoucher = (voucher: CartVoucherOption): CartAppliedMember => ({
+          code: voucher.code,
+          discount: voucher.discount,
+          description: voucher.description ?? `Hemat ${formatRupiah(voucher.discount)}`,
+        });
+
+        setMemberVoucherPreview(bestVoucher);
+        setVoucherLookupComplete(true);
+
+        if (voucherSelectionMode === "manual") {
+          const manualSelectionChanged =
+            manualVoucherSignatureRef.current &&
+            manualVoucherSignatureRef.current !== selectedVoucherSignature;
+
+          setMemberVoucher((currentVoucher) => {
+            if (!currentVoucher) {
+              if (manualSelectionChanged) {
+                setVoucherSelectionMode(bestVoucher ? "auto" : null);
+                manualVoucherSignatureRef.current = "";
+                return bestVoucher ? toAppliedVoucher(bestVoucher) : null;
+              }
+              return currentVoucher;
+            }
+
+            const stillEligibleManual = available.find(
+              (voucher) => voucher.code === currentVoucher.code,
+            );
+
+            if (stillEligibleManual) {
+              return toAppliedVoucher(stillEligibleManual);
+            }
+
+            setVoucherSelectionMode(bestVoucher ? "auto" : null);
+            manualVoucherSignatureRef.current = "";
+            return bestVoucher ? toAppliedVoucher(bestVoucher) : null;
+          });
+          return;
+        }
+
+        setVoucherSelectionMode(bestVoucher ? "auto" : null);
+        setMemberVoucher(bestVoucher ? toAppliedVoucher(bestVoucher) : null);
       })
       .catch(() => {
-        if (active) setMemberVoucherPreview(null);
+        if (!active) return;
+        setMemberVoucherPreview(null);
+        setVoucherLookupComplete(true);
       });
 
     return () => {
       active = false;
     };
-  }, [isLoggedIn, selectedSubtotal]);
+  }, [
+    isLoggedIn,
+    selectedCount,
+    selectedSubtotal,
+    selectedVoucherSignature,
+    voucherSelectionMode,
+  ]);
 
   const manualQuantityValidation = useMemo(
     () => validateQuantityInput(manualQuantityInput, manualQuantity?.item.stock),
@@ -882,6 +963,8 @@ export default function CartPage() {
         subtotal={selectedSubtotal}
         selectedMemberCode={memberVoucher?.code ?? null}
         onSelectMember={(code, discount, description) => {
+          setVoucherSelectionMode("manual");
+          manualVoucherSignatureRef.current = selectedVoucherSignature;
           if (!code) {
             setMemberVoucher(null);
           } else {
@@ -1011,7 +1094,10 @@ export default function CartPage() {
         <>
           <StickyVoucherBar
             selectedCount={selectedCount}
-            appliedVoucherText={stickyVoucherText}
+            savingsText={stickyVoucherSavings}
+            discountText={stickyVoucherDiscountText}
+            mode={voucherSelectionMode === "manual" ? "manual" : "auto"}
+            noEligibleVoucher={hasNoEligibleVoucher}
             onClick={() => setVoucherSheetOpen(true)}
           />
           <div className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-100 bg-white px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] md:hidden [padding-bottom:calc(12px+env(safe-area-inset-bottom))]">

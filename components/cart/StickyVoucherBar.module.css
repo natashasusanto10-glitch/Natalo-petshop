@@ -4,14 +4,14 @@
   right: max(0px, env(safe-area-inset-right));
   bottom: calc(84px + env(safe-area-inset-bottom));
   z-index: 39;
-  min-height: 52px;
-  padding: 10px 16px;
+  min-height: 54px;
+  padding: 8px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  background: #ffffff;
-  border-top: 1px solid #edf0f3;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  border-top: 1px solid #dbeafe;
   border-bottom: 1px solid #edf0f3;
   box-shadow: 0 -4px 14px rgba(15, 23, 42, 0.06);
   color: #1f2937;
@@ -36,7 +36,6 @@
 
 .disabled {
   color: #6b7280;
-  cursor: default;
 }
 
 .left {
@@ -57,6 +56,23 @@
   color: #1e5fbf;
   background: #eff6ff;
   border: 1px solid #dbeafe;
+}
+
+.content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.mainText {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 14px;
+  font-weight: 800;
 }
 
 .chips {
@@ -99,15 +115,6 @@
   color: #b7791f;
   background: #fff7e6;
   border: 1px solid #ffd98a;
-}
-
-.placeholderText {
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-size: 15px;
-  font-weight: 700;
 }
 
 .chevron {

@@ -52,6 +52,7 @@ export function useAutoHideOnInteraction({
     };
 
     window.addEventListener("scroll", hideBar, { passive: true });
+    window.addEventListener("pointerdown", hideBar, { passive: true });
     window.addEventListener("touchstart", hideBar, { passive: true });
     window.addEventListener("touchmove", hideBar, { passive: true });
     window.addEventListener("touchend", showBar, { passive: true });
@@ -59,6 +60,7 @@ export function useAutoHideOnInteraction({
 
     return () => {
       window.removeEventListener("scroll", hideBar);
+      window.removeEventListener("pointerdown", hideBar);
       window.removeEventListener("touchstart", hideBar);
       window.removeEventListener("touchmove", hideBar);
       window.removeEventListener("touchend", showBar);
