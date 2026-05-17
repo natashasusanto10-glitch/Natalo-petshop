@@ -915,6 +915,40 @@ class _FeedPostViewState extends State<_FeedPostView>
     }
   }
 
+  /// Sprint 4 #1 — Long-press to pause while holding (Instagram Reels
+  /// signature gesture). User tahan finger di video → pause sementara
+  /// + UI overlay hide. Lepas finger → resume + UI restore.
+  ///
+  /// Beda dengan tap toggle: long-press temporary, tidak persist state.
+  /// Cocok untuk "stop briefly to read text on video" pattern Reels.
+  bool _longPressPaused = false;
+  bool _hideOverlayForLongPress = false;
+
+  void _onLongPressStart(LongPressStartDetails details) {
+    final ctrl = _videoController;
+    if (ctrl == null || !ctrl.value.isInitialized) return;
+    if (!ctrl.value.isPlaying) return; // Hanya kalau lagi playing
+    AppHaptics.impact();
+    ctrl.pause();
+    setState(() {
+      _longPressPaused = true;
+      _hideOverlayForLongPress = true;
+    });
+  }
+
+  void _onLongPressEnd(LongPressEndDetails details) {
+    final ctrl = _videoController;
+    if (!_longPressPaused) return;
+    setState(() {
+      _longPressPaused = false;
+      _hideOverlayForLongPress = false;
+    });
+    if (ctrl != null && !_isPaused) {
+      // Resume cuma kalau user tidak previously tap-paused juga.
+      ctrl.play();
+    }
+  }
+
   Future<void> _toggleMuteWhilePaused() async {
     final ctrl = _videoController;
     if (ctrl == null || !_isPaused) return;
@@ -1003,6 +1037,9 @@ class _FeedPostViewState extends State<_FeedPostView>
                         child: GestureDetector(
                           onTap: _onTapMedia,
                           onDoubleTap: _onDoubleTapLike,
+                          // Sprint 4 #1 — Long-press signature gesture.
+                          onLongPressStart: _onLongPressStart,
+                          onLongPressEnd: _onLongPressEnd,
                           child: _MediaBackground(
                             post: post,
                             videoController: _videoController,
@@ -1105,166 +1142,179 @@ class _FeedPostViewState extends State<_FeedPostView>
                           ),
                         ),
                         // ── Right action column (Reels-style: tight + minimal) ──
+                        // Sprint 4 #1 — Hide overlays selama long-press
+                        // supaya user dapat clean view sementara hold.
                         Positioned(
                           right: 18,
                           bottom: actionRailInset,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _ReelsAction(
-                                icon: _liked
-                                    ? Icons.favorite_rounded
-                                    : Icons.favorite_border_rounded,
-                                color: _liked
-                                    ? const Color(0xFFEF4444)
-                                    : Colors.white,
-                                count: _likeCount,
-                                onTap: _onLikePressed,
-                              ),
-                              const SizedBox(height: 10),
-                              _ReelsAction(
-                                iconChild: const _ReelsCommentGlyph(),
-                                color: Colors.white,
-                                count: _commentCount,
-                                onTap: _onComment,
-                              ),
-                              const SizedBox(height: 10),
-                              _ReelsAction(
-                                iconChild: const _ReelsShareGlyph(),
-                                color: Colors.white,
-                                count: _shareCount,
-                                onTap: _onShare,
-                              ),
-                              const SizedBox(height: 10),
-                              _ReelsAction(
-                                iconChild: const _ReelsBagGlyph(),
-                                color: Colors.white,
-                                count: _cartQuantityCount > 0
-                                    ? _cartQuantityCount
-                                    : null,
-                                onTap: _openFeedCartSheet,
-                              ),
-                              // Sprint 3 #10 — Cinema mode fullscreen button.
-                              // Hanya muncul kalau video sudah ada controller
-                              // (initialized) supaya tidak crash saat tap.
-                              if (_videoController != null &&
-                                  _videoController!.value.isInitialized) ...[
+                          child: AnimatedOpacity(
+                            opacity: _hideOverlayForLongPress ? 0 : 1,
+                            duration: const Duration(milliseconds: 150),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _ReelsAction(
+                                  icon: _liked
+                                      ? Icons.favorite_rounded
+                                      : Icons.favorite_border_rounded,
+                                  color: _liked
+                                      ? const Color(0xFFEF4444)
+                                      : Colors.white,
+                                  count: _likeCount,
+                                  onTap: _onLikePressed,
+                                ),
                                 const SizedBox(height: 10),
                                 _ReelsAction(
-                                  icon: Icons.fullscreen_rounded,
+                                  iconChild: const _ReelsCommentGlyph(),
                                   color: Colors.white,
-                                  count: null, // no count badge untuk cinema
-                                  onTap: _openCinemaMode,
+                                  count: _commentCount,
+                                  onTap: _onComment,
                                 ),
+                                const SizedBox(height: 10),
+                                _ReelsAction(
+                                  iconChild: const _ReelsShareGlyph(),
+                                  color: Colors.white,
+                                  count: _shareCount,
+                                  onTap: _onShare,
+                                ),
+                                const SizedBox(height: 10),
+                                _ReelsAction(
+                                  iconChild: const _ReelsBagGlyph(),
+                                  color: Colors.white,
+                                  count: _cartQuantityCount > 0
+                                      ? _cartQuantityCount
+                                      : null,
+                                  onTap: _openFeedCartSheet,
+                                ),
+                                // Sprint 3 #10 — Cinema mode fullscreen button.
+                                // Hanya muncul kalau video sudah ada controller
+                                // (initialized) supaya tidak crash saat tap.
+                                if (_videoController != null &&
+                                    _videoController!.value.isInitialized) ...[
+                                  const SizedBox(height: 10),
+                                  _ReelsAction(
+                                    icon: Icons.fullscreen_rounded,
+                                    color: Colors.white,
+                                    count: null, // no count badge untuk cinema
+                                    onTap: _openCinemaMode,
+                                  ),
+                                ],
                               ],
-                            ],
+                            ),
                           ),
                         ),
                         // ── Bottom info: product tag + creator + caption ──
+                        // Same AnimatedOpacity wrapper untuk hide saat long-press.
                         Positioned(
                           left: 16,
                           right: 78,
                           bottom: feedInfoInset,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (products.isNotEmpty) ...[
-                                _ProductLinkChip(
-                                  products: products,
-                                  featuredProduct: featuredProduct!,
-                                  featuredIndex:
-                                      _featuredProductIndex % products.length,
-                                  onTap: () => _onProductsTap(products),
-                                  onQuickAdd: () =>
-                                      _quickAddProduct(featuredProduct),
-                                ),
-                                const SizedBox(height: 9),
-                              ],
-                              Row(
-                                children: [
-                                  Flexible(
-                                    child: Text(
-                                      post.author.isAdmin
-                                          ? 'Natalo Petshop'
-                                          : post.author.name,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        color: post.author.isAdmin
-                                            ? _officialGold
-                                            : Colors.white,
-                                        fontSize: post.author.isAdmin ? 15 : 14,
-                                        fontWeight: post.author.isAdmin
-                                            ? FontWeight.w800
-                                            : FontWeight.w900,
-                                        shadows: const [
-                                          Shadow(
-                                            color: Colors.black54,
-                                            blurRadius: 6,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
+                          child: AnimatedOpacity(
+                            opacity: _hideOverlayForLongPress ? 0 : 1,
+                            duration: const Duration(milliseconds: 150),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (products.isNotEmpty) ...[
+                                  _ProductLinkChip(
+                                    products: products,
+                                    featuredProduct: featuredProduct!,
+                                    featuredIndex:
+                                        _featuredProductIndex % products.length,
+                                    onTap: () => _onProductsTap(products),
+                                    onQuickAdd: () =>
+                                        _quickAddProduct(featuredProduct),
                                   ),
-                                  if (post.author.isAdmin) ...[
-                                    const SizedBox(width: 6),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 7,
-                                        vertical: 3,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: _officialGold.withValues(
-                                            alpha: 0.14),
-                                        borderRadius:
-                                            BorderRadius.circular(999),
-                                        border: Border.all(
-                                          color: _officialGoldMuted.withValues(
-                                            alpha: 0.82,
-                                          ),
-                                          width: 1.2,
+                                  const SizedBox(height: 9),
+                                ],
+                                Row(
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        post.author.isAdmin
+                                            ? 'Natalo Petshop'
+                                            : post.author.name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: post.author.isAdmin
+                                              ? _officialGold
+                                              : Colors.white,
+                                          fontSize:
+                                              post.author.isAdmin ? 15 : 14,
+                                          fontWeight: post.author.isAdmin
+                                              ? FontWeight.w800
+                                              : FontWeight.w900,
+                                          shadows: const [
+                                            Shadow(
+                                              color: Colors.black54,
+                                              blurRadius: 6,
+                                            ),
+                                          ],
                                         ),
                                       ),
-                                      child: const Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            Icons.check_rounded,
-                                            color: _officialGold,
-                                            size: 12,
-                                          ),
-                                          SizedBox(width: 3),
-                                          Text(
-                                            'Official',
-                                            style: TextStyle(
-                                              color: _officialGold,
-                                              fontSize: 10.5,
-                                              fontWeight: FontWeight.w700,
-                                              height: 1,
-                                              shadows: [
-                                                Shadow(
-                                                  color: Colors.black54,
-                                                  blurRadius: 5,
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
                                     ),
+                                    if (post.author.isAdmin) ...[
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 7,
+                                          vertical: 3,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: _officialGold.withValues(
+                                              alpha: 0.14),
+                                          borderRadius:
+                                              BorderRadius.circular(999),
+                                          border: Border.all(
+                                            color:
+                                                _officialGoldMuted.withValues(
+                                              alpha: 0.82,
+                                            ),
+                                            width: 1.2,
+                                          ),
+                                        ),
+                                        child: const Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.check_rounded,
+                                              color: _officialGold,
+                                              size: 12,
+                                            ),
+                                            SizedBox(width: 3),
+                                            Text(
+                                              'Official',
+                                              style: TextStyle(
+                                                color: _officialGold,
+                                                fontSize: 10.5,
+                                                fontWeight: FontWeight.w700,
+                                                height: 1,
+                                                shadows: [
+                                                  Shadow(
+                                                    color: Colors.black54,
+                                                    blurRadius: 5,
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
                                   ],
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              _ExpandableCaption(
-                                text: post.title.isNotEmpty
-                                    ? post.title
-                                    : (post.description ?? ''),
-                                expanded: _captionExpanded,
-                                onToggle: () => setState(
-                                    () => _captionExpanded = !_captionExpanded),
-                              ),
-                            ],
+                                ),
+                                const SizedBox(height: 6),
+                                _ExpandableCaption(
+                                  text: post.title.isNotEmpty
+                                      ? post.title
+                                      : (post.description ?? ''),
+                                  expanded: _captionExpanded,
+                                  onToggle: () => setState(() =>
+                                      _captionExpanded = !_captionExpanded),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],
@@ -1561,9 +1611,8 @@ class _FullScreenVideoPageState extends State<_FullScreenVideoPage> {
   @override
   Widget build(BuildContext context) {
     final size = widget.controller.value.size;
-    final aspect = size.width > 0 && size.height > 0
-        ? size.width / size.height
-        : 9 / 16;
+    final aspect =
+        size.width > 0 && size.height > 0 ? size.width / size.height : 9 / 16;
     return Scaffold(
       backgroundColor: Colors.black,
       body: GestureDetector(
@@ -1702,14 +1751,65 @@ bool _isHorizontalSize(Size size) {
   return size.width > size.height;
 }
 
-class _FeedVideoProgressBar extends StatelessWidget {
+/// Sprint 4 #3 — Scrubbing progress bar.
+///
+/// Drag horizontal di area progress bar untuk seek video. Saat scrub
+/// aktif: bar tinggi 6px (vs 2px normal) supaya touch target jelas, plus
+/// thumb dot di posisi current. Drag end → seekTo() ke posisi final.
+///
+/// Auto-pause selama scrub supaya frame target jelas. Auto-resume saat
+/// drag end (kalau sebelumnya playing).
+class _FeedVideoProgressBar extends StatefulWidget {
   final VideoPlayerController? controller;
 
   const _FeedVideoProgressBar({required this.controller});
 
   @override
+  State<_FeedVideoProgressBar> createState() => _FeedVideoProgressBarState();
+}
+
+class _FeedVideoProgressBarState extends State<_FeedVideoProgressBar> {
+  bool _scrubbing = false;
+  double _scrubProgress = 0;
+  bool _wasPlayingBeforeScrub = false;
+
+  void _onScrubStart(DragStartDetails details, double width, int duration) {
+    final ctrl = widget.controller;
+    if (ctrl == null || !ctrl.value.isInitialized) return;
+    AppHaptics.tap();
+    _wasPlayingBeforeScrub = ctrl.value.isPlaying;
+    if (_wasPlayingBeforeScrub) ctrl.pause();
+    setState(() {
+      _scrubbing = true;
+      _scrubProgress =
+          (details.localPosition.dx / width).clamp(0.0, 1.0);
+    });
+  }
+
+  void _onScrubUpdate(DragUpdateDetails details, double width) {
+    if (!_scrubbing) return;
+    setState(() {
+      _scrubProgress =
+          (details.localPosition.dx / width).clamp(0.0, 1.0);
+    });
+  }
+
+  void _onScrubEnd(DragEndDetails details, int duration) {
+    if (!_scrubbing) return;
+    final ctrl = widget.controller;
+    if (ctrl != null && ctrl.value.isInitialized) {
+      final targetMs = (_scrubProgress * duration).round();
+      ctrl.seekTo(Duration(milliseconds: targetMs));
+      if (_wasPlayingBeforeScrub) {
+        ctrl.play();
+      }
+    }
+    setState(() => _scrubbing = false);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final ctrl = controller;
+    final ctrl = widget.controller;
     if (ctrl == null) return const SizedBox.shrink();
 
     return AnimatedBuilder(
@@ -1721,24 +1821,78 @@ class _FeedVideoProgressBar extends StatelessWidget {
           return const SizedBox.shrink();
         }
         final position = value.position.inMilliseconds.clamp(0, duration);
-        final progress = position / duration;
+        final naturalProgress = position / duration;
+        final progress = _scrubbing ? _scrubProgress : naturalProgress;
 
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(999),
-          child: SizedBox(
-            height: 2,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                ColoredBox(color: Colors.white.withValues(alpha: 0.18)),
-                FractionallySizedBox(
-                  alignment: Alignment.centerLeft,
-                  widthFactor: progress.clamp(0.0, 1.0),
-                  child: const ColoredBox(color: Colors.white),
+        // Touch target area lebih besar dari visible bar — wrap di
+        // Container vertical 16px supaya gampang di-grab.
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth;
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onHorizontalDragStart: (d) =>
+                  _onScrubStart(d, width, duration),
+              onHorizontalDragUpdate: (d) =>
+                  _onScrubUpdate(d, width),
+              onHorizontalDragEnd: (d) => _onScrubEnd(d, duration),
+              onHorizontalDragCancel: () {
+                if (_scrubbing && _wasPlayingBeforeScrub) {
+                  ctrl.play();
+                }
+                setState(() => _scrubbing = false);
+              },
+              child: SizedBox(
+                height: 16, // extended touch target
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // Visible bar — tinggi 2px normal, 6px saat scrub.
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 120),
+                      height: _scrubbing ? 6 : 2,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(999),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            ColoredBox(
+                              color: Colors.white.withValues(alpha: 0.22),
+                            ),
+                            FractionallySizedBox(
+                              alignment: Alignment.centerLeft,
+                              widthFactor: progress.clamp(0.0, 1.0),
+                              child: const ColoredBox(color: Colors.white),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    // Thumb dot — visible saat scrubbing aktif.
+                    if (_scrubbing)
+                      Positioned(
+                        left: (width * progress).clamp(0.0, width) - 7,
+                        child: Container(
+                          width: 14,
+                          height: 14,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.32),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
