@@ -1128,9 +1128,18 @@ class _FeedPostViewState extends State<_FeedPostView>
           final safeTop = MediaQuery.paddingOf(context).top;
           final safeBottom = MediaQuery.paddingOf(context).bottom;
           final keyboard = MediaQuery.viewInsetsOf(context).bottom;
-          final bottomNavInset = safeBottom + 60;
-          const feedInfoInset = 20.0;
-          const actionRailInset = 86.0;
+          // Bottom nav translucent — video boleh edge-to-edge sampai
+          // bawah layar. Sebelumnya safeBottom + 60 bikin gap visible
+          // antara video bottom dan bottom nav.
+          // Saat comment sheet open (minimized), preview tetap perlu
+          // bottom inset supaya tidak ketutup sheet — pakai sheetHeight.
+          const bottomNavInset = 0.0;
+          // feedInfoInset + actionRailInset harus kompensasi tinggi nav
+          // (58px + safeBottom) supaya icon + caption tidak ketutup nav
+          // yang translucent. Sebelumnya inset relatif ke video bottom;
+          // sekarang relatif ke screen bottom karena video edge-to-edge.
+          final feedInfoInset = safeBottom + 78.0;
+          final actionRailInset = safeBottom + 148.0;
           final targetSheetHeight = constraints.maxHeight *
               (keyboard > 0 ? 0.52 : FeedCommentSheet.reelsHeightFactor);
           final minPreviewHeight = keyboard > 0 ? 170.0 : 224.0;
