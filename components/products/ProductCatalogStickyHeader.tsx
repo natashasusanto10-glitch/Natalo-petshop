@@ -36,7 +36,7 @@ export function ProductCatalogStickyHeader({
   const title = activeBrandName ? `Produk ${activeBrandName}` : "Katalog Produk";
 
   return (
-    <div className="produk-sticky-header sticky top-0 z-[1050] -mx-4 mb-3 rounded-b-3xl border-b border-slate-200/80 bg-white px-4 pb-2.5 pt-[calc(0.55rem+env(safe-area-inset-top))] shadow-[0_10px_28px_rgba(15,23,42,0.08)] md:static md:mx-0 md:mb-5 md:rounded-none md:border-b-0 md:bg-transparent md:px-0 md:pb-0 md:pt-0 md:shadow-none">
+    <div className="produk-sticky-header sticky top-0 z-[1050] -mx-4 mb-3 rounded-b-3xl border-b border-slate-200/80 bg-white px-4 pb-2.5 pt-[calc(0.55rem+env(safe-area-inset-top))] shadow-[0_10px_28px_rgba(15,23,42,0.08)] md:mx-0 md:mb-5 md:px-4 md:pb-3 md:pt-3">
       <div className="mb-2 flex min-h-[58px] items-center justify-between gap-3 md:hidden">
         <Link href="/" aria-label={brandName} className="flex min-w-0 shrink-0 items-center">
           <Image
