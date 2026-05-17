@@ -418,9 +418,18 @@ export function FeedVideoPlayer({
     };
   }, [isActive, activeSlot, soundOn, getRef]);
 
-  // Spinner: show only when active card stays genuinely un-playable for
-  // >LOADING_INDICATOR_DELAY_MS. Source of truth = video.readyState + paused,
-  // not the isPlaying React state (which can lag on iOS WKWebView).
+  // Spinner: show only when active card stays genuinely UN-buffered for
+  // >LOADING_INDICATOR_DELAY_MS. Source of truth = video.readyState saja
+  // (HAVE_FUTURE_DATA = 3 atau lebih = bisa play forward).
+  //
+  // PENTING: jangan include `video.paused` di cek ini — user pause
+  // intentional (tap untuk pause) tetap punya readyState 4 (HAVE_ENOUGH_
+  // DATA), tapi paused=true. Kalau ikut paused, spinner muncul setelah
+  // 1.2s saat user pause normal — bug yang user laporkan.
+  //
+  // Tampilkan spinner cuma kalau buffering beneran (data belum cukup):
+  //   readyState 0 (NOTHING) / 1 (METADATA) / 2 (CURRENT_DATA) → stalled
+  //   readyState 3 (FUTURE_DATA) / 4 (ENOUGH_DATA) → ready, no spinner
   useEffect(() => {
     if (!isActive) {
       setShowLoadingIndicator(false);
@@ -432,8 +441,8 @@ export function FeedVideoPlayer({
         setShowLoadingIndicator(true);
         return;
       }
-      const isReallyPlaying = !video.paused && video.readyState >= 3;
-      setShowLoadingIndicator(!isReallyPlaying);
+      const hasEnoughData = video.readyState >= 3;
+      setShowLoadingIndicator(!hasEnoughData);
     }, LOADING_INDICATOR_DELAY_MS);
     return () => window.clearTimeout(t);
   }, [isActive, isPlaying, activeSlot, getRef]);
@@ -865,10 +874,11 @@ export function FeedVideoPlayer({
           Android: pakai standard Fullscreen API.
           Web: same Fullscreen API, browser-native player UI.
 
-          Beda dengan custom Capacitor plugin yang butuh native overlay +
-          1-2 minggu effort: ini ~30 baris JS, no plugin install, no
-          TestFlight rebuild. iOS handle native player rendering otomatis. */}
-      {isActive && (
+          Gate dengan `showSoundToggle` (= isActive && !isPlaying &&
+          !showLoadingIndicator) — sama dengan sound toggle. Tujuannya:
+          tombol hanya muncul saat user pause video, supaya tidak distract
+          saat user lagi nonton. */}
+      {showSoundToggle && (
         <button
           type="button"
           aria-label="Cinema mode — buka di player native"
@@ -899,10 +909,12 @@ export function FeedVideoPlayer({
             }
           }}
           className="absolute right-3 z-[3] grid h-10 w-10 place-items-center rounded-full bg-black/40 text-white shadow-[0_8px_20px_rgba(0,0,0,0.28)] backdrop-blur-md transition active:scale-95"
+          // Cinema button selalu di-stack di bawah sound toggle saat
+          // visible — keduanya share gate showSoundToggle, jadi cinema
+          // selalu render bersama sound. Position 132px = sound (76px)
+          // + sound button height (40px) + gap (16px).
           style={{
-            top: showSoundToggle
-              ? "calc(env(safe-area-inset-top, 0px) + 132px)"
-              : "calc(env(safe-area-inset-top, 0px) + 76px)",
+            top: "calc(env(safe-area-inset-top, 0px) + 132px)",
           }}
         >
           <svg
