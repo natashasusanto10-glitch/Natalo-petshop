@@ -431,9 +431,17 @@ export function FeedVideoCard({
             )}
           </div>
           {caption && (
-            <p className="mt-1.5 line-clamp-2 text-[15px] font-normal leading-snug text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
-              {caption}
-            </p>
+            <button
+              type="button"
+              onClick={() => onOpenComments(post.id)}
+              className="mt-1.5 block max-w-full text-left"
+              aria-label="Buka deskripsi dan komentar"
+            >
+              <p className="line-clamp-2 text-[15px] font-normal leading-snug text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
+                {caption}
+                <span className="font-semibold text-white/80"> Selengkapnya</span>
+              </p>
+            </button>
           )}
         </div>
       )}

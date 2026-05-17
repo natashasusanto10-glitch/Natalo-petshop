@@ -232,6 +232,10 @@ export function FeedClient() {
     if (!commentPostId) return 0;
     return posts.find((post) => post.id === commentPostId)?.commentCount ?? 0;
   }, [commentPostId, posts]);
+  const activeCommentPost = useMemo(() => {
+    if (!commentPostId) return null;
+    return posts.find((post) => post.id === commentPostId) ?? null;
+  }, [commentPostId, posts]);
   const showEmpty = !loading && !error && posts.length === 0;
 
   useEffect(() => {
@@ -299,6 +303,7 @@ export function FeedClient() {
       <FeedCommentSheet
         open={commentSheetOpen}
         postId={commentPostId}
+        post={activeCommentPost}
         commentCount={activeCommentCount}
         onClose={() => setCommentPostId(null)}
       />

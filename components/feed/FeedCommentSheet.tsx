@@ -17,16 +17,28 @@ import {
   type TouchEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import { FiHeart, FiSend, FiSmile, FiX } from "react-icons/fi";
+import Image from "next/image";
+import Link from "next/link";
+import { FiCheckCircle, FiHeart, FiSend, FiShoppingBag, FiSmile, FiX } from "react-icons/fi";
+import { formatRupiah } from "@/lib/format";
 import { hapticTap } from "@/lib/native/haptics";
-import type { FeedCommentItem, FeedCommentsResponse } from "@/lib/feed/types";
+import type {
+  FeedCommentItem,
+  FeedCommentsResponse,
+  FeedPostListItem,
+} from "@/lib/feed/types";
 
 type Props = {
   open: boolean;
   postId: string | null;
+  post?: FeedPostListItem | null;
   commentCount?: number | null;
   onClose: () => void;
 };
+
+type CommentSheetProduct =
+  | NonNullable<FeedPostListItem["product"]>
+  | FeedPostListItem["taggedProducts"][number];
 
 const DRAG_CLOSE_THRESHOLD = 96;
 const SNAP_BACK_MS = 280;
@@ -38,6 +50,7 @@ const COMMENT_REPLY_COMPOSER_HEIGHT = 118;
 export function FeedCommentSheet({
   open,
   postId,
+  post,
   commentCount,
   onClose,
 }: Props) {
@@ -64,6 +77,8 @@ export function FeedCommentSheet({
   const [keyboardOpen, setKeyboardOpen] = useState(false);
 
   const visibleCommentTotal = useMemo(() => countThreadedComments(comments), [comments]);
+  const creatorCaption = useMemo(() => getFeedPostCaption(post), [post]);
+  const sheetProduct = useMemo(() => getFeedSheetProduct(post), [post]);
 
   const title = useMemo(() => {
     const total = Math.max(Number(commentCount ?? visibleCommentTotal) || 0, visibleCommentTotal);
@@ -187,9 +202,12 @@ export function FeedCommentSheet({
 
   useEffect(() => {
     if (!open || typeof document === "undefined") return;
+    const originalOverflow = document.body.style.overflow;
     document.body.classList.add("comments-open");
+    document.body.style.overflow = "hidden";
     return () => {
       document.body.classList.remove("comments-open");
+      document.body.style.overflow = originalOverflow;
     };
   }, [open]);
 
@@ -565,6 +583,10 @@ export function FeedCommentSheet({
             </div>
           </div>
 
+          {sheetProduct && (
+            <CommentProductPreview product={sheetProduct} onOpen={onClose} />
+          )}
+
           <div
             className="feed-comment-list min-h-0 flex-1 overflow-y-auto border-t border-white/8 px-5 py-4 [-webkit-overflow-scrolling:touch]"
             style={{
@@ -574,6 +596,9 @@ export function FeedCommentSheet({
             onPointerDown={(event) => dismissKeyboardFromSheet(event.target)}
           >
             <div className="space-y-4">
+              {post && creatorCaption && (
+                <CreatorCaptionSection post={post} caption={creatorCaption} />
+              )}
               {postError && (
                 <p className="rounded-2xl bg-red-500/12 p-2.5 text-xs font-bold text-red-200 ring-1 ring-red-400/20">
                   {postError}
@@ -590,7 +615,11 @@ export function FeedCommentSheet({
                 </p>
               )}
               {!loading && !error && comments.length === 0 && (
-                <p className="py-8 text-center text-xs font-bold text-white/45">
+                <p
+                  className={`text-center text-xs font-bold text-white/45 ${
+                    creatorCaption ? "py-5" : "py-8"
+                  }`}
+                >
                   Belum ada komentar. Jadi yang pertama!
                 </p>
               )}
@@ -629,6 +658,112 @@ export function FeedCommentSheet({
       </div>
     </>,
     document.body,
+  );
+}
+
+function CreatorCaptionSection({
+  post,
+  caption,
+}: {
+  post: FeedPostListItem;
+  caption: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const authorName = getFeedPostAuthorName(post);
+  const isOfficial = post.author.role === "ADMIN";
+  const shouldClamp = caption.length > 120;
+
+  return (
+    <div className="flex gap-3 rounded-2xl border border-white/8 bg-white/[0.04] p-3">
+      <div
+        className={`grid h-11 w-11 shrink-0 place-items-center rounded-full text-sm font-black ring-1 ${
+          isOfficial
+            ? "bg-[#D6A84A]/18 text-[#E8C878] ring-[#D6A84A]/24"
+            : "bg-white/10 text-white ring-white/10"
+        }`}
+      >
+        {isOfficial ? "N" : getInitial(authorName)}
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-sm font-extrabold text-white">{authorName}</p>
+          {isOfficial && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-natalo-500/16 px-2 py-0.5 text-[10px] font-black uppercase text-sky-100 ring-1 ring-natalo-300/20">
+              <FiCheckCircle className="h-3 w-3" aria-hidden="true" />
+              Official
+            </span>
+          )}
+        </div>
+
+        {/* Caption utama post ditampilkan sebagai konteks creator, bukan komentar palsu. */}
+        <p
+          className={`mt-1 whitespace-pre-line text-[15px] leading-snug text-white/88 ${
+            expanded ? "" : "line-clamp-3"
+          }`}
+        >
+          {caption}
+        </p>
+
+        {shouldClamp && (
+          <button
+            type="button"
+            onClick={() => setExpanded((value) => !value)}
+            className="mt-1 text-sm font-extrabold text-white/82 transition active:text-white"
+          >
+            {expanded ? "Sembunyikan" : "Selengkapnya"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CommentProductPreview({
+  product,
+  onOpen,
+}: {
+  product: CommentSheetProduct;
+  onOpen: () => void;
+}) {
+  const displayPrice = getCommentSheetProductPrice(product);
+
+  return (
+    <Link
+      href={`/products/${product.slug}`}
+      onClick={onOpen}
+      className="flex shrink-0 items-center gap-3 border-t border-white/8 bg-white/[0.035] px-5 py-3 text-left transition active:bg-white/[0.07]"
+    >
+      <div className="relative grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-xl bg-white/8 text-white/55 ring-1 ring-white/10">
+        {product.imageUrl ? (
+          <Image
+            src={product.imageUrl}
+            alt={product.name}
+            width={56}
+            height={56}
+            sizes="56px"
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <FiShoppingBag className="h-5 w-5" aria-hidden="true" />
+        )}
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-extrabold text-white">
+          {product.name}
+        </p>
+        {typeof displayPrice === "number" && (
+          <p className="mt-0.5 text-sm font-black text-sky-200">
+            {formatRupiah(displayPrice)}
+          </p>
+        )}
+      </div>
+
+      <span className="text-2xl font-light text-white/45" aria-hidden="true">
+        ›
+      </span>
+    </Link>
   );
 }
 
@@ -743,6 +878,40 @@ function countThreadedComments(items: FeedCommentItem[]) {
     (total, item) => total + 1 + (item.replies?.length ?? 0),
     0,
   );
+}
+
+function getFeedPostCaption(post: FeedPostListItem | null | undefined) {
+  if (!post) return "";
+  const raw = (post.description?.trim() || post.title || "").trim();
+  if (!raw) return "";
+
+  return raw
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => line && !/^info peliharaan\s*:/i.test(line))
+    .join("\n")
+    .replace(/\s*info peliharaan\s*:\s*(cat|dog|other|kucing|anjing|lainnya)\s*$/i, "")
+    .trim();
+}
+
+function getFeedPostAuthorName(post: FeedPostListItem) {
+  return post.author.role === "ADMIN" ? "Natalo Petshop" : post.author.name;
+}
+
+function getFeedSheetProduct(post: FeedPostListItem | null | undefined): CommentSheetProduct | null {
+  if (!post) return null;
+  return post.taggedProducts[0] ?? post.product ?? null;
+}
+
+function getCommentSheetProductPrice(product: CommentSheetProduct) {
+  if ("promoPrice" in product && typeof product.promoPrice === "number") {
+    return product.promoPrice;
+  }
+  return product.discountPrice ?? product.price;
+}
+
+function getInitial(name: string) {
+  return name.trim().charAt(0).toUpperCase() || "U";
 }
 
 function getCommentAuthorName(comment: FeedCommentItem) {
