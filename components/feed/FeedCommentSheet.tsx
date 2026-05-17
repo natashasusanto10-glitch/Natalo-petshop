@@ -169,6 +169,11 @@ export function FeedCommentSheet({
     }
   }, [getCommentVideoPreview]);
 
+  const closeSheet = useCallback(() => {
+    resetMotionStyles();
+    onClose();
+  }, [onClose, resetMotionStyles]);
+
   const updateDrag = useCallback((clientY: number) => {
     if (!isDraggingRef.current) return;
     const deltaY = clientY - dragStartYRef.current;
@@ -187,7 +192,7 @@ export function FeedCommentSheet({
     const sheetHeight = sheetRef.current?.getBoundingClientRect().height ?? 420;
     const closeThreshold = Math.min(DRAG_CLOSE_THRESHOLD, sheetHeight * 0.28);
     if (closeDragYRef.current >= closeThreshold) {
-      onClose();
+      closeSheet();
       return;
     }
 
@@ -202,7 +207,7 @@ export function FeedCommentSheet({
       },
       SNAP_BACK_MS,
     );
-  }, [onClose, setMotionTransition, writeMotion]);
+  }, [closeSheet, setMotionTransition, writeMotion]);
 
   const beginDrag = useCallback((target: EventTarget | null, clientY: number) => {
     if (target instanceof HTMLElement && target.closest("button, textarea, input")) {
@@ -435,11 +440,11 @@ export function FeedCommentSheet({
   useEffect(() => {
     if (!open) return;
     function handler(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") closeSheet();
     }
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [open, onClose]);
+  }, [closeSheet, open]);
 
   useEffect(() => {
     return () => {
@@ -637,7 +642,7 @@ export function FeedCommentSheet({
         className="fixed inset-0 z-[9000] bg-black/76 backdrop-blur-[1px]"
         onClick={() => {
           if (keyboardOpen && blurCommentInput()) return;
-          onClose();
+          closeSheet();
         }}
       />
       <section
@@ -678,7 +683,7 @@ export function FeedCommentSheet({
               <button
                 type="button"
                 aria-label="Tutup komentar"
-                onClick={onClose}
+                onClick={closeSheet}
                 className="grid h-9 w-9 place-items-center rounded-full text-white/62 transition active:scale-95 active:bg-white/10 active:text-white"
               >
                 <FiX className="h-5 w-5" />

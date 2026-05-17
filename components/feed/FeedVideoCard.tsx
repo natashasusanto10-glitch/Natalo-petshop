@@ -248,7 +248,11 @@ export function FeedVideoCard({
                 height: "clamp(220px, 34dvh, 320px)",
                 willChange: "transform, border-radius",
               }
-            : undefined
+            : {
+                borderRadius: "0px",
+                transform: "none",
+                willChange: "auto",
+              }
         }
       >
         {hasVideo && post.videoUrl ? (
