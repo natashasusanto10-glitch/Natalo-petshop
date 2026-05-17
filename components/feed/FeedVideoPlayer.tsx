@@ -2,9 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFeedActiveVideo } from "./FeedActiveVideoContext";
-import { getPreloadTier } from "@/lib/feed/runtime-config";
+import {
+  getPreloadTier,
+  getRecommendedVideoQuality,
+  useNetworkTier,
+  type VideoQuality,
+} from "@/lib/feed/runtime-config";
 import { useVideoMetrics } from "./useVideoMetrics";
-import { bunnyHlsToMp4 } from "@/lib/feed/bunny";
+import { bunnyHlsToMp4, rewriteBunnyMp4Quality } from "@/lib/feed/bunny";
 import { FEED_PLAYBACK_TEARDOWN_EVENT } from "@/lib/feed/teardown";
 
 function isHlsUrl(url: string | null | undefined): boolean {
@@ -13,15 +18,23 @@ function isHlsUrl(url: string | null | undefined): boolean {
 }
 
 /**
- * Pick the best playback URL for this post. For posts written before the
- * MP4 switch (videoUrl still points at `playlist.m3u8`), convert to the
- * equivalent Bunny MP4 progressive URL — same video, dramatically better
- * cold-cache behaviour. Falls back to the original URL when it isn't a
- * recognisable Bunny HLS pattern (legacy UploadThing posts, etc).
+ * Pick the best playback URL for this post.
+ *
+ * 1. HLS playlist (legacy / Bunny default) → rewrite ke MP4 progressive
+ *    di quality yang sesuai network (240/480/720/1080).
+ * 2. Existing MP4 URL (stored di DB sebagai play_720p.mp4) → rewrite
+ *    ke quality sesuai network kalau bisa, atau return as-is.
+ * 3. Non-Bunny URL → return as-is (legacy UploadThing, dll).
+ *
+ * Quality dipilih oleh getRecommendedVideoQuality() berdasarkan
+ * navigator.connection effectiveType + downlink + saveData.
  */
-function resolvePlaybackUrl(url: string): string {
-  if (!isHlsUrl(url)) return url;
-  return bunnyHlsToMp4(url, 720) ?? url;
+function resolvePlaybackUrl(url: string, quality: VideoQuality): string {
+  if (isHlsUrl(url)) {
+    return bunnyHlsToMp4(url, quality) ?? url;
+  }
+  // Stored MP4 URL — coba rewrite quality kalau cocok Bunny pattern.
+  return rewriteBunnyMp4Quality(url, quality) ?? url;
 }
 
 type Props = {
@@ -91,10 +104,26 @@ export function FeedVideoPlayer({
   const [showLoadingIndicator, setShowLoadingIndicator] = useState(false);
   const [playbackProgress, setPlaybackProgress] = useState(0);
 
-  // Resolve HLS → MP4 for Bunny posts so the player benefits from single-file
-  // CDN caching. New posts already come through as MP4 from the webhook; this
-  // covers older rows still pointing at playlist.m3u8.
-  const playbackUrl = useMemo(() => resolvePlaybackUrl(videoUrl), [videoUrl]);
+  // Network-aware video quality: re-render saat user pindah jaringan
+  // (mis. WiFi → 4G) supaya URL playback ikut ganti quality. Initial value
+  // dipilih saat mount; useNetworkTier subscribe ke connection.change.
+  const networkTier = useNetworkTier();
+  const videoQuality = useMemo<VideoQuality>(
+    () => {
+      // Re-evaluate quality berdasarkan tier sekarang. networkTier sebagai
+      // dependency triggering re-compute saat user pindah jaringan.
+      void networkTier;
+      return getRecommendedVideoQuality();
+    },
+    [networkTier],
+  );
+  // Resolve HLS → MP4 for Bunny posts + rewrite ke quality sesuai network.
+  // Saat user pindah dari WiFi (720p) ke 3G (480p), URL otomatis re-derive
+  // dan video element re-load pas src berubah.
+  const playbackUrl = useMemo(
+    () => resolvePlaybackUrl(videoUrl, videoQuality),
+    [videoUrl, videoQuality],
+  );
   const isHls = isHlsUrl(playbackUrl);
 
   // Aspect ratio classification — tentukan rendering mode:

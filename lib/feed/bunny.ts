@@ -191,6 +191,26 @@ export function bunnyHlsToMp4(
 }
 
 /**
+ * Rewrite kualitas dari Bunny MP4 URL existing tanpa harus ke DB.
+ * Misal stored URL `https://vz-xxx.b-cdn.net/<guid>/play_720p.mp4` →
+ * rewrite jadi `play_480p.mp4` saat user di 3G. Aman dipanggil dengan
+ * URL yang bukan Bunny — balikin null supaya caller fallback ke
+ * original src. Pattern match longgar supaya kompatibel dengan path
+ * suffix (e.g., query params).
+ */
+export function rewriteBunnyMp4Quality(
+  url: string | null | undefined,
+  height: 240 | 360 | 480 | 720 | 1080,
+): string | null {
+  if (!url) return null;
+  // Match URL pattern Bunny MP4: <origin>/<guid>/play_<NNN>p.mp4
+  const match = url.match(/^(https?:\/\/[^/]+\/[a-f0-9-]+\/)play_\d{3,4}p\.mp4(\?.*)?$/i);
+  if (!match) return null;
+  const query = match[2] ?? "";
+  return `${match[1]}play_${height}p.mp4${query}`;
+}
+
+/**
  * Auto-generated thumbnail URL — Bunny pulls a frame at ~10% of the clip
  * by default. Good enough as a placeholder before the video element
  * finishes its first paint.

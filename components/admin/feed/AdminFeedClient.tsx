@@ -14,8 +14,16 @@
  */
 import Link from "next/link";
 import Image from "next/image";
-import { useCallback, useEffect, useState } from "react";
-import { FiEdit2, FiExternalLink, FiPlus, FiTrash2 } from "react-icons/fi";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  FiCheckSquare,
+  FiEdit2,
+  FiExternalLink,
+  FiPlus,
+  FiSquare,
+  FiTrash2,
+  FiX,
+} from "react-icons/fi";
 
 type AdminFilter =
   | "all"
@@ -81,6 +89,13 @@ export function AdminFeedClient() {
   const [counts, setCounts] = useState({ pending: 0, total: 0, deleted: 0 });
   const [actionBusy, setActionBusy] = useState<string | null>(null); // post id
 
+  // Bulk selection — set of postId yang user centang. Floating action bar
+  // muncul saat ≥1 row selected. Reset saat filter berubah (post mungkin
+  // sudah tidak match filter baru).
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const isTrashView = filter === "deleted";
+
   // Refetch saat filter berubah. Inline fn supaya exhaustive-deps tidak
   // complain (kalau pakai useCallback yang depend ke `cursor`, akan trigger
   // re-fetch tiap kali cursor di-update — infinite loop).
@@ -90,6 +105,7 @@ export function AdminFeedClient() {
     setCursor(null);
     setItems([]);
     setError(null);
+    setSelectedIds(new Set()); // clear bulk selection saat filter ganti
     fetch(`/api/admin/feed/posts?filter=${filter}`)
       .then((r) => {
         if (!r.ok) throw new Error("Gagal memuat");
@@ -189,7 +205,6 @@ export function AdminFeedClient() {
     // Pakai hard=1 supaya row permanently dibuang + cascade FK + Bunny
     // cleanup. Dari filter lain (all/pending/dst), soft-delete (default)
     // supaya admin masih punya undo via tab Sampah → Restore.
-    const isTrashView = filter === "deleted";
     const confirmMsg = isTrashView
       ? "Hapus permanen dari sampah? Tidak bisa di-undo (post + komentar + likes ikut hilang)."
       : "Pindahkan post ini ke Sampah? Bisa di-restore dari tab Sampah.";
@@ -212,6 +227,107 @@ export function AdminFeedClient() {
       window.alert(err instanceof Error ? err.message : "Gagal");
     } finally {
       setActionBusy(null);
+    }
+  }
+
+  // Bulk action — kirim batch ke /api/admin/feed/posts/bulk. Per-item
+  // result di-return supaya admin tahu ada yang skip (mis. status sudah
+  // ACTIVE, tidak bisa di-approve lagi).
+  async function bulkAction(
+    action:
+      | "approve"
+      | "reject"
+      | "hide"
+      | "unhide"
+      | "restore"
+      | "soft-delete"
+      | "hard-delete",
+  ) {
+    if (bulkBusy || selectedIds.size === 0) return;
+
+    let note: string | undefined;
+    if (action === "reject") {
+      const input = window.prompt(
+        `Alasan menolak ${selectedIds.size} video (wajib):`,
+      );
+      if (!input || !input.trim()) return;
+      note = input.trim();
+    }
+
+    const labels: Record<typeof action, string> = {
+      approve: "Setujui",
+      reject: "Tolak",
+      hide: "Sembunyikan",
+      unhide: "Tampilkan",
+      restore: "Restore",
+      "soft-delete": "Pindah ke Sampah",
+      "hard-delete": "Hapus Permanen",
+    };
+    const isDestructive = action === "hard-delete";
+    const confirmMsg = isDestructive
+      ? `Hapus PERMANEN ${selectedIds.size} post? Tidak bisa di-undo.`
+      : `${labels[action]} ${selectedIds.size} post?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setBulkBusy(true);
+    try {
+      const res = await fetch("/api/admin/feed/posts/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          postIds: Array.from(selectedIds),
+          note,
+        }),
+      });
+      const data = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        summary?: { applied: number; skipped: number; error: number };
+      };
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error ?? "Bulk action gagal");
+      }
+      const { applied, skipped, error: errs } = data.summary ?? {
+        applied: 0,
+        skipped: 0,
+        error: 0,
+      };
+      // Show summary toast-ish via alert (bisa diganti toast UI nanti).
+      const parts: string[] = [];
+      parts.push(`${applied} berhasil`);
+      if (skipped > 0) parts.push(`${skipped} dilewati`);
+      if (errs > 0) parts.push(`${errs} gagal`);
+      window.alert(parts.join(" · "));
+      setSelectedIds(new Set());
+      refetchCurrent();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Bulk action gagal");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  function toggleSelected(postId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(postId)) next.delete(postId);
+      else next.add(postId);
+      return next;
+    });
+  }
+
+  // Select all visible (yang lagi di-render di list). Tidak include yang
+  // belum di-load (cursor pagination).
+  const allVisibleSelected = useMemo(
+    () => items.length > 0 && items.every((p) => selectedIds.has(p.id)),
+    [items, selectedIds],
+  );
+  function toggleSelectAllVisible() {
+    if (allVisibleSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(items.map((p) => p.id)));
     }
   }
 
@@ -272,6 +388,33 @@ export function AdminFeedClient() {
         })}
       </nav>
 
+      {/* Select-all toolbar — muncul saat ada item di list. Tap untuk
+          select semua visible (yg sudah di-load), tap lagi untuk clear. */}
+      {!loading && items.length > 0 && (
+        <div className="mb-2 flex items-center justify-between gap-2 rounded-xl bg-white px-3 py-2 text-xs font-bold text-gray-600 shadow-sm">
+          <button
+            type="button"
+            onClick={toggleSelectAllVisible}
+            disabled={bulkBusy}
+            className="inline-flex items-center gap-1.5 transition active:scale-95 disabled:opacity-50"
+          >
+            {allVisibleSelected ? (
+              <FiCheckSquare className="h-4 w-4 text-natalo-600" />
+            ) : (
+              <FiSquare className="h-4 w-4 text-gray-400" />
+            )}
+            <span>
+              {allVisibleSelected
+                ? `${items.length} terpilih`
+                : "Pilih semua"}
+            </span>
+          </button>
+          {selectedIds.size > 0 && (
+            <span className="text-natalo-600">{selectedIds.size} dipilih</span>
+          )}
+        </div>
+      )}
+
       {/* List */}
       {loading && (
         <p className="py-12 text-center text-xs font-bold text-gray-400">Memuat...</p>
@@ -287,13 +430,15 @@ export function AdminFeedClient() {
         </p>
       )}
 
-      <div className="space-y-3">
+      <div className={`space-y-3 ${selectedIds.size > 0 ? "pb-24" : ""}`}>
         {items.map((p) => (
           <AdminFeedRow
             key={p.id}
             post={p}
             busy={actionBusy === p.id}
-            isTrashView={filter === "deleted"}
+            isTrashView={isTrashView}
+            selected={selectedIds.has(p.id)}
+            onToggleSelect={() => toggleSelected(p.id)}
             onModerate={(action) => moderate(p.id, action)}
             onDelete={() => deletePost(p.id)}
           />
@@ -310,7 +455,110 @@ export function AdminFeedClient() {
           {loadingMore ? "Memuat..." : "Muat lebih banyak"}
         </button>
       )}
+
+      {/* Floating bulk action bar — sticky di bawah viewport saat ada
+          selection. Actions tergantung view: trash view → Restore /
+          Hapus Permanen. View lain → Approve/Reject (untuk PENDING-heavy),
+          Hide, Pindah ke Sampah. Admin pilih action yang relevan. */}
+      {selectedIds.size > 0 && (
+        <div className="fixed inset-x-0 bottom-0 z-50 border-t border-gray-200 bg-white shadow-[0_-4px_20px_rgba(0,0,0,0.08)]">
+          <div className="mx-auto flex max-w-4xl items-center gap-2 overflow-x-auto px-3 py-3">
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              disabled={bulkBusy}
+              aria-label="Batalkan seleksi"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gray-100 text-gray-600 transition active:bg-gray-200 disabled:opacity-50"
+            >
+              <FiX className="h-4 w-4" />
+            </button>
+            <span className="shrink-0 text-[11px] font-extrabold text-gray-700">
+              {selectedIds.size} dipilih
+            </span>
+            <div className="ml-1 flex gap-1.5">
+              {isTrashView ? (
+                <>
+                  <BulkBtn
+                    label="Restore"
+                    tone="green"
+                    onClick={() => bulkAction("restore")}
+                    busy={bulkBusy}
+                  />
+                  <BulkBtn
+                    label="Hapus Permanen"
+                    tone="red"
+                    onClick={() => bulkAction("hard-delete")}
+                    busy={bulkBusy}
+                  />
+                </>
+              ) : (
+                <>
+                  <BulkBtn
+                    label="Setujui"
+                    tone="green"
+                    onClick={() => bulkAction("approve")}
+                    busy={bulkBusy}
+                  />
+                  <BulkBtn
+                    label="Tolak"
+                    tone="red"
+                    onClick={() => bulkAction("reject")}
+                    busy={bulkBusy}
+                  />
+                  <BulkBtn
+                    label="Sembunyikan"
+                    tone="gray"
+                    onClick={() => bulkAction("hide")}
+                    busy={bulkBusy}
+                  />
+                  <BulkBtn
+                    label="Tampilkan"
+                    tone="gray"
+                    onClick={() => bulkAction("unhide")}
+                    busy={bulkBusy}
+                  />
+                  <BulkBtn
+                    label="Ke Sampah"
+                    tone="red"
+                    onClick={() => bulkAction("soft-delete")}
+                    busy={bulkBusy}
+                  />
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function BulkBtn({
+  label,
+  tone,
+  onClick,
+  busy,
+}: {
+  label: string;
+  tone: "green" | "red" | "gray";
+  onClick: () => void;
+  busy: boolean;
+}) {
+  const cls =
+    tone === "green"
+      ? "bg-green-100 text-green-800 active:bg-green-200"
+      : tone === "red"
+        ? "bg-red-100 text-red-800 active:bg-red-200"
+        : "bg-gray-100 text-gray-700 active:bg-gray-200";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      className={`shrink-0 rounded-full px-3 py-1.5 text-[11px] font-extrabold transition disabled:opacity-50 ${cls}`}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -318,12 +566,16 @@ function AdminFeedRow({
   post,
   busy,
   isTrashView,
+  selected,
+  onToggleSelect,
   onModerate,
   onDelete,
 }: {
   post: AdminFeedItem;
   busy: boolean;
   isTrashView: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
   onModerate: (
     action: "approve" | "reject" | "hide" | "unhide" | "restore",
   ) => void;
@@ -344,8 +596,32 @@ function AdminFeedRow({
   };
 
   return (
-    <article className="overflow-hidden rounded-2xl border border-gray-100 bg-white">
+    <article
+      className={`overflow-hidden rounded-2xl border bg-white transition ${
+        selected
+          ? "border-natalo-500 ring-2 ring-natalo-200"
+          : "border-gray-100"
+      }`}
+    >
       <div className="flex gap-3 p-3">
+        {/* Bulk select checkbox — tap area besar (40x40) supaya mudah
+            di-tap di mobile. Tap di mana saja di area thumbnail-side
+            juga toggle selection (label wrap implicit via onClick). */}
+        <button
+          type="button"
+          onClick={onToggleSelect}
+          disabled={busy}
+          aria-label={selected ? "Batal pilih post" : "Pilih post"}
+          aria-pressed={selected}
+          className="grid h-10 w-10 shrink-0 place-items-center self-center rounded-full text-gray-400 transition active:bg-gray-100 disabled:opacity-50"
+        >
+          {selected ? (
+            <FiCheckSquare className="h-5 w-5 text-natalo-600" />
+          ) : (
+            <FiSquare className="h-5 w-5" />
+          )}
+        </button>
+
         {/* Thumbnail kecil */}
         <div className="relative h-24 w-16 shrink-0 overflow-hidden rounded-xl bg-gray-100">
           {post.thumbnailUrl ? (
