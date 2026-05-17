@@ -10,6 +10,7 @@ export type EligibleVoucher = {
   discount: number;
   minimumOrder: number;
   expiresAt: string | Date | null;
+  kind?: "PRODUCT_DISCOUNT" | "FREE_SHIPPING" | "LOYALTY_CLAIM" | "MANUAL_PRIVATE";
   status?: "available";
 };
 
@@ -20,6 +21,7 @@ export type IneligibleVoucher = {
   shortfall: number;
   expiresAt: string | Date | null;
   reason?: string;
+  kind?: "PRODUCT_DISCOUNT" | "FREE_SHIPPING" | "LOYALTY_CLAIM" | "MANUAL_PRIVATE";
   status?: "unavailable";
 };
 
@@ -27,6 +29,7 @@ export type AppliedVoucher = {
   code: string;
   discount: number;
   description: string;
+  kind?: "PRODUCT_DISCOUNT" | "FREE_SHIPPING" | "LOYALTY_CLAIM" | "MANUAL_PRIVATE";
   autoApplied?: boolean;
 };
 
@@ -41,7 +44,7 @@ type Props = {
   /** Pesan kalau voucher sebelumnya jadi tidak valid karena context berubah */
   invalidatedMessage?: string | null;
   loading?: boolean;
-  onApply: (code: string, discount: number, description: string) => void;
+  onApply: (code: string, discount: number, description: string, kind?: EligibleVoucher["kind"]) => void;
   onRemove: () => void;
   /** Lepas voucher manual (slot SELLER_MANUAL) */
   onRemoveManual?: () => void;
@@ -49,7 +52,8 @@ type Props = {
   onApplyManualCode: (code: string) => Promise<{ ok: boolean; error?: string }>;
 };
 
-function describeBenefit(v: { discount?: number; description: string | null }) {
+function describeBenefit(v: { discount?: number; description: string | null; kind?: string }) {
+  if (v.kind === "FREE_SHIPPING") return "Gratis Ongkir";
   if (typeof v.discount === "number" && v.discount > 0) {
     return `Hemat ${formatRupiah(v.discount)}`;
   }
@@ -243,7 +247,7 @@ export function CheckoutVoucherCard({
               Voucher member terpakai
             </span>
             <span className="mt-0.5 block truncate text-xs font-semibold text-natalo-700">
-              Hemat {formatRupiah(applied.discount)}
+              {describeBenefit(applied)}
               {applied.autoApplied && (
                 <span className="ml-2 rounded-full bg-natalo-100 px-1.5 py-0.5 text-[10px] font-bold text-natalo-800">
                   Otomatis
@@ -361,7 +365,7 @@ export function CheckoutVoucherCard({
           Voucher khusus terpakai
         </span>
         <span className="mt-0.5 block truncate text-xs font-semibold text-amber-800">
-          Hemat {formatRupiah(manualApplied.discount)}
+          {describeBenefit(manualApplied)}
           <span className="ml-2 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
             Manual
           </span>
@@ -553,7 +557,7 @@ export function CheckoutVoucherCard({
                                   type="button"
                                   disabled={isApplied}
                                   onClick={() => {
-                                    onApply(v.code, v.discount, v.description ?? describeBenefit(v));
+                                    onApply(v.code, v.discount, v.description ?? describeBenefit(v), v.kind);
                                     setOpen(false);
                                   }}
                                   className={`shrink-0 px-4 text-sm font-extrabold transition ${

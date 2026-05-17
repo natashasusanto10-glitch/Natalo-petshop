@@ -30,6 +30,7 @@ export type MemberVoucherItem = {
   minimumOrder: number;
   expiresAt: string | Date | null;
   discount: number;
+  kind?: "PRODUCT_DISCOUNT" | "FREE_SHIPPING" | "LOYALTY_CLAIM" | "MANUAL_PRIVATE";
   applicable: boolean;
   disabledReason: string | null;
 };
@@ -47,6 +48,7 @@ type Props = {
     code: string | null,
     discount: number,
     description: string,
+    kind?: MemberVoucherItem["kind"],
   ) => void;
   /** Trigger redirect ke /login (kalau guest klik klaim) */
   onRequireLogin: () => void;
@@ -392,7 +394,11 @@ export function CartVoucherSheet({
                               onSelectMember(
                                 v.code,
                                 v.discount,
-                                v.description ?? `Hemat ${formatRupiah(v.discount)}`,
+                                v.description ??
+                                  (v.kind === "FREE_SHIPPING"
+                                    ? "Gratis ongkir saat checkout"
+                                    : `Hemat ${formatRupiah(v.discount)}`),
+                                v.kind,
                               )
                             }
                           />
@@ -470,7 +476,11 @@ function MemberVoucherRow({
       <div className={`w-2 shrink-0 ${disabled ? "bg-zinc-200" : "bg-amber-400"}`} />
       <div className="flex flex-1 flex-col justify-center px-3 py-3">
         <p className={`text-sm font-extrabold ${disabled ? "text-zinc-500" : "text-zinc-950"}`}>
-          {voucher.discount > 0 ? `Diskon ${formatRupiah(voucher.discount)}` : "Voucher Member Natalo"}
+          {voucher.kind === "FREE_SHIPPING"
+            ? "Gratis Ongkir"
+            : voucher.discount > 0
+            ? `Diskon ${formatRupiah(voucher.discount)}`
+            : "Voucher Member Natalo"}
         </p>
         <p className="mt-0.5 text-xs text-zinc-500">
           {voucher.minimumOrder > 0
@@ -488,6 +498,8 @@ function MemberVoucherRow({
         <span className="text-sm font-extrabold">
           {voucher.discount > 0
             ? `Rp${new Intl.NumberFormat("id-ID").format(voucher.discount)}`
+            : voucher.kind === "FREE_SHIPPING"
+            ? "Gratis"
             : "—"}
         </span>
       </div>

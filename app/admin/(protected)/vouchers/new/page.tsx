@@ -1,6 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import {
+  deriveVoucherSourceType,
+  isAdminCreatableVoucherKind,
+  voucherKindDescription,
+} from "@/lib/voucher-kind";
 
 export default async function AdminVoucherNewPage() {
   async function createVoucher(formData: FormData) {
@@ -19,12 +24,14 @@ export default async function AdminVoucherNewPage() {
     const maxUsage = maxUsageRaw ? parseInt(maxUsageRaw, 10) : null;
     const expiresAtRaw = String(formData.get("expiresAt") || "").trim();
     const expiresAt = expiresAtRaw ? new Date(expiresAtRaw) : null;
-    const sourceTypeRaw = String(formData.get("sourceType") || "CUSTOMER").trim();
-    const sourceType =
-      sourceTypeRaw === "SELLER_MANUAL" ? "SELLER_MANUAL" : "CUSTOMER";
+    const kindRaw = String(formData.get("kind") || "PRODUCT_DISCOUNT").trim();
+    if (!isAdminCreatableVoucherKind(kindRaw)) return;
+    const kind = kindRaw;
+    const sourceType = deriveVoucherSourceType(kind);
 
     if (!code) return;
-    if (!discountPercent && !discountAmount) return;
+    const isFreeShipping = kind === "FREE_SHIPPING";
+    if (!isFreeShipping && !discountPercent && !discountAmount) return;
 
     const existing = await prisma.voucher.findUnique({ where: { code } });
     if (existing) redirect("/admin/vouchers/new?error=exists");
@@ -33,13 +40,14 @@ export default async function AdminVoucherNewPage() {
       data: {
         code,
         description,
-        discountPercent,
-        discountAmount,
+        discountPercent: isFreeShipping ? null : discountPercent,
+        discountAmount: isFreeShipping ? null : discountAmount,
         minimumOrder,
         maxUsage,
         expiresAt,
         isActive: true,
         sourceType,
+        kind,
       },
     });
 
@@ -94,18 +102,18 @@ export default async function AdminVoucherNewPage() {
         <div>
           <label className="block text-sm font-medium text-zinc-700">Tipe voucher</label>
           <select
-            name="sourceType"
-            defaultValue="CUSTOMER"
+            name="kind"
+            defaultValue="PRODUCT_DISCOUNT"
             className="mt-1 block w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-600"
           >
-            <option value="CUSTOMER">Voucher Pembeli (publik / claim user)</option>
-            <option value="SELLER_MANUAL">Voucher Manual Penjual (rahasia)</option>
+            <option value="PRODUCT_DISCOUNT">Voucher Diskon Produk - Semua Member</option>
+            <option value="FREE_SHIPPING">Voucher Gratis Ongkir - Semua Member</option>
+            <option value="MANUAL_PRIVATE">Voucher Manual / Private</option>
           </select>
           <p className="mt-1 text-xs text-zinc-400">
-            <strong>Pembeli</strong>: muncul di daftar voucher checkout, bisa
-            di-pilih atau auto-apply. <strong>Manual penjual</strong>:
-            tersembunyi, hanya bisa dipakai jika pembeli memasukkan kode
-            secara manual. 1 checkout maks 1 dari masing-masing tipe.
+            {voucherKindDescription("PRODUCT_DISCOUNT")} Gratis ongkir tidak
+            perlu nominal diskon. Voucher hasil klaim loyalty point dibuat
+            otomatis dari halaman user, bukan dari admin.
           </p>
         </div>
 

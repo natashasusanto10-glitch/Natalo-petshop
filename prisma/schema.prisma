@@ -43,6 +43,13 @@ enum VoucherSourceType {
   SELLER_MANUAL
 }
 
+enum VoucherKind {
+  PRODUCT_DISCOUNT
+  FREE_SHIPPING
+  LOYALTY_CLAIM
+  MANUAL_PRIVATE
+}
+
 model User {
   id                  String          @id @default(cuid())
   name                String
@@ -300,10 +307,15 @@ model Voucher {
   // (tersembunyi, hanya via input kode manual). Default CUSTOMER untuk
   // backward compat semua voucher existing.
   sourceType      VoucherSourceType @default(CUSTOMER)
+  // Tipe bisnis voucher. Admin hanya boleh membuat PRODUCT_DISCOUNT,
+  // FREE_SHIPPING, dan MANUAL_PRIVATE. LOYALTY_CLAIM dibuat otomatis saat
+  // user menukar loyalty point.
+  kind            VoucherKind @default(PRODUCT_DISCOUNT)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   @@index([userId])
+  @@index([kind])
 }
 
 model PushSubscription {

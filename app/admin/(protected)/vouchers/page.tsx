@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
+import { isFreeShippingVoucher, isLoyaltyClaimVoucher, voucherKindLabel } from "@/lib/voucher-kind";
 
 export default async function AdminVouchersPage() {
   const vouchers = await prisma.voucher.findMany({
@@ -20,11 +21,32 @@ export default async function AdminVouchersPage() {
   async function deleteVoucher(formData: FormData) {
     "use server";
     const id = String(formData.get("id"));
+    const voucher = await prisma.voucher.findUnique({
+      where: { id },
+      select: { kind: true, userId: true, code: true },
+    });
+    if (voucher && isLoyaltyClaimVoucher(voucher)) {
+      revalidatePath("/admin/vouchers");
+      return;
+    }
     await prisma.voucher.delete({ where: { id } });
     revalidatePath("/admin/vouchers");
   }
 
   const now = new Date();
+  const counts = {
+    PRODUCT_DISCOUNT: 0,
+    FREE_SHIPPING: 0,
+    LOYALTY_CLAIM: 0,
+    MANUAL_PRIVATE: 0,
+  };
+  for (const voucher of vouchers) {
+    if (isLoyaltyClaimVoucher(voucher)) counts.LOYALTY_CLAIM += 1;
+    else if (voucher.kind === "FREE_SHIPPING") counts.FREE_SHIPPING += 1;
+    else if (voucher.kind === "MANUAL_PRIVATE" || voucher.sourceType === "SELLER_MANUAL") {
+      counts.MANUAL_PRIVATE += 1;
+    } else counts.PRODUCT_DISCOUNT += 1;
+  }
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-5 md:py-10">
@@ -42,6 +64,20 @@ export default async function AdminVouchersPage() {
         >
           + Buat voucher
         </Link>
+      </div>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {[
+          ["Diskon Produk", counts.PRODUCT_DISCOUNT],
+          ["Gratis Ongkir", counts.FREE_SHIPPING],
+          ["Claim Loyalty", counts.LOYALTY_CLAIM],
+          ["Manual / Private", counts.MANUAL_PRIVATE],
+        ].map(([label, value]) => (
+          <div key={String(label)} className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-wide text-zinc-400">{label}</p>
+            <p className="mt-1 text-2xl font-black text-zinc-950">{value}</p>
+          </div>
+        ))}
       </div>
 
       <div className="mt-5 overflow-hidden rounded-2xl border border-zinc-200 md:mt-8 md:rounded-3xl">
@@ -64,8 +100,14 @@ export default async function AdminVouchersPage() {
               const statusOk = v.isActive && !expired && !maxed;
 
               const discountParts: string[] = [];
-              if (v.discountPercent) discountParts.push(`${v.discountPercent}%`);
-              if (v.discountAmount) discountParts.push(formatRupiah(v.discountAmount));
+              if (isFreeShippingVoucher(v)) discountParts.push("Gratis ongkir");
+              else {
+                if (v.discountPercent) discountParts.push(`${v.discountPercent}%`);
+                if (v.discountAmount) discountParts.push(formatRupiah(v.discountAmount));
+              }
+              const kindLabel = isLoyaltyClaimVoucher(v)
+                ? voucherKindLabel("LOYALTY_CLAIM")
+                : voucherKindLabel(v.kind);
 
               return (
                 <div key={v.id} className="flex flex-col gap-4 p-4 md:flex-row md:flex-wrap md:items-start md:justify-between md:p-5">
@@ -85,6 +127,9 @@ export default async function AdminVouchersPage() {
                       >
                         {statusOk ? "Aktif" : expired ? "Kedaluwarsa" : maxed ? "Habis" : "Nonaktif"}
                       </span>
+                      <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-blue-700">
+                        {kindLabel}
+                      </span>
                     </div>
 
                     {v.description && (
@@ -93,6 +138,9 @@ export default async function AdminVouchersPage() {
 
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500">
                       <span>Diskon: <strong className="text-zinc-700">{discountParts.join(" + ") || "-"}</strong></span>
+                      {v.userId && (
+                        <span>User: <strong className="text-zinc-700">{v.userId}</strong></span>
+                      )}
                       {v.minimumOrder > 0 && (
                         <span>Min. belanja: <strong className="text-zinc-700">{formatRupiah(v.minimumOrder)}</strong></span>
                       )}
@@ -136,19 +184,25 @@ export default async function AdminVouchersPage() {
                     </form>
 
                     {/* Hapus dengan konfirmasi */}
-                    <form action={deleteVoucher}>
-                      <input type="hidden" name="id" value={v.id} />
-                      <ConfirmSubmitButton
-                        className="rounded-full border border-red-100 px-3 py-1.5 text-xs font-bold text-red-500 hover:bg-red-50"
-                        message={
-                          v.usedCount > 0
-                            ? `⚠️ Voucher "${v.code}" sudah dipakai ${v.usedCount} kali. Order yang sudah pakai voucher ini tidak terpengaruh, tapi voucher akan hilang dari daftar. Lanjutkan hapus?`
-                            : `Hapus voucher "${v.code}"? Tindakan ini tidak bisa dibatalkan.`
-                        }
-                      >
-                        🗑️ Hapus
-                      </ConfirmSubmitButton>
-                    </form>
+                    {isLoyaltyClaimVoucher(v) ? (
+                      <span className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-bold text-zinc-400">
+                        Klaim user
+                      </span>
+                    ) : (
+                      <form action={deleteVoucher}>
+                        <input type="hidden" name="id" value={v.id} />
+                        <ConfirmSubmitButton
+                          className="rounded-full border border-red-100 px-3 py-1.5 text-xs font-bold text-red-500 hover:bg-red-50"
+                          message={
+                            v.usedCount > 0
+                              ? `⚠️ Voucher "${v.code}" sudah dipakai ${v.usedCount} kali. Order yang sudah pakai voucher ini tidak terpengaruh, tapi voucher akan hilang dari daftar. Lanjutkan hapus?`
+                              : `Hapus voucher "${v.code}"? Tindakan ini tidak bisa dibatalkan.`
+                          }
+                        >
+                          🗑️ Hapus
+                        </ConfirmSubmitButton>
+                      </form>
+                    )}
                   </div>
                 </div>
               );

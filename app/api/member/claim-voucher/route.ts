@@ -55,6 +55,8 @@ export async function POST(request: NextRequest) {
         expiresAt,
         isActive: true,
         userId: session.sub,
+        sourceType: "CUSTOMER",
+        kind: "LOYALTY_CLAIM",
       },
     }),
     prisma.customerPoint.create({

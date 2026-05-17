@@ -1,6 +1,14 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import {
+  deriveVoucherSourceType,
+  isAdminCreatableVoucherKind,
+  isLoyaltyClaimVoucher,
+  type VoucherKindValue,
+  voucherKindDescription,
+  voucherKindLabel,
+} from "@/lib/voucher-kind";
 
 export default async function AdminVoucherEditPage({
   params,
@@ -14,6 +22,7 @@ export default async function AdminVoucherEditPage({
 
   const voucher = await prisma.voucher.findUnique({ where: { id } });
   if (!voucher) return notFound();
+  const isLoyaltyClaim = isLoyaltyClaimVoucher(voucher);
 
   async function updateVoucher(formData: FormData) {
     "use server";
@@ -35,12 +44,20 @@ export default async function AdminVoucherEditPage({
     const maxUsage = maxUsageRaw ? parseInt(maxUsageRaw, 10) : null;
     const expiresAtRaw = String(formData.get("expiresAt") || "").trim();
     const expiresAt = expiresAtRaw ? new Date(expiresAtRaw) : null;
-    const sourceTypeRaw = String(formData.get("sourceType") || "CUSTOMER").trim();
-    const sourceType =
-      sourceTypeRaw === "SELLER_MANUAL" ? "SELLER_MANUAL" : "CUSTOMER";
+    const requestedKindRaw = String(
+      formData.get("kind") || voucher!.kind || "PRODUCT_DISCOUNT",
+    ).trim();
+    if (!isLoyaltyClaim && !isAdminCreatableVoucherKind(requestedKindRaw)) return;
+    const kind: VoucherKindValue = isLoyaltyClaim
+      ? "LOYALTY_CLAIM"
+      : (requestedKindRaw as VoucherKindValue);
+    const sourceType = isLoyaltyClaim
+      ? "CUSTOMER"
+      : deriveVoucherSourceType(kind);
+    const isFreeShipping = kind === "FREE_SHIPPING";
 
     if (!code) return;
-    if (!discountPercent && !discountAmount) return;
+    if (!isFreeShipping && !discountPercent && !discountAmount) return;
 
     // Cek konflik kode (kalau diganti ke kode yang sudah dipakai voucher lain)
     if (code !== voucher!.code) {
@@ -60,12 +77,13 @@ export default async function AdminVoucherEditPage({
       data: {
         code,
         description,
-        discountPercent,
-        discountAmount,
+        discountPercent: isFreeShipping ? null : discountPercent,
+        discountAmount: isFreeShipping ? null : discountAmount,
         minimumOrder,
         maxUsage,
         expiresAt,
         sourceType,
+        kind,
       },
     });
 
@@ -103,6 +121,12 @@ export default async function AdminVoucherEditPage({
         <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-600">
           Maksimal penggunaan tidak boleh lebih kecil dari jumlah yang sudah
           terpakai ({voucher.usedCount}).
+        </div>
+      )}
+      {isLoyaltyClaim && (
+        <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-700">
+          Voucher ini berasal dari klaim loyalty point user. Admin tidak dapat
+          membuat atau mengubah voucher menjadi tipe ini dari dashboard.
         </div>
       )}
 
@@ -146,19 +170,25 @@ export default async function AdminVoucherEditPage({
 
         <div>
           <label className="block text-sm font-medium text-zinc-700">Tipe voucher</label>
-          <select
-            name="sourceType"
-            defaultValue={voucher.sourceType}
-            className="mt-1 block w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-600"
-          >
-            <option value="CUSTOMER">Voucher Pembeli (publik / claim user)</option>
-            <option value="SELLER_MANUAL">Voucher Manual Penjual (rahasia)</option>
-          </select>
+          {isLoyaltyClaim ? (
+            <div className="mt-1 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-bold text-zinc-700">
+              {voucherKindLabel("LOYALTY_CLAIM")}
+            </div>
+          ) : (
+            <select
+              name="kind"
+              defaultValue={voucher.kind}
+              className="mt-1 block w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-600"
+            >
+              <option value="PRODUCT_DISCOUNT">Voucher Diskon Produk - Semua Member</option>
+              <option value="FREE_SHIPPING">Voucher Gratis Ongkir - Semua Member</option>
+              <option value="MANUAL_PRIVATE">Voucher Manual / Private</option>
+            </select>
+          )}
           <p className="mt-1 text-xs text-zinc-400">
-            <strong>Pembeli</strong>: muncul di daftar voucher checkout, bisa
-            di-pilih atau auto-apply. <strong>Manual penjual</strong>:
-            tersembunyi, hanya bisa dipakai jika pembeli memasukkan kode
-            secara manual. 1 checkout maks 1 dari masing-masing tipe.
+            {isLoyaltyClaim
+              ? voucherKindDescription("LOYALTY_CLAIM")
+              : "Diskon produk dan gratis ongkir muncul untuk member. Manual/private hanya bisa digunakan lewat input kode manual."}
           </p>
         </div>
 

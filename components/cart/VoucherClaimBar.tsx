@@ -12,8 +12,8 @@ import { formatRupiah } from "@/lib/format";
 
 type Props = {
   isLoggedIn: boolean;
-  memberVoucher: { code: string; discount: number } | null;
-  previewVoucher?: { discount: number; minimumOrder: number } | null;
+  memberVoucher: { code: string; discount: number; kind?: string } | null;
+  previewVoucher?: { discount: number; minimumOrder: number; kind?: string } | null;
   onClick: () => void;
 };
 
@@ -24,9 +24,13 @@ export function VoucherClaimBar({
   onClick,
 }: Props) {
   const summary = memberVoucher
-    ? `Voucher member dipakai · Hemat ${formatRupiah(memberVoucher.discount)}`
+    ? memberVoucher.kind === "FREE_SHIPPING"
+      ? "Voucher member dipakai · Gratis ongkir"
+      : `Voucher member dipakai · Hemat ${formatRupiah(memberVoucher.discount)}`
     : null;
-  const preview = previewVoucher?.discount
+  const preview = previewVoucher?.kind === "FREE_SHIPPING"
+    ? "Gratis Ongkir"
+    : previewVoucher?.discount
     ? `Diskon ${formatRupiah(previewVoucher.discount)}`
     : "Voucher Member Natalo";
   const previewMinOrder =

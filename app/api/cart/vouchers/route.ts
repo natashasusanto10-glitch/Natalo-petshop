@@ -23,6 +23,7 @@ import {
   getVoucherDisabledReason,
   shouldHideVoucher,
 } from "@/lib/voucher-helpers";
+import { isFreeShippingVoucher } from "@/lib/voucher-kind";
 
 export async function GET(request: NextRequest) {
   const session = await getSession("CUSTOMER");
@@ -82,6 +83,7 @@ export async function GET(request: NextRequest) {
     minimumOrder: number;
     expiresAt: Date | null;
     sourceType: "CUSTOMER" | "SELLER_MANUAL";
+    kind: "PRODUCT_DISCOUNT" | "FREE_SHIPPING" | "LOYALTY_CLAIM" | "MANUAL_PRIVATE";
     discount: number;
     applicable: boolean;
     disabledReason: string | null;
@@ -95,6 +97,8 @@ export async function GET(request: NextRequest) {
     // untuk transient state (min belanja, dll).
     const disabledReason = getVoucherDisabledReason(v, subtotal, userCtx, now);
     const discount = disabledReason ? 0 : calcVoucherDiscount(subtotal, v);
+    const isFreeShipping = isFreeShippingVoucher(v);
+    const applicable = disabledReason === null && (discount > 0 || isFreeShipping);
 
     items.push({
       id: v.id,
@@ -105,11 +109,12 @@ export async function GET(request: NextRequest) {
       minimumOrder: v.minimumOrder,
       expiresAt: v.expiresAt,
       sourceType: v.sourceType,
+      kind: v.kind,
       discount,
-      applicable: disabledReason === null && discount > 0,
+      applicable,
       disabledReason:
         disabledReason ??
-        (discount === 0
+        (!isFreeShipping && discount === 0
           ? "Voucher tidak memberikan potongan untuk pesanan ini"
           : null),
     });

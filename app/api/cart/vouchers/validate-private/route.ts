@@ -113,6 +113,7 @@ export async function POST(request: NextRequest) {
       minimumOrder: voucher.minimumOrder,
       expiresAt: voucher.expiresAt,
       sourceType: voucher.sourceType,
+      kind: voucher.kind,
     },
   });
 }

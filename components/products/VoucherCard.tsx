@@ -12,6 +12,7 @@ export type VoucherItem = {
   discountPercent: number | null;
   discountAmount: number | null;
   minimumOrder: number;
+  kind?: "PRODUCT_DISCOUNT" | "FREE_SHIPPING" | "LOYALTY_CLAIM" | "MANUAL_PRIVATE";
   minPurchase?: number;
   expiresAt: string | null; // ISO
   visibility?: "member" | "private" | string;
@@ -37,6 +38,7 @@ function formatRupiahShort(n: number) {
 
 function describeBenefit(v: VoucherItem) {
   if (v.title) return v.title;
+  if (v.kind === "FREE_SHIPPING") return "Gratis Ongkir";
   if (v.discountPercent && v.discountPercent > 0) {
     return `Diskon ${v.discountPercent}%`;
   }

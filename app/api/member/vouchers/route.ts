@@ -18,11 +18,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { isFreeShippingVoucher } from "@/lib/voucher-kind";
 
 function calcDiscount(
   subtotal: number,
-  voucher: { discountPercent: number | null; discountAmount: number | null }
+  voucher: { discountPercent: number | null; discountAmount: number | null; kind?: string | null }
 ): number {
+  if (isFreeShippingVoucher(voucher)) return 0;
   let d = 0;
   if (voucher.discountPercent) d += Math.floor((subtotal * voucher.discountPercent) / 100);
   if (voucher.discountAmount) d += voucher.discountAmount;
@@ -82,6 +84,7 @@ export async function GET(request: NextRequest) {
     discountAmount: number | null;
     minimumOrder: number;
     expiresAt: Date | null;
+    kind: string;
   }> = [];
 
   const ineligible: Array<{
@@ -91,6 +94,7 @@ export async function GET(request: NextRequest) {
     discountAmount: number | null;
     minimumOrder: number;
     expiresAt: Date | null;
+    kind: string;
     shortfall: number; // berapa rupiah lagi belanja agar memenuhi minimumOrder
   }> = [];
 
@@ -107,6 +111,18 @@ export async function GET(request: NextRequest) {
           discountAmount: v.discountAmount,
           minimumOrder: v.minimumOrder,
           expiresAt: v.expiresAt,
+          kind: v.kind,
+        });
+      } else if (isFreeShippingVoucher(v)) {
+        eligible.push({
+          code: v.code,
+          description: v.description,
+          discount,
+          discountPercent: v.discountPercent,
+          discountAmount: v.discountAmount,
+          minimumOrder: v.minimumOrder,
+          expiresAt: v.expiresAt,
+          kind: v.kind,
         });
       }
     } else {
@@ -117,6 +133,7 @@ export async function GET(request: NextRequest) {
         discountAmount: v.discountAmount,
         minimumOrder: v.minimumOrder,
         expiresAt: v.expiresAt,
+        kind: v.kind,
         shortfall: v.minimumOrder - subtotal,
       });
     }

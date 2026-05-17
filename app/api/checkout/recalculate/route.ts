@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { cartItemSchema } from "@/lib/validation";
 import { buildCheckoutItemsFromInventory } from "@/lib/checkout-items";
+import { isFreeShippingVoucher } from "@/lib/voucher-kind";
 
 /**
  * Aturan voucher checkout (lihat CLAUDE.md - Voucher business rules):
@@ -43,6 +44,7 @@ const recalculateSchema = z.object({
 });
 
 type VoucherSourceType = "CUSTOMER" | "SELLER_MANUAL";
+type VoucherKind = "PRODUCT_DISCOUNT" | "FREE_SHIPPING" | "LOYALTY_CLAIM" | "MANUAL_PRIVATE";
 
 type VoucherRow = {
   code: string;
@@ -56,20 +58,24 @@ type VoucherRow = {
   usedCount: number;
   isActive: boolean;
   sourceType: VoucherSourceType;
+  kind: VoucherKind;
   userId: string | null;
 };
 
 function calcDiscount(
   subtotal: number,
-  voucher: Pick<VoucherRow, "discountPercent" | "discountAmount">,
+  shippingFee: number,
+  voucher: Pick<VoucherRow, "discountPercent" | "discountAmount" | "kind">,
 ) {
+  if (isFreeShippingVoucher(voucher)) return Math.max(0, shippingFee);
   let discount = 0;
   if (voucher.discountPercent) discount += Math.floor((subtotal * voucher.discountPercent) / 100);
   if (voucher.discountAmount) discount += voucher.discountAmount;
   return Math.min(discount, subtotal);
 }
 
-function describeDiscount(discount: number) {
+function describeDiscount(discount: number, kind?: VoucherKind) {
+  if (kind === "FREE_SHIPPING") return "Gratis Ongkir";
   return `Hemat Rp${new Intl.NumberFormat("id-ID").format(discount)}`;
 }
 
@@ -81,6 +87,7 @@ function normalizeVoucher(voucher: VoucherRow, discount: number) {
     minimumOrder: voucher.minimumOrder,
     expiresAt: voucher.expiresAt,
     sourceType: voucher.sourceType,
+    kind: voucher.kind,
     status: "available" as const,
   };
 }
@@ -98,6 +105,7 @@ function normalizeUnavailable(
     expiresAt: voucher.expiresAt,
     reason,
     sourceType: voucher.sourceType,
+    kind: voucher.kind,
     status: "unavailable" as const,
   };
 }
@@ -278,9 +286,11 @@ export async function POST(request: NextRequest) {
     } else if (subtotal < manualVoucher.minimumOrder) {
       const shortfall = manualVoucher.minimumOrder - subtotal;
       manualVoucherError = `Belanja kurang Rp${new Intl.NumberFormat("id-ID").format(shortfall)} lagi`;
+    } else if (isFreeShippingVoucher(manualVoucher) && shippingFee <= 0) {
+      manualVoucherError = "Voucher gratis ongkir berlaku untuk pengiriman.";
     } else {
-      const discount = calcDiscount(subtotal, manualVoucher);
-      if (discount <= 0) {
+      const discount = calcDiscount(subtotal, shippingFee, manualVoucher);
+      if (discount <= 0 && !isFreeShippingVoucher(manualVoucher)) {
         manualVoucherError = "Voucher tidak memberikan potongan untuk pesanan ini.";
       } else {
         manualApplied = normalizeVoucher(manualVoucher, discount);
@@ -319,9 +329,15 @@ export async function POST(request: NextRequest) {
       );
       continue;
     }
+    if (isFreeShippingVoucher(voucher) && shippingFee <= 0) {
+      unavailable.push(
+        normalizeUnavailable(voucher, "Pilih pengiriman untuk menggunakan gratis ongkir", 0),
+      );
+      continue;
+    }
 
-    const discount = calcDiscount(subtotal, voucher);
-    if (discount <= 0) {
+    const discount = calcDiscount(subtotal, shippingFee, voucher);
+    if (discount <= 0 && !isFreeShippingVoucher(voucher)) {
       unavailable.push(
         normalizeUnavailable(voucher, "Voucher tidak memiliki potongan untuk checkout ini", 0),
       );
@@ -363,16 +379,29 @@ export async function POST(request: NextRequest) {
           inUnavailable?.reason ?? "Voucher tidak bisa digunakan untuk pilihan ini";
       }
     }
-  } else if (input.autoApply && available.length > 0) {
+  } else if (input.autoApply && available.some((voucher) => voucher.discount > 0)) {
     // Auto-apply best customer voucher kalau user belum pilih
-    customerApplied = available[0];
+    customerApplied = available.find((voucher) => voucher.discount > 0) ?? null;
     customerAuto = true;
   }
 
   // Combine discount: customer + manual, capped at subtotal
-  const customerDiscount = customerApplied?.discount ?? 0;
-  const manualDiscount = manualApplied?.discount ?? 0;
-  const totalDiscount = Math.min(customerDiscount + manualDiscount, subtotal);
+  const appliedDiscounts = [customerApplied, manualApplied].filter(Boolean) as Array<
+    NonNullable<typeof customerApplied>
+  >;
+  const productDiscount = Math.min(
+    appliedDiscounts
+      .filter((voucher) => !isFreeShippingVoucher(voucher))
+      .reduce((sum, voucher) => sum + voucher.discount, 0),
+    subtotal,
+  );
+  const shippingDiscount = Math.min(
+    appliedDiscounts
+      .filter((voucher) => isFreeShippingVoucher(voucher))
+      .reduce((sum, voucher) => sum + voucher.discount, 0),
+    shippingFee,
+  );
+  const totalDiscount = productDiscount + shippingDiscount;
   const total = Math.max(subtotal + shippingFee - totalDiscount, 0);
 
   return NextResponse.json({
@@ -386,8 +415,9 @@ export async function POST(request: NextRequest) {
         ? {
             code: customerApplied.code,
             title: "Voucher member terpakai",
-            description: describeDiscount(customerApplied.discount),
+            description: describeDiscount(customerApplied.discount, customerApplied.kind),
             discount: customerApplied.discount,
+            kind: customerApplied.kind,
           }
         : null,
     applied_voucher: customerApplied

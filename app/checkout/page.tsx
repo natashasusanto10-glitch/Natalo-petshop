@@ -62,6 +62,7 @@ type CheckoutRecalculateResponse = CheckoutPricing & {
     title: string;
     description: string;
     discount: number;
+    kind?: AppliedVoucher["kind"];
   } | null;
   // Dual-slot fields (lihat aturan voucher di CLAUDE.md)
   applied_customer_voucher?: AppliedVoucherShape;
@@ -838,6 +839,7 @@ export default function CheckoutPage() {
         code: customerApplied.code,
         discount: customerApplied.discount,
         description: customerApplied.description ?? `Hemat ${formatRupiah(customerApplied.discount)}`,
+        kind: customerApplied.kind,
         autoApplied: customerApplied.autoApplied,
       });
       setVoucherInput(customerApplied.code);
@@ -857,6 +859,7 @@ export default function CheckoutPage() {
         code: manualApplied.code,
         discount: manualApplied.discount,
         description: manualApplied.description ?? `Hemat ${formatRupiah(manualApplied.discount)}`,
+        kind: manualApplied.kind,
         autoApplied: false,
       });
       setForm((current) =>
@@ -1047,8 +1050,9 @@ export default function CheckoutPage() {
     code: string,
     discount: number,
     description: string,
+    kind?: AppliedVoucher["kind"],
   ) {
-    setVoucherApplied({ code, discount, description, autoApplied: false });
+    setVoucherApplied({ code, discount, description, kind, autoApplied: false });
     setAutoVoucherSuppressed(false);
     setForm((f) => ({ ...f, voucherCode: code }));
     setVoucherInvalidated(null);
@@ -1879,8 +1883,10 @@ export default function CheckoutPage() {
             </div>
             {voucherApplied && (
               <div className="flex justify-between font-semibold text-green-600">
-                <span>Diskon voucher</span>
-                <span>-{formatRupiah(discount)}</span>
+                <span>{voucherApplied.kind === "FREE_SHIPPING" ? "Voucher gratis ongkir" : "Diskon voucher"}</span>
+                <span>
+                  {discount > 0 ? `-${formatRupiah(discount)}` : voucherApplied.kind === "FREE_SHIPPING" ? "Menunggu ongkir" : "-Rp0"}
+                </span>
               </div>
             )}
             <div className="flex justify-between text-lg font-black text-zinc-950">

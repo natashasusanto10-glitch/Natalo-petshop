@@ -226,6 +226,8 @@ async function main() {
       description: "Diskon 10% untuk pembelian pertama member.",
       discountPercent: 10,
       minimumOrder: 50000,
+      sourceType: "CUSTOMER",
+      kind: "PRODUCT_DISCOUNT",
     },
   });
 }

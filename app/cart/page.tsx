@@ -35,13 +35,20 @@ const CHECKOUT_SELECTION_KEY = "checkout:selectedCartItems";
 // user klik Checkout (lihat applyCheckoutPricing di checkout page).
 const CART_VOUCHER_KEY = "cart:voucher";
 
-type CartAppliedMember = { code: string; discount: number; description: string };
+type CartVoucherKind = "PRODUCT_DISCOUNT" | "FREE_SHIPPING" | "LOYALTY_CLAIM" | "MANUAL_PRIVATE";
+type CartAppliedMember = {
+  code: string;
+  discount: number;
+  description: string;
+  kind?: CartVoucherKind;
+};
 type CartVoucherOption = {
   id: string;
   code: string;
   description: string | null;
   discount: number;
   minimumOrder: number;
+  kind?: CartVoucherKind;
 };
 type VoucherSelectionMode = "auto" | "manual" | null;
 type PendingDeletedItem = {
@@ -352,6 +359,8 @@ export default function CartPage() {
   const isCartEmpty = items.length === 0;
   const stickyVoucherDiscountText =
     voucherDiscount > 0 ? `Diskon ${formatRupiah(voucherDiscount)}` : undefined;
+  const stickyVoucherFreeShippingText =
+    memberVoucher?.kind === "FREE_SHIPPING" ? "Gratis ongkir" : undefined;
   const hasNoEligibleVoucher =
     selectedCount > 0 &&
     selectedSubtotal > 0 &&
@@ -376,13 +385,18 @@ export default function CartPage() {
       .then((data) => {
         if (!active) return;
         const available = ((Array.isArray(data?.available) ? data.available : []) as CartVoucherOption[])
-          .filter((voucher) => voucher.code && voucher.discount > 0)
+          .filter((voucher) => voucher.code && (voucher.discount > 0 || voucher.kind === "FREE_SHIPPING"))
           .sort((a, b) => b.discount - a.discount);
         const bestVoucher = available[0] ?? null;
         const toAppliedVoucher = (voucher: CartVoucherOption): CartAppliedMember => ({
           code: voucher.code,
           discount: voucher.discount,
-          description: voucher.description ?? `Hemat ${formatRupiah(voucher.discount)}`,
+          description:
+            voucher.description ??
+            (voucher.kind === "FREE_SHIPPING"
+              ? "Gratis ongkir saat checkout"
+              : `Hemat ${formatRupiah(voucher.discount)}`),
+          kind: voucher.kind,
         });
 
         setMemberVoucherPreview(bestVoucher);
@@ -921,6 +935,13 @@ export default function CartPage() {
                   <span className="font-semibold">−{formatRupiah(voucherDiscount)}</span>
                 </div>
               )}
+              {memberVoucher?.kind === "FREE_SHIPPING" && (
+                <div className="flex items-center justify-between text-sm text-emerald-700">
+                  <span className="inline-flex rounded-full bg-emerald-50 px-2 py-1 text-xs font-black ring-1 ring-emerald-100">
+                    Gratis ongkir saat checkout
+                  </span>
+                </div>
+              )}
               <div className="flex items-center justify-between border-t border-gray-100 pt-2.5">
                 <span className="font-semibold text-gray-700">Total produk terpilih</span>
                 <span className="text-xl font-black text-gray-900">{formatRupiah(selectedTotal)}</span>
@@ -964,13 +985,13 @@ export default function CartPage() {
         isLoggedIn={isLoggedIn}
         subtotal={selectedSubtotal}
         selectedMemberCode={memberVoucher?.code ?? null}
-        onSelectMember={(code, discount, description) => {
+        onSelectMember={(code, discount, description, kind) => {
           setVoucherSelectionMode("manual");
           manualVoucherSignatureRef.current = selectedVoucherSignature;
           if (!code) {
             setMemberVoucher(null);
           } else {
-            setMemberVoucher({ code, discount, description });
+            setMemberVoucher({ code, discount, description, kind });
           }
         }}
         onRequireLogin={() => {
@@ -1011,6 +1032,7 @@ export default function CartPage() {
             <StickyVoucherBar
               selectedCount={selectedCount}
               discountText={stickyVoucherDiscountText}
+              freeShippingText={stickyVoucherFreeShippingText}
               noEligibleVoucher={hasNoEligibleVoucher}
               onClick={() => setVoucherSheetOpen(true)}
             />
@@ -1027,7 +1049,11 @@ export default function CartPage() {
                 </label>
                 <div className="min-w-0 flex-1 text-right">
                   <p className="text-[11px] font-semibold text-gray-500">
-                    {voucherDiscount > 0 ? `Hemat ${formatRupiah(voucherDiscount)} dgn voucher` : "Total"}
+                    {voucherDiscount > 0
+                      ? `Hemat ${formatRupiah(voucherDiscount)} dgn voucher`
+                      : memberVoucher?.kind === "FREE_SHIPPING"
+                      ? "Gratis ongkir saat checkout"
+                      : "Total"}
                   </p>
                   <p className="truncate text-base font-black text-gray-900">{formatRupiah(selectedTotal)}</p>
                 </div>

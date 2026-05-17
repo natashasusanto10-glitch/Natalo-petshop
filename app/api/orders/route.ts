@@ -9,6 +9,7 @@ import { InvalidCustomerSessionError, resolveOrderIdentity } from "@/lib/order-i
 import { buildOrderDetailPath, buildOrderDetailUrl, buildOrderSuccessUrl, createTrackingToken } from "@/lib/order-detail";
 import { SELF_PICKUP_METHOD, SELF_PICKUP_STORE } from "@/lib/self-pickup";
 import { sendAdminOrderCreated, sendOrderCreated } from "@/lib/whatsapp";
+import { isFreeShippingVoucher } from "@/lib/voucher-kind";
 
 class StockConflictError extends Error {
   status = 409;
@@ -205,6 +206,10 @@ export async function POST(request: Request) {
   }
 
   const subtotal = checkoutItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const isSelfPickup =
+    input.orderType === SELF_PICKUP_METHOD ||
+    input.shippingMethod === SELF_PICKUP_METHOD;
+  const shippingCost = isSelfPickup ? 0 : input.shippingCost;
   let discount = 0;
 
   try {
@@ -275,7 +280,13 @@ export async function POST(request: Request) {
     // - Maks 1 voucher CUSTOMER + 1 voucher SELLER_MANUAL
     // - SELLER_MANUAL hanya boleh di slot manual
     // - CUSTOMER hanya boleh di slot customer
-    type AppliedVoucher = { id: string; maxUsage: number | null; code: string };
+    type AppliedVoucher = {
+      id: string;
+      maxUsage: number | null;
+      code: string;
+      kind: string | null;
+      addedDiscount: number;
+    };
     let appliedCustomerVoucher: AppliedVoucher | null = null;
     let appliedManualVoucher: AppliedVoucher | null = null;
 
@@ -319,11 +330,27 @@ export async function POST(request: Request) {
         (voucher.maxUsage === null || voucher.usedCount < voucher.maxUsage);
       if (!isValid) return null;
       let added = 0;
-      if (voucher.discountPercent)
+      if (isFreeShippingVoucher(voucher)) {
+        if (shippingCost <= 0) {
+          throw new VoucherValidationError(
+            "Voucher gratis ongkir hanya berlaku untuk pengiriman.",
+          );
+        }
+        added = Math.max(0, shippingCost);
+      } else if (voucher.discountPercent) {
         added += Math.floor((subtotal * voucher.discountPercent) / 100);
-      if (voucher.discountAmount) added += voucher.discountAmount;
+      }
+      if (!isFreeShippingVoucher(voucher) && voucher.discountAmount) {
+        added += voucher.discountAmount;
+      }
       return {
-        voucher: { id: voucher.id, maxUsage: voucher.maxUsage, code: voucher.code },
+        voucher: {
+          id: voucher.id,
+          maxUsage: voucher.maxUsage,
+          code: voucher.code,
+          kind: voucher.kind,
+          addedDiscount: added,
+        },
         addedDiscount: added,
       };
     }
@@ -342,7 +369,28 @@ export async function POST(request: Request) {
         discount += result.addedDiscount;
       }
     }
-    discount = Math.min(discount, subtotal);
+    const productDiscount = Math.min(
+      appliedCustomerVoucher && !isFreeShippingVoucher(appliedCustomerVoucher)
+        ? appliedCustomerVoucher.addedDiscount
+        : 0,
+      subtotal,
+    );
+    const manualProductDiscount = Math.min(
+      appliedManualVoucher && !isFreeShippingVoucher(appliedManualVoucher)
+        ? appliedManualVoucher.addedDiscount
+        : 0,
+      Math.max(0, subtotal - productDiscount),
+    );
+    const shippingDiscount = Math.min(
+      (appliedCustomerVoucher && isFreeShippingVoucher(appliedCustomerVoucher)
+        ? appliedCustomerVoucher.addedDiscount
+        : 0) +
+        (appliedManualVoucher && isFreeShippingVoucher(appliedManualVoucher)
+          ? appliedManualVoucher.addedDiscount
+          : 0),
+      shippingCost,
+    );
+    discount = productDiscount + manualProductDiscount + shippingDiscount;
 
     // Legacy variable name agar diff selanjutnya minimal — array kedua voucher
     const appliedVouchers: AppliedVoucher[] = [];
@@ -350,10 +398,6 @@ export async function POST(request: Request) {
     if (appliedManualVoucher) appliedVouchers.push(appliedManualVoucher);
     const appliedVoucher = appliedVouchers[0] ?? null;
 
-    const isSelfPickup =
-      input.orderType === SELF_PICKUP_METHOD ||
-      input.shippingMethod === SELF_PICKUP_METHOD;
-    const shippingCost = isSelfPickup ? 0 : input.shippingCost;
     const total = Math.max(subtotal + shippingCost - discount, 0);
     const orderNumber = createOrderNumber();
     const trackingToken = createTrackingToken();

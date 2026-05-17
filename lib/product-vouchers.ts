@@ -9,6 +9,7 @@ export type ProductVoucherItem = {
   discountPercent: number | null;
   discountAmount: number | null;
   minimumOrder: number;
+  kind: "PRODUCT_DISCOUNT" | "FREE_SHIPPING" | "LOYALTY_CLAIM" | "MANUAL_PRIVATE";
   minPurchase: number;
   expiresAt: string | null;
   visibility: "member";
@@ -26,7 +27,9 @@ function formatRupiahShort(n: number) {
 function voucherTitle(voucher: {
   discountPercent: number | null;
   discountAmount: number | null;
+  kind?: string | null;
 }) {
+  if (voucher.kind === "FREE_SHIPPING") return "Gratis Ongkir";
   if (voucher.discountPercent && voucher.discountPercent > 0) {
     return `Diskon ${voucher.discountPercent}%`;
   }
@@ -66,6 +69,7 @@ export async function loadVisibleProductVouchers(
         maxUsage: true,
         usedCount: true,
         expiresAt: true,
+        kind: true,
       },
     }),
     prisma.order.findMany({
@@ -104,6 +108,7 @@ export async function loadVisibleProductVouchers(
       discountPercent: voucher.discountPercent,
       discountAmount: voucher.discountAmount,
       minimumOrder: voucher.minimumOrder,
+      kind: voucher.kind,
       minPurchase: voucher.minimumOrder,
       expiresAt: voucher.expiresAt ? voucher.expiresAt.toISOString() : null,
       visibility: "member",

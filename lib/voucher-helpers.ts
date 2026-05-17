@@ -7,6 +7,7 @@
  */
 
 import type { Voucher } from "@prisma/client";
+import { isFreeShippingVoucher } from "@/lib/voucher-kind";
 
 export type VoucherDisplayItem = {
   id: string;
@@ -17,6 +18,7 @@ export type VoucherDisplayItem = {
   minimumOrder: number;
   expiresAt: string | null;
   sourceType: "CUSTOMER" | "SELLER_MANUAL";
+  kind: "PRODUCT_DISCOUNT" | "FREE_SHIPPING" | "LOYALTY_CLAIM" | "MANUAL_PRIVATE";
   /** Nilai diskon yg dihitung untuk subtotal saat ini */
   discount: number;
   /** Apakah voucher applicable untuk subtotal saat ini */
@@ -33,8 +35,11 @@ export type VoucherUserContext = {
 
 export function calcVoucherDiscount(
   subtotal: number,
-  voucher: Pick<Voucher, "discountPercent" | "discountAmount">,
+  voucher: Pick<Voucher, "discountPercent" | "discountAmount"> & {
+    kind?: string | null;
+  },
 ): number {
+  if (isFreeShippingVoucher(voucher)) return 0;
   let discount = 0;
   if (voucher.discountPercent) {
     discount += Math.floor((subtotal * voucher.discountPercent) / 100);
