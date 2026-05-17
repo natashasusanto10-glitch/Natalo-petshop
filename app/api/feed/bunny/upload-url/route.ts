@@ -40,7 +40,12 @@ import type { FeedPostKind, FeedPostTab } from "@prisma/client";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
-import { createBunnyVideo, getBunnyConfig, bunnyUploadUrl } from "@/lib/feed/bunny";
+import {
+  createBunnyVideo,
+  generateBunnyTusCredentials,
+  getBunnyConfig,
+  bunnyUploadUrl,
+} from "@/lib/feed/bunny";
 
 export const dynamic = "force-dynamic";
 
@@ -276,14 +281,24 @@ export async function POST(request: NextRequest) {
     return created;
   });
 
+  // Generate TUS credentials selain PUT URL. Client pilih path:
+  //   - File besar (>50 MB) atau koneksi unstable → TUS resumable
+  //   - File kecil → PUT simple (lebih cepat setup, 1 round-trip)
+  // Both authenticate the same Bunny video record (videoGuid), jadi
+  // client bisa fallback PUT → TUS atau sebaliknya kalau salah satu gagal.
+  const tusCredentials = await generateBunnyTusCredentials(bunnyCreated.guid);
+
   return NextResponse.json({
     ok: true,
     postId: post.id,
     videoGuid: bunnyCreated.guid,
+    // Legacy PUT path (backward compat untuk client lama)
     uploadUrl: bunnyUploadUrl(bunnyCreated.guid),
     uploadHeaders: {
       AccessKey: cfg.apiKey,
       "Content-Type": "application/octet-stream",
     },
+    // TUS resumable upload — recommended path
+    tus: tusCredentials,
   });
 }

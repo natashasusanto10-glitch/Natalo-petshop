@@ -250,6 +250,59 @@ export function bunnyUploadUrl(guid: string): string {
 }
 
 /**
+ * TUS upload credentials untuk Bunny Stream resumable upload.
+ *
+ * TUS protocol (tus.io) memungkinkan upload file besar resumable — kalau
+ * koneksi putus di tengah, client lanjut dari byte terakhir yang sudah
+ * diterima server, BUKAN restart dari 0. Critical untuk file 200MB di
+ * koneksi mobile Indonesia yang sering signal drop.
+ *
+ * Bunny TUS endpoint: https://video.bunnycdn.com/tusupload
+ *
+ * Auth Bunny TUS: signature SHA256 dari concatenation:
+ *   library_id + api_key + expiration_unix + video_guid
+ * Plus header `AuthorizationExpire` (unix timestamp, valid window).
+ * Window default 1 jam — cukup untuk upload 200MB di koneksi paling
+ * pelan sekalipun (~30 menit di 3G).
+ */
+export type BunnyTusCredentials = {
+  endpoint: string;
+  videoId: string;
+  libraryId: string;
+  authSignature: string;
+  authExpire: number;
+};
+
+export async function generateBunnyTusCredentials(
+  guid: string,
+  expiryWindowSec: number = 60 * 60, // 1 jam default
+): Promise<BunnyTusCredentials | null> {
+  const cfg = getBunnyConfig();
+  if (!cfg) return null;
+
+  const expire = Math.floor(Date.now() / 1000) + expiryWindowSec;
+
+  // Bunny signature: SHA256(library_id + api_key + expiration_time + video_id)
+  // Node 18+ punya crypto.subtle (Web Crypto API) — sama API persis dengan
+  // browser, jadi tidak perlu node:crypto import.
+  const message = `${cfg.libraryId}${cfg.apiKey}${expire}${guid}`;
+  const buffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const authSignature = hashArray
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+
+  return {
+    endpoint: `${BUNNY_API_BASE}/tusupload`,
+    videoId: guid,
+    libraryId: cfg.libraryId,
+    authSignature,
+    authExpire: expire,
+  };
+}
+
+/**
  * List videos di Bunny Stream library — paginated.
  * Dipakai oleh storage GC cron untuk identify orphan (video di Bunny tapi
  * tidak lagi di-reference oleh FeedPost aktif di DB).

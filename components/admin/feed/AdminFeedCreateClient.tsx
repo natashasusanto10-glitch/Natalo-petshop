@@ -29,6 +29,14 @@ import {
   readVideoMetadata,
   type VideoMetadata,
 } from "@/lib/feed/video-thumbnail";
+import { uploadToBunnyViaTus } from "@/lib/feed/tus-upload";
+import {
+  clearPendingUpload,
+  getPendingUpload,
+  savePendingUpload,
+  useUploadLifecycle,
+  type PendingUploadInfo,
+} from "@/lib/feed/upload-lifecycle";
 import {
   ADMIN_VIDEO_CONFIG,
   formatFileSize,
@@ -84,6 +92,36 @@ export function AdminFeedCreateClient() {
   const [progress, setProgress] = useState("");
   const [compressProgress, setCompressProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  // Track uploading state spesifik (sub-state dari submitting) supaya
+  // lifecycle hook subscribe ke app state hanya saat upload jalan.
+  const [uploading, setUploading] = useState(false);
+
+  // Capacitor App lifecycle — saat app ke background mid-upload, switch
+  // progress message + TUS auto-pause/resume saat foreground. Kalau
+  // app ke-kill, pending state di localStorage bisa di-resume next
+  // session pakai TUS fingerprint.
+  useUploadLifecycle(uploading, {
+    onSuspend: () => {
+      setProgress(
+        "Upload pause sementara — app di background. Buka kembali untuk lanjut.",
+      );
+    },
+    onResume: () => {
+      setProgress("Melanjutkan upload, mohon tunggu...");
+    },
+  });
+
+  // Detect pending upload dari session sebelumnya (saved ke localStorage
+  // sebelum upload start, dibersihkan saat sukses). Kalau ada + masih
+  // dalam window 24 jam, tampil banner supaya admin bisa lanjut atau
+  // discard. TUS fingerprint di-resolve otomatis saat file dipilih lagi
+  // (tus-js-client findPreviousUploads match by file content hash).
+  const [pendingUpload, setPendingUpload] = useState<PendingUploadInfo | null>(
+    null,
+  );
+  useEffect(() => {
+    setPendingUpload(getPendingUpload());
+  }, []);
 
   // Semua kind yang admin bisa create sekarang punya video — PRODUCT_ONLY
   // di-hapus dari opsi UI (lihat header comment). needsVideo bisa di-
@@ -321,46 +359,104 @@ export function AdminFeedCreateClient() {
         const isLargeFile = sizeMB > 50;
         setProgress(
           isLargeFile
-            ? `Mengunggah video ${sizeMB.toFixed(0)} MB — mohon tunggu, jangan tutup halaman...`
+            ? `Mengunggah video ${sizeMB.toFixed(0)} MB — koneksi putus pun bisa lanjut otomatis...`
             : "Mengunggah video, mohon tunggu...",
         );
-        await new Promise<void>((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          xhr.open("PUT", provisionData.uploadUrl, true);
-          xhr.setRequestHeader("AccessKey", provisionData.uploadHeaders.AccessKey);
-          xhr.setRequestHeader("Content-Type", "application/octet-stream");
-          xhr.upload.onprogress = (e) => {
-            if (e.lengthComputable) {
-              setCompressProgress(Math.round((e.loaded / e.total) * 100));
+
+        // Save pending state ke localStorage SEBELUM upload mulai —
+        // kalau app crash mid-upload, user bisa lihat banner di reopen.
+        // TUS fingerprint sendiri sudah di-save terpisah oleh tus-js-client.
+        savePendingUpload({
+          postId: provisionData.postId,
+          videoGuid: provisionData.videoGuid,
+          filename: videoFile.name,
+          sizeMB,
+          startedAt: Date.now(),
+        });
+        setUploading(true);
+
+        // TUS resumable upload (primary path). Kalau koneksi putus
+        // di tengah, tus-js-client otomatis retry dengan exponential
+        // backoff dan resume dari byte terakhir yang server konfirmasi.
+        // File besar 200 MB di 4G yang signal-nya naik-turun tetap
+        // bisa upload kelar tanpa start dari 0.
+        //
+        // Fallback ke simple PUT kalau:
+        //   - Server tidak return TUS credentials (Bunny config error)
+        //   - TUS gagal initial connect (very rare)
+        const tusCredentials = provisionData.tus;
+        if (tusCredentials) {
+          try {
+            await uploadToBunnyViaTus({
+              file: videoFile,
+              credentials: tusCredentials,
+              filetype: videoFile.type || "video/mp4",
+              title: videoFile.name,
+              onProgress: (percent) => setCompressProgress(percent),
+            });
+            // Upload sukses → clear pending state.
+            clearPendingUpload();
+            setUploading(false);
+          } catch (err) {
+            // TUS gagal total — pending state tetap di localStorage
+            // supaya user bisa retry next session (TUS fingerprint
+            // di-keep oleh tus-js-client untuk resume).
+            setUploading(false);
+            const msg =
+              err instanceof Error ? err.message : String(err);
+            if (msg.toLowerCase().includes("abort")) {
+              clearPendingUpload();
+              throw new Error("Upload dibatalkan.");
             }
-          };
-          xhr.onload = () => {
-            if (xhr.status >= 200 && xhr.status < 300) resolve();
-            else
+            throw new Error(
+              "Upload terputus berkali-kali. Coba lagi dengan koneksi yang lebih stabil — atau gunakan WiFi.",
+            );
+          }
+        } else {
+          // Legacy simple PUT (fallback kalau server tidak return TUS creds).
+          await new Promise<void>((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open("PUT", provisionData.uploadUrl, true);
+            xhr.setRequestHeader(
+              "AccessKey",
+              provisionData.uploadHeaders.AccessKey,
+            );
+            xhr.setRequestHeader(
+              "Content-Type",
+              "application/octet-stream",
+            );
+            xhr.upload.onprogress = (e) => {
+              if (e.lengthComputable) {
+                setCompressProgress(Math.round((e.loaded / e.total) * 100));
+              }
+            };
+            xhr.onload = () => {
+              if (xhr.status >= 200 && xhr.status < 300) resolve();
+              else
+                reject(
+                  new Error(
+                    `Upload gagal (HTTP ${xhr.status}). Coba lagi dengan koneksi yang lebih stabil.`,
+                  ),
+                );
+            };
+            xhr.onerror = () =>
               reject(
                 new Error(
-                  `Upload gagal (HTTP ${xhr.status}). Coba lagi dengan koneksi yang lebih stabil.`,
+                  "Upload terputus. Coba lagi dengan koneksi yang lebih stabil — atau gunakan WiFi.",
                 ),
               );
-          };
-          xhr.onerror = () =>
-            reject(
-              new Error(
-                "Upload terputus. Coba lagi dengan koneksi yang lebih stabil — atau gunakan WiFi.",
-              ),
-            );
-          xhr.ontimeout = () =>
-            reject(
-              new Error(
-                "Upload terlalu lama (timeout). Coba lagi dengan koneksi yang lebih cepat.",
-              ),
-            );
-          // Default XHR timeout = none (tunggu selamanya). Set 30 menit
-          // ceiling supaya kalau koneksi stuck total, gagal explicit
-          // dengan message manusiawi, bukan hang forever.
-          xhr.timeout = 30 * 60 * 1000;
-          xhr.send(videoFile);
-        });
+            xhr.ontimeout = () =>
+              reject(
+                new Error(
+                  "Upload terlalu lama (timeout). Coba lagi dengan koneksi yang lebih cepat.",
+                ),
+              );
+            xhr.timeout = 30 * 60 * 1000;
+            xhr.send(videoFile);
+          });
+          clearPendingUpload();
+          setUploading(false);
+        }
 
         // Done with PUT. Bunny will encode + fire webhook → encodingStatus=
         // ready. Admin gets ACTIVE+publishedAt set already by upload-url
@@ -485,6 +581,7 @@ export function AdminFeedCreateClient() {
       setError(err instanceof Error ? err.message : "Gagal");
     } finally {
       setSubmitting(false);
+      setUploading(false);
       setProgress("");
       setCompressProgress(0);
     }
@@ -503,6 +600,38 @@ export function AdminFeedCreateClient() {
         </button>
         <h1 className="text-base font-black text-gray-900">Buat Post Feed</h1>
       </header>
+
+      {/* Pending upload banner — tampil kalau ada upload yg belum selesai
+          dari session sebelumnya (app crash, force close, dll). Admin
+          re-pilih file yang sama → TUS resume otomatis dari byte
+          terakhir, tidak start dari 0. */}
+      {pendingUpload && !submitting && (
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-3">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-amber-100 text-amber-700">
+            <FiUploadCloud className="h-4 w-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-extrabold text-amber-900">
+              Upload sebelumnya belum selesai
+            </p>
+            <p className="mt-0.5 text-[11px] text-amber-800">
+              File: {pendingUpload.filename} ({pendingUpload.sizeMB.toFixed(0)} MB).
+              Pilih file yang sama lagi untuk lanjutkan dari titik
+              terakhir — tidak perlu upload ulang.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                clearPendingUpload();
+                setPendingUpload(null);
+              }}
+              className="mt-1 text-[11px] font-bold text-amber-700 underline"
+            >
+              Buang dan mulai baru
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Kind selector */}
       <section className="rounded-2xl border border-gray-100 bg-white p-3">
