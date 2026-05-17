@@ -170,10 +170,6 @@ input, textarea, select, button {
   transform: translateZ(0);
 }
 
-body[data-review-modal-open="true"] .nat-site-header,
-body[data-review-modal-open="true"] .mobile-sticky-header,
-body[data-review-modal-open="true"] .account-sticky-header,
-body[data-review-modal-open="true"] .home-sticky-header,
 body[data-review-modal-open="true"] .product-detail-header {
   position: static !important;
 }
@@ -256,6 +252,13 @@ body[data-review-modal-open="true"] .product-detail-header {
   position: -webkit-sticky;
   position: sticky;
   background: #ffffff;
+  transform: translateZ(0);
+}
+
+.search-results-header,
+.profile-header {
+  position: -webkit-sticky;
+  position: sticky;
   transform: translateZ(0);
 }
 

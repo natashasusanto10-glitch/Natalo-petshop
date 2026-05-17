@@ -529,7 +529,7 @@ function SearchResultHeader({ query }: { query: string }) {
 
   return (
     <header
-      className="sticky top-0 z-[1050] border-b border-gray-100 bg-white/95 px-3 pb-3 shadow-[0_8px_24px_rgba(15,23,42,0.06)] backdrop-blur md:px-4"
+      className="search-results-header sticky top-0 z-[1050] border-b border-gray-100 bg-white/95 px-3 pb-3 shadow-[0_8px_24px_rgba(15,23,42,0.06)] backdrop-blur md:px-4"
       style={{
         minHeight: "calc(56px + env(safe-area-inset-top))",
         paddingTop: "calc(env(safe-area-inset-top) + 10px)",

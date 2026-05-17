@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   FiChevronRight,
@@ -14,7 +14,7 @@ import {
 } from "react-icons/fi";
 import { BottomSheet } from "@/components/BottomSheet";
 import { addItemToCart } from "@/lib/cart-actions";
-import type { CartItem } from "@/lib/cart";
+import { loadCart, type CartItem } from "@/lib/cart";
 import { formatRupiah } from "@/lib/format";
 import { hapticTap } from "@/lib/native/haptics";
 import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
@@ -44,6 +44,8 @@ export function FeedVideoCard({
   const [likeBusy, setLikeBusy] = useState(false);
   const [shareCount, setShareCount] = useState(post.shareCount ?? 0);
   const [productSheetOpen, setProductSheetOpen] = useState(false);
+  const [cartSheetOpen, setCartSheetOpen] = useState(false);
+  const [cartQuantityCount, setCartQuantityCount] = useState(0);
 
   const isAdmin = post.author.role === "ADMIN";
   const product = post.product;
@@ -90,6 +92,18 @@ export function FeedVideoCard({
   const productHref = product ? `/products/${product.slug}` : "#";
   const creatorName = isAdmin ? "Natalo Petshop" : post.author.name;
   const caption = cleanFeedCaption(post.description, post.title);
+
+  useEffect(() => {
+    function syncCartCount() {
+      setCartQuantityCount(
+        loadCart().reduce((sum, item) => sum + Math.max(0, item.quantity), 0),
+      );
+    }
+
+    syncCartCount();
+    window.addEventListener("cart-updated", syncCartCount);
+    return () => window.removeEventListener("cart-updated", syncCartCount);
+  }, []);
 
   async function toggleLike() {
     if (likeBusy) return;
@@ -305,28 +319,15 @@ export function FeedVideoCard({
           >
             <PetShareIcon />
           </ActionButton>
-          {/* Bag / Shop the Look — alternative entry ke product sheet
-              dari rail kanan. Hanya muncul kalau ada produk yg di-tag
-              di video. Tap = buka sheet sama seperti tap Shop pill di
-              kiri bawah. Label = jumlah produk (formatted) supaya user
-              tahu ada berapa item. */}
-          {taggedProducts.length > 0 && (
-            <ActionButton
-              label={
-                taggedProducts.length > 1
-                  ? String(taggedProducts.length)
-                  : ""
-              }
-              ariaLabel={
-                taggedProducts.length > 1
-                  ? `Lihat ${taggedProducts.length} produk di video`
-                  : "Lihat produk di video"
-              }
-              onClick={() => setProductSheetOpen(true)}
-            >
-              <PetShopBagIcon />
-            </ActionButton>
-          )}
+          {/* Keranjang Feed — buka cart sebagai bottom sheet dark supaya
+              user bisa cek isi keranjang tanpa meninggalkan Feed. */}
+          <ActionButton
+            label={formatEngagementCount(cartQuantityCount)}
+            ariaLabel="Lihat keranjang"
+            onClick={() => setCartSheetOpen(true)}
+          >
+            <PetShopBagIcon />
+          </ActionButton>
         </div>
       )}
 
@@ -445,6 +446,10 @@ export function FeedVideoCard({
           onClose={() => setProductSheetOpen(false)}
         />
       )}
+      <FeedCartSheet
+        open={cartSheetOpen}
+        onClose={() => setCartSheetOpen(false)}
+      />
     </article>
   );
 }
@@ -675,6 +680,156 @@ function buildFeedCartItem(
   };
 }
 
+function cartSelectionKey(item: CartItem) {
+  return `${item.productId}:${item.variantId ?? ""}`;
+}
+
+function withCartSubtotal(item: CartItem): CartItem {
+  return {
+    ...item,
+    subtotal: item.price * item.quantity,
+  };
+}
+
+function FeedCartSheet({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function syncCartItems() {
+      setCartItems(loadCart().map(withCartSubtotal));
+    }
+
+    syncCartItems();
+    window.addEventListener("cart-updated", syncCartItems);
+    return () => window.removeEventListener("cart-updated", syncCartItems);
+  }, [open]);
+
+  const itemCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+  const subtotal = cartItems.reduce(
+    (sum, item) => sum + item.price * item.quantity,
+    0,
+  );
+
+  function handleCheckoutFromFeed() {
+    if (cartItems.length === 0) return;
+    hapticTap();
+    const checkoutItems = cartItems.map(withCartSubtotal);
+    const cartKeys = checkoutItems.map(cartSelectionKey);
+
+    try {
+      sessionStorage.setItem(CHECKOUT_SELECTION_KEY, JSON.stringify(checkoutItems));
+    } catch {
+      // Checkout tetap bisa membaca dari cart lokal kalau sessionStorage gagal.
+    }
+
+    onClose();
+    router.push(
+      `/checkout?cart_item_ids=${encodeURIComponent(cartKeys.join(","))}&returnTo=${encodeURIComponent("/feed")}`,
+    );
+  }
+
+  return (
+    <BottomSheet
+      open={open}
+      onClose={onClose}
+      title="Keranjang"
+      variant="dark"
+      footer={
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-4 text-sm">
+            <span className="font-semibold text-zinc-400">
+              {itemCount > 0 ? `${itemCount} item` : "Keranjang kosong"}
+            </span>
+            <span className="text-lg font-black text-white">
+              {formatRupiah(subtotal)}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleCheckoutFromFeed}
+            disabled={cartItems.length === 0}
+            className="relative flex h-12 w-full items-center justify-center overflow-hidden rounded-full border border-sky-200/55 bg-[linear-gradient(180deg,rgba(95,191,255,0.96)_0%,rgba(30,135,255,0.94)_44%,rgba(18,97,218,0.96)_100%)] px-5 text-sm font-black text-white shadow-[0_0_24px_rgba(57,154,255,0.38),0_10px_24px_rgba(0,83,189,0.3),inset_0_1px_0_rgba(255,255,255,0.55)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:border-white/8 disabled:bg-none disabled:bg-zinc-700 disabled:text-zinc-400 disabled:shadow-none disabled:active:scale-100"
+          >
+            <span className="pointer-events-none absolute inset-x-6 top-1 h-3 rounded-full bg-white/30 blur-[5px]" />
+            <span className="relative">Checkout</span>
+          </button>
+        </div>
+      }
+    >
+      {cartItems.length === 0 ? (
+        <div className="rounded-3xl border border-white/10 bg-white/[0.04] px-4 py-8 text-center">
+          <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-white/[0.06] text-natalo-300">
+            <FiShoppingCart className="h-7 w-7" aria-hidden="true" />
+          </div>
+          <p className="mt-4 text-sm font-black text-white">
+            Keranjang masih kosong
+          </p>
+          <p className="mt-1 text-xs leading-5 text-zinc-400">
+            Tambahkan produk dari video Natalo, lalu checkout dari sini tanpa keluar dari Feed.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-xs font-semibold text-zinc-400">
+            Cek isi keranjang tanpa meninggalkan Feed.
+          </p>
+          {cartItems.map((item) => (
+            <div
+              key={cartSelectionKey(item)}
+              className="flex items-center gap-3 rounded-2xl border border-[#242B33] bg-[#111820] p-3 shadow-[0_10px_28px_rgba(0,0,0,0.18)]"
+            >
+              <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-white/[0.08]">
+                {item.imageUrl ? (
+                  <Image
+                    src={item.imageUrl}
+                    alt={item.name}
+                    fill
+                    sizes="64px"
+                    placeholder="blur"
+                    blurDataURL={IMAGE_BLUR_GRAY}
+                    className="object-cover"
+                  />
+                ) : (
+                  <span className="grid h-full w-full place-items-center text-natalo-300">
+                    <FiPackage className="h-6 w-6" />
+                  </span>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="line-clamp-2 text-sm font-black leading-snug text-white">
+                  {item.name}
+                </p>
+                {item.variantLabel && (
+                  <p className="mt-0.5 truncate text-xs font-semibold text-zinc-400">
+                    {item.variantLabel}
+                  </p>
+                )}
+                <div className="mt-1 flex items-center justify-between gap-3">
+                  <span className="text-xs font-semibold text-zinc-400">
+                    {item.quantity} x {formatRupiah(item.price)}
+                  </span>
+                  <span className="shrink-0 text-sm font-black text-natalo-300">
+                    {formatRupiah(item.price * item.quantity)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </BottomSheet>
+  );
+}
+
 function PinnedProductSheet({
   open,
   products,
@@ -729,7 +884,9 @@ function PinnedProductSheet({
     }
 
     onClose();
-    router.push(`/checkout?cart_item_ids=${encodeURIComponent(cartKey)}`);
+    router.push(
+      `/checkout?cart_item_ids=${encodeURIComponent(cartKey)}&returnTo=${encodeURIComponent("/feed")}`,
+    );
   }
 
   return (

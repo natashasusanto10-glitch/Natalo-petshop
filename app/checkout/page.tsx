@@ -100,6 +100,48 @@ const CHECKOUT_DRAFT_KEY = "checkout:draft";
 const CHECKOUT_SELECTED_ADDRESS_KEY = "checkout:selectedAddressId";
 const CHECKOUT_ADDRESS_FORCE_APPLY_KEY = "checkout:addressForceApply";
 
+type CheckoutReturnTarget = {
+  href: string;
+  ariaLabel: string;
+  buttonLabel: string;
+  title: string;
+  message: string;
+};
+
+const DEFAULT_CHECKOUT_RETURN_TARGET: CheckoutReturnTarget = {
+  href: "/cart",
+  ariaLabel: "Kembali ke keranjang",
+  buttonLabel: "Kembali ke Keranjang",
+  title: "Yakin kembali ke keranjang?",
+  message:
+    "Pesanan kamu belum selesai. Kamu bisa lanjut checkout atau kembali mengatur keranjang.",
+};
+
+function sanitizeCheckoutReturnPath(rawReturnTo: string | null) {
+  if (!rawReturnTo) return null;
+  const value = rawReturnTo.trim();
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return null;
+  if (value.startsWith("/checkout")) return null;
+  return value;
+}
+
+function resolveCheckoutReturnTarget(rawReturnTo: string | null): CheckoutReturnTarget {
+  const href = sanitizeCheckoutReturnPath(rawReturnTo);
+
+  if (href?.startsWith("/feed")) {
+    return {
+      href,
+      ariaLabel: "Kembali ke Feed",
+      buttonLabel: "Kembali ke Feed",
+      title: "Yakin kembali ke Feed?",
+      message:
+        "Pesanan kamu belum selesai. Kamu bisa lanjut checkout atau kembali ke Feed.",
+    };
+  }
+
+  return DEFAULT_CHECKOUT_RETURN_TARGET;
+}
+
 function cartKey(item: CartItem) {
   return `${item.productId}:${item.variantId ?? ""}`;
 }
@@ -196,6 +238,9 @@ export default function CheckoutPage() {
   const [stockIssues, setStockIssues] = useState<CartStockIssue[]>([]);
   const [stockRefreshing, setStockRefreshing] = useState(false);
   const [backConfirmOpen, setBackConfirmOpen] = useState(false);
+  const [checkoutReturnTarget, setCheckoutReturnTarget] = useState<CheckoutReturnTarget>(
+    DEFAULT_CHECKOUT_RETURN_TARGET,
+  );
   const returningToCartRef = useRef(false);
 
   useEffect(() => {
@@ -270,6 +315,7 @@ export default function CheckoutPage() {
 
     const cartItems = loadCart();
     const params = new URLSearchParams(window.location.search);
+    setCheckoutReturnTarget(resolveCheckoutReturnTarget(params.get("returnTo")));
     const selectedParam = params.get("cart_item_ids");
     const selectedKeys = selectedParam
       ? selectedParam.split(",").map((key) => decodeURIComponent(key)).filter(Boolean)
@@ -659,9 +705,8 @@ export default function CheckoutPage() {
   const checkoutBackCopy = useMemo(() => {
     if (checkoutBenefits.length === 0) {
       return {
-        title: "Yakin kembali ke keranjang?",
-        message:
-          "Pesanan kamu belum selesai. Kamu bisa lanjut checkout atau kembali mengatur keranjang.",
+        title: checkoutReturnTarget.title,
+        message: checkoutReturnTarget.message,
       };
     }
 
@@ -677,7 +722,7 @@ export default function CheckoutPage() {
           ? `Kamu sedang hemat ${formatRupiah(checkoutBenefitSavings)} di checkout ini. Lanjutkan checkout agar benefit tidak terlewat.`
           : "Ada benefit aktif di checkout ini. Lanjutkan checkout agar benefit tidak terlewat.",
     };
-  }, [checkoutBenefitSavings, checkoutBenefits]);
+  }, [checkoutBenefitSavings, checkoutBenefits, checkoutReturnTarget]);
   const totalItemCount = items.reduce((sum, item) => sum + item.quantity, 0);
   const visibleCheckoutItems = showAllCheckoutItems ? items : items.slice(0, 4);
   const hiddenCheckoutItemCount = Math.max(items.length - visibleCheckoutItems.length, 0);
@@ -937,24 +982,25 @@ export default function CheckoutPage() {
   const confirmBackToCart = useCallback(() => {
     setBackConfirmOpen(false);
     returningToCartRef.current = true;
+    const returnHref = checkoutReturnTarget.href;
 
     if (typeof window === "undefined" || window.history.length <= 1) {
-      router.replace("/cart");
+      router.replace(returnHref);
       return;
     }
 
     let settled = false;
-    const replaceCheckoutEntryWithCart = () => {
+    const replaceCheckoutEntryWithReturnTarget = () => {
       if (settled) return;
       settled = true;
-      window.removeEventListener("popstate", replaceCheckoutEntryWithCart);
-      router.replace("/cart");
+      window.removeEventListener("popstate", replaceCheckoutEntryWithReturnTarget);
+      router.replace(returnHref);
     };
 
-    window.addEventListener("popstate", replaceCheckoutEntryWithCart, { once: true });
+    window.addEventListener("popstate", replaceCheckoutEntryWithReturnTarget, { once: true });
     window.history.back();
-    window.setTimeout(replaceCheckoutEntryWithCart, 350);
-  }, [router]);
+    window.setTimeout(replaceCheckoutEntryWithReturnTarget, 350);
+  }, [checkoutReturnTarget.href, router]);
 
   // Checkout selalu meminta konfirmasi khusus saat user mencoba back.
   // SwipeBackProvider dispatch event ini untuk gesture iOS, sementara
@@ -968,8 +1014,8 @@ export default function CheckoutPage() {
     window.addEventListener(eventName, handleCheckoutBackRequest);
     document.body.dataset.swipeBackConfirm = "true";
     document.body.dataset.swipeBackConfirmEvent = eventName;
-    document.body.dataset.swipeBackConfirmTitle = "Yakin kembali ke keranjang?";
-    document.body.dataset.swipeBackConfirmMessage = "Pesanan kamu belum selesai.";
+    document.body.dataset.swipeBackConfirmTitle = checkoutBackCopy.title;
+    document.body.dataset.swipeBackConfirmMessage = checkoutBackCopy.message;
 
     return () => {
       window.removeEventListener(eventName, handleCheckoutBackRequest);
@@ -978,7 +1024,7 @@ export default function CheckoutPage() {
       delete document.body.dataset.swipeBackConfirmTitle;
       delete document.body.dataset.swipeBackConfirmMessage;
     };
-  }, [openBackToCartConfirmation]);
+  }, [checkoutBackCopy.message, checkoutBackCopy.title, openBackToCartConfirmation]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1360,7 +1406,7 @@ export default function CheckoutPage() {
           <button
             type="button"
             onClick={openBackToCartConfirmation}
-            aria-label="Kembali ke keranjang"
+            aria-label={checkoutReturnTarget.ariaLabel}
             className="-ml-1 grid h-10 w-10 shrink-0 place-items-center rounded-full text-zinc-900 transition active:bg-zinc-100"
           >
             <FiArrowLeft className="h-5 w-5" aria-hidden="true" />
@@ -1887,7 +1933,7 @@ export default function CheckoutPage() {
               onClick={confirmBackToCart}
               className="flex h-12 items-center justify-center rounded-full border border-zinc-200 bg-white px-5 text-sm font-black text-zinc-700 transition hover:bg-zinc-50 active:scale-[0.98]"
             >
-              Kembali ke Keranjang
+              {checkoutReturnTarget.buttonLabel}
             </button>
           </div>
         }
