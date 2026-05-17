@@ -1,0 +1,197 @@
+import 'dart:async';
+
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart';
+
+/// Sprint 2 #6 #7 — Network-aware video quality + HLS adaptive untuk
+/// feed video player.
+///
+/// Decision tree per playback:
+///   - WiFi / Ethernet → HLS playlist (Bunny adaptive bitrate, switch
+///     quality mid-clip berdasarkan bandwidth)
+///   - Mobile 4G+ / unknown → MP4 progressive 720p (single file CDN
+///     cache, lebih cepat start play)
+///   - Mobile lemah / data-saver → MP4 480p
+///
+/// HLS unggul saat koneksi stabil (WiFi) karena adaptive bitrate worth
+/// overhead manifest fetch. Untuk clip ≤45s di mobile, MP4 progressive
+/// lebih efisien (1 file = 1 cache, no manifest parse latency).
+///
+/// video_player package (Flutter) support HLS native di iOS (AVPlayer)
+/// + Android (ExoPlayer) — tidak butuh package tambahan untuk parse
+/// .m3u8 playlist.
+
+enum NetworkTier {
+  wifi,
+  cellularFast, // 4G+
+  cellularSlow, // 3G/2G/edge
+  offline,
+  unknown,
+}
+
+enum VideoQuality {
+  q240,
+  q360,
+  q480,
+  q720,
+  q1080;
+
+  int get height => switch (this) {
+        VideoQuality.q240 => 240,
+        VideoQuality.q360 => 360,
+        VideoQuality.q480 => 480,
+        VideoQuality.q720 => 720,
+        VideoQuality.q1080 => 1080,
+      };
+}
+
+/// Service untuk detect network tier + decide playback URL. Stateful —
+/// listen ke connectivity changes supaya video quality bisa re-derive
+/// dynamic saat user pindah dari WiFi ke 4G di tengah scroll feed.
+class VideoQualityService {
+  final Connectivity _connectivity = Connectivity();
+
+  NetworkTier _currentTier = NetworkTier.unknown;
+  StreamSubscription<List<ConnectivityResult>>? _sub;
+  final _controller = StreamController<NetworkTier>.broadcast();
+
+  /// Stream tier changes — UI subscribe via StreamBuilder.
+  Stream<NetworkTier> get tierChanges => _controller.stream;
+
+  NetworkTier get currentTier => _currentTier;
+
+  Future<void> initialize() async {
+    try {
+      final initial = await _connectivity.checkConnectivity();
+      _currentTier = _resolveTier(initial);
+      _sub = _connectivity.onConnectivityChanged.listen((results) {
+        final next = _resolveTier(results);
+        if (next != _currentTier) {
+          _currentTier = next;
+          _controller.add(next);
+          if (kDebugMode) {
+            debugPrint('[video-quality] tier changed → $next');
+          }
+        }
+      });
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[video-quality] init failed: $e');
+      }
+    }
+  }
+
+  NetworkTier _resolveTier(List<ConnectivityResult> results) {
+    if (results.isEmpty || results.every((r) => r == ConnectivityResult.none)) {
+      return NetworkTier.offline;
+    }
+    if (results.contains(ConnectivityResult.wifi) ||
+        results.contains(ConnectivityResult.ethernet)) {
+      return NetworkTier.wifi;
+    }
+    if (results.contains(ConnectivityResult.mobile)) {
+      // connectivity_plus tidak expose 3G vs 4G vs 5G detail.
+      // Default ke cellularFast — sebagian besar Indonesia 4G LTE.
+      // Kalau user laporkan slow, bisa expose manual override di settings.
+      return NetworkTier.cellularFast;
+    }
+    return NetworkTier.unknown;
+  }
+
+  /// Pilih quality recommendation untuk current tier. Single source of
+  /// truth supaya consistent across player + thumbnail rendering.
+  VideoQuality recommendedQuality() {
+    switch (_currentTier) {
+      case NetworkTier.wifi:
+        // Pakai HLS playlist instead, tapi kalau caller butuh MP4 fallback
+        // (HLS playlist rewrite gagal), pakai 720p sebagai aman.
+        return VideoQuality.q720;
+      case NetworkTier.cellularFast:
+        return VideoQuality.q720;
+      case NetworkTier.cellularSlow:
+        return VideoQuality.q480;
+      case NetworkTier.offline:
+        return VideoQuality.q240;
+      case NetworkTier.unknown:
+        return VideoQuality.q720;
+    }
+  }
+
+  /// Rewrite Bunny URL berdasarkan network tier.
+  ///
+  /// Pattern matching same dengan helper di Capacitor:
+  ///   - HLS playlist `<origin>/<guid>/playlist.m3u8` → keep as is (WiFi)
+  ///     atau rewrite ke MP4 `play_<NNN>p.mp4` (mobile)
+  ///   - MP4 `<origin>/<guid>/play_<NNN>p.mp4` → rewrite quality digit
+  ///   - Non-Bunny URL → return as-is (legacy / external)
+  ///
+  /// WiFi: prefer HLS untuk adaptive bitrate. Mobile: prefer MP4 di
+  /// quality network-appropriate untuk minimize manifest overhead.
+  String resolvePlaybackUrl(String url) {
+    if (url.isEmpty) return url;
+    final tier = _currentTier;
+    final quality = recommendedQuality();
+
+    final isHls = url.contains('.m3u8');
+
+    if (isHls) {
+      // Stored as HLS — pakai HLS langsung di WiFi, rewrite ke MP4 di mobile
+      // supaya tidak ada manifest overhead.
+      if (tier == NetworkTier.wifi || tier == NetworkTier.unknown) {
+        return url;
+      }
+      // Convert HLS → MP4 quality
+      final mp4Url = _bunnyHlsToMp4(url, quality.height);
+      return mp4Url ?? url;
+    }
+
+    // Stored as MP4 — di WiFi try upgrade ke HLS untuk adaptive.
+    if (tier == NetworkTier.wifi) {
+      final hlsUrl = _bunnyMp4ToHls(url);
+      if (hlsUrl != null) return hlsUrl;
+    }
+
+    // Mobile / fallback — rewrite quality.
+    return _rewriteBunnyMp4Quality(url, quality.height) ?? url;
+  }
+
+  /// Pattern: `<origin>/<guid>/playlist.m3u8` → `<origin>/<guid>/play_<NNN>p.mp4`
+  String? _bunnyHlsToMp4(String url, int height) {
+    final match = RegExp(
+      r'^(https?:\/\/[^/]+\/[a-f0-9-]+\/)playlist\.m3u8(\?.*)?$',
+      caseSensitive: false,
+    ).firstMatch(url);
+    if (match == null) return null;
+    final query = match.group(2) ?? '';
+    return '${match.group(1)}play_${height}p.mp4$query';
+  }
+
+  /// Pattern: `<origin>/<guid>/play_<NNN>p.mp4` → `<origin>/<guid>/playlist.m3u8`
+  String? _bunnyMp4ToHls(String url) {
+    final match = RegExp(
+      r'^(https?:\/\/[^/]+\/[a-f0-9-]+\/)play_\d{3,4}p\.mp4(\?.*)?$',
+      caseSensitive: false,
+    ).firstMatch(url);
+    if (match == null) return null;
+    final query = match.group(2) ?? '';
+    return '${match.group(1)}playlist.m3u8$query';
+  }
+
+  /// Rewrite quality digit di Bunny MP4 URL.
+  String? _rewriteBunnyMp4Quality(String url, int height) {
+    final match = RegExp(
+      r'^(https?:\/\/[^/]+\/[a-f0-9-]+\/)play_\d{3,4}p\.mp4(\?.*)?$',
+      caseSensitive: false,
+    ).firstMatch(url);
+    if (match == null) return null;
+    final query = match.group(2) ?? '';
+    return '${match.group(1)}play_${height}p.mp4$query';
+  }
+
+  void dispose() {
+    _sub?.cancel();
+    _controller.close();
+  }
+}
+
+final videoQualityService = VideoQualityService();
