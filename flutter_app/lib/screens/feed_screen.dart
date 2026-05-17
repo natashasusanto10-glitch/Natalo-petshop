@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_blurhash/flutter_blurhash.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
@@ -255,13 +256,162 @@ class _FeedScreenState extends State<FeedScreen> {
   }
 }
 
+/// Sprint 5 #7 — Skeleton shimmer loader.
+///
+/// Mirror struktur actual feed card (video area + right rail + bottom info)
+/// dengan grey shimmer placeholder. Perceived performance jauh lebih
+/// premium dari spinner kosong — user paham "feed sedang load",
+/// bukan "loading screen blank".
+///
+/// Pakai shimmer package yang sudah installed (app_product_image +
+/// skeleton_product_card juga pakai).
 class _LoadingState extends StatelessWidget {
   const _LoadingState();
 
+  static const _baseColor = Color(0xFF1A1F26);
+  static const _highlightColor = Color(0xFF2A2F36);
+
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+    final mediaQuery = MediaQuery.of(context);
+    final actionRailInset = mediaQuery.padding.bottom + 168;
+    final feedInfoInset = mediaQuery.padding.bottom + 100;
+
+    return Shimmer.fromColors(
+      baseColor: _baseColor,
+      highlightColor: _highlightColor,
+      period: const Duration(milliseconds: 1400),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Video area placeholder — full screen background.
+          const ColoredBox(color: _baseColor),
+
+          // Gradient overlay bottom (mock real card supaya skeleton tidak
+          // terlihat solid flat).
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: 280,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      _baseColor.withValues(alpha: 0.6),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // Right action rail mock — 5 circles (Like/Comment/Share/Bag/
+          // Fullscreen) stacked vertical. Match positioning aktual.
+          Positioned(
+            right: 18,
+            bottom: actionRailInset,
+            child: const Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _SkeletonCircle(size: 38),
+                SizedBox(height: 10),
+                _SkeletonCircle(size: 38),
+                SizedBox(height: 10),
+                _SkeletonCircle(size: 38),
+                SizedBox(height: 10),
+                _SkeletonCircle(size: 38),
+                SizedBox(height: 10),
+                _SkeletonCircle(size: 38),
+              ],
+            ),
+          ),
+
+          // Bottom-left info mock — product chip + username + caption bars.
+          Positioned(
+            left: 16,
+            right: 78,
+            bottom: feedInfoInset,
+            child: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Product link chip mock — pill shape ~40px tinggi.
+                _SkeletonBar(width: 220, height: 40, radius: 16),
+                SizedBox(height: 12),
+                // Username mock — pendek ~120px.
+                _SkeletonBar(width: 120, height: 14, radius: 4),
+                SizedBox(height: 10),
+                // Caption mock — 2 baris.
+                _SkeletonBar(width: double.infinity, height: 12, radius: 4),
+                SizedBox(height: 6),
+                _SkeletonBar(width: 240, height: 12, radius: 4),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Helper skeleton circle (untuk action rail icons).
+class _SkeletonCircle extends StatelessWidget {
+  final double size;
+  const _SkeletonCircle({required this.size});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: size,
+          height: size,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(height: 6),
+        // Count label placeholder bawah icon.
+        Container(
+          width: 22,
+          height: 8,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Helper skeleton bar (untuk text placeholders).
+class _SkeletonBar extends StatelessWidget {
+  final double width;
+  final double height;
+  final double radius;
+
+  const _SkeletonBar({
+    required this.width,
+    required this.height,
+    required this.radius,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(radius),
+      ),
     );
   }
 }
@@ -1106,6 +1256,16 @@ class _FeedPostViewState extends State<_FeedPostView>
                           ),
                         ),
                       if (!minimized) ...[
+                        if (_isPaused &&
+                            _videoController != null &&
+                            _videoController!.value.isInitialized)
+                          Positioned(
+                            top: safeTop + 12,
+                            right: 12,
+                            child: _PausedFullscreenButton(
+                              onTap: _openCinemaMode,
+                            ),
+                          ),
                         // ── Bottom gradient untuk text readability ──
                         Positioned(
                           left: 0,
@@ -1182,19 +1342,6 @@ class _FeedPostViewState extends State<_FeedPostView>
                                       : null,
                                   onTap: _openFeedCartSheet,
                                 ),
-                                // Sprint 3 #10 — Cinema mode fullscreen button.
-                                // Hanya muncul kalau video sudah ada controller
-                                // (initialized) supaya tidak crash saat tap.
-                                if (_videoController != null &&
-                                    _videoController!.value.isInitialized) ...[
-                                  const SizedBox(height: 10),
-                                  _ReelsAction(
-                                    icon: Icons.fullscreen_rounded,
-                                    color: Colors.white,
-                                    count: null, // no count badge untuk cinema
-                                    onTap: _openCinemaMode,
-                                  ),
-                                ],
                               ],
                             ),
                           ),
@@ -1777,16 +1924,14 @@ class _FeedVideoProgressBarState extends State<_FeedVideoProgressBar> {
     if (_wasPlayingBeforeScrub) ctrl.pause();
     setState(() {
       _scrubbing = true;
-      _scrubProgress =
-          (details.localPosition.dx / width).clamp(0.0, 1.0);
+      _scrubProgress = (details.localPosition.dx / width).clamp(0.0, 1.0);
     });
   }
 
   void _onScrubUpdate(DragUpdateDetails details, double width) {
     if (!_scrubbing) return;
     setState(() {
-      _scrubProgress =
-          (details.localPosition.dx / width).clamp(0.0, 1.0);
+      _scrubProgress = (details.localPosition.dx / width).clamp(0.0, 1.0);
     });
   }
 
@@ -1827,10 +1972,8 @@ class _FeedVideoProgressBarState extends State<_FeedVideoProgressBar> {
             final width = constraints.maxWidth;
             return GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onHorizontalDragStart: (d) =>
-                  _onScrubStart(d, width, duration),
-              onHorizontalDragUpdate: (d) =>
-                  _onScrubUpdate(d, width),
+              onHorizontalDragStart: (d) => _onScrubStart(d, width, duration),
+              onHorizontalDragUpdate: (d) => _onScrubUpdate(d, width),
               onHorizontalDragEnd: (d) => _onScrubEnd(d, duration),
               onHorizontalDragCancel: () {
                 if (_scrubbing && _wasPlayingBeforeScrub) {
@@ -1991,6 +2134,48 @@ class _PausedVideoControls extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _PausedFullscreenButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _PausedFullscreenButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      shape: const CircleBorder(),
+      child: InkResponse(
+        onTap: onTap,
+        radius: 20,
+        child: Container(
+          height: 34,
+          width: 34,
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.42),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.18),
+              width: 0.8,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.22),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: const Icon(
+            Icons.fullscreen_rounded,
+            color: Colors.white,
+            size: 19,
+          ),
+        ),
+      ),
     );
   }
 }
