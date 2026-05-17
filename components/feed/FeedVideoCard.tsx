@@ -231,10 +231,11 @@ export function FeedVideoCard({
   return (
     <article
       className={`relative min-h-full snap-start overflow-hidden bg-black text-white shadow-sm transition-colors duration-300 md:rounded-[28px] ${
-        commentMode ? "z-[170]" : ""
+        commentMode ? "z-[9005]" : ""
       }`}
     >
       <div
+        data-feed-comment-video-preview={commentMode ? "true" : undefined}
         className={
           commentMode
             ? "absolute left-1/2 top-[calc(env(safe-area-inset-top)+18px)] z-[180] w-[min(88vw,410px)] -translate-x-1/2 overflow-hidden rounded-[22px] bg-black shadow-[0_22px_70px_rgba(0,0,0,0.55)] ring-1 ring-white/15 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] md:w-[min(70vw,430px)]"
@@ -245,6 +246,7 @@ export function FeedVideoCard({
             ? {
                 aspectRatio: videoAspectRatio,
                 height: "clamp(220px, 34dvh, 320px)",
+                willChange: "transform, border-radius",
               }
             : undefined
         }

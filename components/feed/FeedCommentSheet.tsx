@@ -34,6 +34,11 @@ type Props = {
 };
 
 const DRAG_CLOSE_THRESHOLD = 96;
+const DRAG_EXPAND_DISTANCE = 240;
+const SHEET_EXPANDED_OFFSET = -178;
+const VIDEO_EXPANDED_OFFSET = -58;
+const VIDEO_EXPANDED_SCALE_DELTA = 0.1;
+const COMMENT_VIDEO_PREVIEW_SELECTOR = "[data-feed-comment-video-preview='true']";
 const SNAP_BACK_MS = 280;
 const SNAP_BACK_EASE = "cubic-bezier(0.34, 1.26, 0.64, 1)";
 const KEYBOARD_INSET_THRESHOLD = 120;
@@ -61,10 +66,12 @@ export function FeedCommentSheet({
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const viewportBaselineRef = useRef(0);
   const dragStartYRef = useRef(0);
-  const dragYRef = useRef(0);
+  const closeDragYRef = useRef(0);
+  const dragStartProgressRef = useRef(0);
+  const motionProgressRef = useRef(0);
+  const motionRafRef = useRef<number | null>(null);
   const isDraggingRef = useRef(false);
   const snapBackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [dragY, setDragY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [isSnappingBack, setIsSnappingBack] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
@@ -77,12 +84,100 @@ export function FeedCommentSheet({
     return total > 0 ? `Komentar ${formatCommentCount(total)}` : "Komentar";
   }, [commentCount, visibleCommentTotal]);
 
+  const getCommentVideoPreview = useCallback(() => {
+    if (typeof document === "undefined") return null;
+    return document.querySelector<HTMLElement>(COMMENT_VIDEO_PREVIEW_SELECTOR);
+  }, []);
+
+  const setMotionTransition = useCallback(
+    (enabled: boolean) => {
+      const sheetTransition = enabled
+        ? `transform ${SNAP_BACK_MS}ms ${SNAP_BACK_EASE}, height 220ms cubic-bezier(0.22, 1, 0.36, 1)`
+        : "none";
+      const videoTransition = enabled
+        ? `transform ${SNAP_BACK_MS}ms ${SNAP_BACK_EASE}, border-radius ${SNAP_BACK_MS}ms ${SNAP_BACK_EASE}`
+        : "none";
+      const composerTransition = enabled
+        ? `transform ${SNAP_BACK_MS}ms ${SNAP_BACK_EASE}, height 180ms cubic-bezier(0.22, 1, 0.36, 1)`
+        : "none";
+
+      if (sheetRef.current) sheetRef.current.style.transition = sheetTransition;
+      if (composerRef.current) composerRef.current.style.transition = composerTransition;
+      const videoPreview = getCommentVideoPreview();
+      if (videoPreview) videoPreview.style.transition = videoTransition;
+    },
+    [getCommentVideoPreview],
+  );
+
+  const writeMotion = useCallback(
+    (nextProgress: number, nextCloseDragY = 0) => {
+      motionProgressRef.current = clamp01(nextProgress);
+      closeDragYRef.current = Math.max(0, nextCloseDragY);
+
+      if (typeof window === "undefined") return;
+      if (motionRafRef.current !== null) return;
+
+      motionRafRef.current = window.requestAnimationFrame(() => {
+        motionRafRef.current = null;
+
+        const progress = motionProgressRef.current;
+        const closeDragY = closeDragYRef.current;
+        const sheetTranslateY =
+          closeDragY > 0 ? closeDragY : SHEET_EXPANDED_OFFSET * progress;
+
+        if (sheetRef.current) {
+          sheetRef.current.style.transform = `translate3d(0, ${sheetTranslateY}px, 0)`;
+        }
+
+        const videoPreview = getCommentVideoPreview();
+        if (videoPreview) {
+          const videoTranslateY = VIDEO_EXPANDED_OFFSET * progress;
+          const videoScale = 1 - VIDEO_EXPANDED_SCALE_DELTA * progress;
+          const radius = 22 - 8 * progress;
+          videoPreview.style.transform =
+            `translate3d(-50%, ${videoTranslateY}px, 0) scale(${videoScale})`;
+          videoPreview.style.borderRadius = `${radius}px`;
+        }
+      });
+    },
+    [getCommentVideoPreview],
+  );
+
+  const resetMotionStyles = useCallback(() => {
+    if (motionRafRef.current !== null && typeof window !== "undefined") {
+      window.cancelAnimationFrame(motionRafRef.current);
+      motionRafRef.current = null;
+    }
+
+    motionProgressRef.current = 0;
+    closeDragYRef.current = 0;
+
+    if (sheetRef.current) {
+      sheetRef.current.style.transform = "";
+      sheetRef.current.style.transition = "";
+    }
+    if (composerRef.current) {
+      composerRef.current.style.transform = "";
+      composerRef.current.style.transition = "";
+    }
+
+    const videoPreview = getCommentVideoPreview();
+    if (videoPreview) {
+      videoPreview.style.transform = "";
+      videoPreview.style.borderRadius = "";
+      videoPreview.style.transition = "";
+    }
+  }, [getCommentVideoPreview]);
+
   const updateDrag = useCallback((clientY: number) => {
     if (!isDraggingRef.current) return;
-    const nextDragY = Math.max(0, clientY - dragStartYRef.current);
-    dragYRef.current = nextDragY;
-    setDragY(nextDragY);
-  }, []);
+    const deltaY = clientY - dragStartYRef.current;
+    const startProgress = dragStartProgressRef.current;
+    const nextProgress = clamp01(startProgress - deltaY / DRAG_EXPAND_DISTANCE);
+    const consumedDeltaY = (startProgress - nextProgress) * DRAG_EXPAND_DISTANCE;
+    const nextCloseDragY = Math.max(0, deltaY - consumedDeltaY);
+    writeMotion(nextProgress, nextCloseDragY);
+  }, [writeMotion]);
 
   const finishDrag = useCallback(() => {
     if (!isDraggingRef.current) return;
@@ -91,32 +186,40 @@ export function FeedCommentSheet({
 
     const sheetHeight = sheetRef.current?.getBoundingClientRect().height ?? 420;
     const closeThreshold = Math.min(DRAG_CLOSE_THRESHOLD, sheetHeight * 0.28);
-    if (dragYRef.current >= closeThreshold) {
+    if (closeDragYRef.current >= closeThreshold) {
       onClose();
       return;
     }
 
+    const targetProgress = motionProgressRef.current >= 0.5 ? 1 : 0;
     setIsSnappingBack(true);
-    dragYRef.current = 0;
-    setDragY(0);
+    setMotionTransition(true);
+    writeMotion(targetProgress, 0);
     snapBackTimerRef.current = setTimeout(
-      () => setIsSnappingBack(false),
+      () => {
+        setIsSnappingBack(false);
+        snapBackTimerRef.current = null;
+      },
       SNAP_BACK_MS,
     );
-  }, [onClose]);
+  }, [onClose, setMotionTransition, writeMotion]);
 
   const beginDrag = useCallback((target: EventTarget | null, clientY: number) => {
     if (target instanceof HTMLElement && target.closest("button, textarea, input")) {
       return;
     }
-    if (snapBackTimerRef.current) clearTimeout(snapBackTimerRef.current);
+    if (snapBackTimerRef.current) {
+      clearTimeout(snapBackTimerRef.current);
+      snapBackTimerRef.current = null;
+    }
     dragStartYRef.current = clientY;
-    dragYRef.current = 0;
+    closeDragYRef.current = 0;
+    dragStartProgressRef.current = motionProgressRef.current;
     isDraggingRef.current = true;
-    setDragY(0);
+    setMotionTransition(false);
     setIsDragging(true);
     setIsSnappingBack(false);
-  }, []);
+  }, [setMotionTransition]);
 
   const handleMouseDown = useCallback(
     (event: MouseEvent<HTMLDivElement>) => {
@@ -140,7 +243,7 @@ export function FeedCommentSheet({
       const touch = event.touches[0];
       if (!touch) return;
       updateDrag(touch.clientY);
-      if (dragYRef.current > 0 && event.cancelable) event.preventDefault();
+      if (event.cancelable) event.preventDefault();
     },
     [updateDrag],
   );
@@ -183,14 +286,21 @@ export function FeedCommentSheet({
 
   useEffect(() => {
     if (!open) {
-      setDragY(0);
-      dragYRef.current = 0;
+      resetMotionStyles();
       isDraggingRef.current = false;
       setIsDragging(false);
       setIsSnappingBack(false);
       setReplyTo(null);
+      return;
     }
-  }, [open]);
+
+    setMotionTransition(true);
+    writeMotion(0, 0);
+
+    return () => {
+      resetMotionStyles();
+    };
+  }, [open, resetMotionStyles, setMotionTransition, writeMotion]);
 
   useEffect(() => {
     if (!open || typeof document === "undefined") return;
@@ -307,7 +417,7 @@ export function FeedCommentSheet({
 
     function handleMouseMove(event: globalThis.MouseEvent) {
       updateDrag(event.clientY);
-      if (dragYRef.current > 0) event.preventDefault();
+      event.preventDefault();
     }
 
     function handleMouseUp() {
@@ -333,9 +443,13 @@ export function FeedCommentSheet({
 
   useEffect(() => {
     return () => {
-      if (snapBackTimerRef.current) clearTimeout(snapBackTimerRef.current);
+      if (snapBackTimerRef.current) {
+        clearTimeout(snapBackTimerRef.current);
+        snapBackTimerRef.current = null;
+      }
+      resetMotionStyles();
     };
-  }, []);
+  }, [resetMotionStyles]);
 
   async function loadMore() {
     if (!postId || !nextCursor || loadingMore) return;
@@ -537,15 +651,12 @@ export function FeedCommentSheet({
         style={{
           height: "var(--feed-comment-sheet-height, 56dvh)",
           bottom: `calc(${composerHeight}px + var(--kb, 0px))`,
-          transform:
-            isDragging || isSnappingBack
-              ? `translate3d(0, ${dragY}px, 0)`
-              : undefined,
           transition: isDragging
             ? "none"
             : isSnappingBack
               ? `transform ${SNAP_BACK_MS}ms ${SNAP_BACK_EASE}, height 220ms cubic-bezier(0.22, 1, 0.36, 1)`
               : "height 220ms cubic-bezier(0.22, 1, 0.36, 1)",
+          willChange: "transform, height",
         }}
       >
           <div
@@ -818,6 +929,10 @@ function countThreadedComments(items: FeedCommentItem[]) {
     (total, item) => total + 1 + (item.replies?.length ?? 0),
     0,
   );
+}
+
+function clamp01(value: number) {
+  return Math.max(0, Math.min(1, value));
 }
 
 function getFeedPostCaption(post: FeedPostListItem | null | undefined) {
