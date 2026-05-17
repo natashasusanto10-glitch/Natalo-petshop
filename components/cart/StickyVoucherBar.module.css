@@ -1,0 +1,122 @@
+.voucherBar {
+  position: fixed;
+  left: max(0px, env(safe-area-inset-left));
+  right: max(0px, env(safe-area-inset-right));
+  bottom: calc(84px + env(safe-area-inset-bottom));
+  z-index: 39;
+  min-height: 52px;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #ffffff;
+  border-top: 1px solid #edf0f3;
+  border-bottom: 1px solid #edf0f3;
+  box-shadow: 0 -4px 14px rgba(15, 23, 42, 0.06);
+  color: #1f2937;
+  cursor: pointer;
+  transition:
+    transform 220ms ease,
+    opacity 220ms ease;
+  will-change: transform, opacity;
+}
+
+.show {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.hide {
+  transform: translateY(100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.disabled {
+  color: #6b7280;
+  cursor: default;
+}
+
+.left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.iconBadge {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  place-items: center;
+  border-radius: 14px;
+  color: #1e5fbf;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+}
+
+.chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.chips::-webkit-scrollbar {
+  display: none;
+}
+
+.discountChip,
+.shippingChip,
+.bonusChip {
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 800;
+  border-radius: 7px;
+  padding: 6px 9px;
+  line-height: 1;
+}
+
+.discountChip {
+  color: #dc2459;
+  background: #fff1f5;
+  border: 1px solid #ffc8d8;
+}
+
+.shippingChip {
+  color: #079455;
+  background: #ecfdf3;
+  border: 1px solid #a6f4c5;
+}
+
+.bonusChip {
+  color: #b7791f;
+  background: #fff7e6;
+  border: 1px solid #ffd98a;
+}
+
+.placeholderText {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.chevron {
+  flex-shrink: 0;
+  color: #94a3b8;
+}
+
+@media (min-width: 768px) {
+  .voucherBar {
+    display: none;
+  }
+}

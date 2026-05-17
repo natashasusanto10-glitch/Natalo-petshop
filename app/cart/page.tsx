@@ -9,6 +9,7 @@ import { formatRupiah } from "@/lib/format";
 import { loadCart, saveCart, type CartItem } from "@/lib/cart";
 import type { CartStockIssue } from "@/lib/cart-stock";
 import { VoucherClaimBar } from "@/components/cart/VoucherClaimBar";
+import { StickyVoucherBar } from "@/components/cart/StickyVoucherBar";
 import { SwipeableCartRow } from "@/components/cart/SwipeableCartRow";
 import { CartRecommendationSections } from "@/components/cart/CartRecommendationSections";
 import { EmptyCartLottie } from "@/components/cart/EmptyCartLottie";
@@ -254,6 +255,8 @@ export default function CartPage() {
   const allSelected = items.length > 0 && selectedKeys.size === items.length;
   const selectionLabel = itemSelectionLabel(selectedCount, selectedQuantity);
   const isCartEmpty = items.length === 0;
+  const stickyVoucherText =
+    voucherDiscount > 0 ? `Diskon ${formatRupiah(voucherDiscount)}` : undefined;
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -592,7 +595,7 @@ export default function CartPage() {
   return (
     <div
       className={`mx-auto max-w-3xl px-4 ${
-        isCartEmpty ? "pb-10" : "pb-[calc(104px+env(safe-area-inset-bottom))] md:pb-10"
+        isCartEmpty ? "pb-10" : "pb-[calc(168px+env(safe-area-inset-bottom))] md:pb-10"
       }`}
     >
       <header className="cart-sticky-header -mx-4 px-4 pb-3">
@@ -661,7 +664,7 @@ export default function CartPage() {
               </span>
             </div>
 
-            <div className="px-4 py-3">
+            <div className="hidden px-4 py-3 md:block">
               <VoucherClaimBar
                 isLoggedIn={isLoggedIn}
                 memberVoucher={memberVoucher}
@@ -1005,33 +1008,40 @@ export default function CartPage() {
       )}
 
       {items.length > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-100 bg-white px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] md:hidden [padding-bottom:calc(12px+env(safe-area-inset-bottom))]">
-          <div className="mx-auto flex max-w-3xl items-center gap-3">
-            <label className="flex shrink-0 items-center gap-2 text-xs font-bold text-gray-600">
-              <input
-                type="checkbox"
-                checked={allSelected}
-                onChange={toggleAll}
-                className="h-5 w-5 rounded border-gray-300 accent-blue-600"
-              />
-              Semua
-            </label>
-            <div className="min-w-0 flex-1 text-right">
-              <p className="text-[11px] font-semibold text-gray-500">
-                {voucherDiscount > 0 ? `Hemat ${formatRupiah(voucherDiscount)} dgn voucher` : "Total"}
-              </p>
-              <p className="truncate text-base font-black text-gray-900">{formatRupiah(selectedTotal)}</p>
+        <>
+          <StickyVoucherBar
+            selectedCount={selectedCount}
+            appliedVoucherText={stickyVoucherText}
+            onClick={() => setVoucherSheetOpen(true)}
+          />
+          <div className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-100 bg-white px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] md:hidden [padding-bottom:calc(12px+env(safe-area-inset-bottom))]">
+            <div className="mx-auto flex max-w-3xl items-center gap-3">
+              <label className="flex shrink-0 items-center gap-2 text-xs font-bold text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleAll}
+                  className="h-5 w-5 rounded border-gray-300 accent-blue-600"
+                />
+                Semua
+              </label>
+              <div className="min-w-0 flex-1 text-right">
+                <p className="text-[11px] font-semibold text-gray-500">
+                  {voucherDiscount > 0 ? `Hemat ${formatRupiah(voucherDiscount)} dgn voucher` : "Total"}
+                </p>
+                <p className="truncate text-base font-black text-gray-900">{formatRupiah(selectedTotal)}</p>
+              </div>
+              <button
+                type="button"
+                onClick={checkoutSelected}
+                disabled={selectedCount === 0 || stockRefreshing}
+                className="flex h-12 shrink-0 items-center justify-center rounded-full bg-blue-500 px-5 text-sm font-black text-white transition-transform duration-100 active:scale-95 active:opacity-90 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:active:scale-100"
+              >
+                {stockRefreshing ? "Cek stok..." : `Checkout (${selectedQuantity})`}
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={checkoutSelected}
-              disabled={selectedCount === 0 || stockRefreshing}
-              className="flex h-12 shrink-0 items-center justify-center rounded-full bg-blue-500 px-5 text-sm font-black text-white transition-transform duration-100 active:scale-95 active:opacity-90 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:active:scale-100"
-            >
-              {stockRefreshing ? "Cek stok..." : `Checkout (${selectedQuantity})`}
-            </button>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
