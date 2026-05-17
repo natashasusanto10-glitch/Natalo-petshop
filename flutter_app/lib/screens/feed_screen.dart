@@ -774,13 +774,11 @@ class _FeedPostViewState extends State<_FeedPostView>
     final product = _productFromFeedLink(link);
     cartStore.addProduct(product, quantity: quantity);
     if (!mounted) return;
-    AppToast.show(
+    AppToast.showCartAdded(
       context,
       quantity > 1
           ? '$quantity x ${link.name} masuk keranjang'
           : '${link.name} masuk keranjang',
-      kind: ToastKind.success,
-      icon: Icons.shopping_bag_rounded,
     );
   }
 
@@ -854,13 +852,11 @@ class _FeedPostViewState extends State<_FeedPostView>
     }
     cartStore.addProduct(product, quantity: quantity);
     if (!mounted) return;
-    AppToast.show(
+    AppToast.showCartAdded(
       context,
       quantity > 1
           ? '$quantity x ${product.title} masuk keranjang'
           : '${product.title} masuk keranjang',
-      kind: ToastKind.success,
-      icon: Icons.shopping_bag_rounded,
     );
   }
 
