@@ -305,6 +305,28 @@ export function FeedVideoCard({
           >
             <PetShareIcon />
           </ActionButton>
+          {/* Bag / Shop the Look — alternative entry ke product sheet
+              dari rail kanan. Hanya muncul kalau ada produk yg di-tag
+              di video. Tap = buka sheet sama seperti tap Shop pill di
+              kiri bawah. Label = jumlah produk (formatted) supaya user
+              tahu ada berapa item. */}
+          {taggedProducts.length > 0 && (
+            <ActionButton
+              label={
+                taggedProducts.length > 1
+                  ? String(taggedProducts.length)
+                  : ""
+              }
+              ariaLabel={
+                taggedProducts.length > 1
+                  ? `Lihat ${taggedProducts.length} produk di video`
+                  : "Lihat produk di video"
+              }
+              onClick={() => setProductSheetOpen(true)}
+            >
+              <PetShopBagIcon />
+            </ActionButton>
+          )}
         </div>
       )}
 
@@ -516,6 +538,45 @@ function PetShareIcon() {
         <ellipse cx="12.6" cy="28.2" rx="2.35" ry="1.7" transform="rotate(15 12.6 28.2)" />
         <circle cx="11.2" cy="23.8" r="1" />
         <circle cx="14.1" cy="24.7" r="0.95" />
+      </g>
+    </svg>
+  );
+}
+
+function PetShopBagIcon() {
+  // Stroked bag icon dengan rounded handles + cat-ear silhouette di body
+  // supaya match playful theme Natalo Petshop. Same stroke weight 2.45px
+  // dengan PetShareIcon supaya visual rail konsisten.
+  return (
+    <svg
+      viewBox="0 0 36 36"
+      className="h-[30px] w-[30px] overflow-visible"
+      fill="none"
+      aria-hidden="true"
+    >
+      {/* Bag body */}
+      <path
+        d="M8 12h20l-1.6 17.4a2 2 0 0 1-2 1.85H11.6a2 2 0 0 1-2-1.85L8 12Z"
+        fill="rgba(255,255,255,0.04)"
+        stroke="currentColor"
+        strokeWidth="2.45"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* Handle — semicircle */}
+      <path
+        d="M13 12V9a5 5 0 0 1 10 0v3"
+        stroke="currentColor"
+        strokeWidth="2.15"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* Tiny paw dot di body supaya playful */}
+      <g fill="currentColor" opacity="0.92">
+        <circle cx="18" cy="20" r="1.25" />
+        <circle cx="15.4" cy="22.4" r="0.85" />
+        <circle cx="20.6" cy="22.4" r="0.85" />
+        <ellipse cx="18" cy="24.4" rx="1.45" ry="1.05" />
       </g>
     </svg>
   );
