@@ -134,8 +134,8 @@ export function FeedCommentSheet({
           const videoTranslateY = VIDEO_EXPANDED_OFFSET * progress;
           const videoScale = 1 - VIDEO_EXPANDED_SCALE_DELTA * progress;
           const radius = 22 - 8 * progress;
-          videoPreview.style.transform =
-            `translate3d(-50%, ${videoTranslateY}px, 0) scale(${videoScale})`;
+          videoPreview.style.setProperty("--comment-video-y", `${videoTranslateY}px`);
+          videoPreview.style.setProperty("--comment-video-scale", `${videoScale}`);
           videoPreview.style.borderRadius = `${radius}px`;
         }
       });
@@ -163,7 +163,8 @@ export function FeedCommentSheet({
 
     const videoPreview = getCommentVideoPreview();
     if (videoPreview) {
-      videoPreview.style.transform = "";
+      videoPreview.style.removeProperty("--comment-video-y");
+      videoPreview.style.removeProperty("--comment-video-scale");
       videoPreview.style.borderRadius = "";
       videoPreview.style.transition = "";
     }

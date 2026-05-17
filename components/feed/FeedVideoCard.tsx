@@ -238,7 +238,7 @@ export function FeedVideoCard({
         data-feed-comment-video-preview={commentMode ? "true" : undefined}
         className={
           commentMode
-            ? "absolute left-1/2 top-[calc(env(safe-area-inset-top)+18px)] z-[180] w-[min(88vw,410px)] -translate-x-1/2 overflow-hidden rounded-[22px] bg-black shadow-[0_22px_70px_rgba(0,0,0,0.55)] ring-1 ring-white/15 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] md:w-[min(70vw,430px)]"
+            ? "absolute left-1/2 top-[calc(env(safe-area-inset-top)+18px)] z-[180] overflow-hidden rounded-[22px] bg-black shadow-[0_22px_70px_rgba(0,0,0,0.55)] ring-1 ring-white/15 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
             : "absolute inset-x-0 top-0 overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] [bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom))] md:bottom-0"
         }
         style={
@@ -246,6 +246,10 @@ export function FeedVideoCard({
             ? {
                 aspectRatio: videoAspectRatio,
                 height: "clamp(220px, 34dvh, 320px)",
+                transform:
+                  "translateX(-50%) translateY(var(--comment-video-y, 0px)) scale(var(--comment-video-scale, 1))",
+                transformOrigin: "top center",
+                width: "min(88vw, 410px)",
                 willChange: "transform, border-radius",
               }
             : {
