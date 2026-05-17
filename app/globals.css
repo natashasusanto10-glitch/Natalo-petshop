@@ -155,6 +155,17 @@ input, textarea, select, button {
   box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
 }
 
+.cart-sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 1200;
+  background: #ffffff;
+  padding-top: calc(12px + env(safe-area-inset-top));
+  border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+  transform: translateZ(0);
+}
+
 body[data-review-modal-open="true"] .nat-site-header,
 body[data-review-modal-open="true"] .mobile-sticky-header,
 body[data-review-modal-open="true"] .account-sticky-header,

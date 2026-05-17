@@ -595,7 +595,7 @@ export default function CartPage() {
         isCartEmpty ? "pb-10" : "pb-[calc(104px+env(safe-area-inset-bottom))] md:pb-10"
       }`}
     >
-      <header className="sticky top-0 z-[1050] -mx-4 border-b border-slate-200/80 bg-white px-4 pb-3 shadow-[0_8px_24px_rgba(15,23,42,0.06)] [padding-top:calc(12px+env(safe-area-inset-top))]">
+      <header className="cart-sticky-header -mx-4 px-4 pb-3">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <button
