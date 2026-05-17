@@ -53,7 +53,9 @@ export function Header() {
   const isAccountSettingsPage = currentPath === "/account/settings";
   const isAccountProfilePage = currentPath === "/account/profile";
   const isProductsCatalog =
-    currentPath === "/products" || currentPath === "/produk" || currentPath === "/kategori";
+    currentPath === "/products" ||
+    currentPath === "/produk" ||
+    currentPath === "/kategori";
   const isProductSearchResult =
     currentPath === "/products" && Boolean(searchParams.get("q")?.trim());
   const isSearchPage = currentPath === "/search";
@@ -64,6 +66,10 @@ export function Header() {
   const isFeedRoute = /^\/feed(\/|$)/.test(currentPath);
   const isAccountSubPageWithoutBrandHeader =
     currentPath === "/wishlist" ||
+    currentPath === "/cara-pemesanan" ||
+    currentPath === "/syarat-ketentuan" ||
+    currentPath === "/kebijakan-privasi" ||
+    currentPath === "/kebijakan-pengembalian" ||
     // Semua sub-page alamat (daftar, tambah, edit/[id]) pakai StickyBackTitle
     // sebagai sub-header — tidak butuh brand header (logo + bell + cart).
     /^\/akun\/alamat(\/|$)/.test(currentPath) ||
@@ -189,7 +195,8 @@ export function Header() {
     isCheckoutAddressPicker ||
     isOrderDetail ||
     isOrderSuccess
-  ) return null;
+  )
+    return null;
 
   // Auth pages — render minimal header: back button + title saja. Bottom nav,
   // bell, profile, login button semua di-hide untuk fokus ke flow auth.
@@ -203,8 +210,18 @@ export function Header() {
             className="-ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-800 active:bg-gray-100"
             aria-label="Kembali ke halaman sebelumnya"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} className="h-5 w-5">
-              <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2.2}
+              className="h-5 w-5"
+            >
+              <path
+                d="M15 18l-6-6 6-6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
           </button>
           <h1 className="flex-1 truncate text-center text-base font-bold text-gray-900">
@@ -241,8 +258,18 @@ export function Header() {
             className="flex h-10 w-10 items-center justify-center rounded-full text-gray-800 active:bg-gray-100"
             aria-label="Kembali"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} className="h-5 w-5">
-              <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2.2}
+              className="h-5 w-5"
+            >
+              <path
+                d="M15 18l-6-6 6-6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
           </button>
 
@@ -252,7 +279,13 @@ export function Header() {
               className="flex h-10 w-10 items-center justify-center rounded-full text-gray-700 active:bg-gray-100"
               aria-label="Cari produk"
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                className="h-5 w-5"
+              >
                 <circle cx="11" cy="11" r="7" />
                 <path d="m20 20-3.5-3.5" strokeLinecap="round" />
               </svg>
@@ -263,11 +296,20 @@ export function Header() {
               className="flex h-10 w-10 items-center justify-center rounded-full text-gray-700 active:bg-gray-100"
               aria-label="Bagikan produk"
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                className="h-5 w-5"
+              >
                 <circle cx="18" cy="5" r="3" />
                 <circle cx="6" cy="12" r="3" />
                 <circle cx="18" cy="19" r="3" />
-                <path d="M8.6 10.6 15.4 6.4M8.6 13.4l6.8 4.2" strokeLinecap="round" />
+                <path
+                  d="M8.6 10.6 15.4 6.4M8.6 13.4l6.8 4.2"
+                  strokeLinecap="round"
+                />
               </svg>
             </button>
             <div className="flex h-10 w-10 items-center justify-center rounded-full text-gray-700 active:bg-gray-100 [&_span.hidden]:hidden [&_svg]:!h-5 [&_svg]:!w-5">
@@ -277,89 +319,92 @@ export function Header() {
         </div>
       )}
       <div className={isProductDetail ? "hidden md:block" : ""}>
-      <div
-        className={
-          isHome
-            ? "mobile-header-row mx-auto max-w-6xl gap-1.5 xs:gap-2"
-            : "nat-header-inner nat-safe-x mx-auto flex max-w-6xl items-center justify-between gap-1.5 py-1.5 xs:gap-2 md:py-3"
-        }
-      >
-        {/* Back button — hanya tampil di mobile untuk halaman non-main-tab.
-            Memberikan fallback navigasi yang jelas selain swipe gesture iOS. */}
-        {/* Logo */}
-        <Link
-          href="/"
-          aria-label={brand}
-          className="flex min-w-0 shrink-0 items-center"
+        <div
+          className={
+            isHome
+              ? "mobile-header-row mx-auto max-w-6xl gap-1.5 xs:gap-2"
+              : "nat-header-inner nat-safe-x mx-auto flex max-w-6xl items-center justify-between gap-1.5 py-1.5 xs:gap-2 md:py-3"
+          }
         >
-          <Image
-            src="/logo.png"
-            alt={brand}
-            width={600}
-            height={196}
-            priority
-            sizes="(max-width: 360px) 128px, (max-width: 768px) 150px, 180px"
-            className="h-9 w-auto max-w-[128px] xs:h-10 xs:max-w-[150px] md:h-12 md:max-w-none"
-          />
-        </Link>
+          {/* Back button — hanya tampil di mobile untuk halaman non-main-tab.
+            Memberikan fallback navigasi yang jelas selain swipe gesture iOS. */}
+          {/* Logo */}
+          <Link
+            href="/"
+            aria-label={brand}
+            className="flex min-w-0 shrink-0 items-center"
+          >
+            <Image
+              src="/logo.png"
+              alt={brand}
+              width={600}
+              height={196}
+              priority
+              sizes="(max-width: 360px) 128px, (max-width: 768px) 150px, 180px"
+              className="h-9 w-auto max-w-[128px] xs:h-10 xs:max-w-[150px] md:h-12 md:max-w-none"
+            />
+          </Link>
 
-        {/* Desktop nav */}
-        <nav className="hidden items-center gap-8 text-sm font-medium text-gray-700 md:flex">
-          {NAV_LINKS.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={`transition hover:text-blue-500 ${
-                currentPath === link.href ? "font-semibold text-blue-500" : ""
-              }`}
-            >
-              {link.label}
-            </Link>
-          ))}
-        </nav>
+          {/* Desktop nav */}
+          <nav className="hidden items-center gap-8 text-sm font-medium text-gray-700 md:flex">
+            {NAV_LINKS.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={`transition hover:text-blue-500 ${
+                  currentPath === link.href ? "font-semibold text-blue-500" : ""
+                }`}
+              >
+                {link.label}
+              </Link>
+            ))}
+          </nav>
 
-        {/* Right actions — contextual:
+          {/* Right actions — contextual:
             - Guest: tombol "Masuk" saja (no bell, no profile chip).
             - Member: bell + profile chip (kecuali di /member & /akun area
               dimana user sudah di akun → chip disembunyikan).
             - Search icon kecil dihapus total: pakai search bar besar di
               / dan /products saja (lebih native, lebih mudah tap di mobile). */}
-        <div className={`flex shrink-0 items-center gap-1 xs:gap-1.5 md:gap-2 ${isCheckoutAddressPicker ? "justify-end" : ""}`}>
-          {/* Notifikasi — hanya untuk logged-in user. Guest tidak punya
+          <div
+            className={`flex shrink-0 items-center gap-1 xs:gap-1.5 md:gap-2 ${
+              isCheckoutAddressPicker ? "justify-end" : ""
+            }`}
+          >
+            {/* Notifikasi — hanya untuk logged-in user. Guest tidak punya
               konteks notif (order, voucher, point) jadi bell dihide. */}
-          {showBell && <NotificationBell compact />}
+            {showBell && <NotificationBell compact />}
 
-          {/* Cart: desktop header only; mobile already has bottom navigation. */}
-          <CartCount compact />
+            {/* Cart: desktop header only; mobile already has bottom navigation. */}
+            <CartCount compact />
 
-          {/* Member avatar — bulat, inisial user. Tap → Member Center (/member).
+            {/* Member avatar — bulat, inisial user. Tap → Member Center (/member).
               Tap area 44x44 (h-11 w-11) sesuai HIG; visual circle 40px (h-10 w-10).
               Disembunyikan saat user sudah di /member atau /akun (tidak perlu
               shortcut ke tempat yang sedang dibuka). */}
-          {showProfileChip && member?.name && (
-            <Link
-              href="/member"
-              aria-label={`Member Center — ${member.name}`}
-              className="flex h-11 w-11 items-center justify-center rounded-full text-blue-700 transition active:scale-95"
-            >
-              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500 text-sm font-black text-white shadow-sm transition hover:bg-blue-600">
-                {member.name.charAt(0).toUpperCase()}
-              </span>
-            </Link>
-          )}
+            {showProfileChip && member?.name && (
+              <Link
+                href="/member"
+                aria-label={`Member Center — ${member.name}`}
+                className="flex h-11 w-11 items-center justify-center rounded-full text-blue-700 transition active:scale-95"
+              >
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500 text-sm font-black text-white shadow-sm transition hover:bg-blue-600">
+                  {member.name.charAt(0).toUpperCase()}
+                </span>
+              </Link>
+            )}
 
-          {showLoginButton && (
-            <Link
-              href="/member/login?redirect=%2F"
-              className="hidden rounded-full bg-blue-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-600 xs:px-4 md:inline-flex md:px-5 md:text-sm"
-            >
-              Masuk
-            </Link>
-          )}
-
+            {showLoginButton && (
+              <Link
+                href="/member/login?redirect=%2F"
+                className="hidden rounded-full bg-blue-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-600 xs:px-4 md:inline-flex md:px-5 md:text-sm"
+              >
+                Masuk
+              </Link>
+            )}
+          </div>
         </div>
-      </div>
-      {isHome && <HomeSearchBar />}
+        {isHome && <HomeSearchBar />}
       </div>
     </header>
   );

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { StickyBackTitle } from "@/components/StickyBackTitle";
+import { STORE_CONTACT_EMAIL, storeContactMailto } from "@/lib/store-contact";
 
 export const metadata: Metadata = {
   title: "Pusat Bantuan",
@@ -41,8 +42,8 @@ const FAQS: FAQ[] = [
       <>
         Kartu kredit & debit (Visa, Mastercard, JCB), e-wallet (GoPay, OVO,
         DANA, ShopeePay), virtual account (BCA, BRI, BNI, Mandiri, Permata),
-        QRIS, dan transfer manual ke rekening Natalo. Semua via gateway
-        Midtrans yang aman & ter-enkripsi.
+        QRIS, dan transfer manual ke rekening Natalo. Semua via gateway Midtrans
+        yang aman & ter-enkripsi.
       </>
     ),
   },
@@ -76,8 +77,8 @@ const FAQS: FAQ[] = [
       <>
         Setiap pembelian dapat point (1 point per Rp 10.000 belanja). Login
         member dulu untuk akumulasi point. Tukar point dengan voucher diskon di
-        halaman "Akun → Loyalty Point". Member baru otomatis dapat voucher
-        Rp 50.000 untuk order pertama (kode: NATA-NEW).
+        halaman "Akun → Loyalty Point". Member baru otomatis dapat voucher Rp
+        50.000 untuk order pertama (kode: NATA-NEW).
       </>
     ),
   },
@@ -114,10 +115,10 @@ const FAQS: FAQ[] = [
     a: (
       <>
         App native iOS Natalo (via TestFlight / App Store) punya splash screen
-        brand, pull-to-refresh, swipe-back gesture, share sheet native iOS,
-        push notification real-time order update, dan Universal Links (klik
-        link Natalo di WhatsApp buka langsung di app). Pengalaman lebih
-        seamless dari web browser.
+        brand, pull-to-refresh, swipe-back gesture, share sheet native iOS, push
+        notification real-time order update, dan Universal Links (klik link
+        Natalo di WhatsApp buka langsung di app). Pengalaman lebih seamless dari
+        web browser.
       </>
     ),
   },
@@ -126,9 +127,9 @@ const FAQS: FAQ[] = [
     a: (
       <>
         Bisa! Datang langsung ke toko fisik Natalo Petshop & Aquarium di Medan,
-        Sumatera Utara (jam operasional Senin-Sabtu). Atau chat WhatsApp customer
-        service via tombol hijau di pojok kanan bawah app. Konsultasi gratis
-        untuk pertanyaan produk, perawatan hewan, dan rekomendasi pakan.
+        Sumatera Utara (jam operasional Senin-Sabtu). Atau chat WhatsApp
+        customer service via tombol hijau di pojok kanan bawah app. Konsultasi
+        gratis untuk pertanyaan produk, perawatan hewan, dan rekomendasi pakan.
       </>
     ),
   },
@@ -141,77 +142,82 @@ export default function BantuanPage() {
       <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="mb-6">
           <p className="mt-1 text-sm text-zinc-500">
-            Pertanyaan umum, kontak customer service, dan panduan menggunakan app.
+            Pertanyaan umum, kontak customer service, dan panduan menggunakan
+            app.
           </p>
         </div>
 
-      <section className="space-y-3 text-sm leading-relaxed text-zinc-700 sm:text-base">
-        {FAQS.map((item, i) => (
-          <details
-            key={i}
-            className="group rounded-2xl border border-zinc-200 bg-white p-4 transition open:shadow-sm"
-          >
-            <summary className="cursor-pointer list-none font-bold text-zinc-950 [&::-webkit-details-marker]:hidden">
-              <div className="flex items-start justify-between gap-3">
-                <span>{item.q}</span>
-                <svg
-                  className="mt-1 h-4 w-4 shrink-0 text-zinc-400 transition group-open:rotate-180"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={2.5}
-                >
-                  <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </div>
-            </summary>
-            <div className="mt-3 text-zinc-600">{item.a}</div>
-          </details>
-        ))}
-      </section>
+        <section className="space-y-3 text-sm leading-relaxed text-zinc-700 sm:text-base">
+          {FAQS.map((item, i) => (
+            <details
+              key={i}
+              className="group rounded-2xl border border-zinc-200 bg-white p-4 transition open:shadow-sm"
+            >
+              <summary className="cursor-pointer list-none font-bold text-zinc-950 [&::-webkit-details-marker]:hidden">
+                <div className="flex items-start justify-between gap-3">
+                  <span>{item.q}</span>
+                  <svg
+                    className="mt-1 h-4 w-4 shrink-0 text-zinc-400 transition group-open:rotate-180"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2.5}
+                  >
+                    <path
+                      d="m6 9 6 6 6-6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </div>
+              </summary>
+              <div className="mt-3 text-zinc-600">{item.a}</div>
+            </details>
+          ))}
+        </section>
 
-      <div className="mt-10 rounded-2xl border border-natalo-100 bg-natalo-50 p-6">
-        <h2 className="text-base font-black text-natalo-900 sm:text-lg">
-          Tidak menemukan jawaban?
-        </h2>
-        <p className="mt-2 text-sm text-natalo-800">
-          Tim Natalo siap bantu Senin-Sabtu, sesuai jam operasional toko. Kamu bisa
-          menghubungi kami melalui WhatsApp di 081289997113 atau email{" "}
-          <a
-            href="mailto:Natalopetshop@gmail.com"
-            className="font-bold text-natalo-900 underline"
-          >
-            Natalopetshop@gmail.com
-          </a>
-          .
-        </p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <Link
-            href="/tentang-kami"
-            className="rounded-xl border border-natalo-200 bg-white px-4 py-3 text-sm font-bold text-natalo-800 hover:bg-natalo-100"
-          >
-            Tentang Natalo
-          </Link>
-          <Link
-            href="/syarat-ketentuan"
-            className="rounded-xl border border-natalo-200 bg-white px-4 py-3 text-sm font-bold text-natalo-800 hover:bg-natalo-100"
-          >
-            Syarat & Ketentuan
-          </Link>
-          <Link
-            href="/kebijakan-privasi"
-            className="rounded-xl border border-natalo-200 bg-white px-4 py-3 text-sm font-bold text-natalo-800 hover:bg-natalo-100"
-          >
-            Kebijakan Privasi
-          </Link>
-          <Link
-            href="/kebijakan-pengembalian"
-            className="rounded-xl border border-natalo-200 bg-white px-4 py-3 text-sm font-bold text-natalo-800 hover:bg-natalo-100"
-          >
-            Kebijakan Pengembalian
-          </Link>
+        <div className="mt-10 rounded-2xl border border-natalo-100 bg-natalo-50 p-6">
+          <h2 className="text-base font-black text-natalo-900 sm:text-lg">
+            Tidak menemukan jawaban?
+          </h2>
+          <p className="mt-2 text-sm text-natalo-800">
+            Tim Natalo siap bantu Senin-Sabtu, sesuai jam operasional toko. Kamu
+            bisa menghubungi kami melalui WhatsApp di 081289997113 atau email{" "}
+            <a
+              href={storeContactMailto()}
+              className="font-bold text-natalo-900 underline"
+            >
+              {STORE_CONTACT_EMAIL}
+            </a>
+            .
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <Link
+              href="/tentang-kami"
+              className="rounded-xl border border-natalo-200 bg-white px-4 py-3 text-sm font-bold text-natalo-800 hover:bg-natalo-100"
+            >
+              Tentang Natalo
+            </Link>
+            <Link
+              href="/syarat-ketentuan"
+              className="rounded-xl border border-natalo-200 bg-white px-4 py-3 text-sm font-bold text-natalo-800 hover:bg-natalo-100"
+            >
+              Syarat & Ketentuan
+            </Link>
+            <Link
+              href="/kebijakan-privasi"
+              className="rounded-xl border border-natalo-200 bg-white px-4 py-3 text-sm font-bold text-natalo-800 hover:bg-natalo-100"
+            >
+              Kebijakan Privasi
+            </Link>
+            <Link
+              href="/kebijakan-pengembalian"
+              className="rounded-xl border border-natalo-200 bg-white px-4 py-3 text-sm font-bold text-natalo-800 hover:bg-natalo-100"
+            >
+              Kebijakan Pengembalian
+            </Link>
+          </div>
         </div>
-      </div>
       </div>
     </div>
   );

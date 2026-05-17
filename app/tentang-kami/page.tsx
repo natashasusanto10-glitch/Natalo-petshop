@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { OperatingHours } from "@/components/OperatingHours";
+import { STORE_CONTACT_EMAIL, storeContactMailto } from "@/lib/store-contact";
 
 export const metadata: Metadata = {
   title: "Tentang Kami",
@@ -44,7 +45,7 @@ const contacts = [
     value: "Jl. MT. Haryono No. 103 BCD, Medan, Sumatera Utara",
   },
   { icon: "📱", label: "WhatsApp", value: "+62 812 8999 7113" },
-  { icon: "📧", label: "Email", value: "natalopetshop@gmail.com" },
+  { icon: "📧", label: "Email", value: STORE_CONTACT_EMAIL },
   {
     icon: "🕐",
     label: "Jam operasional",
@@ -71,7 +72,9 @@ export default function TentangKamiPage() {
 
       <div className="mx-auto max-w-4xl px-4 py-6 md:px-6 md:py-12 lg:py-16">
         <section className="mb-8 md:mb-12">
-          <h2 className="mb-4 text-xl font-medium text-zinc-950">Cerita kami</h2>
+          <h2 className="mb-4 text-xl font-medium text-zinc-950">
+            Cerita kami
+          </h2>
           <div className="space-y-4 text-sm leading-7 text-zinc-700">
             <p>
               Natalo Petshop & Aquarium bermula dari kecintaan kami terhadap
@@ -146,6 +149,13 @@ export default function TentangKamiPage() {
                   </div>
                   {contact.label === "Jam operasional" ? (
                     <OperatingHours className="space-y-1 text-sm text-zinc-950" />
+                  ) : contact.label === "Email" ? (
+                    <a
+                      className="text-sm text-zinc-950 underline decoration-zinc-300 underline-offset-2"
+                      href={storeContactMailto()}
+                    >
+                      {contact.value}
+                    </a>
                   ) : (
                     <div className="text-sm text-zinc-950">{contact.value}</div>
                   )}

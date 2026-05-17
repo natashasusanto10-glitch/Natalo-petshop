@@ -23,6 +23,10 @@ export const HIDDEN_BOTTOM_NAV_PATTERNS: RegExp[] = [
 
   // Inner pages — navigasi balik ada di sticky page title, bukan bottom tab
   /^\/tentang-kami(\/|$)/,
+  /^\/cara-pemesanan(\/|$)/,
+  /^\/syarat-ketentuan(\/|$)/,
+  /^\/kebijakan-privasi(\/|$)/,
+  /^\/kebijakan-pengembalian(\/|$)/,
   /^\/bantuan(\/|$)/,
   /^\/help(\/|$)/,
   /^\/wishlist(\/|$)/,

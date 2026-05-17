@@ -4,19 +4,30 @@ export function LegalPage({
   title,
   updated,
   children,
+  showHeading = true,
 }: {
   title: string;
   updated: string;
   children: ReactNode;
+  showHeading?: boolean;
 }) {
   return (
-    <div className="mx-auto max-w-3xl px-6 py-10 pb-20">
-      <div className="mb-8">
-        <h1 className="text-2xl font-black tracking-tight text-zinc-950 sm:text-3xl">
-          {title}
-        </h1>
-        <p className="mt-1 text-sm text-zinc-500">Terakhir diperbarui: {updated}</p>
-      </div>
+    <div className="mx-auto max-w-3xl px-6 py-6 pb-20">
+      {showHeading && (
+        <div className="mb-8">
+          <h1 className="text-2xl font-black tracking-tight text-zinc-950 sm:text-3xl">
+            {title}
+          </h1>
+          <p className="mt-1 text-sm text-zinc-500">
+            Terakhir diperbarui: {updated}
+          </p>
+        </div>
+      )}
+      {!showHeading && (
+        <p className="mb-6 text-sm font-semibold text-zinc-500">
+          Terakhir diperbarui: {updated}
+        </p>
+      )}
       <div className="space-y-6 text-sm leading-relaxed text-zinc-700 sm:text-base">
         {children}
       </div>
@@ -33,7 +44,9 @@ export function Section({
 }) {
   return (
     <section>
-      <h2 className="mb-2 text-base font-bold text-zinc-950 sm:text-lg">{title}</h2>
+      <h2 className="mb-2 text-base font-bold text-zinc-950 sm:text-lg">
+        {title}
+      </h2>
       <div className="text-zinc-700">{children}</div>
     </section>
   );
@@ -55,7 +68,9 @@ export function Steps({
             <div className="mb-1 text-sm font-bold text-zinc-950 sm:text-base">
               {item.title}
             </div>
-            <div className="text-sm leading-relaxed text-zinc-600">{item.desc}</div>
+            <div className="text-sm leading-relaxed text-zinc-600">
+              {item.desc}
+            </div>
           </div>
         </div>
       ))}
