@@ -119,13 +119,12 @@ export async function POST(
         author: { select: { id: true, name: true, role: true } },
       },
     });
-    // Increment commentCount on post (only count top-level for badge).
-    if (parentCommentId === null) {
-      await tx.feedPost.update({
-        where: { id: postId },
-        data: { commentCount: { increment: 1 } },
-      });
-    }
+    // Count both top-level comments and replies so the drawer/action rail
+    // matches the visible conversation total.
+    await tx.feedPost.update({
+      where: { id: postId },
+      data: { commentCount: { increment: 1 } },
+    });
     return comment;
   });
 

@@ -228,9 +228,53 @@ type CommentListOptions = {
   viewerUserId?: string | null;
 };
 
+function mapFeedComment(
+  c: {
+    id: string;
+    postId: string;
+    parentCommentId: string | null;
+    content: string;
+    isAdminOfficial: boolean;
+    isHidden: boolean;
+    likeCount: number;
+    createdAt: Date;
+    author: { id: string; name: string; role: string };
+    replies?: Array<{
+      id: string;
+      postId: string;
+      parentCommentId: string | null;
+      content: string;
+      isAdminOfficial: boolean;
+      isHidden: boolean;
+      likeCount: number;
+      createdAt: Date;
+      author: { id: string; name: string; role: string };
+    }>;
+  },
+  viewerLikedIds: Set<string>,
+): FeedCommentItem {
+  return {
+    id: c.id,
+    postId: c.postId,
+    parentCommentId: c.parentCommentId,
+    content: c.content,
+    isAdminOfficial: c.isAdminOfficial,
+    isHidden: c.isHidden,
+    likeCount: c.likeCount,
+    createdAt: c.createdAt.toISOString(),
+    author: {
+      id: c.author.id,
+      name: c.author.name,
+      role: (c.author.role === "ADMIN" ? "ADMIN" : "CUSTOMER") as "ADMIN" | "CUSTOMER",
+    },
+    viewerLiked: viewerLikedIds.has(c.id),
+    replies: c.replies?.map((reply) => mapFeedComment(reply, viewerLikedIds)) ?? [],
+    replyCount: c.replies?.length ?? 0,
+  };
+}
+
 /**
- * Top-level komentar untuk satu post. Untuk MVP tidak include nested
- * replies — UI bisa fetch per-comment kalau user expand. Hidden
+ * Top-level komentar untuk satu post, plus 1-level replies. Hidden
  * comments di-skip untuk public reader; admin punya endpoint berbeda.
  */
 export async function listFeedComments({
@@ -249,15 +293,26 @@ export async function listFeedComments({
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     include: {
       author: { select: { id: true, name: true, role: true } },
+      replies: {
+        where: { isHidden: false },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        include: {
+          author: { select: { id: true, name: true, role: true } },
+        },
+      },
     },
   });
 
   let viewerLikedIds = new Set<string>();
   if (viewerUserId && comments.length > 0) {
+    const commentIds = comments.flatMap((c) => [
+      c.id,
+      ...c.replies.map((reply) => reply.id),
+    ]);
     const likes = await prisma.feedCommentLike.findMany({
       where: {
         userId: viewerUserId,
-        commentId: { in: comments.map((c) => c.id) },
+        commentId: { in: commentIds },
       },
       select: { commentId: true },
     });
@@ -267,22 +322,7 @@ export async function listFeedComments({
   const hasMore = comments.length > COMMENT_PAGE_SIZE;
   const sliced = hasMore ? comments.slice(0, COMMENT_PAGE_SIZE) : comments;
 
-  const items: FeedCommentItem[] = sliced.map((c) => ({
-    id: c.id,
-    postId: c.postId,
-    parentCommentId: c.parentCommentId,
-    content: c.content,
-    isAdminOfficial: c.isAdminOfficial,
-    isHidden: c.isHidden,
-    likeCount: c.likeCount,
-    createdAt: c.createdAt.toISOString(),
-    author: {
-      id: c.author.id,
-      name: c.author.name,
-      role: (c.author.role === "ADMIN" ? "ADMIN" : "CUSTOMER") as "ADMIN" | "CUSTOMER",
-    },
-    viewerLiked: viewerLikedIds.has(c.id),
-  }));
+  const items: FeedCommentItem[] = sliced.map((c) => mapFeedComment(c, viewerLikedIds));
 
   return {
     items,

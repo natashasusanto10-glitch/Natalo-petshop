@@ -63,10 +63,12 @@ export function FeedCommentSheet({
   const [isSnappingBack, setIsSnappingBack] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
 
+  const visibleCommentTotal = useMemo(() => countThreadedComments(comments), [comments]);
+
   const title = useMemo(() => {
-    const total = Math.max(Number(commentCount ?? comments.length) || 0, comments.length);
+    const total = Math.max(Number(commentCount ?? visibleCommentTotal) || 0, visibleCommentTotal);
     return total > 0 ? `Komentar ${formatCommentCount(total)}` : "Komentar";
-  }, [commentCount, comments.length]);
+  }, [commentCount, visibleCommentTotal]);
 
   const updateDrag = useCallback((clientY: number) => {
     if (!isDraggingRef.current) return;
@@ -369,7 +371,11 @@ export function FeedCommentSheet({
         setComments((prev) =>
           prev.map((item) =>
             item.id === data.comment.parentCommentId
-              ? { ...item, replyCount: (item.replyCount ?? 0) + 1 }
+              ? {
+                  ...item,
+                  replies: [...(item.replies ?? []), data.comment],
+                  replyCount: (item.replyCount ?? item.replies?.length ?? 0) + 1,
+                }
               : item,
           ),
         );
@@ -629,13 +635,18 @@ export function FeedCommentSheet({
 function CommentRow({
   comment,
   onReply,
+  isReply = false,
+  parentComment,
 }: {
   comment: FeedCommentItem;
   onReply: (comment: FeedCommentItem) => void;
+  isReply?: boolean;
+  parentComment?: FeedCommentItem;
 }) {
   const [liked, setLiked] = useState(comment.viewerLiked);
   const [likeCount, setLikeCount] = useState(comment.likeCount);
   const [busy, setBusy] = useState(false);
+  const replyTarget = isReply && parentComment ? parentComment : comment;
 
   async function toggleLike() {
     if (busy) return;
@@ -660,55 +671,77 @@ function CommentRow({
   }
 
   return (
-    <div className="relative z-[3] flex gap-3 [pointer-events:auto]">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-xs font-black text-white ring-1 ring-white/10">
-        {comment.author.role === "ADMIN" ? "N" : comment.author.name.charAt(0).toUpperCase()}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <p className="min-w-0 truncate text-xs font-extrabold text-white">
-            {comment.author.role === "ADMIN" ? "Natalo Petshop" : comment.author.name}
-          </p>
-          <span className="shrink-0 text-[11px] font-semibold text-white/38">
-            {formatCommentTime(comment.createdAt)}
-          </span>
-          {comment.isAdminOfficial && (
-            <span className="shrink-0 rounded-full bg-natalo-500/90 px-1.5 py-0.5 text-[9px] font-black uppercase text-white">
-              Official
+    <div className="relative z-[3] [pointer-events:auto]">
+      <div className={`flex gap-3 ${isReply ? "pl-12" : ""}`}>
+        <div className={`${isReply ? "h-7 w-7 text-[10px]" : "h-9 w-9 text-xs"} flex shrink-0 items-center justify-center rounded-full bg-white/10 font-black text-white ring-1 ring-white/10`}>
+          {comment.author.role === "ADMIN" ? "N" : comment.author.name.charAt(0).toUpperCase()}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <p className="min-w-0 truncate text-xs font-extrabold text-white">
+              {comment.author.role === "ADMIN" ? "Natalo Petshop" : comment.author.name}
+            </p>
+            <span className="shrink-0 text-[11px] font-semibold text-white/38">
+              {formatCommentTime(comment.createdAt)}
             </span>
-          )}
-        </div>
-        <p className="mt-0.5 break-words text-sm leading-relaxed text-white/82">
-          {comment.content}
-        </p>
-        <div className="relative z-[4] mt-1.5 flex items-center gap-4 [pointer-events:auto]">
-          <button
-            type="button"
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              onReply(comment);
-            }}
-            className="-ml-2 rounded-full px-2 py-1.5 text-[11px] font-bold text-white/38 transition [pointer-events:auto] [touch-action:manipulation] active:text-white/70"
-          >
-            Balas
-          </button>
-          <button
-            type="button"
-            onClick={toggleLike}
-            aria-label={liked ? "Batal suka komentar" : "Suka komentar"}
-            aria-pressed={liked}
-            className="flex items-center gap-1 text-[11px] font-bold text-white/38 transition active:scale-95 active:text-white/70"
-          >
-            <FiHeart
-              className={`h-3.5 w-3.5 ${liked ? "fill-red-500 stroke-red-500 text-red-500" : ""}`}
-            />
-            <span>{likeCount > 0 ? likeCount : ""}</span>
-          </button>
+            {comment.isAdminOfficial && (
+              <span className="shrink-0 rounded-full bg-natalo-500/90 px-1.5 py-0.5 text-[9px] font-black uppercase text-white">
+                Official
+              </span>
+            )}
+          </div>
+          <p className={`${isReply ? "text-[13px]" : "text-sm"} mt-0.5 break-words leading-relaxed text-white/82`}>
+            {comment.content}
+          </p>
+          <div className="relative z-[4] mt-1.5 flex items-center gap-4 [pointer-events:auto]">
+            <button
+              type="button"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onReply(replyTarget);
+              }}
+              className="-ml-2 rounded-full px-2 py-1.5 text-[11px] font-bold text-white/38 transition [pointer-events:auto] [touch-action:manipulation] active:text-white/70"
+            >
+              Balas
+            </button>
+            <button
+              type="button"
+              onClick={toggleLike}
+              aria-label={liked ? "Batal suka komentar" : "Suka komentar"}
+              aria-pressed={liked}
+              className="flex items-center gap-1 text-[11px] font-bold text-white/38 transition active:scale-95 active:text-white/70"
+            >
+              <FiHeart
+                className={`h-3.5 w-3.5 ${liked ? "fill-red-500 stroke-red-500 text-red-500" : ""}`}
+              />
+              <span>{likeCount > 0 ? likeCount : ""}</span>
+            </button>
+          </div>
         </div>
       </div>
+      {!isReply && comment.replies && comment.replies.length > 0 && (
+        <div className="mt-3 space-y-3 border-l border-white/10 pl-1">
+          {comment.replies.map((reply) => (
+            <CommentRow
+              key={reply.id}
+              comment={reply}
+              onReply={onReply}
+              isReply
+              parentComment={comment}
+            />
+          ))}
+        </div>
+      )}
     </div>
+  );
+}
+
+function countThreadedComments(items: FeedCommentItem[]) {
+  return items.reduce(
+    (total, item) => total + 1 + (item.replies?.length ?? 0),
+    0,
   );
 }
 
