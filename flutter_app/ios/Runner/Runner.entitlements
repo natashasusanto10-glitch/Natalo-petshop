@@ -3,6 +3,21 @@
 <plist version="1.0">
 <dict>
 	<!--
+	  Push notifications via firebase_messaging — entitlement aps-environment
+	  WAJIB sebelum app bisa terima APNs token. Value:
+	  - "development": untuk Debug build (TestFlight + simulator pakai dev APNs)
+	  - "production": untuk Release / App Store distribution (production APNs)
+	  Xcode auto-pilih sesuai build config kalau pakai $(APS_ENVIRONMENT)
+	  variable, tapi explicit string lebih portable. Pakai "production" karena
+	  TestFlight + App Store distribution semua pakai production APNs.
+
+	  App ID `com.natalo.petshop` di Apple Developer Portal sudah enable
+	  Push Notifications capability — match dengan entitlement ini.
+	-->
+	<key>aps-environment</key>
+	<string>production</string>
+
+	<!--
 	  Associated Domains untuk iOS Universal Links.
 	  Mirror Android intent-filter di AndroidManifest.xml.
 
