@@ -43,6 +43,10 @@ type CartVoucherOption = {
   minimumOrder: number;
 };
 type VoucherSelectionMode = "auto" | "manual" | null;
+type ManualQuantityState = {
+  item: CartItem;
+  key: string;
+};
 type PendingDeletedItem = {
   id: number;
   item: CartItem;
@@ -50,6 +54,9 @@ type PendingDeletedItem = {
   index: number;
   selected: boolean;
 };
+type QuantityValidationResult =
+  | { valid: false; message: string }
+  | { valid: true; quantity: number; message: "" };
 
 function cartKey(item: CartItem) {
   return `${item.productId}:${item.variantId ?? ""}`;
@@ -58,6 +65,31 @@ function cartKey(item: CartItem) {
 function itemSelectionLabel(kindCount: number, quantityCount: number) {
   if (kindCount <= 0) return "0 jenis produk (0 item)";
   return `${kindCount} jenis produk (${quantityCount} item)`;
+}
+
+function validateQuantityInput(input: string, stock?: number | null): QuantityValidationResult {
+  const value = input.trim();
+  const quantity = Number(value);
+
+  if (!value || !Number.isInteger(quantity) || quantity < 1) {
+    return {
+      valid: false,
+      message: "Jumlah minimal pembelian adalah 1 item",
+    };
+  }
+
+  if (stock != null && quantity > stock) {
+    return {
+      valid: false,
+      message: `Stok hanya tersedia ${stock} item`,
+    };
+  }
+
+  return {
+    valid: true,
+    quantity,
+    message: "",
+  };
 }
 
 function TrashIcon({ className = "h-4 w-4" }: { className?: string }) {
