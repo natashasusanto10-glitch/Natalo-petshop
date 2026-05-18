@@ -90,6 +90,9 @@ export default async function AdminVoucherEditPage({
     const isFreeShipping = type === "PUBLIC_FREE_SHIPPING";
     if (!isFreeShipping && !discountPercent && !discountAmount) return;
 
+    // Form checkbox value — "on" = checked, null/missing = unchecked.
+    const isActive = formData.get("isActive") === "on";
+
     // Cek konflik kode (kalau diganti ke kode yang sudah dipakai voucher lain)
     if (code !== voucher!.code) {
       const existing = await prisma.voucher.findUnique({ where: { code } });

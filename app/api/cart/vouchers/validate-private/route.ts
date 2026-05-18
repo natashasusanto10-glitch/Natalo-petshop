@@ -13,7 +13,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { calcVoucherDiscount, voucherTypeOf } from "@/lib/voucher-helpers";
+import {
+  calcVoucherDiscount,
+  isVoucherUsageLimitReached,
+  voucherTypeOf,
+} from "@/lib/voucher-helpers";
 
 const bodySchema = z.object({
   code: z.string().trim().min(1),

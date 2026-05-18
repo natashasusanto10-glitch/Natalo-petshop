@@ -116,6 +116,7 @@ export default async function AdminVouchersPage() {
                     : v.type === "LOYALTY_POINT_CLAIM"
                       ? "Loyalty Reward"
                       : "Private Manual";
+              const kindLabel = voucherKindLabel(v.kind);
               const scopeLabel =
                 v.discountScope === "SHIPPING" ? "Ongkir" : "Produk";
 

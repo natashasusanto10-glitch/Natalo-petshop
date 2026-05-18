@@ -67,8 +67,21 @@ export default async function AdminVoucherNewPage() {
     }
 
     if (!code) return;
+    // Derive `kind` dari `type` — kedua field tersimpan di DB untuk
+    // backward compat (type lama vs kind baru). Mapping intuitive.
+    const kind: "PRODUCT_DISCOUNT" | "FREE_SHIPPING" | "LOYALTY_CLAIM" | "MANUAL_PRIVATE" =
+      type === "PUBLIC_FREE_SHIPPING"
+        ? "FREE_SHIPPING"
+        : type === "LOYALTY_POINT_CLAIM"
+          ? "LOYALTY_CLAIM"
+          : type === "PRIVATE_MANUAL_CODE"
+            ? "MANUAL_PRIVATE"
+            : "PRODUCT_DISCOUNT";
     const isFreeShipping = kind === "FREE_SHIPPING";
     if (!isFreeShipping && !discountPercent && !discountAmount) return;
+
+    // Form checkbox — "on" = checked, null/missing = unchecked.
+    const isActive = formData.get("isActive") === "on";
 
     const existing = await prisma.voucher.findUnique({ where: { code } });
     if (existing) redirect("/admin/vouchers/new?error=exists");

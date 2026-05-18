@@ -68,7 +68,7 @@ export function calcVoucherDiscount(
   subtotal: number,
   voucher: Pick<
     Voucher,
-    "discountPercent" | "discountAmount" | "maxDiscountAmount"
+    "discountPercent" | "discountAmount" | "maxDiscountAmount" | "kind"
   >,
 ): number {
   if (isFreeShippingVoucher(voucher)) return 0;
@@ -121,6 +121,7 @@ export function calcVoucherScopedDiscount(input: {
     | "maxDiscountAmount"
     | "discountScope"
     | "type"
+    | "kind"
   >;
 }) {
   const scope = voucherScopeOf(input.voucher);

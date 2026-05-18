@@ -314,6 +314,29 @@ model OrderItem {
   reviews      Review[] // multiple kalau user soft-delete & resubmit
 }
 
+// Voucher categorization enums — match migration files:
+// 20260518000000_add_voucher_kind, 20260518020000_add_new_member_voucher_rules,
+// 20260518030000_add_voucher_usage_limit_period.
+enum VoucherKind {
+  PRODUCT_DISCOUNT
+  FREE_SHIPPING
+  LOYALTY_CLAIM
+  MANUAL_PRIVATE
+}
+
+enum VoucherTargetUser {
+  ALL_MEMBERS
+  NEW_MEMBER
+}
+
+enum VoucherUserUsageLimitPeriod {
+  NONE
+  LIFETIME
+  DAY
+  WEEK
+  MONTH
+}
+
 model Voucher {
   id              String    @id @default(cuid())
   name            String?
@@ -326,6 +349,7 @@ model Voucher {
   maxUsage        Int?
   usedCount       Int       @default(0)
   usageLimitPerUser Int     @default(1)
+  usageLimitPeriod VoucherUserUsageLimitPeriod @default(LIFETIME)
   startsAt        DateTime  @default(now())
   expiresAt       DateTime?
   isActive        Boolean   @default(true)
@@ -336,9 +360,13 @@ model Voucher {
   // backward compat semua voucher existing.
   sourceType      VoucherSourceType @default(CUSTOMER)
   type            VoucherType @default(PUBLIC_PRODUCT_DISCOUNT)
+  kind            VoucherKind @default(PRODUCT_DISCOUNT)
   visibility      VoucherVisibility @default(PUBLIC)
   discountType    VoucherDiscountType @default(FIXED_AMOUNT)
   discountScope   VoucherDiscountScope @default(PRODUCT)
+  targetUser      VoucherTargetUser @default(ALL_MEMBERS)
+  newMemberMaxAccountAgeDays Int?
+  newMemberRequireNoSuccessfulOrder Boolean @default(false)
   eligibleUserIds String[] @default([])
   eligibleProductIds String[] @default([])
   eligibleCategoryIds String[] @default([])
