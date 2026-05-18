@@ -46,10 +46,19 @@ class AppProductImage extends StatelessWidget {
         width: width,
         height: height,
         fit: fit,
+        // Premium polish: snappier fade-in (default 500ms terasa pelan).
+        // 220ms easeOut — kerasa instant tapi tidak harsh.
+        fadeInDuration: const Duration(milliseconds: 220),
+        fadeOutDuration: const Duration(milliseconds: 120),
+        fadeInCurve: Curves.easeOut,
         placeholder: (_, __) => Shimmer.fromColors(
           baseColor: NataloColors.surface,
           highlightColor: NataloColors.border,
-          child: SizedBox(width: width, height: height),
+          child: Container(
+            width: width,
+            height: height,
+            color: NataloColors.surface,
+          ),
         ),
         errorWidget: (_, __, ___) => _placeholder(r),
       ),

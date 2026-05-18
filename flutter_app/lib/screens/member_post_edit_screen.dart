@@ -1,4 +1,6 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
 
 import '../models/my_feed_post.dart';
 import '../theme/natalo_colors.dart';
@@ -76,10 +78,18 @@ class _MemberPostEditScreenState extends State<MemberPostEditScreen> {
                       widget.post.thumbnailUrl!.isNotEmpty)
                     ClipRRect(
                       borderRadius: BorderRadius.circular(14),
-                      child: Image.network(
-                        widget.post.thumbnailUrl!,
+                      child: CachedNetworkImage(
+                        imageUrl: widget.post.thumbnailUrl!,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(),
+                        fadeInDuration: const Duration(milliseconds: 220),
+                        fadeOutDuration: const Duration(milliseconds: 120),
+                        fadeInCurve: Curves.easeOut,
+                        placeholder: (_, __) => Shimmer.fromColors(
+                          baseColor: NataloColors.surface,
+                          highlightColor: NataloColors.border,
+                          child: Container(color: NataloColors.surface),
+                        ),
+                        errorWidget: (_, __, ___) => Container(),
                       ),
                     ),
                   Center(

@@ -1,4 +1,6 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
 
 import '../models/my_feed_post.dart';
 import '../theme/natalo_colors.dart';
@@ -45,10 +47,18 @@ class MemberPostDetailScreen extends StatelessWidget {
               fit: StackFit.expand,
               children: [
                 if (post.thumbnailUrl != null && post.thumbnailUrl!.isNotEmpty)
-                  Image.network(
-                    post.thumbnailUrl!,
+                  CachedNetworkImage(
+                    imageUrl: post.thumbnailUrl!,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => _placeholderThumb(),
+                    fadeInDuration: const Duration(milliseconds: 220),
+                    fadeOutDuration: const Duration(milliseconds: 120),
+                    fadeInCurve: Curves.easeOut,
+                    placeholder: (_, __) => Shimmer.fromColors(
+                      baseColor: const Color(0xFF1F2937),
+                      highlightColor: const Color(0xFF374151),
+                      child: Container(color: const Color(0xFF1F2937)),
+                    ),
+                    errorWidget: (_, __, ___) => _placeholderThumb(),
                   )
                 else
                   _placeholderThumb(),

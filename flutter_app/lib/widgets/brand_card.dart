@@ -1,7 +1,9 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
 
 import '../models/brand.dart';
+import '../theme/natalo_colors.dart';
 import 'app_ui.dart';
 import 'glass_surface.dart';
 
@@ -65,10 +67,22 @@ class _BrandLogo extends StatelessWidget {
       return CachedNetworkImage(
         imageUrl: logoUrl,
         fit: BoxFit.contain,
-        placeholder: (_, __) => const SizedBox(
-          height: 18,
-          width: 18,
-          child: CircularProgressIndicator(strokeWidth: 2),
+        fadeInDuration: const Duration(milliseconds: 220),
+        fadeOutDuration: const Duration(milliseconds: 120),
+        fadeInCurve: Curves.easeOut,
+        // Shimmer placeholder konsisten dengan AppProductImage — bukan
+        // CircularProgressIndicator yang feels generic Material.
+        placeholder: (_, __) => Shimmer.fromColors(
+          baseColor: NataloColors.surface,
+          highlightColor: NataloColors.border,
+          child: Container(
+            width: 80,
+            height: 32,
+            decoration: BoxDecoration(
+              color: NataloColors.surface,
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
         ),
         errorWidget: (_, __, ___) => _TextBrandLogo(brand: brand),
       );
