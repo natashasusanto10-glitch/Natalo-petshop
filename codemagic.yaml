@@ -21,6 +21,12 @@ workflows:
       # `ios_signing` block dinonaktifkan supaya error spesifik dari
       # Apple API muncul di log script step (bukan di-summarize jadi
       # "No matching profiles found" yang generic).
+      groups:
+        # Import variable group `ios_signing` dari Codemagic dashboard.
+        # Group ini harus berisi CERTIFICATE_PRIVATE_KEY (RSA PEM, Secure)
+        # yang di-reference via @env:CERTIFICATE_PRIVATE_KEY di
+        # fetch-signing-files script step.
+        - ios_signing
       vars:
         # Working dir untuk semua step Flutter. Repo root berisi Next.js +
         # Capacitor + folder flutter_app/, jadi semua command flutter harus
