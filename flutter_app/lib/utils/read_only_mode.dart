@@ -22,7 +22,9 @@ import 'haptics.dart';
 class ReadOnlyMode extends ChangeNotifier {
   ReadOnlyMode._();
 
-  bool _isReadOnly = kReleaseMode;
+  static const String _kStorageKey = 'natalo_read_only_mode';
+
+  bool _enabled = kReleaseMode;
   bool _initialized = false;
 
   bool get enabled => _enabled;
@@ -35,9 +37,9 @@ class ReadOnlyMode extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       // Release tetap aman by default, debug bebas untuk QA flow checkout.
-      _isReadOnly = prefs.getBool(_kStorageKey) ?? kReleaseMode;
+      _enabled = prefs.getBool(_kStorageKey) ?? kReleaseMode;
     } catch (_) {
-      _isReadOnly = kReleaseMode;
+      _enabled = kReleaseMode;
     }
     _initialized = true;
     notifyListeners();
@@ -48,7 +50,7 @@ class ReadOnlyMode extends ChangeNotifier {
     _enabled = value;
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_key, value);
+    await prefs.setBool(_kStorageKey, value);
   }
 
   /// Throw kalau read-only ON — dipanggil di service mutation entry point.

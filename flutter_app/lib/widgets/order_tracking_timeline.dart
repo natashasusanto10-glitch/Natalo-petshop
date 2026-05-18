@@ -1,19 +1,16 @@
 import 'package:flutter/material.dart';
 
-import '../models/member_profile.dart';
 import '../theme/natalo_colors.dart';
+import 'glass_surface.dart';
 
 enum OrderTimelineType { delivery, pickup }
 
 /// Visual timeline tracker untuk status pesanan.
-/// 4 stage: PENDING → PROCESSING → SHIPPED → DELIVERED.
+/// 4 stage: PENDING → PROCESSING → SHIPPED → DELIVERED (delivery)
+/// atau    PENDING → PROCESSING → READY → PICKED_UP (pickup).
 ///
 /// Stage yang sudah lewat ditandai dengan icon + warna brand,
 /// stage yang aktif punya pulse animation, stage future grayed out.
-///
-/// Native superpower: animated icon + connector lines yang lebih
-/// expressive dari static list di PWA. Build ngambil insight order
-/// status → render full timeline tanpa scroll.
 class OrderTrackingTimeline extends StatelessWidget {
   final String status;
   final DateTime createdAt;
@@ -72,8 +69,32 @@ class OrderTrackingTimeline extends StatelessWidget {
     }
   }
 
-  String get _statusValue => (status ?? order?.status ?? 'PENDING').toUpperCase();
-  String get _paymentStatus => order?.paymentStatus.toUpperCase() ?? '';
+  static const _deliveryStages = [
+    _Stage(
+      label: 'Pesanan Diterima',
+      sublabel: 'Menunggu pembayaran',
+      icon: Icons.receipt_long_rounded,
+      color: Color(0xFFF59E0B),
+    ),
+    _Stage(
+      label: 'Sedang Diproses',
+      sublabel: 'Tim sedang menyiapkan pesanan',
+      icon: Icons.inventory_2_rounded,
+      color: Color(0xFF7C3AED),
+    ),
+    _Stage(
+      label: 'Dikirim',
+      sublabel: 'Pesanan dalam perjalanan',
+      icon: Icons.local_shipping_rounded,
+      color: Color(0xFF1E5FBF),
+    ),
+    _Stage(
+      label: 'Selesai',
+      sublabel: 'Pesanan diterima customer',
+      icon: Icons.check_circle_rounded,
+      color: Color(0xFF16A34A),
+    ),
+  ];
 
   static const _pickupStages = [
     _Stage(
@@ -105,7 +126,9 @@ class OrderTrackingTimeline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final current = _currentIndex;
-    final stages = type == OrderTimelineType.pickup ? _pickupStages : _stages;
+    final stages = type == OrderTimelineType.pickup
+        ? _pickupStages
+        : _deliveryStages;
     final title = type == OrderTimelineType.pickup
         ? 'Status Pengambilan'
         : 'Status Pengiriman';
@@ -271,89 +294,133 @@ class _StageRowState extends State<_StageRow>
 
   @override
   Widget build(BuildContext context) {
-    final active = _activeIndex;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: List.generate(_steps.length, (i) {
-        final reached = i <= active;
-        final dot = Container(
-          width: 24,
-          height: 24,
-          decoration: BoxDecoration(
-            color: reached ? NataloColors.primary : NataloColors.border,
-            shape: BoxShape.circle,
-          ),
-          child: reached
-              ? const Icon(Icons.check, color: Colors.white, size: 14)
-              : null,
-        );
-        return Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  dot,
-                  if (i < _steps.length - 1)
-                    Expanded(
+    final stage = widget.stage;
+    final state = widget.state;
+    final isDone = state == _StageState.done;
+    final isActive = state == _StageState.active;
+    final isPending = state == _StageState.pending;
+
+    final iconColor = isPending ? NataloColors.textTertiary : stage.color;
+    final textColor = isPending
+        ? NataloColors.textTertiary
+        : NataloColors.textPrimary;
+    final subColor = isPending
+        ? NataloColors.textTertiary
+        : NataloColors.textSecondary;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Icon column with connector line
+            Column(
+              children: [
+                AnimatedBuilder(
+                  animation: _pulse,
+                  builder: (context, _) {
+                    final scale = isActive
+                        ? 1.0 + 0.08 * _pulse.value
+                        : 1.0;
+                    return Transform.scale(
+                      scale: scale,
                       child: Container(
-                        height: 2,
-                        color: i < active
-                            ? NataloColors.primary
-                            : NataloColors.border,
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: isPending
+                              ? NataloColors.border
+                              : stage.color.withValues(alpha: 0.12),
+                          border: isActive
+                              ? Border.all(color: stage.color, width: 2)
+                              : null,
+                        ),
+                        child: Icon(
+                          isDone ? Icons.check_rounded : stage.icon,
+                          color: iconColor,
+                          size: 20,
+                        ),
                       ),
-                      if (isDone || isActive)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: (isActive
-                                    ? stage.color
-                                    : const Color(0xFF16A34A))
-                                .withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            isActive ? 'Sekarang' : 'Selesai',
-                            style: TextStyle(
-                              color: isActive
-                                  ? stage.color
-                                  : const Color(0xFF16A34A),
-                              fontSize: 10,
-                              fontWeight: FontWeight.w900,
-                            ),
+                    );
+                  },
+                ),
+                if (!widget.isLast)
+                  Expanded(
+                    child: Container(
+                      width: 2,
+                      margin: const EdgeInsets.symmetric(vertical: 4),
+                      color: isDone
+                          ? stage.color.withValues(alpha: 0.6)
+                          : NataloColors.border,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(width: 12),
+            // Label column
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 6, bottom: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          stage.label,
+                          style: TextStyle(
+                            color: textColor,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    stage.sublabel,
-                    style: TextStyle(
-                      color: subColor,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      height: 1.4,
+                        if (isDone || isActive) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: (isActive
+                                      ? stage.color
+                                      : const Color(0xFF16A34A))
+                                  .withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              isActive ? 'Sekarang' : 'Selesai',
+                              style: TextStyle(
+                                color: isActive
+                                    ? stage.color
+                                    : const Color(0xFF16A34A),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                _labels[i],
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: reached ? FontWeight.w700 : FontWeight.w500,
-                  color: reached
-                      ? NataloColors.textPrimary
-                      : NataloColors.textTertiary,
+                    const SizedBox(height: 2),
+                    Text(
+                      stage.sublabel,
+                      style: TextStyle(
+                        color: subColor,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
-        );
-      }),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

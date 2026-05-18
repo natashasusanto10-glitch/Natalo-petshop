@@ -5,6 +5,19 @@
 /// dengan `name` getter alias supaya kedua naming style work.
 import '../config/api_config.dart';
 
+/// Navigation args untuk ProductsScreen — opsi filter awal.
+class ProductCatalogArgs {
+  final String? selectedBrand;
+  final String? initialQuery;
+  final String? initialCategory;
+
+  const ProductCatalogArgs({
+    this.selectedBrand,
+    this.initialQuery,
+    this.initialCategory,
+  });
+}
+
 /// Convert relative URL backend (mis. `/uploads/abc.jpg`) ke absolute
 /// origin yang bisa di-load Flutter (mis. `https://natalopetshop.com/uploads/abc.jpg`).
 /// Idempotent — kalau sudah absolute, return as-is.
