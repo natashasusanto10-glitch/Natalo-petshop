@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 
+import '../theme/app_radius.dart';
+import '../theme/app_spacing.dart';
 import '../theme/natalo_colors.dart';
 
 /// Kumpulan widget UI primitives generik — header icon button, skeleton list,
@@ -39,7 +41,7 @@ class AppSkeletonList extends StatelessWidget {
     super.key,
     this.itemCount = 6,
     this.itemHeight = 80,
-    this.padding = const EdgeInsets.all(16),
+    this.padding = AppSpacing.screenPadding,
   });
 
   @override
@@ -47,7 +49,7 @@ class AppSkeletonList extends StatelessWidget {
     return ListView.separated(
       padding: padding,
       itemCount: itemCount,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.md),
       itemBuilder: (_, __) => Shimmer.fromColors(
         baseColor: NataloColors.surface,
         highlightColor: NataloColors.border,
@@ -55,7 +57,7 @@ class AppSkeletonList extends StatelessWidget {
           height: itemHeight,
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: AppRadius.medium,
           ),
         ),
       ),
@@ -64,7 +66,7 @@ class AppSkeletonList extends StatelessWidget {
 }
 
 /// Tappable wrapper dengan rounded ink splash. Pakai BorderRadius dari
-/// borderRadius kalau dikasih, default circular(12).
+/// borderRadius kalau dikasih, default radius token medium.
 class AppPressable extends StatelessWidget {
   final Widget child;
   final VoidCallback? onTap;
@@ -85,7 +87,7 @@ class AppPressable extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: borderRadius ?? BorderRadius.circular(12),
+        borderRadius: borderRadius ?? AppRadius.medium,
         child: Padding(padding: padding, child: child),
       ),
     );
@@ -101,7 +103,7 @@ class AppGlassBottomBar extends StatelessWidget {
   const AppGlassBottomBar({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.fromLTRB(16, 12, 16, 12),
+    this.padding = AppSpacing.bottomBarPadding,
   });
 
   @override
@@ -112,8 +114,8 @@ class AppGlassBottomBar extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           color: isDark
-              ? Colors.black.withOpacity(0.65)
-              : Colors.white.withOpacity(0.92),
+              ? Colors.black.withValues(alpha: 0.65)
+              : Colors.white.withValues(alpha: 0.92),
           border: Border(
             top: BorderSide(
               color: isDark ? NataloColors.borderDark : NataloColors.border,
@@ -135,6 +137,7 @@ class AppStatusPill extends StatelessWidget {
   final String? title;
   final Color color;
   final IconData? icon;
+
   /// Ukuran font + padding. Default 11px font.
   final double size;
 
@@ -154,20 +157,20 @@ class AppStatusPill extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: size <= 11 ? 10 : 12,
-        vertical: size <= 11 ? 4 : 6,
+        horizontal: size <= 11 ? AppSpacing.md : AppSpacing.lg,
+        vertical: size <= 11 ? AppSpacing.xs : AppSpacing.sm,
       ),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withOpacity(0.35)),
+        color: color.withValues(alpha: 0.12),
+        borderRadius: AppRadius.pill,
+        border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (icon != null) ...[
             Icon(icon, size: size + 2, color: color),
-            const SizedBox(width: 4),
+            const SizedBox(width: AppSpacing.xs),
           ],
           Text(
             _text,
@@ -187,15 +190,18 @@ class AppStatusPill extends StatelessWidget {
 /// detail screens untuk grouped nav rows.
 class SoftIconTile extends StatelessWidget {
   final IconData icon;
+
   /// Title row utama. Boleh dipanggil dengan `title` atau `label`.
   final String? title;
   final String? label;
   final String? subtitle;
   final Widget? trailing;
   final VoidCallback? onTap;
+
   /// Color untuk icon — boleh `iconColor` atau `color`.
   final Color? iconColor;
   final Color? color;
+
   /// Ukuran icon container — default 40.
   final double size;
 
@@ -222,8 +228,8 @@ class SoftIconTile extends StatelessWidget {
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color: tint.withOpacity(0.12),
-          borderRadius: BorderRadius.circular(12),
+          color: tint.withValues(alpha: 0.12),
+          borderRadius: AppRadius.medium,
         ),
         child: Icon(icon, color: tint, size: size * 0.5),
       ),
@@ -255,17 +261,20 @@ class AppInfoBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.sm,
+      ),
+      padding: AppSpacing.cardPaddingSmall,
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
+        color: color.withValues(alpha: 0.12),
+        borderRadius: AppRadius.medium,
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [
           Icon(icon, color: color, size: 18),
-          const SizedBox(width: 10),
+          const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Text(
               message,
@@ -383,12 +392,12 @@ class AppEmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(AppSpacing.xxl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, size: 56, color: NataloColors.textTertiary),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.md),
             Text(
               title,
               textAlign: TextAlign.center,
@@ -398,7 +407,7 @@ class AppEmptyState extends StatelessWidget {
               ),
             ),
             if (subtitle != null) ...[
-              const SizedBox(height: 6),
+              const SizedBox(height: AppSpacing.sm),
               Text(
                 subtitle!,
                 textAlign: TextAlign.center,
@@ -406,7 +415,7 @@ class AppEmptyState extends StatelessWidget {
               ),
             ],
             if (action != null) ...[
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpacing.lg),
               action!,
             ],
           ],

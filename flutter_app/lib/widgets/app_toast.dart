@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../theme/natalo_colors.dart';
 import '../utils/haptics.dart';
 import '../utils/motion_prefs.dart';
 
@@ -311,26 +312,26 @@ class _ToastViewState extends State<_ToastView>
     switch (widget.kind) {
       case ToastKind.success:
         return (
-          bg: const Color(0xFF16A34A),
-          fg: Colors.white,
+          bg: NataloColors.successDark,
+          fg: NataloColors.white,
           icon: widget.icon ?? Icons.check_circle_rounded,
         );
       case ToastKind.warning:
         return (
-          bg: const Color(0xFFF59E0B),
-          fg: Colors.white,
+          bg: NataloColors.warning,
+          fg: NataloColors.white,
           icon: widget.icon ?? Icons.warning_amber_rounded,
         );
       case ToastKind.error:
         return (
-          bg: const Color(0xFFEF4444),
-          fg: Colors.white,
+          bg: NataloColors.danger,
+          fg: NataloColors.white,
           icon: widget.icon ?? Icons.error_rounded,
         );
       case ToastKind.info:
         return (
-          bg: const Color(0xFF1E5FBF),
-          fg: Colors.white,
+          bg: NataloColors.primary,
+          fg: NataloColors.white,
           icon: widget.icon ?? Icons.info_outline_rounded,
         );
     }

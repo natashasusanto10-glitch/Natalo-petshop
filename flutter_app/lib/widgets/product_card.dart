@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../models/product.dart';
 import '../state/cart_store.dart';
 import '../state/member_store.dart';
+import '../theme/app_radius.dart';
+import '../theme/app_spacing.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
@@ -60,16 +62,16 @@ class ProductCard extends StatelessWidget {
       },
       child: AppPressable(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: AppRadius.large,
         child: Container(
-          padding: const EdgeInsets.all(10),
+          padding: AppSpacing.cardPaddingSmall,
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0xFFE8EEF7)),
+            color: NataloColors.surface,
+            borderRadius: AppRadius.large,
+            border: Border.all(color: NataloColors.border),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF111111).withValues(alpha: 0.05),
+                color: NataloColors.black.withValues(alpha: 0.04),
                 blurRadius: 18,
                 offset: const Offset(0, 6),
               ),
@@ -85,10 +87,10 @@ class ProductCard extends StatelessWidget {
                   children: [
                     Positioned.fill(
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: AppRadius.large,
                         child: Container(
-                          color: Colors.white,
-                          padding: const EdgeInsets.all(8),
+                          color: NataloColors.white,
+                          padding: const EdgeInsets.all(AppSpacing.sm),
                           child: Hero(
                             tag: 'product-image-${product.id}',
                             // Custom flight: rounded corner morph + subtle
@@ -133,22 +135,23 @@ class ProductCard extends StatelessWidget {
                     ),
                     if (hasMemberPrice)
                       Positioned(
-                        left: 6,
-                        top: 6,
+                        left: AppSpacing.sm,
+                        top: AppSpacing.sm,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 2,
+                            horizontal: AppSpacing.sm,
+                            vertical: AppSpacing.xs,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF3B82F6),
-                            borderRadius: BorderRadius.circular(999),
+                            color: NataloColors.info,
+                            borderRadius: AppRadius.pill,
                             border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.80),
+                              color: NataloColors.white.withValues(alpha: 0.80),
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.05),
+                                color:
+                                    NataloColors.black.withValues(alpha: 0.05),
                                 blurRadius: 4,
                                 offset: const Offset(0, 1),
                               ),
@@ -157,7 +160,7 @@ class ProductCard extends StatelessWidget {
                           child: const Text(
                             'Member',
                             style: TextStyle(
-                              color: Colors.white,
+                              color: NataloColors.white,
                               fontSize: 11,
                               fontWeight: FontWeight.w800,
                               height: 1,
@@ -167,8 +170,8 @@ class ProductCard extends StatelessWidget {
                       ),
                     if (showWishlistButton)
                       Positioned(
-                        right: 4,
-                        top: 4,
+                        right: AppSpacing.xs,
+                        top: AppSpacing.xs,
                         child: FavoriteButton(
                           product: product,
                           size: 34,
@@ -180,7 +183,7 @@ class ProductCard extends StatelessWidget {
               ),
 
               // ── Info: nama (max 2 baris) + harga utama + strikethrough ──
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.sm),
               SizedBox(
                 height: 38,
                 child: Text(
@@ -188,14 +191,14 @@ class ProductCard extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: Color(0xFF27272A),
+                    color: NataloColors.textPrimary,
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                     height: 1.3,
                   ),
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.sm),
               Text(
                 formatRupiah(product.finalPrice),
                 maxLines: 1,
@@ -211,7 +214,7 @@ class ProductCard extends StatelessWidget {
               ProductRatingSoldMeta(product: product),
               if (showAddToCart) ...[
                 const Spacer(),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.sm),
                 _GridCartButton(product: product),
               ],
             ],
@@ -240,11 +243,14 @@ class ProductSavingsBadge extends StatelessWidget {
 
     final badge = Container(
       constraints: const BoxConstraints(maxWidth: double.infinity),
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xs,
+      ),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFEEF4),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFFFB8CF)),
+        color: NataloColors.dangerSoft,
+        borderRadius: AppRadius.pill,
+        border: Border.all(color: NataloColors.danger.withValues(alpha: 0.28)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -253,9 +259,9 @@ class ProductSavingsBadge extends StatelessWidget {
             const Icon(
               Icons.confirmation_number_rounded,
               size: 11,
-              color: Color(0xFFE91E63),
+              color: NataloColors.danger,
             ),
-            const SizedBox(width: 3),
+            const SizedBox(width: AppSpacing.xs),
           ],
           Flexible(
             child: Text(
@@ -263,7 +269,7 @@ class ProductSavingsBadge extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                color: Color(0xFFE91E63),
+                color: NataloColors.danger,
                 fontSize: 10.8,
                 fontWeight: FontWeight.w900,
                 height: 1.05,
@@ -275,7 +281,7 @@ class ProductSavingsBadge extends StatelessWidget {
     );
 
     return Padding(
-      padding: const EdgeInsets.only(top: 5),
+      padding: const EdgeInsets.only(top: AppSpacing.xs),
       child: voucher == null
           ? badge
           : GestureDetector(
@@ -306,14 +312,19 @@ Future<void> _showVoucherPreviewSheet(
       return SafeArea(
         top: false,
         child: Container(
-          margin: const EdgeInsets.all(10),
-          padding: const EdgeInsets.fromLTRB(18, 10, 18, 18),
+          margin: const EdgeInsets.all(AppSpacing.md),
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.xl,
+            AppSpacing.md,
+            AppSpacing.xl,
+            AppSpacing.xl,
+          ),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(28),
+            color: NataloColors.white,
+            borderRadius: AppRadius.extraExtraLarge,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.18),
+                color: NataloColors.black.withValues(alpha: 0.18),
                 blurRadius: 30,
                 offset: const Offset(0, 16),
               ),
@@ -328,12 +339,12 @@ Future<void> _showVoucherPreviewSheet(
                   width: 42,
                   height: 5,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE5E7EB),
-                    borderRadius: BorderRadius.circular(999),
+                    color: NataloColors.grey200,
+                    borderRadius: AppRadius.pill,
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpacing.lg),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -341,15 +352,15 @@ Future<void> _showVoucherPreviewSheet(
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFFFE5EF),
-                      borderRadius: BorderRadius.circular(16),
+                      color: NataloColors.dangerSoft,
+                      borderRadius: AppRadius.large,
                     ),
                     child: const Icon(
                       Icons.local_offer_rounded,
-                      color: Color(0xFFE91E63),
+                      color: NataloColors.danger,
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: AppSpacing.md),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -357,18 +368,18 @@ Future<void> _showVoucherPreviewSheet(
                         const Text(
                           'Voucher Produk Natalo',
                           style: TextStyle(
-                            color: Color(0xFF111827),
+                            color: NataloColors.grey900,
                             fontSize: 18,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
-                        const SizedBox(height: 3),
+                        const SizedBox(height: AppSpacing.xs),
                         Text(
                           product.title,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            color: Color(0xFF6B7280),
+                            color: NataloColors.grey500,
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
                             height: 1.25,
@@ -379,14 +390,16 @@ Future<void> _showVoucherPreviewSheet(
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpacing.lg),
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.all(AppSpacing.lg),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFF1F6),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: const Color(0xFFFFB8CF)),
+                  color: NataloColors.dangerSoft,
+                  borderRadius: AppRadius.extraLarge,
+                  border: Border.all(
+                    color: NataloColors.danger.withValues(alpha: 0.28),
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -394,26 +407,26 @@ Future<void> _showVoucherPreviewSheet(
                     Text(
                       voucher.badgeLabel,
                       style: const TextStyle(
-                        color: Color(0xFFE91E63),
+                        color: NataloColors.danger,
                         fontSize: 16,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
-                    const SizedBox(height: 5),
+                    const SizedBox(height: AppSpacing.xs),
                     Text(
                       voucher.sheetSubtitle,
                       style: const TextStyle(
-                        color: Color(0xFF6B7280),
+                        color: NataloColors.grey500,
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                     if (voucher.description != null) ...[
-                      const SizedBox(height: 8),
+                      const SizedBox(height: AppSpacing.sm),
                       Text(
                         voucher.description!,
                         style: const TextStyle(
-                          color: Color(0xFF4B5563),
+                          color: NataloColors.grey600,
                           fontSize: 12.5,
                           fontWeight: FontWeight.w600,
                           height: 1.35,
@@ -423,17 +436,17 @@ Future<void> _showVoucherPreviewSheet(
                   ],
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.md),
               const Text(
                 'Voucher akan dicek ulang otomatis saat checkout. Guest boleh melihat promo ini, tetapi perlu login member untuk memakai voucher.',
                 style: TextStyle(
-                  color: Color(0xFF6B7280),
+                  color: NataloColors.grey500,
                   fontSize: 12.5,
                   fontWeight: FontWeight.w600,
                   height: 1.35,
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpacing.lg),
               SizedBox(
                 width: double.infinity,
                 height: 48,
@@ -447,10 +460,10 @@ Future<void> _showVoucherPreviewSheet(
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: NataloColors.nataloBlue,
-                    foregroundColor: Colors.white,
+                    foregroundColor: NataloColors.white,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
+                      borderRadius: AppRadius.large,
                     ),
                   ),
                   child: Text(
@@ -486,22 +499,22 @@ class ProductRatingSoldMeta extends StatelessWidget {
     if (!hasRating && !hasSold) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.only(top: 5),
+      padding: const EdgeInsets.only(top: AppSpacing.xs),
       child: Row(
         children: [
           if (hasRating) ...[
             const Icon(
               Icons.star_rounded,
               size: 13,
-              color: Color(0xFFFFA000),
+              color: NataloColors.warning,
             ),
-            const SizedBox(width: 2),
+            const SizedBox(width: AppSpacing.xs),
             Text(
               product.rating.toStringAsFixed(1),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                color: Color(0xFF4B5563),
+                color: NataloColors.grey600,
                 fontSize: 11.2,
                 fontWeight: FontWeight.w800,
                 height: 1,
@@ -509,17 +522,17 @@ class ProductRatingSoldMeta extends StatelessWidget {
             ),
           ],
           if (hasRating && hasSold) ...[
-            const SizedBox(width: 5),
+            const SizedBox(width: AppSpacing.sm),
             const Text(
               '•',
               style: TextStyle(
-                color: Color(0xFF9CA3AF),
+                color: NataloColors.grey400,
                 fontSize: 11,
                 fontWeight: FontWeight.w800,
                 height: 1,
               ),
             ),
-            const SizedBox(width: 5),
+            const SizedBox(width: AppSpacing.sm),
           ],
           if (hasSold)
             Flexible(
@@ -528,7 +541,7 @@ class ProductRatingSoldMeta extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  color: Color(0xFF4B5563),
+                  color: NataloColors.grey600,
                   fontSize: 11.2,
                   fontWeight: FontWeight.w700,
                   height: 1,
@@ -577,8 +590,8 @@ class _GridCartButton extends StatelessWidget {
     return Align(
       alignment: Alignment.centerRight,
       child: Material(
-        color: outOfStock ? const Color(0xFFCBD5E1) : const Color(0xFF0B7FEA),
-        borderRadius: BorderRadius.circular(12),
+        color: outOfStock ? NataloColors.grey300 : NataloColors.primary,
+        borderRadius: AppRadius.medium,
         child: InkWell(
           onTap: outOfStock
               ? null
@@ -590,13 +603,13 @@ class _GridCartButton extends StatelessWidget {
                     '${product.title} masuk keranjang',
                   );
                 },
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppRadius.medium,
           child: const SizedBox(
             width: 34,
             height: 34,
             child: Icon(
               Icons.add_shopping_cart_rounded,
-              color: Colors.white,
+              color: NataloColors.white,
               size: 18,
             ),
           ),
@@ -633,13 +646,11 @@ class _AddToCartPill extends StatelessWidget {
                     '${product.title} masuk keranjang',
                   );
                 },
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: AppRadius.pill,
           child: Ink(
             decoration: BoxDecoration(
-              color: outOfStock
-                  ? const Color(0xFFEFF2F6)
-                  : const Color(0xFF1E5FBF),
-              borderRadius: BorderRadius.circular(999),
+              color: outOfStock ? NataloColors.infoSoft : NataloColors.primary,
+              borderRadius: AppRadius.pill,
             ),
             child: Center(
               child: Row(
@@ -648,14 +659,16 @@ class _AddToCartPill extends StatelessWidget {
                   Icon(
                     outOfStock ? Icons.block_rounded : Icons.add_rounded,
                     size: 16,
-                    color: outOfStock ? const Color(0xFF9CA3AF) : Colors.white,
+                    color:
+                        outOfStock ? NataloColors.grey400 : NataloColors.white,
                   ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: AppSpacing.xs),
                   Text(
                     outOfStock ? 'Habis' : 'Keranjang',
                     style: TextStyle(
-                      color:
-                          outOfStock ? const Color(0xFF9CA3AF) : Colors.white,
+                      color: outOfStock
+                          ? NataloColors.grey400
+                          : NataloColors.white,
                       fontSize: 13,
                       fontWeight: FontWeight.w900,
                     ),

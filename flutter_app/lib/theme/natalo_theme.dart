@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'app_radius.dart';
+import 'app_spacing.dart';
 import 'natalo_colors.dart';
 
 const String _nataloFontFamily = 'PlusJakartaSans';
@@ -238,6 +240,8 @@ class NataloTheme {
       seedColor: NataloColors.primary,
       brightness: brightness,
       primary: NataloColors.primary,
+      secondary: NataloColors.accentOrange,
+      error: NataloColors.danger,
       surface: isLight ? NataloColors.background : NataloColors.backgroundDark,
     );
     return ThemeData(
@@ -245,13 +249,16 @@ class NataloTheme {
       brightness: brightness,
       colorScheme: scheme,
       fontFamily: fontFamily,
+      fontFamilyFallback: const ['Roboto', 'Arial'],
       scaffoldBackgroundColor: scheme.surface,
+      textTheme: isLight ? _lightTextTheme : _darkTextTheme,
+      primaryTextTheme: isLight ? _lightTextTheme : _darkTextTheme,
       appBarTheme: AppBarTheme(
         backgroundColor: scheme.surface,
         foregroundColor: scheme.onSurface,
         elevation: 0,
         centerTitle: false,
-        titleTextStyle: TextStyle(
+        titleTextStyle: const TextStyle(
           fontFamily: fontFamily,
           fontSize: 18,
           fontWeight: FontWeight.w800,
@@ -263,7 +270,7 @@ class NataloTheme {
         style: FilledButton.styleFrom(
           minimumSize: const Size.fromHeight(48),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: AppRadius.large,
           ),
           textStyle: const TextStyle(
             fontFamily: fontFamily,
@@ -278,7 +285,7 @@ class NataloTheme {
             : NataloColors.surfaceElevatedDark,
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: AppRadius.large,
           side: BorderSide(
             color: isLight ? NataloColors.border : NataloColors.borderDark,
             width: 1,
@@ -289,11 +296,12 @@ class NataloTheme {
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: NataloColors.primary,
-          foregroundColor: Colors.white,
+          foregroundColor: NataloColors.white,
           elevation: 0,
           minimumSize: const Size.fromHeight(48),
+          padding: AppSpacing.buttonPadding,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: AppRadius.large,
           ),
           textStyle: const TextStyle(
             fontSize: 14,
@@ -309,8 +317,9 @@ class NataloTheme {
           foregroundColor: NataloColors.primary,
           side: const BorderSide(color: NataloColors.primary),
           minimumSize: const Size.fromHeight(48),
+          padding: AppSpacing.buttonPadding,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: AppRadius.large,
           ),
           textStyle: const TextStyle(
             fontSize: 14,
@@ -335,17 +344,20 @@ class NataloTheme {
 
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: isLight
-            ? NataloColors.surface
-            : NataloColors.surfaceElevatedDark,
+        fillColor:
+            isLight ? NataloColors.surface : NataloColors.surfaceElevatedDark,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg,
+          vertical: AppSpacing.md,
+        ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppRadius.medium,
           borderSide: BorderSide(
             color: isLight ? NataloColors.border : NataloColors.borderDark,
           ),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppRadius.medium,
           borderSide: const BorderSide(color: NataloColors.primary, width: 1.5),
         ),
       ),
@@ -371,7 +383,7 @@ class NataloTheme {
   /// kontras AAA di dark. `feedBlack` (#050505) di-reserve hanya untuk Feed
   /// screen (pure black untuk video reels).
   static ThemeData get darkTheme {
-    const darkPrimary = Color(0xFF38B0FF);
+    const darkPrimary = NataloColors.primaryLight;
     const darkScaffold = NataloColors.backgroundDark; // #0A0F1A
     const darkSurface = NataloColors.surfaceDark; // #1A1F2E
     // NataloColors.surfaceVariantDark (#22293A) tersedia untuk elevated/
@@ -442,7 +454,7 @@ class NataloTheme {
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: AppRadius.extraLarge,
           side: const BorderSide(color: darkBorder, width: 1),
         ),
       ),
@@ -452,8 +464,9 @@ class NataloTheme {
           foregroundColor: darkScaffold,
           elevation: 0,
           minimumSize: const Size.fromHeight(48),
+          padding: AppSpacing.buttonPadding,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: AppRadius.large,
           ),
           textStyle: const TextStyle(
             fontSize: 14,
@@ -468,8 +481,9 @@ class NataloTheme {
           foregroundColor: darkPrimary,
           side: const BorderSide(color: darkPrimary),
           minimumSize: const Size.fromHeight(48),
+          padding: AppSpacing.buttonPadding,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: AppRadius.large,
           ),
           textStyle: const TextStyle(
             fontSize: 14,
@@ -501,19 +515,19 @@ class NataloTheme {
           letterSpacing: 0,
         ),
         contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 14,
+          horizontal: AppSpacing.lg,
+          vertical: AppSpacing.md,
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: AppRadius.large,
           borderSide: const BorderSide(color: darkBorder),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: AppRadius.large,
           borderSide: const BorderSide(color: darkBorder),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: AppRadius.large,
           borderSide: const BorderSide(color: darkPrimary, width: 1.4),
         ),
       ),

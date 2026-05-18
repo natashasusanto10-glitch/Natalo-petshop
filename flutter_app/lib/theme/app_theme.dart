@@ -24,13 +24,14 @@ class AppColors {
 
   // Surfaces
   static const Color softBlue = NataloColors.primaryLight;
-  static const Color softCyan =
-      Color(0xFFEAFBFF); // legacy, tidak ada di NataloColors
-  static const Color softMint =
-      Color(0xFFF0FDF4); // legacy, tidak ada di NataloColors
+  static const Color softCyan = NataloColors.softCyan;
+  static const Color softMint = NataloColors.softMint;
 
   // Semantic
   static const Color danger = NataloColors.danger;
+  static const Color success = NataloColors.success;
+  static const Color warning = NataloColors.warning;
+  static const Color info = NataloColors.info;
 }
 
 class AppTheme {
@@ -38,8 +39,8 @@ class AppTheme {
     final scheme = ColorScheme.fromSeed(
       seedColor: NataloColors.primary,
       primary: NataloColors.primary,
-      secondary: NataloColors.success,
-      tertiary: const Color(0xFFDB2777),
+      secondary: NataloColors.accentOrange,
+      tertiary: NataloColors.success,
       surface: NataloColors.surface,
     );
 
@@ -100,7 +101,7 @@ class AppTheme {
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: NataloColors.primary,
-          foregroundColor: Colors.white,
+          foregroundColor: NataloColors.white,
           elevation: 0,
           shadowColor: NataloColors.primary.withValues(alpha: 0.28),
           textStyle: const TextStyle(
@@ -112,7 +113,7 @@ class AppTheme {
           ),
         ).copyWith(
           overlayColor: WidgetStatePropertyAll(
-            Colors.white.withValues(alpha: 0.12),
+            NataloColors.white.withValues(alpha: 0.12),
           ),
         ),
       ),
@@ -200,7 +201,7 @@ class AppTheme {
         behavior: SnackBarBehavior.floating,
         backgroundColor: NataloColors.textPrimary.withValues(alpha: 0.92),
         contentTextStyle: const TextStyle(
-          color: Colors.white,
+          color: NataloColors.white,
           fontWeight: FontWeight.w700,
         ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -219,18 +220,18 @@ class AppTheme {
   static ThemeData get dark {
     const darkSurface = NataloColors.feedBlack;
     const darkSurfaceVariant = NataloColors.feedDark;
-    const darkInk = Color(0xFFF8FAFC);
+    const darkInk = NataloColors.textPrimaryDark;
     const darkMuted = NataloColors.feedTextMuted;
-    const darkBorder = Color(0xFF1F2937);
+    const darkBorder = NataloColors.borderDark;
     // Brand color di-lift untuk dark mode (4.5:1 contrast min).
-    const darkPrimary = Color(0xFF38B0FF);
+    const darkPrimary = NataloColors.primaryLight;
 
     final scheme = ColorScheme.fromSeed(
       seedColor: NataloColors.primary,
       brightness: Brightness.dark,
       primary: darkPrimary,
-      secondary: const Color(0xFF22C55E),
-      tertiary: const Color(0xFFEC4899),
+      secondary: NataloColors.accentOrange,
+      tertiary: NataloColors.success,
       surface: darkSurface,
       onSurface: darkInk,
     );
@@ -279,7 +280,7 @@ class AppTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: darkPrimary,
-          side: const BorderSide(color: Color(0xFF3B82F6)),
+          side: const BorderSide(color: NataloColors.primaryLight),
           textStyle: const TextStyle(fontWeight: FontWeight.w700),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
@@ -322,7 +323,7 @@ class AppTheme {
       ),
       chipTheme: ChipThemeData(
         backgroundColor: darkSurfaceVariant.withValues(alpha: 0.90),
-        selectedColor: const Color(0xFF1E40AF),
+        selectedColor: NataloColors.primaryNavy,
         side: const BorderSide(color: darkBorder),
         labelStyle: const TextStyle(
           color: darkMuted,
@@ -382,7 +383,7 @@ class AppBackdrop extends StatelessWidget {
         ? const [
             NataloColors.feedBlack,
             NataloColors.feedDark,
-            Color(0xFF111111),
+            NataloColors.grey900,
             NataloColors.feedBlack,
           ]
         : const [

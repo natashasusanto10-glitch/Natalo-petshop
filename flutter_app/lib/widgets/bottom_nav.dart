@@ -2,6 +2,9 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../theme/app_radius.dart';
+import '../theme/app_spacing.dart';
+
 /// Bottom nav bar dengan 2 variant:
 /// - `BottomNavVariant.light` (default) — putih dengan blur untuk screen biasa
 /// - `BottomNavVariant.dark` — icon-only putih untuk Feed screen (Reels-style)
@@ -86,7 +89,12 @@ class BottomNavBar extends StatelessWidget {
         child: SafeArea(
           top: false,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.sm,
+              0,
+              AppSpacing.sm,
+              AppSpacing.xs,
+            ),
             child: SizedBox(
               height: 56,
               child: Row(
@@ -141,15 +149,20 @@ class BottomNavBar extends StatelessWidget {
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          0,
+          AppSpacing.md,
+          AppSpacing.sm,
+        ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: AppRadius.extraExtraLarge,
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
             child: DecoratedBox(
               decoration: BoxDecoration(
                 color: bgColor,
-                borderRadius: BorderRadius.circular(28),
+                borderRadius: AppRadius.extraExtraLarge,
                 border: Border.all(color: borderColor),
                 boxShadow: [
                   BoxShadow(
