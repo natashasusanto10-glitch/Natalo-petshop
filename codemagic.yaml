@@ -86,14 +86,19 @@ workflows:
         script: |
           # --verbose supaya Apple API error response muncul lengkap di log
           # (bukan di-summarize ke "No matching profiles found").
-          # --create-resource-types CERTIFICATE PROFILE explicit supaya
-          # kedua-duanya boleh dibuat kalau belum ada.
-          # --certificate-key-environment-variable opsional — Codemagic
-          # auto-handle private key di managed keychain.
+          # --certificate-key-environment-variable WAJIB saat --create —
+          # Codemagic CLI butuh RSA private key untuk encrypt + store
+          # cert private key yang di-auto-generate dari Apple. Tanpa
+          # flag ini: error "Cannot save Signing Certificates without
+          # certificate private key".
+          # Setup: di Codemagic UI > Environment variables, tambah
+          # CERTIFICATE_PRIVATE_KEY (Secure) berisi RSA PEM content
+          # dari `ssh-keygen -t rsa -b 2048 -m PEM -f key -N ""`.
           app-store-connect fetch-signing-files com.natalo.petshop \
             --platform IOS \
             --type IOS_APP_STORE \
             --create \
+            --certificate-key-environment-variable=CERTIFICATE_PRIVATE_KEY \
             --verbose
 
       - name: Add certs to keychain
