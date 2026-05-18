@@ -280,6 +280,7 @@ model Order {
   voucherCode          String? // Customer voucher (CUSTOMER source type)
   manualVoucherCode    String? // Seller manual voucher (SELLER_MANUAL)
   freeShippingVoucherCode String?
+  shippingVoucherCode  String? // Generic shipping voucher slot (from migration 20260518010000)
   productVoucherCode   String?
   loyaltyVoucherCode   String?
   privateVoucherCode   String?
