@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
@@ -30,6 +31,85 @@ class ApiClient {
     final uri = ApiConfig.uri(path, query);
     try {
       final res = await http.get(uri, headers: _headers()).timeout(timeout);
+      return _decode(res);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException(e.toString(), cause: e);
+    }
+  }
+
+  /// Clear session token + cookies (logout). Beberapa code pakai
+  /// `apiClient.clearSession()` saat user logout / 401 response.
+  Future<void> clearSession() async {
+    // TODO: clear cookie jar kalau pakai dio cookie_jar. Saat ini no-op
+    // karena auth via memberStore.sessionToken yang di-clear di memberStore.logout().
+    if (kDebugMode) debugPrint('[apiClient.clearSession] called');
+  }
+
+  Future<dynamic> putJson(
+    String path, {
+    Object? body,
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    final uri = ApiConfig.uri(path);
+    try {
+      final res = await http
+          .put(
+            uri,
+            headers: _headers(json: true),
+            body: body == null ? null : jsonEncode(body),
+          )
+          .timeout(timeout);
+      return _decode(res);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException(e.toString(), cause: e);
+    }
+  }
+
+  Future<dynamic> patchJson(
+    String path, {
+    Object? body,
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    final uri = ApiConfig.uri(path);
+    try {
+      final req = http.Request('PATCH', uri)
+        ..headers.addAll(_headers(json: true))
+        ..body = body == null ? '' : jsonEncode(body);
+      final streamed = await req.send().timeout(timeout);
+      final res = await http.Response.fromStream(streamed);
+      return _decode(res);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException(e.toString(), cause: e);
+    }
+  }
+
+  /// Multipart file upload. `fields` untuk form data, `filePath` path file
+  /// di disk, `fieldName` name field di FormData, `filename` nama file di
+  /// upload, `contentType` MIME type. Return decoded JSON response.
+  Future<dynamic> postMultipartFile(
+    String path, {
+    required String filePath,
+    String fieldName = 'file',
+    String? filename,
+    Map<String, String>? fields,
+    String? contentType,
+    Duration timeout = const Duration(seconds: 60),
+  }) async {
+    final uri = ApiConfig.uri(path);
+    try {
+      final req = http.MultipartRequest('POST', uri)
+        ..headers.addAll(_headers())
+        ..files.add(await http.MultipartFile.fromPath(
+          fieldName,
+          filePath,
+          filename: filename,
+        ));
+      if (fields != null) req.fields.addAll(fields);
+      final streamed = await req.send().timeout(timeout);
+      final res = await http.Response.fromStream(streamed);
       return _decode(res);
     } catch (e) {
       if (e is ApiException) rethrow;

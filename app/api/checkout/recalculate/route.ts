@@ -4,12 +4,19 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { cartItemSchema } from "@/lib/validation";
 import { buildCheckoutItemsFromInventory } from "@/lib/checkout-items";
-import { isFreeShippingVoucher } from "@/lib/voucher-kind";
+import { getVoucherDisabledReason } from "@/lib/voucher-helpers";
+import {
+  collectOrderVoucherCodes,
+  isFreeShippingVoucher,
+  voucherSlotForKind,
+  type VoucherSlotValue,
+} from "@/lib/voucher-kind";
 
 /**
  * Aturan voucher checkout (lihat CLAUDE.md - Voucher business rules):
- * - Maks 2 voucher per checkout
- * - Maks 1 voucher CUSTOMER (publik / milik user) + 1 voucher SELLER_MANUAL
+ * - Maks 4 voucher per checkout
+ * - Maks 3 voucher CUSTOMER (diskon produk + gratis ongkir + loyalty)
+ *   + 1 voucher SELLER_MANUAL/manual-private
  * - Voucher SELLER_MANUAL TIDAK muncul di daftar publik (filtered)
  * - SELLER_MANUAL hanya bisa via input kode manual
  * - Semua validasi & total dihitung di backend (source of truth)
@@ -19,10 +26,13 @@ const recalculateSchema = z.object({
   items: z.array(cartItemSchema).default([]),
   shipping_fee: z.number().int().nonnegative().optional(),
   shippingCost: z.number().int().nonnegative().optional(),
-  // Legacy single-code field (backwards compat dgn klien lama)
+  // Legacy single-code fields (backwards compat dgn klien lama)
   voucherCode: z.string().trim().optional().nullable(),
-  // New dual-slot fields
   customerVoucherCode: z.string().trim().optional().nullable(),
+  // Four-slot voucher fields.
+  productVoucherCode: z.string().trim().optional().nullable(),
+  shippingVoucherCode: z.string().trim().optional().nullable(),
+  loyaltyVoucherCode: z.string().trim().optional().nullable(),
   manualVoucherCode: z.string().trim().optional().nullable(),
   autoApply: z.boolean().default(true),
   address: z
@@ -51,6 +61,7 @@ type VoucherRow = {
   description: string | null;
   discountPercent: number | null;
   discountAmount: number | null;
+  maxDiscountAmount: number | null;
   minimumOrder: number;
   startsAt: Date;
   expiresAt: Date | null;
@@ -59,18 +70,25 @@ type VoucherRow = {
   isActive: boolean;
   sourceType: VoucherSourceType;
   kind: VoucherKind;
+  targetUser: "ALL_MEMBERS" | "NEW_MEMBER";
+  newMemberMaxAccountAgeDays: number | null;
+  newMemberRequireNoSuccessfulOrder: boolean;
+  usageLimitPerUser: number;
   userId: string | null;
 };
 
 function calcDiscount(
   subtotal: number,
   shippingFee: number,
-  voucher: Pick<VoucherRow, "discountPercent" | "discountAmount" | "kind">,
+  voucher: Pick<VoucherRow, "discountPercent" | "discountAmount" | "maxDiscountAmount" | "kind">,
 ) {
   if (isFreeShippingVoucher(voucher)) return Math.max(0, shippingFee);
   let discount = 0;
   if (voucher.discountPercent) discount += Math.floor((subtotal * voucher.discountPercent) / 100);
   if (voucher.discountAmount) discount += voucher.discountAmount;
+  if (voucher.maxDiscountAmount && voucher.maxDiscountAmount > 0) {
+    discount = Math.min(discount, voucher.maxDiscountAmount);
+  }
   return Math.min(discount, subtotal);
 }
 
@@ -88,6 +106,7 @@ function normalizeVoucher(voucher: VoucherRow, discount: number) {
     expiresAt: voucher.expiresAt,
     sourceType: voucher.sourceType,
     kind: voucher.kind,
+    slot: voucherSlotForKind(voucher.kind),
     status: "available" as const,
   };
 }
@@ -106,7 +125,33 @@ function normalizeUnavailable(
     reason,
     sourceType: voucher.sourceType,
     kind: voucher.kind,
+    slot: voucherSlotForKind(voucher.kind),
     status: "unavailable" as const,
+  };
+}
+
+function emptyVoucherPayload(shippingFee: number) {
+  return {
+    subtotal: 0,
+    shipping_fee: shippingFee,
+    discount: 0,
+    total: shippingFee,
+    auto_applied_voucher: null,
+    applied_voucher: null,
+    applied_customer_voucher: null,
+    applied_product_voucher: null,
+    applied_shipping_voucher: null,
+    applied_loyalty_voucher: null,
+    applied_manual_voucher: null,
+    available_vouchers: [],
+    unavailable_vouchers: [],
+    voucher_invalidated: false,
+    invalidated_message: null,
+    customer_voucher_error: null,
+    product_voucher_error: null,
+    shipping_voucher_error: null,
+    loyalty_voucher_error: null,
+    manual_voucher_error: null,
   };
 }
 
@@ -124,34 +169,18 @@ export async function POST(request: NextRequest) {
   const input = parsed.data;
   const shippingFee = input.shipping_fee ?? input.shippingCost ?? 0;
 
-  // Normalize codes — uppercase + trim. Legacy `voucherCode` field di-treat
-  // sebagai customer code (backwards compat).
-  const customerRequested = (
-    input.customerVoucherCode ?? input.voucherCode ?? ""
-  )
-    .trim()
-    .toUpperCase();
+  const normalizeCode = (value?: string | null) => (value ?? "").trim().toUpperCase();
+  // Legacy `voucherCode` / `customerVoucherCode` tetap diarahkan ke slot
+  // product discount agar klien lama tidak break.
+  const productRequested = normalizeCode(
+    input.productVoucherCode ?? input.customerVoucherCode ?? input.voucherCode,
+  );
+  const shippingRequested = normalizeCode(input.shippingVoucherCode);
+  const loyaltyRequested = normalizeCode(input.loyaltyVoucherCode);
   const manualRequested = (input.manualVoucherCode ?? "").trim().toUpperCase();
 
   if (input.items.length === 0) {
-    return NextResponse.json({
-      subtotal: 0,
-      shipping_fee: shippingFee,
-      discount: 0,
-      total: shippingFee,
-      // Legacy fields (backwards compat — selalu reflect customer voucher)
-      auto_applied_voucher: null,
-      applied_voucher: null,
-      // New dual-slot fields
-      applied_customer_voucher: null,
-      applied_manual_voucher: null,
-      available_vouchers: [],
-      unavailable_vouchers: [],
-      voucher_invalidated: false,
-      invalidated_message: null,
-      customer_voucher_error: null,
-      manual_voucher_error: null,
-    });
+    return NextResponse.json(emptyVoucherPayload(shippingFee));
   }
 
   const requestedMap = new Map<
@@ -225,99 +254,74 @@ export async function POST(request: NextRequest) {
         orderBy: { createdAt: "desc" },
       })) as VoucherRow[])
     : [];
+  const [user, successfulOrderCount] = session
+    ? await Promise.all([
+        prisma.user.findUnique({
+          where: { id: session.sub },
+          select: { id: true, createdAt: true },
+        }),
+        prisma.order.count({
+          where: {
+            userId: session.sub,
+            status: { notIn: ["CANCELLED", "REFUNDED"] },
+          },
+        }),
+      ])
+    : [null, 0] as const;
 
   // Aturan visibility (lihat /api/cart/vouchers): filter voucher yg user
   // sudah pernah pakai (per-user 1×). Voucher yg sudah dipakai TIDAK
   // muncul di available/unavailable, sekaligus mencegah auto-apply.
-  const userUsedCodes = new Set<string>();
+  const userUsedCodes = new Map<string, number>();
   if (session) {
     const userOrders = await prisma.order.findMany({
       where: {
         userId: session.sub,
-        OR: [{ voucherCode: { not: null } }, { manualVoucherCode: { not: null } }],
+        OR: [
+          { voucherCode: { not: null } },
+          { productVoucherCode: { not: null } },
+          { shippingVoucherCode: { not: null } },
+          { loyaltyVoucherCode: { not: null } },
+          { manualVoucherCode: { not: null } },
+        ],
       },
-      select: { voucherCode: true, manualVoucherCode: true },
+      select: {
+        voucherCode: true,
+        productVoucherCode: true,
+        shippingVoucherCode: true,
+        loyaltyVoucherCode: true,
+        manualVoucherCode: true,
+      },
     });
     for (const o of userOrders) {
-      if (o.voucherCode) userUsedCodes.add(o.voucherCode);
-      if (o.manualVoucherCode) userUsedCodes.add(o.manualVoucherCode);
+      for (const code of collectOrderVoucherCodes(o)) {
+        userUsedCodes.set(code, (userUsedCodes.get(code) ?? 0) + 1);
+      }
     }
   }
 
   const customerVouchers = customerVouchersRaw.filter(
     (v) =>
-      !userUsedCodes.has(v.code) &&
+      (v.usageLimitPerUser <= 0 || (userUsedCodes.get(v.code) ?? 0) < v.usageLimitPerUser) &&
       (v.maxUsage === null || v.usedCount < v.maxUsage),
   );
+  const userCtx = {
+    isLoggedIn: Boolean(session),
+    userId: session?.sub ?? null,
+    createdAt: user?.createdAt ?? null,
+    successfulOrderCount,
+  };
 
-  // Manual seller voucher — hanya kalau di-request via kode
-  const manualVoucher = manualRequested
-    ? ((await prisma.voucher.findUnique({
-        where: { code: manualRequested },
-      })) as VoucherRow | null)
-    : null;
-
-  // Validasi tipe voucher manual: HARUS SELLER_MANUAL. Kalau pakai customer
-  // code di slot manual, return error.
-  let manualVoucherError: string | null = null;
-  let manualApplied: ReturnType<typeof normalizeVoucher> | null = null;
-
-  if (manualRequested) {
-    if (!manualVoucher || !manualVoucher.isActive) {
-      manualVoucherError = "Kode voucher tidak valid.";
-    } else if (userUsedCodes.has(manualRequested)) {
-      // Per aturan: 1 voucher = 1× per user. Reject kalau user sudah
-      // pernah pakai kode ini di order sebelumnya.
-      manualVoucherError = "Kode voucher sudah pernah digunakan";
-    } else if (manualVoucher.sourceType !== "SELLER_MANUAL") {
-      // Sesuai aturan: input kode manual HANYA untuk voucher SELLER_MANUAL.
-      // Customer voucher (publik / claim user) harus dipilih lewat daftar.
-      manualVoucherError =
-        "Kode ini bukan voucher manual penjual. Pilih lewat daftar voucher pembeli.";
-    } else if (manualVoucher.expiresAt && manualVoucher.expiresAt <= now) {
-      manualVoucherError = "Kode voucher sudah berakhir";
-    } else if (manualVoucher.startsAt > now) {
-      manualVoucherError = "Voucher belum berlaku.";
-    } else if (
-      manualVoucher.maxUsage !== null &&
-      manualVoucher.usedCount >= manualVoucher.maxUsage
-    ) {
-      manualVoucherError = "Voucher sudah mencapai batas penggunaan.";
-    } else if (subtotal < manualVoucher.minimumOrder) {
-      const shortfall = manualVoucher.minimumOrder - subtotal;
-      manualVoucherError = `Belanja kurang Rp${new Intl.NumberFormat("id-ID").format(shortfall)} lagi`;
-    } else if (isFreeShippingVoucher(manualVoucher) && shippingFee <= 0) {
-      manualVoucherError = "Voucher gratis ongkir berlaku untuk pengiriman.";
-    } else {
-      const discount = calcDiscount(subtotal, shippingFee, manualVoucher);
-      if (discount <= 0 && !isFreeShippingVoucher(manualVoucher)) {
-        manualVoucherError = "Voucher tidak memberikan potongan untuk pesanan ini.";
-      } else {
-        manualApplied = normalizeVoucher(manualVoucher, discount);
-      }
-    }
-  }
-
-  // Guard defensif: kalau input legacy `voucherCode` & `customerVoucherCode`
-  // dikirim DUA-DUA dgn nilai berbeda → klien mencoba apply 2 customer
-  // voucher sekaligus. Tolak dengan pesan sesuai spec.
-  const legacyCustomer = (input.voucherCode ?? "").trim().toUpperCase();
-  const dualCustomerProvided =
-    !!input.customerVoucherCode &&
-    !!legacyCustomer &&
-    legacyCustomer !== (input.customerVoucherCode ?? "").trim().toUpperCase();
-  if (dualCustomerProvided) {
-    return NextResponse.json(
-      { message: "Hanya 1 voucher pembeli yang dapat digunakan" },
-      { status: 400 },
-    );
-  }
-
-  // Build available + unavailable list dari customer vouchers
+  // Build available + unavailable list dari customer/member vouchers.
   const available: ReturnType<typeof normalizeVoucher>[] = [];
   const unavailable: ReturnType<typeof normalizeUnavailable>[] = [];
 
   for (const voucher of customerVouchers) {
+    const disabledReason = getVoucherDisabledReason(voucher, subtotal, userCtx, now);
+    if (disabledReason) {
+      unavailable.push(normalizeUnavailable(voucher, disabledReason, 0));
+      continue;
+    }
     if (subtotal < voucher.minimumOrder) {
       const shortfall = voucher.minimumOrder - subtotal;
       unavailable.push(
@@ -350,45 +354,98 @@ export async function POST(request: NextRequest) {
   available.sort((a, b) => b.discount - a.discount);
   unavailable.sort((a, b) => (a.shortfall ?? 0) - (b.shortfall ?? 0));
 
-  // Resolve customer voucher slot
-  let customerVoucherError: string | null = null;
-  let customerApplied: ReturnType<typeof normalizeVoucher> | null = null;
-  let customerAuto = false;
+  type NormalizedVoucher = ReturnType<typeof normalizeVoucher>;
+  const slotKinds: Record<Exclude<VoucherSlotValue, "manual">, VoucherKind> = {
+    product: "PRODUCT_DISCOUNT",
+    shipping: "FREE_SHIPPING",
+    loyalty: "LOYALTY_CLAIM",
+  };
+  const requestedBySlot: Record<Exclude<VoucherSlotValue, "manual">, string> = {
+    product: productRequested,
+    shipping: shippingRequested,
+    loyalty: loyaltyRequested,
+  };
 
-  if (customerRequested) {
-    const inAvailable = available.find((v) => v.code === customerRequested);
-    if (inAvailable) {
-      customerApplied = inAvailable;
-    } else if (userUsedCodes.has(customerRequested)) {
-      // User sudah pernah pakai voucher ini sebelumnya. Voucher di-filter
-      // dari available list, tapi user masih bisa coba submit code via
-      // form draft / manual. Reject explicit.
-      customerVoucherError = "Kode voucher sudah pernah digunakan";
-    } else {
-      const inUnavailable = unavailable.find((v) => v.code === customerRequested);
-      // Cek apakah code ada tapi sourceType salah (manual code di-input ke
-      // slot customer)
-      const wrongType = customerVouchers.length === 0
-        ? await prisma.voucher.findUnique({ where: { code: customerRequested } })
-        : null;
-      if (wrongType?.sourceType === "SELLER_MANUAL") {
-        customerVoucherError =
-          "Kode ini adalah voucher manual penjual. Masukkan lewat input kode manual.";
-      } else {
-        customerVoucherError =
-          inUnavailable?.reason ?? "Voucher tidak bisa digunakan untuk pilihan ini";
+  function resolveCustomerSlot(slot: Exclude<VoucherSlotValue, "manual">): {
+    applied: NormalizedVoucher | null;
+    error: string | null;
+    autoApplied: boolean;
+  } {
+    const expectedKind = slotKinds[slot];
+    const requestedCode = requestedBySlot[slot];
+
+    if (requestedCode) {
+      const inAvailable = available.find(
+        (voucher) => voucher.code === requestedCode && voucher.kind === expectedKind,
+      );
+      if (inAvailable) return { applied: inAvailable, error: null, autoApplied: false };
+      if ((userUsedCodes.get(requestedCode) ?? 0) > 0) {
+        return { applied: null, error: "Kode voucher sudah pernah digunakan", autoApplied: false };
       }
+      const inUnavailable = unavailable.find(
+        (voucher) => voucher.code === requestedCode && voucher.kind === expectedKind,
+      );
+      return {
+        applied: null,
+        error: inUnavailable?.reason ?? "Voucher tidak bisa digunakan untuk slot ini",
+        autoApplied: false,
+      };
     }
-  } else if (input.autoApply && available.some((voucher) => voucher.discount > 0)) {
-    // Auto-apply best customer voucher kalau user belum pilih
-    customerApplied = available.find((voucher) => voucher.discount > 0) ?? null;
-    customerAuto = true;
+
+    if (!input.autoApply) return { applied: null, error: null, autoApplied: false };
+
+    const auto = available.find(
+      (voucher) => voucher.kind === expectedKind && (voucher.discount > 0 || voucher.kind === "FREE_SHIPPING"),
+    );
+    return { applied: auto ?? null, error: null, autoApplied: Boolean(auto) };
   }
 
-  // Combine discount: customer + manual, capped at subtotal
-  const appliedDiscounts = [customerApplied, manualApplied].filter(Boolean) as Array<
-    NonNullable<typeof customerApplied>
-  >;
+  const productSlot = resolveCustomerSlot("product");
+  const shippingSlot = resolveCustomerSlot("shipping");
+  const loyaltySlot = resolveCustomerSlot("loyalty");
+
+  let manualVoucherError: string | null = null;
+  let manualApplied: NormalizedVoucher | null = null;
+  if (manualRequested) {
+    const manualVoucher = (await prisma.voucher.findUnique({
+      where: { code: manualRequested },
+    })) as VoucherRow | null;
+
+    if (!manualVoucher || !manualVoucher.isActive) {
+      manualVoucherError = "Kode voucher tidak valid.";
+    } else if ((userUsedCodes.get(manualRequested) ?? 0) > 0) {
+      manualVoucherError = "Kode voucher sudah pernah digunakan";
+    } else if (manualVoucher.sourceType !== "SELLER_MANUAL" || manualVoucher.kind !== "MANUAL_PRIVATE") {
+      manualVoucherError =
+        "Kode ini bukan voucher manual/private. Pilih voucher member lewat daftar voucher.";
+    } else if (manualVoucher.expiresAt && manualVoucher.expiresAt <= now) {
+      manualVoucherError = "Kode voucher sudah berakhir";
+    } else if (manualVoucher.startsAt > now) {
+      manualVoucherError = "Voucher belum berlaku.";
+    } else if (
+      manualVoucher.maxUsage !== null &&
+      manualVoucher.usedCount >= manualVoucher.maxUsage
+    ) {
+      manualVoucherError = "Voucher sudah mencapai batas penggunaan.";
+    } else if (subtotal < manualVoucher.minimumOrder) {
+      const shortfall = manualVoucher.minimumOrder - subtotal;
+      manualVoucherError = `Belanja kurang Rp${new Intl.NumberFormat("id-ID").format(shortfall)} lagi`;
+    } else {
+      const discount = calcDiscount(subtotal, shippingFee, manualVoucher);
+      if (discount <= 0) {
+        manualVoucherError = "Voucher tidak memberikan potongan untuk pesanan ini.";
+      } else {
+        manualApplied = normalizeVoucher(manualVoucher, discount);
+      }
+    }
+  }
+
+  const appliedDiscounts = [
+    productSlot.applied,
+    shippingSlot.applied,
+    loyaltySlot.applied,
+    manualApplied,
+  ].filter(Boolean) as NormalizedVoucher[];
   const productDiscount = Math.min(
     appliedDiscounts
       .filter((voucher) => !isFreeShippingVoucher(voucher))
@@ -409,30 +466,50 @@ export async function POST(request: NextRequest) {
     shipping_fee: shippingFee,
     discount: totalDiscount,
     total,
-    // Legacy fields (mirror customer voucher) — agar klien lama tidak break
+    // Legacy fields mirror product voucher agar klien lama tidak break.
     auto_applied_voucher:
-      customerApplied && customerAuto
+      productSlot.applied && productSlot.autoApplied
         ? {
-            code: customerApplied.code,
+            code: productSlot.applied.code,
             title: "Voucher member terpakai",
-            description: describeDiscount(customerApplied.discount, customerApplied.kind),
-            discount: customerApplied.discount,
-            kind: customerApplied.kind,
+            description: describeDiscount(productSlot.applied.discount, productSlot.applied.kind),
+            discount: productSlot.applied.discount,
+            kind: productSlot.applied.kind,
           }
         : null,
-    applied_voucher: customerApplied
+    applied_voucher: productSlot.applied
       ? {
-          ...customerApplied,
+          ...productSlot.applied,
           title: "Voucher member terpakai",
-          autoApplied: customerAuto,
+          autoApplied: productSlot.autoApplied,
         }
       : null,
-    // New dual-slot fields
-    applied_customer_voucher: customerApplied
+    applied_customer_voucher: productSlot.applied
       ? {
-          ...customerApplied,
+          ...productSlot.applied,
           title: "Voucher member terpakai",
-          autoApplied: customerAuto,
+          autoApplied: productSlot.autoApplied,
+        }
+      : null,
+    applied_product_voucher: productSlot.applied
+      ? {
+          ...productSlot.applied,
+          title: "Voucher diskon produk terpakai",
+          autoApplied: productSlot.autoApplied,
+        }
+      : null,
+    applied_shipping_voucher: shippingSlot.applied
+      ? {
+          ...shippingSlot.applied,
+          title: "Voucher gratis ongkir terpakai",
+          autoApplied: shippingSlot.autoApplied,
+        }
+      : null,
+    applied_loyalty_voucher: loyaltySlot.applied
+      ? {
+          ...loyaltySlot.applied,
+          title: "Voucher loyalty terpakai",
+          autoApplied: loyaltySlot.autoApplied,
         }
       : null,
     applied_manual_voucher: manualApplied
@@ -444,9 +521,14 @@ export async function POST(request: NextRequest) {
       : null,
     available_vouchers: available,
     unavailable_vouchers: unavailable,
-    voucher_invalidated: Boolean(customerVoucherError),
-    invalidated_message: customerVoucherError,
-    customer_voucher_error: customerVoucherError,
+    voucher_invalidated: Boolean(
+      productSlot.error || shippingSlot.error || loyaltySlot.error,
+    ),
+    invalidated_message: productSlot.error ?? shippingSlot.error ?? loyaltySlot.error,
+    customer_voucher_error: productSlot.error ?? shippingSlot.error ?? loyaltySlot.error,
+    product_voucher_error: productSlot.error,
+    shipping_voucher_error: shippingSlot.error,
+    loyalty_voucher_error: loyaltySlot.error,
     manual_voucher_error: manualVoucherError,
   });
 }

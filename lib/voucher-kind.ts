@@ -5,6 +5,8 @@ export type VoucherKindValue =
   | "MANUAL_PRIVATE";
 
 export type VoucherSourceTypeValue = "CUSTOMER" | "SELLER_MANUAL";
+export type VoucherSlotValue = "product" | "shipping" | "loyalty" | "manual";
+export type VoucherTargetUserValue = "ALL_MEMBERS" | "NEW_MEMBER";
 
 export const ADMIN_CREATABLE_VOUCHER_KINDS: VoucherKindValue[] = [
   "PRODUCT_DISCOUNT",
@@ -68,21 +70,60 @@ export function voucherKindDescription(kind?: string | null) {
   }
 }
 
+export function voucherTargetUserLabel(targetUser?: string | null) {
+  return targetUser === "NEW_MEMBER" ? "Member Baru" : "Semua Member";
+}
+
 export function voucherBenefitText(input: {
   kind?: string | null;
   discount?: number | null;
   discountPercent?: number | null;
   discountAmount?: number | null;
+  maxDiscountAmount?: number | null;
 }) {
   if (isFreeShippingVoucher(input)) return "Gratis ongkir";
   if (typeof input.discount === "number" && input.discount > 0) {
     return `Hemat Rp${new Intl.NumberFormat("id-ID").format(input.discount)}`;
   }
   if (input.discountPercent && input.discountPercent > 0) {
-    return `Diskon ${input.discountPercent}%`;
+    const cap =
+      input.maxDiscountAmount && input.maxDiscountAmount > 0
+        ? ` hingga Rp${new Intl.NumberFormat("id-ID").format(input.maxDiscountAmount)}`
+        : "";
+    return `Diskon ${input.discountPercent}%${cap}`;
   }
   if (input.discountAmount && input.discountAmount > 0) {
     return `Diskon Rp${new Intl.NumberFormat("id-ID").format(input.discountAmount)}`;
   }
   return voucherKindLabel(input.kind);
+}
+
+export function voucherSlotForKind(kind?: string | null): VoucherSlotValue {
+  switch (kind) {
+    case "FREE_SHIPPING":
+      return "shipping";
+    case "LOYALTY_CLAIM":
+      return "loyalty";
+    case "MANUAL_PRIVATE":
+      return "manual";
+    case "PRODUCT_DISCOUNT":
+    default:
+      return "product";
+  }
+}
+
+export function collectOrderVoucherCodes(order: {
+  voucherCode?: string | null;
+  productVoucherCode?: string | null;
+  shippingVoucherCode?: string | null;
+  loyaltyVoucherCode?: string | null;
+  manualVoucherCode?: string | null;
+}) {
+  return [...new Set([
+    order.voucherCode,
+    order.productVoucherCode,
+    order.shippingVoucherCode,
+    order.loyaltyVoucherCode,
+    order.manualVoucherCode,
+  ].filter((code): code is string => Boolean(code)))];
 }

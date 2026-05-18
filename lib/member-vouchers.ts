@@ -1,6 +1,7 @@
 import type { Voucher } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { shouldHideVoucher } from "@/lib/voucher-helpers";
+import { getNewMemberVoucherDisabledReason, shouldHideVoucher } from "@/lib/voucher-helpers";
+import { collectOrderVoucherCodes } from "@/lib/voucher-kind";
 
 export type ActiveMemberVoucher = Voucher;
 
@@ -8,7 +9,7 @@ export async function loadActiveMemberVouchers(
   userId: string,
   now = new Date(),
 ): Promise<ActiveMemberVoucher[]> {
-  const [vouchers, usedOrders] = await Promise.all([
+  const [vouchers, usedOrders, user, successfulOrderCount] = await Promise.all([
     prisma.voucher.findMany({
       where: {
         userId,
@@ -22,17 +23,51 @@ export async function loadActiveMemberVouchers(
     prisma.order.findMany({
       where: {
         userId,
-        OR: [{ voucherCode: { not: null } }, { manualVoucherCode: { not: null } }],
+        OR: [
+          { voucherCode: { not: null } },
+          { productVoucherCode: { not: null } },
+          { shippingVoucherCode: { not: null } },
+          { loyaltyVoucherCode: { not: null } },
+          { manualVoucherCode: { not: null } },
+        ],
       },
-      select: { voucherCode: true, manualVoucherCode: true },
+      select: {
+        voucherCode: true,
+        productVoucherCode: true,
+        shippingVoucherCode: true,
+        loyaltyVoucherCode: true,
+        manualVoucherCode: true,
+      },
+    }),
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, createdAt: true },
+    }),
+    prisma.order.count({
+      where: {
+        userId,
+        status: { notIn: ["CANCELLED", "REFUNDED"] },
+      },
     }),
   ]);
 
-  const usedCodes = new Set<string>();
+  const usedCodes = new Map<string, number>();
   for (const order of usedOrders) {
-    if (order.voucherCode) usedCodes.add(order.voucherCode);
-    if (order.manualVoucherCode) usedCodes.add(order.manualVoucherCode);
+    for (const code of collectOrderVoucherCodes(order)) {
+      usedCodes.set(code, (usedCodes.get(code) ?? 0) + 1);
+    }
   }
 
-  return vouchers.filter((voucher) => !shouldHideVoucher(voucher, usedCodes, now));
+  const userCtx = {
+    isLoggedIn: true,
+    userId,
+    createdAt: user?.createdAt ?? null,
+    successfulOrderCount,
+  };
+
+  return vouchers.filter(
+    (voucher) =>
+      !shouldHideVoucher(voucher, usedCodes, now) &&
+      !getNewMemberVoucherDisabledReason(voucher, userCtx, now),
+  );
 }

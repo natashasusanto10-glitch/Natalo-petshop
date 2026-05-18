@@ -79,7 +79,13 @@ export async function POST(request: NextRequest) {
   const userUsedCount = await prisma.order.count({
     where: {
       userId: session.sub,
-      OR: [{ voucherCode: upperCode }, { manualVoucherCode: upperCode }],
+      OR: [
+        { voucherCode: upperCode },
+        { productVoucherCode: upperCode },
+        { shippingVoucherCode: upperCode },
+        { loyaltyVoucherCode: upperCode },
+        { manualVoucherCode: upperCode },
+      ],
     },
   });
   if (userUsedCount > 0) {

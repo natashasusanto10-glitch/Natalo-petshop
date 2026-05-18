@@ -345,7 +345,13 @@ export default async function AdminOrderDetailPage({
           )}
 
           {/* Info tambahan */}
-          {(order.paymentProvider || order.voucherCode || order.manualVoucherCode || order.notes) && (
+          {(order.paymentProvider ||
+            order.voucherCode ||
+            order.productVoucherCode ||
+            order.shippingVoucherCode ||
+            order.loyaltyVoucherCode ||
+            order.manualVoucherCode ||
+            order.notes) && (
             <section className="rounded-2xl border border-zinc-200 p-4 md:rounded-3xl md:p-5">
               <h2 className="font-bold text-zinc-950">Info tambahan</h2>
               <div className="mt-4 space-y-2 text-sm text-zinc-700">
@@ -353,10 +359,22 @@ export default async function AdminOrderDetailPage({
                   <span className="font-semibold">Metode bayar:</span>{" "}
                   {order.paymentProvider}
                 </p>
-                {order.voucherCode && (
+                {(order.productVoucherCode || order.voucherCode) && (
                   <p>
-                    <span className="font-semibold">Voucher Pembeli:</span>{" "}
-                    {order.voucherCode}
+                    <span className="font-semibold">Voucher Diskon Produk:</span>{" "}
+                    {order.productVoucherCode || order.voucherCode}
+                  </p>
+                )}
+                {order.shippingVoucherCode && (
+                  <p>
+                    <span className="font-semibold">Voucher Gratis Ongkir:</span>{" "}
+                    {order.shippingVoucherCode}
+                  </p>
+                )}
+                {order.loyaltyVoucherCode && (
+                  <p>
+                    <span className="font-semibold">Voucher Loyalty Point:</span>{" "}
+                    {order.loyaltyVoucherCode}
                   </p>
                 )}
                 {order.manualVoucherCode && (

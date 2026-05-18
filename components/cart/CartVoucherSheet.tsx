@@ -9,7 +9,8 @@
  * 2. Kode Voucher Private (sourceType=SELLER_MANUAL) — input manual,
  *    di-validate via /api/cart/vouchers/validate-private
  *
- * Aturan kombinasi: maks 1 member + 1 private (single slot per tipe).
+ * Aturan kombinasi: user bisa pakai beberapa voucher member selama beda
+ * slot (diskon produk, gratis ongkir, loyalty). Kode private tetap di checkout.
  *
  * Reuse CSS .voucher-* dari globals.css supaya konsisten dgn voucher
  * sheet di checkout. Keyboard handling pakai visualViewport +
@@ -41,8 +42,8 @@ type Props = {
   isLoggedIn: boolean;
   /** Subtotal cart yg dipakai untuk filter voucher applicable */
   subtotal: number;
-  /** Voucher member terpilih saat ini */
-  selectedMemberCode: string | null;
+  /** Kode voucher member terpilih saat ini */
+  selectedMemberCodes: string[];
   /** Callback saat user pilih voucher member */
   onSelectMember: (
     code: string | null,
@@ -59,7 +60,7 @@ export function CartVoucherSheet({
   onClose,
   isLoggedIn,
   subtotal,
-  selectedMemberCode,
+  selectedMemberCodes,
   onSelectMember,
   onRequireLogin,
 }: Props) {
@@ -342,13 +343,13 @@ export function CartVoucherSheet({
                 <h3 className="text-xs font-extrabold uppercase tracking-wide text-zinc-700">
                   Voucher Member Natalo
                 </h3>
-                {selectedMemberCode && (
+                {selectedMemberCodes.length > 0 && (
                   <button
                     type="button"
                     onClick={() => onSelectMember(null, 0, "")}
                     className="text-[11px] font-bold text-natalo-600 active:underline"
                   >
-                    Lepas
+                    Lepas semua
                   </button>
                 )}
               </div>
@@ -388,7 +389,7 @@ export function CartVoucherSheet({
                         <li key={v.id}>
                           <MemberVoucherRow
                             voucher={v}
-                            selected={selectedMemberCode === v.code}
+                            selected={selectedMemberCodes.includes(v.code)}
                             disabled={false}
                             onSelect={() =>
                               onSelectMember(

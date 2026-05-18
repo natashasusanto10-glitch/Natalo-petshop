@@ -13,6 +13,8 @@ import { formatRupiah } from "@/lib/format";
 type Props = {
   isLoggedIn: boolean;
   memberVoucher: { code: string; discount: number; kind?: string } | null;
+  memberVoucherCount?: number;
+  memberVoucherSummary?: string;
   previewVoucher?: { discount: number; minimumOrder: number; kind?: string } | null;
   onClick: () => void;
 };
@@ -20,13 +22,16 @@ type Props = {
 export function VoucherClaimBar({
   isLoggedIn,
   memberVoucher,
+  memberVoucherCount = memberVoucher ? 1 : 0,
+  memberVoucherSummary,
   previewVoucher,
   onClick,
 }: Props) {
-  const summary = memberVoucher
-    ? memberVoucher.kind === "FREE_SHIPPING"
-      ? "Voucher member dipakai · Gratis ongkir"
-      : `Voucher member dipakai · Hemat ${formatRupiah(memberVoucher.discount)}`
+  const summary = memberVoucherCount > 0
+    ? memberVoucherSummary ??
+      (memberVoucher?.kind === "FREE_SHIPPING"
+        ? "Voucher member dipakai · Gratis ongkir"
+        : `Voucher member dipakai · Hemat ${formatRupiah(memberVoucher?.discount ?? 0)}`)
     : null;
   const preview = previewVoucher?.kind === "FREE_SHIPPING"
     ? "Gratis Ongkir"
@@ -65,7 +70,7 @@ export function VoucherClaimBar({
         {summary ? (
           <>
             <span className="block text-sm font-extrabold text-blue-900">
-              1 voucher dipakai
+              {memberVoucherCount} voucher dipakai
             </span>
             <span className="mt-0.5 block truncate text-xs font-semibold text-amber-700">
               {summary}

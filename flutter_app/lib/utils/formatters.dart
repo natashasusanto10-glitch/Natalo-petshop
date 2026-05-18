@@ -13,6 +13,10 @@ String formatRupiah(num value) {
   return '${isNegative ? '-' : ''}Rp${buf.toString()}';
 }
 
+/// Alias `formatTanggal` dengan withTime=true. Beberapa code pakai
+/// `formatDateTime(date)` untuk full tanggal+jam.
+String formatDateTime(DateTime date) => formatTanggal(date, withTime: true);
+
 /// Format DateTime ke string Indonesia: "12 Mei 2026".
 String formatTanggal(DateTime date, {bool withTime = false}) {
   const bulan = [

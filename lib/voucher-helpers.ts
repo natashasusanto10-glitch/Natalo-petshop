@@ -15,10 +15,12 @@ export type VoucherDisplayItem = {
   description: string | null;
   discountPercent: number | null;
   discountAmount: number | null;
+  maxDiscountAmount?: number | null;
   minimumOrder: number;
   expiresAt: string | null;
   sourceType: "CUSTOMER" | "SELLER_MANUAL";
   kind: "PRODUCT_DISCOUNT" | "FREE_SHIPPING" | "LOYALTY_CLAIM" | "MANUAL_PRIVATE";
+  targetUser?: "ALL_MEMBERS" | "NEW_MEMBER";
   /** Nilai diskon yg dihitung untuk subtotal saat ini */
   discount: number;
   /** Apakah voucher applicable untuk subtotal saat ini */
@@ -31,12 +33,15 @@ export type VoucherUserContext = {
   isLoggedIn: boolean;
   /** ID user — kalau guest, null. Voucher Natalo wajib login. */
   userId: string | null;
+  createdAt?: Date | null;
+  successfulOrderCount?: number;
 };
 
 export function calcVoucherDiscount(
   subtotal: number,
   voucher: Pick<Voucher, "discountPercent" | "discountAmount"> & {
     kind?: string | null;
+    maxDiscountAmount?: number | null;
   },
 ): number {
   if (isFreeShippingVoucher(voucher)) return 0;
@@ -47,7 +52,21 @@ export function calcVoucherDiscount(
   if (voucher.discountAmount) {
     discount += voucher.discountAmount;
   }
+  if (voucher.maxDiscountAmount && voucher.maxDiscountAmount > 0) {
+    discount = Math.min(discount, voucher.maxDiscountAmount);
+  }
   return Math.min(discount, subtotal);
+}
+
+function getUsageCount(
+  userUsedCodes: Set<string> | Map<string, number>,
+  code: string,
+) {
+  return userUsedCodes instanceof Map
+    ? userUsedCodes.get(code) ?? 0
+    : userUsedCodes.has(code)
+      ? 1
+      : 0;
 }
 
 /**
@@ -67,16 +86,49 @@ export function calcVoucherDiscount(
 export function shouldHideVoucher(
   voucher: Pick<
     Voucher,
-    "code" | "isActive" | "expiresAt" | "maxUsage" | "usedCount"
+    "code" | "isActive" | "expiresAt" | "maxUsage" | "usedCount" | "usageLimitPerUser"
   >,
-  userUsedCodes: Set<string>,
+  userUsedCodes: Set<string> | Map<string, number>,
   now: Date = new Date(),
 ): boolean {
   if (!voucher.isActive) return true;
   if (voucher.expiresAt && voucher.expiresAt <= now) return true;
   if (voucher.maxUsage !== null && voucher.usedCount >= voucher.maxUsage) return true;
-  if (userUsedCodes.has(voucher.code)) return true;
+  const usageLimit = voucher.usageLimitPerUser ?? 1;
+  if (usageLimit > 0 && getUsageCount(userUsedCodes, voucher.code) >= usageLimit) return true;
   return false;
+}
+
+export function getNewMemberVoucherDisabledReason(
+  voucher: Pick<
+    Voucher,
+    | "targetUser"
+    | "newMemberMaxAccountAgeDays"
+    | "newMemberRequireNoSuccessfulOrder"
+  >,
+  user: VoucherUserContext,
+  now: Date = new Date(),
+): string | null {
+  if (voucher.targetUser !== "NEW_MEMBER") return null;
+  if (!user.isLoggedIn || !user.createdAt) return "Login untuk menggunakan voucher member baru";
+
+  if (
+    voucher.newMemberMaxAccountAgeDays !== null &&
+    voucher.newMemberMaxAccountAgeDays !== undefined &&
+    voucher.newMemberMaxAccountAgeDays > 0
+  ) {
+    const maxAgeMs = voucher.newMemberMaxAccountAgeDays * 24 * 60 * 60 * 1000;
+    const accountAgeMs = now.getTime() - user.createdAt.getTime();
+    if (accountAgeMs > maxAgeMs) {
+      return "Masa berlaku voucher member baru untuk akun kamu sudah berakhir.";
+    }
+  }
+
+  if (voucher.newMemberRequireNoSuccessfulOrder && (user.successfulOrderCount ?? 0) > 0) {
+    return "Voucher ini hanya berlaku untuk akun baru yang belum pernah melakukan checkout.";
+  }
+
+  return null;
 }
 
 /**
@@ -91,7 +143,14 @@ export function shouldHideVoucher(
  * shouldHideVoucher dan tidak masuk function ini.
  */
 export function getVoucherDisabledReason(
-  voucher: Pick<Voucher, "minimumOrder" | "startsAt">,
+  voucher: Pick<
+    Voucher,
+    | "minimumOrder"
+    | "startsAt"
+    | "targetUser"
+    | "newMemberMaxAccountAgeDays"
+    | "newMemberRequireNoSuccessfulOrder"
+  >,
   subtotal: number,
   user: VoucherUserContext,
   now: Date = new Date(),
@@ -102,6 +161,8 @@ export function getVoucherDisabledReason(
   if (voucher.startsAt > now) {
     return "Voucher belum berlaku";
   }
+  const newMemberReason = getNewMemberVoucherDisabledReason(voucher, user, now);
+  if (newMemberReason) return newMemberReason;
   if (subtotal < voucher.minimumOrder) {
     return "Belum memenuhi minimum belanja";
   }
@@ -110,8 +171,8 @@ export function getVoucherDisabledReason(
 
 /**
  * Validasi kombinasi voucher per aturan Natalo:
- * - Maks 1 CUSTOMER + 1 SELLER_MANUAL
- * - Tidak boleh 2 dari tipe yg sama
+ * - Maks 4 voucher per checkout
+ * - 1 diskon produk + 1 gratis ongkir + 1 loyalty claim + 1 manual/private
  *
  * Return error message atau null kalau valid.
  */
@@ -119,13 +180,13 @@ export function validateVoucherCombination(input: {
   selectedMemberCode: string | null;
   appliedPrivateCode: string | null;
 }): string | null {
-  // Implementasi single-slot per tipe sudah secara struktural prevent
-  // 2 dari tipe sama. Helper ini reserved untuk future complex rule.
+  // Implementasi multi-slot sudah secara struktural dicegah di checkout
+  // backend/UI. Helper ini reserved untuk caller lama.
   return null;
 }
 
 /**
- * Hitung total diskon dari kombinasi voucher (member + private), capped at
+ * Hitung total diskon dari kombinasi voucher lama (member + private), capped at
  * subtotal supaya tidak negative.
  */
 export function calculateFinalDiscount(input: {

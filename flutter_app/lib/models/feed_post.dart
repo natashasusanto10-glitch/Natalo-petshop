@@ -6,6 +6,7 @@ class FeedAuthor {
   final String? username;
   final String? avatarUrl;
   final String? profilePhotoUrl;
+  final String role;
   final bool isAdmin;
   final bool isOfficial;
 
@@ -15,6 +16,7 @@ class FeedAuthor {
     this.username,
     this.avatarUrl,
     this.profilePhotoUrl,
+    this.role = 'CUSTOMER',
     this.isAdmin = false,
     this.isOfficial = false,
   });
@@ -22,14 +24,15 @@ class FeedAuthor {
   factory FeedAuthor.fromJson(Map<String, dynamic> json) {
     final avatar = json['avatarUrl'] as String?;
     final photo = json['profilePhotoUrl'] as String?;
+    final role = (json['role'] as String?) ?? 'CUSTOMER';
     return FeedAuthor(
       id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? 'User',
       username: json['username'] as String?,
       avatarUrl: avatar ?? photo,
       profilePhotoUrl: photo ?? avatar,
-      isAdmin: json['isAdmin'] as bool? ??
-          (json['role']?.toString().toUpperCase() == 'ADMIN'),
+      role: role,
+      isAdmin: json['isAdmin'] as bool? ?? (role.toUpperCase() == 'ADMIN'),
       isOfficial: json['isOfficial'] as bool? ?? false,
     );
   }

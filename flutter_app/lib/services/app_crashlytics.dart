@@ -59,6 +59,13 @@ class AppCrashlytics {
     await FirebaseCrashlytics.instance.setUserIdentifier(userId ?? '');
   }
 
+  /// Set custom key/value yang tampil di crash report. Berguna untuk
+  /// log context yang relevant (mis. screen name, user role, dll).
+  static Future<void> setCustomKey(String key, Object value) async {
+    if (!_ready) return;
+    await FirebaseCrashlytics.instance.setCustomKey(key, value);
+  }
+
   static Future<void> recordError(
     Object error,
     StackTrace? stack, {

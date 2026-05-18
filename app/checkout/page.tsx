@@ -22,7 +22,9 @@ import {
   type AppliedVoucher,
   type EligibleVoucher,
   type IneligibleVoucher,
+  type VoucherSlot,
 } from "@/components/checkout/CheckoutVoucherCard";
+import { voucherKindLabel, voucherSlotForKind } from "@/lib/voucher-kind";
 import {
   MetodePembayaran,
   type PaymentSelection,
@@ -66,12 +68,18 @@ type CheckoutRecalculateResponse = CheckoutPricing & {
   } | null;
   // Dual-slot fields (lihat aturan voucher di CLAUDE.md)
   applied_customer_voucher?: AppliedVoucherShape;
+  applied_product_voucher?: AppliedVoucherShape;
+  applied_shipping_voucher?: AppliedVoucherShape;
+  applied_loyalty_voucher?: AppliedVoucherShape;
   applied_manual_voucher?: AppliedVoucherShape;
   available_vouchers?: EligibleVoucher[];
   unavailable_vouchers?: IneligibleVoucher[];
   voucher_invalidated?: boolean;
   invalidated_message?: string | null;
   customer_voucher_error?: string | null;
+  product_voucher_error?: string | null;
+  shipping_voucher_error?: string | null;
+  loyalty_voucher_error?: string | null;
   manual_voucher_error?: string | null;
 };
 
@@ -199,6 +207,9 @@ export default function CheckoutPage() {
     shippingProvinceName: "",
     shippingDistrictName: "",
     voucherCode: "",
+    productVoucherCode: "",
+    shippingVoucherCode: "",
+    loyaltyVoucherCode: "",
     manualVoucherCode: "",
     notes: "",
   });
@@ -216,9 +227,10 @@ export default function CheckoutPage() {
   const [addressLabel, setAddressLabel] = useState("");
 
   const [voucherInput, setVoucherInput] = useState("");
-  const [voucherApplied, setVoucherApplied] = useState<AppliedVoucher | null>(null);
-  // Slot voucher manual penjual (SELLER_MANUAL) — paralel dgn voucherApplied
-  // (CUSTOMER). Maks 1 dari masing-masing per checkout.
+  const [productVoucherApplied, setProductVoucherApplied] = useState<AppliedVoucher | null>(null);
+  const [shippingVoucherApplied, setShippingVoucherApplied] = useState<AppliedVoucher | null>(null);
+  const [loyaltyVoucherApplied, setLoyaltyVoucherApplied] = useState<AppliedVoucher | null>(null);
+  // Slot voucher manual penjual (SELLER_MANUAL) — paralel dengan 3 slot member.
   const [manualVoucherApplied, setManualVoucherApplied] =
     useState<AppliedVoucher | null>(null);
   const [eligibleVouchers, setEligibleVouchers] = useState<EligibleVoucher[]>([]);
@@ -250,7 +262,11 @@ export default function CheckoutPage() {
       selectedAddressId?: string;
       addressMode?: "saved" | "manual" | "select";
       voucherInput?: string;
-      voucherApplied?: typeof voucherApplied;
+      voucherApplied?: AppliedVoucher | null;
+      productVoucherApplied?: AppliedVoucher | null;
+      shippingVoucherApplied?: AppliedVoucher | null;
+      loyaltyVoucherApplied?: AppliedVoucher | null;
+      manualVoucherApplied?: AppliedVoucher | null;
       selectedRate?: RateOption | null;
       rates?: RateOption[];
       payment?: PaymentSelection | null;
@@ -271,7 +287,20 @@ export default function CheckoutPage() {
         setAddressMode(restoredDraft.addressMode === "select" ? "saved" : restoredDraft.addressMode);
       }
       if (restoredDraft.voucherInput !== undefined) setVoucherInput(restoredDraft.voucherInput);
-      if (restoredDraft.voucherApplied !== undefined) setVoucherApplied(restoredDraft.voucherApplied);
+      if (restoredDraft.productVoucherApplied !== undefined) {
+        setProductVoucherApplied(restoredDraft.productVoucherApplied);
+      } else if (restoredDraft.voucherApplied !== undefined) {
+        setProductVoucherApplied(restoredDraft.voucherApplied);
+      }
+      if (restoredDraft.shippingVoucherApplied !== undefined) {
+        setShippingVoucherApplied(restoredDraft.shippingVoucherApplied);
+      }
+      if (restoredDraft.loyaltyVoucherApplied !== undefined) {
+        setLoyaltyVoucherApplied(restoredDraft.loyaltyVoucherApplied);
+      }
+      if (restoredDraft.manualVoucherApplied !== undefined) {
+        setManualVoucherApplied(restoredDraft.manualVoucherApplied);
+      }
       if (restoredDraft.selectedRate !== undefined) setSelectedRate(restoredDraft.selectedRate);
       if (Array.isArray(restoredDraft.rates)) setRates(restoredDraft.rates);
       if (restoredDraft.payment !== undefined) setPayment(restoredDraft.payment);
@@ -284,15 +313,37 @@ export default function CheckoutPage() {
       const cartVoucherRaw = sessionStorage.getItem("cart:voucher");
       if (cartVoucherRaw) {
         const parsed = JSON.parse(cartVoucherRaw) as {
-          member?: { code: string; discount: number; description: string } | null;
+          member?: { code: string; discount: number; description: string; kind?: AppliedVoucher["kind"] } | null;
+          members?: { code: string; discount: number; description: string; kind?: AppliedVoucher["kind"] }[];
           private?: { code: string; discount: number; description: string } | null;
         };
-        if (parsed.member?.code) {
-          setForm((current) =>
-            current.voucherCode
+        const memberSelections = [
+          ...(Array.isArray(parsed.members) ? parsed.members : []),
+          ...(parsed.member ? [parsed.member] : []),
+        ];
+        for (const member of memberSelections) {
+          if (!member?.code) continue;
+          const slot = voucherSlotForKind(member.kind);
+          setForm((current) => {
+            if (slot === "shipping") {
+              return current.shippingVoucherCode
+                ? current
+                : { ...current, shippingVoucherCode: member.code };
+            }
+            if (slot === "loyalty") {
+              return current.loyaltyVoucherCode
+                ? current
+                : { ...current, loyaltyVoucherCode: member.code };
+            }
+            if (slot === "manual") return current;
+            return current.productVoucherCode || current.voucherCode
               ? current
-              : { ...current, voucherCode: parsed.member!.code },
-          );
+              : {
+                  ...current,
+                  voucherCode: member.code,
+                  productVoucherCode: member.code,
+                };
+          });
         }
         if (parsed.private?.code) {
           setForm((current) =>
@@ -448,7 +499,10 @@ export default function CheckoutPage() {
           selectedAddressId,
           addressMode: addressMode === "select" ? "saved" : addressMode,
           voucherInput,
-          voucherApplied,
+          productVoucherApplied,
+          shippingVoucherApplied,
+          loyaltyVoucherApplied,
+          manualVoucherApplied,
           selectedRate,
           rates,
           payment,
@@ -463,7 +517,10 @@ export default function CheckoutPage() {
     selectedAddressId,
     addressMode,
     voucherInput,
-    voucherApplied,
+    productVoucherApplied,
+    shippingVoucherApplied,
+    loyaltyVoucherApplied,
+    manualVoucherApplied,
     selectedRate,
     rates,
     payment,
@@ -630,22 +687,47 @@ export default function CheckoutPage() {
   const isSelfPickup = isSelfPickupMethod(selectedRate?.courier_code);
   const shippingCost = isSelfPickup ? 0 : selectedRate?.price ?? 0;
   const subtotal = checkoutPricing?.subtotal ?? localSubtotal;
-  const discount = checkoutPricing?.discount ?? voucherApplied?.discount ?? 0;
+  const appliedCheckoutVouchers = useMemo(
+    () =>
+      [
+        productVoucherApplied,
+        shippingVoucherApplied,
+        loyaltyVoucherApplied,
+        manualVoucherApplied,
+      ].filter(Boolean) as AppliedVoucher[],
+    [
+      productVoucherApplied,
+      shippingVoucherApplied,
+      loyaltyVoucherApplied,
+      manualVoucherApplied,
+    ],
+  );
+  const localVoucherDiscount = appliedCheckoutVouchers.reduce(
+    (sum, voucher) => sum + (voucher.discount ?? 0),
+    0,
+  );
+  const discount = checkoutPricing?.discount ?? localVoucherDiscount;
   const total = checkoutPricing?.total ?? Math.max(subtotal + shippingCost - discount, 0);
   const checkoutBenefits = useMemo<CheckoutBenefit[]>(() => {
     const benefits: CheckoutBenefit[] = [];
-    const customerVoucherDiscount = voucherApplied?.discount ?? 0;
-    const manualVoucherDiscount = manualVoucherApplied?.discount ?? 0;
+    const slotBenefits: Array<{ key: string; label: string; voucher: AppliedVoucher | null }> = [
+      { key: "product-voucher", label: "Diskon produk", voucher: productVoucherApplied },
+      { key: "shipping-voucher", label: "Gratis ongkir", voucher: shippingVoucherApplied },
+      { key: "loyalty-voucher", label: "Voucher loyalty", voucher: loyaltyVoucherApplied },
+    ];
 
-    if (customerVoucherDiscount > 0) {
+    for (const item of slotBenefits) {
+      const amount = item.voucher?.discount ?? 0;
+      if (amount <= 0) continue;
       benefits.push({
-        key: "customer-voucher",
-        label: "Hemat Voucher",
-        value: formatRupiah(customerVoucherDiscount),
-        amount: customerVoucherDiscount,
+        key: item.key,
+        label: item.label,
+        value: formatRupiah(amount),
+        amount,
       });
     }
 
+    const manualVoucherDiscount = manualVoucherApplied?.discount ?? 0;
     if (manualVoucherDiscount > 0) {
       benefits.push({
         key: "manual-voucher",
@@ -657,7 +739,7 @@ export default function CheckoutPage() {
 
     const unclassifiedDiscount = Math.max(
       0,
-      discount - customerVoucherDiscount - manualVoucherDiscount,
+      discount - appliedCheckoutVouchers.reduce((sum, voucher) => sum + (voucher.discount ?? 0), 0),
     );
     if (unclassifiedDiscount > 0) {
       benefits.push({
@@ -694,10 +776,13 @@ export default function CheckoutPage() {
     checkoutPricing?.shipping_fee,
     discount,
     isSelfPickup,
+    appliedCheckoutVouchers,
+    loyaltyVoucherApplied,
     manualVoucherApplied?.discount,
+    productVoucherApplied,
     selectedRate,
+    shippingVoucherApplied,
     shippingCost,
-    voucherApplied?.discount,
   ]);
   const checkoutBenefitSavings = checkoutBenefits.reduce(
     (sum, benefit) => sum + (benefit.amount ?? 0),
@@ -713,7 +798,7 @@ export default function CheckoutPage() {
 
     const onlyVoucher =
       checkoutBenefits.length === 1 &&
-      (checkoutBenefits[0].key === "customer-voucher" ||
+      (checkoutBenefits[0].key.includes("voucher") ||
         checkoutBenefits[0].key === "manual-voucher");
 
     return {
@@ -789,7 +874,9 @@ export default function CheckoutPage() {
   // Checkout pricing/voucher selalu berasal dari API recalculate agar total,
   // voucher terpakai, dan daftar voucher tidak saling drift.
   function checkoutRecalculatePayload(
-    customerVoucherCode: string | null,
+    productVoucherCode: string | null,
+    shippingVoucherCode: string | null,
+    loyaltyVoucherCode: string | null,
     manualVoucherCode: string | null,
     autoApply: boolean,
   ) {
@@ -798,8 +885,11 @@ export default function CheckoutPage() {
       shipping_fee: shippingCost,
       // Legacy field — backend treat sebagai customer voucher kalau
       // customerVoucherCode tidak ada. Aman untuk dikirim selalu.
-      voucherCode: customerVoucherCode,
-      customerVoucherCode,
+      voucherCode: productVoucherCode,
+      customerVoucherCode: productVoucherCode,
+      productVoucherCode,
+      shippingVoucherCode,
+      loyaltyVoucherCode,
       manualVoucherCode,
       autoApply,
       address: {
@@ -822,8 +912,28 @@ export default function CheckoutPage() {
     setVoucherSyncFailed(false);
     const eligible = Array.isArray(data.available_vouchers) ? data.available_vouchers : [];
     const ineligible = Array.isArray(data.unavailable_vouchers) ? data.unavailable_vouchers : [];
-    const customerApplied = data.applied_customer_voucher ?? data.applied_voucher ?? null;
+    const productApplied =
+      data.applied_product_voucher ??
+      data.applied_customer_voucher ??
+      data.applied_voucher ??
+      null;
+    const shippingApplied = data.applied_shipping_voucher ?? null;
+    const loyaltyApplied = data.applied_loyalty_voucher ?? null;
     const manualApplied = data.applied_manual_voucher ?? null;
+    const toAppliedVoucher = (voucher: AppliedVoucherShape): AppliedVoucher | null =>
+      voucher
+        ? {
+            code: voucher.code,
+            discount: voucher.discount,
+            description:
+              voucher.description ??
+              (voucher.kind === "FREE_SHIPPING"
+                ? "Gratis Ongkir"
+                : `Hemat ${formatRupiah(voucher.discount)}`),
+            kind: voucher.kind,
+            autoApplied: voucher.autoApplied,
+          }
+        : null;
 
     setCheckoutPricing({
       subtotal: data.subtotal,
@@ -834,25 +944,33 @@ export default function CheckoutPage() {
     setEligibleVouchers(eligible);
     setIneligibleVouchers(ineligible);
 
-    if (customerApplied) {
-      setVoucherApplied({
-        code: customerApplied.code,
-        discount: customerApplied.discount,
-        description: customerApplied.description ?? `Hemat ${formatRupiah(customerApplied.discount)}`,
-        kind: customerApplied.kind,
-        autoApplied: customerApplied.autoApplied,
-      });
-      setVoucherInput(customerApplied.code);
-      setForm((current) =>
-        current.voucherCode === customerApplied.code
-          ? current
-          : { ...current, voucherCode: customerApplied.code },
-      );
-    } else {
-      setVoucherApplied(null);
-      setVoucherInput("");
-      setForm((current) => (current.voucherCode ? { ...current, voucherCode: "" } : current));
-    }
+    const nextProductApplied = toAppliedVoucher(productApplied);
+    const nextShippingApplied = toAppliedVoucher(shippingApplied);
+    const nextLoyaltyApplied = toAppliedVoucher(loyaltyApplied);
+    setProductVoucherApplied(nextProductApplied);
+    setShippingVoucherApplied(nextShippingApplied);
+    setLoyaltyVoucherApplied(nextLoyaltyApplied);
+    setVoucherInput(nextProductApplied?.code ?? "");
+    setForm((current) => {
+      const nextVoucherCode = nextProductApplied?.code ?? "";
+      const nextShippingCode = nextShippingApplied?.code ?? "";
+      const nextLoyaltyCode = nextLoyaltyApplied?.code ?? "";
+      if (
+        current.voucherCode === nextVoucherCode &&
+        current.productVoucherCode === nextVoucherCode &&
+        current.shippingVoucherCode === nextShippingCode &&
+        current.loyaltyVoucherCode === nextLoyaltyCode
+      ) {
+        return current;
+      }
+      return {
+        ...current,
+        voucherCode: nextVoucherCode,
+        productVoucherCode: nextVoucherCode,
+        shippingVoucherCode: nextShippingCode,
+        loyaltyVoucherCode: nextLoyaltyCode,
+      };
+    });
 
     if (manualApplied) {
       setManualVoucherApplied({
@@ -882,7 +1000,9 @@ export default function CheckoutPage() {
   }
 
   async function recalculateCheckout(
-    customerVoucherCode: string | null,
+    productVoucherCode: string | null,
+    shippingVoucherCode: string | null,
+    loyaltyVoucherCode: string | null,
     manualVoucherCode: string | null,
     autoApply: boolean,
     signal?: AbortSignal,
@@ -891,7 +1011,13 @@ export default function CheckoutPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(
-        checkoutRecalculatePayload(customerVoucherCode, manualVoucherCode, autoApply),
+        checkoutRecalculatePayload(
+          productVoucherCode,
+          shippingVoucherCode,
+          loyaltyVoucherCode,
+          manualVoucherCode,
+          autoApply,
+        ),
       ),
       signal,
     });
@@ -905,7 +1031,10 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (items.length === 0) {
       setCheckoutPricing(null);
-      setVoucherApplied(null);
+      setProductVoucherApplied(null);
+      setShippingVoucherApplied(null);
+      setLoyaltyVoucherApplied(null);
+      setManualVoucherApplied(null);
       setEligibleVouchers([]);
       setIneligibleVouchers([]);
       setVoucherInput("");
@@ -917,7 +1046,9 @@ export default function CheckoutPage() {
     const controller = new AbortController();
     setVoucherSyncLoading(true);
     recalculateCheckout(
-      form.voucherCode || null,
+      form.productVoucherCode || form.voucherCode || null,
+      form.shippingVoucherCode || null,
+      form.loyaltyVoucherCode || null,
       form.manualVoucherCode || null,
       !autoVoucherSuppressed,
       controller.signal,
@@ -954,6 +1085,9 @@ export default function CheckoutPage() {
     form.shippingLongitude,
     form.shippingCity,
     form.voucherCode,
+    form.productVoucherCode,
+    form.shippingVoucherCode,
+    form.loyaltyVoucherCode,
     form.manualVoucherCode,
     paymentMethod,
     autoVoucherSuppressed,
@@ -1052,18 +1186,41 @@ export default function CheckoutPage() {
     description: string,
     kind?: AppliedVoucher["kind"],
   ) {
-    setVoucherApplied({ code, discount, description, kind, autoApplied: false });
+    const applied = { code, discount, description, kind, autoApplied: false };
+    const slot = voucherSlotForKind(kind);
+    if (slot === "shipping") {
+      setShippingVoucherApplied(applied);
+    } else if (slot === "loyalty") {
+      setLoyaltyVoucherApplied(applied);
+    } else {
+      setProductVoucherApplied(applied);
+      setVoucherInput(code);
+    }
     setAutoVoucherSuppressed(false);
-    setForm((f) => ({ ...f, voucherCode: code }));
+    setForm((f) => {
+      if (slot === "shipping") return { ...f, shippingVoucherCode: code };
+      if (slot === "loyalty") return { ...f, loyaltyVoucherCode: code };
+      return { ...f, voucherCode: code, productVoucherCode: code };
+    });
     setVoucherInvalidated(null);
   }
 
-  function removeVoucher() {
-    setVoucherApplied(null);
-    setVoucherInput("");
+  function removeVoucher(slot: VoucherSlot = "product") {
+    if (slot === "shipping") {
+      setShippingVoucherApplied(null);
+    } else if (slot === "loyalty") {
+      setLoyaltyVoucherApplied(null);
+    } else {
+      setProductVoucherApplied(null);
+      setVoucherInput("");
+    }
     setVoucherInvalidated(null);
     setAutoVoucherSuppressed(true);
-    setForm((f) => ({ ...f, voucherCode: "" }));
+    setForm((f) => {
+      if (slot === "shipping") return { ...f, shippingVoucherCode: "" };
+      if (slot === "loyalty") return { ...f, loyaltyVoucherCode: "" };
+      return { ...f, voucherCode: "", productVoucherCode: "" };
+    });
   }
 
   function removeManualVoucher() {
@@ -1082,7 +1239,9 @@ export default function CheckoutPage() {
     const upperCode = code.trim().toUpperCase();
     try {
       const data = await recalculateCheckout(
-        form.voucherCode || null,
+        form.productVoucherCode || form.voucherCode || null,
+        form.shippingVoucherCode || null,
+        form.loyaltyVoucherCode || null,
         upperCode,
         !autoVoucherSuppressed,
       );
@@ -1799,11 +1958,13 @@ export default function CheckoutPage() {
               )}
             </div>
 
-            {/* Voucher — smart picker dengan bottom sheet. Mendukung 2
-                slot: 1 voucher pembeli (CUSTOMER) + 1 voucher manual
-                penjual (SELLER_MANUAL). */}
+            {/* Voucher — smart picker dengan bottom sheet. Mendukung 4 slot:
+                diskon produk, gratis ongkir, loyalty, dan manual/private. */}
             <CheckoutVoucherCard
-              applied={voucherApplied}
+              applied={productVoucherApplied}
+              appliedProduct={productVoucherApplied}
+              appliedShipping={shippingVoucherApplied}
+              appliedLoyalty={loyaltyVoucherApplied}
               manualApplied={manualVoucherApplied}
               eligible={eligibleVouchers}
               ineligible={ineligibleVouchers}
@@ -1881,14 +2042,18 @@ export default function CheckoutPage() {
                 <span className="italic text-zinc-400">Belum dipilih</span>
               )}
             </div>
-            {voucherApplied && (
-              <div className="flex justify-between font-semibold text-green-600">
-                <span>{voucherApplied.kind === "FREE_SHIPPING" ? "Voucher gratis ongkir" : "Diskon voucher"}</span>
+            {appliedCheckoutVouchers.map((voucher) => (
+              <div key={voucher.code} className="flex justify-between font-semibold text-green-600">
+                <span>{voucherKindLabel(voucher.kind)}</span>
                 <span>
-                  {discount > 0 ? `-${formatRupiah(discount)}` : voucherApplied.kind === "FREE_SHIPPING" ? "Menunggu ongkir" : "-Rp0"}
+                  {voucher.discount > 0
+                    ? `-${formatRupiah(voucher.discount)}`
+                    : voucher.kind === "FREE_SHIPPING"
+                      ? "Menunggu ongkir"
+                      : "-Rp0"}
                 </span>
               </div>
-            )}
+            ))}
             <div className="flex justify-between text-lg font-black text-zinc-950">
               <span>Total bayar</span>
               <span>{selectedRate ? formatRupiah(total) : formatRupiah(subtotal) + " + ongkir"}</span>

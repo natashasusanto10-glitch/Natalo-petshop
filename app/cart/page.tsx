@@ -51,6 +51,7 @@ type CartVoucherOption = {
   kind?: CartVoucherKind;
 };
 type VoucherSelectionMode = "auto" | "manual" | null;
+type CartVoucherSlot = "product" | "shipping" | "loyalty" | "manual";
 type PendingDeletedItem = {
   id: number;
   item: CartItem;
@@ -61,6 +62,38 @@ type PendingDeletedItem = {
 
 function cartKey(item: CartItem) {
   return `${item.productId}:${item.variantId ?? ""}`;
+}
+
+function cartVoucherSlot(kind?: CartVoucherKind): CartVoucherSlot {
+  if (kind === "FREE_SHIPPING") return "shipping";
+  if (kind === "LOYALTY_CLAIM") return "loyalty";
+  if (kind === "MANUAL_PRIVATE") return "manual";
+  return "product";
+}
+
+function sortCartMemberVouchers<T extends { kind?: CartVoucherKind }>(vouchers: T[]) {
+  const order: Record<CartVoucherSlot, number> = {
+    product: 0,
+    shipping: 1,
+    loyalty: 2,
+    manual: 3,
+  };
+  return [...vouchers].sort(
+    (a, b) => order[cartVoucherSlot(a.kind)] - order[cartVoucherSlot(b.kind)],
+  );
+}
+
+function bestCartVouchersBySlot(vouchers: CartVoucherOption[]) {
+  const bySlot = new Map<CartVoucherSlot, CartVoucherOption>();
+  for (const voucher of vouchers) {
+    const slot = cartVoucherSlot(voucher.kind);
+    if (slot === "manual") continue;
+    const current = bySlot.get(slot);
+    if (!current || voucher.discount > current.discount) {
+      bySlot.set(slot, voucher);
+    }
+  }
+  return sortCartMemberVouchers([...bySlot.values()]);
 }
 
 function itemSelectionLabel(kindCount: number, quantityCount: number) {
@@ -233,11 +266,16 @@ export default function CartPage() {
   // /checkout/page.tsx saat user lanjut ke checkout.
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [voucherSheetOpen, setVoucherSheetOpen] = useState(false);
-  const [memberVoucher, setMemberVoucher] = useState<CartAppliedMember | null>(null);
+  const [memberVouchers, setMemberVouchers] = useState<CartAppliedMember[]>([]);
   const [memberVoucherPreview, setMemberVoucherPreview] = useState<CartVoucherOption | null>(null);
   const [voucherSelectionMode, setVoucherSelectionMode] = useState<VoucherSelectionMode>(null);
   const [voucherLookupComplete, setVoucherLookupComplete] = useState(false);
   const manualVoucherSignatureRef = useRef("");
+  const memberVoucher = memberVouchers[0] ?? null;
+  const selectedMemberCodes = useMemo(
+    () => memberVouchers.map((voucher) => voucher.code),
+    [memberVouchers],
+  );
 
   // Delete confirmation modal state
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -254,17 +292,26 @@ export default function CartPage() {
       const raw = sessionStorage.getItem(CART_VOUCHER_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as {
+          members?: CartAppliedMember[];
           member?: CartAppliedMember | null;
           private?: unknown;
         };
-        if (parsed.member) {
-          setMemberVoucher(parsed.member);
+        const restoredMembers = Array.isArray(parsed.members)
+          ? parsed.members
+          : parsed.member
+            ? [parsed.member]
+            : [];
+        if (restoredMembers.length > 0) {
+          setMemberVouchers(sortCartMemberVouchers(restoredMembers));
           setVoucherSelectionMode("manual");
         }
         if (parsed.private) {
           sessionStorage.setItem(
             CART_VOUCHER_KEY,
-            JSON.stringify({ member: parsed.member ?? null }),
+            JSON.stringify({
+              members: restoredMembers,
+              member: restoredMembers[0] ?? null,
+            }),
           );
         }
       }
@@ -286,10 +333,14 @@ export default function CartPage() {
   // Persist voucher selection setiap kali berubah
   useEffect(() => {
     try {
-      if (memberVoucher) {
+      if (memberVouchers.length > 0) {
         sessionStorage.setItem(
           CART_VOUCHER_KEY,
-          JSON.stringify({ member: memberVoucher }),
+          JSON.stringify({
+            members: memberVouchers,
+            // Legacy fallback untuk checkout lama.
+            member: memberVouchers[0] ?? null,
+          }),
         );
       } else {
         sessionStorage.removeItem(CART_VOUCHER_KEY);
@@ -297,7 +348,7 @@ export default function CartPage() {
     } catch {
       // ignore quota / disabled storage
     }
-  }, [memberVoucher]);
+  }, [memberVouchers]);
 
   useEffect(() => {
     function syncCart() {
@@ -347,10 +398,9 @@ export default function CartPage() {
   const selectedCount = selectedItems.length;
   const selectedQuantity = selectedItems.reduce((sum, item) => sum + item.quantity, 0);
   const selectedSubtotal = selectedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  // Total diskon dari kombinasi voucher member + private (capped at subtotal
-  // supaya tidak negative — match logic backend).
+  // Total diskon dari kombinasi voucher member (capped at subtotal supaya tidak negative).
   const voucherDiscount = Math.min(
-    memberVoucher?.discount ?? 0,
+    memberVouchers.reduce((sum, voucher) => sum + (voucher.discount ?? 0), 0),
     selectedSubtotal,
   );
   const selectedTotal = Math.max(selectedSubtotal - voucherDiscount, 0);
@@ -360,7 +410,15 @@ export default function CartPage() {
   const stickyVoucherDiscountText =
     voucherDiscount > 0 ? `Diskon ${formatRupiah(voucherDiscount)}` : undefined;
   const stickyVoucherFreeShippingText =
-    memberVoucher?.kind === "FREE_SHIPPING" ? "Gratis ongkir" : undefined;
+    memberVouchers.some((voucher) => voucher.kind === "FREE_SHIPPING") ? "Gratis ongkir" : undefined;
+  const memberVoucherSummaryText =
+    memberVouchers.length > 0
+      ? [
+          `${memberVouchers.length} voucher dipakai`,
+          voucherDiscount > 0 ? `Hemat ${formatRupiah(voucherDiscount)}` : null,
+          stickyVoucherFreeShippingText,
+        ].filter(Boolean).join(" · ")
+      : undefined;
   const hasNoEligibleVoucher =
     selectedCount > 0 &&
     selectedSubtotal > 0 &&
@@ -373,7 +431,7 @@ export default function CartPage() {
     if (!isLoggedIn || selectedCount === 0 || selectedSubtotal <= 0) {
       setMemberVoucherPreview(null);
       setVoucherLookupComplete(false);
-      setMemberVoucher(null);
+      setMemberVouchers([]);
       setVoucherSelectionMode(null);
       return;
     }
@@ -387,7 +445,8 @@ export default function CartPage() {
         const available = ((Array.isArray(data?.available) ? data.available : []) as CartVoucherOption[])
           .filter((voucher) => voucher.code && (voucher.discount > 0 || voucher.kind === "FREE_SHIPPING"))
           .sort((a, b) => b.discount - a.discount);
-        const bestVoucher = available[0] ?? null;
+        const bestVouchers = bestCartVouchersBySlot(available);
+        const bestVoucher = bestVouchers[0] ?? null;
         const toAppliedVoucher = (voucher: CartVoucherOption): CartAppliedMember => ({
           code: voucher.code,
           discount: voucher.discount,
@@ -407,33 +466,36 @@ export default function CartPage() {
             manualVoucherSignatureRef.current &&
             manualVoucherSignatureRef.current !== selectedVoucherSignature;
 
-          setMemberVoucher((currentVoucher) => {
-            if (!currentVoucher) {
+          setMemberVouchers((currentVouchers) => {
+            if (currentVouchers.length === 0) {
               if (manualSelectionChanged) {
-                setVoucherSelectionMode(bestVoucher ? "auto" : null);
+                setVoucherSelectionMode(bestVouchers.length > 0 ? "auto" : null);
                 manualVoucherSignatureRef.current = "";
-                return bestVoucher ? toAppliedVoucher(bestVoucher) : null;
+                return bestVouchers.map(toAppliedVoucher);
               }
-              return currentVoucher;
+              return currentVouchers;
             }
 
-            const stillEligibleManual = available.find(
-              (voucher) => voucher.code === currentVoucher.code,
-            );
+            const updatedManual = currentVouchers
+              .map((currentVoucher) =>
+                available.find((voucher) => voucher.code === currentVoucher.code),
+              )
+              .filter(Boolean)
+              .map((voucher) => toAppliedVoucher(voucher as CartVoucherOption));
 
-            if (stillEligibleManual) {
-              return toAppliedVoucher(stillEligibleManual);
+            if (updatedManual.length > 0 && !manualSelectionChanged) {
+              return sortCartMemberVouchers(updatedManual);
             }
 
-            setVoucherSelectionMode(bestVoucher ? "auto" : null);
+            setVoucherSelectionMode(bestVouchers.length > 0 ? "auto" : null);
             manualVoucherSignatureRef.current = "";
-            return bestVoucher ? toAppliedVoucher(bestVoucher) : null;
+            return bestVouchers.map(toAppliedVoucher);
           });
           return;
         }
 
-        setVoucherSelectionMode(bestVoucher ? "auto" : null);
-        setMemberVoucher(bestVoucher ? toAppliedVoucher(bestVoucher) : null);
+        setVoucherSelectionMode(bestVouchers.length > 0 ? "auto" : null);
+        setMemberVouchers(bestVouchers.map(toAppliedVoucher));
       })
       .catch(() => {
         if (!active) return;
@@ -789,6 +851,8 @@ export default function CartPage() {
               <VoucherClaimBar
                 isLoggedIn={isLoggedIn}
                 memberVoucher={memberVoucher}
+                memberVoucherCount={memberVouchers.length}
+                memberVoucherSummary={memberVoucherSummaryText}
                 previewVoucher={memberVoucherPreview}
                 onClick={() => setVoucherSheetOpen(true)}
               />
@@ -935,7 +999,7 @@ export default function CartPage() {
                   <span className="font-semibold">−{formatRupiah(voucherDiscount)}</span>
                 </div>
               )}
-              {memberVoucher?.kind === "FREE_SHIPPING" && (
+              {stickyVoucherFreeShippingText && (
                 <div className="flex items-center justify-between text-sm text-emerald-700">
                   <span className="inline-flex rounded-full bg-emerald-50 px-2 py-1 text-xs font-black ring-1 ring-emerald-100">
                     Gratis ongkir saat checkout
@@ -984,14 +1048,22 @@ export default function CartPage() {
         onClose={() => setVoucherSheetOpen(false)}
         isLoggedIn={isLoggedIn}
         subtotal={selectedSubtotal}
-        selectedMemberCode={memberVoucher?.code ?? null}
+        selectedMemberCodes={selectedMemberCodes}
         onSelectMember={(code, discount, description, kind) => {
           setVoucherSelectionMode("manual");
           manualVoucherSignatureRef.current = selectedVoucherSignature;
           if (!code) {
-            setMemberVoucher(null);
+            setMemberVouchers([]);
           } else {
-            setMemberVoucher({ code, discount, description, kind });
+            setMemberVouchers((current) => {
+              const slot = cartVoucherSlot(kind);
+              const exists = current.some((voucher) => voucher.code === code);
+              if (exists) return current.filter((voucher) => voucher.code !== code);
+              return sortCartMemberVouchers([
+                ...current.filter((voucher) => cartVoucherSlot(voucher.kind) !== slot),
+                { code, discount, description, kind },
+              ]);
+            });
           }
         }}
         onRequireLogin={() => {
@@ -1051,7 +1123,7 @@ export default function CartPage() {
                   <p className="text-[11px] font-semibold text-gray-500">
                     {voucherDiscount > 0
                       ? `Hemat ${formatRupiah(voucherDiscount)} dgn voucher`
-                      : memberVoucher?.kind === "FREE_SHIPPING"
+                      : stickyVoucherFreeShippingText
                       ? "Gratis ongkir saat checkout"
                       : "Total"}
                   </p>

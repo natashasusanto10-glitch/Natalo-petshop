@@ -8,6 +8,11 @@
 
 import 'product.dart';
 
+// Re-export sister models — beberapa code lain import `member_profile.dart`
+// dan expect MemberAddress + MemberVoucher juga tersedia dari sana.
+export 'member_address.dart';
+export 'member_voucher.dart';
+
 class MemberProfile {
   final String id;
   final String name;
@@ -36,6 +41,13 @@ class MemberProfile {
       role: json['role'] as String? ?? 'CUSTOMER',
       birthDate: _parseDate(json['birthDate']),
     );
+  }
+
+  /// Alias `fromJson` — beberapa code (auth_service) pakai `fromApiJson`
+  /// karena API response wrapped di `{user: {...}}`. Auto-unwrap kalau ada.
+  factory MemberProfile.fromApiJson(Map<String, dynamic> json) {
+    final raw = (json['user'] ?? json['data'] ?? json) as Map<String, dynamic>;
+    return MemberProfile.fromJson(raw);
   }
 
   Map<String, dynamic> toJson() => {

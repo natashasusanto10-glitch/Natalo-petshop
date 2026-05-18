@@ -2,6 +2,30 @@ import 'package:flutter/material.dart';
 
 import 'natalo_colors.dart';
 
+/// Reusable text style constants — dipakai di sticky_add_to_cart_bar dll.
+class NataloTextStyles {
+  NataloTextStyles._();
+
+  static const TextStyle productPrice = TextStyle(
+    color: NataloColors.primary,
+    fontWeight: FontWeight.w900,
+    fontSize: 16,
+    height: 1.2,
+  );
+
+  static const TextStyle productTitle = TextStyle(
+    fontWeight: FontWeight.w800,
+    fontSize: 14,
+    height: 1.3,
+  );
+
+  static const TextStyle caption = TextStyle(
+    color: NataloColors.textSecondary,
+    fontWeight: FontWeight.w500,
+    fontSize: 12,
+  );
+}
+
 /// Material 3 themes Natalo Petshop. NataloTheme.lightTheme + .darkTheme
 /// dipasang di MaterialApp di main.dart, switching via appSettingsStore.
 class NataloTheme {

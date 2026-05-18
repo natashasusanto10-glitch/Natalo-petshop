@@ -13,6 +13,10 @@ class ApiConfig {
     defaultValue: 'https://www.natalopetshop.com',
   );
 
+  /// Alias `apiBaseUrl` — beberapa code pakai `baseUrl`. Keep both untuk
+  /// backward compat. Sama nilainya.
+  static const String baseUrl = apiBaseUrl;
+
   /// URL publik website — dipakai untuk share link produk, deep link, dll.
   /// Biasanya sama dengan apiBaseUrl di production.
   static const String publicSiteUrl = String.fromEnvironment(

@@ -23,7 +23,7 @@ import {
   getVoucherDisabledReason,
   shouldHideVoucher,
 } from "@/lib/voucher-helpers";
-import { isFreeShippingVoucher } from "@/lib/voucher-kind";
+import { collectOrderVoucherCodes, isFreeShippingVoucher } from "@/lib/voucher-kind";
 
 export async function GET(request: NextRequest) {
   const session = await getSession("CUSTOMER");
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
   const now = new Date();
 
   // Fetch voucher CUSTOMER yg user-nya berhak (publik atau owned).
-  const [vouchers, userUsedOrders] = await Promise.all([
+  const [vouchers, userUsedOrders, user, successfulOrderCount] = await Promise.all([
     prisma.voucher.findMany({
       where: {
         sourceType: "CUSTOMER",
@@ -57,33 +57,63 @@ export async function GET(request: NextRequest) {
     prisma.order.findMany({
       where: {
         userId: session.sub,
-        OR: [{ voucherCode: { not: null } }, { manualVoucherCode: { not: null } }],
+        OR: [
+          { voucherCode: { not: null } },
+          { productVoucherCode: { not: null } },
+          { shippingVoucherCode: { not: null } },
+          { loyaltyVoucherCode: { not: null } },
+          { manualVoucherCode: { not: null } },
+        ],
         // Order CANCELLED/REFUNDED idealnya tidak count sebagai "sudah
         // pakai" — tapi untuk simplicity & strict-safety, semua order
         // count. Kalau user butuh re-claim setelah cancel, admin bisa
         // unset code di order.
       },
-      select: { voucherCode: true, manualVoucherCode: true },
+      select: {
+        voucherCode: true,
+        productVoucherCode: true,
+        shippingVoucherCode: true,
+        loyaltyVoucherCode: true,
+        manualVoucherCode: true,
+      },
+    }),
+    prisma.user.findUnique({
+      where: { id: session.sub },
+      select: { id: true, createdAt: true },
+    }),
+    prisma.order.count({
+      where: {
+        userId: session.sub,
+        status: { notIn: ["CANCELLED", "REFUNDED"] },
+      },
     }),
   ]);
 
-  const userUsedCodes = new Set<string>();
+  const userUsedCodes = new Map<string, number>();
   for (const ord of userUsedOrders) {
-    if (ord.voucherCode) userUsedCodes.add(ord.voucherCode);
-    if (ord.manualVoucherCode) userUsedCodes.add(ord.manualVoucherCode);
+    for (const code of collectOrderVoucherCodes(ord)) {
+      userUsedCodes.set(code, (userUsedCodes.get(code) ?? 0) + 1);
+    }
   }
 
-  const userCtx = { isLoggedIn: true, userId: session.sub };
+  const userCtx = {
+    isLoggedIn: true,
+    userId: session.sub,
+    createdAt: user?.createdAt ?? null,
+    successfulOrderCount,
+  };
   const items: Array<{
     id: string;
     code: string;
     description: string | null;
     discountPercent: number | null;
     discountAmount: number | null;
+    maxDiscountAmount: number | null;
     minimumOrder: number;
     expiresAt: Date | null;
     sourceType: "CUSTOMER" | "SELLER_MANUAL";
     kind: "PRODUCT_DISCOUNT" | "FREE_SHIPPING" | "LOYALTY_CLAIM" | "MANUAL_PRIVATE";
+    targetUser: "ALL_MEMBERS" | "NEW_MEMBER";
     discount: number;
     applicable: boolean;
     disabledReason: string | null;
@@ -106,10 +136,12 @@ export async function GET(request: NextRequest) {
       description: v.description,
       discountPercent: v.discountPercent,
       discountAmount: v.discountAmount,
+      maxDiscountAmount: v.maxDiscountAmount,
       minimumOrder: v.minimumOrder,
       expiresAt: v.expiresAt,
       sourceType: v.sourceType,
       kind: v.kind,
+      targetUser: v.targetUser,
       discount,
       applicable,
       disabledReason:

@@ -33,9 +33,14 @@ export type AppliedVoucher = {
   autoApplied?: boolean;
 };
 
+export type VoucherSlot = "product" | "shipping" | "loyalty" | "manual";
+
 type Props = {
   /** Voucher CUSTOMER (publik / milik user) yg sedang ter-apply */
   applied: AppliedVoucher | null;
+  appliedProduct?: AppliedVoucher | null;
+  appliedShipping?: AppliedVoucher | null;
+  appliedLoyalty?: AppliedVoucher | null;
   /** Voucher SELLER_MANUAL yg sedang ter-apply (slot terpisah) */
   manualApplied?: AppliedVoucher | null;
   /** Daftar voucher CUSTOMER yg eligible — SELLER_MANUAL tidak muncul di sini */
@@ -45,7 +50,7 @@ type Props = {
   invalidatedMessage?: string | null;
   loading?: boolean;
   onApply: (code: string, discount: number, description: string, kind?: EligibleVoucher["kind"]) => void;
-  onRemove: () => void;
+  onRemove: (slot?: Exclude<VoucherSlot, "manual">) => void;
   /** Lepas voucher manual (slot SELLER_MANUAL) */
   onRemoveManual?: () => void;
   /** Fallback: input kode manual (untuk voucher SELLER_MANUAL atau CUSTOMER) */
@@ -66,8 +71,25 @@ function describeMinimum(v: { minimumOrder: number }) {
     : "Tanpa minimum belanja";
 }
 
+function voucherSlotForKind(kind?: string | null): VoucherSlot {
+  if (kind === "FREE_SHIPPING") return "shipping";
+  if (kind === "LOYALTY_CLAIM") return "loyalty";
+  if (kind === "MANUAL_PRIVATE") return "manual";
+  return "product";
+}
+
+function slotLabel(slot: VoucherSlot) {
+  if (slot === "shipping") return "Gratis Ongkir";
+  if (slot === "loyalty") return "Loyalty Point";
+  if (slot === "manual") return "Manual / Private";
+  return "Diskon Produk";
+}
+
 export function CheckoutVoucherCard({
   applied,
+  appliedProduct,
+  appliedShipping,
+  appliedLoyalty,
   manualApplied = null,
   eligible,
   ineligible,
@@ -225,11 +247,17 @@ export function CheckoutVoucherCard({
 
   const eligibleCount = eligible.length;
   const hasAnyMine = eligibleCount > 0 || ineligible.length > 0;
+  const memberApplied = [
+    { slot: "product" as const, label: slotLabel("product"), voucher: appliedProduct ?? applied },
+    { slot: "shipping" as const, label: slotLabel("shipping"), voucher: appliedShipping ?? null },
+    { slot: "loyalty" as const, label: slotLabel("loyalty"), voucher: appliedLoyalty ?? null },
+  ].filter((item) => item.voucher);
+  const hasMemberApplied = memberApplied.length > 0;
 
   // Render row card sesuai state
   const card = (() => {
     // STATE A: voucher terpakai
-    if (applied) {
+    if (hasMemberApplied) {
       return (
         <button
           type="button"
@@ -244,11 +272,11 @@ export function CheckoutVoucherCard({
           </span>
           <span className="min-w-0 flex-1">
             <span className="block text-sm font-extrabold text-zinc-950">
-              Voucher member terpakai
+              {memberApplied.length} voucher member terpakai
             </span>
             <span className="mt-0.5 block truncate text-xs font-semibold text-natalo-700">
-              {describeBenefit(applied)}
-              {applied.autoApplied && (
+              {memberApplied.map((item) => item.label).join(" · ")}
+              {memberApplied.some((item) => item.voucher?.autoApplied) && (
                 <span className="ml-2 rounded-full bg-natalo-100 px-1.5 py-0.5 text-[10px] font-bold text-natalo-800">
                   Otomatis
                 </span>
@@ -397,7 +425,7 @@ export function CheckoutVoucherCard({
 
   // Helper untuk render label customer slot kalau applied — tambah label
   // "Voucher Pembeli" supaya terlihat distinct dari slot manual penjual.
-  const showSlotLabels = applied != null && manualApplied != null;
+  const showSlotLabels = hasMemberApplied && manualApplied != null;
 
   return (
     <div>
@@ -412,9 +440,9 @@ export function CheckoutVoucherCard({
       {manualCard}
 
       {/* Info text aturan voucher — match spec exactly */}
-      {!applied && !manualApplied && (
+      {!hasMemberApplied && !manualApplied && (
         <p className="mt-2 text-[11px] text-zinc-500">
-          Maksimal 2 voucher: 1 voucher pembeli + 1 voucher penjual melalui kode manual
+          Maksimal 4 voucher: diskon produk + gratis ongkir + loyalty point + kode manual/private
         </p>
       )}
 
@@ -532,7 +560,7 @@ export function CheckoutVoucherCard({
                       ) : (
                         <ul className="mt-2 space-y-2">
                           {eligible.map((v) => {
-                            const isApplied = applied?.code === v.code;
+                            const isApplied = memberApplied.some((item) => item.voucher?.code === v.code);
                             return (
                               <li
                                 key={v.code}
@@ -547,7 +575,7 @@ export function CheckoutVoucherCard({
                                     {describeBenefit(v)}
                                   </p>
                                   <p className="mt-0.5 text-xs font-semibold text-natalo-700">
-                                    Eksklusif Member Natalo
+                                    {slotLabel(voucherSlotForKind(v.kind))}
                                   </p>
                                   <p className="mt-0.5 text-[11px] text-zinc-500">
                                     {describeMinimum(v)}
@@ -558,7 +586,6 @@ export function CheckoutVoucherCard({
                                   disabled={isApplied}
                                   onClick={() => {
                                     onApply(v.code, v.discount, v.description ?? describeBenefit(v), v.kind);
-                                    setOpen(false);
                                   }}
                                   className={`shrink-0 px-4 text-sm font-extrabold transition ${
                                     isApplied
@@ -587,7 +614,7 @@ export function CheckoutVoucherCard({
                               className="rounded-xl border border-zinc-200 bg-zinc-50/60 px-3 py-3"
                             >
                               <p className="text-sm font-bold text-zinc-700">
-                                Voucher Member Natalo
+                                {slotLabel(voucherSlotForKind(v.kind))}
                               </p>
                               <p className="mt-0.5 text-xs text-zinc-500">
                                 {describeMinimum(v)}
@@ -602,18 +629,18 @@ export function CheckoutVoucherCard({
                     )}
 
                     <div className="space-y-2 border-t border-zinc-100 pt-4">
-                      {applied && (
+                      {memberApplied.map((item) => (
                         <button
+                          key={item.slot}
                           type="button"
                           onClick={() => {
-                            onRemove();
-                            setOpen(false);
+                            onRemove(item.slot);
                           }}
                           className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-sm font-bold text-zinc-700 transition active:bg-zinc-50"
                         >
-                          Lepas voucher member
+                          Lepas {item.label}
                         </button>
-                      )}
+                      ))}
 
                       <button
                         type="button"

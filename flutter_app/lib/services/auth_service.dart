@@ -21,7 +21,14 @@ class AuthService {
     }
 
     try {
-      return await memberService.fetchProfile();
+      final profile = await memberService.fetchProfile();
+      if (profile == null) {
+        throw const ApiException(
+          'Gagal load profile setelah login.',
+          statusCode: 500,
+        );
+      }
+      return profile;
     } on ApiException catch (error) {
       if (error.statusCode == 401) {
         throw const ApiException(

@@ -50,6 +50,11 @@ enum VoucherKind {
   MANUAL_PRIVATE
 }
 
+enum VoucherTargetUser {
+  ALL_MEMBERS
+  NEW_MEMBER
+}
+
 model User {
   id                  String          @id @default(cuid())
   name                String
@@ -260,8 +265,11 @@ model Order {
   paymentProofUrl      String?
   manualBank           String?
   uniqueCode           Int?
-  voucherCode          String? // Customer voucher (CUSTOMER source type)
-  manualVoucherCode    String? // Seller manual voucher (SELLER_MANUAL)
+  voucherCode          String? // Legacy customer voucher field
+  productVoucherCode   String? // PRODUCT_DISCOUNT slot
+  shippingVoucherCode  String? // FREE_SHIPPING slot
+  loyaltyVoucherCode   String? // LOYALTY_CLAIM slot
+  manualVoucherCode    String? // MANUAL_PRIVATE / SELLER_MANUAL slot
   notes                String?
   items                OrderItem[]
   createdAt            DateTime        @default(now())
@@ -295,6 +303,7 @@ model Voucher {
   description     String?
   discountPercent Int?
   discountAmount  Int?
+  maxDiscountAmount Int?
   minimumOrder    Int       @default(0)
   maxUsage        Int?
   usedCount       Int       @default(0)
@@ -311,11 +320,18 @@ model Voucher {
   // FREE_SHIPPING, dan MANUAL_PRIVATE. LOYALTY_CLAIM dibuat otomatis saat
   // user menukar loyalty point.
   kind            VoucherKind @default(PRODUCT_DISCOUNT)
+  // Voucher member baru tetap PRODUCT_DISCOUNT. Field ini hanya menentukan
+  // eligibility pengguna.
+  targetUser      VoucherTargetUser @default(ALL_MEMBERS)
+  newMemberMaxAccountAgeDays Int?
+  newMemberRequireNoSuccessfulOrder Boolean @default(false)
+  usageLimitPerUser Int @default(1)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   @@index([userId])
   @@index([kind])
+  @@index([targetUser])
 }
 
 model PushSubscription {

@@ -37,6 +37,13 @@ class MotionPrefs extends ChangeNotifier {
     final osReduce = MediaQuery.disableAnimationsOf(context);
     return osReduce || motionPrefs._userReduce;
   }
+
+  /// Return `Duration.zero` kalau reduce-motion aktif, else return [base].
+  /// Dipakai di AnimatedContainer.duration / TweenAnimationBuilder.duration:
+  ///   `duration: MotionPrefs.effective(context, Duration(ms: 240))`.
+  static Duration effective(BuildContext context, Duration base) {
+    return shouldReduce(context) ? Duration.zero : base;
+  }
 }
 
 /// Singleton instance — initialized di main() sebelum runApp.

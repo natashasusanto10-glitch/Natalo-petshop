@@ -10,7 +10,10 @@ class CartService {
     if (rawItems is! List) return [];
 
     return rawItems.whereType<Map<String, dynamic>>().map((item) {
-      final price = _asDouble(item['price']);
+      // Product.price = int (rupiah). Cart endpoint kadang return double
+      // (legacy formatting). Truncate ke int aman karena harga rupiah
+      // tidak punya desimal.
+      final price = _asDouble(item['price']).toInt();
       final product = Product(
         id: (item['productId'] ?? '').toString(),
         slug: (item['productId'] ?? '').toString(),

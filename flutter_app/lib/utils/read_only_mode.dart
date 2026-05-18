@@ -14,6 +14,8 @@ class ReadOnlyMode extends ChangeNotifier {
   bool _initialized = false;
 
   bool get enabled => _enabled;
+  /// Alias `enabled` — beberapa code pakai `isReadOnly`.
+  bool get isReadOnly => _enabled;
   bool get initialized => _initialized;
 
   Future<void> initialize() async {
@@ -38,6 +40,9 @@ class ReadOnlyMode extends ChangeNotifier {
       throw ReadOnlyModeException(operation);
     }
   }
+
+  /// Alias `guard` — beberapa code pakai `assertWritable`.
+  void assertWritable([String? operation]) => guard(operation);
 }
 
 class ReadOnlyModeException implements Exception {

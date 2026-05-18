@@ -8,6 +8,7 @@ class NataloColors {
   // ── Brand primary (biru Natalo) ──
   static const Color primary = Color(0xFF1E5FBF);
   static const Color primaryDark = Color(0xFF0B7FEA);
+  static const Color primaryLight = Color(0xFF60A5FA);
   static const Color accent = Color(0xFFF2A93B);
 
   // ── Surfaces (light) ──
@@ -39,4 +40,16 @@ class NataloColors {
   // ── Feed (immersive black) ──
   static const Color feedBlack = Color(0xFF000000);
   static const Color feedOverlay = Color(0xCC000000);
+  /// Alias `feedBlack` — beberapa code pakai `feedDark`.
+  static const Color feedDark = feedBlack;
+  /// Muted text di feed (dark theme reels).
+  static const Color feedTextMuted = Color(0xFFB0B7C3);
+
+  // ── Aliases untuk backward-compat ──
+  /// Alias `textTertiary`.
+  static const Color textMuted = textTertiary;
+  /// Alias `border`.
+  static const Color divider = border;
+  /// Alias `primary` — beberapa code pakai `nataloBlue` literal name.
+  static const Color nataloBlue = primary;
 }

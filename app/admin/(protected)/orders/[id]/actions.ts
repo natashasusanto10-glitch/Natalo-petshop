@@ -319,9 +319,13 @@ export async function markAsCancelled(orderId: string) {
     // di app/api/orders/route.ts. Sebelumnya admin-cancel TIDAK decrement
     // usedCount → voucher stuck di "consumed", dan user tidak bisa pakai
     // ulang (atau voucher kuota habis padahal order yg pakai sudah cancel).
-    const voucherCodes = [order.voucherCode, order.manualVoucherCode].filter(
-      (code): code is string => Boolean(code),
-    );
+    const voucherCodes = [...new Set([
+      order.voucherCode,
+      order.productVoucherCode,
+      order.shippingVoucherCode,
+      order.loyaltyVoucherCode,
+      order.manualVoucherCode,
+    ].filter((code): code is string => Boolean(code)))];
     if (voucherCodes.length > 0) {
       await tx.voucher.updateMany({
         where: { code: { in: voucherCodes }, usedCount: { gt: 0 } },

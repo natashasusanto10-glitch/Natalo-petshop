@@ -18,7 +18,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { isFreeShippingVoucher } from "@/lib/voucher-kind";
+import { collectOrderVoucherCodes, isFreeShippingVoucher } from "@/lib/voucher-kind";
 
 function calcDiscount(
   subtotal: number,
@@ -57,16 +57,27 @@ export async function GET(request: NextRequest) {
     prisma.order.findMany({
       where: {
         userId: session.sub,
-        OR: [{ voucherCode: { not: null } }, { manualVoucherCode: { not: null } }],
+        OR: [
+          { voucherCode: { not: null } },
+          { productVoucherCode: { not: null } },
+          { shippingVoucherCode: { not: null } },
+          { loyaltyVoucherCode: { not: null } },
+          { manualVoucherCode: { not: null } },
+        ],
       },
-      select: { voucherCode: true, manualVoucherCode: true },
+      select: {
+        voucherCode: true,
+        productVoucherCode: true,
+        shippingVoucherCode: true,
+        loyaltyVoucherCode: true,
+        manualVoucherCode: true,
+      },
     }),
   ]);
 
   const usedCodes = new Set<string>();
   for (const order of usedOrders) {
-    if (order.voucherCode) usedCodes.add(order.voucherCode);
-    if (order.manualVoucherCode) usedCodes.add(order.manualVoucherCode);
+    for (const code of collectOrderVoucherCodes(order)) usedCodes.add(code);
   }
 
   // Filter usedCount < maxUsage (column-to-column gak bisa di Prisma where)
