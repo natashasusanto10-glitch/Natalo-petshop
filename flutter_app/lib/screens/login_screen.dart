@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
+import '../state/cart_store.dart';
 import '../state/member_store.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/haptics.dart';
@@ -47,6 +50,10 @@ class _LoginScreenState extends State<LoginScreen> {
         password: _passwordController.text,
       );
       await memberStore.setSession(profile: profile);
+      // Pull cart dari server (kalau ada item dari device lain).
+      // Fire-and-forget — tidak block UI navigation, sync di background.
+      // Local cart yang ada di-overwrite kalau server punya state.
+      unawaited(cartStore.loadFromServer());
       if (!mounted) return;
       AppToast.show(context, 'Selamat datang, ${profile.name}!');
       _continueAfterLogin();

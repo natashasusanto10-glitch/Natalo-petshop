@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -5,17 +6,29 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/cart_item.dart';
 import '../models/product.dart';
+import '../services/cart_service.dart';
 import '../utils/read_only_mode.dart';
+import 'member_store.dart';
 
-/// Cart state store — offline-first. Item disimpan ke SharedPreferences supaya
-/// survive app restart. Sync ke server (`/api/cart`) belum di-implement —
-/// stub `syncToServer()` no-op untuk sekarang.
+/// Cart state store — offline-first dengan optional remote sync.
+///
+/// Local state persisted ke SharedPreferences (survive app restart).
+/// Saat user login + online, mutation cart auto-sync ke server via debounced
+/// `PUT /api/cart` (lihat [_scheduleRemoteSync]) supaya cart ke-share antar
+/// device dan persist saat user pindah platform (Flutter ⇄ PWA web).
+///
+/// Debounce 800ms supaya tidak spam server saat user rapid-fire qty change.
+/// Local mutation langsung notifyListeners + persist disk — server sync
+/// fire-and-forget background, gagal silent (cart tetap consistent di lokal).
 class CartStore extends ChangeNotifier {
   CartStore._();
 
   static const _key = 'cart_items_v2';
+  static const Duration _remoteSyncDebounce = Duration(milliseconds: 800);
 
   final Map<String, CartItem> _items = {};
+
+  Timer? _remoteSyncTimer;
 
   List<CartItem> get items => _items.values.toList(growable: false);
   int get count => _items.values.fold(0, (sum, it) => sum + it.quantity);
@@ -43,6 +56,31 @@ class CartStore extends ChangeNotifier {
       notifyListeners();
     } catch (_) {
       // Disk corrupt / format lama — silent reset.
+    }
+  }
+
+  /// Pull cart dari server lalu replace local state. Dipanggil saat user
+  /// login (memberStore.setSession callback) supaya cart dari device lain
+  /// muncul. Local state di-overwrite oleh server (server = source of truth
+  /// untuk multi-device sync).
+  Future<void> loadFromServer() async {
+    if (!memberStore.isLoggedIn) return;
+    try {
+      final remoteItems = await cartService.fetchCart();
+      _items.clear();
+      for (final item in remoteItems) {
+        _items[item.key] = item;
+      }
+      notifyListeners();
+      await _persist();
+      if (kDebugMode) {
+        debugPrint('[CartStore.loadFromServer] OK — ${remoteItems.length} items');
+      }
+    } catch (e) {
+      // Server unreachable atau auth fail → tetap pakai local state.
+      if (kDebugMode) {
+        debugPrint('[CartStore.loadFromServer] failed: $e');
+      }
     }
   }
 
@@ -85,6 +123,7 @@ class CartStore extends ChangeNotifier {
         : existing.copyWith(quantity: existing.quantity + item.quantity);
     notifyListeners();
     await _persist();
+    _scheduleRemoteSync();
   }
 
   Future<void> updateQuantity(String key, int quantity) async {
@@ -98,6 +137,7 @@ class CartStore extends ChangeNotifier {
     }
     notifyListeners();
     await _persist();
+    _scheduleRemoteSync();
   }
 
   Future<void> remove(String key) async {
@@ -105,6 +145,7 @@ class CartStore extends ChangeNotifier {
     if (_items.remove(key) != null) {
       notifyListeners();
       await _persist();
+      _scheduleRemoteSync();
     }
   }
 
@@ -127,6 +168,7 @@ class CartStore extends ChangeNotifier {
     }
     notifyListeners();
     await _persist();
+    _scheduleRemoteSync();
   }
 
   Future<void> clear() async {
@@ -135,14 +177,49 @@ class CartStore extends ChangeNotifier {
     _items.clear();
     notifyListeners();
     await _persist();
+    _scheduleRemoteSync();
   }
 
-  /// Sync local cart ke server (`/api/cart`). Stub — TODO real implementation
-  /// setelah backend auth integration ready.
+  /// Sync local cart ke server lewat `PUT /api/cart`.
+  ///
+  /// Hanya jalan kalau user login. Gagal silent — local state tetap source
+  /// of truth, retry otomatis di mutation berikutnya. Tidak block UI: caller
+  /// bisa fire-and-forget.
+  ///
+  /// Untuk batch mutation rapid (mis. user tap +/- qty cepat), pakai
+  /// [_scheduleRemoteSync] yang debounce 800ms instead of langsung call ini.
   Future<void> syncToServer() async {
-    if (kDebugMode) {
-      debugPrint('[CartStore.syncToServer] stub — ${_items.length} items');
+    if (!memberStore.isLoggedIn) {
+      if (kDebugMode) {
+        debugPrint('[CartStore.syncToServer] skip — not logged in');
+      }
+      return;
     }
+    try {
+      await cartService.replaceCart(_items.values.toList(growable: false));
+      if (kDebugMode) {
+        debugPrint('[CartStore.syncToServer] OK — ${_items.length} items');
+      }
+    } catch (e) {
+      // Network / 500 — silent. Local state tetap valid, retry next mutation.
+      if (kDebugMode) {
+        debugPrint('[CartStore.syncToServer] failed: $e');
+      }
+    }
+  }
+
+  /// Schedule debounced remote sync — dipanggil setelah tiap mutation.
+  /// Reset timer kalau ada mutation baru dalam 800ms, supaya rapid qty
+  /// changes (user tap +/- 5x cepat) cuma trigger 1 server call di akhir.
+  void _scheduleRemoteSync() {
+    _remoteSyncTimer?.cancel();
+    _remoteSyncTimer = Timer(_remoteSyncDebounce, syncToServer);
+  }
+
+  @override
+  void dispose() {
+    _remoteSyncTimer?.cancel();
+    super.dispose();
   }
 }
 
