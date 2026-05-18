@@ -16,11 +16,11 @@ workflows:
       flutter: stable
       xcode: latest
       cocoapods: default
-      # Code signing — managed otomatis oleh Codemagic via App Store Connect
-      # API key integration. Tidak perlu upload .p12 / .mobileprovision manual.
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.natalo.petshop
+      # Code signing handled explicitly via script step di bawah —
+      # `app-store-connect fetch-signing-files --create`. Pre-build
+      # `ios_signing` block dinonaktifkan supaya error spesifik dari
+      # Apple API muncul di log script step (bukan di-summarize jadi
+      # "No matching profiles found" yang generic).
       vars:
         # Working dir untuk semua step Flutter. Repo root berisi Next.js +
         # Capacitor + folder flutter_app/, jadi semua command flutter harus
@@ -68,14 +68,33 @@ workflows:
           # mungkin pernah di-upload manual via Xcode.
           agvtool new-version -all $(($BUILD_NUMBER + 1))
 
-      - name: Fetch signing files (Runner + entitlements check)
+      - name: Diagnostic — list certs + profiles at start
         script: |
-          # Bundle ID Runner — match dengan ios_signing.bundle_identifier.
-          # --create akan auto-bikin App ID + provisioning kalau belum ada
-          # di Apple Developer portal (butuh Admin role di team).
+          # Cetak state Apple Developer Portal sebelum signing.
+          # Pakai untuk debug "No matching profiles" — kita tahu pasti
+          # cert + profile apa yang ada (atau tidak) di Apple side.
+          echo "=== Existing certificates ==="
+          app-store-connect certificates list || true
+          echo ""
+          echo "=== Existing profiles for com.natalo.petshop ==="
+          app-store-connect profiles list --bundle-id-identifier com.natalo.petshop || true
+          echo ""
+          echo "=== App IDs (Bundle IDs) at Apple Developer ==="
+          app-store-connect bundle-ids list | grep -A2 "com.natalo.petshop" || true
+
+      - name: Fetch signing files (verbose)
+        script: |
+          # --verbose supaya Apple API error response muncul lengkap di log
+          # (bukan di-summarize ke "No matching profiles found").
+          # --create-resource-types CERTIFICATE PROFILE explicit supaya
+          # kedua-duanya boleh dibuat kalau belum ada.
+          # --certificate-key-environment-variable opsional — Codemagic
+          # auto-handle private key di managed keychain.
           app-store-connect fetch-signing-files com.natalo.petshop \
+            --platform IOS \
             --type IOS_APP_STORE \
-            --create
+            --create \
+            --verbose
 
       - name: Add certs to keychain
         script: keychain add-certificates
