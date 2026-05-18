@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/natalo_colors.dart';
 import '../utils/haptics.dart';
 
-/// Preferensi Notifikasi — toggle push notification per kategori.
-/// Stub local state — TODO: persist ke SharedPreferences + sync FCM topic.
+/// Preferensi Notifikasi — toggle push notification per kategori, persist
+/// ke SharedPreferences supaya survive app restart.
+///
+/// TODO future: sync ke FCM topic subscribe/unsubscribe + backend
+/// `PATCH /api/member/notification-preferences` saat endpoint ready.
 class NotificationPreferencesScreen extends StatefulWidget {
   const NotificationPreferencesScreen({super.key});
 
@@ -15,12 +19,56 @@ class NotificationPreferencesScreen extends StatefulWidget {
 
 class _NotificationPreferencesScreenState
     extends State<NotificationPreferencesScreen> {
+  // Pref keys — versioned supaya safe untuk schema migration nanti.
+  static const _kPrefix = 'notif_pref_v1_';
+  static const _kOrderUpdates = '${_kPrefix}order_updates';
+  static const _kPromoVoucher = '${_kPrefix}promo_voucher';
+  static const _kNewProduct = '${_kPrefix}new_product';
+  static const _kLoyaltyPoints = '${_kPrefix}loyalty_points';
+  static const _kChatMessages = '${_kPrefix}chat_messages';
+  static const _kFeedActivity = '${_kPrefix}feed_activity';
+
   bool _orderUpdates = true;
   bool _promoVoucher = true;
   bool _newProduct = false;
   bool _loyaltyPoints = true;
   bool _chatMessages = true;
   bool _feedActivity = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPreferences();
+  }
+
+  Future<void> _loadPreferences() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      setState(() {
+        // Default true untuk notif penting (order, voucher, loyalty, chat).
+        // Default false untuk discoverable (new product, feed activity).
+        _orderUpdates = prefs.getBool(_kOrderUpdates) ?? true;
+        _promoVoucher = prefs.getBool(_kPromoVoucher) ?? true;
+        _newProduct = prefs.getBool(_kNewProduct) ?? false;
+        _loyaltyPoints = prefs.getBool(_kLoyaltyPoints) ?? true;
+        _chatMessages = prefs.getBool(_kChatMessages) ?? true;
+        _feedActivity = prefs.getBool(_kFeedActivity) ?? false;
+      });
+    } catch (_) {
+      // Disk error — pakai default, lanjut tetap render.
+    }
+  }
+
+  Future<void> _savePref(String key, bool value) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(key, value);
+    } catch (_) {
+      // Silent. UI state sudah update via setState — disk fail nanti hilang
+      // saat restart, user bisa toggle ulang. Tidak block flow.
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -41,7 +89,10 @@ class _NotificationPreferencesScreenState
             title: 'Update Status Pesanan',
             subtitle: 'PAID, DIKIRIM, SAMPAI, dst.',
             value: _orderUpdates,
-            onChanged: (v) => setState(() => _orderUpdates = v),
+            onChanged: (v) {
+              setState(() => _orderUpdates = v);
+              _savePref(_kOrderUpdates, v);
+            },
           ),
           _ToggleTile(
             icon: Icons.chat_bubble_outline_rounded,
@@ -49,7 +100,10 @@ class _NotificationPreferencesScreenState
             title: 'Chat dari Admin',
             subtitle: 'Balasan inquiry produk dari Natalo.',
             value: _chatMessages,
-            onChanged: (v) => setState(() => _chatMessages = v),
+            onChanged: (v) {
+              setState(() => _chatMessages = v);
+              _savePref(_kChatMessages, v);
+            },
           ),
           const SizedBox(height: 16),
           _SectionLabel('Promo & Voucher'),
@@ -59,7 +113,10 @@ class _NotificationPreferencesScreenState
             title: 'Voucher Baru',
             subtitle: 'Notif kalau ada voucher diskon atau gratis ongkir.',
             value: _promoVoucher,
-            onChanged: (v) => setState(() => _promoVoucher = v),
+            onChanged: (v) {
+              setState(() => _promoVoucher = v);
+              _savePref(_kPromoVoucher, v);
+            },
           ),
           _ToggleTile(
             icon: Icons.workspace_premium_outlined,
@@ -67,7 +124,10 @@ class _NotificationPreferencesScreenState
             title: 'Poin Loyalty',
             subtitle: 'Reminder poin earned + voucher hadiah ultah.',
             value: _loyaltyPoints,
-            onChanged: (v) => setState(() => _loyaltyPoints = v),
+            onChanged: (v) {
+              setState(() => _loyaltyPoints = v);
+              _savePref(_kLoyaltyPoints, v);
+            },
           ),
           const SizedBox(height: 16),
           _SectionLabel('Produk & Konten'),
@@ -77,7 +137,10 @@ class _NotificationPreferencesScreenState
             title: 'Produk Baru',
             subtitle: 'Notif rilis produk baru / restock favorit.',
             value: _newProduct,
-            onChanged: (v) => setState(() => _newProduct = v),
+            onChanged: (v) {
+              setState(() => _newProduct = v);
+              _savePref(_kNewProduct, v);
+            },
           ),
           _ToggleTile(
             icon: Icons.video_collection_outlined,
@@ -85,7 +148,10 @@ class _NotificationPreferencesScreenState
             title: 'Feed Activity',
             subtitle: 'Komentar atau like di postingan Anda.',
             value: _feedActivity,
-            onChanged: (v) => setState(() => _feedActivity = v),
+            onChanged: (v) {
+              setState(() => _feedActivity = v);
+              _savePref(_kFeedActivity, v);
+            },
           ),
           const SizedBox(height: 16),
           const Padding(
