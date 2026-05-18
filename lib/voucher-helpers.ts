@@ -266,6 +266,55 @@ export function calculateFinalDiscount(input: {
 }
 
 /**
+ * Cek apakah user sudah mencapai limit pemakaian voucher dalam periode.
+ *
+ * Berdasarkan `usageLimitPerUser` (jumlah max) + `usageLimitPeriod` (window):
+ * - NONE: no limit, selalu return false (boleh terus pakai)
+ * - LIFETIME: count semua order pakai voucher ini ever
+ * - DAY: count order 24 jam terakhir
+ * - WEEK: count order 7 hari terakhir
+ * - MONTH: count order 30 hari terakhir
+ *
+ * Return true kalau user **sudah reach limit** (tidak boleh pakai lagi).
+ *
+ * Dipakai di:
+ * - lib/product-vouchers.ts (filter eligible vouchers)
+ * - app/api/cart/vouchers/validate-private/route.ts
+ * - app/api/member/vouchers/route.ts
+ */
+export function isVoucherUsageLimitReached(
+  voucher: {
+    usageLimitPerUser?: number | null;
+    usageLimitPeriod?: VoucherUsageLimitPeriodValue | null;
+  },
+  userUsedOrders: Array<{ createdAt: Date }>,
+  now: Date = new Date(),
+): boolean {
+  const limit = voucher.usageLimitPerUser ?? 1;
+  const period = voucher.usageLimitPeriod ?? "LIFETIME";
+
+  if (period === "NONE" || limit <= 0) return false;
+
+  // Hitung cutoff timestamp untuk count orders dalam window.
+  let cutoff: Date | null = null;
+  if (period === "DAY") {
+    cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  } else if (period === "WEEK") {
+    cutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  } else if (period === "MONTH") {
+    cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  }
+  // LIFETIME → cutoff null → count semua
+
+  const cutoffMs = cutoff?.getTime();
+  const ordersInPeriod = cutoffMs !== undefined
+    ? userUsedOrders.filter((o) => o.createdAt.getTime() >= cutoffMs)
+    : userUsedOrders;
+
+  return ordersInPeriod.length >= limit;
+}
+
+/**
  * Format display label untuk limit pemakaian voucher per user.
  * Combine `usageLimitPerUser` count + `usageLimitPeriod` periode.
  *
