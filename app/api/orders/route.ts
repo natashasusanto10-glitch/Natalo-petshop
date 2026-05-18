@@ -11,6 +11,8 @@ import { SELF_PICKUP_METHOD, SELF_PICKUP_STORE } from "@/lib/self-pickup";
 import { sendAdminOrderCreated, sendOrderCreated } from "@/lib/whatsapp";
 import {
   calcVoucherScopedDiscount,
+  getNewMemberVoucherDisabledReason,
+  isVoucherUsageLimitReached,
   voucherScopeOf,
   voucherTypeOf,
   type VoucherTypeCode,
@@ -278,40 +280,48 @@ export async function POST(request: Request) {
     const originalShippingCost = isSelfPickup ? 0 : input.shippingCost;
     const productById = new Map(products.map((product) => [product.id, product]));
 
-    const userUsedCodeCounts = new Map<string, number>();
-    const bumpUsed = (code?: string | null) => {
-      if (!code) return;
-      userUsedCodeCounts.set(code, (userUsedCodeCounts.get(code) ?? 0) + 1);
+    const [userUsedOrders, voucherUser, successfulOrderCount] = await Promise.all([
+      prisma.order.findMany({
+        where: {
+          userId: effectiveUserId,
+          OR: [
+            { voucherCode: { not: null } },
+            { manualVoucherCode: { not: null } },
+            { freeShippingVoucherCode: { not: null } },
+            { productVoucherCode: { not: null } },
+            { shippingVoucherCode: { not: null } },
+            { loyaltyVoucherCode: { not: null } },
+            { privateVoucherCode: { not: null } },
+          ],
+        },
+        select: {
+          createdAt: true,
+          voucherCode: true,
+          manualVoucherCode: true,
+          freeShippingVoucherCode: true,
+          productVoucherCode: true,
+          shippingVoucherCode: true,
+          loyaltyVoucherCode: true,
+          privateVoucherCode: true,
+        },
+      }),
+      prisma.user.findUnique({
+        where: { id: effectiveUserId },
+        select: { id: true, createdAt: true },
+      }),
+      prisma.order.count({
+        where: {
+          userId: effectiveUserId,
+          status: { notIn: ["CANCELLED", "REFUNDED"] },
+        },
+      }),
+    ]);
+    const voucherUserCtx = {
+      isLoggedIn: Boolean(customerSession),
+      userId: customerSession?.sub ?? null,
+      createdAt: voucherUser?.createdAt ?? null,
+      successfulOrderCount,
     };
-    const userUsedOrders = await prisma.order.findMany({
-      where: {
-        userId: effectiveUserId,
-        OR: [
-          { voucherCode: { not: null } },
-          { manualVoucherCode: { not: null } },
-          { freeShippingVoucherCode: { not: null } },
-          { productVoucherCode: { not: null } },
-          { loyaltyVoucherCode: { not: null } },
-          { privateVoucherCode: { not: null } },
-        ],
-      },
-      select: {
-        voucherCode: true,
-        manualVoucherCode: true,
-        freeShippingVoucherCode: true,
-        productVoucherCode: true,
-        loyaltyVoucherCode: true,
-        privateVoucherCode: true,
-      },
-    });
-    for (const order of userUsedOrders) {
-      bumpUsed(order.voucherCode);
-      bumpUsed(order.manualVoucherCode);
-      bumpUsed(order.freeShippingVoucherCode);
-      bumpUsed(order.productVoucherCode);
-      bumpUsed(order.loyaltyVoucherCode);
-      bumpUsed(order.privateVoucherCode);
-    }
 
     type AppliedVoucher = {
       id: string;
@@ -365,10 +375,7 @@ export async function POST(request: Request) {
             : "Voucher tidak sesuai dengan slot yang dipilih.",
         );
       }
-      if (
-        (userUsedCodeCounts.get(voucher.code) ?? 0) >=
-        Math.max(1, voucher.usageLimitPerUser)
-      ) {
+      if (isVoucherUsageLimitReached(voucher, userUsedOrders, now)) {
         throw new VoucherValidationError("Kode voucher sudah pernah digunakan");
       }
       if (voucher.expiresAt && voucher.expiresAt <= now) {
@@ -376,6 +383,14 @@ export async function POST(request: Request) {
       }
       if (voucher.startsAt > now) {
         throw new VoucherValidationError("Voucher belum berlaku");
+      }
+      const newMemberReason = getNewMemberVoucherDisabledReason(
+        voucher,
+        voucherUserCtx,
+        now,
+      );
+      if (newMemberReason) {
+        throw new VoucherValidationError(newMemberReason);
       }
       if (voucher.maxUsage !== null && voucher.usedCount >= voucher.maxUsage) {
         throw new VoucherValidationError("Kuota voucher sudah habis");

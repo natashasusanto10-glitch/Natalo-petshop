@@ -62,10 +62,12 @@ export async function GET(request: NextRequest) {
         userId: session.sub,
         OR: [
           { voucherCode: { not: null } },
+          { freeShippingVoucherCode: { not: null } },
           { productVoucherCode: { not: null } },
           { shippingVoucherCode: { not: null } },
           { loyaltyVoucherCode: { not: null } },
           { manualVoucherCode: { not: null } },
+          { privateVoucherCode: { not: null } },
         ],
         // Order CANCELLED/REFUNDED idealnya tidak count sebagai "sudah
         // pakai" — tapi untuk simplicity & strict-safety, semua order
@@ -75,10 +77,12 @@ export async function GET(request: NextRequest) {
       select: {
         createdAt: true,
         voucherCode: true,
+        freeShippingVoucherCode: true,
         productVoucherCode: true,
         shippingVoucherCode: true,
         loyaltyVoucherCode: true,
         manualVoucherCode: true,
+        privateVoucherCode: true,
       },
     }),
     prisma.user.findUnique({

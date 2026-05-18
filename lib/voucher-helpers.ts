@@ -19,10 +19,12 @@ export type VoucherUsageLimitPeriodValue =
 export type VoucherUsageOrder = {
   createdAt: Date;
   voucherCode?: string | null;
+  freeShippingVoucherCode?: string | null;
   productVoucherCode?: string | null;
   shippingVoucherCode?: string | null;
   loyaltyVoucherCode?: string | null;
   manualVoucherCode?: string | null;
+  privateVoucherCode?: string | null;
 };
 
 export type VoucherTypeCode =
@@ -129,6 +131,26 @@ export function calcVoucherScopedDiscount(input: {
     scope === "SHIPPING"
       ? input.shippingFee
       : input.eligibleProductSubtotal ?? input.subtotal;
+  if (scope === "SHIPPING") {
+    const shippingBase = Math.max(0, base);
+    if (shippingBase <= 0) return 0;
+
+    let discount = 0;
+    if (input.voucher.discountPercent) {
+      discount += Math.floor((shippingBase * input.voucher.discountPercent) / 100);
+    }
+    if (input.voucher.discountAmount) {
+      discount += input.voucher.discountAmount;
+    }
+    if (isFreeShippingVoucher(input.voucher) && discount <= 0) {
+      discount = shippingBase;
+    }
+    if (input.voucher.maxDiscountAmount && input.voucher.maxDiscountAmount > 0) {
+      discount = Math.min(discount, input.voucher.maxDiscountAmount);
+    }
+    return Math.min(discount, shippingBase);
+  }
+
   return calcVoucherDiscount(Math.max(0, base), input.voucher);
 }
 
@@ -285,16 +307,19 @@ export function calculateFinalDiscount(input: {
  */
 export function isVoucherUsageLimitReached(
   voucher: {
+    code?: string | null;
     usageLimitPerUser?: number | null;
     usageLimitPeriod?: VoucherUsageLimitPeriodValue | null;
   },
-  userUsedOrders: Array<{ createdAt: Date }>,
+  userUsedOrders: VoucherUsageOrder[],
   now: Date = new Date(),
 ): boolean {
   const limit = voucher.usageLimitPerUser ?? 1;
   const period = voucher.usageLimitPeriod ?? "LIFETIME";
 
   if (period === "NONE" || limit <= 0) return false;
+  const code = voucher.code?.trim().toUpperCase();
+  if (!code) return false;
 
   // Hitung cutoff timestamp untuk count orders dalam window.
   let cutoff: Date | null = null;
@@ -307,10 +332,15 @@ export function isVoucherUsageLimitReached(
   }
   // LIFETIME → cutoff null → count semua
 
+  const ordersWithThisVoucher = userUsedOrders.filter((order) =>
+    collectOrderVoucherCodes(order).some(
+      (usedCode) => usedCode.trim().toUpperCase() === code,
+    ),
+  );
   const cutoffMs = cutoff?.getTime();
   const ordersInPeriod = cutoffMs !== undefined
-    ? userUsedOrders.filter((o) => o.createdAt.getTime() >= cutoffMs)
-    : userUsedOrders;
+    ? ordersWithThisVoucher.filter((o) => o.createdAt.getTime() >= cutoffMs)
+    : ordersWithThisVoucher;
 
   return ordersInPeriod.length >= limit;
 }

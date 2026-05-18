@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -15,10 +14,13 @@ class AppSettingsStore extends ChangeNotifier {
 
   ThemeMode _themeMode = ThemeMode.system;
   bool _hapticsEnabled = true;
+
   /// Auto-play video saat masuk viewport feed. Default ON.
   bool _feedAutoplay = true;
+
   /// 'auto' (network tier), 'high', 'medium', 'low'. Default 'auto'.
   String _feedVideoQuality = 'auto';
+
   /// Default mute saat start playback — match Instagram Reels behavior.
   bool _feedMuted = true;
   bool _initialized = false;

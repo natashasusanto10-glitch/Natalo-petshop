@@ -24,19 +24,23 @@ export async function loadActiveMemberVouchers(
         userId,
         OR: [
           { voucherCode: { not: null } },
+          { freeShippingVoucherCode: { not: null } },
           { productVoucherCode: { not: null } },
           { shippingVoucherCode: { not: null } },
           { loyaltyVoucherCode: { not: null } },
           { manualVoucherCode: { not: null } },
+          { privateVoucherCode: { not: null } },
         ],
       },
       select: {
         createdAt: true,
         voucherCode: true,
+        freeShippingVoucherCode: true,
         productVoucherCode: true,
         shippingVoucherCode: true,
         loyaltyVoucherCode: true,
         manualVoucherCode: true,
+        privateVoucherCode: true,
       },
     }),
     prisma.user.findUnique({

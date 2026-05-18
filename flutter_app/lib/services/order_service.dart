@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart' show XFile;
 
 import '../models/cart_item.dart';
-import '../models/member_address.dart';
 import '../models/member_profile.dart';
 import '../models/shipping_rate.dart';
 import '../utils/read_only_mode.dart';

@@ -95,19 +95,23 @@ export async function POST(request: NextRequest) {
       userId: session.sub,
       OR: [
         { voucherCode: upperCode },
+        { freeShippingVoucherCode: upperCode },
         { productVoucherCode: upperCode },
         { shippingVoucherCode: upperCode },
         { loyaltyVoucherCode: upperCode },
         { manualVoucherCode: upperCode },
+        { privateVoucherCode: upperCode },
       ],
     },
     select: {
       createdAt: true,
       voucherCode: true,
+      freeShippingVoucherCode: true,
       productVoucherCode: true,
       shippingVoucherCode: true,
       loyaltyVoucherCode: true,
       manualVoucherCode: true,
+      privateVoucherCode: true,
     },
   });
   if (isVoucherUsageLimitReached(voucher, userUsedOrders, now)) {

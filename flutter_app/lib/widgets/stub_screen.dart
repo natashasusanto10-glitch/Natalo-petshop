@@ -31,7 +31,7 @@ class StubScreen extends StatelessWidget {
         icon: icon,
         title: title,
         subtitle: subtitle ?? 'Halaman ini sedang dibangun di versi Flutter.',
-        action: Text(
+        action: const Text(
           'Belum tersedia',
           style: TextStyle(
             color: NataloColors.textTertiary,

@@ -9,6 +9,7 @@ class GlassSurface extends StatelessWidget {
   final double blur;
   final Color? tint;
   final BorderRadius? borderRadius;
+
   /// Convenience — beberapa screen pakai `radius: <double>`. Diabaikan
   /// kalau borderRadius sudah dikasih.
   final dynamic radius;
@@ -38,8 +39,8 @@ class GlassSurface extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final fill = tint ??
         (isDark
-            ? Colors.black.withOpacity(0.55)
-            : Colors.white.withOpacity(0.72));
+            ? Colors.black.withValues(alpha: 0.55)
+            : Colors.white.withValues(alpha: 0.72));
     final r = _effectiveRadius();
 
     return ClipRRect(

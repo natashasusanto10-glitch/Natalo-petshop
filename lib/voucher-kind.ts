@@ -114,16 +114,20 @@ export function voucherSlotForKind(kind?: string | null): VoucherSlotValue {
 
 export function collectOrderVoucherCodes(order: {
   voucherCode?: string | null;
+  freeShippingVoucherCode?: string | null;
   productVoucherCode?: string | null;
   shippingVoucherCode?: string | null;
   loyaltyVoucherCode?: string | null;
   manualVoucherCode?: string | null;
+  privateVoucherCode?: string | null;
 }) {
   return [...new Set([
     order.voucherCode,
+    order.freeShippingVoucherCode,
     order.productVoucherCode,
     order.shippingVoucherCode,
     order.loyaltyVoucherCode,
     order.manualVoucherCode,
+    order.privateVoucherCode,
   ].filter((code): code is string => Boolean(code)))];
 }
