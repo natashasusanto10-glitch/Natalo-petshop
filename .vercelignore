@@ -11,3 +11,13 @@ ngrok.exe
 *.log
 tsconfig.tsbuildinfo
 struktur-folder.txt
+
+# Mobile apps — Vercel cuma deploy Next.js, mobile folder skip supaya
+# tidak menambah deployment size + tidak ada chance scan error.
+flutter_app/
+flutter_feed/
+flutter/
+natalo-petshop-app/
+ios/
+android/
+codemagic.yaml
