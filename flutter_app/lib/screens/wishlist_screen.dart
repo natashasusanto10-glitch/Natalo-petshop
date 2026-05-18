@@ -13,6 +13,7 @@ import '../widgets/product_card.dart';
 import '../widgets/skeleton_product_card.dart';
 
 const _brandBlue = NataloColors.primary;
+const _lookAgainPageSize = 12;
 
 /// Wishlist screen — member-only. Daftar produk yang user star, plus section
 /// "Ayo Dilihat Kembali" dengan ranked recommendations berdasar search
@@ -34,7 +35,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
 
   // Look Again pagination state.
   List<Product> _lookAgainProducts = const [];
-  String? _lookAgainCursor;
+  int _lookAgainPage = 0;
   bool _lookAgainHasMore = false;
   bool _lookAgainLoading = false;
   bool _lookAgainInitialLoaded = false;
@@ -43,14 +44,29 @@ class _WishlistScreenState extends State<WishlistScreen> {
   void initState() {
     super.initState();
     _productsFuture = _loadProducts();
+    _scrollController.addListener(_handleScroll);
     _loadSearchHistory();
     _loadLookAgain(initial: true);
   }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_handleScroll);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _handleScroll() {
+    if (!_scrollController.hasClients ||
+        _lookAgainLoading ||
+        !_lookAgainHasMore) {
+      return;
+    }
+
+    final position = _scrollController.position;
+    if (position.pixels >= position.maxScrollExtent - 420) {
+      _loadLookAgain();
+    }
   }
 
   /// Load favorite products dari favoriteStore atau API.
@@ -72,26 +88,66 @@ class _WishlistScreenState extends State<WishlistScreen> {
     }
   }
 
-  /// Load look-again recommendations. Dipakai cursor pagination dari server
-  /// /api/products/look-again endpoint (kalau ada), atau fallback ke
-  /// recommendations general.
+  /// Load look-again recommendations. Backend saat ini belum expose cursor,
+  /// jadi pagination dibuat dengan menaikkan limit bertahap lalu dedupe.
   Future<void> _loadLookAgain({bool initial = false}) async {
     if (_lookAgainLoading) return;
+    if (!initial && !_lookAgainHasMore) return;
+
+    final nextPage = initial ? 1 : _lookAgainPage + 1;
+    final requestLimit = nextPage * _lookAgainPageSize;
+    final previousCount = initial ? 0 : _lookAgainProducts.length;
+
     if (mounted) {
-      setState(() => _lookAgainLoading = true);
+      setState(() {
+        if (initial) {
+          _lookAgainProducts = const [];
+          _lookAgainPage = 0;
+          _lookAgainHasMore = false;
+          _lookAgainInitialLoaded = false;
+        }
+        _lookAgainLoading = true;
+      });
     }
+
     try {
-      final result = await productService.fetchRecommendations(
+      var result = await productService.fetchRecommendations(
         viewedIds: recentlyViewedStore.items.map((p) => p.id).toList(),
-        limit: 12,
+        excludeIds: favoriteStore.ids.toList(),
+        limit: requestLimit,
       );
+      if (result.length < requestLimit) {
+        final fallback = await productService.fetchAll(limit: requestLimit);
+        final merged = <String, Product>{};
+        for (final product in [...result, ...fallback]) {
+          if (product.id.isEmpty || favoriteStore.isFavorite(product.id)) {
+            continue;
+          }
+          merged.putIfAbsent(product.id, () => product);
+        }
+        result = merged.values.toList(growable: false);
+      }
+
+      final nextProducts = _rankLookAgainProducts(result)
+          .where((product) => !favoriteStore.isFavorite(product.id))
+          .fold<Map<String, Product>>(
+            <String, Product>{},
+            (map, product) {
+              if (product.id.isNotEmpty) {
+                map.putIfAbsent(product.id, () => product);
+              }
+              return map;
+            },
+          )
+          .values
+          .toList(growable: false);
+
       if (!mounted) return;
       setState(() {
-        _lookAgainProducts = initial
-            ? _rankLookAgainProducts(result)
-            : [..._lookAgainProducts, ...result];
-        _lookAgainCursor = null; // server endpoint belum support cursor
-        _lookAgainHasMore = false;
+        _lookAgainProducts = nextProducts;
+        _lookAgainPage = nextPage;
+        _lookAgainHasMore = nextProducts.length >= requestLimit &&
+            nextProducts.length > previousCount;
         _lookAgainLoading = false;
         _lookAgainInitialLoaded = true;
       });

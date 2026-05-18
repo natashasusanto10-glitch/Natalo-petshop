@@ -470,6 +470,8 @@ export async function POST(request: NextRequest) {
     subtotal,
     shipping_fee: shippingFee,
     discount: totalDiscount,
+    productDiscount,
+    shippingDiscount,
     total,
     // Legacy fields mirror product voucher agar klien lama tidak break.
     auto_applied_voucher:
@@ -504,6 +506,13 @@ export async function POST(request: NextRequest) {
         }
       : null,
     applied_shipping_voucher: shippingSlot.applied
+      ? {
+          ...shippingSlot.applied,
+          title: "Voucher gratis ongkir terpakai",
+          autoApplied: shippingSlot.autoApplied,
+        }
+      : null,
+    applied_free_shipping_voucher: shippingSlot.applied
       ? {
           ...shippingSlot.applied,
           title: "Voucher gratis ongkir terpakai",

@@ -4,16 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/cart_item.dart';
-import '../models/member_profile.dart' show MemberVoucher;
 import '../models/product.dart';
+import '../screens/checkout_screen.dart';
+import '../services/product_service.dart';
 import '../state/cart_store.dart';
+import '../state/recently_viewed_store.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/app_toast.dart';
-import '../widgets/app_ui.dart';
-import '../widgets/glass_surface.dart';
 import '../widgets/product_card.dart';
 import '../widgets/skeleton_product_card.dart';
 
@@ -21,19 +21,6 @@ import '../widgets/skeleton_product_card.dart';
 // Sebelumnya inline literal — extract jadi const supaya konsisten antar widget
 // di file ini. Selaras dengan NataloColors palette.
 const _brandBlue = NataloColors.primary;
-const _discountRed = NataloColors.discountRed;
-const _discountRedSoft = Color(0xFFFEE2E2);
-const _discountRedBorder = Color(0xFFFCA5A5);
-const _shippingGreen = NataloColors.successGreen;
-const _shippingGreenSoft = Color(0xFFD1FAE5);
-const _shippingGreenBorder = Color(0xFF6EE7B7);
-
-// ── Layout constants ──
-const double _voucherBarHeight = 56;
-
-// Sentinel code untuk free shipping voucher di radio select (cart voucher sheet).
-// Beda dari product discount voucher yang pakai voucher.code asli.
-const String _shippingVoucherCode = '__FREE_SHIPPING__';
 
 /// Animated Rupiah display — angka berubah dengan smooth transition.
 /// Dipakai di sticky bottom bar checkout supaya update total feel responsive.
@@ -72,99 +59,299 @@ class AnimatedRupiah extends StatelessWidget {
   }
 }
 
-/// Cart screen — list item, edit qty, remove, total + checkout CTA.
-class CartScreen extends StatelessWidget {
+/// Cart screen — premium cart list, edit qty, remove with undo, recommendations,
+/// and selected-item checkout.
+class CartScreen extends StatefulWidget {
   const CartScreen({super.key});
+
+  @override
+  State<CartScreen> createState() => _CartScreenState();
+}
+
+class _CartScreenState extends State<CartScreen> {
+  final ScrollController _scrollController = ScrollController();
+  final Set<String> _selectedKeys = <String>{};
+  final Set<String> _knownCartKeys = <String>{};
+
+  List<Product> _bossProducts = const [];
+  bool _loadingBossProducts = true;
+  bool _loadingMoreBossProducts = false;
+  int _bossProductLimit = 12;
+
+  late final Listenable _pageListenable;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageListenable = Listenable.merge([cartStore, recentlyViewedStore]);
+    cartStore.addListener(_handleCartChanged);
+    _scrollController.addListener(_handleScroll);
+    _syncSelectedKeys(selectNewItems: true);
+    _loadBossProducts();
+  }
+
+  @override
+  void dispose() {
+    cartStore.removeListener(_handleCartChanged);
+    _scrollController.removeListener(_handleScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _handleCartChanged() {
+    final changed = _syncSelectedKeys(selectNewItems: true);
+    if (changed && mounted) setState(() {});
+  }
+
+  bool _syncSelectedKeys({required bool selectNewItems}) {
+    final cartKeys = cartStore.items.map((item) => item.key).toSet();
+    final beforeSelected = Set<String>.of(_selectedKeys);
+    final beforeKnown = Set<String>.of(_knownCartKeys);
+
+    _selectedKeys.removeWhere((key) => !cartKeys.contains(key));
+    if (selectNewItems) {
+      for (final key in cartKeys.difference(_knownCartKeys)) {
+        _selectedKeys.add(key);
+      }
+    }
+
+    _knownCartKeys
+      ..clear()
+      ..addAll(cartKeys);
+
+    return beforeSelected.length != _selectedKeys.length ||
+        !beforeSelected.containsAll(_selectedKeys) ||
+        beforeKnown.length != _knownCartKeys.length ||
+        !beforeKnown.containsAll(_knownCartKeys);
+  }
+
+  void _handleScroll() {
+    if (!_scrollController.hasClients ||
+        _loadingBossProducts ||
+        _loadingMoreBossProducts) {
+      return;
+    }
+    final position = _scrollController.position;
+    if (position.pixels >= position.maxScrollExtent - 420) {
+      _loadBossProducts(loadMore: true);
+    }
+  }
+
+  Future<void> _loadBossProducts({bool loadMore = false}) async {
+    if (loadMore && _loadingMoreBossProducts) return;
+    if (!loadMore &&
+        _loadingBossProducts == false &&
+        _bossProducts.isNotEmpty) {
+      return;
+    }
+
+    setState(() {
+      if (loadMore) {
+        _loadingMoreBossProducts = true;
+        _bossProductLimit += 8;
+      } else {
+        _loadingBossProducts = true;
+      }
+    });
+
+    final viewedIds = recentlyViewedStore.items.map((p) => p.id).toList();
+    final excludeIds = cartStore.items.map((item) => item.product.id).toList();
+    var products = await productService.fetchRecommendations(
+      viewedIds: viewedIds,
+      excludeIds: excludeIds,
+      limit: _bossProductLimit,
+    );
+    if (products.isEmpty) {
+      products = await productService.fetchAll(limit: _bossProductLimit);
+    }
+
+    final excludeSet = excludeIds.toSet();
+    final unique = <String, Product>{};
+    for (final product in products) {
+      if (product.id.isEmpty || excludeSet.contains(product.id)) continue;
+      unique.putIfAbsent(product.id, () => product);
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _bossProducts = unique.values.toList(growable: false);
+      _loadingBossProducts = false;
+      _loadingMoreBossProducts = false;
+    });
+  }
+
+  List<CartItem> get _selectedItems {
+    return cartStore.items
+        .where((item) => _selectedKeys.contains(item.key))
+        .toList(growable: false);
+  }
+
+  int get _selectedQuantity {
+    return _selectedItems.fold<int>(0, (sum, item) => sum + item.quantity);
+  }
+
+  double get _selectedTotal {
+    return _selectedItems.fold<double>(0, (sum, item) => sum + item.lineTotal);
+  }
+
+  void _toggleSelectAll() {
+    AppHaptics.tap();
+    setState(() {
+      final keys = cartStore.items.map((item) => item.key).toSet();
+      if (_selectedKeys.length == keys.length) {
+        _selectedKeys.clear();
+      } else {
+        _selectedKeys
+          ..clear()
+          ..addAll(keys);
+      }
+    });
+  }
+
+  void _toggleItem(String key) {
+    AppHaptics.tap();
+    setState(() {
+      if (!_selectedKeys.remove(key)) {
+        _selectedKeys.add(key);
+      }
+    });
+  }
+
+  Future<void> _openDeleteSelectedDialog() async {
+    final items = _selectedItems.isNotEmpty ? _selectedItems : cartStore.items;
+    if (items.isEmpty) return;
+
+    final quantity = items.fold<int>(0, (sum, item) => sum + item.quantity);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => _CartDeleteConfirmDialog(
+        count: items.length,
+        quantity: quantity,
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    _removeItemsWithUndo(items);
+  }
+
+  void _removeItemsWithUndo(List<CartItem> items) {
+    final currentItems = cartStore.items;
+    final removed = <({CartItem item, int index})>[];
+    for (final item in items) {
+      final index =
+          currentItems.indexWhere((cartItem) => cartItem.key == item.key);
+      removed.add((item: item, index: index < 0 ? currentItems.length : index));
+      unawaited(cartStore.remove(item.key));
+    }
+
+    setState(() {
+      for (final item in items) {
+        _selectedKeys.remove(item.key);
+      }
+    });
+
+    _showCartDeleteSnackBar(
+      context,
+      message: 'Produk telah dihapus',
+      onUndo: () => unawaited(_restoreRemovedItems(removed)),
+    );
+  }
+
+  Future<void> _restoreRemovedItems(
+      List<({CartItem item, int index})> items) async {
+    final ordered = [...items]..sort((a, b) => a.index.compareTo(b.index));
+    for (final removed in ordered) {
+      await cartStore.restore(removed.item, index: removed.index);
+    }
+  }
+
+  void _openCheckout() {
+    final items = _selectedItems;
+    if (items.isEmpty) {
+      AppHaptics.warning();
+      return;
+    }
+    AppHaptics.impact();
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => CheckoutScreen(items: items),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Keranjang')),
+      backgroundColor: const Color(0xFFF6F9FF),
+      appBar: AppBar(
+        title: const Text('Keranjang'),
+        centerTitle: true,
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        actions: [
+          AnimatedBuilder(
+            animation: cartStore,
+            builder: (context, _) {
+              if (cartStore.isEmpty) return const SizedBox(width: 48);
+              return IconButton(
+                tooltip: 'Hapus produk',
+                onPressed: _openDeleteSelectedDialog,
+                icon: const Icon(Icons.delete_outline_rounded),
+              );
+            },
+          ),
+        ],
+      ),
       body: AnimatedBuilder(
-        animation: cartStore,
+        animation: _pageListenable,
         builder: (context, _) {
           if (cartStore.isEmpty) {
-            return const AppEmptyState(
-              icon: Icons.shopping_cart_outlined,
-              title: 'Keranjang kosong',
-              subtitle: 'Yuk, jelajahi produk dan tambahkan ke keranjang.',
+            return _EmptyCartState(
+              controller: _scrollController,
+              recentlyViewed: recentlyViewedStore.items,
+              bossProducts: _bossProducts,
+              loadingBossProducts: _loadingBossProducts,
+              loadingMoreBossProducts: _loadingMoreBossProducts,
             );
           }
+          final items = cartStore.items;
+          final allSelected =
+              items.isNotEmpty && _selectedKeys.length == items.length;
           return ListView(
-            padding: const EdgeInsets.all(16),
+            controller: _scrollController,
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 118),
             children: [
-              for (final item in cartStore.items)
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Row(
-                      children: [
-                        AppProductImage(
-                          imageUrl: item.imageUrl,
-                          width: 64,
-                          height: 64,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                item.name,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              if (item.variantLabel != null)
-                                Text(
-                                  item.variantLabel!,
-                                  style: const TextStyle(
-                                    color: NataloColors.textSecondary,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              const SizedBox(height: 4),
-                              Text(
-                                formatRupiah(item.unitPrice),
-                                style: const TextStyle(
-                                  color: NataloColors.primary,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Column(
-                          children: [
-                            IconButton(
-                              onPressed: () async {
-                                AppHaptics.tap();
-                                await cartStore.updateQuantity(
-                                  item.lineKey,
-                                  item.quantity + 1,
-                                );
-                              },
-                              icon: const Icon(Icons.add_circle_outline),
-                            ),
-                            Text('${item.quantity}'),
-                            IconButton(
-                              onPressed: () async {
-                                AppHaptics.tap();
-                                await cartStore.updateQuantity(
-                                  item.lineKey,
-                                  item.quantity - 1,
-                                );
-                              },
-                              icon: const Icon(Icons.remove_circle_outline),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
+              _SelectAllCard(
+                selected: allSelected,
+                totalProduct: items.length,
+                selectedProduct: _selectedKeys.length,
+                onTap: _toggleSelectAll,
+              ),
+              const SizedBox(height: 12),
+              for (var i = 0; i < items.length; i++) ...[
+                _CartItemCard(
+                  item: items[i],
+                  index: i,
+                  selected: _selectedKeys.contains(items[i].key),
+                  onToggleSelected: () => _toggleItem(items[i].key),
                 ),
+                const SizedBox(height: 12),
+              ],
+              if (recentlyViewedStore.items.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _CartRecommendationsSection(
+                  title: 'Ayo dilihat lagi',
+                  products: recentlyViewedStore.items.take(6).toList(),
+                  loading: false,
+                  showLoadingPlaceholder: false,
+                ),
+              ],
+              const SizedBox(height: 22),
+              _CartRecommendationsSection(
+                title: 'Ayoo diborong bossku',
+                products: _bossProducts,
+                loading: _loadingBossProducts,
+                loadingMore: _loadingMoreBossProducts,
+              ),
             ],
           );
         },
@@ -173,35 +360,11 @@ class CartScreen extends StatelessWidget {
         animation: cartStore,
         builder: (context, _) {
           if (cartStore.isEmpty) return const SizedBox.shrink();
-          return SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Total'),
-                        Text(
-                          formatRupiah(cartStore.subtotal),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 18,
-                            color: NataloColors.primary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  FilledButton(
-                    onPressed: () =>
-                        Navigator.pushNamed(context, '/checkout'),
-                    child: const Text('Checkout'),
-                  ),
-                ],
-              ),
-            ),
+          return _CartSummaryBar(
+            grandTotal: _selectedTotal,
+            selectedQuantity: _selectedQuantity,
+            disabled: _selectedItems.isEmpty,
+            onCheckout: _openCheckout,
           );
         },
       ),
@@ -840,633 +1003,6 @@ void _showCartDeleteSnackBar(
     duration: const Duration(milliseconds: 1400),
     onUndo: onUndo,
   );
-}
-
-enum _CartVoucherType { discount, shipping }
-
-class _CartVoucherChoice {
-  final _CartVoucherType? type;
-  final String? code;
-  final MemberVoucher? discountVoucher;
-  final bool remove;
-
-  const _CartVoucherChoice._({
-    this.type,
-    this.code,
-    this.discountVoucher,
-    this.remove = false,
-  });
-
-  factory _CartVoucherChoice.discount(MemberVoucher voucher) {
-    return _CartVoucherChoice._(
-      type: _CartVoucherType.discount,
-      code: voucher.code,
-      discountVoucher: voucher,
-    );
-  }
-
-  factory _CartVoucherChoice.shipping() {
-    return const _CartVoucherChoice._(
-      type: _CartVoucherType.shipping,
-      code: _shippingVoucherCode,
-    );
-  }
-
-  factory _CartVoucherChoice.removeAll() {
-    return const _CartVoucherChoice._(remove: true);
-  }
-}
-
-class _StickyVoucherBar extends StatelessWidget {
-  final bool hasSelection;
-  final bool loading;
-  final MemberVoucher? discountVoucher;
-  final double discountAmount;
-  final bool shippingSelected;
-  final double shippingDiscount;
-  final double totalSaving;
-  final VoidCallback? onTap;
-
-  const _StickyVoucherBar({
-    required this.hasSelection,
-    required this.loading,
-    required this.discountVoucher,
-    required this.discountAmount,
-    required this.shippingSelected,
-    required this.shippingDiscount,
-    required this.totalSaving,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final hasDiscount = discountVoucher != null && discountAmount > 0;
-    final hasShipping = shippingSelected && shippingDiscount > 0;
-    final hasSaving = hasSelection && totalSaving > 0;
-    final chipText = hasDiscount
-        ? 'Diskon ${formatRupiah(discountAmount)}'
-        : hasShipping
-            ? 'Gratis Ongkir'
-            : loading
-                ? 'Cek...'
-                : 'Pilih';
-    final chipColor = hasDiscount
-        ? _discountRed
-        : hasShipping
-            ? _shippingGreen
-            : _brandBlue;
-    final chipBackground = hasDiscount
-        ? _discountRedSoft
-        : hasShipping
-            ? _shippingGreenSoft
-            : const Color(0xFFEAF5FF);
-    final chipBorder = hasDiscount
-        ? _discountRedBorder
-        : hasShipping
-            ? _shippingGreenBorder
-            : const Color(0xFFBFDBFE);
-    final chipIcon = hasShipping && !hasDiscount
-        ? Icons.local_shipping_outlined
-        : Icons.local_offer_rounded;
-    final subtitle = !hasSelection
-        ? 'Pilih produk untuk cek promo'
-        : loading
-            ? 'Mencari promo yang cocok'
-            : hasSaving
-                ? 'Hemat ${formatRupiah(totalSaving)}'
-                : 'Tap untuk cek voucher';
-
-    return Material(
-      color: NataloColors.surface,
-      child: Container(
-        height: _voucherBarHeight,
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          border: Border(top: BorderSide(color: Color(0xFFE5EAF1))),
-        ),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: chipBackground,
-                    borderRadius: BorderRadius.circular(13),
-                    border: Border.all(color: chipBorder),
-                  ),
-                  child: Icon(
-                    Icons.confirmation_number_outlined,
-                    color: chipColor,
-                    size: 19,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Voucher untukmu',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Color(0xFF334155),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF64748B),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                _VoucherMiniChip(
-                  text: chipText,
-                  color: chipColor,
-                  background: chipBackground,
-                  border: chipBorder,
-                  icon: chipIcon,
-                ),
-                const SizedBox(width: 2),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: hasSelection
-                      ? const Color(0xFF64748B)
-                      : const Color(0xFFCBD5E1),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _VoucherMiniChip extends StatelessWidget {
-  final String text;
-  final Color color;
-  final Color background;
-  final Color border;
-  final IconData icon;
-
-  const _VoucherMiniChip({
-    required this.text,
-    required this.color,
-    required this.background,
-    required this.border,
-    required this.icon,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: border),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: color),
-          const SizedBox(width: 4),
-          Text(
-            text,
-            style: TextStyle(
-              color: color,
-              fontSize: 11,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CartVoucherSheet extends StatefulWidget {
-  final List<MemberVoucher> availableDiscounts;
-  final List<MemberVoucher> unavailableDiscounts;
-  final bool shippingEligible;
-  final int shippingDiscount;
-  final String? selectedDiscountCode;
-  final bool shippingSelected;
-  final bool isManual;
-  final bool loading;
-
-  const _CartVoucherSheet({
-    required this.availableDiscounts,
-    required this.unavailableDiscounts,
-    required this.shippingEligible,
-    required this.shippingDiscount,
-    required this.selectedDiscountCode,
-    required this.shippingSelected,
-    required this.isManual,
-    required this.loading,
-  });
-
-  @override
-  State<_CartVoucherSheet> createState() => _CartVoucherSheetState();
-}
-
-class _CartVoucherSheetState extends State<_CartVoucherSheet> {
-  _CartVoucherType? _selectedType;
-  String? _selectedCode;
-  MemberVoucher? _selectedDiscount;
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.selectedDiscountCode != null) {
-      _selectedType = _CartVoucherType.discount;
-      _selectedCode = widget.selectedDiscountCode;
-      for (final voucher in widget.availableDiscounts) {
-        if (voucher.code == widget.selectedDiscountCode) {
-          _selectedDiscount = voucher;
-          break;
-        }
-      }
-    } else if (widget.shippingSelected) {
-      _selectedType = _CartVoucherType.shipping;
-      _selectedCode = _shippingVoucherCode;
-    }
-  }
-
-  void _pickDiscount(MemberVoucher voucher) {
-    setState(() {
-      _selectedType = _CartVoucherType.discount;
-      _selectedCode = voucher.code;
-      _selectedDiscount = voucher;
-    });
-  }
-
-  void _pickShipping() {
-    setState(() {
-      _selectedType = _CartVoucherType.shipping;
-      _selectedCode = _shippingVoucherCode;
-      _selectedDiscount = null;
-    });
-  }
-
-  void _applySelection() {
-    if (_selectedType == _CartVoucherType.discount &&
-        _selectedDiscount != null) {
-      Navigator.pop(context, _CartVoucherChoice.discount(_selectedDiscount!));
-      return;
-    }
-    if (_selectedType == _CartVoucherType.shipping && widget.shippingEligible) {
-      Navigator.pop(context, _CartVoucherChoice.shipping());
-      return;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.paddingOf(context).bottom;
-    final hasAnyVoucher =
-        widget.shippingEligible || widget.availableDiscounts.isNotEmpty;
-
-    return DraggableScrollableSheet(
-      initialChildSize: 0.72,
-      minChildSize: 0.42,
-      maxChildSize: 0.92,
-      builder: (context, controller) {
-        return GlassSurface(
-          radius: 28,
-          tint: Colors.white,
-          padding: EdgeInsets.fromLTRB(18, 14, 18, 14 + bottomInset),
-          child: Column(
-            children: [
-              Container(
-                width: 44,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE2E8F0),
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'Pilih voucher atau promo',
-                      style: TextStyle(
-                        color: Color(0xFF102033),
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                ],
-              ),
-              if (widget.isManual) ...[
-                const SizedBox(height: 4),
-                const Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Voucher untukmu sudah diterapkan',
-                    style: TextStyle(
-                      color: _brandBlue,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 12),
-              Expanded(
-                child: ListView(
-                  controller: controller,
-                  children: [
-                    if (widget.loading)
-                      const LinearProgressIndicator(minHeight: 3),
-                    if (widget.shippingEligible) ...[
-                      _CartVoucherCard(
-                        title: 'Gratis Ongkir',
-                        subtitle:
-                            'Potongan ongkir ${formatRupiah(widget.shippingDiscount)}',
-                        badge: 'Ongkir',
-                        icon: Icons.local_shipping_outlined,
-                        accent: _shippingGreen,
-                        background: _shippingGreenSoft,
-                        border: _shippingGreenBorder,
-                        selected: _selectedCode == _shippingVoucherCode,
-                        enabled: true,
-                        onTap: _pickShipping,
-                      ),
-                      const SizedBox(height: 10),
-                    ],
-                    for (final voucher in widget.availableDiscounts) ...[
-                      _CartVoucherCard(
-                        title: voucher.title,
-                        subtitle: voucher.description,
-                        badge: 'Diskon',
-                        trailing: formatRupiah(voucher.discount),
-                        icon: Icons.local_offer_rounded,
-                        accent: _discountRed,
-                        background: _discountRedSoft,
-                        border: _discountRedBorder,
-                        selected: _selectedCode == voucher.code,
-                        enabled: true,
-                        onTap: () => _pickDiscount(voucher),
-                      ),
-                      const SizedBox(height: 10),
-                    ],
-                    if (!hasAnyVoucher && !widget.loading)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 36),
-                        child: Text(
-                          'Belum ada voucher yang cocok',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Color(0xFF64748B),
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    if (widget.unavailableDiscounts.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Belum bisa dipakai',
-                        style: TextStyle(
-                          color: Color(0xFF64748B),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      for (final voucher in widget.unavailableDiscounts) ...[
-                        _CartVoucherCard(
-                          title: voucher.title,
-                          subtitle: voucher.disabledReason ??
-                              'Voucher belum memenuhi syarat.',
-                          badge: 'Diskon',
-                          trailing: voucher.discount > 0
-                              ? formatRupiah(voucher.discount)
-                              : null,
-                          icon: Icons.local_offer_outlined,
-                          accent: _discountRed,
-                          background: const Color(0xFFF8FAFC),
-                          border: const Color(0xFFE2E8F0),
-                          selected: false,
-                          enabled: false,
-                          onTap: null,
-                        ),
-                        const SizedBox(height: 10),
-                      ],
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  TextButton(
-                    onPressed: () =>
-                        Navigator.pop(context, _CartVoucherChoice.removeAll()),
-                    child: const Text('Hapus Voucher'),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: _selectedCode == null ? null : _applySelection,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: _brandBlue,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size.fromHeight(48),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                      child: const Text(
-                        'Pakai Voucher',
-                        style: TextStyle(fontWeight: FontWeight.w900),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _CartVoucherCard extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final String badge;
-  final String? trailing;
-  final IconData icon;
-  final Color accent;
-  final Color background;
-  final Color border;
-  final bool selected;
-  final bool enabled;
-  final VoidCallback? onTap;
-
-  const _CartVoucherCard({
-    required this.title,
-    required this.subtitle,
-    required this.badge,
-    required this.icon,
-    required this.accent,
-    required this.background,
-    required this.border,
-    required this.selected,
-    required this.enabled,
-    required this.onTap,
-    this.trailing,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final effectiveAccent = enabled ? accent : const Color(0xFF94A3B8);
-    return InkWell(
-      onTap: enabled ? onTap : null,
-      borderRadius: BorderRadius.circular(20),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: background,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: selected ? accent : border,
-            width: selected ? 1.5 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: enabled ? 0.9 : 0.6),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(icon, color: effectiveAccent, size: 22),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.82),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          badge,
-                          style: TextStyle(
-                            color: effectiveAccent,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
-                      if (selected) ...[
-                        const SizedBox(width: 6),
-                        Text(
-                          'Terpilih',
-                          style: TextStyle(
-                            color: accent,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 7),
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: enabled
-                          ? const Color(0xFF102033)
-                          : const Color(0xFF94A3B8),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    subtitle,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: enabled
-                          ? const Color(0xFF64748B)
-                          : const Color(0xFF94A3B8),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (trailing != null) ...[
-              const SizedBox(width: 8),
-              Text(
-                trailing!,
-                style: TextStyle(
-                  color: effectiveAccent,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
-            const SizedBox(width: 8),
-            Icon(
-              selected
-                  ? Icons.check_circle_rounded
-                  : Icons.radio_button_unchecked_rounded,
-              color: selected
-                  ? accent
-                  : enabled
-                      ? const Color(0xFFCBD5E1)
-                      : const Color(0xFFE2E8F0),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 /// Section produk bawah cart. Untuk cart aktif dipakai sebagai "Yuk dilihat

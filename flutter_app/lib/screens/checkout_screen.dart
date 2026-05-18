@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/cart_item.dart';
-import '../models/member_address.dart';
 import '../models/member_profile.dart';
 import '../models/shipping_rate.dart';
 import '../services/app_analytics.dart';
@@ -3311,13 +3310,13 @@ class _VoucherSlotState extends State<_VoucherSlot> {
         : selectedCount > 1
             ? '$selectedCount voucher'
             : selected.isNotEmpty
-                ? _voucherDisplayName(selected.first)
+                ? _voucherTypeLabel(selected.first)
                 : 'Auto';
     final subtitle = hasSelected
-        ? 'Voucher terbaik sudah dipakai otomatis'
+        ? '$selectedCount voucher dipakai untuk pesanan ini'
         : totalKnownVouchers > 0
             ? '$totalKnownVouchers voucher bisa dicek'
-            : 'Voucher terbaik akan dipakai otomatis';
+            : 'Cek voucher yang bisa dipakai';
     final chipColor =
         hasSelected ? const Color(0xFFE91E63) : const Color(0xFF667085);
     final chipBg =
@@ -3447,49 +3446,6 @@ String _voucherManualCodeText(MemberVoucher? voucher) {
   return _voucherTextLooksLikeUrl(code) ? '' : code;
 }
 
-bool _voucherTextLooksLikeCode(String value) {
-  final text = value.trim();
-  if (text.length < 4 || text.length > 28) return false;
-  if (text.contains(RegExp(r'\s'))) return false;
-  final upper = text.toUpperCase();
-  if (text != upper) return false;
-  return RegExp(r'^[A-Z0-9_-]+$').hasMatch(text) &&
-      RegExp(r'[0-9_-]').hasMatch(text);
-}
-
-String _voucherDisplayName(MemberVoucher voucher) {
-  final title = voucher.title.trim();
-  if (title.isNotEmpty &&
-      !_voucherTextLooksLikeUrl(title) &&
-      !_voucherTextLooksLikeCode(title)) {
-    return title;
-  }
-
-  final code = voucher.code.trim();
-  if (code.isNotEmpty &&
-      !_voucherTextLooksLikeUrl(code) &&
-      !_voucherTextLooksLikeCode(code)) {
-    return voucher.isPrivateManual ? 'Kode $code' : code;
-  }
-
-  if (voucher.discount > 0) {
-    final amount = formatRupiah(voucher.discount.toDouble());
-    if (voucher.isFreeShipping || voucher.isShippingDiscount) {
-      return 'Diskon Ongkir $amount';
-    }
-    if (voucher.isLoyaltyClaim) return 'Voucher Poin $amount';
-    if (voucher.isPrivateManual) return 'Voucher Khusus $amount';
-    return 'Diskon Produk $amount';
-  }
-
-  if (voucher.isFreeShipping || voucher.isShippingDiscount) {
-    return 'Voucher Gratis Ongkir';
-  }
-  if (voucher.isLoyaltyClaim) return 'Voucher Reward Poin';
-  if (voucher.isPrivateManual) return 'Kode Voucher Khusus';
-  return 'Voucher Diskon Produk';
-}
-
 String _voucherAppliedSubtitle(MemberVoucher voucher) {
   if (voucher.isFreeShipping || voucher.isShippingDiscount) {
     return 'Diskon ongkir sudah diterapkan';
@@ -3537,6 +3493,16 @@ String _voucherSavingsText(MemberVoucher voucher) {
     return 'Gratis Ongkir';
   }
   return voucher.applicable ? 'Bisa dipakai' : 'Tidak tersedia';
+}
+
+String _voucherDiscountAmountText(MemberVoucher voucher) {
+  if (voucher.discount <= 0) {
+    if (voucher.isFreeShipping || voucher.isShippingDiscount) {
+      return 'Gratis Ongkir';
+    }
+    return voucher.applicable ? 'Aktif' : 'Tidak tersedia';
+  }
+  return '-${formatRupiah(voucher.discount.toDouble())}';
 }
 
 Color _voucherAccentColor(MemberVoucher voucher) {
@@ -3838,13 +3804,16 @@ class _AppliedVoucherSummaryCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           ...vouchers.map(
-            (voucher) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: _AppliedVoucherLine(
-                voucher: voucher,
-                onRemove: () => onRemove(voucher),
-              ),
-            ),
+            (voucher) {
+              final isLast = voucher == vouchers.last;
+              return Padding(
+                padding: EdgeInsets.only(bottom: isLast ? 0 : 8),
+                child: _AppliedVoucherLine(
+                  voucher: voucher,
+                  onRemove: () => onRemove(voucher),
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -3913,12 +3882,17 @@ class _AppliedVoucherLine extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          Text(
-            _voucherSavingsText(voucher),
-            style: TextStyle(
-              color: accent,
-              fontSize: 11.5,
-              fontWeight: FontWeight.w900,
+          Flexible(
+            child: Text(
+              _voucherDiscountAmountText(voucher),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                color: accent,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
           const SizedBox(width: 6),
@@ -3949,7 +3923,7 @@ class _VoucherDetailTile extends StatelessWidget {
     final accent = _voucherAccentColor(voucher);
     final foreground =
         enabled ? const Color(0xFF17202A) : const Color(0xFF98A2B3);
-    final title = _voucherDisplayName(voucher);
+    final title = _voucherTypeLabel(voucher);
     final subtitle = voucher.disabledReason?.isNotEmpty == true
         ? voucher.disabledReason!
         : _voucherDescriptionText(voucher);

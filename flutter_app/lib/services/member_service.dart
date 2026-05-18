@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
-import '../models/member_address.dart';
 import '../models/member_profile.dart';
 import '../state/member_store.dart';
 

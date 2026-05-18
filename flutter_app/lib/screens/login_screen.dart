@@ -49,18 +49,43 @@ class _LoginScreenState extends State<LoginScreen> {
       await memberStore.setSession(profile: profile);
       if (!mounted) return;
       AppToast.show(context, 'Selamat datang, ${profile.name}!');
-      // Pop back ke screen sebelumnya — atau ke home kalau direct nav.
-      if (Navigator.canPop(context)) {
-        Navigator.pop(context, true);
-      } else {
-        Navigator.pushReplacementNamed(context, '/');
-      }
+      _continueAfterLogin();
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _errorText = _humanizeError(e);
         _loading = false;
       });
+    }
+  }
+
+  void _continueAfterLogin() {
+    final routeArgs = ModalRoute.of(context)?.settings.arguments;
+    String? redirectRoute;
+    Object? redirectArguments;
+
+    if (routeArgs is Map) {
+      final redirect = routeArgs['redirect'];
+      if (redirect is String && redirect.trim().isNotEmpty) {
+        redirectRoute = redirect.trim();
+      }
+      redirectArguments = routeArgs['arguments'];
+    }
+
+    if (redirectRoute != null) {
+      Navigator.pushReplacementNamed(
+        context,
+        redirectRoute,
+        arguments: redirectArguments,
+      );
+      return;
+    }
+
+    // Pop back ke screen sebelumnya — atau ke home kalau direct nav.
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context, true);
+    } else {
+      Navigator.pushReplacementNamed(context, '/');
     }
   }
 
@@ -196,7 +221,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ? null
                           : () => Navigator.pushNamed(
                                 context,
-                                '/forgot-password',
+                                '/member/forgot-password',
                               ),
                       style: TextButton.styleFrom(
                         padding: EdgeInsets.zero,

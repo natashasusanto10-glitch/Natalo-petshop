@@ -186,7 +186,7 @@ class _FeedScreenState extends State<FeedScreen> {
       }
       if (post == null) continue;
       final url = post.videoUrl;
-      if (url == null || url.isEmpty) continue;
+      if (url.isEmpty) continue;
 
       final thumb = post.thumbnailUrl;
       if (mounted && thumb != null && thumb.isNotEmpty) {
@@ -680,7 +680,7 @@ class _FeedPostViewState extends State<_FeedPostView>
   Future<void> _maybeInitVideo({bool userInitiated = false}) async {
     if (_videoController != null) return;
     final url = widget.post.videoUrl;
-    if (url == null || url.isEmpty) return;
+    if (url.isEmpty) return;
     if (_dataSaverEnabled && !userInitiated) return;
     setState(() => _videoLoadFailed = false);
     try {
@@ -1511,7 +1511,7 @@ class _FeedPostViewState extends State<_FeedPostView>
                                 _ExpandableCaption(
                                   text: post.title.isNotEmpty
                                       ? post.title
-                                      : (post.description ?? ''),
+                                      : post.description,
                                   expanded: _captionExpanded,
                                   onToggle: () => setState(() =>
                                       _captionExpanded = !_captionExpanded),
@@ -2164,7 +2164,7 @@ class _BlurredFeedBackdrop extends StatelessWidget {
 bool _isHorizontalPost(FeedPost post) {
   final width = post.videoWidth;
   final height = post.videoHeight;
-  return width != null && height != null && width > height;
+  return width > 0 && height > 0 && width > height;
 }
 
 bool _isHorizontalSize(Size size) {
@@ -3906,7 +3906,9 @@ Product _productFromFeedLink(FeedProductLink link) {
     brand: 'Natalo',
     imageUrl: link.imageUrl ?? '',
     price: pricing.originalPrice.toDouble(),
-    discountPrice: (pricing.hasPromo ? pricing.displayPrice : link.discountPrice)?.toDouble(),
+    discountPrice:
+        (pricing.hasPromo ? pricing.displayPrice : link.discountPrice)
+            ?.toDouble(),
     rating: 0,
     reviewCount: 0,
     stock: link.stock,

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'firebase_options.dart';
+import 'models/cart_item.dart';
 import 'models/member_profile.dart';
 import 'models/product.dart';
 import 'screens/account_settings_screen.dart';
@@ -212,6 +213,8 @@ class NataloPetshopApp extends StatelessWidget {
                 ),
               '/brands' => const AllBrandsScreen(),
               '/cart' => const CartScreen(),
+              '/checkout' when settings.arguments is List<CartItem> =>
+                CheckoutScreen(items: settings.arguments as List<CartItem>),
               '/checkout' => const CheckoutScreen(),
               '/notifications' => const NotificationsScreen(),
               '/settings/notifications' =>
