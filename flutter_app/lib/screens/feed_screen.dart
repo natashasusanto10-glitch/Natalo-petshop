@@ -3139,17 +3139,19 @@ class _FeedTaggedProductCardState extends State<_FeedTaggedProductCard> {
                             ],
                           ],
                         ),
-                        if (unavailable) ...[
-                          const SizedBox(height: 7),
-                          const Text(
-                            'Produk tidak tersedia',
-                            style: TextStyle(
-                              color: Color(0xFFF87171),
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w800,
-                            ),
+                        const SizedBox(height: 7),
+                        Text(
+                          unavailable
+                              ? 'Produk tidak tersedia'
+                              : 'Stok tersedia: ${product.stock}',
+                          style: TextStyle(
+                            color: unavailable
+                                ? const Color(0xFFF87171)
+                                : const Color(0xFF34D399),
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w800,
                           ),
-                        ],
+                        ),
                       ],
                     ),
                   ),
@@ -4027,11 +4029,10 @@ class _FeedProductSheetState extends State<_FeedProductSheet> {
                             runSpacing: 7,
                             children: [
                               _ProductMetaChip(
-                                icon: unavailable
-                                    ? Icons.block_rounded
-                                    : Icons.check_circle_outline_rounded,
-                                label:
-                                    unavailable ? 'Tidak tersedia' : 'Tersedia',
+                                icon: Icons.inventory_2_outlined,
+                                label: !unavailable
+                                    ? 'Stok ${product.stock}'
+                                    : 'Stok habis',
                               ),
                               if (product.hasVariants)
                                 const _ProductMetaChip(

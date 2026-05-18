@@ -10,6 +10,9 @@ enum BottomNavVariant { light, dark }
 class BottomNavBar extends StatelessWidget {
   final int currentIndex;
   final BottomNavVariant variant;
+  /// Optional callback — kalau dikasih, dipanggil sebelum / sebagai pengganti
+  /// default Navigator.pushNamedAndRemoveUntil. Dipakai dari layout yang
+  /// pakai IndexedStack atau PageView untuk switch tanpa nav push.
   final ValueChanged<int>? onDestinationSelected;
 
   const BottomNavBar({
@@ -21,11 +24,6 @@ class BottomNavBar extends StatelessWidget {
 
   void _onTap(BuildContext context, int index) {
     if (index == currentIndex) return;
-    final onSelected = onDestinationSelected;
-    if (onSelected != null) {
-      onSelected(index);
-      return;
-    }
 
     if (onDestinationSelected != null) {
       onDestinationSelected!(index);

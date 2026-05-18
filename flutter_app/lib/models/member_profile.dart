@@ -50,114 +50,14 @@ class MemberProfile {
     return MemberProfile.fromJson(raw);
   }
 
-class MemberVoucher {
-  final String code;
-  final String title;
-  final String description;
-  final DateTime expiresAt;
-  final String type;
-  final String visibility;
-  final String discountScope;
-
-  /// Discount aktual (Rupiah) untuk subtotal saat ini. 0 kalau tidak applicable.
-  final int discount;
-
-  /// Minimum order untuk voucher ini berlaku. 0 = tanpa minimum.
-  final int minimumOrder;
-
-  /// True kalau voucher bisa dipakai sekarang (subtotal cukup, belum expired,
-  /// belum dipakai user). Match field `applicable` dari API /api/cart/vouchers.
-  final bool applicable;
-
-  /// Alasan voucher disabled (untuk display di list inelibible). null kalau applicable.
-  final String? disabledReason;
-
-  const MemberVoucher({
-    required this.code,
-    required this.title,
-    required this.description,
-    required this.expiresAt,
-    this.type = 'PUBLIC_PRODUCT_DISCOUNT',
-    this.visibility = 'PUBLIC',
-    this.discountScope = 'PRODUCT',
-    this.discount = 0,
-    this.minimumOrder = 0,
-    this.applicable = true,
-    this.disabledReason,
-  });
-
-  factory MemberVoucher.fromApiJson(Map<String, dynamic> json) {
-    final percent = _asInt(json['discountPercent'] ?? json['discount_percent']);
-    final amount = _asInt(json['discountAmount'] ?? json['discount_amount']);
-    final discount = _asInt(json['discount'] ?? json['discountAmount']);
-    final minimum = _asInt(json['minimumOrder'] ?? json['minimum_order']);
-    final expires = DateTime.tryParse(
-      (json['expiresAt'] ?? json['expires_at'] ?? '').toString(),
-    );
-    final apiTitle = _nullableString(json['title'] ?? json['name']);
-    final title = apiTitle ??
-        (percent > 0
-            ? 'Diskon $percent%'
-            : amount > 0
-                ? 'Potongan Rp$amount'
-                : discount > 0
-                    ? 'Hemat Rp$discount'
-                    : 'Voucher Member');
-    final applicable = json['applicable'] != false;
-    final disabledReason =
-        (json['disabledReason'] ?? json['disabled_reason'] ?? json['reason'])
-            ?.toString();
-    final type = (json['type'] ?? '').toString().toUpperCase();
-    final sourceType = (json['sourceType'] ?? json['source_type'] ?? '')
-        .toString()
-        .toUpperCase();
-    final userId = (json['userId'] ?? json['user_id'])?.toString();
-    final normalizedType = type.isNotEmpty
-        ? type
-        : sourceType == 'SELLER_MANUAL'
-            ? 'PRIVATE_MANUAL_CODE'
-            : userId != null && userId.isNotEmpty
-                ? 'LOYALTY_POINT_CLAIM'
-                : 'PUBLIC_PRODUCT_DISCOUNT';
-    final visibility = (json['visibility'] ?? '').toString().toUpperCase();
-    final normalizedVisibility = visibility.isNotEmpty
-        ? visibility
-        : normalizedType == 'PRIVATE_MANUAL_CODE'
-            ? 'PRIVATE'
-            : normalizedType == 'LOYALTY_POINT_CLAIM'
-                ? 'USER_OWNED'
-                : 'PUBLIC';
-    final scope = (json['discountScope'] ?? json['discount_scope'] ?? '')
-        .toString()
-        .toUpperCase();
-
-    return MemberVoucher(
-      code: (json['code'] ?? '').toString(),
-      title: title,
-      description: (json['description'] ??
-              (minimum > 0 ? 'Minimal belanja Rp$minimum.' : 'Voucher aktif.'))
-          .toString(),
-      expiresAt: expires ?? DateTime.now().add(const Duration(days: 30)),
-      type: normalizedType,
-      visibility: normalizedVisibility,
-      discountScope: scope.isNotEmpty
-          ? scope
-          : normalizedType == 'PUBLIC_FREE_SHIPPING'
-              ? 'SHIPPING'
-              : 'PRODUCT',
-      discount: discount,
-      minimumOrder: minimum,
-      applicable: applicable,
-      disabledReason: disabledReason?.isEmpty == true ? null : disabledReason,
-    );
-  }
-
-  bool get isFreeShipping => type == 'PUBLIC_FREE_SHIPPING';
-  bool get isProductDiscount => type == 'PUBLIC_PRODUCT_DISCOUNT';
-  bool get isLoyaltyClaim => type == 'LOYALTY_POINT_CLAIM';
-  bool get isPrivateManual => type == 'PRIVATE_MANUAL_CODE';
-  bool get isShippingDiscount => discountScope == 'SHIPPING';
-  bool get isProductScope => discountScope != 'SHIPPING';
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        if (email != null) 'email': email,
+        if (phone != null) 'phone': phone,
+        'role': role,
+        if (birthDate != null) 'birthDate': birthDate!.toIso8601String(),
+      };
 }
 
 class OrderSummary {
@@ -182,16 +82,7 @@ class OrderSummary {
   final int? uniqueCode;
   final String status;
   final String paymentProvider;
-  final String shippingMethod;
-  final String orderType;
-  final String? pickupCode;
-  final String? pickupLocationId;
-  final String? pickupLocationName;
-  final String? pickupAddress;
-  final String? pickupHours;
-  final String? pickupMapsUrl;
-  final double? pickupLatitude;
-  final double? pickupLongitude;
+  final String paymentStatus;
   final String? paymentUrl;
   final String? paymentProofUrl;
   final String? manualBank;
@@ -203,23 +94,15 @@ class OrderSummary {
   const OrderSummary({
     required this.id,
     required this.orderNumber,
-    required this.status,
-    required this.paymentStatus,
-    this.paymentProvider = 'MANUAL',
-    this.shippingMethod = 'DELIVERY',
+    this.customerName = '',
+    this.customerPhone = '',
+    this.shippingAddress = '',
+    this.shippingCity,
     this.orderType = 'DELIVERY',
-    this.pickupCode,
-    this.pickupLocationId,
-    this.pickupLocationName,
-    this.pickupAddress,
-    this.pickupHours,
-    this.pickupMapsUrl,
-    this.pickupLatitude,
-    this.pickupLongitude,
-    this.paymentUrl,
-    this.paymentProofUrl,
-    this.manualBank,
-    this.uniqueCode,
+    this.shippingMethod,
+    this.courierCode,
+    this.courierService,
+    this.trackingNumber,
     this.trackingToken,
     this.biteshipTrackingUrl,
     this.shipmentStatus,
@@ -246,68 +129,39 @@ class OrderSummary {
 
   factory OrderSummary.fromJson(Map<String, dynamic> json) {
     return OrderSummary(
-      orderNumber: (json['orderNumber'] ?? '').toString(),
-      status: (json['status'] ?? 'PENDING').toString(),
-      paymentStatus: (json['paymentStatus'] ?? 'UNPAID').toString(),
-      paymentProvider: (json['paymentProvider'] ?? 'MANUAL').toString(),
-      shippingMethod:
-          (json['shippingMethod'] ?? json['shipping_method'] ?? 'DELIVERY')
-              .toString(),
-      orderType:
-          (json['orderType'] ?? json['order_type'] ?? 'DELIVERY').toString(),
-      pickupCode: (json['pickupCode'] ?? json['pickup_code'])?.toString(),
-      pickupLocationId:
-          (json['pickupLocationId'] ?? json['pickup_location_id'])?.toString(),
-      pickupLocationName:
-          (json['pickupLocationName'] ?? json['pickup_location_name'])
-              ?.toString(),
-      pickupAddress:
-          (json['pickupAddress'] ?? json['pickup_address'])?.toString(),
-      pickupHours: (json['pickupHours'] ?? json['pickup_hours'])?.toString(),
-      pickupMapsUrl:
-          (json['pickupMapsUrl'] ?? json['pickup_maps_url'])?.toString(),
-      pickupLatitude: _asDoubleOrNull(
-        json['pickupLatitude'] ?? json['pickup_latitude'],
-      ),
-      pickupLongitude: _asDoubleOrNull(
-        json['pickupLongitude'] ?? json['pickup_longitude'],
-      ),
-      paymentUrl: json['paymentUrl']?.toString(),
-      paymentProofUrl: json['paymentProofUrl']?.toString(),
-      manualBank: json['manualBank']?.toString(),
-      uniqueCode:
-          json['uniqueCode'] == null ? null : _asInt(json['uniqueCode']),
-      trackingToken: json['trackingToken']?.toString(),
-      detailUrl: json['detailUrl']?.toString(),
-      createdAt: DateTime.tryParse((json['createdAt'] ?? '').toString()) ??
-          DateTime.now(),
-      deliveredAt:
-          _asDateTimeOrNull(json['deliveredAt'] ?? json['delivered_at']),
-      completedAt:
-          _asDateTimeOrNull(json['completedAt'] ?? json['completed_at']),
-      statusUpdatedAt: _asDateTimeOrNull(
-        json['statusUpdatedAt'] ?? json['status_updated_at'],
-      ),
-      updatedAt: _asDateTimeOrNull(json['updatedAt'] ?? json['updated_at']),
-      itemCount: _asInt(json['itemCount']) == 0
-          ? fallbackItemCount
-          : _asInt(json['itemCount']),
-      subtotal: _asDouble(json['subtotal']),
-      shippingCost: _asDouble(json['shippingCost']),
-      discount: _asDouble(json['discount']),
-      total: _asDouble(json['total']),
-      items: orderItems,
+      id: json['id'] as String,
+      orderNumber: json['orderNumber'] as String,
+      customerName: json['customerName'] as String? ?? '',
+      customerPhone: json['customerPhone'] as String? ?? '',
+      shippingAddress: json['shippingAddress'] as String? ?? '',
+      shippingCity: json['shippingCity'] as String?,
+      orderType: json['orderType'] as String? ?? 'DELIVERY',
+      shippingMethod: json['shippingMethod'] as String?,
+      courierCode: json['courierCode'] as String?,
+      courierService: json['courierService'] as String?,
+      trackingNumber: json['trackingNumber'] as String?,
+      trackingToken: json['trackingToken'] as String?,
+      biteshipTrackingUrl: json['biteshipTrackingUrl'] as String?,
+      shipmentStatus: json['shipmentStatus'] as String?,
+      subtotal: (json['subtotal'] as num?)?.toInt() ?? 0,
+      shippingCost: (json['shippingCost'] as num?)?.toInt() ?? 0,
+      discount: (json['discount'] as num?)?.toInt() ?? 0,
+      total: (json['total'] as num?)?.toInt() ?? 0,
+      uniqueCode: (json['uniqueCode'] as num?)?.toInt(),
+      status: json['status'] as String? ?? 'PENDING',
+      paymentProvider: json['paymentProvider'] as String? ?? 'MANUAL',
+      paymentStatus: json['paymentStatus'] as String? ?? 'UNPAID',
+      paymentUrl: json['paymentUrl'] as String?,
+      paymentProofUrl: json['paymentProofUrl'] as String?,
+      manualBank: json['manualBank'] as String?,
+      voucherCode: json['voucherCode'] as String?,
+      items: (json['items'] as List?)
+              ?.map((e) => OrderItemSummary.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          const [],
+      createdAt: _parseDate(json['createdAt']) ?? DateTime.now(),
+      updatedAt: _parseDate(json['updatedAt']),
     );
-  }
-
-  bool get isSelfPickup {
-    final normalizedMethod = shippingMethod.toUpperCase();
-    final normalizedType = orderType.toUpperCase();
-    return normalizedMethod == 'SELF_PICKUP' ||
-        normalizedMethod == 'SELF-PICKUP' ||
-        normalizedMethod == 'PICKUP' ||
-        normalizedType == 'SELF_PICKUP' ||
-        normalizedType == 'PICKUP';
   }
 }
 

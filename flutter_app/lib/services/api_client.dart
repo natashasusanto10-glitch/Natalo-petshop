@@ -46,57 +46,7 @@ class ApiClient {
     if (kDebugMode) debugPrint('[apiClient.clearSession] called');
   }
 
-  Future<void> _captureCookie(http.Response response) async {
-    final rawCookie = response.headers['set-cookie'];
-    if (rawCookie == null || rawCookie.isEmpty) return;
-
-    // ── Parse Set-Cookie ────────────────────────────────────────────────
-    // http package join multiple Set-Cookie headers dengan ", ". TAPI
-    // value dalam cookie attribute (mis. `Expires=Wed, 21 Oct 2026...`)
-    // juga punya ", ".
-    //
-    // Naive split(',') broke parsing untuk cookie dengan Expires/Max-Age.
-    // Pakai lookahead regex: split di koma + spasi yang **diikuti** oleh
-    // pattern cookie name baru (token=). Date di Expires tidak ada `=`
-    // setelah koma, jadi safe.
-    final splitPattern = RegExp(r',(?=\s*[a-zA-Z0-9!#$%&\x27*+\-.^_`|~]+=)');
-    final freshCookies = <String, String>{};
-    for (final entry in rawCookie.split(splitPattern)) {
-      final firstPair = entry.trim().split(';').first.trim();
-      final eqIdx = firstPair.indexOf('=');
-      if (eqIdx <= 0) continue; // skip malformed
-      final name = firstPair.substring(0, eqIdx).trim();
-      final value = firstPair.substring(eqIdx + 1).trim();
-      if (name.isEmpty) continue;
-      // Skip cleared cookies (server signal logout via empty value + past
-      // Expires). Caller juga clear via apiClient.clearSession().
-      freshCookies[name] = value;
-    }
-    if (freshCookies.isEmpty) return;
-
-    // ── Merge dengan existing cookie jar ────────────────────────────────
-    // Server tidak selalu re-send semua cookies di setiap response. Mis.
-    // setelah login, request berikut mungkin cuma set csrf token, bukan
-    // session token. Naive replace = lose session. Merge = stable.
-    final existingCookies = <String, String>{};
-    if (_cookie != null && _cookie!.isNotEmpty) {
-      for (final pair in _cookie!.split(';')) {
-        final trimmed = pair.trim();
-        final eqIdx = trimmed.indexOf('=');
-        if (eqIdx <= 0) continue;
-        existingCookies[trimmed.substring(0, eqIdx).trim()] =
-            trimmed.substring(eqIdx + 1).trim();
-      }
-    }
-    existingCookies.addAll(freshCookies); // fresh overrides
-
-    _cookie =
-        existingCookies.entries.map((e) => '${e.key}=${e.value}').join('; ');
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_sessionCookieKey, _cookie!);
-  }
-
-  Future<http.Response> _sendWithFallback(
+  Future<dynamic> putJson(
     String path, {
     Object? body,
     Duration timeout = const Duration(seconds: 10),
@@ -117,32 +67,55 @@ class ApiClient {
     }
   }
 
-  Map<String, dynamic> _decodeObject(http.Response response) {
-    final text = response.body.trim();
-    final Object? decoded;
+  Future<dynamic> patchJson(
+    String path, {
+    Object? body,
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    final uri = ApiConfig.uri(path);
     try {
-      decoded = text.isEmpty ? <String, dynamic>{} : jsonDecode(text);
-    } on FormatException {
-      _handleUnauthorized(response);
-      throw ApiException(
-        _nonJsonMessage(response, text),
-        statusCode: response.statusCode,
-      );
-    }
-    final data = decoded is Map<String, dynamic>
-        ? decoded
-        : <String, dynamic>{'data': decoded};
-
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      return data;
+      final req = http.Request('PATCH', uri)
+        ..headers.addAll(_headers(json: true))
+        ..body = body == null ? '' : jsonEncode(body);
+      final streamed = await req.send().timeout(timeout);
+      final res = await http.Response.fromStream(streamed);
+      return _decode(res);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException(e.toString(), cause: e);
     }
   }
 
-    // 401 Unauthorized — session expired atau cookie invalid. Auto-clear
-    // session lokal + fire callback supaya UI layer bisa redirect ke login.
-    // Tidak block error throw — caller tetap dapat ApiException untuk
-    // handle inline (mis. retry button di screen).
-    _handleUnauthorized(response);
+  /// Multipart file upload. `fields` untuk form data, `filePath` path file
+  /// di disk, `fieldName` name field di FormData, `filename` nama file di
+  /// upload, `contentType` MIME type. Return decoded JSON response.
+  Future<dynamic> postMultipartFile(
+    String path, {
+    required String filePath,
+    String fieldName = 'file',
+    String? filename,
+    Map<String, String>? fields,
+    String? contentType,
+    Duration timeout = const Duration(seconds: 60),
+  }) async {
+    final uri = ApiConfig.uri(path);
+    try {
+      final req = http.MultipartRequest('POST', uri)
+        ..headers.addAll(_headers())
+        ..files.add(await http.MultipartFile.fromPath(
+          fieldName,
+          filePath,
+          filename: filename,
+        ));
+      if (fields != null) req.fields.addAll(fields);
+      final streamed = await req.send().timeout(timeout);
+      final res = await http.Response.fromStream(streamed);
+      return _decode(res);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException(e.toString(), cause: e);
+    }
+  }
 
   Future<dynamic> deleteJson(
     String path, {
@@ -197,31 +170,6 @@ class ApiClient {
     } catch (_) {
       return res.body;
     }
-  }
-
-  void _handleUnauthorized(http.Response response) {
-    if (response.statusCode != 401) return;
-    // Fire-and-forget clear (async tapi tidak di-await — non-blocking).
-    clearSession();
-    // Trigger callback kalau ada subscriber.
-    onUnauthorized?.call();
-  }
-
-  String _nonJsonMessage(http.Response response, String text) {
-    final status = response.statusCode;
-    if (status == 404) {
-      return 'Endpoint belum tersedia di server.';
-    }
-    if (status == 401) {
-      return 'Sesi berakhir. Silakan login ulang.';
-    }
-    if (status >= 500) {
-      return 'Server sedang bermasalah. Coba lagi nanti.';
-    }
-    if (text.startsWith('<!DOCTYPE html') || text.startsWith('<html')) {
-      return 'Server membalas halaman web, bukan data aplikasi.';
-    }
-    return 'Response server tidak sesuai format aplikasi.';
   }
 }
 

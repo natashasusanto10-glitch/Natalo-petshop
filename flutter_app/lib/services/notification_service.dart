@@ -44,29 +44,10 @@ class NotificationService {
   /// POST /api/notifications/read-all. Server return updated unreadCount=0.
   Future<void> markAllRead() async {
     readOnlyMode.assertWritable('mark_all_notifications_read');
-    try {
-      await apiClient.postJson(
-        '/api/notifications/read-all',
-        body: const <String, dynamic>{},
-      );
-    } on ApiException catch (error) {
-      if (error.statusCode != 404) rethrow;
-      await _markVisibleItemsReadIndividually();
-    }
-  }
-
-  Future<void> _markVisibleItemsReadIndividually() async {
-    final result = await fetchMine();
-    if (!result.loggedIn) return;
-    final unreadItems = result.items.where((item) => !item.read).toList();
-    for (final item in unreadItems) {
-      try {
-        await markRead(item.id);
-      } catch (_) {
-        // Best-effort fallback untuk server lama yang belum punya
-        // /read-all atau masih mengembalikan duplicate-read error.
-      }
-    }
+    await apiClient.postJson(
+      '/api/notifications/read-all',
+      body: const <String, dynamic>{},
+    );
   }
 
   /// Fetch notification preferences user (per kategori on/off).
@@ -76,8 +57,7 @@ class NotificationService {
   /// implement di backend (graceful fallback).
   Future<Map<String, bool>> fetchPreferences() async {
     try {
-      final data =
-          await apiClient.getJson('/api/member/notification-preferences');
+      final data = await apiClient.getJson('/api/member/notification-preferences');
       final raw = data['preferences'] ?? data;
       if (raw is! Map<String, dynamic>) return _defaultPreferences;
       return {

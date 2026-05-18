@@ -1,28 +1,16 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'haptics.dart';
-
-/// Read-only mode — flag global yang membungkus semua endpoint mutation
-/// dan throw [ReadOnlyModeException] supaya Capacitor production database
-/// tidak tersentuh dari Flutter testing.
-///
-/// Default behavior:
-/// - **Release build** → ON (read-only) sampai launch siap
-/// - **Debug build** → OFF supaya QA bisa test checkout/write flow
-///
-/// Override runtime: Settings → "Mode Server" → toggle.
-///
-/// API:
-/// ```dart
-/// await readOnlyMode.initialize();        // di main(), sekali
-/// final canWrite = readOnlyMode.canWrite; // sync check
-/// readOnlyMode.assertWritable('checkout'); // throws kalau lock
-/// ```
+/// Read-only safety flag — saat ON, service mutation (add to cart, place
+/// order, dll) throws ReadOnlyModeException. Default ON sampai user
+/// explicit toggle off di Settings, supaya production database Capacitor
+/// tidak ke-mutate dari Flutter side selama development / testing.
 class ReadOnlyMode extends ChangeNotifier {
   ReadOnlyMode._();
 
-  bool _isReadOnly = kReleaseMode;
+  static const _key = 'read_only_mode_enabled';
+
+  bool _enabled = true;
   bool _initialized = false;
 
   bool get enabled => _enabled;
@@ -32,13 +20,8 @@ class ReadOnlyMode extends ChangeNotifier {
 
   Future<void> initialize() async {
     if (_initialized) return;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      // Release tetap aman by default, debug bebas untuk QA flow checkout.
-      _isReadOnly = prefs.getBool(_kStorageKey) ?? kReleaseMode;
-    } catch (_) {
-      _isReadOnly = kReleaseMode;
-    }
+    final prefs = await SharedPreferences.getInstance();
+    _enabled = prefs.getBool(_key) ?? true;
     _initialized = true;
     notifyListeners();
   }
