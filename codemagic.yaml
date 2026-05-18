@@ -74,6 +74,14 @@ workflows:
           # mungkin pernah di-upload manual via Xcode.
           agvtool new-version -all $(($BUILD_NUMBER + 1))
 
+      - name: Initialize keychain for signing
+        script: |
+          # Create fresh keychain + unlock + set partition list permissions
+          # supaya codesign tool boleh akses private key tanpa prompt
+          # interactive (errSecInternalComponent kalau gagal). Wajib
+          # sebelum add-certificates + sebelum xcodebuild archive.
+          keychain initialize
+
       - name: Diagnostic — list certs + profiles at start
         script: |
           # Cetak state Apple Developer Portal sebelum signing.
