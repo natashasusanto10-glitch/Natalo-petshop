@@ -1,9 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/cart_item.dart';
+import '../models/member_address.dart';
+import '../models/member_profile.dart';
+import '../models/shipping_rate.dart';
+import '../services/app_analytics.dart';
+import '../services/cart_service.dart';
+import '../services/member_service.dart';
+import '../services/order_service.dart';
+import '../services/shipping_service.dart';
+import '../services/voucher_service.dart';
 import '../state/cart_store.dart';
+import '../state/member_store.dart';
 import '../theme/natalo_colors.dart';
+import '../utils/app_review.dart';
 import '../utils/formatters.dart';
+import '../utils/haptics.dart';
+import '../utils/in_app_browser.dart';
+import '../widgets/app_product_image.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/order_success_overlay.dart';
 
@@ -87,7 +102,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   /// Subtotal dari items (cartStore-aware atau override).
   double get _localItemsSubtotal => widget.items != null
       ? widget.items!.fold<double>(0, (sum, item) => sum + item.lineTotal)
-      : cartStore.total;
+      : cartStore.subtotal.toDouble();
 
   double get _itemsSubtotal =>
       _checkoutPricing?.subtotal.toDouble() ?? _localItemsSubtotal;
@@ -633,12 +648,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       // Analytics: conversion event utama — track purchase value + item count
       // untuk funnel + revenue dashboard. No-op kalau Firebase belum setup.
       AppAnalytics.logPurchase(
-        orderNumber: result.orderNumber,
-        value: _grandTotal,
-        itemCount: _checkoutItems.fold<int>(
-          0,
-          (sum, item) => sum + item.quantity,
-        ),
+        transactionId: result.orderNumber,
+        value: _grandTotal.round(),
       );
       // Confetti overlay 2.5s sebelum show order detail dialog.
       // Positive emotional moment — drive review / share / repeat purchase.
@@ -700,6 +711,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   OrderSummary _createdOrderSummary(OrderResult result) {
     return OrderSummary(
+      id: result.orderNumber,
       orderNumber: result.orderNumber,
       status: 'PENDING',
       paymentStatus: _payment == 'Midtrans' ? 'PENDING' : 'PENDING',
@@ -708,7 +720,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       trackingToken: result.trackingToken,
       detailUrl: result.detailUrl,
       createdAt: DateTime.now(),
-      itemCount:
+      itemCountFromApi:
           _checkoutItems.fold<int>(0, (sum, item) => sum + item.quantity),
       subtotal: _itemsSubtotal,
       shippingCost: _shippingCost,
@@ -720,7 +732,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           productId: item.product.id,
           name: item.product.title,
           quantity: item.quantity,
-          price: item.product.finalPrice,
+          price: item.product.finalPrice.round(),
           imageUrl: item.product.imageUrl,
           categoryName: item.product.category,
         );
@@ -1730,7 +1742,7 @@ class _CheckoutAddressCard extends StatelessWidget {
                       : Icons.radio_button_off_rounded,
                   color: active ? _brandBlue : const Color(0xFFE5E7EB),
                 ),
-                title: Text(address.label),
+                title: Text(address.label ?? 'Alamat'),
                 subtitle: Text('${address.recipient} - ${address.address}'),
                 onTap: () {
                   onChanged(address);
@@ -3210,9 +3222,11 @@ class _EmptyCheckoutState extends StatelessWidget {
   Widget build(BuildContext context) {
     return AppEmptyState(
       title: 'Checkout belum siap',
-      body: 'Belum ada item untuk checkout.',
-      buttonLabel: 'Pilih Produk',
-      onPressed: () => Navigator.pushReplacementNamed(context, '/products'),
+      subtitle: 'Belum ada item untuk checkout.',
+      action: ElevatedButton(
+        onPressed: () => Navigator.pushReplacementNamed(context, '/products'),
+        child: const Text('Pilih Produk'),
+      ),
     );
   }
 }

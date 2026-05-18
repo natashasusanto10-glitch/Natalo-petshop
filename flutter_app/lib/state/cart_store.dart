@@ -20,6 +20,9 @@ class CartStore extends ChangeNotifier {
   List<CartItem> get items => _items.values.toList(growable: false);
   int get count => _items.values.fold(0, (sum, it) => sum + it.quantity);
   int get subtotal => _items.values.fold(0, (sum, it) => sum + it.lineTotal);
+  /// Alias `subtotal` — beberapa code (checkout) pakai `total`. Note:
+  /// tidak include shipping cost — itu di-add di checkout flow.
+  int get total => subtotal;
   bool get isEmpty => _items.isEmpty;
   bool get isNotEmpty => _items.isNotEmpty;
 
@@ -66,7 +69,7 @@ class CartStore extends ChangeNotifier {
       product: product,
       variant: variant,
       variantLabel: variantLabel,
-      unitPrice: overridePrice ?? variant?.price ?? product.finalPrice,
+      unitPrice: overridePrice ?? variant?.price ?? product.finalPrice.round(),
       quantity: quantity,
       effectiveStock: overrideStock ?? variant?.stock ?? product.stock,
     );

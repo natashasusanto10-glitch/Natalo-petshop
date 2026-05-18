@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
+import '../models/member_address.dart';
 import '../models/member_profile.dart';
 import '../state/member_store.dart';
 
@@ -49,7 +50,9 @@ class MemberService {
           .timeout(const Duration(seconds: 8));
       if (res.statusCode != 200) return const [];
       final body = jsonDecode(res.body);
-      final list = body is List ? body : (body is Map ? body['orders'] ?? body['data'] : null);
+      final list = body is List
+          ? body
+          : (body is Map ? body['orders'] ?? body['data'] : null);
       if (list is! List) return const [];
       return list
           .whereType<Map<String, dynamic>>()
@@ -57,6 +60,30 @@ class MemberService {
           .toList();
     } catch (e) {
       if (kDebugMode) debugPrint('[memberService.fetchOrders] $e');
+      return const [];
+    }
+  }
+
+  Future<List<MemberAddress>> fetchAddresses() async {
+    try {
+      final uri = ApiConfig.uri('/api/member/addresses');
+      final res = await http
+          .get(uri, headers: _authHeaders)
+          .timeout(const Duration(seconds: 8));
+      if (res.statusCode != 200) return const [];
+      final body = jsonDecode(res.body);
+      final list = body is List
+          ? body
+          : (body is Map ? body['addresses'] ?? body['data'] : null);
+      if (list is! List) return const [];
+      final addresses = list
+          .whereType<Map<String, dynamic>>()
+          .map(MemberAddress.fromJson)
+          .toList();
+      memberStore.setAddresses(addresses);
+      return addresses;
+    } catch (e) {
+      if (kDebugMode) debugPrint('[memberService.fetchAddresses] $e');
       return const [];
     }
   }

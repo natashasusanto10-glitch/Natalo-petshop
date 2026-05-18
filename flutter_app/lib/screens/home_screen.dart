@@ -69,7 +69,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   _HomeGreeting(onOpenProducts: () => _openProducts()),
                   const SizedBox(height: 16),
-                  _ShortcutRow(onOpenCategory: _openProducts),
+                  _ShortcutRow(
+                    onOpenCategory: (category) =>
+                        _openProducts(category: category),
+                  ),
                   const SizedBox(height: 18),
                   if (snapshot.connectionState == ConnectionState.waiting &&
                       products.isEmpty)

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/member_address.dart';
 import '../models/member_profile.dart';
 
 /// Member auth + profile store. Setelah login success, cache profile +
@@ -17,11 +18,19 @@ class MemberStore extends ChangeNotifier {
   MemberProfile? _profile;
   String? _sessionToken;
   bool _initialized = false;
+  List<MemberAddress> _addresses = const [];
 
   MemberProfile? get profile => _profile;
   String? get sessionToken => _sessionToken;
   bool get isLoggedIn => _profile != null;
   bool get initialized => _initialized;
+  List<MemberAddress> get addresses => _addresses;
+
+  /// Update cached addresses list — dipanggil setelah fetchAddresses().
+  void setAddresses(List<MemberAddress> addresses) {
+    _addresses = addresses;
+    notifyListeners();
+  }
 
   /// Sync constructor — fire-and-forget load from disk. Dipanggil di main()
   /// supaya UI tahu state login sebelum first paint.

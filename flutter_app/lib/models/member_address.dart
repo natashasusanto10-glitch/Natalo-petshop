@@ -63,4 +63,7 @@ class MemberAddress {
 
   factory MemberAddress.fromApiJson(Map<String, dynamic> json) =>
       MemberAddress.fromJson(json);
+
+  /// Alias `isMain` — beberapa code pakai `isPrimary` literal.
+  bool get isPrimary => isMain;
 }

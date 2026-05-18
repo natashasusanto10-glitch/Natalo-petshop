@@ -220,12 +220,36 @@ class OrderService {
       return const {};
     }
   }
+
+  Future<MidtransPaymentToken?> initiateMidtrans({
+    required String orderNumber,
+  }) async {
+    try {
+      final data = await apiClient.postJson(
+        '/api/orders/${Uri.encodeComponent(orderNumber)}/midtrans',
+        body: const {},
+      );
+      if (data is! Map<String, dynamic>) return null;
+      final redirectUrl =
+          (data['redirectUrl'] ?? data['redirect_url'] ?? data['paymentUrl'])
+              ?.toString();
+      if (redirectUrl == null || redirectUrl.isEmpty) return null;
+      return MidtransPaymentToken(
+        token: data['token']?.toString(),
+        redirectUrl: redirectUrl,
+      );
+    } catch (e) {
+      if (kDebugMode) debugPrint('[orderService.initiateMidtrans] $e');
+      return null;
+    }
+  }
 }
 
 final OrderService orderService = OrderService._();
 
 // ── Helpers untuk reorder parsing ──
-List<OrderItemSummary> _parseReorderEntries(dynamic raw, {required bool adjusted}) {
+List<OrderItemSummary> _parseReorderEntries(dynamic raw,
+    {required bool adjusted}) {
   if (raw is! List) return const [];
   return raw
       .whereType<Map<String, dynamic>>()
@@ -251,6 +275,7 @@ String _mimeTypeFromPath(String path) {
 class ReorderResult {
   final List<OrderItemSummary> items;
   final List<String> skippedReasons;
+
   /// Jumlah item yang di-adjust (qty dikurangi karena stock kurang).
   final int adjustedCount;
   const ReorderResult({
@@ -283,3 +308,12 @@ class OrderResult {
   });
 }
 
+class MidtransPaymentToken {
+  final String? token;
+  final String redirectUrl;
+
+  const MidtransPaymentToken({
+    this.token,
+    required this.redirectUrl,
+  });
+}

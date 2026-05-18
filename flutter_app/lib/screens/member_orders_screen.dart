@@ -342,7 +342,7 @@ class _OrderCard extends StatelessWidget {
           category: item.categoryName ?? '',
           brand: 'Natalo',
           imageUrl: item.imageUrl ?? '',
-          price: item.price,
+          price: item.price.toDouble(),
           rating: 0,
           reviewCount: 0,
           stock: 999,

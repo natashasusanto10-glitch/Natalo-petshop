@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/api_config.dart';
@@ -23,7 +24,8 @@ class ApiClient {
   /// subscribe untuk redirect ke /member/login.
   VoidCallback? onUnauthorized;
 
-  Map<String, String> _headers({bool json = false, Map<String, String>? extra}) {
+  Map<String, String> _headers(
+      {bool json = false, Map<String, String>? extra}) {
     final token = memberStore.sessionToken;
     return {
       if (json) 'content-type': 'application/json',
@@ -199,27 +201,6 @@ class ApiClient {
     }
   }
 
-  Future<dynamic> patchJson(
-    String path, {
-    Object? body,
-    Duration timeout = const Duration(seconds: 10),
-  }) async {
-    final uri = ApiConfig.uri(path);
-    try {
-      final res = await http
-          .patch(
-            uri,
-            headers: _headers(json: true),
-            body: body == null ? null : jsonEncode(body),
-          )
-          .timeout(timeout);
-      return _decode(res);
-    } catch (e) {
-      if (e is ApiException) rethrow;
-      throw ApiException(e.toString(), cause: e);
-    }
-  }
-
   Future<dynamic> postJson(
     String path, {
     Object? body,
@@ -241,39 +222,53 @@ class ApiClient {
     }
   }
 
-  /// Upload file lewat multipart/form-data — dipakai mis. payment proof
-  /// upload. `fieldName` = key di multipart (mis. 'file'). `contentType`
-  /// optional kalau tidak detect otomatis (mis. 'image/jpeg').
+
+  Future<dynamic> patchJson(
+    String path, {
+    Object? body,
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    final uri = ApiConfig.uri(path);
+    try {
+      final res = await http
+          .patch(
+            uri,
+            headers: _headers(json: true),
+            body: body == null ? null : jsonEncode(body),
+          )
+          .timeout(timeout);
+      return _decode(res);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException(e.toString(), cause: e);
+    }
+  }
+
   Future<dynamic> postMultipartFile(
     String path, {
     Map<String, dynamic>? query,
     required String fieldName,
     required String filePath,
-    required String filename,
+    String? filename,
     String? contentType,
     Duration timeout = const Duration(seconds: 30),
   }) async {
     final uri = ApiConfig.uri(path, query);
     try {
-      final req = http.MultipartRequest('POST', uri)
+      final request = http.MultipartRequest('POST', uri)
         ..headers.addAll(_headers());
-      // Multipart file
-      final mediaType = contentType?.split('/');
-      req.files.add(
+      request.files.add(
         await http.MultipartFile.fromPath(
           fieldName,
           filePath,
           filename: filename,
+          contentType:
+              contentType == null ? null : MediaType.parse(contentType),
         ),
       );
-      // Note: contentType set ke default oleh package:http kalau tidak kasih
-      // MediaType eksplisit. Sebagian besar API akan auto-detect dari nama
-      // file. mediaType variable di-extract di atas untuk future use kalau
-      // butuh override ke MediaType class dari package:http_parser.
-      final _ = mediaType;
-      final streamed = await req.send().timeout(timeout);
-      final res = await http.Response.fromStream(streamed);
-      return _decode(res);
+      final streamed = await request.send().timeout(timeout);
+      final response = await http.Response.fromStream(streamed);
+      return _decode(response);
     } catch (e) {
       if (e is ApiException) rethrow;
       throw ApiException(e.toString(), cause: e);

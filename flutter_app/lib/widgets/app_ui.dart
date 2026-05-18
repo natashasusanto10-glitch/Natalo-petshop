@@ -352,12 +352,14 @@ class _AppAnimatedEntranceState extends State<AppAnimatedEntrance>
 class AppLottieAsset extends StatelessWidget {
   final String asset;
   final double size;
+  final bool repeat;
   final IconData fallbackIcon;
 
   const AppLottieAsset({
     super.key,
     required this.asset,
     this.size = 120,
+    this.repeat = true,
     this.fallbackIcon = Icons.pets_rounded,
   });
 

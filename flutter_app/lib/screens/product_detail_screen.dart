@@ -108,7 +108,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     AppAnalytics.logViewProduct(
       productId: product.id,
       productName: product.title,
-      price: product.price,
+      price: product.price.round(),
       category: product.category,
     );
     // Crashlytics breadcrumb — kalau crash terjadi nanti, log ini muncul

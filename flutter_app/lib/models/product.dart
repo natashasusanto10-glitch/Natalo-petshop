@@ -286,6 +286,9 @@ class Product {
     this.soldCount = 0,
   });
 
+  /// Alias `rating` untuk legacy reference `Product.avgRating`.
+  double get avgRating => rating;
+
   /// Alias `fromApiJson` — legacy code (mis. cart_item) pakai `Product.fromJson(...)`.
   factory Product.fromJson(Map<String, dynamic> json) =>
       Product.fromApiJson(json);

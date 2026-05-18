@@ -10,10 +10,9 @@ class CartService {
     if (rawItems is! List) return [];
 
     return rawItems.whereType<Map<String, dynamic>>().map((item) {
-      // Product.price = int (rupiah). Cart endpoint kadang return double
-      // (legacy formatting). Truncate ke int aman karena harga rupiah
-      // tidak punya desimal.
-      final price = _asDouble(item['price']).toInt();
+      // Product.price = double. Cart endpoint return number — convert
+      // via _asDouble untuk handle int/double/string uniformly.
+      final price = _asDouble(item['price']);
       final product = Product(
         id: (item['productId'] ?? '').toString(),
         slug: (item['productId'] ?? '').toString(),
@@ -21,7 +20,7 @@ class CartService {
         category: 'Produk',
         brand: 'Natalo',
         imageUrl: (item['imageUrl'] ?? '').toString(),
-        price: price,
+        price: price.toDouble(),
         rating: 0,
         reviewCount: 0,
         stock: _asInt(item['stock'], fallback: 999),
@@ -65,11 +64,13 @@ class CartService {
       final data = await apiClient.postJson(
         '/api/cart/validate',
         body: {
-          'items': items.map((item) => {
-                'productId': item.product.id,
-                'quantity': item.quantity,
-                'price': item.product.finalPrice.round(),
-              }).toList(),
+          'items': items
+              .map((item) => {
+                    'productId': item.product.id,
+                    'quantity': item.quantity,
+                    'price': item.product.finalPrice.round(),
+                  })
+              .toList(),
         },
       );
       final issues = data['issues'];
