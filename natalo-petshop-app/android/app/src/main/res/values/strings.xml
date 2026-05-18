@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">Natalo Petshop</string>
-    <string name="title_activity_main">Natalo Petshop</string>
-    <string name="package_name">com.natalopetshop.app</string>
-    <string name="custom_url_scheme">com.natalopetshop.app</string>
-</resources>

@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "PowerShell(node --version; npm --version; java --version; Write-Host \"---\"; Write-Host \"ANDROID_HOME: $env:ANDROID_HOME\"; Write-Host \"JAVA_HOME: $env:JAVA_HOME\")",
-      "PowerShell($shell = New-Object -ComObject WScript.Shell; $shortcut = $shell.CreateShortcut\\(\"C:\\\\Users\\\\USER\\\\Desktop\\\\Natalo Petshop & Aquarium.lnk\"\\); Write-Host \"Target: $\\($shortcut.TargetPath\\)\"; Write-Host \"Arguments: $\\($shortcut.Arguments\\)\"; Write-Host \"WorkingDir: $\\($shortcut.WorkingDirectory\\)\")"
-    ]
-  }
-}
