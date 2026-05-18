@@ -98,14 +98,14 @@ class _MemberOrdersScreenState extends State<MemberOrdersScreen> {
         title: const Text('Pesanan Saya'),
         actions: [
           IconButton(
-            onPressed: () => Navigator.pushNamed(context, '/products'),
-            icon: const Icon(Icons.search_rounded),
-            tooltip: 'Cari produk',
+            onPressed: () => Navigator.pushNamed(context, '/notifications'),
+            icon: const Icon(Icons.notifications_none_rounded),
+            tooltip: 'Notifikasi',
           ),
           IconButton(
-            onPressed: () => Navigator.pushNamed(context, '/help'),
-            icon: const Icon(Icons.chat_bubble_outline_rounded),
-            tooltip: 'Bantuan',
+            onPressed: () => Navigator.pushNamed(context, '/cart'),
+            icon: const Icon(Icons.shopping_cart_outlined),
+            tooltip: 'Keranjang',
           ),
         ],
       ),

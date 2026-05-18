@@ -25,6 +25,8 @@ plugins {
     // per-module di app/build.gradle.kts. Capacitor `cap sync` inject otomatis;
     // Flutter tidak — kita declare manual. Version match pin Firebase BoM 33.x.
     id("com.google.gms.google-services") version "4.4.2" apply false
+    // Firebase Crashlytics — auto-upload mapping file saat release.
+    id("com.google.firebase.crashlytics") version "3.0.2" apply false
 }
 
 include(":app")

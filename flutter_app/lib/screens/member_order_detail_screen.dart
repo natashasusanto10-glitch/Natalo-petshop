@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/member_profile.dart';
+import '../models/shipping_rate.dart';
 import '../services/order_service.dart';
 import '../state/cart_store.dart';
 import '../utils/formatters.dart';
@@ -212,8 +213,15 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
                 OrderTrackingTimeline(
                   status: order.status,
                   createdAt: order.createdAt,
+                  type: order.isSelfPickup
+                      ? OrderTimelineType.pickup
+                      : OrderTimelineType.delivery,
                 ),
                 const SizedBox(height: 12),
+                if (order.isSelfPickup) ...[
+                  _PickupInfoCard(order: order),
+                  const SizedBox(height: 12),
+                ],
                 if (_shouldShowPaymentAction(order)) ...[
                   _PaymentActionCard(order: order),
                   const SizedBox(height: 12),
@@ -537,6 +545,259 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
   }
 }
 
+class _PickupInfoCard extends StatelessWidget {
+  final OrderSummary order;
+
+  const _PickupInfoCard({required this.order});
+
+  Future<void> _openMaps(BuildContext context) async {
+    AppHaptics.tap();
+    final lat = order.pickupLatitude;
+    final lng = order.pickupLongitude;
+    final fallbackQuery = Uri.encodeComponent(
+      '${order.pickupLocationName ?? PickupStoreInfo.name} '
+      '${order.pickupAddress ?? PickupStoreInfo.address}',
+    );
+    final url = lat != null && lng != null
+        ? 'https://www.google.com/maps/search/?api=1&query=$lat,$lng'
+        : (order.pickupMapsUrl?.trim().isNotEmpty == true
+            ? order.pickupMapsUrl!.trim()
+            : 'https://www.google.com/maps/search/?api=1&query=$fallbackQuery');
+    final uri = Uri.tryParse(url);
+    if (uri == null) {
+      _showSnack(context, 'Link Google Maps tidak valid.');
+      return;
+    }
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!context.mounted || opened) return;
+    _showSnack(context, 'Tidak bisa membuka Google Maps.');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final locationName = order.pickupLocationName?.trim().isNotEmpty == true
+        ? order.pickupLocationName!.trim()
+        : PickupStoreInfo.name;
+    final address = order.pickupAddress?.trim().isNotEmpty == true
+        ? order.pickupAddress!.trim()
+        : PickupStoreInfo.address;
+    final hours = order.pickupHours?.trim().isNotEmpty == true
+        ? order.pickupHours!.trim()
+        : PickupStoreInfo.hours;
+
+    return GlassSurface(
+      padding: const EdgeInsets.all(18),
+      radius: 26,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _SectionTitle(
+            icon: Icons.storefront_rounded,
+            title: 'Metode Pengambilan',
+            subtitle: 'Ambil pesanan langsung di toko.',
+          ),
+          const SizedBox(height: 18),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Ambil Sendiri di Toko',
+                      style: TextStyle(
+                        color: Color(0xFF17202A),
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Self Pick Up - Gratis Ongkir',
+                      style: TextStyle(
+                        color: _brandBlue,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8F8EF),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: const Text(
+                  'Gratis ongkir',
+                  style: TextStyle(
+                    color: Color(0xFF087A3A),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          _PickupInfoRow(
+            icon: Icons.location_on_outlined,
+            title: 'Lokasi Toko',
+            content: '$locationName\n$address',
+          ),
+          const SizedBox(height: 16),
+          _PickupInfoRow(
+            icon: Icons.access_time_rounded,
+            title: 'Jam Ambil',
+            content: hours,
+          ),
+          const SizedBox(height: 18),
+          _PickupCodeBox(pickupCode: order.pickupCode),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: OutlinedButton.icon(
+              onPressed: () => _openMaps(context),
+              icon: const Icon(Icons.location_on_outlined, size: 20),
+              label: const Text('Buka di Google Maps'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _brandBlue,
+                side: const BorderSide(color: _brandBlue, width: 1.4),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                textStyle: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PickupCodeBox extends StatelessWidget {
+  final String? pickupCode;
+
+  const _PickupCodeBox({required this.pickupCode});
+
+  @override
+  Widget build(BuildContext context) {
+    final code = pickupCode?.trim();
+    final hasCode = code != null && code.isNotEmpty;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEAF8EF),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFCBEFD8)),
+      ),
+      child: Column(
+        children: [
+          const Text(
+            'Kode Pengambilan',
+            style: TextStyle(
+              color: Color(0xFF087A3A),
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            hasCode ? code : 'Kode pengambilan belum tersedia',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: const Color(0xFF087A3A),
+              fontSize: hasCode ? 28 : 15,
+              fontWeight: FontWeight.w900,
+              letterSpacing: hasCode ? 3 : 0,
+              height: 1.15,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Tunjukkan kode ini ke kasir saat mengambil pesanan.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Color(0xFF087A3A),
+              fontSize: 13,
+              height: 1.4,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PickupInfoRow extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String content;
+
+  const _PickupInfoRow({
+    required this.icon,
+    required this.title,
+    required this.content,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: const Color(0xFFEAF8EF),
+            borderRadius: BorderRadius.circular(13),
+          ),
+          child: Icon(icon, size: 21, color: const Color(0xFF059669)),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Color(0xFF374151),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                content,
+                style: const TextStyle(
+                  color: Color(0xFF17202A),
+                  fontSize: 14,
+                  height: 1.45,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _SectionTitle extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -750,7 +1011,12 @@ class _OrderHeader extends StatelessWidget {
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          _paymentLabel(order.paymentStatus),
+                          order.isSelfPickup
+                              ? _pickupStatusSubtitle(
+                                  order.status,
+                                  order.paymentStatus,
+                                )
+                              : _paymentLabel(order.paymentStatus),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -1264,11 +1530,17 @@ class _SummaryLine extends StatelessWidget {
 
 String _statusReadable(String status) {
   return switch (status.toUpperCase()) {
-    'UNPAID' || 'PENDING' => 'Menunggu pembayaran',
+    'UNPAID' ||
+    'PENDING' ||
+    'WAITING_PAYMENT' ||
+    'PENDING_PAYMENT' =>
+      'Menunggu pembayaran',
     'PAID' => 'Sudah dibayar',
     'PROCESSING' => 'Sedang diproses',
+    'READY_TO_PICKUP' || 'READY_FOR_PICKUP' || 'READY_PICKUP' => 'Siap Diambil',
+    'PICKED_UP' => 'Sudah Diambil',
     'SHIPPED' => 'Dalam pengiriman',
-    'DELIVERED' => 'Selesai',
+    'DELIVERED' || 'COMPLETED' => 'Selesai',
     'CANCELLED' => 'Dibatalkan',
     _ => status,
   };
@@ -1276,10 +1548,18 @@ String _statusReadable(String status) {
 
 Color _orderStatusColor(String status) {
   return switch (status.toUpperCase()) {
-    'UNPAID' || 'PENDING' => const Color(0xFFF59E0B),
+    'UNPAID' ||
+    'PENDING' ||
+    'WAITING_PAYMENT' ||
+    'PENDING_PAYMENT' =>
+      const Color(0xFFF59E0B),
     'PAID' || 'PROCESSING' => _brandBlue,
+    'READY_TO_PICKUP' ||
+    'READY_FOR_PICKUP' ||
+    'READY_PICKUP' =>
+      const Color(0xFF1E5FBF),
     'SHIPPED' => const Color(0xFF7C3AED),
-    'DELIVERED' => const Color(0xFF16A34A),
+    'PICKED_UP' || 'DELIVERED' || 'COMPLETED' => const Color(0xFF16A34A),
     'CANCELLED' => const Color(0xFFEF4444),
     _ => _brandBlue,
   };
@@ -1287,11 +1567,20 @@ Color _orderStatusColor(String status) {
 
 IconData _orderStatusIcon(String status) {
   return switch (status.toUpperCase()) {
-    'UNPAID' || 'PENDING' => Icons.schedule_rounded,
+    'UNPAID' ||
+    'PENDING' ||
+    'WAITING_PAYMENT' ||
+    'PENDING_PAYMENT' =>
+      Icons.schedule_rounded,
     'PAID' => Icons.payments_outlined,
     'PROCESSING' => Icons.inventory_2_outlined,
+    'READY_TO_PICKUP' ||
+    'READY_FOR_PICKUP' ||
+    'READY_PICKUP' =>
+      Icons.storefront_rounded,
+    'PICKED_UP' => Icons.check_circle_outline_rounded,
     'SHIPPED' => Icons.local_shipping_outlined,
-    'DELIVERED' => Icons.verified_outlined,
+    'DELIVERED' || 'COMPLETED' => Icons.verified_outlined,
     'CANCELLED' => Icons.cancel_outlined,
     _ => Icons.receipt_long_outlined,
   };
@@ -1301,12 +1590,33 @@ String _statusLabel(String status) {
   return switch (status.toUpperCase()) {
     'UNPAID' => 'Belum Bayar',
     'PENDING' => 'Menunggu',
+    'WAITING_PAYMENT' || 'PENDING_PAYMENT' => 'Belum Bayar',
     'PAID' => 'Lunas',
     'PROCESSING' => 'Diproses',
+    'READY_TO_PICKUP' || 'READY_FOR_PICKUP' || 'READY_PICKUP' => 'Siap Diambil',
+    'PICKED_UP' => 'Sudah Diambil',
     'SHIPPED' => 'Dikirim',
-    'DELIVERED' => 'Selesai',
+    'DELIVERED' || 'COMPLETED' => 'Selesai',
     'CANCELLED' => 'Dibatalkan',
     _ => status,
+  };
+}
+
+String _pickupStatusSubtitle(String orderStatus, String paymentStatus) {
+  final payment = paymentStatus.toUpperCase();
+  if (payment == 'UNPAID' || payment == 'PENDING') return 'Menunggu bayar';
+
+  return switch (orderStatus.toUpperCase()) {
+    'READY_TO_PICKUP' ||
+    'READY_FOR_PICKUP' ||
+    'READY_PICKUP' =>
+      'Pesanan siap diambil di toko',
+    'PICKED_UP' ||
+    'DELIVERED' ||
+    'COMPLETED' =>
+      'Pesanan sudah diterima customer',
+    'PROCESSING' || 'PAID' => 'Tim sedang menyiapkan pesanan',
+    _ => 'Ambil sendiri di toko',
   };
 }
 

@@ -22,6 +22,9 @@ import {
   calcVoucherDiscount,
   getVoucherDisabledReason,
   shouldHideVoucher,
+  voucherScopeOf,
+  voucherTypeOf,
+  voucherVisibilityOf,
 } from "@/lib/voucher-helpers";
 import { isFreeShippingVoucher } from "@/lib/voucher-kind";
 
@@ -98,6 +101,7 @@ export async function GET(request: NextRequest) {
   };
   const items: Array<{
     id: string;
+    name: string | null;
     code: string;
     description: string | null;
     discountPercent: number | null;
@@ -106,9 +110,9 @@ export async function GET(request: NextRequest) {
     minimumOrder: number;
     expiresAt: Date | null;
     sourceType: "CUSTOMER" | "SELLER_MANUAL";
-    kind: "PRODUCT_DISCOUNT" | "FREE_SHIPPING" | "LOYALTY_CLAIM" | "MANUAL_PRIVATE";
-    targetUser: "ALL_MEMBERS" | "NEW_MEMBER";
-    usageLimitPeriod: "NONE" | "LIFETIME" | "DAY" | "WEEK" | "MONTH";
+    type: ReturnType<typeof voucherTypeOf>;
+    visibility: ReturnType<typeof voucherVisibilityOf>;
+    discountScope: ReturnType<typeof voucherScopeOf>;
     discount: number;
     applicable: boolean;
     disabledReason: string | null;
@@ -127,6 +131,7 @@ export async function GET(request: NextRequest) {
 
     items.push({
       id: v.id,
+      name: v.name,
       code: v.code,
       description: v.description,
       discountPercent: v.discountPercent,
@@ -135,9 +140,9 @@ export async function GET(request: NextRequest) {
       minimumOrder: v.minimumOrder,
       expiresAt: v.expiresAt,
       sourceType: v.sourceType,
-      kind: v.kind,
-      targetUser: v.targetUser,
-      usageLimitPeriod: v.usageLimitPeriod,
+      type: voucherTypeOf(v),
+      visibility: voucherVisibilityOf(v),
+      discountScope: voucherScopeOf(v),
       discount,
       applicable,
       disabledReason:

@@ -103,5 +103,14 @@
 		</array>
 		<key>UIStatusBarHidden</key>
 		<false/>
+		<!-- Background modes: remote-notification untuk FCM (firebase_messaging
+		     wake app saat APNs payload arrives); fetch untuk background fetch
+		     berkala. Tanpa ini, push notif tidak akan trigger app handler saat
+		     app di-background. -->
+		<key>UIBackgroundModes</key>
+		<array>
+			<string>fetch</string>
+			<string>remote-notification</string>
+		</array>
 	</dict>
 </plist>

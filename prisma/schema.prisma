@@ -43,24 +43,27 @@ enum VoucherSourceType {
   SELLER_MANUAL
 }
 
-enum VoucherKind {
-  PRODUCT_DISCOUNT
-  FREE_SHIPPING
-  LOYALTY_CLAIM
-  MANUAL_PRIVATE
+enum VoucherType {
+  PUBLIC_FREE_SHIPPING
+  PUBLIC_PRODUCT_DISCOUNT
+  LOYALTY_POINT_CLAIM
+  PRIVATE_MANUAL_CODE
 }
 
-enum VoucherTargetUser {
-  ALL_MEMBERS
-  NEW_MEMBER
+enum VoucherVisibility {
+  PUBLIC
+  PRIVATE
+  USER_OWNED
 }
 
-enum VoucherUserUsageLimitPeriod {
-  NONE
-  LIFETIME
-  DAY
-  WEEK
-  MONTH
+enum VoucherDiscountType {
+  FIXED_AMOUNT
+  PERCENTAGE
+}
+
+enum VoucherDiscountScope {
+  PRODUCT
+  SHIPPING
 }
 
 model User {
@@ -85,6 +88,7 @@ model User {
   chatMessages        ChatMessage[]    @relation("ChatSender")
   cartItems           CartItem[]
   productViews        UserProductView[]
+  voucherUsages       VoucherUsage[]
   announcementReads   AnnouncementRead[]
   // Feed relations — admin post & user community video, plus engagement.
   feedPosts           FeedPost[]      @relation("FeedAuthor")
@@ -273,13 +277,17 @@ model Order {
   paymentProofUrl      String?
   manualBank           String?
   uniqueCode           Int?
-  voucherCode          String? // Legacy customer voucher field
-  productVoucherCode   String? // PRODUCT_DISCOUNT slot
-  shippingVoucherCode  String? // FREE_SHIPPING slot
-  loyaltyVoucherCode   String? // LOYALTY_CLAIM slot
-  manualVoucherCode    String? // MANUAL_PRIVATE / SELLER_MANUAL slot
+  voucherCode          String? // Customer voucher (CUSTOMER source type)
+  manualVoucherCode    String? // Seller manual voucher (SELLER_MANUAL)
+  freeShippingVoucherCode String?
+  productVoucherCode   String?
+  loyaltyVoucherCode   String?
+  privateVoucherCode   String?
+  productDiscount      Int             @default(0)
+  shippingDiscount     Int             @default(0)
   notes                String?
   items                OrderItem[]
+  voucherUsages        VoucherUsage[]
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
 
@@ -307,6 +315,7 @@ model OrderItem {
 
 model Voucher {
   id              String    @id @default(cuid())
+  name            String?
   code            String    @unique
   description     String?
   discountPercent Int?
@@ -315,6 +324,7 @@ model Voucher {
   minimumOrder    Int       @default(0)
   maxUsage        Int?
   usedCount       Int       @default(0)
+  usageLimitPerUser Int     @default(1)
   startsAt        DateTime  @default(now())
   expiresAt       DateTime?
   isActive        Boolean   @default(true)
@@ -324,23 +334,38 @@ model Voucher {
   // (tersembunyi, hanya via input kode manual). Default CUSTOMER untuk
   // backward compat semua voucher existing.
   sourceType      VoucherSourceType @default(CUSTOMER)
-  // Tipe bisnis voucher. Admin hanya boleh membuat PRODUCT_DISCOUNT,
-  // FREE_SHIPPING, dan MANUAL_PRIVATE. LOYALTY_CLAIM dibuat otomatis saat
-  // user menukar loyalty point.
-  kind            VoucherKind @default(PRODUCT_DISCOUNT)
-  // Voucher member baru tetap PRODUCT_DISCOUNT. Field ini hanya menentukan
-  // eligibility pengguna.
-  targetUser      VoucherTargetUser @default(ALL_MEMBERS)
-  newMemberMaxAccountAgeDays Int?
-  newMemberRequireNoSuccessfulOrder Boolean @default(false)
-  usageLimitPeriod VoucherUserUsageLimitPeriod @default(LIFETIME)
-  usageLimitPerUser Int @default(1)
+  type            VoucherType @default(PUBLIC_PRODUCT_DISCOUNT)
+  visibility      VoucherVisibility @default(PUBLIC)
+  discountType    VoucherDiscountType @default(FIXED_AMOUNT)
+  discountScope   VoucherDiscountScope @default(PRODUCT)
+  eligibleUserIds String[] @default([])
+  eligibleProductIds String[] @default([])
+  eligibleCategoryIds String[] @default([])
+  usages          VoucherUsage[]
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   @@index([userId])
-  @@index([kind])
-  @@index([targetUser])
+  @@index([type, visibility])
+  @@index([discountScope])
+}
+
+model VoucherUsage {
+  id             String   @id @default(cuid())
+  voucherId      String
+  voucher        Voucher  @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderId        String
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  discountAmount Int      @default(0)
+  voucherType    String
+  usedAt         DateTime @default(now())
+
+  @@index([voucherId])
+  @@index([userId])
+  @@index([orderId])
+  @@unique([voucherId, orderId])
 }
 
 model PushSubscription {

@@ -5,6 +5,31 @@ import {
   type VoucherUsageLimitPeriodValue,
 } from "@/lib/voucher-helpers";
 
+export type ProductVoucherPreview = {
+  id: string;
+  title: string;
+  description: string | null;
+  badgeLabel: string;
+  sheetTitle: string;
+  sheetSubtitle: string;
+  discountPercent: number | null;
+  discountAmount: number | null;
+  maxDiscountAmount: number | null;
+  minimumOrder: number;
+  savingAmount: number | null;
+  expiresAt: string | null;
+  type: "PUBLIC_PRODUCT_DISCOUNT";
+  discountScope: "PRODUCT";
+  loginRequired: true;
+};
+
+type ProductVoucherProductInput = {
+  id: string;
+  price: number;
+  categoryId?: string | null;
+  categorySlug?: string | null;
+};
+
 export type ProductVoucherItem = {
   id: string;
   title: string;
@@ -165,4 +190,195 @@ export async function loadVisibleProductVouchers(
       isActive: true,
       isExpired: false,
     }));
+}
+
+type PublicProductVoucherRow = {
+  id: string;
+  name: string | null;
+  code: string;
+  description: string | null;
+  discountPercent: number | null;
+  discountAmount: number | null;
+  maxDiscountAmount: number | null;
+  minimumOrder: number;
+  maxUsage: number | null;
+  usedCount: number;
+  expiresAt: Date | null;
+  eligibleUserIds: string[];
+  eligibleProductIds: string[];
+  eligibleCategoryIds: string[];
+};
+
+function voucherAppliesToProduct(
+  voucher: Pick<
+    PublicProductVoucherRow,
+    "eligibleProductIds" | "eligibleCategoryIds"
+  >,
+  product: ProductVoucherProductInput,
+) {
+  const productIds = new Set(voucher.eligibleProductIds ?? []);
+  const categoryIds = new Set(voucher.eligibleCategoryIds ?? []);
+
+  if (productIds.size === 0 && categoryIds.size === 0) return true;
+  if (productIds.has(product.id)) return true;
+  if (product.categoryId && categoryIds.has(product.categoryId)) return true;
+  // Safety untuk data lama/admin input manual yang mungkin memakai slug.
+  if (product.categorySlug && categoryIds.has(product.categorySlug)) return true;
+  return false;
+}
+
+function previewSavingAmount(
+  voucher: Pick<
+    PublicProductVoucherRow,
+    "discountPercent" | "discountAmount" | "maxDiscountAmount" | "minimumOrder"
+  >,
+  product: ProductVoucherProductInput,
+) {
+  const base = Math.max(0, voucher.minimumOrder || product.price || 0);
+  let saving = 0;
+  if (voucher.discountPercent && voucher.discountPercent > 0) {
+    saving += Math.floor((base * voucher.discountPercent) / 100);
+  }
+  if (voucher.discountAmount && voucher.discountAmount > 0) {
+    saving += voucher.discountAmount;
+  }
+  if (voucher.maxDiscountAmount && voucher.maxDiscountAmount > 0) {
+    saving = Math.min(saving, voucher.maxDiscountAmount);
+  }
+  return saving > 0 ? saving : null;
+}
+
+function voucherPreviewLabel(
+  voucher: PublicProductVoucherRow,
+  savingAmount: number | null,
+) {
+  if (savingAmount && savingAmount > 0) {
+    const cappedOrMinimum =
+      (voucher.maxDiscountAmount ?? 0) > 0 || voucher.minimumOrder > 0;
+    return `Voucher hemat ${cappedOrMinimum ? "s.d. " : ""}${formatRupiahShort(
+      savingAmount,
+    )}`;
+  }
+  if (voucher.discountPercent && voucher.discountPercent > 0) {
+    return `Voucher hemat ${voucher.discountPercent}%`;
+  }
+  if (voucher.discountAmount && voucher.discountAmount > 0) {
+    return `Voucher hemat ${formatRupiahShort(voucher.discountAmount)}`;
+  }
+  return "Voucher produk Natalo";
+}
+
+function buildProductVoucherPreview(
+  voucher: PublicProductVoucherRow,
+  product: ProductVoucherProductInput,
+): ProductVoucherPreview | null {
+  const savingAmount = previewSavingAmount(voucher, product);
+  const badgeLabel = voucherPreviewLabel(voucher, savingAmount);
+  if (!badgeLabel) return null;
+
+  return {
+    id: voucher.id,
+    title: voucher.name ?? voucherTitle(voucher),
+    description: voucher.description,
+    badgeLabel,
+    sheetTitle: voucherTitle(voucher),
+    sheetSubtitle:
+      voucher.minimumOrder > 0
+        ? `Min. belanja ${formatRupiahShort(voucher.minimumOrder)}`
+        : "Tanpa minimum belanja",
+    discountPercent: voucher.discountPercent,
+    discountAmount: voucher.discountAmount,
+    maxDiscountAmount: voucher.maxDiscountAmount,
+    minimumOrder: voucher.minimumOrder,
+    savingAmount,
+    expiresAt: voucher.expiresAt ? voucher.expiresAt.toISOString() : null,
+    type: "PUBLIC_PRODUCT_DISCOUNT",
+    discountScope: "PRODUCT",
+    loginRequired: true,
+  };
+}
+
+async function loadPublicProductDiscountVouchers() {
+  const now = new Date();
+  const vouchers = await prisma.voucher.findMany({
+    where: {
+      isActive: true,
+      sourceType: "CUSTOMER",
+      type: "PUBLIC_PRODUCT_DISCOUNT",
+      visibility: "PUBLIC",
+      discountScope: "PRODUCT",
+      userId: null,
+      startsAt: { lte: now },
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    },
+    orderBy: [
+      { expiresAt: "asc" },
+      { discountAmount: "desc" },
+      { discountPercent: "desc" },
+      { createdAt: "desc" },
+    ],
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      description: true,
+      discountPercent: true,
+      discountAmount: true,
+      maxDiscountAmount: true,
+      minimumOrder: true,
+      maxUsage: true,
+      usedCount: true,
+      expiresAt: true,
+      eligibleUserIds: true,
+      eligibleProductIds: true,
+      eligibleCategoryIds: true,
+    },
+    take: 40,
+  });
+
+  return vouchers.filter((voucher) => {
+    if (voucher.eligibleUserIds.length > 0) return false;
+    if (voucher.maxUsage !== null && voucher.usedCount >= voucher.maxUsage) {
+      return false;
+    }
+    return true;
+  });
+}
+
+export async function attachPublicProductVoucherPreviews<
+  T extends ProductVoucherProductInput,
+>(products: T[]): Promise<Array<T & { voucherPreview: ProductVoucherPreview | null }>> {
+  if (products.length === 0) return [];
+  try {
+    const vouchers = await loadPublicProductDiscountVouchers();
+    if (vouchers.length === 0) {
+      return products.map((product) => ({ ...product, voucherPreview: null }));
+    }
+
+    return products.map((product) => {
+      const previews = vouchers
+        .filter((voucher) => voucherAppliesToProduct(voucher, product))
+        .map((voucher) => buildProductVoucherPreview(voucher, product))
+        .filter((preview): preview is ProductVoucherPreview => Boolean(preview))
+        .sort((a, b) => {
+          const amountDelta = (b.savingAmount ?? 0) - (a.savingAmount ?? 0);
+          if (amountDelta !== 0) return amountDelta;
+          return (b.discountPercent ?? 0) - (a.discountPercent ?? 0);
+        });
+
+      return {
+        ...product,
+        voucherPreview: previews[0] ?? null,
+      };
+    });
+  } catch {
+    return products.map((product) => ({ ...product, voucherPreview: null }));
+  }
+}
+
+export async function loadPublicProductVoucherPreview(
+  product: ProductVoucherProductInput,
+) {
+  const [withPreview] = await attachPublicProductVoucherPreviews([product]);
+  return withPreview?.voucherPreview ?? null;
 }

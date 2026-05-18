@@ -13,7 +13,7 @@ import { prisma } from "@/lib/prisma";
 
 export async function POST(
   _req: Request,
-  ctx: { params: Promise<{ id: string }> },
+  ctx: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getSession("CUSTOMER");
@@ -26,20 +26,16 @@ export async function POST(
       return NextResponse.json({ error: "id required" }, { status: 400 });
     }
 
-    // Upsert — kalau row sudah ada (sudah dibaca), no-op. readAt tetap
-    // tanggal pertama kali tap (tidak di-overwrite).
-    await prisma.announcementRead.upsert({
-      where: {
-        userId_announcementId: {
+    // createMany + skipDuplicates lebih aman untuk composite primary key
+    // AnnouncementRead di Prisma. Jika row sudah ada, request tetap sukses.
+    await prisma.announcementRead.createMany({
+      data: [
+        {
           userId: session.sub,
           announcementId: id,
         },
-      },
-      update: {},
-      create: {
-        userId: session.sub,
-        announcementId: id,
-      },
+      ],
+      skipDuplicates: true,
     });
 
     return NextResponse.json({ ok: true });
@@ -48,7 +44,7 @@ export async function POST(
     console.error("[notifications/read] crashed:", err);
     return NextResponse.json(
       { ok: false, error: `Gagal mark read: ${message}` },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

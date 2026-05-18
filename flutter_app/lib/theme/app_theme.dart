@@ -24,8 +24,10 @@ class AppColors {
 
   // Surfaces
   static const Color softBlue = NataloColors.primaryLight;
-  static const Color softCyan = Color(0xFFEAFBFF); // legacy, tidak ada di NataloColors
-  static const Color softMint = Color(0xFFF0FDF4); // legacy, tidak ada di NataloColors
+  static const Color softCyan =
+      Color(0xFFEAFBFF); // legacy, tidak ada di NataloColors
+  static const Color softMint =
+      Color(0xFFF0FDF4); // legacy, tidak ada di NataloColors
 
   // Semantic
   static const Color danger = NataloColors.danger;
@@ -45,7 +47,7 @@ class AppTheme {
       colorScheme: scheme,
       useMaterial3: true,
       scaffoldBackgroundColor: Colors.transparent,
-      fontFamily: 'NunitoSans',
+      fontFamily: 'PlusJakartaSans',
       fontFamilyFallback: const ['Roboto', 'Arial'],
       visualDensity: VisualDensity.standard,
       splashFactory: InkSparkle.splashFactory,
@@ -60,8 +62,8 @@ class AppTheme {
         titleTextStyle: const TextStyle(
           color: NataloColors.textPrimary,
           fontSize: 22,
-          fontWeight: FontWeight.w900,
-          letterSpacing: 0,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.4,
         ),
         iconTheme: const IconThemeData(
           color: NataloColors.textPrimary,
@@ -83,7 +85,7 @@ class AppTheme {
           return TextStyle(
             color: selected ? NataloColors.primary : NataloColors.textMuted,
             fontSize: 12,
-            fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
+            fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
             letterSpacing: 0,
           );
         }),
@@ -102,7 +104,7 @@ class AppTheme {
           elevation: 0,
           shadowColor: NataloColors.primary.withValues(alpha: 0.28),
           textStyle: const TextStyle(
-            fontWeight: FontWeight.w900,
+            fontWeight: FontWeight.w700,
             letterSpacing: 0,
           ),
           shape: RoundedRectangleBorder(
@@ -118,7 +120,7 @@ class AppTheme {
         style: OutlinedButton.styleFrom(
           foregroundColor: NataloColors.primary,
           side: BorderSide(color: NataloColors.primary.withValues(alpha: 0.45)),
-          textStyle: const TextStyle(fontWeight: FontWeight.w900),
+          textStyle: const TextStyle(fontWeight: FontWeight.w700),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
           ),
@@ -129,7 +131,7 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
           ),
-          textStyle: const TextStyle(fontWeight: FontWeight.w900),
+          textStyle: const TextStyle(fontWeight: FontWeight.w700),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -143,7 +145,7 @@ class AppTheme {
         ),
         floatingLabelStyle: const TextStyle(
           color: NataloColors.primary,
-          fontWeight: FontWeight.w900,
+          fontWeight: FontWeight.w700,
         ),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
@@ -238,7 +240,7 @@ class AppTheme {
       brightness: Brightness.dark,
       useMaterial3: true,
       scaffoldBackgroundColor: Colors.transparent,
-      fontFamily: 'NunitoSans',
+      fontFamily: 'PlusJakartaSans',
       fontFamilyFallback: const ['Roboto', 'Arial'],
       visualDensity: VisualDensity.standard,
       splashFactory: InkSparkle.splashFactory,
@@ -253,8 +255,8 @@ class AppTheme {
         titleTextStyle: const TextStyle(
           color: darkInk,
           fontSize: 22,
-          fontWeight: FontWeight.w900,
-          letterSpacing: 0,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.4,
         ),
         iconTheme: const IconThemeData(color: darkInk, size: 28),
         actionsIconTheme: const IconThemeData(color: darkInk, size: 27),
@@ -266,7 +268,7 @@ class AppTheme {
           elevation: 0,
           shadowColor: darkPrimary.withValues(alpha: 0.28),
           textStyle: const TextStyle(
-            fontWeight: FontWeight.w900,
+            fontWeight: FontWeight.w700,
             letterSpacing: 0,
           ),
           shape: RoundedRectangleBorder(
@@ -278,7 +280,7 @@ class AppTheme {
         style: OutlinedButton.styleFrom(
           foregroundColor: darkPrimary,
           side: const BorderSide(color: Color(0xFF3B82F6)),
-          textStyle: const TextStyle(fontWeight: FontWeight.w900),
+          textStyle: const TextStyle(fontWeight: FontWeight.w700),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
           ),
@@ -295,7 +297,7 @@ class AppTheme {
         ),
         floatingLabelStyle: const TextStyle(
           color: darkPrimary,
-          fontWeight: FontWeight.w900,
+          fontWeight: FontWeight.w700,
         ),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,

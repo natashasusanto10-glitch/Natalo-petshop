@@ -13,7 +13,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { calcVoucherDiscount, isVoucherUsageLimitReached } from "@/lib/voucher-helpers";
+import { calcVoucherDiscount, voucherTypeOf } from "@/lib/voucher-helpers";
 
 const bodySchema = z.object({
   code: z.string().trim().min(1),
@@ -50,11 +50,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, message: "Kode voucher tidak valid" });
   }
 
-  if (voucher.sourceType !== "SELLER_MANUAL") {
+  if (
+    voucher.sourceType !== "SELLER_MANUAL" ||
+    voucherTypeOf(voucher) !== "PRIVATE_MANUAL_CODE"
+  ) {
     return NextResponse.json({
       ok: false,
-      message:
-        "Kode ini bukan voucher manual penjual. Pilih lewat daftar voucher member.",
+      message: "Kode voucher tidak valid atau tidak tersedia untuk akun ini",
+    });
+  }
+  if (
+    voucher.eligibleUserIds.length > 0 &&
+    !voucher.eligibleUserIds.includes(session.sub)
+  ) {
+    return NextResponse.json({
+      ok: false,
+      message: "Kode voucher ini tidak tersedia untuk akun kamu",
     });
   }
 
@@ -126,7 +137,9 @@ export async function POST(request: NextRequest) {
       minimumOrder: voucher.minimumOrder,
       expiresAt: voucher.expiresAt,
       sourceType: voucher.sourceType,
-      kind: voucher.kind,
+      type: voucher.type,
+      visibility: voucher.visibility,
+      discountScope: voucher.discountScope,
     },
   });
 }

@@ -7,6 +7,7 @@ import {
   cartRecommendationWhere,
   serializeCartRecommendationProduct,
 } from "@/lib/cart-recommendation-products";
+import { attachPublicProductVoucherPreviews } from "@/lib/product-vouchers";
 
 function parseIds(value: string | null) {
   return (value ?? "")
@@ -45,6 +46,8 @@ function serializeSampleProduct(product: (typeof sampleProducts)[number]) {
     rating: product.avgRating,
     sold_count: product.reviewCount,
     hasVariants: product.hasVariants,
+    categoryId: null,
+    categorySlug: null,
     category: null,
     brand: null,
     variantAttrs: [],
@@ -103,5 +106,9 @@ export async function GET(request: NextRequest) {
           .map(serializeSampleProduct)
       : [];
 
-  return NextResponse.json({ data: [...data, ...sampleData].slice(0, limit) });
+  const withVoucherPreview = await attachPublicProductVoucherPreviews(
+    [...data, ...sampleData].slice(0, limit),
+  );
+
+  return NextResponse.json({ data: withVoucherPreview });
 }

@@ -47,16 +47,21 @@ export async function POST(request: NextRequest) {
     prisma.voucher.create({
       data: {
         code,
+        name: "Voucher Reward Poin",
         description: `Voucher tukar poin - ${tier.label}`,
         discountAmount: tier.discountAmount,
         minimumOrder: 0,
         maxUsage: 1,
         usedCount: 0,
+        usageLimitPerUser: 1,
         expiresAt,
         isActive: true,
         userId: session.sub,
         sourceType: "CUSTOMER",
-        kind: "LOYALTY_CLAIM",
+        type: "LOYALTY_POINT_CLAIM",
+        visibility: "USER_OWNED",
+        discountType: "FIXED_AMOUNT",
+        discountScope: "PRODUCT",
       },
     }),
     prisma.customerPoint.create({

@@ -50,6 +50,12 @@ class SkeletonProductCard extends StatelessWidget {
             const SizedBox(height: 10),
             // Price
             _line(height: 14, widthFactor: 0.5),
+            const SizedBox(height: 8),
+            // Soft hemat badge
+            _line(height: 14, widthFactor: 0.62),
+            const SizedBox(height: 8),
+            // Rating + sold metadata
+            _line(height: 11, widthFactor: 0.72),
             if (showAddToCart) ...[
               const SizedBox(height: 10),
               Container(
@@ -104,9 +110,8 @@ class SkeletonProductGrid extends StatelessWidget {
         crossAxisCount: 2,
         mainAxisSpacing: 12,
         crossAxisSpacing: 12,
-        // 0.62 → 0.58 — match grid ProductCard real supaya tidak ada
-        // layout shift saat data load.
-        childAspectRatio: 0.58,
+        // Match grid ProductCard real supaya tidak ada layout shift saat data load.
+        childAspectRatio: 0.54,
       ),
       itemBuilder: (context, index) {
         return SkeletonProductCard(showAddToCart: showAddToCart);

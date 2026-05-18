@@ -106,21 +106,27 @@ export default async function AdminVouchersPage() {
               const statusOk = v.isActive && !expired && !maxed;
 
               const discountParts: string[] = [];
-              if (isFreeShippingVoucher(v)) discountParts.push("Gratis ongkir");
-              else {
-                if (v.discountPercent) discountParts.push(`${v.discountPercent}%`);
-                if (v.discountAmount) discountParts.push(formatRupiah(v.discountAmount));
-                if (v.maxDiscountAmount) discountParts.push(`max ${formatRupiah(v.maxDiscountAmount)}`);
-              }
-              const kindLabel = isLoyaltyClaimVoucher(v)
-                ? voucherKindLabel("LOYALTY_CLAIM")
-                : voucherKindLabel(v.kind);
+              if (v.discountPercent) discountParts.push(`${v.discountPercent}%`);
+              if (v.discountAmount) discountParts.push(formatRupiah(v.discountAmount));
+              const typeLabel =
+                v.type === "PUBLIC_FREE_SHIPPING"
+                  ? "Public Gratis Ongkir"
+                  : v.type === "PUBLIC_PRODUCT_DISCOUNT"
+                    ? "Public Diskon Produk"
+                    : v.type === "LOYALTY_POINT_CLAIM"
+                      ? "Loyalty Reward"
+                      : "Private Manual";
+              const scopeLabel =
+                v.discountScope === "SHIPPING" ? "Ongkir" : "Produk";
 
               return (
                 <div key={v.id} className="flex flex-col gap-4 p-4 md:flex-row md:flex-wrap md:items-start md:justify-between md:p-5">
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-base font-bold text-zinc-950">{v.code}</span>
+                      <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-blue-700">
+                        {typeLabel}
+                      </span>
                       <span
                         className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
                           statusOk
@@ -149,9 +155,10 @@ export default async function AdminVouchersPage() {
                     )}
 
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500">
+                      <span>Scope: <strong className="text-zinc-700">{scopeLabel}</strong></span>
                       <span>Diskon: <strong className="text-zinc-700">{discountParts.join(" + ") || "-"}</strong></span>
-                      {v.userId && (
-                        <span>User: <strong className="text-zinc-700">{v.userId}</strong></span>
+                      {v.maxDiscountAmount !== null && (
+                        <span>Maks. potongan: <strong className="text-zinc-700">{formatRupiah(v.maxDiscountAmount)}</strong></span>
                       )}
                       {v.minimumOrder > 0 && (
                         <span>Min. belanja: <strong className="text-zinc-700">{formatRupiah(v.minimumOrder)}</strong></span>
@@ -169,6 +176,16 @@ export default async function AdminVouchersPage() {
                         Digunakan: <strong className="text-zinc-700">{v.usedCount}
                         {v.maxUsage !== null ? `/${v.maxUsage}` : ""}</strong>
                       </span>
+                      <span>Limit/user: <strong className="text-zinc-700">{v.usageLimitPerUser}×</strong></span>
+                      {v.eligibleUserIds.length > 0 && (
+                        <span>Eligible user: <strong className="text-zinc-700">{v.eligibleUserIds.length}</strong></span>
+                      )}
+                      {v.eligibleProductIds.length > 0 && (
+                        <span>Target produk: <strong className="text-zinc-700">{v.eligibleProductIds.length}</strong></span>
+                      )}
+                      {v.eligibleCategoryIds.length > 0 && (
+                        <span>Target kategori: <strong className="text-zinc-700">{v.eligibleCategoryIds.length}</strong></span>
+                      )}
                       {v.expiresAt && (
                         <span>
                           Berlaku s/d: <strong className="text-zinc-700">

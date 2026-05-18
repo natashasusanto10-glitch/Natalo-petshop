@@ -17,7 +17,6 @@ import '../widgets/app_cart_button.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
-import '../widgets/bottom_nav.dart';
 import '../widgets/animated_price.dart';
 import '../widgets/favorite_button.dart';
 import '../widgets/glass_surface.dart';
@@ -264,17 +263,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _StickyPurchaseBar(
-            product: product,
-            selectedVariant: _selectedVariant,
-            needsVariantSelection: _needsVariantSelection,
-            displayStock: _displayStock,
-          ),
-          const BottomNavBar(currentIndex: 1),
-        ],
+      bottomNavigationBar: _StickyPurchaseBar(
+        product: product,
+        selectedVariant: _selectedVariant,
+        needsVariantSelection: _needsVariantSelection,
+        displayStock: _displayStock,
       ),
     );
   }
@@ -362,9 +355,9 @@ class _ProductHeroState extends State<_ProductHero> {
                                         images: images,
                                         initialIndex: _activeIndex,
                                       ),
-                                      transitionsBuilder: (_, animation, __,
-                                              child) =>
-                                          FadeTransition(
+                                      transitionsBuilder:
+                                          (_, animation, __, child) =>
+                                              FadeTransition(
                                         opacity: animation,
                                         child: child,
                                       ),
@@ -792,9 +785,8 @@ class _ProductTabsSectionState extends State<_ProductTabsSection> {
           // ── Content ──
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
-            child: _tabIndex == 0
-                ? _buildDescription()
-                : _buildRecommendations(),
+            child:
+                _tabIndex == 0 ? _buildDescription() : _buildRecommendations(),
           ),
         ],
       ),
@@ -811,9 +803,7 @@ class _ProductTabsSectionState extends State<_ProductTabsSection> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          showText.isEmpty
-              ? 'Belum ada deskripsi produk.'
-              : showText,
+          showText.isEmpty ? 'Belum ada deskripsi produk.' : showText,
           style: const TextStyle(
             color: Color(0xFF475569),
             fontWeight: FontWeight.w600,
@@ -874,8 +864,8 @@ class _ProductTabsSectionState extends State<_ProductTabsSection> {
             crossAxisCount: 2,
             mainAxisSpacing: 12,
             crossAxisSpacing: 12,
-            // 0.62 → 0.58 — fix ProductCard overflow di related products.
-            childAspectRatio: 0.58,
+            // Lebih tinggi untuk metadata hemat + rating/terjual.
+            childAspectRatio: 0.54,
           ),
           itemBuilder: (context, index) {
             final product = widget.related[index];
@@ -1234,62 +1224,37 @@ class _StickyPurchaseBar extends StatelessWidget {
             ? 'Pilih Varian'
             : 'Beli Sekarang';
     return AppGlassBottomBar(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       child: Row(
         children: [
-          // ── Chat WA — outline hijau emerald ──
-          Expanded(
-            child: OutlinedButton.icon(
+          // ── WhatsApp — icon-only supaya bar bawah tetap lega ──
+          SizedBox(
+            width: 54,
+            height: 54,
+            child: OutlinedButton(
               onPressed: () => _onChatWa(context),
-              icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
-              label: const Text('Chat WA'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: const Color(0xFF16A34A),
-                minimumSize: const Size.fromHeight(48),
+                minimumSize: const Size(54, 54),
                 side: const BorderSide(color: Color(0xFFBBF7D0)),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(999),
                 ),
-                textStyle: const TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 13,
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 8),
+                padding: EdgeInsets.zero,
               ),
+              child: const _WhatsAppIcon(),
             ),
           ),
           const SizedBox(width: 8),
           // ── + Keranjang — outline biru ──
           Expanded(
-            child: OutlinedButton.icon(
+            flex: 5,
+            child: OutlinedButton(
               onPressed: outOfStock ? null : () => _onAddToCart(context),
-              icon: const Icon(Icons.add_rounded, size: 18),
-              label: const Text('Keranjang'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: _brandBlue,
-                minimumSize: const Size.fromHeight(48),
+                minimumSize: const Size.fromHeight(54),
                 side: const BorderSide(color: Color(0xFFBFDBFE)),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                textStyle: const TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 13,
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          // ── Beli Sekarang — filled biru, lebih lebar (flex 1.3) ──
-          Expanded(
-            flex: 2,
-            child: ElevatedButton(
-              onPressed: disabled ? null : () => _onBeliSekarang(context),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _brandBlue,
-                foregroundColor: Colors.white,
-                minimumSize: const Size.fromHeight(48),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(999),
                 ),
@@ -1297,12 +1262,75 @@ class _StickyPurchaseBar extends StatelessWidget {
                   fontWeight: FontWeight.w900,
                   fontSize: 14,
                 ),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
               ),
-              child: Text(buyLabel),
+              child: const FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  '+ Keranjang',
+                  maxLines: 1,
+                  softWrap: false,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          // ── Beli Sekarang — filled biru, lebih lebar (flex 1.3) ──
+          Expanded(
+            flex: 6,
+            child: ElevatedButton(
+              onPressed: disabled ? null : () => _onBeliSekarang(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _brandBlue,
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(54),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                textStyle: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 16,
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+              ),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  buyLabel,
+                  maxLines: 1,
+                  softWrap: false,
+                ),
+              ),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _WhatsAppIcon extends StatelessWidget {
+  const _WhatsAppIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        const Icon(
+          Icons.chat_bubble_rounded,
+          color: Color(0xFF22C55E),
+          size: 29,
+        ),
+        Transform.translate(
+          offset: const Offset(0, -1),
+          child: const Icon(
+            Icons.call_rounded,
+            color: Colors.white,
+            size: 15,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1648,4 +1676,3 @@ class _ServiceRow extends StatelessWidget {
     );
   }
 }
-

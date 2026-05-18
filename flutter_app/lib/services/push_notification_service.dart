@@ -12,6 +12,36 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'api_client.dart';
 import 'deep_link_service.dart';
 
+class PushSubscriptionStatus {
+  final bool authenticated;
+  final bool subscribed;
+  final int tokenCount;
+
+  const PushSubscriptionStatus({
+    required this.authenticated,
+    required this.subscribed,
+    required this.tokenCount,
+  });
+
+  factory PushSubscriptionStatus.fromJson(Map<String, dynamic> json) {
+    final mine = json['mine'];
+    final aggregate = json['aggregate'];
+    final count = mine is Map<String, dynamic>
+        ? (mine['total'] as num?)?.toInt() ?? 0
+        : aggregate is Map<String, dynamic>
+            ? ((aggregate['web'] as num?)?.toInt() ?? 0) +
+                ((aggregate['apns'] as num?)?.toInt() ?? 0) +
+                ((aggregate['fcm'] as num?)?.toInt() ?? 0)
+            : 0;
+
+    return PushSubscriptionStatus(
+      authenticated: json['authenticated'] == true,
+      subscribed: count > 0,
+      tokenCount: count,
+    );
+  }
+}
+
 /// Push notification service via Firebase Cloud Messaging (FCM).
 ///
 /// PWA Natalo punya Web Push subscription, tapi WebView Capacitor tidak
@@ -149,6 +179,43 @@ class PushNotificationService {
     } catch (_) {}
   }
 
+  Future<PushSubscriptionStatus> fetchSubscriptionStatus() async {
+    try {
+      final data = await apiClient.getJson('/api/push/me/status');
+      return PushSubscriptionStatus.fromJson(data);
+    } catch (error) {
+      if (kDebugMode) {
+        debugPrint('[push] Fetch subscription status failed: $error');
+      }
+      return const PushSubscriptionStatus(
+        authenticated: false,
+        subscribed: false,
+        tokenCount: 0,
+      );
+    }
+  }
+
+  Future<bool> sendTestPush({
+    required String title,
+    required String body,
+  }) async {
+    try {
+      final data = await apiClient.postJson(
+        '/api/push/me/test',
+        body: {
+          'title': title,
+          'body': body,
+        },
+      );
+      return data['ok'] == true;
+    } catch (error) {
+      if (kDebugMode) {
+        debugPrint('[push] Send test push failed: $error');
+      }
+      return false;
+    }
+  }
+
   void _onTokenRefresh(String token) {
     _currentToken = token;
     // Auto re-register dengan server (server akan upsert).
@@ -239,7 +306,8 @@ class PushNotificationService {
       // convert ke ByteArrayAndroidBitmap. Total budget ~5 detik supaya
       // notif tidak hang.
       final uri = Uri.parse(imageUrl);
-      final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
+      final client = HttpClient()
+        ..connectionTimeout = const Duration(seconds: 5);
       final req = await client.getUrl(uri);
       final resp = await req.close().timeout(const Duration(seconds: 5));
       if (resp.statusCode < 200 || resp.statusCode >= 300) {

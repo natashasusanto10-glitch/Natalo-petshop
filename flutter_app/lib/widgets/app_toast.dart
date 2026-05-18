@@ -60,6 +60,7 @@ class AppToast {
     String message, {
     Duration duration = const Duration(milliseconds: 1700),
     VoidCallback? onTap,
+    String actionLabel = 'Lihat',
   }) {
     final overlay = Overlay.of(context, rootOverlay: true);
     final entry = OverlayEntry(
@@ -67,6 +68,7 @@ class AppToast {
         message: message,
         duration: duration,
         onTap: onTap,
+        actionLabel: actionLabel,
       ),
     );
     overlay.insert(entry);
@@ -76,6 +78,21 @@ class AppToast {
         entry.remove();
       } catch (_) {}
     });
+  }
+
+  static void showCartDeleted(
+    BuildContext context,
+    String message, {
+    Duration duration = const Duration(milliseconds: 1700),
+    required VoidCallback onUndo,
+  }) {
+    showCartAdded(
+      context,
+      message,
+      duration: duration,
+      onTap: onUndo,
+      actionLabel: 'Urungkan',
+    );
   }
 }
 
@@ -100,11 +117,13 @@ class _CartToastView extends StatefulWidget {
   final String message;
   final Duration duration;
   final VoidCallback? onTap;
+  final String actionLabel;
 
   const _CartToastView({
     required this.message,
     required this.duration,
     required this.onTap,
+    required this.actionLabel,
   });
 
   @override
@@ -185,13 +204,11 @@ class _CartToastViewState extends State<_CartToastView>
                                 color: Colors.black.withValues(alpha: 0.72),
                                 borderRadius: BorderRadius.circular(999),
                                 border: Border.all(
-                                  color:
-                                      Colors.white.withValues(alpha: 0.14),
+                                  color: Colors.white.withValues(alpha: 0.14),
                                 ),
                                 boxShadow: [
                                   BoxShadow(
-                                    color:
-                                        Colors.black.withValues(alpha: 0.22),
+                                    color: Colors.black.withValues(alpha: 0.22),
                                     blurRadius: 22,
                                     offset: const Offset(0, 8),
                                   ),
@@ -230,9 +247,9 @@ class _CartToastViewState extends State<_CartToastView>
                                   ),
                                   if (widget.onTap != null) ...[
                                     const SizedBox(width: 10),
-                                    const Text(
-                                      'Lihat',
-                                      style: TextStyle(
+                                    Text(
+                                      widget.actionLabel,
+                                      style: const TextStyle(
                                         color: Colors.white,
                                         fontSize: 12,
                                         fontWeight: FontWeight.w900,
@@ -332,7 +349,8 @@ class _ToastViewState extends State<_ToastView>
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
           child: SlideTransition(
-            position: reduce ? const AlwaysStoppedAnimation(Offset.zero) : _slide,
+            position:
+                reduce ? const AlwaysStoppedAnimation(Offset.zero) : _slide,
             child: FadeTransition(
               opacity: _opacity,
               child: Material(

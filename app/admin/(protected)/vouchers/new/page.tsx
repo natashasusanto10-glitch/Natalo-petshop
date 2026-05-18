@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import type { VoucherUserUsageLimitPeriod } from "@prisma/client";
+import { VoucherType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   deriveVoucherSourceType,
@@ -13,56 +13,58 @@ export default async function AdminVoucherNewPage() {
   async function createVoucher(formData: FormData) {
     "use server";
 
+    const name = String(formData.get("name") || "").trim() || null;
     const code = String(formData.get("code") || "").trim().toUpperCase();
     const description = String(formData.get("description") || "").trim() || null;
+    const typeRaw = String(formData.get("type") || "PUBLIC_PRODUCT_DISCOUNT").trim();
+    const type = (Object.values(VoucherType) as string[]).includes(typeRaw)
+      ? (typeRaw as VoucherType)
+      : VoucherType.PUBLIC_PRODUCT_DISCOUNT;
+    const visibility =
+      type === "PRIVATE_MANUAL_CODE"
+        ? "PRIVATE"
+        : type === "LOYALTY_POINT_CLAIM"
+          ? "USER_OWNED"
+          : "PUBLIC";
+    const discountScope =
+      type === "PUBLIC_FREE_SHIPPING" ? "SHIPPING" : "PRODUCT";
     const discountPercent = formData.get("discountPercent")
       ? parseInt(String(formData.get("discountPercent")), 10)
       : null;
-    const discountAmount = formData.get("discountAmount")
+    let discountAmount = formData.get("discountAmount")
       ? parseInt(String(formData.get("discountAmount")), 10)
       : null;
-    const maxDiscountRaw = String(formData.get("maxDiscountAmount") || "").trim();
-    const maxDiscountAmount = maxDiscountRaw ? parseInt(maxDiscountRaw, 10) : null;
+    const maxDiscountAmount = formData.get("maxDiscountAmount")
+      ? parseInt(String(formData.get("maxDiscountAmount")), 10)
+      : null;
     const minimumOrder = parseInt(String(formData.get("minimumOrder") || "0"), 10);
     const maxUsageRaw = String(formData.get("maxUsage") || "").trim();
     const maxUsage = maxUsageRaw ? parseInt(maxUsageRaw, 10) : null;
+    const usageLimitPerUser = parseInt(
+      String(formData.get("usageLimitPerUser") || "1"),
+      10,
+    );
     const startsAtRaw = String(formData.get("startsAt") || "").trim();
     const startsAt = startsAtRaw ? new Date(startsAtRaw) : new Date();
     const expiresAtRaw = String(formData.get("expiresAt") || "").trim();
     const expiresAt = expiresAtRaw ? new Date(expiresAtRaw) : null;
-    const kindRaw = String(formData.get("kind") || "PRODUCT_DISCOUNT").trim();
-    if (!isAdminCreatableVoucherKind(kindRaw)) return;
-    const kind = kindRaw;
-    const sourceType = deriveVoucherSourceType(kind);
-    const newMemberRulesEnabled = formData.get("newMemberRulesEnabled") === "1";
-    const targetUser =
-      kind === "PRODUCT_DISCOUNT" &&
-      newMemberRulesEnabled &&
-      String(formData.get("targetUser") || "ALL_MEMBERS") === "NEW_MEMBER"
-        ? "NEW_MEMBER"
-        : "ALL_MEMBERS";
-    const newMemberMaxAgeRaw = String(formData.get("newMemberMaxAccountAgeDays") || "").trim();
-    const newMemberMaxAccountAgeDays =
-      targetUser === "NEW_MEMBER" && newMemberMaxAgeRaw
-        ? parseInt(newMemberMaxAgeRaw, 10)
-        : null;
-    const newMemberRequireNoSuccessfulOrder =
-      targetUser === "NEW_MEMBER" &&
-      formData.get("newMemberRequireNoSuccessfulOrder") === "on";
-    const usageLimitPeriodRaw = String(formData.get("usageLimitPeriod") || "NONE").trim();
-    const usageLimitPeriod =
-      (kind === "PRODUCT_DISCOUNT" || kind === "FREE_SHIPPING") &&
-      ["NONE", "LIFETIME", "DAY", "WEEK", "MONTH"].includes(usageLimitPeriodRaw)
-        ? (usageLimitPeriodRaw as VoucherUserUsageLimitPeriod)
-        : "LIFETIME";
-    const usageLimitRaw = String(formData.get("usageLimitPerUser") || "1").trim();
-    const usageLimitPerUser =
-      usageLimitPeriod === "NONE"
-        ? 0
-        : usageLimitPeriod === "LIFETIME"
-          ? 1
-          : Math.max(1, parseInt(usageLimitRaw || "1", 10) || 1);
-    const isActive = formData.get("isActive") === "on";
+    const sourceType = type === "PRIVATE_MANUAL_CODE" ? "SELLER_MANUAL" : "CUSTOMER";
+    const eligibleUserIds = String(formData.get("eligibleUserIds") || "")
+      .split(/[\s,]+/)
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const eligibleProductIds = String(formData.get("eligibleProductIds") || "")
+      .split(/[\s,]+/)
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const eligibleCategoryIds = String(formData.get("eligibleCategoryIds") || "")
+      .split(/[\s,]+/)
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    if (type === "PUBLIC_FREE_SHIPPING" && !discountAmount && maxDiscountAmount) {
+      discountAmount = maxDiscountAmount;
+    }
 
     if (!code) return;
     const isFreeShipping = kind === "FREE_SHIPPING";
@@ -73,23 +75,28 @@ export default async function AdminVoucherNewPage() {
 
     await prisma.voucher.create({
       data: {
+        name,
         code,
         description,
-        discountPercent: isFreeShipping ? null : discountPercent,
-        discountAmount: isFreeShipping ? null : discountAmount,
-        maxDiscountAmount: isFreeShipping ? null : maxDiscountAmount,
+        discountPercent,
+        discountAmount,
+        maxDiscountAmount,
         minimumOrder,
         maxUsage,
+        usageLimitPerUser: Number.isFinite(usageLimitPerUser)
+          ? Math.max(1, usageLimitPerUser)
+          : 1,
         startsAt,
         expiresAt,
         isActive,
         sourceType,
-        kind,
-        targetUser,
-        newMemberMaxAccountAgeDays,
-        newMemberRequireNoSuccessfulOrder,
-        usageLimitPeriod,
-        usageLimitPerUser,
+        type,
+        visibility,
+        discountType: discountPercent ? "PERCENTAGE" : "FIXED_AMOUNT",
+        discountScope,
+        eligibleUserIds,
+        eligibleProductIds,
+        eligibleCategoryIds,
       },
     });
 
@@ -104,6 +111,11 @@ export default async function AdminVoucherNewPage() {
       <h1 className="mt-2 text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">Buat Voucher</h1>
 
       <form action={createVoucher} className="mt-5 space-y-5 md:mt-8">
+        <Field
+          label="Nama voucher"
+          name="name"
+          placeholder="Contoh: Gratis Ongkir Natalo"
+        />
         <Field
           label="Kode voucher"
           name="code"
@@ -131,6 +143,13 @@ export default async function AdminVoucherNewPage() {
             type="number"
             placeholder="Contoh: 15000"
           />
+          <Field
+            label="Maks. diskon / potongan ongkir"
+            name="maxDiscountAmount"
+            type="number"
+            placeholder="Contoh: 50000"
+            hint="Untuk persen atau gratis ongkir, isi batas maksimal potongan."
+          />
         </div>
 
         <Field
@@ -150,26 +169,52 @@ export default async function AdminVoucherNewPage() {
         />
 
         <div>
-          <label className="block text-sm font-medium text-zinc-700">Tipe voucher</label>
+          <label className="block text-sm font-medium text-zinc-700">Tipe voucher Natalo</label>
           <select
-            name="kind"
-            defaultValue="PRODUCT_DISCOUNT"
+            name="type"
+            defaultValue="PUBLIC_PRODUCT_DISCOUNT"
             className="mt-1 block w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-600"
           >
-            <option value="PRODUCT_DISCOUNT">Voucher Diskon Produk - Semua Member</option>
-            <option value="FREE_SHIPPING">Voucher Gratis Ongkir - Semua Member</option>
-            <option value="MANUAL_PRIVATE">Voucher Manual / Private</option>
+            <option value="PUBLIC_FREE_SHIPPING">Public Gratis Ongkir</option>
+            <option value="PUBLIC_PRODUCT_DISCOUNT">Public Diskon Produk</option>
+            <option value="PRIVATE_MANUAL_CODE">Private / Manual Code</option>
           </select>
           <p className="mt-1 text-xs text-zinc-400">
-            {voucherKindDescription("PRODUCT_DISCOUNT")} Gratis ongkir tidak
-            perlu nominal diskon. Voucher hasil klaim loyalty point dibuat
-            otomatis dari halaman user, bukan dari admin.
+            Voucher loyalty point dibuat otomatis dari halaman reward member,
+            bukan dari form public admin ini.
           </p>
         </div>
 
-        <VoucherTargetFields />
+        <Field
+          label="Eligible user IDs untuk private voucher"
+          name="eligibleUserIds"
+          placeholder="user_123, user_456"
+          hint="Kosongkan jika private code boleh dipakai semua member login."
+        />
 
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            label="Target product IDs"
+            name="eligibleProductIds"
+            placeholder="product_123, product_456"
+            hint="Opsional. Untuk voucher produk tertentu. Kosong = berlaku semua produk."
+          />
+          <Field
+            label="Target kategori IDs / slug"
+            name="eligibleCategoryIds"
+            placeholder="cat-food, category_123"
+            hint="Opsional. Bisa isi ID kategori atau slug kategori."
+          />
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            label="Mulai berlaku"
+            name="startsAt"
+            type="date"
+            placeholder=""
+            hint="Kosong = aktif mulai sekarang"
+          />
           <Field
             label="Maks. penggunaan"
             name="maxUsage"
@@ -177,11 +222,10 @@ export default async function AdminVoucherNewPage() {
             placeholder="Kosong = tidak terbatas"
           />
           <Field
-            label="Tanggal mulai"
-            name="startsAt"
-            type="date"
-            placeholder=""
-            hint="Kosong = mulai hari ini"
+            label="Limit per user"
+            name="usageLimitPerUser"
+            type="number"
+            defaultValue="1"
           />
           <Field
             label="Berlaku hingga"

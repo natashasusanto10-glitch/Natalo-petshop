@@ -31,11 +31,12 @@ export const createOrderSchema = z.object({
   shippingCost: z.number().int().nonnegative().default(0),
   // Legacy customer voucher field.
   voucherCode: z.string().optional(),
-  // 4 voucher slots: product discount, free shipping, loyalty claim, and
-  // seller/admin manual-private code.
+  freeShippingVoucherCode: z.string().optional(),
   productVoucherCode: z.string().optional(),
-  shippingVoucherCode: z.string().optional(),
   loyaltyVoucherCode: z.string().optional(),
+  privateVoucherCode: z.string().optional(),
+  // Seller manual voucher (SELLER_MANUAL source type — kode rahasia
+  // yang hanya bisa di-apply via input manual)
   manualVoucherCode: z.string().optional(),
   notes: z.string().optional(),
   paymentProvider: z.enum(["MANUAL", "MIDTRANS"]).default("MANUAL"),

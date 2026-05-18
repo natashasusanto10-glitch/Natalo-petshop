@@ -9,6 +9,7 @@ import {
   serializeCartRecommendationProduct,
   type CartRecommendationProductRow,
 } from "@/lib/cart-recommendation-products";
+import { attachPublicProductVoucherPreviews } from "@/lib/product-vouchers";
 
 function parseIds(value: string | null) {
   return (value ?? "")
@@ -34,8 +35,8 @@ function pushUnique(
   }
 }
 
-function sampleRecommendations(excludeIds: string[], limit: number) {
-  return sampleProducts
+async function sampleRecommendations(excludeIds: string[], limit: number) {
+  const products = sampleProducts
     .filter((product) => (product as { isActive?: boolean }).isActive !== false)
     .filter((product) => product.stock > 0 && product.imageUrl)
     .filter((product) => !excludeIds.includes(product.id))
@@ -72,6 +73,8 @@ function sampleRecommendations(excludeIds: string[], limit: number) {
         variants: [],
       };
     });
+
+  return attachPublicProductVoucherPreviews(products);
 }
 
 async function getManualRuleIds(sourceIds: string[], limit: number) {
@@ -221,14 +224,18 @@ export async function GET(request: NextRequest) {
   const page = products.slice(0, limit);
   if (page.length === 0) {
     return NextResponse.json({
-      data: sampleRecommendations(excludeIds, limit),
+      data: await sampleRecommendations(excludeIds, limit),
       next_cursor: null,
       has_more: false,
     });
   }
 
+  const data = await attachPublicProductVoucherPreviews(
+    page.map(serializeCartRecommendationProduct),
+  );
+
   return NextResponse.json({
-    data: page.map(serializeCartRecommendationProduct),
+    data,
     next_cursor: products.length > limit ? page.at(-1)?.id ?? null : null,
     has_more: products.length > limit,
   });

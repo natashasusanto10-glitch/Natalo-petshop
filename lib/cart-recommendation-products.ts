@@ -75,6 +75,8 @@ export function serializeCartRecommendationProduct(product: CartRecommendationPr
     rating: product.avgRating,
     sold_count: product.reviewCount,
     hasVariants: product.hasVariants,
+    categoryId: product.categoryId,
+    categorySlug: product.category?.slug ?? null,
     category: product.category?.name ?? null,
     brand: product.brand?.name ?? null,
     variantAttrs: product.variantAttrs.map((attr) => ({

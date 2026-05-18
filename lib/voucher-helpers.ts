@@ -25,19 +25,29 @@ export type VoucherUsageOrder = {
   manualVoucherCode?: string | null;
 };
 
+export type VoucherTypeCode =
+  | "PUBLIC_FREE_SHIPPING"
+  | "PUBLIC_PRODUCT_DISCOUNT"
+  | "LOYALTY_POINT_CLAIM"
+  | "PRIVATE_MANUAL_CODE";
+
+export type VoucherVisibilityCode = "PUBLIC" | "PRIVATE" | "USER_OWNED";
+export type VoucherDiscountScopeCode = "PRODUCT" | "SHIPPING";
+
 export type VoucherDisplayItem = {
   id: string;
+  name: string | null;
   code: string;
   description: string | null;
   discountPercent: number | null;
   discountAmount: number | null;
-  maxDiscountAmount?: number | null;
+  maxDiscountAmount: number | null;
   minimumOrder: number;
   expiresAt: string | null;
   sourceType: "CUSTOMER" | "SELLER_MANUAL";
-  kind: "PRODUCT_DISCOUNT" | "FREE_SHIPPING" | "LOYALTY_CLAIM" | "MANUAL_PRIVATE";
-  targetUser?: "ALL_MEMBERS" | "NEW_MEMBER";
-  usageLimitPeriod?: VoucherUsageLimitPeriodValue;
+  type: VoucherTypeCode;
+  visibility: VoucherVisibilityCode;
+  discountScope: VoucherDiscountScopeCode;
   /** Nilai diskon yg dihitung untuk subtotal saat ini */
   discount: number;
   /** Apakah voucher applicable untuk subtotal saat ini */
@@ -56,10 +66,10 @@ export type VoucherUserContext = {
 
 export function calcVoucherDiscount(
   subtotal: number,
-  voucher: Pick<Voucher, "discountPercent" | "discountAmount"> & {
-    kind?: string | null;
-    maxDiscountAmount?: number | null;
-  },
+  voucher: Pick<
+    Voucher,
+    "discountPercent" | "discountAmount" | "maxDiscountAmount"
+  >,
 ): number {
   if (isFreeShippingVoucher(voucher)) return 0;
   let discount = 0;
@@ -75,71 +85,50 @@ export function calcVoucherDiscount(
   return Math.min(discount, subtotal);
 }
 
-function getUsageWindowStart(
-  period: VoucherUsageLimitPeriodValue,
-  now: Date,
-) {
-  if (period === "LIFETIME") return null;
-  const start = new Date(now);
-  if (period === "DAY") {
-    start.setDate(start.getDate() - 1);
-    return start;
-  }
-  if (period === "WEEK") {
-    start.setDate(start.getDate() - 7);
-    return start;
-  }
-  if (period === "MONTH") {
-    start.setMonth(start.getMonth() - 1);
-    return start;
-  }
-  return null;
+export function voucherTypeOf(
+  voucher: Pick<Voucher, "type" | "sourceType" | "userId">,
+): VoucherTypeCode {
+  if (voucher.type) return voucher.type as VoucherTypeCode;
+  if (voucher.sourceType === "SELLER_MANUAL") return "PRIVATE_MANUAL_CODE";
+  if (voucher.userId) return "LOYALTY_POINT_CLAIM";
+  return "PUBLIC_PRODUCT_DISCOUNT";
 }
 
-export function countVoucherUsageForOrders(
-  voucher: Pick<Voucher, "code"> & {
-    usageLimitPeriod?: VoucherUsageLimitPeriodValue | null;
-  },
-  userUsedOrders: VoucherUsageOrder[],
-  now: Date = new Date(),
-) {
-  const period = voucher.usageLimitPeriod ?? "LIFETIME";
-  if (period === "NONE") return 0;
-
-  const windowStart = getUsageWindowStart(period, now);
-  let count = 0;
-  for (const order of userUsedOrders) {
-    if (windowStart && order.createdAt < windowStart) continue;
-    if (collectOrderVoucherCodes(order).includes(voucher.code)) count += 1;
-  }
-  return count;
+export function voucherVisibilityOf(
+  voucher: Pick<Voucher, "visibility" | "sourceType" | "userId">,
+): VoucherVisibilityCode {
+  if (voucher.visibility) return voucher.visibility as VoucherVisibilityCode;
+  if (voucher.sourceType === "SELLER_MANUAL") return "PRIVATE";
+  if (voucher.userId) return "USER_OWNED";
+  return "PUBLIC";
 }
 
-export function isVoucherUsageLimitReached(
-  voucher: Pick<Voucher, "code" | "usageLimitPerUser"> & {
-    usageLimitPeriod?: VoucherUsageLimitPeriodValue | null;
-  },
-  userUsedOrders: VoucherUsageOrder[],
-  now: Date = new Date(),
-) {
-  const period = voucher.usageLimitPeriod ?? "LIFETIME";
-  if (period === "NONE") return false;
-  const usageLimit = voucher.usageLimitPerUser ?? 1;
-  if (usageLimit <= 0) return false;
-  return countVoucherUsageForOrders(voucher, userUsedOrders, now) >= usageLimit;
+export function voucherScopeOf(
+  voucher: Pick<Voucher, "discountScope" | "type">,
+): VoucherDiscountScopeCode {
+  if (voucher.discountScope) return voucher.discountScope as VoucherDiscountScopeCode;
+  return voucher.type === "PUBLIC_FREE_SHIPPING" ? "SHIPPING" : "PRODUCT";
 }
 
-export function voucherUsageLimitLabel(input: {
-  usageLimitPeriod?: VoucherUsageLimitPeriodValue | null;
-  usageLimitPerUser?: number | null;
+export function calcVoucherScopedDiscount(input: {
+  subtotal: number;
+  shippingFee: number;
+  eligibleProductSubtotal?: number;
+  voucher: Pick<
+    Voucher,
+    | "discountPercent"
+    | "discountAmount"
+    | "maxDiscountAmount"
+    | "discountScope"
+    | "type"
+  >;
 }) {
-  const period = input.usageLimitPeriod ?? "LIFETIME";
-  const limit = input.usageLimitPerUser ?? 1;
-  if (period === "NONE" || limit <= 0) return "Tanpa batas per user";
-  if (period === "DAY") return `${limit}x per hari`;
-  if (period === "WEEK") return `${limit}x per minggu`;
-  if (period === "MONTH") return `${limit}x per bulan`;
-  return "1x per user";
+  const scope = voucherScopeOf(input.voucher);
+  const base =
+    scope === "SHIPPING"
+      ? input.shippingFee
+      : input.eligibleProductSubtotal ?? input.subtotal;
+  return calcVoucherDiscount(Math.max(0, base), input.voucher);
 }
 
 /**

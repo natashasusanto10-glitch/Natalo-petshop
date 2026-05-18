@@ -1,4 +1,8 @@
 import { prisma } from "@/lib/prisma";
+import {
+  attachPublicProductVoucherPreviews,
+  type ProductVoucherPreview,
+} from "@/lib/product-vouchers";
 import { sampleProducts } from "@/lib/sample-data";
 import type { OrderStatus, Prisma } from "@prisma/client";
 
@@ -42,7 +46,9 @@ export type StoreProduct = {
   hasVariants: boolean;
   avgRating: number;
   reviewCount: number;
+  categoryId?: string | null;
   categorySlug?: string | null;
+  voucherPreview?: ProductVoucherPreview | null;
   // hanya diisi oleh getProductBySlug
   variantAttrs?: StoreVariantAttribute[];
   variants?: StoreProductVariant[];
@@ -67,7 +73,7 @@ const variantInclude = {
 };
 
 const productListInclude = {
-  category: { select: { slug: true } },
+  category: { select: { id: true, slug: true } },
   variants: {
     where: { deletedAt: null, isActive: true },
     select: { price: true, stock: true },
@@ -95,7 +101,9 @@ function mapProductListRecord(p: ProductListRecord): StoreProduct {
       hasVariants: true,
       avgRating: p.avgRating,
       reviewCount: p.reviewCount,
+      categoryId: p.category?.id ?? null,
       categorySlug: p.category?.slug ?? null,
+      voucherPreview: null,
     };
   }
 
@@ -114,8 +122,14 @@ function mapProductListRecord(p: ProductListRecord): StoreProduct {
     hasVariants: false,
     avgRating: p.avgRating,
     reviewCount: p.reviewCount,
+    categoryId: p.category?.id ?? null,
     categorySlug: p.category?.slug ?? null,
+    voucherPreview: null,
   };
+}
+
+async function withVoucherPreviews(products: StoreProduct[]) {
+  return attachPublicProductVoucherPreviews(products);
 }
 
 export type NewProductFilter =
@@ -482,9 +496,9 @@ export async function getProducts(opts?: {
         include: productListInclude,
       });
 
-      return products
+      return withVoucherPreviews(products
         .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
-        .map(mapProductListRecord);
+        .map(mapProductListRecord));
     }
 
     if (isOrderDrivenPopularFilter(popularFilter)) {
@@ -501,9 +515,9 @@ export async function getProducts(opts?: {
         include: productListInclude,
       });
 
-      return products
+      return withVoucherPreviews(products
         .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
-        .map(mapProductListRecord);
+        .map(mapProductListRecord));
     }
 
     if (
@@ -535,9 +549,9 @@ export async function getProducts(opts?: {
         include: productListInclude,
       });
 
-      return products
+      return withVoucherPreviews(products
         .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
-        .map(mapProductListRecord);
+        .map(mapProductListRecord));
     }
 
     const listWhere =
@@ -555,14 +569,14 @@ export async function getProducts(opts?: {
 
     if (!products.length) {
       if (category || brand || search || newFilter || popularFilter) return [];
-      return sampleProducts;
+      return withVoucherPreviews(sampleProducts);
     }
 
-    return products.map(mapProductListRecord);
+    return withVoucherPreviews(products.map(mapProductListRecord));
   } catch {
     if (randomSeed) return [];
     if (category || brand || search || newFilter || popularFilter) return [];
-    return sampleProducts;
+    return withVoucherPreviews(sampleProducts);
   }
 }
 
@@ -698,12 +712,12 @@ export async function getProductBySlug(slug: string): Promise<StoreProduct | nul
     // atau deep-link by id.
     let p = await prisma.product.findUnique({
       where: { slug },
-      include: { ...variantInclude, category: { select: { slug: true } } },
+      include: { ...variantInclude, category: { select: { id: true, slug: true } } },
     });
     if (!p) {
       p = await prisma.product.findUnique({
         where: { id: slug },
-        include: { ...variantInclude, category: { select: { slug: true } } },
+        include: { ...variantInclude, category: { select: { id: true, slug: true } } },
       });
     }
     if (!p) return sampleProducts.find((item) => item.slug === slug) ?? null;
@@ -712,7 +726,7 @@ export async function getProductBySlug(slug: string): Promise<StoreProduct | nul
       const activeVariants = p.variants.filter((v) => v.isActive);
       const prices = activeVariants.map((v) => v.price);
       const totalStock = activeVariants.reduce((s, v) => s + v.stock, 0);
-      return {
+      const product: StoreProduct = {
         id: p.id,
         name: p.name,
         slug: p.slug,
@@ -727,13 +741,17 @@ export async function getProductBySlug(slug: string): Promise<StoreProduct | nul
         hasVariants: true,
         avgRating: p.avgRating,
         reviewCount: p.reviewCount,
+        categoryId: p.category?.id ?? null,
         categorySlug: p.category?.slug ?? null,
+        voucherPreview: null,
         variantAttrs: p.variantAttrs as unknown as StoreVariantAttribute[],
         variants: p.variants as unknown as StoreProductVariant[],
       };
+      const [withPreview] = await withVoucherPreviews([product]);
+      return withPreview;
     }
 
-    return {
+    const product = {
       id: p.id,
       name: p.name,
       slug: p.slug,
@@ -748,9 +766,15 @@ export async function getProductBySlug(slug: string): Promise<StoreProduct | nul
       hasVariants: false,
       avgRating: p.avgRating,
       reviewCount: p.reviewCount,
+      categoryId: p.category?.id ?? null,
       categorySlug: p.category?.slug ?? null,
     };
+    const [withPreview] = await withVoucherPreviews([product]);
+    return withPreview;
   } catch {
-    return sampleProducts.find((item) => item.slug === slug) ?? null;
+    const sample = sampleProducts.find((item) => item.slug === slug);
+    if (!sample) return null;
+    const [withPreview] = await withVoucherPreviews([sample]);
+    return withPreview;
   }
 }
