@@ -108,6 +108,27 @@ class CartStore extends ChangeNotifier {
     }
   }
 
+  /// Restore previously-removed item ke posisi semula. Dipakai untuk
+  /// undo snackbar di cart screen — user delete by mistake → tap "Batalkan"
+  /// → item kembali persis seperti sebelum.
+  ///
+  /// Kalau `index` di-pass + valid, item di-insert di posisi itu (preserve
+  /// urutan visual). Default append ke akhir.
+  Future<void> restore(CartItem item, {int? index}) async {
+    readOnlyMode.guard('restoreItem');
+    if (index != null && index >= 0 && index < _items.length) {
+      final entries = _items.entries.toList();
+      entries.insert(index, MapEntry(item.key, item));
+      _items
+        ..clear()
+        ..addEntries(entries);
+    } else {
+      _items[item.key] = item;
+    }
+    notifyListeners();
+    await _persist();
+  }
+
   Future<void> clear() async {
     readOnlyMode.guard('clearCart');
     if (_items.isEmpty) return;

@@ -1,4 +1,4 @@
-package com.natalopetshop.app
+package com.natalo.petshop
 
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
