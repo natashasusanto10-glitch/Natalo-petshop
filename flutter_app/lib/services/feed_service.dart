@@ -103,10 +103,23 @@ class FeedService {
   }
 
   /// List produk yang boleh di-pin / tag di feed post (admin moderation).
-  /// Stub return [] sampai endpoint dipakai.
   Future<List<dynamic>> fetchPinnableProducts({int limit = 30}) async {
-    if (kDebugMode) debugPrint('[feedService.fetchPinnableProducts] stub');
-    return const [];
+    try {
+      final data = await apiClient.getJson(
+        '/api/feed/pinnable-products',
+        query: {'limit': limit},
+      );
+      final list = data is List
+          ? data
+          : data is Map
+              ? data['products'] ?? data['data']
+              : null;
+      if (list is! List) return const [];
+      return list;
+    } catch (e) {
+      if (kDebugMode) debugPrint('[feedService.fetchPinnableProducts] $e');
+      return const [];
+    }
   }
 
   /// Upload thumbnail image untuk feed post. Boleh dipanggil dengan `file`
@@ -118,9 +131,23 @@ class FeedService {
     String? filename,
     String? contentType,
   }) async {
-    if (kDebugMode) {
-      debugPrint(
-          '[feedService.uploadFeedThumbnail] stub: filePath=$filePath');
+    if (filePath == null || filePath.isEmpty) {
+      return const FeedUploadResult(url: '');
+    }
+    try {
+      final data = await apiClient.postMultipartFile(
+        '/api/feed/upload-thumbnail',
+        fieldName: 'file',
+        filePath: filePath,
+        filename: filename ?? 'thumbnail.jpg',
+        contentType: contentType ?? 'image/jpeg',
+      );
+      if (data is Map<String, dynamic>) {
+        return FeedUploadResult(url: (data['url'] ?? '').toString());
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[feedService.uploadFeedThumbnail] $e');
+      if (e is ApiException) rethrow;
     }
     return const FeedUploadResult(url: '');
   }
