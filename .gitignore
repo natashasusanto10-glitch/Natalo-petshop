@@ -82,6 +82,14 @@ ios/App/App.xcodeproj/project.xcworkspace/xcuserdata/
 **/GoogleService-Info.plist
 **/firebase-adminsdk-*.json
 
+# EXCEPTION — Flutter app firebase client config HARUS committed supaya
+# Codemagic build resolve them. Files berisi client API keys yang per
+# Firebase docs designed to be public (server secrets ada di env vars
+# Vercel, bukan di file ini). Tanpa commit → Xcode build fail dengan
+# "Build input file cannot be found: GoogleService-Info.plist".
+!flutter_app/android/app/google-services.json
+!flutter_app/ios/Runner/GoogleService-Info.plist
+
 # Capacitor generated assets (regen via `npm run cap:assets`)
 # Note: ios/App/App/Assets.xcassets is committed; only DerivedData ignored.
 

@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "27182897424",
+    "project_id": "natalopetshop-818c4",
+    "storage_bucket": "natalopetshop-818c4.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:27182897424:android:9cf6089d8f0ef5f2dd6d95",
+        "android_client_info": {
+          "package_name": "com.natalo.petshop"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB_AazjKEVV88H0tm6W7TaP2LpUzDCtHj4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:27182897424:android:84da06f390c5417cdd6d95",
+        "android_client_info": {
+          "package_name": "com.natalopetshop.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB_AazjKEVV88H0tm6W7TaP2LpUzDCtHj4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
