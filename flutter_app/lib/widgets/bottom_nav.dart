@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 /// Bottom nav bar Natalo: integrated, clean, 4 menu utama.
@@ -11,6 +13,7 @@ const _navTopBorder = Color(0xFFE8ECF2);
 const _navActiveBlue = Color(0xFF2563EB);
 const _navInactiveIcon = Color(0xFF2B2F38);
 const _navInactiveLabel = Color(0xFF6F7480);
+const _feedNavBackground = Color(0x57000000);
 
 class BottomNavBar extends StatelessWidget {
   final int currentIndex;
@@ -67,17 +70,27 @@ class BottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
+    final isFeedStyle = variant == BottomNavVariant.dark || currentIndex == 2;
+
+    final nav = DecoratedBox(
       decoration: BoxDecoration(
-        color: _navBackground,
-        border: const Border(top: BorderSide(color: _navTopBorder)),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF0F172A).withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, -2),
+        color: isFeedStyle ? _feedNavBackground : _navBackground,
+        border: Border(
+          top: BorderSide(
+            color: isFeedStyle
+                ? Colors.white.withValues(alpha: 0.08)
+                : _navTopBorder,
           ),
-        ],
+        ),
+        boxShadow: isFeedStyle
+            ? const []
+            : [
+                BoxShadow(
+                  color: const Color(0xFF0F172A).withValues(alpha: 0.04),
+                  blurRadius: 12,
+                  offset: const Offset(0, -2),
+                ),
+              ],
       ),
       child: SafeArea(
         top: false,
@@ -90,6 +103,7 @@ class BottomNavBar extends StatelessWidget {
                 selectedIcon: Icons.home_rounded,
                 label: 'Beranda',
                 selected: currentIndex == 0,
+                feedStyle: isFeedStyle,
                 onTap: () => _onTap(context, 0),
               ),
               _BottomNavItem(
@@ -97,13 +111,15 @@ class BottomNavBar extends StatelessWidget {
                 selectedIcon: Icons.shopping_bag_rounded,
                 label: 'Produk',
                 selected: currentIndex == 1,
+                feedStyle: isFeedStyle,
                 onTap: () => _onTap(context, 1),
               ),
               _BottomNavItem(
                 icon: Icons.play_circle_outline_rounded,
-                selectedIcon: Icons.play_circle_rounded,
+                selectedIcon: Icons.play_circle_fill_rounded,
                 label: 'Feed',
                 selected: currentIndex == 2,
+                feedStyle: isFeedStyle,
                 onTap: () => _onTap(context, 2),
               ),
               _BottomNavItem(
@@ -111,11 +127,21 @@ class BottomNavBar extends StatelessWidget {
                 selectedIcon: Icons.person_rounded,
                 label: 'Akun',
                 selected: currentIndex == 3,
+                feedStyle: isFeedStyle,
                 onTap: () => _onTap(context, 3),
               ),
             ],
           ),
         ),
+      ),
+    );
+
+    if (!isFeedStyle) return nav;
+
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: nav,
       ),
     );
   }
@@ -126,6 +152,7 @@ class _BottomNavItem extends StatelessWidget {
   final IconData selectedIcon;
   final String label;
   final bool selected;
+  final bool feedStyle;
   final VoidCallback onTap;
 
   const _BottomNavItem({
@@ -133,13 +160,26 @@ class _BottomNavItem extends StatelessWidget {
     required this.selectedIcon,
     required this.label,
     required this.selected,
+    required this.feedStyle,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? _navActiveBlue : _navInactiveIcon;
-    final labelColor = selected ? _navActiveBlue : _navInactiveLabel;
+    final color = feedStyle
+        ? selected
+            ? Colors.white
+            : Colors.white.withValues(alpha: 0.64)
+        : selected
+            ? _navActiveBlue
+            : _navInactiveIcon;
+    final labelColor = feedStyle
+        ? selected
+            ? Colors.white
+            : Colors.white.withValues(alpha: 0.64)
+        : selected
+            ? _navActiveBlue
+            : _navInactiveLabel;
 
     return Expanded(
       child: Semantics(
@@ -150,8 +190,10 @@ class _BottomNavItem extends StatelessWidget {
           color: Colors.transparent,
           child: InkWell(
             onTap: onTap,
-            splashColor: _navActiveBlue.withValues(alpha: 0.08),
-            highlightColor: _navActiveBlue.withValues(alpha: 0.04),
+            splashColor: (feedStyle ? Colors.white : _navActiveBlue)
+                .withValues(alpha: 0.08),
+            highlightColor: (feedStyle ? Colors.white : _navActiveBlue)
+                .withValues(alpha: 0.04),
             child: Center(
               child: Padding(
                 padding: const EdgeInsets.only(top: 8, bottom: 6),
