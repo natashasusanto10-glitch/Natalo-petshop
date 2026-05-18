@@ -264,3 +264,36 @@ export function calculateFinalDiscount(input: {
 }): number {
   return Math.min(input.memberDiscount + input.privateDiscount, input.subtotal);
 }
+
+/**
+ * Format display label untuk limit pemakaian voucher per user.
+ * Combine `usageLimitPerUser` count + `usageLimitPeriod` periode.
+ *
+ * Contoh output:
+ * - 0 / NONE → "Tanpa batas"
+ * - 1 / LIFETIME → "1× selamanya"
+ * - 3 / DAY → "3× per hari"
+ * - 1 / MONTH → "1× per bulan"
+ *
+ * Dipakai di admin voucher listing page untuk show ringkas user-facing
+ * label tanpa expose internal enum value.
+ */
+export function voucherUsageLimitLabel(v: {
+  usageLimitPerUser?: number | null;
+  usageLimitPeriod?: VoucherUsageLimitPeriodValue | null;
+}): string {
+  const count = v.usageLimitPerUser ?? 1;
+  const period = v.usageLimitPeriod ?? "LIFETIME";
+
+  if (period === "NONE" || count === 0) return "Tanpa batas";
+
+  const periodLabel: Record<VoucherUsageLimitPeriodValue, string> = {
+    NONE: "",
+    LIFETIME: "selamanya",
+    DAY: "per hari",
+    WEEK: "per minggu",
+    MONTH: "per bulan",
+  };
+
+  return `${count}× ${periodLabel[period]}`.trim();
+}
