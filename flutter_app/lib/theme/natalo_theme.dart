@@ -31,7 +31,11 @@ class NataloTextStyles {
 class NataloTheme {
   NataloTheme._();
 
-  static const String fontFamily = 'NunitoSans';
+  // PlusJakartaSans di-bundle di pubspec.yaml. Sebelumnya 'NunitoSans' tapi
+  // file font-nya tidak ada di assets/fonts/ → iOS fallback ke system font
+  // dengan metrics tidak konsisten → Text widget wrap per-character (terlihat
+  // huruf vertikal di TestFlight build 19).
+  static const String fontFamily = 'PlusJakartaSans';
 
   static ThemeData get lightTheme => _build(Brightness.light);
   static ThemeData get darkTheme => _build(Brightness.dark);

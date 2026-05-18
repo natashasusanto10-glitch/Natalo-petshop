@@ -166,7 +166,20 @@ class NataloPetshopApp extends StatelessWidget {
             // no AppBackdrop gradient. Faster rendering di HP murah,
             // better readability outdoor, familiar pattern untuk user
             // Indonesia (Tokopedia/Shopee style).
-            return AppLockGate(
+            //
+            // Clamp textScaler max 1.3x — kalau iPhone user pakai
+            // Accessibility "Larger Text" extreme, layout meledak:
+            // text 16px scaled jadi 30+ → tidak fit di Row + Expanded
+            // → wrap per-character (terlihat huruf vertikal). Cap di 1.3x
+            // sudah cukup untuk readability tanpa break layout.
+            final mediaQuery = MediaQuery.of(context);
+            final clampedTextScaler = mediaQuery.textScaler.clamp(
+              minScaleFactor: 0.85,
+              maxScaleFactor: 1.3,
+            );
+            return MediaQuery(
+              data: mediaQuery.copyWith(textScaler: clampedTextScaler),
+              child: AppLockGate(
               child: ReadOnlyWelcomeGate(
                 // ColoredBox provides bg behind transparent Scaffolds —
                 // dipakai theme dark, ganti otomatis via Theme.of context.
@@ -189,6 +202,7 @@ class NataloPetshopApp extends StatelessWidget {
                   ),
                 ),
               ),
+            ),
             );
           },
           initialRoute: _initialRoute,
