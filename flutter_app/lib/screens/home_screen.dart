@@ -94,7 +94,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               Navigator.pushNamed(context, '/member/loyalty'),
                           onOpenGrooming: () => _openProducts(category: 'Grooming'),
                           onOpenBlog: () =>
-                              Navigator.pushNamed(context, '/bantuan'),
+                              Navigator.pushNamed(context, '/help'),
                         ),
                       ],
                     ),
