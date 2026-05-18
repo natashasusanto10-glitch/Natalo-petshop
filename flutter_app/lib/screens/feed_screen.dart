@@ -33,6 +33,9 @@ import 'feed_video_upload_flow.dart';
 const _officialGold = Color(0xFFF4D47C);
 const _officialGoldMuted = Color(0xFFD7B55B);
 const _feedBlue = Color(0xFF0B7FEA);
+const _feedActionIconSize = 32.0;
+const _feedActionCountFontSize = 12.0;
+const _feedActionItemSpacing = 18.0;
 
 /// Instagram Reels-style fullscreen vertical video feed.
 /// - Fullscreen video/image background per post (cover fit)
@@ -1225,12 +1228,14 @@ class _FeedPostViewState extends State<_FeedPostView>
           final safeTop = MediaQuery.paddingOf(context).top;
           final safeBottom = MediaQuery.paddingOf(context).bottom;
           final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+          final screenHeight = MediaQuery.sizeOf(context).height;
           // feedInfoInset + actionRailInset harus kompensasi tinggi nav
           // (58px + safeBottom) supaya icon + caption tidak ketutup nav
           // yang translucent. Sebelumnya inset relatif ke video bottom;
           // sekarang relatif ke screen bottom karena video edge-to-edge.
           final feedInfoInset = safeBottom + 78.0;
-          final actionRailInset = safeBottom + 148.0;
+          final actionRailInset =
+              safeBottom + (screenHeight < 760 ? 126.0 : 136.0);
           final minimized = _commentSheetOpen;
 
           return ColoredBox(
@@ -1447,21 +1452,21 @@ class _FeedPostViewState extends State<_FeedPostView>
                                   count: _likeCount,
                                   onTap: _onLikePressed,
                                 ),
-                                const SizedBox(height: 10),
+                                const SizedBox(height: _feedActionItemSpacing),
                                 _ReelsAction(
                                   iconChild: const _ReelsCommentGlyph(),
                                   color: Colors.white,
                                   count: _commentCount,
                                   onTap: _onComment,
                                 ),
-                                const SizedBox(height: 10),
+                                const SizedBox(height: _feedActionItemSpacing),
                                 _ReelsAction(
                                   iconChild: const _ReelsShareGlyph(),
                                   color: Colors.white,
                                   count: _shareCount,
                                   onTap: _onShare,
                                 ),
-                                const SizedBox(height: 10),
+                                const SizedBox(height: _feedActionItemSpacing),
                                 _ReelsAction(
                                   iconChild: const _ReelsBagGlyph(),
                                   color: Colors.white,
@@ -2488,7 +2493,7 @@ class _ReelsAction extends StatelessWidget {
                     Icon(
                       icon,
                       color: color,
-                      size: 38,
+                      size: _feedActionIconSize,
                       shadows: const [
                         Shadow(color: Colors.black87, blurRadius: 8),
                       ],
@@ -2499,7 +2504,7 @@ class _ReelsAction extends StatelessWidget {
                     _formatCount(count!),
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 12.5,
+                      fontSize: _feedActionCountFontSize,
                       fontWeight: FontWeight.w900,
                       height: 1,
                       shadows: [
@@ -2533,8 +2538,8 @@ class _ReelsCommentGlyph extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const SizedBox(
-      height: 39,
-      width: 39,
+      height: _feedActionIconSize,
+      width: _feedActionIconSize,
       child: CustomPaint(painter: _CommentGlyphPainter()),
     );
   }
@@ -2603,8 +2608,8 @@ class _ReelsShareGlyph extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const SizedBox(
-      height: 40,
-      width: 40,
+      height: _feedActionIconSize,
+      width: _feedActionIconSize,
       child: CustomPaint(painter: _ShareGlyphPainter()),
     );
   }
@@ -2644,8 +2649,8 @@ class _ReelsBagGlyph extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const SizedBox(
-      height: 40,
-      width: 40,
+      height: _feedActionIconSize,
+      width: _feedActionIconSize,
       child: CustomPaint(painter: _BagGlyphPainter()),
     );
   }
