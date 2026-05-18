@@ -5,6 +5,7 @@ import '../services/product_service.dart';
 import '../state/favorite_store.dart';
 import '../state/member_store.dart';
 import '../state/recently_viewed_store.dart';
+import '../state/search_history_store.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_ui.dart';
@@ -81,10 +82,9 @@ class _WishlistScreenState extends State<WishlistScreen> {
   }
 
   Future<void> _loadSearchHistory() async {
-    // TODO: load dari SharedPreferences key 'search_history'. Untuk sekarang
-    // pakai default empty supaya UI tetap render dengan tagline generic.
+    await searchHistoryStore.initialize();
     if (mounted) {
-      setState(() => _searchHistory = const []);
+      setState(() => _searchHistory = searchHistoryStore.entries);
     }
   }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/product.dart';
 import '../services/product_service.dart';
+import '../state/search_history_store.dart';
 import '../widgets/app_cart_button.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/bottom_nav.dart';
@@ -59,10 +60,16 @@ class _ProductsScreenState extends State<ProductsScreen> {
   }
 
   void _submitSearch(String value) {
+    final trimmed = value.trim();
     setState(() {
-      _query = value.trim().isEmpty ? null : value.trim();
+      _query = trimmed.isEmpty ? null : trimmed;
       _future = _load();
     });
+    // Save ke search history (kalau ada keyword valid). Fire-and-forget —
+    // dipakai untuk wishlist look-again ranking + (future) home search suggestion.
+    if (trimmed.isNotEmpty) {
+      searchHistoryStore.push(trimmed);
+    }
   }
 
   void _openProduct(Product product) {
