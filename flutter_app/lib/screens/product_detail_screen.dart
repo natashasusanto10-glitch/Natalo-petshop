@@ -22,11 +22,9 @@ import '../widgets/app_ui.dart';
 import '../widgets/animated_price.dart';
 import '../widgets/favorite_button.dart';
 import '../widgets/glass_surface.dart';
-import '../widgets/product_card.dart';
 import 'image_viewer_screen.dart';
 
 const _brandBlue = Color(0xFF1565D8);
-const _nataloBlueDark = Color(0xFF0D47A1);
 const _textDark = Color(0xFF111827);
 const _textMedium = Color(0xFF374151);
 const _textGray = Color(0xFF6B7280);
@@ -452,7 +450,7 @@ class _ProductHeroState extends State<_ProductHero> {
                   ),
                 if (showIndicators)
                   Positioned(
-                    right: 16,
+                    left: 16,
                     bottom: 14,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
@@ -1260,6 +1258,11 @@ class _ProductReviewPreviewSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final rating = (summary?.avgRating ?? product.rating);
     final reviewCount = summary?.reviewCount ?? product.reviewCount;
+    final ratingCountFromBreakdown = summary?.ratingBreakdown.values
+        .fold<int>(0, (sum, count) => sum + count);
+    final ratingCount = (ratingCountFromBreakdown ?? 0) > 0
+        ? ratingCountFromBreakdown!
+        : reviewCount;
     final photoUrls =
         reviews.expand((review) => review.images).take(8).toList();
 
@@ -1267,9 +1270,9 @@ class _ProductReviewPreviewSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Ulasan pembeli',
                   style: TextStyle(
@@ -1279,7 +1282,7 @@ class _ProductReviewPreviewSection extends StatelessWidget {
                   ),
                 ),
               ),
-              const Text(
+              Text(
                 'Lihat Semua',
                 style: TextStyle(
                   color: _brandBlue,
@@ -1287,8 +1290,7 @@ class _ProductReviewPreviewSection extends StatelessWidget {
                   fontWeight: FontWeight.w900,
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded,
-                  color: _brandBlue, size: 22),
+              Icon(Icons.chevron_right_rounded, color: _brandBlue, size: 22),
             ],
           ),
           const SizedBox(height: 12),
@@ -1308,7 +1310,7 @@ class _ProductReviewPreviewSection extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'dari ${_formatCompactCount(reviewCount)} rating • ${_formatCompactCount(reviewCount)} ulasan',
+                    'dari ${_formatCompactCount(ratingCount)} rating • ${_formatCompactCount(reviewCount)} ulasan',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -1485,154 +1487,6 @@ String _formatDateId(DateTime date) {
     'Des',
   ];
   return '${date.day} ${months[date.month - 1]} ${date.year}';
-}
-
-/// Tab section "Deskripsi / Rekomendasi" — match PWA components/products/ProductTabs.tsx.
-/// 2 tab dengan underline indicator, content lazy switch via IndexedStack.
-class _ProductTabsSection extends StatefulWidget {
-  final Product product;
-  final List<Product> related;
-
-  const _ProductTabsSection({
-    required this.product,
-    required this.related,
-  });
-
-  @override
-  State<_ProductTabsSection> createState() => _ProductTabsSectionState();
-}
-
-class _ProductTabsSectionState extends State<_ProductTabsSection> {
-  int _tabIndex = 0;
-  bool _descExpanded = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassSurface(
-      padding: const EdgeInsets.fromLTRB(0, 4, 0, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Tab bar ──
-          Row(
-            children: [
-              _Tab(
-                label: 'Deskripsi',
-                active: _tabIndex == 0,
-                onTap: () => setState(() => _tabIndex = 0),
-              ),
-              _Tab(
-                label: 'Rekomendasi',
-                active: _tabIndex == 1,
-                onTap: () => setState(() => _tabIndex = 1),
-              ),
-            ],
-          ),
-          const Divider(height: 1, color: Color(0xFFE5E7EB)),
-          // ── Content ──
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
-            child:
-                _tabIndex == 0 ? _buildDescription() : _buildRecommendations(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDescription() {
-    final description = widget.product.description;
-    final isLong = description.length > 220;
-    final showText = (_descExpanded || !isLong)
-        ? description
-        : '${description.substring(0, 220)}...';
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          showText.isEmpty ? 'Belum ada deskripsi produk.' : showText,
-          style: const TextStyle(
-            color: Color(0xFF475569),
-            fontWeight: FontWeight.w600,
-            height: 1.55,
-            fontSize: 13.5,
-          ),
-        ),
-        if (isLong) ...[
-          const SizedBox(height: 8),
-          GestureDetector(
-            onTap: () => setState(() => _descExpanded = !_descExpanded),
-            child: Text(
-              _descExpanded ? 'Tutup' : 'Baca Selengkapnya',
-              style: const TextStyle(
-                color: _brandBlue,
-                fontWeight: FontWeight.w900,
-                fontSize: 13,
-              ),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildRecommendations() {
-    if (widget.related.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 16),
-        child: Center(
-          child: Text(
-            'Belum ada rekomendasi.',
-            style: TextStyle(
-              color: Color(0xFF9CA3AF),
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-      );
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Rekomendasi Produk',
-          style: TextStyle(
-            color: Color(0xFF17202A),
-            fontSize: 15,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        const SizedBox(height: 10),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: widget.related.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            // Lebih tinggi untuk metadata hemat + rating/terjual.
-            childAspectRatio: 0.54,
-          ),
-          itemBuilder: (context, index) {
-            final product = widget.related[index];
-            return ProductCard(
-              product: product,
-              onTap: () {
-                AppHaptics.tap();
-                Navigator.pushNamed(
-                  context,
-                  '/product-detail',
-                  arguments: product,
-                );
-              },
-              showAddToCart: true,
-            );
-          },
-        ),
-      ],
-    );
-  }
 }
 
 class _Tab extends StatelessWidget {
@@ -2073,348 +1927,6 @@ class _WhatsAppIcon extends StatelessWidget {
             Icons.call_rounded,
             color: Colors.white,
             size: 15,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _TrustTile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-
-  const _TrustTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassSurface(
-      radius: 20,
-      padding: const EdgeInsets.all(14),
-      child: Row(
-        children: [
-          SoftIconTile(icon: icon, size: 40),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Color(0xFF17202A),
-                    fontWeight: FontWeight.w900,
-                    fontSize: 13,
-                  ),
-                ),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF6B7280),
-                    fontWeight: FontWeight.w700,
-                    fontSize: 11,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Separate Quantity Card di body — match pattern reference Anda.
-/// User adjust qty di sini sebelum scroll ke bottom CTA.
-class _QuantityCard extends StatelessWidget {
-  final int quantity;
-  final int stock;
-  final ValueChanged<int> onChanged;
-
-  const _QuantityCard({
-    required this.quantity,
-    required this.stock,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final disabled = stock <= 0;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Jumlah Produk',
-                    style: TextStyle(
-                      color: Color(0xFF17202A),
-                      fontSize: 15,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    'Pilih jumlah sebelum checkout',
-                    style: TextStyle(
-                      color: Color(0xFF6B7280),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              height: 40,
-              decoration: BoxDecoration(
-                color: const Color(0xFFF7FAFD),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFFE5E7EB)),
-              ),
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: disabled || quantity <= 1
-                        ? null
-                        : () => onChanged(quantity - 1),
-                    icon: const Icon(Icons.remove_rounded),
-                    iconSize: 18,
-                    visualDensity: VisualDensity.compact,
-                  ),
-                  SizedBox(
-                    width: 32,
-                    child: Text(
-                      disabled ? '0' : quantity.toString(),
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Color(0xFF17202A),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: disabled || quantity >= stock
-                        ? null
-                        : () => onChanged(quantity + 1),
-                    icon: const Icon(Icons.add_rounded),
-                    iconSize: 18,
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Benefit grid 3 kolom: Brand / Kategori / Stok.
-class _BenefitGrid extends StatelessWidget {
-  final String brand;
-  final String category;
-  final int stock;
-
-  const _BenefitGrid({
-    required this.brand,
-    required this.category,
-    required this.stock,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _BenefitCard(
-            icon: Icons.storefront_rounded,
-            title: brand.isEmpty ? '-' : brand,
-            subtitle: 'Brand',
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _BenefitCard(
-            icon: Icons.category_rounded,
-            title: category.isEmpty ? '-' : category,
-            subtitle: 'Kategori',
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _BenefitCard(
-            icon: Icons.inventory_2_rounded,
-            title: stock > 0 ? stock.toString() : '0',
-            subtitle: 'Stok',
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _BenefitCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-
-  const _BenefitCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 92,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: const Color(0xFF0B7FEA), size: 22),
-          const Spacer(),
-          Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Color(0xFF17202A),
-              fontSize: 13,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            subtitle,
-            style: const TextStyle(
-              color: Color(0xFF6B7280),
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Pengiriman & Layanan card — service rows trust message.
-class _ServiceInfoCard extends StatelessWidget {
-  const _ServiceInfoCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Card(
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(16, 16, 16, 18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Pengiriman & Layanan',
-              style: TextStyle(
-                color: Color(0xFF17202A),
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            SizedBox(height: 12),
-            _ServiceRow(
-              icon: Icons.local_shipping_rounded,
-              title: 'Pengiriman cepat',
-              description:
-                  'Estimasi pengiriman mengikuti alamat dan kurir yang dipilih saat checkout.',
-            ),
-            SizedBox(height: 12),
-            _ServiceRow(
-              icon: Icons.verified_rounded,
-              title: 'Produk original',
-              description:
-                  'Disiapkan dari katalog resmi Natalo Petshop, dijamin asli.',
-            ),
-            SizedBox(height: 12),
-            _ServiceRow(
-              icon: Icons.support_agent_rounded,
-              title: 'Bantuan toko',
-              description:
-                  'Admin dapat membantu pengecekan produk sebelum pembelian.',
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ServiceRow extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String description;
-
-  const _ServiceRow({
-    required this.icon,
-    required this.title,
-    required this.description,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            color: const Color(0xFFEAF5FF),
-            borderRadius: BorderRadius.circular(13),
-          ),
-          child: Icon(icon, color: const Color(0xFF0B7FEA), size: 20),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  color: Color(0xFF17202A),
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                description,
-                style: const TextStyle(
-                  color: Color(0xFF6B7280),
-                  fontSize: 13,
-                  height: 1.35,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
           ),
         ),
       ],

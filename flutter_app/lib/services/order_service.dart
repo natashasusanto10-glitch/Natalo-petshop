@@ -1,30 +1,16 @@
-import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart' show XFile;
 
-import '../config/api_config.dart';
 import '../models/cart_item.dart';
 import '../models/member_address.dart';
 import '../models/member_profile.dart';
 import '../models/shipping_rate.dart';
-import '../state/member_store.dart';
 import '../utils/read_only_mode.dart';
 import 'api_client.dart';
 
 /// Order detail + actions (cancel, upload payment proof, reorder).
 class OrderService {
   OrderService._();
-
-  Map<String, String> _headers({bool json = false}) {
-    final token = memberStore.sessionToken;
-    return {
-      if (json) 'content-type': 'application/json',
-      if (token != null) 'authorization': 'Bearer $token',
-      if (token != null) 'cookie': 'member_session=$token',
-    };
-  }
 
   Future<OrderSummary> fetchOrderDetail(
     String orderNumber, {

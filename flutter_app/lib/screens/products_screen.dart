@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../models/product.dart';
 import '../services/product_service.dart';
-import '../theme/natalo_colors.dart';
 import '../widgets/app_cart_button.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/bottom_nav.dart';

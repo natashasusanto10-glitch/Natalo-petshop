@@ -460,25 +460,6 @@ double? _nullableDouble(Object? value) {
 int _asInt(Object? value, {int fallback = 0}) {
   if (value is int) return value;
   if (value is num) return value.toInt();
-  if (value is String) return int.tryParse(value) ?? 0;
-  return 0;
-}
-
-int? _asNullableInt(dynamic value) {
-  if (value == null) return null;
-  return _asInt(value);
-}
-
-String? _categoryFrom(dynamic raw) {
-  if (raw == null) return null;
-  if (raw is String) return raw;
-  if (raw is Map) return raw['name']?.toString();
-  return null;
-}
-
-String? _brandFrom(dynamic raw) {
-  if (raw == null) return null;
-  if (raw is String) return raw;
-  if (raw is Map) return raw['name']?.toString();
-  return null;
+  if (value is String) return int.tryParse(value) ?? fallback;
+  return fallback;
 }

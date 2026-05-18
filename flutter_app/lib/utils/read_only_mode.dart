@@ -1,8 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'haptics.dart';
-
 /// Read-only mode — flag global yang membungkus semua endpoint mutation
 /// dan throw [ReadOnlyModeException] supaya Capacitor production database
 /// tidak tersentuh dari Flutter testing.

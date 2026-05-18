@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../models/product.dart';
 import '../theme/natalo_colors.dart';
-import '../theme/natalo_theme.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../utils/motion_prefs.dart';

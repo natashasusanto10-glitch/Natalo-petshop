@@ -17,6 +17,16 @@ class NotificationResult {
 class NotificationService {
   Future<NotificationResult> fetchMine() async {
     final data = await apiClient.getJson('/api/notifications/me');
+    if (data is! Map<String, dynamic>) {
+      final text = data?.toString().trim() ?? '';
+      final looksLikeHtml =
+          text.startsWith('<!DOCTYPE html') || text.startsWith('<html');
+      throw ApiException(
+        looksLikeHtml
+            ? 'Server membalas halaman web, bukan data notifikasi.'
+            : 'Response notifikasi tidak sesuai format aplikasi.',
+      );
+    }
     final rawItems = data['items'];
     final items = rawItems is List
         ? rawItems
