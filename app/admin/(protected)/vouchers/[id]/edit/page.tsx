@@ -2,15 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { VoucherType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import {
-  deriveVoucherSourceType,
-  isAdminCreatableVoucherKind,
-  isLoyaltyClaimVoucher,
-  type VoucherKindValue,
-  voucherKindDescription,
-  voucherKindLabel,
-} from "@/lib/voucher-kind";
-import { VoucherTargetFields } from "@/components/admin/VoucherTargetFields";
+import { isLoyaltyClaimVoucher } from "@/lib/voucher-kind";
 
 export default async function AdminVoucherEditPage({
   params,
@@ -60,10 +52,7 @@ export default async function AdminVoucherEditPage({
     );
     const maxUsageRaw = String(formData.get("maxUsage") || "").trim();
     const maxUsage = maxUsageRaw ? parseInt(maxUsageRaw, 10) : null;
-    const usageLimitPerUser = parseInt(
-      String(formData.get("usageLimitPerUser") || "1"),
-      10
-    );
+    const usageLimitPerUserRaw = String(formData.get("usageLimitPerUser") ?? "").trim();
     const startsAtRaw = String(formData.get("startsAt") || "").trim();
     const startsAt = startsAtRaw ? new Date(startsAtRaw) : voucher!.startsAt;
     const expiresAtRaw = String(formData.get("expiresAt") || "").trim();
@@ -87,7 +76,25 @@ export default async function AdminVoucherEditPage({
     }
 
     if (!code) return;
-    const isFreeShipping = type === "PUBLIC_FREE_SHIPPING";
+    const kind: "PRODUCT_DISCOUNT" | "FREE_SHIPPING" | "LOYALTY_CLAIM" | "MANUAL_PRIVATE" =
+      type === "PUBLIC_FREE_SHIPPING"
+        ? "FREE_SHIPPING"
+        : type === "LOYALTY_POINT_CLAIM"
+          ? "LOYALTY_CLAIM"
+          : type === "PRIVATE_MANUAL_CODE"
+            ? "MANUAL_PRIVATE"
+            : "PRODUCT_DISCOUNT";
+    const isFreeShipping = kind === "FREE_SHIPPING";
+    const defaultUsageLimitPerUser =
+      kind === "MANUAL_PRIVATE" || kind === "LOYALTY_CLAIM" ? 1 : 0;
+    const parsedUsageLimitPerUser =
+      usageLimitPerUserRaw === ""
+        ? defaultUsageLimitPerUser
+        : parseInt(usageLimitPerUserRaw, 10);
+    const usageLimitPerUser = Number.isFinite(parsedUsageLimitPerUser)
+      ? Math.max(0, parsedUsageLimitPerUser)
+      : defaultUsageLimitPerUser;
+    const usageLimitPeriod = usageLimitPerUser <= 0 ? "NONE" : "LIFETIME";
     if (!isFreeShipping && !discountPercent && !discountAmount) return;
 
     // Form checkbox value — "on" = checked, null/missing = unchecked.
@@ -117,14 +124,14 @@ export default async function AdminVoucherEditPage({
         maxDiscountAmount,
         minimumOrder,
         maxUsage,
-        usageLimitPerUser: Number.isFinite(usageLimitPerUser)
-          ? Math.max(1, usageLimitPerUser)
-          : 1,
+        usageLimitPerUser,
+        usageLimitPeriod,
         startsAt,
         expiresAt,
         isActive,
         sourceType,
         type,
+        kind,
         visibility,
         discountType: discountPercent ? "PERCENTAGE" : "FIXED_AMOUNT",
         discountScope,
@@ -290,22 +297,24 @@ export default async function AdminVoucherEditPage({
             defaultValue={startsAtValue}
           />
           <Field
-            label="Maks. penggunaan"
+            label="Kuota total voucher (semua user)"
             name="maxUsage"
             type="number"
             defaultValue={voucher.maxUsage?.toString() ?? ""}
-            placeholder="Kosong = tidak terbatas"
+            placeholder="Kosong = tidak dibatasi"
             hint={
               voucher.usedCount > 0
-                ? `Tidak boleh < ${voucher.usedCount} (sudah terpakai)`
-                : undefined
+                ? `Tidak boleh < ${voucher.usedCount} (sudah terpakai). Kosong = tidak dibatasi.`
+                : "Contoh: 100 berarti voucher hanya bisa dipakai 100 kali total oleh semua user."
             }
           />
           <Field
-            label="Limit per user"
+            label="Batas pemakaian per user"
             name="usageLimitPerUser"
             type="number"
             defaultValue={voucher.usageLimitPerUser.toString()}
+            placeholder="0 = tanpa batas"
+            hint="0 = user boleh pakai lagi di order berikutnya. 1 = tiap user hanya 1x."
           />
           <Field
             label="Berlaku hingga"

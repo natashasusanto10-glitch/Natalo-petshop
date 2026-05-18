@@ -2,12 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { VoucherType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import {
-  deriveVoucherSourceType,
-  isAdminCreatableVoucherKind,
-  voucherKindDescription,
-} from "@/lib/voucher-kind";
-import { VoucherTargetFields } from "@/components/admin/VoucherTargetFields";
 
 export default async function AdminVoucherNewPage() {
   async function createVoucher(formData: FormData) {
@@ -40,10 +34,7 @@ export default async function AdminVoucherNewPage() {
     const minimumOrder = parseInt(String(formData.get("minimumOrder") || "0"), 10);
     const maxUsageRaw = String(formData.get("maxUsage") || "").trim();
     const maxUsage = maxUsageRaw ? parseInt(maxUsageRaw, 10) : null;
-    const usageLimitPerUser = parseInt(
-      String(formData.get("usageLimitPerUser") || "1"),
-      10,
-    );
+    const usageLimitPerUserRaw = String(formData.get("usageLimitPerUser") ?? "").trim();
     const startsAtRaw = String(formData.get("startsAt") || "").trim();
     const startsAt = startsAtRaw ? new Date(startsAtRaw) : new Date();
     const expiresAtRaw = String(formData.get("expiresAt") || "").trim();
@@ -78,6 +69,16 @@ export default async function AdminVoucherNewPage() {
             ? "MANUAL_PRIVATE"
             : "PRODUCT_DISCOUNT";
     const isFreeShipping = kind === "FREE_SHIPPING";
+    const defaultUsageLimitPerUser =
+      kind === "MANUAL_PRIVATE" || kind === "LOYALTY_CLAIM" ? 1 : 0;
+    const parsedUsageLimitPerUser =
+      usageLimitPerUserRaw === ""
+        ? defaultUsageLimitPerUser
+        : parseInt(usageLimitPerUserRaw, 10);
+    const usageLimitPerUser = Number.isFinite(parsedUsageLimitPerUser)
+      ? Math.max(0, parsedUsageLimitPerUser)
+      : defaultUsageLimitPerUser;
+    const usageLimitPeriod = usageLimitPerUser <= 0 ? "NONE" : "LIFETIME";
     if (!isFreeShipping && !discountPercent && !discountAmount) return;
 
     // Form checkbox — "on" = checked, null/missing = unchecked.
@@ -96,14 +97,14 @@ export default async function AdminVoucherNewPage() {
         maxDiscountAmount,
         minimumOrder,
         maxUsage,
-        usageLimitPerUser: Number.isFinite(usageLimitPerUser)
-          ? Math.max(1, usageLimitPerUser)
-          : 1,
+        usageLimitPerUser,
+        usageLimitPeriod,
         startsAt,
         expiresAt,
         isActive,
         sourceType,
         type,
+        kind,
         visibility,
         discountType: discountPercent ? "PERCENTAGE" : "FIXED_AMOUNT",
         discountScope,
@@ -229,16 +230,19 @@ export default async function AdminVoucherNewPage() {
             hint="Kosong = aktif mulai sekarang"
           />
           <Field
-            label="Maks. penggunaan"
+            label="Kuota total voucher (semua user)"
             name="maxUsage"
             type="number"
-            placeholder="Kosong = tidak terbatas"
+            placeholder="Kosong = tidak dibatasi"
+            hint="Contoh: 100 berarti voucher hanya bisa dipakai 100 kali total oleh semua user."
           />
           <Field
-            label="Limit per user"
+            label="Batas pemakaian per user"
             name="usageLimitPerUser"
             type="number"
-            defaultValue="1"
+            defaultValue="0"
+            placeholder="0 = tanpa batas"
+            hint="0 = user boleh pakai lagi di order berikutnya. 1 = tiap user hanya 1x."
           />
           <Field
             label="Berlaku hingga"

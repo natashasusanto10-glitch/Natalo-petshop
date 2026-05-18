@@ -172,12 +172,11 @@ export default async function AdminVouchersPage() {
                           </strong>
                         </span>
                       )}
-                      <span>Limit/user: <strong className="text-zinc-700">{voucherUsageLimitLabel(v)}</strong></span>
+                      <span>Batas per user: <strong className="text-zinc-700">{voucherUsageLimitLabel(v)}</strong></span>
                       <span>
                         Digunakan: <strong className="text-zinc-700">{v.usedCount}
                         {v.maxUsage !== null ? `/${v.maxUsage}` : ""}</strong>
                       </span>
-                      <span>Limit/user: <strong className="text-zinc-700">{v.usageLimitPerUser}×</strong></span>
                       {v.eligibleUserIds.length > 0 && (
                         <span>Eligible user: <strong className="text-zinc-700">{v.eligibleUserIds.length}</strong></span>
                       )}
