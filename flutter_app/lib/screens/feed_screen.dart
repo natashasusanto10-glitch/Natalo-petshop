@@ -28,7 +28,7 @@ import '../utils/haptics.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/feed_comment_sheet.dart';
-import '../widgets/feed_upload_sheet.dart';
+import 'feed_video_upload_flow.dart';
 
 const _officialGold = Color(0xFFF4D47C);
 const _officialGoldMuted = Color(0xFFD7B55B);
@@ -227,16 +227,13 @@ class _FeedScreenState extends State<FeedScreen> {
   Future<void> _onUpload() async {
     AppHaptics.tap();
     _setFeedInteractionLocked(true);
-    final uploaded = await FeedUploadSheet.show(context).whenComplete(() {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const FeedVideoStartScreen()),
+    ).whenComplete(() {
       if (mounted) _setFeedInteractionLocked(false);
     });
-    if (!mounted || uploaded != true) return;
-    AppToast.show(
-      context,
-      'Video berhasil dikirim. Admin akan meninjau sebelum tampil.',
-      kind: ToastKind.success,
-      icon: Icons.check_circle_rounded,
-    );
+    if (!mounted) return;
     await _loadInitial();
   }
 
