@@ -87,6 +87,7 @@ export default async function AdminVoucherEditPage({
     }
 
     if (!code) return;
+    const isFreeShipping = type === "PUBLIC_FREE_SHIPPING";
     if (!isFreeShipping && !discountPercent && !discountAmount) return;
 
     // Cek konflik kode (kalau diganti ke kode yang sudah dipakai voucher lain)
