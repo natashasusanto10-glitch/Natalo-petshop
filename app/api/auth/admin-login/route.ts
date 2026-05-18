@@ -51,20 +51,37 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const admin = await prisma.user.upsert({
-    where: { id: "admin" },
-    create: {
-      id: "admin",
-      name: "Admin",
-      email: adminEmail.includes("@") ? adminEmail : null,
-      role: "ADMIN",
-    },
-    update: {
-      name: "Admin",
-      role: "ADMIN",
-      ...(adminEmail.includes("@") ? { email: adminEmail } : {}),
-    },
-  });
+  // Cari existing admin: prioritas pakai user yang sudah ada dengan email admin
+  // (mis. di-seed manual / hasil migrasi). Kalau tidak ada, baru upsert by
+  // id="admin" supaya idempotent untuk environment fresh.
+  const adminEmailValue = adminEmail.includes("@") ? adminEmail : null;
+  let admin = adminEmailValue
+    ? await prisma.user.findUnique({ where: { email: adminEmailValue } })
+    : null;
+
+  if (admin) {
+    if (admin.role !== "ADMIN") {
+      admin = await prisma.user.update({
+        where: { id: admin.id },
+        data: { role: "ADMIN", name: admin.name ?? "Admin" },
+      });
+    }
+  } else {
+    admin = await prisma.user.upsert({
+      where: { id: "admin" },
+      create: {
+        id: "admin",
+        name: "Admin",
+        email: adminEmailValue,
+        role: "ADMIN",
+      },
+      update: {
+        name: "Admin",
+        role: "ADMIN",
+        ...(adminEmailValue ? { email: adminEmailValue } : {}),
+      },
+    });
+  }
 
   const token = await createSessionToken({
     sub: admin.id,
