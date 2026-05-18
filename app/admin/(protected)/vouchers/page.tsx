@@ -3,7 +3,13 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
-import { isFreeShippingVoucher, isLoyaltyClaimVoucher, voucherKindLabel } from "@/lib/voucher-kind";
+import { voucherUsageLimitLabel } from "@/lib/voucher-helpers";
+import {
+  isFreeShippingVoucher,
+  isLoyaltyClaimVoucher,
+  voucherKindLabel,
+  voucherTargetUserLabel,
+} from "@/lib/voucher-kind";
 
 export default async function AdminVouchersPage() {
   const vouchers = await prisma.voucher.findMany({
@@ -104,6 +110,7 @@ export default async function AdminVouchersPage() {
               else {
                 if (v.discountPercent) discountParts.push(`${v.discountPercent}%`);
                 if (v.discountAmount) discountParts.push(formatRupiah(v.discountAmount));
+                if (v.maxDiscountAmount) discountParts.push(`max ${formatRupiah(v.maxDiscountAmount)}`);
               }
               const kindLabel = isLoyaltyClaimVoucher(v)
                 ? voucherKindLabel("LOYALTY_CLAIM")
@@ -130,6 +137,11 @@ export default async function AdminVouchersPage() {
                       <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-blue-700">
                         {kindLabel}
                       </span>
+                      {v.kind === "PRODUCT_DISCOUNT" && (
+                        <span className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-bold text-indigo-700">
+                          Target: {voucherTargetUserLabel(v.targetUser)}
+                        </span>
+                      )}
                     </div>
 
                     {v.description && (
@@ -144,6 +156,15 @@ export default async function AdminVouchersPage() {
                       {v.minimumOrder > 0 && (
                         <span>Min. belanja: <strong className="text-zinc-700">{formatRupiah(v.minimumOrder)}</strong></span>
                       )}
+                      {v.kind === "PRODUCT_DISCOUNT" && v.targetUser === "NEW_MEMBER" && (
+                        <span>
+                          Rule: <strong className="text-zinc-700">
+                            ≤{v.newMemberMaxAccountAgeDays ?? "-"} hari
+                            {v.newMemberRequireNoSuccessfulOrder ? " · belum checkout" : ""}
+                          </strong>
+                        </span>
+                      )}
+                      <span>Limit/user: <strong className="text-zinc-700">{voucherUsageLimitLabel(v)}</strong></span>
                       <span>
                         Digunakan: <strong className="text-zinc-700">{v.usedCount}
                         {v.maxUsage !== null ? `/${v.maxUsage}` : ""}</strong>

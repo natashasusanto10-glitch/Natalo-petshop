@@ -4,6 +4,7 @@ import { FiGift } from "react-icons/fi";
 import { StickyBackTitle } from "@/components/StickyBackTitle";
 import { formatRupiah } from "@/lib/format";
 import { loadActiveMemberVouchers } from "@/lib/member-vouchers";
+import { prisma } from "@/lib/prisma";
 import { requireCustomerSession } from "@/lib/session-guards";
 import { getVoucherDisabledReason } from "@/lib/voucher-helpers";
 
@@ -35,7 +36,19 @@ function describeVoucher(voucher: {
 export default async function MemberVouchersPage() {
   const session = await requireCustomerSession();
   const now = new Date();
-  const visibleVouchers = await loadActiveMemberVouchers(session.sub, now);
+  const [visibleVouchers, user, successfulOrderCount] = await Promise.all([
+    loadActiveMemberVouchers(session.sub, now),
+    prisma.user.findUnique({
+      where: { id: session.sub },
+      select: { id: true, createdAt: true },
+    }),
+    prisma.order.count({
+      where: {
+        userId: session.sub,
+        status: { notIn: ["CANCELLED", "REFUNDED"] },
+      },
+    }),
+  ]);
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -47,7 +60,12 @@ export default async function MemberVouchersPage() {
               const disabledReason = getVoucherDisabledReason(
                 voucher,
                 0,
-                { isLoggedIn: true, userId: session.sub },
+                {
+                  isLoggedIn: true,
+                  userId: session.sub,
+                  createdAt: user?.createdAt ?? null,
+                  successfulOrderCount,
+                },
                 now,
               );
               return (

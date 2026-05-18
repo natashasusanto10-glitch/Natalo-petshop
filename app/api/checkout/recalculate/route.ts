@@ -4,9 +4,12 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { cartItemSchema } from "@/lib/validation";
 import { buildCheckoutItemsFromInventory } from "@/lib/checkout-items";
-import { getVoucherDisabledReason } from "@/lib/voucher-helpers";
 import {
-  collectOrderVoucherCodes,
+  getVoucherDisabledReason,
+  isVoucherUsageLimitReached,
+  type VoucherUsageOrder,
+} from "@/lib/voucher-helpers";
+import {
   isFreeShippingVoucher,
   voucherSlotForKind,
   type VoucherSlotValue,
@@ -73,6 +76,7 @@ type VoucherRow = {
   targetUser: "ALL_MEMBERS" | "NEW_MEMBER";
   newMemberMaxAccountAgeDays: number | null;
   newMemberRequireNoSuccessfulOrder: boolean;
+  usageLimitPeriod: "NONE" | "LIFETIME" | "DAY" | "WEEK" | "MONTH";
   usageLimitPerUser: number;
   userId: string | null;
 };
@@ -107,6 +111,7 @@ function normalizeVoucher(voucher: VoucherRow, discount: number) {
     sourceType: voucher.sourceType,
     kind: voucher.kind,
     slot: voucherSlotForKind(voucher.kind),
+    targetUser: voucher.targetUser,
     status: "available" as const,
   };
 }
@@ -126,6 +131,7 @@ function normalizeUnavailable(
     sourceType: voucher.sourceType,
     kind: voucher.kind,
     slot: voucherSlotForKind(voucher.kind),
+    targetUser: voucher.targetUser,
     status: "unavailable" as const,
   };
 }
@@ -272,9 +278,9 @@ export async function POST(request: NextRequest) {
   // Aturan visibility (lihat /api/cart/vouchers): filter voucher yg user
   // sudah pernah pakai (per-user 1×). Voucher yg sudah dipakai TIDAK
   // muncul di available/unavailable, sekaligus mencegah auto-apply.
-  const userUsedCodes = new Map<string, number>();
+  let userUsedOrders: VoucherUsageOrder[] = [];
   if (session) {
-    const userOrders = await prisma.order.findMany({
+    userUsedOrders = await prisma.order.findMany({
       where: {
         userId: session.sub,
         OR: [
@@ -286,6 +292,7 @@ export async function POST(request: NextRequest) {
         ],
       },
       select: {
+        createdAt: true,
         voucherCode: true,
         productVoucherCode: true,
         shippingVoucherCode: true,
@@ -293,16 +300,11 @@ export async function POST(request: NextRequest) {
         manualVoucherCode: true,
       },
     });
-    for (const o of userOrders) {
-      for (const code of collectOrderVoucherCodes(o)) {
-        userUsedCodes.set(code, (userUsedCodes.get(code) ?? 0) + 1);
-      }
-    }
   }
 
   const customerVouchers = customerVouchersRaw.filter(
     (v) =>
-      (v.usageLimitPerUser <= 0 || (userUsedCodes.get(v.code) ?? 0) < v.usageLimitPerUser) &&
+      !isVoucherUsageLimitReached(v, userUsedOrders, now) &&
       (v.maxUsage === null || v.usedCount < v.maxUsage),
   );
   const userCtx = {
@@ -379,7 +381,10 @@ export async function POST(request: NextRequest) {
         (voucher) => voucher.code === requestedCode && voucher.kind === expectedKind,
       );
       if (inAvailable) return { applied: inAvailable, error: null, autoApplied: false };
-      if ((userUsedCodes.get(requestedCode) ?? 0) > 0) {
+      const requestedVoucher = customerVouchersRaw.find(
+        (voucher) => voucher.code === requestedCode,
+      );
+      if (requestedVoucher && isVoucherUsageLimitReached(requestedVoucher, userUsedOrders, now)) {
         return { applied: null, error: "Kode voucher sudah pernah digunakan", autoApplied: false };
       }
       const inUnavailable = unavailable.find(
@@ -413,7 +418,7 @@ export async function POST(request: NextRequest) {
 
     if (!manualVoucher || !manualVoucher.isActive) {
       manualVoucherError = "Kode voucher tidak valid.";
-    } else if ((userUsedCodes.get(manualRequested) ?? 0) > 0) {
+    } else if (isVoucherUsageLimitReached(manualVoucher, userUsedOrders, now)) {
       manualVoucherError = "Kode voucher sudah pernah digunakan";
     } else if (manualVoucher.sourceType !== "SELLER_MANUAL" || manualVoucher.kind !== "MANUAL_PRIVATE") {
       manualVoucherError =

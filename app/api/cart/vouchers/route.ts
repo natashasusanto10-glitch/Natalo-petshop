@@ -23,7 +23,7 @@ import {
   getVoucherDisabledReason,
   shouldHideVoucher,
 } from "@/lib/voucher-helpers";
-import { collectOrderVoucherCodes, isFreeShippingVoucher } from "@/lib/voucher-kind";
+import { isFreeShippingVoucher } from "@/lib/voucher-kind";
 
 export async function GET(request: NextRequest) {
   const session = await getSession("CUSTOMER");
@@ -70,6 +70,7 @@ export async function GET(request: NextRequest) {
         // unset code di order.
       },
       select: {
+        createdAt: true,
         voucherCode: true,
         productVoucherCode: true,
         shippingVoucherCode: true,
@@ -89,13 +90,6 @@ export async function GET(request: NextRequest) {
     }),
   ]);
 
-  const userUsedCodes = new Map<string, number>();
-  for (const ord of userUsedOrders) {
-    for (const code of collectOrderVoucherCodes(ord)) {
-      userUsedCodes.set(code, (userUsedCodes.get(code) ?? 0) + 1);
-    }
-  }
-
   const userCtx = {
     isLoggedIn: true,
     userId: session.sub,
@@ -114,6 +108,7 @@ export async function GET(request: NextRequest) {
     sourceType: "CUSTOMER" | "SELLER_MANUAL";
     kind: "PRODUCT_DISCOUNT" | "FREE_SHIPPING" | "LOYALTY_CLAIM" | "MANUAL_PRIVATE";
     targetUser: "ALL_MEMBERS" | "NEW_MEMBER";
+    usageLimitPeriod: "NONE" | "LIFETIME" | "DAY" | "WEEK" | "MONTH";
     discount: number;
     applicable: boolean;
     disabledReason: string | null;
@@ -121,7 +116,7 @@ export async function GET(request: NextRequest) {
 
   for (const v of vouchers) {
     // Aturan visibility: filter out voucher yg permanently invalid
-    if (shouldHideVoucher(v, userUsedCodes, now)) continue;
+    if (shouldHideVoucher(v, userUsedOrders, now)) continue;
 
     // Voucher yg lolos masih mungkin dipakai — compute disabled reason
     // untuk transient state (min belanja, dll).
@@ -142,6 +137,7 @@ export async function GET(request: NextRequest) {
       sourceType: v.sourceType,
       kind: v.kind,
       targetUser: v.targetUser,
+      usageLimitPeriod: v.usageLimitPeriod,
       discount,
       applicable,
       disabledReason:

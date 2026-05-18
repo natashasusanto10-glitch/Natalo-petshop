@@ -13,7 +13,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { calcVoucherDiscount } from "@/lib/voucher-helpers";
+import { calcVoucherDiscount, isVoucherUsageLimitReached } from "@/lib/voucher-helpers";
 
 const bodySchema = z.object({
   code: z.string().trim().min(1),
@@ -73,10 +73,9 @@ export async function POST(request: NextRequest) {
   }
 
   // Cek apakah user sudah pernah pakai kode private ini (di order
-  // sebelumnya, slot manual ATAU customer). Per aturan: 1 voucher = 1× per
-  // user. Karena private code tidak tampil di daftar, kita gate via error
-  // saat user input kode yg sama lagi.
-  const userUsedCount = await prisma.order.count({
+  // sebelumnya, slot manual ATAU customer). Batasnya mengikuti setting admin
+  // `usageLimitPerUser`, default 1x per akun.
+  const userUsedOrders = await prisma.order.findMany({
     where: {
       userId: session.sub,
       OR: [
@@ -87,8 +86,16 @@ export async function POST(request: NextRequest) {
         { manualVoucherCode: upperCode },
       ],
     },
+    select: {
+      createdAt: true,
+      voucherCode: true,
+      productVoucherCode: true,
+      shippingVoucherCode: true,
+      loyaltyVoucherCode: true,
+      manualVoucherCode: true,
+    },
   });
-  if (userUsedCount > 0) {
+  if (isVoucherUsageLimitReached(voucher, userUsedOrders, now)) {
     return NextResponse.json({
       ok: false,
       message: "Kode voucher sudah pernah digunakan",

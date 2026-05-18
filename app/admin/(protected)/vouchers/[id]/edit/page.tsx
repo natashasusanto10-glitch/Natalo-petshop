@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import type { VoucherUserUsageLimitPeriod } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   deriveVoucherSourceType,
@@ -9,6 +10,7 @@ import {
   voucherKindDescription,
   voucherKindLabel,
 } from "@/lib/voucher-kind";
+import { VoucherTargetFields } from "@/components/admin/VoucherTargetFields";
 
 export default async function AdminVoucherEditPage({
   params,
@@ -36,12 +38,16 @@ export default async function AdminVoucherEditPage({
     const discountAmount = formData.get("discountAmount")
       ? parseInt(String(formData.get("discountAmount")), 10)
       : null;
+    const maxDiscountRaw = String(formData.get("maxDiscountAmount") || "").trim();
+    const maxDiscountAmount = maxDiscountRaw ? parseInt(maxDiscountRaw, 10) : null;
     const minimumOrder = parseInt(
       String(formData.get("minimumOrder") || "0"),
       10
     );
     const maxUsageRaw = String(formData.get("maxUsage") || "").trim();
     const maxUsage = maxUsageRaw ? parseInt(maxUsageRaw, 10) : null;
+    const startsAtRaw = String(formData.get("startsAt") || "").trim();
+    const startsAt = startsAtRaw ? new Date(startsAtRaw) : voucher!.startsAt;
     const expiresAtRaw = String(formData.get("expiresAt") || "").trim();
     const expiresAt = expiresAtRaw ? new Date(expiresAtRaw) : null;
     const requestedKindRaw = String(
@@ -55,6 +61,41 @@ export default async function AdminVoucherEditPage({
       ? "CUSTOMER"
       : deriveVoucherSourceType(kind);
     const isFreeShipping = kind === "FREE_SHIPPING";
+    const newMemberRulesEnabled = formData.get("newMemberRulesEnabled") === "1";
+    const targetUser =
+      kind === "PRODUCT_DISCOUNT" &&
+      !isLoyaltyClaim &&
+      newMemberRulesEnabled &&
+      String(formData.get("targetUser") || "ALL_MEMBERS") === "NEW_MEMBER"
+        ? "NEW_MEMBER"
+        : "ALL_MEMBERS";
+    const newMemberMaxAgeRaw = String(formData.get("newMemberMaxAccountAgeDays") || "").trim();
+    const newMemberMaxAccountAgeDays =
+      targetUser === "NEW_MEMBER" && newMemberMaxAgeRaw
+        ? parseInt(newMemberMaxAgeRaw, 10)
+        : null;
+    const newMemberRequireNoSuccessfulOrder =
+      targetUser === "NEW_MEMBER" &&
+      formData.get("newMemberRequireNoSuccessfulOrder") === "on";
+    const usageLimitPeriodRaw = String(
+      formData.get("usageLimitPeriod") || voucher!.usageLimitPeriod || "NONE",
+    ).trim();
+    const usageLimitPeriod =
+      isLoyaltyClaim
+        ? voucher!.usageLimitPeriod
+          : (kind === "PRODUCT_DISCOUNT" || kind === "FREE_SHIPPING") &&
+            ["NONE", "LIFETIME", "DAY", "WEEK", "MONTH"].includes(usageLimitPeriodRaw)
+          ? (usageLimitPeriodRaw as VoucherUserUsageLimitPeriod)
+          : "LIFETIME";
+    const usageLimitRaw = String(formData.get("usageLimitPerUser") || "1").trim();
+    const usageLimitPerUser = isLoyaltyClaim
+      ? voucher!.usageLimitPerUser
+      : usageLimitPeriod === "NONE"
+        ? 0
+        : usageLimitPeriod === "LIFETIME"
+          ? 1
+          : Math.max(1, parseInt(usageLimitRaw || "1", 10) || 1);
+    const isActive = isLoyaltyClaim ? voucher!.isActive : formData.get("isActive") === "on";
 
     if (!code) return;
     if (!isFreeShipping && !discountPercent && !discountAmount) return;
@@ -79,11 +120,19 @@ export default async function AdminVoucherEditPage({
         description,
         discountPercent: isFreeShipping ? null : discountPercent,
         discountAmount: isFreeShipping ? null : discountAmount,
+        maxDiscountAmount: isFreeShipping ? null : maxDiscountAmount,
         minimumOrder,
         maxUsage,
+        startsAt,
         expiresAt,
+        isActive,
         sourceType,
         kind,
+        targetUser,
+        newMemberMaxAccountAgeDays,
+        newMemberRequireNoSuccessfulOrder,
+        usageLimitPeriod,
+        usageLimitPerUser,
       },
     });
 
@@ -93,6 +142,9 @@ export default async function AdminVoucherEditPage({
   // Format expiresAt untuk input type="date" (YYYY-MM-DD)
   const expiresAtValue = voucher.expiresAt
     ? voucher.expiresAt.toISOString().slice(0, 10)
+    : "";
+  const startsAtValue = voucher.startsAt
+    ? voucher.startsAt.toISOString().slice(0, 10)
     : "";
 
   return (
@@ -161,6 +213,15 @@ export default async function AdminVoucherEditPage({
         </div>
 
         <Field
+          label="Maksimal diskon (Rp)"
+          name="maxDiscountAmount"
+          type="number"
+          defaultValue={voucher.maxDiscountAmount?.toString() ?? ""}
+          placeholder="Contoh: 25000"
+          hint="Opsional. Dipakai untuk membatasi diskon persen."
+        />
+
+        <Field
           label="Minimum belanja (Rp)"
           name="minimumOrder"
           type="number"
@@ -192,7 +253,17 @@ export default async function AdminVoucherEditPage({
           </p>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        {!isLoyaltyClaim && (
+          <VoucherTargetFields
+            defaultTargetUser={voucher.targetUser}
+            defaultMaxAccountAgeDays={voucher.newMemberMaxAccountAgeDays}
+            defaultRequireNoSuccessfulOrder={voucher.newMemberRequireNoSuccessfulOrder}
+            defaultUsageLimitPeriod={voucher.usageLimitPeriod}
+            defaultUsageLimitPerUser={voucher.usageLimitPerUser}
+          />
+        )}
+
+        <div className="grid gap-4 sm:grid-cols-3">
           <Field
             label="Maks. penggunaan"
             name="maxUsage"
@@ -206,6 +277,13 @@ export default async function AdminVoucherEditPage({
             }
           />
           <Field
+            label="Tanggal mulai"
+            name="startsAt"
+            type="date"
+            defaultValue={startsAtValue}
+            hint="Kosong = tetap tanggal mulai sebelumnya"
+          />
+          <Field
             label="Berlaku hingga"
             name="expiresAt"
             type="date"
@@ -213,6 +291,18 @@ export default async function AdminVoucherEditPage({
             hint="Kosong = tidak ada batas waktu"
           />
         </div>
+
+        {!isLoyaltyClaim && (
+          <label className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-bold text-zinc-700">
+            <input
+              type="checkbox"
+              name="isActive"
+              defaultChecked={voucher.isActive}
+              className="h-4 w-4 accent-blue-600"
+            />
+            Aktif di user app
+          </label>
+        )}
 
         <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row">
           <Link

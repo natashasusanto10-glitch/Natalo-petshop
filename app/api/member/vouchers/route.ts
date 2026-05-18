@@ -18,16 +18,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { collectOrderVoucherCodes, isFreeShippingVoucher } from "@/lib/voucher-kind";
+import { isFreeShippingVoucher } from "@/lib/voucher-kind";
+import { isVoucherUsageLimitReached } from "@/lib/voucher-helpers";
 
 function calcDiscount(
   subtotal: number,
-  voucher: { discountPercent: number | null; discountAmount: number | null; kind?: string | null }
+  voucher: {
+    discountPercent: number | null;
+    discountAmount: number | null;
+    maxDiscountAmount?: number | null;
+    kind?: string | null;
+  }
 ): number {
   if (isFreeShippingVoucher(voucher)) return 0;
   let d = 0;
   if (voucher.discountPercent) d += Math.floor((subtotal * voucher.discountPercent) / 100);
   if (voucher.discountAmount) d += voucher.discountAmount;
+  if (voucher.maxDiscountAmount && voucher.maxDiscountAmount > 0) {
+    d = Math.min(d, voucher.maxDiscountAmount);
+  }
   return Math.min(d, subtotal);
 }
 
@@ -66,6 +75,7 @@ export async function GET(request: NextRequest) {
         ],
       },
       select: {
+        createdAt: true,
         voucherCode: true,
         productVoucherCode: true,
         shippingVoucherCode: true,
@@ -75,15 +85,10 @@ export async function GET(request: NextRequest) {
     }),
   ]);
 
-  const usedCodes = new Set<string>();
-  for (const order of usedOrders) {
-    for (const code of collectOrderVoucherCodes(order)) usedCodes.add(code);
-  }
-
   // Filter usedCount < maxUsage (column-to-column gak bisa di Prisma where)
   const usable = vouchers.filter(
     (v) =>
-      !usedCodes.has(v.code) &&
+      !isVoucherUsageLimitReached(v, usedOrders, now) &&
       (v.maxUsage === null || v.usedCount < v.maxUsage),
   );
 
@@ -93,6 +98,7 @@ export async function GET(request: NextRequest) {
     discount: number;
     discountPercent: number | null;
     discountAmount: number | null;
+    maxDiscountAmount: number | null;
     minimumOrder: number;
     expiresAt: Date | null;
     kind: string;
@@ -103,6 +109,7 @@ export async function GET(request: NextRequest) {
     description: string | null;
     discountPercent: number | null;
     discountAmount: number | null;
+    maxDiscountAmount: number | null;
     minimumOrder: number;
     expiresAt: Date | null;
     kind: string;
@@ -120,6 +127,7 @@ export async function GET(request: NextRequest) {
           discount,
           discountPercent: v.discountPercent,
           discountAmount: v.discountAmount,
+          maxDiscountAmount: v.maxDiscountAmount,
           minimumOrder: v.minimumOrder,
           expiresAt: v.expiresAt,
           kind: v.kind,
@@ -131,6 +139,7 @@ export async function GET(request: NextRequest) {
           discount,
           discountPercent: v.discountPercent,
           discountAmount: v.discountAmount,
+          maxDiscountAmount: v.maxDiscountAmount,
           minimumOrder: v.minimumOrder,
           expiresAt: v.expiresAt,
           kind: v.kind,
@@ -142,6 +151,7 @@ export async function GET(request: NextRequest) {
         description: v.description,
         discountPercent: v.discountPercent,
         discountAmount: v.discountAmount,
+        maxDiscountAmount: v.maxDiscountAmount,
         minimumOrder: v.minimumOrder,
         expiresAt: v.expiresAt,
         kind: v.kind,

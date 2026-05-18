@@ -9,8 +9,8 @@ import { InvalidCustomerSessionError, resolveOrderIdentity } from "@/lib/order-i
 import { buildOrderDetailPath, buildOrderDetailUrl, buildOrderSuccessUrl, createTrackingToken } from "@/lib/order-detail";
 import { SELF_PICKUP_METHOD, SELF_PICKUP_STORE } from "@/lib/self-pickup";
 import { sendAdminOrderCreated, sendOrderCreated } from "@/lib/whatsapp";
-import { collectOrderVoucherCodes, isFreeShippingVoucher } from "@/lib/voucher-kind";
-import { getVoucherDisabledReason } from "@/lib/voucher-helpers";
+import { isFreeShippingVoucher } from "@/lib/voucher-kind";
+import { getVoucherDisabledReason, isVoucherUsageLimitReached } from "@/lib/voucher-helpers";
 
 class StockConflictError extends Error {
   status = 409;
@@ -282,31 +282,26 @@ export async function POST(request: Request) {
         },
       }),
       prisma.order.findMany({
-      where: {
-        userId: effectiveUserId,
-        OR: [
-          { voucherCode: { not: null } },
-          { productVoucherCode: { not: null } },
-          { shippingVoucherCode: { not: null } },
-          { loyaltyVoucherCode: { not: null } },
-          { manualVoucherCode: { not: null } },
-        ],
-      },
-      select: {
-        voucherCode: true,
-        productVoucherCode: true,
-        shippingVoucherCode: true,
-        loyaltyVoucherCode: true,
-        manualVoucherCode: true,
-      },
+        where: {
+          userId: effectiveUserId,
+          OR: [
+            { voucherCode: { not: null } },
+            { productVoucherCode: { not: null } },
+            { shippingVoucherCode: { not: null } },
+            { loyaltyVoucherCode: { not: null } },
+            { manualVoucherCode: { not: null } },
+          ],
+        },
+        select: {
+          createdAt: true,
+          voucherCode: true,
+          productVoucherCode: true,
+          shippingVoucherCode: true,
+          loyaltyVoucherCode: true,
+          manualVoucherCode: true,
+        },
       }),
     ]);
-    const userUsedCodes = new Map<string, number>();
-    for (const order of userUsedOrders) {
-      for (const code of collectOrderVoucherCodes(order)) {
-        userUsedCodes.set(code, (userUsedCodes.get(code) ?? 0) + 1);
-      }
-    }
     const voucherUserContext = {
       isLoggedIn: Boolean(customerSession),
       userId: effectiveUserId,
@@ -338,7 +333,7 @@ export async function POST(request: Request) {
         where: { code: code.trim().toUpperCase() },
       });
       if (!voucher || !voucher.isActive) return null;
-      if (userUsedCodes.has(voucher.code)) {
+      if (isVoucherUsageLimitReached(voucher, userUsedOrders, now)) {
         throw new VoucherValidationError("Kode voucher sudah pernah digunakan");
       }
       if (voucher.sourceType !== expectedType) {
@@ -362,10 +357,17 @@ export async function POST(request: Request) {
           "Voucher ini tidak berlaku untuk akun kamu.",
         );
       }
+      const disabledReason =
+        expectedType === "CUSTOMER"
+          ? getVoucherDisabledReason(voucher, subtotal, voucherUserContext, now)
+          : null;
+      if (disabledReason) {
+        throw new VoucherValidationError(disabledReason);
+      }
       const isValid =
-        subtotal >= voucher.minimumOrder &&
         (!voucher.expiresAt || voucher.expiresAt > now) &&
         voucher.startsAt <= now &&
+        subtotal >= voucher.minimumOrder &&
         (voucher.maxUsage === null || voucher.usedCount < voucher.maxUsage);
       if (!isValid) return null;
       let added = 0;
@@ -384,6 +386,9 @@ export async function POST(request: Request) {
       }
       if (!isFreeShippingVoucher(voucher) && voucher.discountAmount) {
         added += voucher.discountAmount;
+      }
+      if (!isFreeShippingVoucher(voucher) && voucher.maxDiscountAmount && voucher.maxDiscountAmount > 0) {
+        added = Math.min(added, voucher.maxDiscountAmount);
       }
       return {
         voucher: {

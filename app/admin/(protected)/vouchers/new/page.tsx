@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import type { VoucherUserUsageLimitPeriod } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   deriveVoucherSourceType,
   isAdminCreatableVoucherKind,
   voucherKindDescription,
 } from "@/lib/voucher-kind";
+import { VoucherTargetFields } from "@/components/admin/VoucherTargetFields";
 
 export default async function AdminVoucherNewPage() {
   async function createVoucher(formData: FormData) {
@@ -19,15 +21,48 @@ export default async function AdminVoucherNewPage() {
     const discountAmount = formData.get("discountAmount")
       ? parseInt(String(formData.get("discountAmount")), 10)
       : null;
+    const maxDiscountRaw = String(formData.get("maxDiscountAmount") || "").trim();
+    const maxDiscountAmount = maxDiscountRaw ? parseInt(maxDiscountRaw, 10) : null;
     const minimumOrder = parseInt(String(formData.get("minimumOrder") || "0"), 10);
     const maxUsageRaw = String(formData.get("maxUsage") || "").trim();
     const maxUsage = maxUsageRaw ? parseInt(maxUsageRaw, 10) : null;
+    const startsAtRaw = String(formData.get("startsAt") || "").trim();
+    const startsAt = startsAtRaw ? new Date(startsAtRaw) : new Date();
     const expiresAtRaw = String(formData.get("expiresAt") || "").trim();
     const expiresAt = expiresAtRaw ? new Date(expiresAtRaw) : null;
     const kindRaw = String(formData.get("kind") || "PRODUCT_DISCOUNT").trim();
     if (!isAdminCreatableVoucherKind(kindRaw)) return;
     const kind = kindRaw;
     const sourceType = deriveVoucherSourceType(kind);
+    const newMemberRulesEnabled = formData.get("newMemberRulesEnabled") === "1";
+    const targetUser =
+      kind === "PRODUCT_DISCOUNT" &&
+      newMemberRulesEnabled &&
+      String(formData.get("targetUser") || "ALL_MEMBERS") === "NEW_MEMBER"
+        ? "NEW_MEMBER"
+        : "ALL_MEMBERS";
+    const newMemberMaxAgeRaw = String(formData.get("newMemberMaxAccountAgeDays") || "").trim();
+    const newMemberMaxAccountAgeDays =
+      targetUser === "NEW_MEMBER" && newMemberMaxAgeRaw
+        ? parseInt(newMemberMaxAgeRaw, 10)
+        : null;
+    const newMemberRequireNoSuccessfulOrder =
+      targetUser === "NEW_MEMBER" &&
+      formData.get("newMemberRequireNoSuccessfulOrder") === "on";
+    const usageLimitPeriodRaw = String(formData.get("usageLimitPeriod") || "NONE").trim();
+    const usageLimitPeriod =
+      (kind === "PRODUCT_DISCOUNT" || kind === "FREE_SHIPPING") &&
+      ["NONE", "LIFETIME", "DAY", "WEEK", "MONTH"].includes(usageLimitPeriodRaw)
+        ? (usageLimitPeriodRaw as VoucherUserUsageLimitPeriod)
+        : "LIFETIME";
+    const usageLimitRaw = String(formData.get("usageLimitPerUser") || "1").trim();
+    const usageLimitPerUser =
+      usageLimitPeriod === "NONE"
+        ? 0
+        : usageLimitPeriod === "LIFETIME"
+          ? 1
+          : Math.max(1, parseInt(usageLimitRaw || "1", 10) || 1);
+    const isActive = formData.get("isActive") === "on";
 
     if (!code) return;
     const isFreeShipping = kind === "FREE_SHIPPING";
@@ -42,12 +77,19 @@ export default async function AdminVoucherNewPage() {
         description,
         discountPercent: isFreeShipping ? null : discountPercent,
         discountAmount: isFreeShipping ? null : discountAmount,
+        maxDiscountAmount: isFreeShipping ? null : maxDiscountAmount,
         minimumOrder,
         maxUsage,
+        startsAt,
         expiresAt,
-        isActive: true,
+        isActive,
         sourceType,
         kind,
+        targetUser,
+        newMemberMaxAccountAgeDays,
+        newMemberRequireNoSuccessfulOrder,
+        usageLimitPeriod,
+        usageLimitPerUser,
       },
     });
 
@@ -92,6 +134,14 @@ export default async function AdminVoucherNewPage() {
         </div>
 
         <Field
+          label="Maksimal diskon (Rp)"
+          name="maxDiscountAmount"
+          type="number"
+          placeholder="Contoh: 25000"
+          hint="Opsional. Dipakai untuk membatasi diskon persen."
+        />
+
+        <Field
           label="Minimum belanja (Rp)"
           name="minimumOrder"
           type="number"
@@ -117,12 +167,21 @@ export default async function AdminVoucherNewPage() {
           </p>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <VoucherTargetFields />
+
+        <div className="grid gap-4 sm:grid-cols-3">
           <Field
             label="Maks. penggunaan"
             name="maxUsage"
             type="number"
             placeholder="Kosong = tidak terbatas"
+          />
+          <Field
+            label="Tanggal mulai"
+            name="startsAt"
+            type="date"
+            placeholder=""
+            hint="Kosong = mulai hari ini"
           />
           <Field
             label="Berlaku hingga"
@@ -132,6 +191,16 @@ export default async function AdminVoucherNewPage() {
             hint="Kosong = tidak ada batas waktu"
           />
         </div>
+
+        <label className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-bold text-zinc-700">
+          <input
+            type="checkbox"
+            name="isActive"
+            defaultChecked
+            className="h-4 w-4 accent-blue-600"
+          />
+          Aktif di user app
+        </label>
 
         <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row">
           <Link

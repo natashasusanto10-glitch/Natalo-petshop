@@ -32,6 +32,7 @@ export type MemberVoucherItem = {
   expiresAt: string | Date | null;
   discount: number;
   kind?: "PRODUCT_DISCOUNT" | "FREE_SHIPPING" | "LOYALTY_CLAIM" | "MANUAL_PRIVATE";
+  targetUser?: "ALL_MEMBERS" | "NEW_MEMBER";
   applicable: boolean;
   disabledReason: string | null;
 };
@@ -489,6 +490,11 @@ function MemberVoucherRow({
             : "Tanpa minimum belanja"}
         </p>
         <p className="mt-0.5 text-[11px] font-bold text-amber-700">Eksklusif member Natalo</p>
+        {voucher.targetUser === "NEW_MEMBER" && (
+          <p className="mt-1 inline-flex w-fit rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-black text-blue-700">
+            Member Baru
+          </p>
+        )}
         {disabled && voucher.disabledReason && (
           <p className="mt-1 text-[11px] font-bold text-amber-700">
             {voucher.disabledReason}

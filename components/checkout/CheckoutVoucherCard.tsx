@@ -11,6 +11,7 @@ export type EligibleVoucher = {
   minimumOrder: number;
   expiresAt: string | Date | null;
   kind?: "PRODUCT_DISCOUNT" | "FREE_SHIPPING" | "LOYALTY_CLAIM" | "MANUAL_PRIVATE";
+  targetUser?: "ALL_MEMBERS" | "NEW_MEMBER";
   status?: "available";
 };
 
@@ -22,6 +23,7 @@ export type IneligibleVoucher = {
   expiresAt: string | Date | null;
   reason?: string;
   kind?: "PRODUCT_DISCOUNT" | "FREE_SHIPPING" | "LOYALTY_CLAIM" | "MANUAL_PRIVATE";
+  targetUser?: "ALL_MEMBERS" | "NEW_MEMBER";
   status?: "unavailable";
 };
 
@@ -83,6 +85,15 @@ function slotLabel(slot: VoucherSlot) {
   if (slot === "loyalty") return "Loyalty Point";
   if (slot === "manual") return "Manual / Private";
   return "Diskon Produk";
+}
+
+function TargetBadge({ targetUser }: { targetUser?: "ALL_MEMBERS" | "NEW_MEMBER" }) {
+  if (targetUser !== "NEW_MEMBER") return null;
+  return (
+    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-black text-blue-700">
+      Member Baru
+    </span>
+  );
 }
 
 export function CheckoutVoucherCard({
@@ -574,9 +585,12 @@ export function CheckoutVoucherCard({
                                   <p className="text-sm font-extrabold text-zinc-950">
                                     {describeBenefit(v)}
                                   </p>
-                                  <p className="mt-0.5 text-xs font-semibold text-natalo-700">
-                                    {slotLabel(voucherSlotForKind(v.kind))}
-                                  </p>
+                                  <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                                    <p className="text-xs font-semibold text-natalo-700">
+                                      {slotLabel(voucherSlotForKind(v.kind))}
+                                    </p>
+                                    <TargetBadge targetUser={v.targetUser} />
+                                  </div>
                                   <p className="mt-0.5 text-[11px] text-zinc-500">
                                     {describeMinimum(v)}
                                   </p>
@@ -616,6 +630,7 @@ export function CheckoutVoucherCard({
                               <p className="text-sm font-bold text-zinc-700">
                                 {slotLabel(voucherSlotForKind(v.kind))}
                               </p>
+                              <TargetBadge targetUser={v.targetUser} />
                               <p className="mt-0.5 text-xs text-zinc-500">
                                 {describeMinimum(v)}
                               </p>

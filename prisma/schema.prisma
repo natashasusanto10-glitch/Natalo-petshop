@@ -55,6 +55,14 @@ enum VoucherTargetUser {
   NEW_MEMBER
 }
 
+enum VoucherUserUsageLimitPeriod {
+  NONE
+  LIFETIME
+  DAY
+  WEEK
+  MONTH
+}
+
 model User {
   id                  String          @id @default(cuid())
   name                String
@@ -325,6 +333,7 @@ model Voucher {
   targetUser      VoucherTargetUser @default(ALL_MEMBERS)
   newMemberMaxAccountAgeDays Int?
   newMemberRequireNoSuccessfulOrder Boolean @default(false)
+  usageLimitPeriod VoucherUserUsageLimitPeriod @default(LIFETIME)
   usageLimitPerUser Int @default(1)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt

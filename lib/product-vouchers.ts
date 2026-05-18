@@ -1,6 +1,9 @@
 import { prisma } from "@/lib/prisma";
-import { collectOrderVoucherCodes } from "@/lib/voucher-kind";
-import { getNewMemberVoucherDisabledReason } from "@/lib/voucher-helpers";
+import {
+  getNewMemberVoucherDisabledReason,
+  isVoucherUsageLimitReached,
+  type VoucherUsageLimitPeriodValue,
+} from "@/lib/voucher-helpers";
 
 export type ProductVoucherItem = {
   id: string;
@@ -14,6 +17,7 @@ export type ProductVoucherItem = {
   minimumOrder: number;
   kind: "PRODUCT_DISCOUNT" | "FREE_SHIPPING" | "LOYALTY_CLAIM" | "MANUAL_PRIVATE";
   targetUser: "ALL_MEMBERS" | "NEW_MEMBER";
+  usageLimitPeriod: VoucherUsageLimitPeriodValue;
   minPurchase: number;
   expiresAt: string | null;
   visibility: "member";
@@ -83,6 +87,7 @@ export async function loadVisibleProductVouchers(
         targetUser: true,
         newMemberMaxAccountAgeDays: true,
         newMemberRequireNoSuccessfulOrder: true,
+        usageLimitPeriod: true,
         usageLimitPerUser: true,
       },
     }),
@@ -98,6 +103,7 @@ export async function loadVisibleProductVouchers(
         ],
       },
       select: {
+        createdAt: true,
         voucherCode: true,
         productVoucherCode: true,
         shippingVoucherCode: true,
@@ -117,12 +123,6 @@ export async function loadVisibleProductVouchers(
     }),
   ]);
 
-  const usedCodes = new Map<string, number>();
-  for (const order of usedOrders) {
-    for (const code of collectOrderVoucherCodes(order)) {
-      usedCodes.set(code, (usedCodes.get(code) ?? 0) + 1);
-    }
-  }
   const userCtx = {
     isLoggedIn: true,
     userId,
@@ -132,8 +132,7 @@ export async function loadVisibleProductVouchers(
 
   return rows
     .filter((voucher) => {
-      const usageLimit = voucher.usageLimitPerUser ?? 1;
-      if (usageLimit > 0 && (usedCodes.get(voucher.code) ?? 0) >= usageLimit) return false;
+      if (isVoucherUsageLimitReached(voucher, usedOrders, now)) return false;
       if (voucher.maxUsage !== null && voucher.usedCount >= voucher.maxUsage) {
         return false;
       }
@@ -156,6 +155,7 @@ export async function loadVisibleProductVouchers(
       minimumOrder: voucher.minimumOrder,
       kind: voucher.kind,
       targetUser: voucher.targetUser,
+      usageLimitPeriod: voucher.usageLimitPeriod,
       minPurchase: voucher.minimumOrder,
       expiresAt: voucher.expiresAt ? voucher.expiresAt.toISOString() : null,
       visibility: "member",

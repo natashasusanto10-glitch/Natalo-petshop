@@ -1,7 +1,6 @@
 import type { Voucher } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getNewMemberVoucherDisabledReason, shouldHideVoucher } from "@/lib/voucher-helpers";
-import { collectOrderVoucherCodes } from "@/lib/voucher-kind";
 
 export type ActiveMemberVoucher = Voucher;
 
@@ -32,6 +31,7 @@ export async function loadActiveMemberVouchers(
         ],
       },
       select: {
+        createdAt: true,
         voucherCode: true,
         productVoucherCode: true,
         shippingVoucherCode: true,
@@ -51,13 +51,6 @@ export async function loadActiveMemberVouchers(
     }),
   ]);
 
-  const usedCodes = new Map<string, number>();
-  for (const order of usedOrders) {
-    for (const code of collectOrderVoucherCodes(order)) {
-      usedCodes.set(code, (usedCodes.get(code) ?? 0) + 1);
-    }
-  }
-
   const userCtx = {
     isLoggedIn: true,
     userId,
@@ -67,7 +60,7 @@ export async function loadActiveMemberVouchers(
 
   return vouchers.filter(
     (voucher) =>
-      !shouldHideVoucher(voucher, usedCodes, now) &&
+      !shouldHideVoucher(voucher, usedOrders, now) &&
       !getNewMemberVoucherDisabledReason(voucher, userCtx, now),
   );
 }
