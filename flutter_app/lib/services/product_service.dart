@@ -32,7 +32,9 @@ class ProductService {
     );
     if (inStock) products = products.where((p) => p.stock > 0).toList();
     if (hasPrice) products = products.where((p) => p.price > 0).toList();
-    if (withImage) products = products.where((p) => p.imageUrl.isNotEmpty).toList();
+    if (withImage) {
+      products = products.where((p) => p.imageUrl.isNotEmpty).toList();
+    }
     return ProductFetchResult(products: products);
   }
 
@@ -53,7 +55,11 @@ class ProductService {
       final res = await http.get(uri).timeout(const Duration(seconds: 8));
       if (res.statusCode != 200) return const [];
       final body = jsonDecode(res.body);
-      final list = body is List ? body : (body is Map ? body['data'] ?? body['products'] : null);
+      final list = body is List
+          ? body
+          : (body is Map
+              ? body['items'] ?? body['data'] ?? body['products']
+              : null);
       if (list is! List) return const [];
       return list
           .whereType<Map<String, dynamic>>()

@@ -259,15 +259,15 @@ function voucherPreviewLabel(
   if (savingAmount && savingAmount > 0) {
     const cappedOrMinimum =
       (voucher.maxDiscountAmount ?? 0) > 0 || voucher.minimumOrder > 0;
-    return `Voucher hemat ${cappedOrMinimum ? "s.d. " : ""}${formatRupiahShort(
+    return `Hemat ${cappedOrMinimum ? "s.d. " : ""}${formatRupiahShort(
       savingAmount,
     )}`;
   }
   if (voucher.discountPercent && voucher.discountPercent > 0) {
-    return `Voucher hemat ${voucher.discountPercent}%`;
+    return `Hemat ${voucher.discountPercent}%`;
   }
   if (voucher.discountAmount && voucher.discountAmount > 0) {
-    return `Voucher hemat ${formatRupiahShort(voucher.discountAmount)}`;
+    return `Hemat ${formatRupiahShort(voucher.discountAmount)}`;
   }
   return "Voucher produk Natalo";
 }

@@ -101,10 +101,16 @@ class CartService {
         '/api/cart/vouchers/validate-private',
         body: {'code': code.trim(), 'subtotal': subtotal},
       );
+      final voucher = data['voucher'];
+      final voucherJson = voucher is Map<String, dynamic> ? voucher : data;
       return CartPrivateVoucherResult(
-        valid: data['valid'] == true,
-        code: (data['code'] ?? code).toString(),
-        discountAmount: _asInt(data['discountAmount']),
+        valid: data['ok'] == true || data['valid'] == true,
+        code: (voucherJson['code'] ?? data['code'] ?? code).toString(),
+        discountAmount: _asInt(
+          voucherJson['discount'] ??
+              voucherJson['discountAmount'] ??
+              data['discountAmount'],
+        ),
         message: data['message']?.toString(),
       );
     } catch (error) {

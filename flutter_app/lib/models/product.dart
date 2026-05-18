@@ -29,7 +29,6 @@ String _absoluteUrl(String url) {
   return url.startsWith('/') ? '$origin$url' : '$origin/$url';
 }
 
-
 class ProductVariantAttribute {
   final String id;
   final String name;
@@ -97,6 +96,7 @@ class ProductVariant {
   final int weightGram;
   final String? imageUrl;
   final List<String> optionIds;
+
   /// Default true — backend kasih `isActive: false` untuk variant yang
   /// di-soft-delete. `_parseVariants` filter ke `where((v) => v.isActive)`.
   final bool isActive;
@@ -294,10 +294,20 @@ class Product {
       Product.fromApiJson(json);
 
   factory Product.fromApiJson(Map<String, dynamic> json) {
-    final price = _asDouble(json['price_min'] ?? json['price']);
-    final discountPrice = _nullableDouble(
+    final rawPrice = _asDouble(json['price_min'] ?? json['price']);
+    final normalPrice = _nullableDouble(
+      json['normal_price'] ??
+          json['normalPrice'] ??
+          json['original_price'] ??
+          json['originalPrice'],
+    );
+    final explicitDiscountPrice = _nullableDouble(
       json['discount_price'] ?? json['discountPrice'],
     );
+    final hasNormalPrice = normalPrice != null && normalPrice > rawPrice;
+    final price = hasNormalPrice ? normalPrice : rawPrice;
+    final discountPrice =
+        explicitDiscountPrice ?? (hasNormalPrice ? rawPrice : null);
     // Endpoint /api/cart/recommendations & /api/cart/recently-viewed return
     // field 'image' (bukan 'image_url'). Tambah fallback.
     final image = _absoluteUrl(
