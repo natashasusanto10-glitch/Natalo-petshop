@@ -65,13 +65,39 @@ class _HomeScreenState extends State<HomeScreen> {
                 ..sort((a, b) => b.soldCount.compareTo(a.soldCount));
 
               return ListView(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
+                padding: const EdgeInsets.fromLTRB(0, 12, 0, 120),
                 children: [
-                  _HomeGreeting(onOpenProducts: () => _openProducts()),
-                  const SizedBox(height: 16),
-                  _ShortcutRow(
-                    onOpenCategory: (category) =>
-                        _openProducts(category: category),
+                  // Trust marquee bar — Gratis Ongkir + Original + Konsultasi
+                  const _TrustMarquee(),
+                  const SizedBox(height: 14),
+                  // Hero banner carousel (placeholder)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: _HeroBannerCard(
+                      onTap: () => _openProducts(),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      children: [
+                        _HomeGreeting(onOpenProducts: () => _openProducts()),
+                        const SizedBox(height: 18),
+                        // 8 kategori grid (2 rows × 4 cols)
+                        _CategoryGrid(
+                          onOpenCategory: (category) =>
+                              _openProducts(category: category),
+                          onOpenVoucher: () =>
+                              Navigator.pushNamed(context, '/member/vouchers'),
+                          onOpenLoyalty: () =>
+                              Navigator.pushNamed(context, '/member/loyalty'),
+                          onOpenGrooming: () => _openProducts(category: 'Grooming'),
+                          onOpenBlog: () =>
+                              Navigator.pushNamed(context, '/bantuan'),
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 18),
                   if (snapshot.connectionState == ConnectionState.waiting &&
@@ -85,21 +111,29 @@ class _HomeScreenState extends State<HomeScreen> {
                   else if (products.isEmpty)
                     _EmptyHomeProducts(onRetry: _refresh)
                   else ...[
-                    if (promo.isNotEmpty)
-                      _HomeProductSection(
-                        title: 'Promo Natalo',
-                        subtitle: 'Produk hemat yang sedang aktif',
-                        products: promo.take(6).toList(),
-                        onTap: _openProduct,
-                        onSeeAll: () => _openProducts(),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Column(
+                        children: [
+                          if (promo.isNotEmpty)
+                            _HomeProductSection(
+                              title: 'Promo Natalo',
+                              subtitle: 'Produk hemat yang sedang aktif',
+                              products: promo.take(6).toList(),
+                              onTap: _openProduct,
+                              onSeeAll: () => _openProducts(),
+                            ),
+                          const SizedBox(height: 20),
+                          _HomeProductSection(
+                            title: 'Jelajahi Produk Natalo',
+                            subtitle:
+                                'Temukan berbagai kebutuhan hewan kesayanganmu',
+                            products: popular.take(8).toList(),
+                            onTap: _openProduct,
+                            onSeeAll: () => _openProducts(),
+                          ),
+                        ],
                       ),
-                    const SizedBox(height: 20),
-                    _HomeProductSection(
-                      title: 'Pilihan Untukmu',
-                      subtitle: 'Produk Natalo dari sistem',
-                      products: popular.take(8).toList(),
-                      onTap: _openProduct,
-                      onSeeAll: () => _openProducts(),
                     ),
                   ],
                 ],
@@ -184,58 +218,6 @@ class _HomeGreeting extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-}
-
-class _ShortcutRow extends StatelessWidget {
-  final ValueChanged<String?> onOpenCategory;
-
-  const _ShortcutRow({required this.onOpenCategory});
-
-  @override
-  Widget build(BuildContext context) {
-    const items = [
-      (Icons.pets_rounded, 'Kucing', 'Makanan Kucing'),
-      (Icons.cruelty_free_rounded, 'Anjing', 'Makanan Anjing'),
-      (Icons.inventory_2_rounded, 'Pasir', 'Pasir Kucing'),
-      (Icons.medication_rounded, 'Vitamin', 'Vitamin'),
-    ];
-
-    return Row(
-      children: [
-        for (final item in items)
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: InkWell(
-                onTap: () => onOpenCategory(item.$3),
-                borderRadius: BorderRadius.circular(16),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFE5EAF3)),
-                  ),
-                  child: Column(
-                    children: [
-                      Icon(item.$1, color: NataloColors.primary),
-                      const SizedBox(height: 6),
-                      Text(
-                        item.$2,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-      ],
     );
   }
 }
@@ -346,4 +328,300 @@ class _EmptyHomeProducts extends StatelessWidget {
       ),
     );
   }
+}
+
+
+/// Trust marquee — horizontal bar 3 trust signals.
+class _TrustMarquee extends StatelessWidget {
+  const _TrustMarquee();
+
+  @override
+  Widget build(BuildContext context) {
+    const items = [
+      (Icons.local_shipping_outlined, 'Gratis Ongkir Area Medan',
+          Color(0xFF16A34A)),
+      (Icons.verified_outlined, 'Produk Original 100%', Color(0xFF1E5FBF)),
+      (Icons.chat_bubble_outline_rounded, 'Konsultasi via WA',
+          Color(0xFFEC4899)),
+    ];
+    return SizedBox(
+      height: 48,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: items.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, i) {
+          final item = items[i];
+          return Container(
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: const Color(0xFFE5EAF3)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(item.$1, color: item.$3, size: 16),
+                const SizedBox(width: 6),
+                Text(
+                  item.$2,
+                  style: const TextStyle(
+                    color: NataloColors.textPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Hero banner placeholder — brand gradient card promo.
+class _HeroBannerCard extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _HeroBannerCard({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: onTap,
+      child: Ink(
+        height: 160,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF1E5FBF), Color(0xFF60A5FA)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: NataloColors.primary.withValues(alpha: 0.25),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: const Text(
+                      'PROMO BARU',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.6,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Belanja Hemat\nKebutuhan Hewan',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      height: 1.15,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Diskon up to 30% untuk member',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Positioned(
+              right: -10,
+              bottom: -10,
+              child: Icon(
+                Icons.pets_rounded,
+                size: 140,
+                color: Colors.white.withValues(alpha: 0.15),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 8-icon kategori grid (2 rows x 4 cols).
+class _CategoryGrid extends StatelessWidget {
+  final ValueChanged<String?> onOpenCategory;
+  final VoidCallback onOpenVoucher;
+  final VoidCallback onOpenLoyalty;
+  final VoidCallback onOpenGrooming;
+  final VoidCallback onOpenBlog;
+
+  const _CategoryGrid({
+    required this.onOpenCategory,
+    required this.onOpenVoucher,
+    required this.onOpenLoyalty,
+    required this.onOpenGrooming,
+    required this.onOpenBlog,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final items = <_CategoryItem>[
+      _CategoryItem(
+        icon: Icons.pets_rounded,
+        bg: const Color(0xFFEEF4FF),
+        iconColor: const Color(0xFF1E5FBF),
+        label: 'Makanan Kucing',
+        onTap: () => onOpenCategory('Makanan Kucing'),
+      ),
+      _CategoryItem(
+        icon: Icons.cruelty_free_rounded,
+        bg: const Color(0xFFFFF7E6),
+        iconColor: const Color(0xFFD97706),
+        label: 'Makanan Anjing',
+        onTap: () => onOpenCategory('Makanan Anjing'),
+      ),
+      _CategoryItem(
+        icon: Icons.inventory_2_outlined,
+        bg: const Color(0xFFF3F4F6),
+        iconColor: const Color(0xFF6B7280),
+        label: 'Pasir',
+        onTap: () => onOpenCategory('Pasir Kucing'),
+      ),
+      _CategoryItem(
+        icon: Icons.medication_outlined,
+        bg: const Color(0xFFFFE4E6),
+        iconColor: const Color(0xFFE11D48),
+        label: 'Vitamin',
+        onTap: () => onOpenCategory('Vitamin'),
+      ),
+      _CategoryItem(
+        icon: Icons.local_offer_outlined,
+        bg: const Color(0xFFFCE7F3),
+        iconColor: const Color(0xFFBE185D),
+        label: 'Voucher',
+        onTap: onOpenVoucher,
+      ),
+      _CategoryItem(
+        icon: Icons.workspace_premium_outlined,
+        bg: const Color(0xFFFFFBEB),
+        iconColor: const Color(0xFFD97706),
+        label: 'Tukar Poin',
+        onTap: onOpenLoyalty,
+      ),
+      _CategoryItem(
+        icon: Icons.spa_outlined,
+        bg: const Color(0xFFECFDF5),
+        iconColor: const Color(0xFF16A34A),
+        label: 'Grooming',
+        onTap: onOpenGrooming,
+      ),
+      _CategoryItem(
+        icon: Icons.menu_book_outlined,
+        bg: const Color(0xFFFEF3C7),
+        iconColor: const Color(0xFF92400E),
+        label: 'Blog & Tips',
+        onTap: onOpenBlog,
+      ),
+    ];
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 4,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        childAspectRatio: 0.88,
+      ),
+      itemCount: items.length,
+      itemBuilder: (context, i) {
+        final item = items[i];
+        return InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: item.onTap,
+          child: Ink(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFE5EAF3)),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: item.bg,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(item.icon, color: item.iconColor, size: 24),
+                ),
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Text(
+                    item.label,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: NataloColors.textPrimary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      height: 1.2,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _CategoryItem {
+  final IconData icon;
+  final Color bg;
+  final Color iconColor;
+  final String label;
+  final VoidCallback onTap;
+  const _CategoryItem({
+    required this.icon,
+    required this.bg,
+    required this.iconColor,
+    required this.label,
+    required this.onTap,
+  });
 }
