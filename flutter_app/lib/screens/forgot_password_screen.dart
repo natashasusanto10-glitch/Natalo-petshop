@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
-import '../theme/natalo_colors.dart';
 import '../utils/haptics.dart';
-import '../widgets/auth_shell.dart';
 
-/// Lupa Password — form email → server kirim reset link.
-/// Backend tetap anti email-enumeration; UI hanya menampilkan status aman.
+const _brandBlue = Color(0xFF0B7FEA);
+
+/// Forgot password screen — call /api/auth/forgot-password.
+/// Setelah submit, tampil konfirmasi: "Kami sudah kirim link reset ke email
+/// kamu (jika terdaftar)." — server selalu return sukses untuk anti
+/// enumeration attack.
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
 
@@ -15,11 +17,9 @@ class ForgotPasswordScreen extends StatefulWidget {
 }
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
-  final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   bool _loading = false;
-  bool _sent = false;
-  String? _errorText;
+  bool _submitted = false;
 
   @override
   void dispose() {
@@ -28,122 +28,374 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
+    final email = _emailController.text.trim();
+    if (email.isEmpty || !email.contains('@')) {
+      AppHaptics.warning();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Masukkan email yang valid.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
     AppHaptics.tap();
-    setState(() {
-      _loading = true;
-      _errorText = null;
-    });
+    setState(() => _loading = true);
     try {
-      await authService.forgotPassword(_emailController.text);
+      await authService.forgotPassword(email);
       if (!mounted) return;
-      setState(() {
-        _sent = true;
-        _loading = false;
-      });
       AppHaptics.success();
-    } catch (e) {
+      setState(() => _submitted = true);
+    } catch (error) {
       if (!mounted) return;
-      setState(() {
-        _errorText = e.toString().contains('429')
-            ? 'Terlalu banyak percobaan. Coba lagi 1 jam.'
-            : 'Gagal kirim link reset. Periksa koneksi.';
-        _loading = false;
-      });
+      AppHaptics.warning();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal kirim link reset: $error'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return AuthShell(
-      icon: _sent ? Icons.mark_email_read_rounded : Icons.lock_reset_rounded,
-      title: _sent ? 'Link reset terkirim' : 'Lupa Password',
-      subtitle: _sent
-          ? 'Cek email kamu lalu ikuti link reset password dari Natalo.'
-          : 'Masukkan email member. Kami akan kirim link untuk membuat password baru.',
-      footer: AuthSwitchFooter(
-        text: 'Ingat password? ',
-        actionText: 'Masuk',
-        onTap: () => Navigator.pop(context),
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF17202A)),
+          onPressed: () => Navigator.pushNamedAndRemoveUntil(
+            context,
+            '/',
+            (_) => false,
+          ),
+        ),
+        title: const Text(
+          'Lupa Password',
+          style: TextStyle(
+            color: Color(0xFF17202A),
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        centerTitle: true,
       ),
-      children: _sent ? _successChildren() : _formChildren(),
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            // ── Header section ──
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
+              color: const Color(0xFFEFF2F6),
+              child: Column(
+                children: [
+                  Container(
+                    height: 72,
+                    width: 72,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEAF5FF),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Icon(
+                      Icons.lock_reset_rounded,
+                      color: _brandBlue,
+                      size: 36,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Reset Password',
+                    style: TextStyle(
+                      color: Color(0xFF111111),
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                      height: 1.1,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      'Masukkan email yang kamu pakai daftar. Kami kirim link untuk reset password.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Color(0xFF6B7280),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // ── Form card / Success state ──
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
+              child: _submitted
+                  ? _SuccessCard(email: _emailController.text.trim())
+                  : _FormCard(
+                      emailController: _emailController,
+                      loading: _loading,
+                      onSubmit: _submit,
+                    ),
+            ),
+
+            // ── Footer link kembali ke Login ──
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: const Text.rich(
+                  TextSpan(
+                    text: 'Ingat password? ',
+                    style: TextStyle(
+                      color: Color(0xFF6B7280),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    children: [
+                      TextSpan(
+                        text: 'Kembali ke Masuk',
+                        style: TextStyle(
+                          color: _brandBlue,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
+        ),
+      ),
     );
   }
+}
 
-  List<Widget> _formChildren() => [
-        const AuthInfoBox(
-          icon: Icons.shield_rounded,
-          text:
-              'Demi keamanan, kami hanya mengirim link reset ke email member yang terdaftar.',
-        ),
-        const SizedBox(height: 18),
-        Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const AuthFieldLabel('Email member'),
-              TextFormField(
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-                autocorrect: false,
-                enabled: !_loading,
-                textInputAction: TextInputAction.done,
-                onFieldSubmitted: (_) => _loading ? null : _submit(),
-                decoration: const InputDecoration(
-                  hintText: 'kamu@email.com',
-                  prefixIcon: Icon(Icons.alternate_email_rounded),
-                  filled: true,
-                  fillColor: Color(0xFFF8FBFF),
+class _FormCard extends StatelessWidget {
+  final TextEditingController emailController;
+  final bool loading;
+  final VoidCallback onSubmit;
+
+  const _FormCard({
+    required this.emailController,
+    required this.loading,
+    required this.onSubmit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Email',
+            style: TextStyle(
+              color: Color(0xFF111111),
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: emailController,
+            keyboardType: TextInputType.emailAddress,
+            decoration: InputDecoration(
+              hintText: 'Email yang terdaftar di akun kamu',
+              hintStyle: const TextStyle(
+                color: Color(0xFF9CA3AF),
+                fontWeight: FontWeight.w600,
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 16,
+              ),
+              prefixIcon: const Icon(
+                Icons.mail_outline_rounded,
+                color: Color(0xFF9CA3AF),
+              ),
+              // Match Capacitor: rounded rectangle (radius 14) untuk input.
+              // Pill (999) cuma untuk button.
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: _brandBlue, width: 1.4),
+              ),
+            ),
+            onSubmitted: (_) => onSubmit(),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFFBEB),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFFDE68A)),
+            ),
+            child: const Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.info_outline_rounded,
+                  color: Color(0xFFF59E0B),
+                  size: 18,
                 ),
-                validator: (v) {
-                  final s = (v ?? '').trim();
-                  if (s.isEmpty) return 'Email wajib diisi';
-                  if (!s.contains('@') || !s.contains('.')) {
-                    return 'Format email tidak valid';
-                  }
-                  return null;
-                },
-              ),
-              if (_errorText != null) ...[
-                const SizedBox(height: 14),
-                AuthErrorBox(_errorText!),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Link reset password berlaku 1 jam. Hanya bisa diminta 3x per jam.',
+                    style: TextStyle(
+                      color: Color(0xFF92400E),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      height: 1.5,
+                    ),
+                  ),
+                ),
               ],
-              const SizedBox(height: 20),
-              AuthPrimaryButton(
-                onPressed: _submit,
-                loading: _loading,
-                label: 'Kirim Link Reset',
+            ),
+          ),
+          const SizedBox(height: 20),
+          ElevatedButton(
+            onPressed: loading ? null : onSubmit,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _brandBlue,
+              foregroundColor: Colors.white,
+              minimumSize: const Size.fromHeight(52),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(999),
               ),
-            ],
+              textStyle: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            child: loading
+                ? const SizedBox(
+                    height: 22,
+                    width: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.4,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Text('Kirim Link Reset'),
           ),
-        ),
-      ];
+        ],
+      ),
+    );
+  }
+}
 
-  List<Widget> _successChildren() => [
-        AuthInfoBox(
-          icon: Icons.mail_rounded,
-          text:
-              'Jika email ${_emailController.text} terdaftar, link reset sudah kami kirim. Link berlaku 1 jam.',
-          color: NataloColors.successDark,
-          background: NataloColors.successSoft,
-        ),
-        const SizedBox(height: 18),
-        AuthPrimaryButton(
-          onPressed: () => Navigator.pop(context),
-          loading: false,
-          label: 'Kembali ke Login',
-        ),
-        const SizedBox(height: 10),
-        TextButton(
-          onPressed: () => setState(() {
-            _sent = false;
-            _errorText = null;
-          }),
-          child: const Text(
-            'Kirim ulang ke email lain',
-            style: TextStyle(fontWeight: FontWeight.w900),
+class _SuccessCard extends StatelessWidget {
+  final String email;
+  const _SuccessCard({required this.email});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFBBF7D0)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            height: 64,
+            width: 64,
+            decoration: const BoxDecoration(
+              color: Color(0xFFD1FAE5),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.check_rounded,
+              color: Color(0xFF16A34A),
+              size: 36,
+            ),
           ),
-        ),
-      ];
+          const SizedBox(height: 14),
+          const Text(
+            'Cek email kamu',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Color(0xFF111111),
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text.rich(
+            TextSpan(
+              text:
+                  'Kalau email $email terdaftar di Natalo, kami sudah kirim link untuk reset password.\n\n',
+              style: const TextStyle(
+                color: Color(0xFF6B7280),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                height: 1.55,
+              ),
+              children: const [
+                TextSpan(
+                  text:
+                      'Cek folder Spam / Promosi kalau belum kelihatan dalam 5 menit.',
+                  style: TextStyle(
+                    color: Color(0xFF9CA3AF),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 18),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(context),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: _brandBlue,
+              minimumSize: const Size.fromHeight(48),
+              side: const BorderSide(color: Color(0xFFBFDBFE)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(999),
+              ),
+              textStyle: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            child: const Text('Kembali ke Masuk'),
+          ),
+        ],
+      ),
+    );
+  }
 }
