@@ -8,12 +8,10 @@ import '../state/member_store.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/auth_shell.dart';
 
-/// Login Member Natalo — form email/HP + password.
-///
-/// Sesuai design Android: logo "NL" gradient, judul "Masuk Member Natalo",
-/// info box biru, dua field, "Lupa password?", tombol "Masuk", footer
-/// "Belum punya akun? Daftar gratis".
+/// Login member native Flutter. Logic auth/session tetap memakai endpoint
+/// existing, file ini hanya merapikan UI.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -50,9 +48,6 @@ class _LoginScreenState extends State<LoginScreen> {
         password: _passwordController.text,
       );
       await memberStore.setSession(profile: profile);
-      // Pull cart dari server (kalau ada item dari device lain).
-      // Fire-and-forget — tidak block UI navigation, sync di background.
-      // Local cart yang ada di-overwrite kalau server punya state.
       unawaited(cartStore.loadFromServer());
       if (!mounted) return;
       AppToast.show(context, 'Selamat datang, ${profile.name}!');
@@ -88,7 +83,6 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    // Pop back ke screen sebelumnya — atau ke home kalau direct nav.
     if (Navigator.canPop(context)) {
       Navigator.pop(context, true);
     } else {
@@ -112,118 +106,73 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF7FAFF),
-      appBar: AppBar(
-        title: const Text('Masuk'),
-        backgroundColor: const Color(0xFFF7FAFF),
-        elevation: 0,
+    return AuthShell(
+      icon: Icons.person_rounded,
+      title: 'Masuk Member Natalo',
+      subtitle:
+          'Masuk untuk checkout, cek pesanan, pakai voucher, dan simpan produk favorit.',
+      footer: Column(
+        children: [
+          AuthSwitchFooter(
+            text: 'Belum punya akun? ',
+            actionText: 'Daftar gratis',
+            onTap: _loading
+                ? () {}
+                : () => Navigator.pushReplacementNamed(
+                      context,
+                      '/member/register',
+                    ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Daftar sekali, benefit member langsung ikut akun kamu.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: NataloColors.textTertiary,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Logo bulat dengan "NL" gradient + paw icon
-                _NataloLogo(),
-                const SizedBox(height: 20),
-                const Text(
-                  'Masuk Member Natalo',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: NataloColors.textPrimary,
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    height: 1.2,
-                  ),
+      children: [
+        const AuthInfoBox(
+          icon: Icons.local_offer_rounded,
+          text:
+              'Benefit member aktif otomatis saat checkout: voucher, riwayat pesanan, poin, dan alamat tersimpan.',
+        ),
+        const SizedBox(height: 18),
+        Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const AuthFieldLabel('Email / No. HP'),
+              TextFormField(
+                controller: _identifierController,
+                keyboardType: TextInputType.emailAddress,
+                autocorrect: false,
+                enabled: !_loading,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  hintText: 'kamu@email.com / 08xxxxxxxxxx',
+                  prefixIcon: Icon(Icons.alternate_email_rounded),
+                  filled: true,
+                  fillColor: Color(0xFFF8FBFF),
                 ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Belanja kebutuhan hewan jadi lebih mudah, cepat,\ndan hemat.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: NataloColors.textSecondary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                // Info box biru
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEAF3FF),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(
-                        Icons.info_outline_rounded,
-                        color: NataloColors.primary,
-                        size: 20,
-                      ),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'Akun member Natalo\nMasuk untuk lanjut checkout, cek pesanan, dan pakai benefit member.',
-                          style: TextStyle(
-                            color: NataloColors.primary,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            height: 1.4,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                // Email / No. HP field
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 6),
-                  child: Text(
-                    'Email / No. HP',
-                    style: TextStyle(
-                      color: NataloColors.textPrimary,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                TextFormField(
-                  controller: _identifierController,
-                  keyboardType: TextInputType.emailAddress,
-                  autocorrect: false,
-                  enabled: !_loading,
-                  decoration: const InputDecoration(
-                    hintText: 'contoh: kamu@email.com / 081234',
-                    filled: true,
-                    fillColor: Colors.white,
-                  ),
-                  validator: (value) {
-                    final v = (value ?? '').trim();
-                    if (v.isEmpty) return 'Email atau No. HP wajib diisi';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                // Password field with Lupa password? right
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Password',
-                      style: TextStyle(
-                        color: NataloColors.textPrimary,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    TextButton(
+                validator: (value) {
+                  final v = (value ?? '').trim();
+                  if (v.isEmpty) return 'Email atau No. HP wajib diisi';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 15),
+              Row(
+                children: [
+                  const Expanded(child: AuthFieldLabel('Password')),
+                  Transform.translate(
+                    offset: const Offset(0, -3),
+                    child: TextButton(
                       onPressed: _loading
                           ? null
                           : () => Navigator.pushNamed(
@@ -239,177 +188,56 @@ class _LoginScreenState extends State<LoginScreen> {
                         'Lupa password?',
                         style: TextStyle(
                           color: NataloColors.primary,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                TextFormField(
-                  controller: _passwordController,
-                  obscureText: _obscurePassword,
-                  enabled: !_loading,
-                  decoration: InputDecoration(
-                    hintText: 'Masukkan password',
-                    filled: true,
-                    fillColor: Colors.white,
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscurePassword
-                            ? Icons.visibility_off_rounded
-                            : Icons.visibility_rounded,
-                        color: NataloColors.textTertiary,
-                      ),
-                      onPressed: () => setState(
-                        () => _obscurePassword = !_obscurePassword,
-                      ),
-                    ),
-                  ),
-                  validator: (value) {
-                    if ((value ?? '').isEmpty) return 'Password wajib diisi';
-                    return null;
-                  },
-                ),
-                if (_errorText != null) ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEF2F2),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFFFECACA)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.error_outline_rounded,
-                          color: Color(0xFFEF4444),
-                          size: 18,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _errorText!,
-                            style: const TextStyle(
-                              color: Color(0xFFB91C1C),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 20),
-                FilledButton(
-                  onPressed: _loading ? null : _submit,
-                  child: _loading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.4,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Text('Masuk'),
-                ),
-                const SizedBox(height: 24),
-                // Footer: Belum punya akun?
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text(
-                      'Belum punya akun? ',
-                      style: TextStyle(
-                        color: NataloColors.textSecondary,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: _loading
-                          ? null
-                          : () => Navigator.pushReplacementNamed(
-                                context,
-                                '/member/register',
-                              ),
-                      style: TextButton.styleFrom(
-                        padding: EdgeInsets.zero,
-                        minimumSize: const Size(0, 0),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      child: const Text(
-                        'Daftar gratis',
-                        style: TextStyle(
-                          color: NataloColors.primary,
-                          fontSize: 13,
+                          fontSize: 12.5,
                           fontWeight: FontWeight.w900,
                         ),
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Daftar gratis dan mulai kumpulkan benefit member Natalo.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: NataloColors.textTertiary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
+                  ),
+                ],
+              ),
+              TextFormField(
+                controller: _passwordController,
+                obscureText: _obscurePassword,
+                enabled: !_loading,
+                textInputAction: TextInputAction.done,
+                onFieldSubmitted: (_) => _loading ? null : _submit(),
+                decoration: InputDecoration(
+                  hintText: 'Masukkan password',
+                  prefixIcon: const Icon(Icons.lock_rounded),
+                  filled: true,
+                  fillColor: const Color(0xFFF8FBFF),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscurePassword
+                          ? Icons.visibility_off_rounded
+                          : Icons.visibility_rounded,
+                      color: NataloColors.textTertiary,
+                    ),
+                    onPressed: () => setState(
+                      () => _obscurePassword = !_obscurePassword,
+                    ),
                   ),
                 ),
+                validator: (value) {
+                  if ((value ?? '').isEmpty) return 'Password wajib diisi';
+                  return null;
+                },
+              ),
+              if (_errorText != null) ...[
+                const SizedBox(height: 14),
+                AuthErrorBox(_errorText!),
               ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Logo Natalo bulat dengan "NL" letterform + gradient blue.
-class _NataloLogo extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Container(
-        width: 88,
-        height: 88,
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [
-              NataloColors.primary,
-              NataloColors.primaryLight,
+              const SizedBox(height: 20),
+              AuthPrimaryButton(
+                onPressed: _submit,
+                loading: _loading,
+                label: 'Masuk',
+              ),
             ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(22),
-          boxShadow: [
-            BoxShadow(
-              color: NataloColors.primary.withValues(alpha: 0.28),
-              blurRadius: 18,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: const Center(
-          child: Text(
-            'NL',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 34,
-              fontWeight: FontWeight.w900,
-              letterSpacing: -1,
-            ),
           ),
         ),
-      ),
+      ],
     );
   }
 }
