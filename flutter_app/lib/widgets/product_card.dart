@@ -199,16 +199,33 @@ class ProductCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: AppSpacing.sm),
-              Text(
-                formatRupiah(product.finalPrice),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: NataloColors.nataloBlue,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                  height: 1.05,
-                ),
+              // Premium polish (Tier 2): harga + diskon % pill inline.
+              // Pill kecil "-XX%" merah di kanan harga supaya user instant
+              // tahu seberapa besar diskonnya (konvensi Tokopedia/Shopee).
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Flexible(
+                    child: Text(
+                      formatRupiah(product.finalPrice),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: NataloColors.nataloBlue,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                        height: 1.05,
+                      ),
+                    ),
+                  ),
+                  if (product.hasDiscount &&
+                      productDiscountPercent(product) != null) ...[
+                    const SizedBox(width: AppSpacing.xs),
+                    _DiscountPercentPill(
+                      percent: productDiscountPercent(product)!,
+                    ),
+                  ],
+                ],
               ),
               ProductSavingsBadge(product: product),
               ProductRatingSoldMeta(product: product),
@@ -559,6 +576,53 @@ String? productSavingsLabel(Product product) {
   final savings = (product.price - product.finalPrice).round();
   if (savings <= 0) return null;
   return 'Hemat ${formatRupiah(savings)}';
+}
+
+/// Compute discount percentage 0-99 (round down). Return null kalau
+/// product tidak hasDiscount atau price = 0.
+int? productDiscountPercent(Product product) {
+  if (!product.hasDiscount) return null;
+  if (product.price <= 0) return null;
+  final pct = ((product.price - product.finalPrice) / product.price * 100)
+      .floor();
+  if (pct <= 0) return null;
+  // Cap di 99 supaya pill tidak overflow visual (mis. 3-digit "100%").
+  return pct > 99 ? 99 : pct;
+}
+
+/// Premium polish (Tier 2): pill kecil merah "-XX%" untuk product card.
+/// Inline dengan harga finalPrice — konvensi marketplace ID
+/// (Tokopedia/Shopee/Blibli). Membuat diskon instantly visible tanpa
+/// user perlu hitung sendiri price vs finalPrice.
+class _DiscountPercentPill extends StatelessWidget {
+  final int percent;
+
+  const _DiscountPercentPill({required this.percent});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: NataloColors.dangerSoft,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: NataloColors.danger.withValues(alpha: 0.30),
+          width: 0.6,
+        ),
+      ),
+      child: Text(
+        '-$percent%',
+        style: const TextStyle(
+          color: NataloColors.danger,
+          fontSize: 10.5,
+          fontWeight: FontWeight.w900,
+          height: 1.0,
+          letterSpacing: -0.1,
+        ),
+      ),
+    );
+  }
 }
 
 String formatSoldCount(int value) {

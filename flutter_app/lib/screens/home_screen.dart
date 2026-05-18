@@ -383,93 +383,180 @@ class _TrustMarquee extends StatelessWidget {
   }
 }
 
-/// Hero banner placeholder — brand gradient card promo.
-class _HeroBannerCard extends StatelessWidget {
+/// Hero banner — brand gradient card promo dengan premium polish:
+/// - Glossy shine overlay (white 14% top-left → transparent) untuk
+///   feel mengkilap seperti iOS App Store / Spotify promo card.
+/// - Scale-pressed feedback 97% saat tap-down (320ms easeOutCubic).
+/// - Soft inner highlight di atas via gradient — banner terasa lebih
+///   "premium dimensional" bukan flat color.
+class _HeroBannerCard extends StatefulWidget {
   final VoidCallback onTap;
 
   const _HeroBannerCard({required this.onTap});
 
   @override
+  State<_HeroBannerCard> createState() => _HeroBannerCardState();
+}
+
+class _HeroBannerCardState extends State<_HeroBannerCard>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pressCtrl;
+  late final Animation<double> _pressScale;
+
+  @override
+  void initState() {
+    super.initState();
+    _pressCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 160),
+      reverseDuration: const Duration(milliseconds: 220),
+    );
+    _pressScale = Tween<double>(begin: 1.0, end: 0.97).animate(
+      CurvedAnimation(parent: _pressCtrl, curve: Curves.easeOutCubic),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pressCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(18),
-      onTap: onTap,
-      child: Ink(
-        height: 160,
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF1E5FBF), Color(0xFF60A5FA)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: [
-            BoxShadow(
-              color: NataloColors.primary.withValues(alpha: 0.25),
-              blurRadius: 16,
-              offset: const Offset(0, 8),
+    return GestureDetector(
+      onTapDown: (_) => _pressCtrl.forward(),
+      onTapCancel: () => _pressCtrl.reverse(),
+      onTapUp: (_) {
+        _pressCtrl.reverse();
+        widget.onTap();
+      },
+      child: ScaleTransition(
+        scale: _pressScale,
+        child: Container(
+          height: 160,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF1E5FBF), Color(0xFF60A5FA)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-          ],
-        ),
-        child: Stack(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: NataloColors.primary.withValues(alpha: 0.28),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Stack(
+            children: [
+              // ── Glossy shine overlay (premium polish) ──
+              // Diagonal sweep dari top-left (white 14%) ke center (transparent).
+              // Memberikan kesan permukaan licin / glossy material.
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: const Text(
-                      'PROMO BARU',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.6,
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Colors.white.withValues(alpha: 0.14),
+                          Colors.white.withValues(alpha: 0.04),
+                          Colors.transparent,
+                        ],
+                        stops: const [0.0, 0.35, 0.7],
                       ),
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  const Text(
-                    'Belanja Hemat\nKebutuhan Hewan',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                      height: 1.15,
+                ),
+              ),
+              // ── Soft top highlight band (rim light) ──
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                height: 48,
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.white.withValues(alpha: 0.18),
+                          Colors.white.withValues(alpha: 0.0),
+                        ],
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Diskon up to 30% untuk member',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.22),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.28),
+                          width: 0.6,
+                        ),
+                      ),
+                      child: const Text(
+                        'PROMO BARU',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 10),
+                    const Text(
+                      'Belanja Hemat\nKebutuhan Hewan',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        height: 1.15,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Diskon up to 30% untuk member',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            Positioned(
-              right: -10,
-              bottom: -10,
-              child: Icon(
-                Icons.pets_rounded,
-                size: 140,
-                color: Colors.white.withValues(alpha: 0.15),
+              Positioned(
+                right: -10,
+                bottom: -10,
+                child: Icon(
+                  Icons.pets_rounded,
+                  size: 140,
+                  color: Colors.white.withValues(alpha: 0.15),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
