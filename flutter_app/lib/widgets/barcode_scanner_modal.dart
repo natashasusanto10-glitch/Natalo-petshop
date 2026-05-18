@@ -10,10 +10,8 @@ import 'package:flutter/material.dart';
 /// Sampai mobile_scanner naik ke versi 7.x+ (yang compat dengan
 /// MLKit + GoogleDataTransport 10.x), file ini stub no-op.
 ///
-/// Tidak ada screen di lib/screens/ yang import file ini saat ini, jadi
-/// stubbing aman — barcode scanner feature tidak hilang dari user experience
-/// (belum pernah di-expose). Saat re-enable, restore implementation original
-/// dari git history.
+/// Saat re-enable, restore implementation original dari git history
+/// (commit sebelum disable di session merge ini).
 
 /// Tampilkan barcode scanner — stub no-op, return null (user cancel).
 Future<String?> showBarcodeScanner(BuildContext context) async {

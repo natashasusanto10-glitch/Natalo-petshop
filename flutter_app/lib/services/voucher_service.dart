@@ -90,13 +90,20 @@ final voucherService = VoucherService();
 class CheckoutRecalcResult {
   final num subtotal;
   final num discountAmount;
+  final num productDiscount;
+  final num shippingDiscount;
   final num shippingCost;
+  final num originalShippingCost;
   final num insuranceCost;
   final num protectionFee;
   final num tax;
   final num total;
   final MemberVoucher? appliedCustomerVoucher;
   final MemberVoucher? appliedManualVoucher;
+  final MemberVoucher? appliedFreeShippingVoucher;
+  final MemberVoucher? appliedProductVoucher;
+  final MemberVoucher? appliedLoyaltyVoucher;
+  final MemberVoucher? appliedPrivateVoucher;
   final List<MemberVoucher> availableVouchers;
   final List<MemberVoucher> unavailableVouchers;
   final bool voucherInvalidated;
@@ -108,13 +115,20 @@ class CheckoutRecalcResult {
   const CheckoutRecalcResult({
     required this.subtotal,
     required this.discountAmount,
+    required this.productDiscount,
+    required this.shippingDiscount,
     required this.shippingCost,
+    required this.originalShippingCost,
     required this.insuranceCost,
     required this.protectionFee,
     required this.tax,
     required this.total,
     this.appliedCustomerVoucher,
     this.appliedManualVoucher,
+    this.appliedFreeShippingVoucher,
+    this.appliedProductVoucher,
+    this.appliedLoyaltyVoucher,
+    this.appliedPrivateVoucher,
     this.availableVouchers = const [],
     this.unavailableVouchers = const [],
     this.voucherInvalidated = false,
@@ -146,11 +160,21 @@ class CheckoutRecalcResult {
 
     return CheckoutRecalcResult(
       subtotal: pick('subtotal'),
-      discountAmount:
-          pick('discount') == 0 ? pick('discountAmount') : pick('discount'),
-      shippingCost: pick('shipping_fee') == 0
-          ? pick('shippingCost')
-          : pick('shipping_fee'),
+      discountAmount: pick('productDiscount') == 0
+          ? (pick('discount') == 0 ? pick('discountAmount') : pick('discount'))
+          : pick('productDiscount'),
+      productDiscount: pick('productDiscount') == 0
+          ? (pick('discount') == 0 ? pick('discountAmount') : pick('discount'))
+          : pick('productDiscount'),
+      shippingDiscount: pick('shippingDiscount'),
+      shippingCost: json.containsKey('shipping_fee')
+          ? pick('shipping_fee')
+          : pick('shippingCost'),
+      originalShippingCost: pick('originalShippingCost') == 0
+          ? (json.containsKey('shipping_fee')
+              ? pick('shipping_fee')
+              : pick('shippingCost'))
+          : pick('originalShippingCost'),
       insuranceCost: pick('insuranceCost'),
       protectionFee: pick('protectionFee'),
       tax: pick('tax'),
@@ -159,6 +183,13 @@ class CheckoutRecalcResult {
         json['applied_customer_voucher'] ?? json['applied_voucher'],
       ),
       appliedManualVoucher: parseVoucher(json['applied_manual_voucher']),
+      appliedFreeShippingVoucher:
+          parseVoucher(json['applied_free_shipping_voucher']),
+      appliedProductVoucher: parseVoucher(json['applied_product_voucher']),
+      appliedLoyaltyVoucher: parseVoucher(json['applied_loyalty_voucher']),
+      appliedPrivateVoucher: parseVoucher(
+        json['applied_private_voucher'] ?? json['applied_manual_voucher'],
+      ),
       availableVouchers: parseVoucherList(json['available_vouchers']),
       unavailableVouchers: parseVoucherList(json['unavailable_vouchers']),
       voucherInvalidated: json['voucher_invalidated'] == true,
@@ -177,6 +208,10 @@ class CheckoutService {
     String? voucherCode,
     String? customerVoucherCode,
     String? manualVoucherCode,
+    String? freeShippingVoucherCode,
+    String? productVoucherCode,
+    String? loyaltyVoucherCode,
+    String? privateVoucherCode,
     bool autoApply = true,
     MemberAddress? address,
     ShippingRate? shippingRate,
@@ -193,6 +228,10 @@ class CheckoutService {
           'voucherCode': customerVoucherCode ?? voucherCode,
           'customerVoucherCode': customerVoucherCode ?? voucherCode,
           'manualVoucherCode': manualVoucherCode,
+          'freeShippingVoucherCode': freeShippingVoucherCode,
+          'productVoucherCode': productVoucherCode,
+          'loyaltyVoucherCode': loyaltyVoucherCode,
+          'privateVoucherCode': privateVoucherCode ?? manualVoucherCode,
           'autoApply': autoApply,
           'address': {
             'areaId': address?.areaId,

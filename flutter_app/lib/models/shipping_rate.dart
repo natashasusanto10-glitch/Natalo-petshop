@@ -52,10 +52,21 @@ class ShippingRate {
     serviceCode: 'SELF_PICKUP',
     serviceType: 'pickup',
     price: 0,
-    duration: '10.00 - 20.00 WIB',
+    duration: '09.00 - 17.00 WIB',
     available: true,
-    description: 'Ambil pesanan langsung di Natalo Petshop.',
+    description:
+        'Natalo Petshop / Sinar Petstore, Jln MT. Haryono No 103 B C D, Pusat Pasar, Medan Kota.',
   );
+}
+
+class PickupStoreInfo {
+  static const id = 'store_mt_haryono';
+  static const name = 'Natalo Petshop / Sinar Petstore';
+  static const address =
+      'Jln MT. Haryono No 103 B C D, Pusat Pasar, Medan Kota';
+  static const hours = '09.00 - 17.00 WIB';
+  static const mapsUrl =
+      'https://www.google.com/maps/search/?api=1&query=Natalo%20Petshop%20Sinar%20Petstore%20Jln%20MT%20Haryono%20No%20103%20B%20C%20D%20Pusat%20Pasar%20Medan%20Kota';
 }
 
 int _asInt(Object? value) {
