@@ -21,7 +21,8 @@ class CartItem {
     required this.quantity,
     int? unitPrice,
     int? effectiveStock,
-  })  : _unitPriceOverride = unitPrice ?? variant?.price ?? product.finalPrice,
+  })  : _unitPriceOverride =
+            unitPrice ?? variant?.price ?? product.finalPrice.round(),
         _effectiveStockOverride =
             effectiveStock ?? variant?.stock ?? product.stock;
 
@@ -29,6 +30,9 @@ class CartItem {
 
   int get unitPrice => _unitPriceOverride;
   int get effectiveStock => _effectiveStockOverride;
+  /// Alias `unitPrice` — beberapa code pakai `effectivePrice` literal.
+  /// Returns double untuk konsistensi dengan Product.finalPrice.
+  double get effectivePrice => _unitPriceOverride.toDouble();
 
   /// Identitas unik per line.
   String get key => variantId == null ? product.id : '${product.id}:$variantId';
@@ -77,15 +81,21 @@ class CartItem {
             id: json['productId'] as String? ?? '',
             title: json['name'] as String? ?? '',
             slug: json['slug'] as String? ?? '',
-            price: (json['unitPrice'] as num?)?.toInt() ?? 0,
+            category: '',
+            brand: '',
+            description: '',
+            price: (json['unitPrice'] as num?)?.toDouble() ?? 0,
             imageUrl: (json['imageUrl'] as String?) ?? '',
             weightGram: (json['weightGram'] as num?)?.toInt() ?? 500,
             stock: (json['stock'] as num?)?.toInt() ?? 0,
+            rating: 0,
+            reviewCount: 0,
           );
     return CartItem(
       product: product,
       variantLabel: json['variantLabel'] as String?,
-      unitPrice: (json['unitPrice'] as num?)?.toInt() ?? product.finalPrice,
+      unitPrice:
+          (json['unitPrice'] as num?)?.toInt() ?? product.finalPrice.round(),
       quantity: (json['quantity'] as num?)?.toInt() ?? 1,
       effectiveStock:
           (json['effectiveStock'] as num?)?.toInt() ?? product.stock,

@@ -2,10 +2,16 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart' show XFile;
 
 import '../config/api_config.dart';
+import '../models/cart_item.dart';
+import '../models/member_address.dart';
 import '../models/member_profile.dart';
+import '../models/shipping_rate.dart';
 import '../state/member_store.dart';
+import '../utils/read_only_mode.dart';
+import 'api_client.dart';
 
 /// Order detail + actions (cancel, upload payment proof, reorder).
 class OrderService {
@@ -18,28 +24,6 @@ class OrderService {
       if (token != null) 'authorization': 'Bearer $token',
       if (token != null) 'cookie': 'member_session=$token',
     };
-  }
-
-  /// Stub reorder — POST /api/orders/{orderNumber}/reorder. Server balikin
-  /// daftar item yang berhasil + alasan kalau ada yang skip (stock habis, dll).
-  Future<ReorderResult> reorder({required String orderNumber}) async {
-    if (kDebugMode) {
-      debugPrint('[orderService.reorder] stub: $orderNumber');
-    }
-    return const ReorderResult(items: [], skippedReasons: []);
-  }
-
-  /// Upload bukti transfer / pembayaran manual via multipart. Stub no-op
-  /// — TODO real implementation pakai `package:http` MultipartRequest.
-  Future<String?> uploadPaymentProof({
-    required String orderNumber,
-    required Object file,
-    String? trackingToken,
-  }) async {
-    if (kDebugMode) {
-      debugPrint('[orderService.uploadPaymentProof] stub: $orderNumber');
-    }
-    return null;
   }
 
   Future<OrderSummary> fetchOrderDetail(
@@ -223,32 +207,79 @@ class OrderService {
   Future<Map<String, String>> bulkStatus(List<String> orderNumbers) async {
     if (orderNumbers.isEmpty) return const {};
     try {
-      final res = await http
-          .get(uri, headers: _headers())
-          .timeout(const Duration(seconds: 8));
-      if (res.statusCode != 200) {
-        throw StateError('fetch order $orderNumber: ${res.statusCode}');
+      final data = await apiClient.getJson(
+        '/api/orders/status',
+        query: {'numbers': orderNumbers.join(',')},
+      );
+      if (data is Map<String, dynamic>) {
+        return data.map((k, v) => MapEntry(k, v.toString()));
       }
-      final body = jsonDecode(res.body);
-      final data = body is Map<String, dynamic>
-          ? (body['order'] ?? body['data'] ?? body)
-          : null;
-      if (data is Map<String, dynamic>) return OrderSummary.fromJson(data);
-      throw StateError('fetch order $orderNumber: malformed response');
+      return const {};
     } catch (e) {
-      if (kDebugMode) debugPrint('[orderService.fetchOrderDetail] $e');
-      rethrow;
+      if (kDebugMode) debugPrint('[orderService.bulkStatus] $e');
+      return const {};
     }
   }
 }
 
 final OrderService orderService = OrderService._();
 
+// ── Helpers untuk reorder parsing ──
+List<OrderItemSummary> _parseReorderEntries(dynamic raw, {required bool adjusted}) {
+  if (raw is! List) return const [];
+  return raw
+      .whereType<Map<String, dynamic>>()
+      .map(OrderItemSummary.fromJson)
+      .toList();
+}
+
+List<String> _parseSkippedReasons(dynamic raw) {
+  if (raw is! List) return const [];
+  return raw.map((e) => e.toString()).toList();
+}
+
+String _mimeTypeFromPath(String path) {
+  final lower = path.toLowerCase();
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.gif')) return 'image/gif';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  return 'image/jpeg'; // default
+}
+
 /// Result reorder — list item yang berhasil di-add + alasan skip kalau ada.
 class ReorderResult {
   final List<OrderItemSummary> items;
   final List<String> skippedReasons;
-  const ReorderResult({this.items = const [], this.skippedReasons = const []});
+  /// Jumlah item yang di-adjust (qty dikurangi karena stock kurang).
+  final int adjustedCount;
+  const ReorderResult({
+    this.items = const [],
+    this.skippedReasons = const [],
+    this.adjustedCount = 0,
+  });
 
-  bool get hasPartialChanges => skippedReasons.isNotEmpty;
+  bool get hasPartialChanges => skippedReasons.isNotEmpty || adjustedCount > 0;
 }
+
+/// Result create order — kembali dari POST /api/orders.
+class OrderResult {
+  final String orderNumber;
+  final String message;
+  final String? detailUrl;
+  final String? paymentUrl;
+  final String? trackingToken;
+  final String? paymentProvider;
+  final String? manualBank;
+
+  const OrderResult({
+    required this.orderNumber,
+    this.message = '',
+    this.detailUrl,
+    this.paymentUrl,
+    this.trackingToken,
+    this.paymentProvider,
+    this.manualBank,
+  });
+}
+

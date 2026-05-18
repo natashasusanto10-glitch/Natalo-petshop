@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/api_config.dart';
 import '../state/member_store.dart';
@@ -11,6 +12,16 @@ import '../state/member_store.dart';
 /// retry + cancel token; saat ini minimal.
 class ApiClient {
   ApiClient._();
+
+  /// Cookie jar — simpan Set-Cookie response (mis. natalo_session=...)
+  /// supaya request berikutnya bisa kirim balik. Persisted via SharedPreferences
+  /// di key [_sessionCookieKey] supaya survive app restart.
+  String? _cookie;
+  static const String _sessionCookieKey = 'natalo_session_cookie';
+
+  /// Fire callback kalau response 401 Unauthorized — UI layer bisa
+  /// subscribe untuk redirect ke /member/login.
+  VoidCallback? onUnauthorized;
 
   Map<String, String> _headers({bool json = false, Map<String, String>? extra}) {
     final token = memberStore.sessionToken;
@@ -136,13 +147,17 @@ class ApiClient {
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return data;
     }
-  }
 
     // 401 Unauthorized — session expired atau cookie invalid. Auto-clear
     // session lokal + fire callback supaya UI layer bisa redirect ke login.
     // Tidak block error throw — caller tetap dapat ApiException untuk
     // handle inline (mis. retry button di screen).
     _handleUnauthorized(response);
+    throw ApiException(
+      _nonJsonMessage(response, response.body),
+      statusCode: response.statusCode,
+    );
+  }
 
   Future<dynamic> deleteJson(
     String path, {
@@ -156,6 +171,48 @@ class ApiClient {
         ..body = body == null ? '' : jsonEncode(body);
       final streamed = await req.send().timeout(timeout);
       final res = await http.Response.fromStream(streamed);
+      return _decode(res);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException(e.toString(), cause: e);
+    }
+  }
+
+  Future<dynamic> putJson(
+    String path, {
+    Object? body,
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    final uri = ApiConfig.uri(path);
+    try {
+      final res = await http
+          .put(
+            uri,
+            headers: _headers(json: true),
+            body: body == null ? null : jsonEncode(body),
+          )
+          .timeout(timeout);
+      return _decode(res);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException(e.toString(), cause: e);
+    }
+  }
+
+  Future<dynamic> patchJson(
+    String path, {
+    Object? body,
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    final uri = ApiConfig.uri(path);
+    try {
+      final res = await http
+          .patch(
+            uri,
+            headers: _headers(json: true),
+            body: body == null ? null : jsonEncode(body),
+          )
+          .timeout(timeout);
       return _decode(res);
     } catch (e) {
       if (e is ApiException) rethrow;
@@ -177,6 +234,45 @@ class ApiClient {
             body: body == null ? null : jsonEncode(body),
           )
           .timeout(timeout);
+      return _decode(res);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException(e.toString(), cause: e);
+    }
+  }
+
+  /// Upload file lewat multipart/form-data — dipakai mis. payment proof
+  /// upload. `fieldName` = key di multipart (mis. 'file'). `contentType`
+  /// optional kalau tidak detect otomatis (mis. 'image/jpeg').
+  Future<dynamic> postMultipartFile(
+    String path, {
+    Map<String, dynamic>? query,
+    required String fieldName,
+    required String filePath,
+    required String filename,
+    String? contentType,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final uri = ApiConfig.uri(path, query);
+    try {
+      final req = http.MultipartRequest('POST', uri)
+        ..headers.addAll(_headers());
+      // Multipart file
+      final mediaType = contentType?.split('/');
+      req.files.add(
+        await http.MultipartFile.fromPath(
+          fieldName,
+          filePath,
+          filename: filename,
+        ),
+      );
+      // Note: contentType set ke default oleh package:http kalau tidak kasih
+      // MediaType eksplisit. Sebagian besar API akan auto-detect dari nama
+      // file. mediaType variable di-extract di atas untuk future use kalau
+      // butuh override ke MediaType class dari package:http_parser.
+      final _ = mediaType;
+      final streamed = await req.send().timeout(timeout);
+      final res = await http.Response.fromStream(streamed);
       return _decode(res);
     } catch (e) {
       if (e is ApiException) rethrow;

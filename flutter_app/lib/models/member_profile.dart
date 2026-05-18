@@ -171,29 +171,27 @@ class MemberVoucher {
 }
 
 class OrderSummary {
+  // ── Identifiers ──
   final String id;
   final String orderNumber;
+
+  // ── Customer + shipping address (kalau ada) ──
   final String customerName;
   final String customerPhone;
   final String shippingAddress;
   final String? shippingCity;
-  final String orderType;
-  final String? shippingMethod;
+
+  // ── Order type + shipping ──
+  final String orderType; // DELIVERY / SELF_PICKUP
+  final String shippingMethod; // DELIVERY / SELF_PICKUP / dst
   final String? courierCode;
   final String? courierService;
   final String? trackingNumber;
   final String? trackingToken;
   final String? biteshipTrackingUrl;
   final String? shipmentStatus;
-  final int subtotal;
-  final int shippingCost;
-  final int discount;
-  final int total;
-  final int? uniqueCode;
-  final String status;
-  final String paymentProvider;
-  final String shippingMethod;
-  final String orderType;
+
+  // ── Pickup info (kalau SELF_PICKUP) ──
   final String? pickupCode;
   final String? pickupLocationId;
   final String? pickupLocationName;
@@ -202,22 +200,52 @@ class OrderSummary {
   final String? pickupMapsUrl;
   final double? pickupLatitude;
   final double? pickupLongitude;
+
+  // ── Pricing (semua dalam Rupiah) ──
+  final double subtotal;
+  final double shippingCost;
+  final double discount;
+  final double total;
+  final int? uniqueCode;
+
+  // ── Status + payment ──
+  final String status; // PENDING/PAID/PROCESSING/SHIPPED/DELIVERED/CANCELLED
+  final String paymentStatus; // UNPAID/PENDING/PAID/FAILED
+  final String paymentProvider; // MANUAL/MIDTRANS
   final String? paymentUrl;
   final String? paymentProofUrl;
   final String? manualBank;
   final String? voucherCode;
+
+  // ── Items + timestamps ──
   final List<OrderItemSummary> items;
+  /// Pre-computed item count dari API — dipakai kalau items[] belum di-load
+  /// (mis. list endpoint return ringkas). Fallback ke `items.fold(quantity)`.
+  final int itemCountFromApi;
   final DateTime createdAt;
   final DateTime? updatedAt;
+  final DateTime? deliveredAt;
+  final DateTime? completedAt;
+  final DateTime? statusUpdatedAt;
+
+  /// Detail URL — direct link ke /pesanan/[orderNumber] di web.
+  final String? detailUrl;
 
   const OrderSummary({
     required this.id,
     required this.orderNumber,
-    required this.status,
-    required this.paymentStatus,
-    this.paymentProvider = 'MANUAL',
-    this.shippingMethod = 'DELIVERY',
+    this.customerName = '',
+    this.customerPhone = '',
+    this.shippingAddress = '',
+    this.shippingCity,
     this.orderType = 'DELIVERY',
+    this.shippingMethod = 'DELIVERY',
+    this.courierCode,
+    this.courierService,
+    this.trackingNumber,
+    this.trackingToken,
+    this.biteshipTrackingUrl,
+    this.shipmentStatus,
     this.pickupCode,
     this.pickupLocationId,
     this.pickupLocationName,
@@ -226,37 +254,63 @@ class OrderSummary {
     this.pickupMapsUrl,
     this.pickupLatitude,
     this.pickupLongitude,
-    this.paymentUrl,
-    this.paymentProofUrl,
-    this.manualBank,
-    this.uniqueCode,
-    this.trackingToken,
-    this.biteshipTrackingUrl,
-    this.shipmentStatus,
     this.subtotal = 0,
     this.shippingCost = 0,
     this.discount = 0,
-    required this.total,
+    this.total = 0,
     this.uniqueCode,
     required this.status,
-    this.paymentProvider = 'MANUAL',
     required this.paymentStatus,
+    this.paymentProvider = 'MANUAL',
     this.paymentUrl,
     this.paymentProofUrl,
     this.manualBank,
     this.voucherCode,
     this.items = const [],
+    this.itemCountFromApi = 0,
     required this.createdAt,
     this.updatedAt,
+    this.deliveredAt,
+    this.completedAt,
+    this.statusUpdatedAt,
+    this.detailUrl,
   });
 
-  /// Jumlah produk unique (items.length) — beberapa screen pakai itemCount.
-  int get itemCount =>
-      items.fold(0, (sum, it) => sum + it.quantity);
+  /// Jumlah unit produk (sum quantities). Pakai `itemCountFromApi` kalau
+  /// items[] kosong tapi server kasih count (list endpoint compact).
+  int get itemCount {
+    if (items.isNotEmpty) {
+      return items.fold<int>(0, (sum, it) => sum + it.quantity);
+    }
+    return itemCountFromApi;
+  }
+
+  bool get isSelfPickup {
+    final m = shippingMethod.toUpperCase();
+    final t = orderType.toUpperCase();
+    return m == 'SELF_PICKUP' ||
+        m == 'SELF-PICKUP' ||
+        m == 'PICKUP' ||
+        t == 'SELF_PICKUP' ||
+        t == 'PICKUP';
+  }
 
   factory OrderSummary.fromJson(Map<String, dynamic> json) {
+    final itemsJson = json['items'];
+    final orderItems = itemsJson is List
+        ? itemsJson
+            .whereType<Map<String, dynamic>>()
+            .map(OrderItemSummary.fromJson)
+            .toList()
+        : const <OrderItemSummary>[];
+
     return OrderSummary(
+      id: (json['id'] ?? json['orderNumber'] ?? '').toString(),
       orderNumber: (json['orderNumber'] ?? '').toString(),
+      customerName: (json['customerName'] ?? '').toString(),
+      customerPhone: (json['customerPhone'] ?? '').toString(),
+      shippingAddress: (json['shippingAddress'] ?? '').toString(),
+      shippingCity: _nullableString(json['shippingCity']),
       status: (json['status'] ?? 'PENDING').toString(),
       paymentStatus: (json['paymentStatus'] ?? 'UNPAID').toString(),
       paymentProvider: (json['paymentProvider'] ?? 'MANUAL').toString(),
@@ -265,30 +319,39 @@ class OrderSummary {
               .toString(),
       orderType:
           (json['orderType'] ?? json['order_type'] ?? 'DELIVERY').toString(),
-      pickupCode: (json['pickupCode'] ?? json['pickup_code'])?.toString(),
-      pickupLocationId:
-          (json['pickupLocationId'] ?? json['pickup_location_id'])?.toString(),
-      pickupLocationName:
-          (json['pickupLocationName'] ?? json['pickup_location_name'])
-              ?.toString(),
-      pickupAddress:
-          (json['pickupAddress'] ?? json['pickup_address'])?.toString(),
-      pickupHours: (json['pickupHours'] ?? json['pickup_hours'])?.toString(),
-      pickupMapsUrl:
-          (json['pickupMapsUrl'] ?? json['pickup_maps_url'])?.toString(),
+      courierCode: _nullableString(json['courierCode']),
+      courierService: _nullableString(json['courierService']),
+      trackingNumber: _nullableString(json['trackingNumber']),
+      trackingToken: _nullableString(json['trackingToken']),
+      biteshipTrackingUrl: _nullableString(json['biteshipTrackingUrl']),
+      shipmentStatus: _nullableString(json['shipmentStatus']),
+      pickupCode: _nullableString(json['pickupCode'] ?? json['pickup_code']),
+      pickupLocationId: _nullableString(
+        json['pickupLocationId'] ?? json['pickup_location_id'],
+      ),
+      pickupLocationName: _nullableString(
+        json['pickupLocationName'] ?? json['pickup_location_name'],
+      ),
+      pickupAddress: _nullableString(
+        json['pickupAddress'] ?? json['pickup_address'],
+      ),
+      pickupHours: _nullableString(json['pickupHours'] ?? json['pickup_hours']),
+      pickupMapsUrl: _nullableString(
+        json['pickupMapsUrl'] ?? json['pickup_maps_url'],
+      ),
       pickupLatitude: _asDoubleOrNull(
         json['pickupLatitude'] ?? json['pickup_latitude'],
       ),
       pickupLongitude: _asDoubleOrNull(
         json['pickupLongitude'] ?? json['pickup_longitude'],
       ),
-      paymentUrl: json['paymentUrl']?.toString(),
-      paymentProofUrl: json['paymentProofUrl']?.toString(),
-      manualBank: json['manualBank']?.toString(),
+      paymentUrl: _nullableString(json['paymentUrl']),
+      paymentProofUrl: _nullableString(json['paymentProofUrl']),
+      manualBank: _nullableString(json['manualBank']),
+      voucherCode: _nullableString(json['voucherCode']),
       uniqueCode:
           json['uniqueCode'] == null ? null : _asInt(json['uniqueCode']),
-      trackingToken: json['trackingToken']?.toString(),
-      detailUrl: json['detailUrl']?.toString(),
+      detailUrl: _nullableString(json['detailUrl']),
       createdAt: DateTime.tryParse((json['createdAt'] ?? '').toString()) ??
           DateTime.now(),
       deliveredAt:
@@ -299,9 +362,7 @@ class OrderSummary {
         json['statusUpdatedAt'] ?? json['status_updated_at'],
       ),
       updatedAt: _asDateTimeOrNull(json['updatedAt'] ?? json['updated_at']),
-      itemCount: _asInt(json['itemCount']) == 0
-          ? fallbackItemCount
-          : _asInt(json['itemCount']),
+      itemCountFromApi: _asInt(json['itemCount']),
       subtotal: _asDouble(json['subtotal']),
       shippingCost: _asDouble(json['shippingCost']),
       discount: _asDouble(json['discount']),
@@ -310,15 +371,9 @@ class OrderSummary {
     );
   }
 
-  bool get isSelfPickup {
-    final normalizedMethod = shippingMethod.toUpperCase();
-    final normalizedType = orderType.toUpperCase();
-    return normalizedMethod == 'SELF_PICKUP' ||
-        normalizedMethod == 'SELF-PICKUP' ||
-        normalizedMethod == 'PICKUP' ||
-        normalizedType == 'SELF_PICKUP' ||
-        normalizedType == 'PICKUP';
-  }
+  /// Alias `fromJson` — beberapa code (service) pakai fromApiJson.
+  factory OrderSummary.fromApiJson(Map<String, dynamic> json) =>
+      OrderSummary.fromJson(json);
 }
 
 class OrderItemSummary {
@@ -394,7 +449,42 @@ class OrderItemSummary {
   }
 }
 
-// ── helper ──
+// ── helpers ──
+int _asInt(dynamic value, {int fallback = 0}) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value) ?? fallback;
+  return fallback;
+}
+
+double _asDouble(dynamic value, {double fallback = 0}) {
+  if (value is double) return value;
+  if (value is num) return value.toDouble();
+  if (value is String) return double.tryParse(value) ?? fallback;
+  return fallback;
+}
+
+double? _asDoubleOrNull(dynamic value) {
+  if (value == null) return null;
+  if (value is double) return value;
+  if (value is num) return value.toDouble();
+  if (value is String) return double.tryParse(value);
+  return null;
+}
+
+DateTime? _asDateTimeOrNull(dynamic raw) {
+  if (raw == null) return null;
+  if (raw is DateTime) return raw;
+  if (raw is String) return DateTime.tryParse(raw);
+  return null;
+}
+
+String? _nullableString(dynamic raw) {
+  if (raw == null) return null;
+  final s = raw.toString().trim();
+  return s.isEmpty ? null : s;
+}
+
 DateTime? _parseDate(dynamic raw) {
   if (raw == null) return null;
   if (raw is DateTime) return raw;

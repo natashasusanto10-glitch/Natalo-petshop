@@ -273,6 +273,10 @@ class Product {
     this.soldCount = 0,
   });
 
+  /// Alias `fromApiJson` — legacy code (mis. cart_item) pakai `Product.fromJson(...)`.
+  factory Product.fromJson(Map<String, dynamic> json) =>
+      Product.fromApiJson(json);
+
   factory Product.fromApiJson(Map<String, dynamic> json) {
     final price = _asDouble(json['price_min'] ?? json['price']);
     final discountPrice = _nullableDouble(
