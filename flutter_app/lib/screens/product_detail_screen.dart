@@ -55,7 +55,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   bool _descriptionExpanded = false;
   int _activeTab = 0;
   final ScrollController _scrollController = ScrollController();
-  final GlobalKey _recommendationKey = GlobalKey();
+  final GlobalKey _overviewKey = GlobalKey();
   final GlobalKey _reviewsKey = GlobalKey();
   // Map attribute.id → selected option.id. Kosong = belum pilih satu pun.
   final Map<String, String> _selectedOptions = {};
@@ -271,15 +271,17 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             pinned: true,
             delegate: _ProductSectionTabsDelegate(
               activeIndex: _activeTab,
-              onRecommendationTap: () =>
-                  _scrollToSection(_recommendationKey, 0),
+              onRecommendationTap: () => _scrollToSection(_overviewKey, 0),
               onReviewsTap: () => _scrollToSection(_reviewsKey, 1),
             ),
           ),
           SliverToBoxAdapter(
-            child: _ProductInformationSection(
-              product: product,
-              displayStock: _displayStock,
+            child: KeyedSubtree(
+              key: _overviewKey,
+              child: _ProductInformationSection(
+                product: product,
+                displayStock: _displayStock,
+              ),
             ),
           ),
           SliverToBoxAdapter(
@@ -293,10 +295,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             ),
           ),
           SliverToBoxAdapter(
-            child: KeyedSubtree(
-              key: _recommendationKey,
-              child: _ProductRecommendationSection(related: _related),
-            ),
+            child: _ProductRecommendationSection(related: _related),
           ),
           SliverToBoxAdapter(
             child: KeyedSubtree(
@@ -719,6 +718,11 @@ class _VoucherAndTrust extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final voucherLabel = product.voucherPreview?.badgeLabel.trim();
+    final subtitle = voucherLabel != null && voucherLabel.isNotEmpty
+        ? '$voucherLabel • cek di keranjang sebelum checkout'
+        : 'Cek voucher di keranjang sebelum checkout';
+
     return AppPressable(
       onTap: () => Navigator.pushNamed(context, '/cart'),
       borderRadius: BorderRadius.circular(16),
@@ -748,11 +752,11 @@ class _VoucherAndTrust extends StatelessWidget {
               child: const Icon(Icons.percent_rounded, color: _brandBlue),
             ),
             const SizedBox(width: 12),
-            const Expanded(
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
+                  const Text(
                     'Voucher tersedia',
                     style: TextStyle(
                       color: _textDark,
@@ -760,10 +764,12 @@ class _VoucherAndTrust extends StatelessWidget {
                       fontWeight: FontWeight.w900,
                     ),
                   ),
-                  SizedBox(height: 3),
+                  const SizedBox(height: 3),
                   Text(
-                    'Cek voucher di keranjang sebelum checkout',
-                    style: TextStyle(
+                    subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
                       color: _textGray,
                       fontSize: 12.5,
                       fontWeight: FontWeight.w700,
@@ -1081,7 +1087,7 @@ class _ProductRecommendationSection extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           SizedBox(
-            height: 232,
+            height: 252,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: related.length,
@@ -1106,6 +1112,13 @@ class _DetailRecommendationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final savings = product.price - product.finalPrice;
+    final voucherLabel = product.voucherPreview?.badgeLabel.trim();
+    final savingsLabel = voucherLabel != null && voucherLabel.isNotEmpty
+        ? voucherLabel
+        : savings > 0
+            ? 'Hemat ${formatRupiah(savings)}'
+            : null;
+
     return SizedBox(
       width: 150,
       child: AppPressable(
@@ -1157,7 +1170,7 @@ class _DetailRecommendationCard extends StatelessWidget {
                   fontWeight: FontWeight.w900,
                 ),
               ),
-              if (savings > 0) ...[
+              if (savingsLabel != null) ...[
                 const SizedBox(height: 5),
                 Container(
                   padding:
@@ -1167,7 +1180,7 @@ class _DetailRecommendationCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    'Hemat ${formatRupiah(savings)}',
+                    savingsLabel,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
