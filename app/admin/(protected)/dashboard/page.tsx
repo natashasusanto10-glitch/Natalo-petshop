@@ -2,7 +2,6 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah, jakartaTodayRange } from "@/lib/format";
 import { getSession } from "@/lib/auth";
-import { AdminInstallPrompt } from "@/components/AdminInstallPrompt";
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: "Order Baru",
@@ -334,8 +333,6 @@ export default async function AdminDashboardPage() {
         </section>
 
         <aside className="space-y-6">
-          <AdminInstallPrompt />
-
           <StockPanel
             title="Produk Stok Menipis"
             emptyText="Tidak ada stok menipis."

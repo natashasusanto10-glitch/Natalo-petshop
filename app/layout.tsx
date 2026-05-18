@@ -9,10 +9,6 @@ import { PWARegister } from "@/components/PWARegister";
 import { NativeSwipeBackController } from "@/components/NativeSwipeBackController";
 import { SwipeBackProvider } from "@/components/SwipeBackProvider";
 import IOSSwipeBack from "@/components/IOSSwipeBack";
-// InstallPromptLazy is a client-side dynamic wrapper — call ke next/dynamic
-// dengan ssr:false hanya boleh di dalam Client Component (Next 14+), jadi
-// kita wrap di components/InstallPromptLazy.tsx.
-import { InstallPromptLazy as InstallPrompt } from "@/components/InstallPromptLazy";
 import { StoreOnly } from "@/components/StoreOnly";
 import { BottomNavigation } from "@/components/BottomNavigation";
 import { ToastProvider } from "@/components/Toast";
@@ -57,7 +53,6 @@ export const metadata: Metadata = {
     "whiskas medan",
     "natalo petshop",
   ],
-  manifest: "/manifest.json",
   metadataBase: new URL(siteUrl),
   alternates: {
     canonical: siteUrl,
@@ -85,133 +80,10 @@ export const metadata: Metadata = {
     description: "Toko hewan peliharaan online terpercaya di Medan.",
     images: ["/icons/icon-512x512.png"],
   },
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "default",
-    title: brand,
-    // iOS PWA splash screens — di-generate via `node scripts/generate-ios-splash.mjs`
-    // Output di public/splash/. Tanpa ini, iPhone tampilkan layar putih saat app load.
-    // Fallback PNG di akhir = catch-all untuk device yang resolusinya tidak match
-    // satupun media query di atas.
-    startupImage: [
-      // Light mode + size-specific
-      {
-        url: "/splash/iphone-16-pro-max-portrait.png",
-        media:
-          "(prefers-color-scheme: light) and (device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
-      },
-      {
-        url: "/splash/iphone-16-pro-portrait.png",
-        media:
-          "(prefers-color-scheme: light) and (device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
-      },
-      {
-        url: "/splash/iphone-15-pro-max-portrait.png",
-        media:
-          "(prefers-color-scheme: light) and (device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
-      },
-      {
-        url: "/splash/iphone-15-portrait.png",
-        media:
-          "(prefers-color-scheme: light) and (device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
-      },
-      {
-        url: "/splash/iphone-14-pro-max-portrait.png",
-        media:
-          "(prefers-color-scheme: light) and (device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
-      },
-      {
-        url: "/splash/iphone-14-portrait.png",
-        media:
-          "(prefers-color-scheme: light) and (device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
-      },
-      {
-        url: "/splash/iphone-12-mini-portrait.png",
-        media:
-          "(prefers-color-scheme: light) and (device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
-      },
-      {
-        url: "/splash/iphone-xs-max-portrait.png",
-        media:
-          "(prefers-color-scheme: light) and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
-      },
-      {
-        url: "/splash/iphone-xr-portrait.png",
-        media:
-          "(prefers-color-scheme: light) and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)",
-      },
-      {
-        url: "/splash/iphone-8-plus-portrait.png",
-        media:
-          "(prefers-color-scheme: light) and (device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
-      },
-      {
-        url: "/splash/iphone-se-portrait.png",
-        media:
-          "(prefers-color-scheme: light) and (device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)",
-      },
-
-      // Dark mode + size-specific (PNG sama — brand blue tetap konsisten gelap/terang)
-      {
-        url: "/splash/iphone-16-pro-max-portrait.png",
-        media:
-          "(prefers-color-scheme: dark) and (device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
-      },
-      {
-        url: "/splash/iphone-16-pro-portrait.png",
-        media:
-          "(prefers-color-scheme: dark) and (device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
-      },
-      {
-        url: "/splash/iphone-15-pro-max-portrait.png",
-        media:
-          "(prefers-color-scheme: dark) and (device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
-      },
-      {
-        url: "/splash/iphone-15-portrait.png",
-        media:
-          "(prefers-color-scheme: dark) and (device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
-      },
-      {
-        url: "/splash/iphone-14-pro-max-portrait.png",
-        media:
-          "(prefers-color-scheme: dark) and (device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
-      },
-      {
-        url: "/splash/iphone-14-portrait.png",
-        media:
-          "(prefers-color-scheme: dark) and (device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
-      },
-      {
-        url: "/splash/iphone-12-mini-portrait.png",
-        media:
-          "(prefers-color-scheme: dark) and (device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
-      },
-      {
-        url: "/splash/iphone-xs-max-portrait.png",
-        media:
-          "(prefers-color-scheme: dark) and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
-      },
-      {
-        url: "/splash/iphone-xr-portrait.png",
-        media:
-          "(prefers-color-scheme: dark) and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)",
-      },
-      {
-        url: "/splash/iphone-8-plus-portrait.png",
-        media:
-          "(prefers-color-scheme: dark) and (device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
-      },
-      {
-        url: "/splash/iphone-se-portrait.png",
-        media:
-          "(prefers-color-scheme: dark) and (device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)",
-      },
-
-      // Universal fallback (no media query) — ditemui kalau dua kategori di atas tidak match
-      { url: "/splash/fallback.png" },
-    ],
-  },
+  // PWA dihapus (Mei 2026): appleWebApp config + iOS splash screens dilepas.
+  // Mobile experience pindah ke Flutter native (App Store, bundle
+  // com.natalo.petshop). Web sekarang regular web — install ke homescreen
+  // cuma kasih bookmark, bukan standalone PWA.
   icons: {
     icon: [
       { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
@@ -303,7 +175,6 @@ export default function RootLayout({
           <Suspense fallback={null}>
             <BottomNavigation />
           </Suspense>
-          <InstallPrompt />
         </StoreOnly>
         <ToastProvider />
       </body>

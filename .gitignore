@@ -5,11 +5,6 @@ node_modules
 coverage
 .DS_Store
 
-# Service Worker — generated dari public/sw.template.js oleh
-# scripts/bump-sw-version.mjs setiap predev/prebuild. Cache version
-# unique per commit/run supaya cache lama auto-nuke di sisi user.
-public/sw.js
-
 # user uploads (jangan masuk repo)
 public/uploads/*
 !public/uploads/.gitkeep

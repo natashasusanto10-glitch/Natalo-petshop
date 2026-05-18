@@ -3,9 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "predev": "node scripts/bump-sw-version.mjs && dotenv -e .env.local -- prisma migrate deploy",
+    "predev": "dotenv -e .env.local -- prisma migrate deploy",
     "dev": "next dev",
-    "prebuild": "node scripts/bump-sw-version.mjs",
     "build": "prisma generate && prisma migrate deploy && next build",
     "start": "next start",
     "lint": "eslint .",
