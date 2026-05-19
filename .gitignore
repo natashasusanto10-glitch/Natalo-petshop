@@ -110,3 +110,6 @@ vendor/bundle/
 # Flutter SDK download (jangan commit, ~3GB)
 /flutter/
 
+
+# Bunny migration runtime artifacts (output dari scripts/migrate-bunny-to-sg.mjs)
+scripts/.bunny-migration-*
