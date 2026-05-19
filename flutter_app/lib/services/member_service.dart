@@ -138,7 +138,13 @@ class MemberService {
 
   Future<List<OrderSummary>> fetchOrders() async {
     try {
-      final uri = ApiConfig.uri('/api/orders');
+      // Endpoint backend untuk member orders list ada di
+      // `/api/member/orders` (GET, return {orders: [...]}). Endpoint
+      // `/api/orders` HANYA POST untuk checkout — tidak ada GET handler,
+      // jadi sebelumnya request return 404/405 → service return empty
+      // list → user lihat "Belum ada pesanan" padahal punya order
+      // PENDING (Belum Bayar) di DB.
+      final uri = ApiConfig.uri('/api/member/orders');
       final res = await http
           .get(uri, headers: _authHeaders)
           .timeout(const Duration(seconds: 8));
