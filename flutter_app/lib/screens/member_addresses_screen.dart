@@ -11,7 +11,6 @@ import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/wilayah_picker.dart';
 import '../state/member_store.dart';
 import '../widgets/app_ui.dart';
-import '../widgets/glass_surface.dart';
 
 const _brandBlue = Color(0xFF0B7FEA);
 
@@ -136,9 +135,27 @@ class _MemberAddressesScreenState extends State<MemberAddressesScreen> {
     }
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      // Solid white bg (was transparent → kalau parent transparent ke
+      // device bg, content GlassSurface BackdropFilter bisa render
+      // weird di iOS — text invisible, blank screen reports dari user).
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text('Alamat'),
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        shape: const Border(
+          bottom: BorderSide(color: Color(0xFFE5EAF2), width: 1),
+        ),
+        title: const Text(
+          'Alamat',
+          style: TextStyle(
+            color: Color(0xFF17202A),
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        iconTheme: const IconThemeData(color: Color(0xFF17202A)),
         actions: [
           AppHeaderIconButton(
             onPressed: _openAddressForm,
@@ -254,16 +271,31 @@ class _EmptyAddressesCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GlassSurface(
-      radius: 26,
-      padding: const EdgeInsets.all(22),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(22, 28, 22, 24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
       child: Column(
         children: [
-          const AppLottieAsset(
-            asset: 'assets/lottie/empty_box.json',
-            size: 112,
+          // Icon location pin di lingkaran biru lembut — replace Lottie
+          // stub yang cuma render pets icon fallback (visual misleading).
+          Container(
+            width: 96,
+            height: 96,
+            decoration: const BoxDecoration(
+              color: Color(0xFFEAF5FF),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.location_on_rounded,
+              color: _brandBlue,
+              size: 44,
+            ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 14),
           const Text(
             'Belum ada alamat tersimpan',
             textAlign: TextAlign.center,
@@ -279,17 +311,31 @@ class _EmptyAddressesCard extends StatelessWidget {
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Color(0xFF6B7280),
-              fontWeight: FontWeight.w700,
-              height: 1.4,
+              fontWeight: FontWeight.w600,
+              height: 1.45,
+              fontSize: 13.5,
             ),
           ),
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            onPressed: onAdd,
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Tambah Alamat'),
-            style: ElevatedButton.styleFrom(
-              minimumSize: const Size.fromHeight(52),
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton.icon(
+              onPressed: onAdd,
+              icon: const Icon(Icons.add_rounded, size: 20),
+              label: const Text('Tambah Alamat'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _brandBlue,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                textStyle: const TextStyle(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
             ),
           ),
         ],
@@ -303,24 +349,41 @@ class _AddressHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const GlassSurface(
-      radius: 24,
-      padding: EdgeInsets.all(18),
+    // Plain Container, bukan GlassSurface — BackdropFilter di iOS bisa
+    // render weird saat scaffold transparent dan tidak ada content
+    // di belakang untuk di-blur (root cause user report "alamat error
+    // blank page").
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
       child: Row(
         children: [
-          SoftIconTile(
-            icon: Icons.location_on_outlined,
-            color: _brandBlue,
-            size: 44,
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: const Color(0xFFEAF5FF),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              Icons.location_on_outlined,
+              color: _brandBlue,
+              size: 22,
+            ),
           ),
-          SizedBox(width: 10),
-          Expanded(
+          const SizedBox(width: 12),
+          const Expanded(
             child: Text(
               'Tambah, edit, atau jadikan alamat utama untuk checkout lebih cepat.',
               style: TextStyle(
                 color: Color(0xFF475569),
-                fontWeight: FontWeight.w800,
-                height: 1.35,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+                height: 1.45,
               ),
             ),
           ),
