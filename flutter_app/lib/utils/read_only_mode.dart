@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -7,8 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// tidak tersentuh dari Flutter testing.
 ///
 /// Default behavior:
-/// - **Release build** → ON (read-only) sampai launch siap
-/// - **Debug build** → OFF supaya QA bisa test checkout/write flow
+/// - OFF untuk semua build app user-facing.
+/// - Bisa diaktifkan manual lewat Settings/internal QA kalau perlu mode aman.
 ///
 /// Override runtime: Settings → "Mode Server" → toggle.
 ///
@@ -22,8 +21,10 @@ class ReadOnlyMode extends ChangeNotifier {
   ReadOnlyMode._();
 
   static const String _kStorageKey = 'natalo_read_only_mode';
+  static const String _kWritableDefaultMigrationKey =
+      'natalo_read_only_mode_writable_default_v1';
 
-  bool _enabled = kReleaseMode;
+  bool _enabled = false;
   bool _initialized = false;
 
   bool get enabled => _enabled;
@@ -36,10 +37,18 @@ class ReadOnlyMode extends ChangeNotifier {
     if (_initialized) return;
     try {
       final prefs = await SharedPreferences.getInstance();
-      // Release tetap aman by default, debug bebas untuk QA flow checkout.
-      _enabled = prefs.getBool(_kStorageKey) ?? kReleaseMode;
+      final migrated = prefs.getBool(_kWritableDefaultMigrationKey) ?? false;
+      if (!migrated) {
+        // Legacy TestFlight builds defaulted release mode to read-only and
+        // persisted that value. Flip it once so real member actions work.
+        _enabled = false;
+        await prefs.setBool(_kStorageKey, false);
+        await prefs.setBool(_kWritableDefaultMigrationKey, true);
+      } else {
+        _enabled = prefs.getBool(_kStorageKey) ?? false;
+      }
     } catch (_) {
-      _enabled = kReleaseMode;
+      _enabled = false;
     }
     _initialized = true;
     notifyListeners();

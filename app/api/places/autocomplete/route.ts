@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json().catch(() => ({}));
-  const input = String(body.input ?? "").trim();
+  const input = String(body.input ?? body.query ?? "").trim();
   if (input.length < 2) {
     return NextResponse.json({ predictions: [], status: "ZERO_RESULTS" });
   }
@@ -37,7 +37,11 @@ export async function POST(request: NextRequest) {
     key: apiKey,
   });
 
-  if (body.location) params.set("location", String(body.location));
+  if (body.location) {
+    params.set("location", String(body.location));
+  } else if (Number.isFinite(Number(body.lat)) && Number.isFinite(Number(body.lng))) {
+    params.set("location", `${Number(body.lat)},${Number(body.lng)}`);
+  }
 
   const googleResponse = await fetch(
     `https://maps.googleapis.com/maps/api/place/autocomplete/json?${params.toString()}`,

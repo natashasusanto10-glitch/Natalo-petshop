@@ -53,21 +53,93 @@ class PlaceDetails {
   });
 
   factory PlaceDetails.fromJson(Map<String, dynamic> json) {
-    final loc = json['location'] ?? json['geometry']?['location'];
-    final latRaw = loc is Map ? loc['lat'] : null;
-    final lngRaw = loc is Map ? loc['lng'] : null;
+    final address = _asMap(json['address']);
+    final result = _asMap(json['result']);
+    final geometry = _asMap(json['geometry']) ?? _asMap(result?['geometry']);
+    final loc = _asMap(json['location']) ?? _asMap(geometry?['location']);
+    final latRaw = loc?['lat'];
+    final lngRaw = loc?['lng'];
     return PlaceDetails(
-      placeId: (json['placeId'] ?? json['place_id'] ?? '').toString(),
-      formattedAddress:
-          (json['formattedAddress'] ?? json['formatted_address'] ?? '')
-              .toString(),
-      latitude: latRaw is num ? latRaw.toDouble() : double.tryParse('$latRaw'),
-      longitude: lngRaw is num ? lngRaw.toDouble() : double.tryParse('$lngRaw'),
-      postalCode: json['postalCode']?.toString(),
-      city: json['city']?.toString(),
-      district: json['district']?.toString(),
-      province: json['province']?.toString(),
+      placeId: _firstString([
+        json['placeId'],
+        json['place_id'],
+        result?['place_id'],
+      ]),
+      formattedAddress: _firstString([
+        json['formattedAddress'],
+        json['formatted_address'],
+        address?['formattedAddress'],
+        address?['formatted_address'],
+        result?['formatted_address'],
+        address?['jalan'],
+      ]),
+      latitude: _toDouble([
+        json['lat'],
+        json['latitude'],
+        address?['lat'],
+        address?['latitude'],
+        latRaw,
+      ]),
+      longitude: _toDouble([
+        json['lng'],
+        json['longitude'],
+        address?['lng'],
+        address?['longitude'],
+        lngRaw,
+      ]),
+      postalCode: _nullableString([
+        json['postalCode'],
+        json['postal_code'],
+        address?['postalCode'],
+        address?['postal_code'],
+        address?['kodePos'],
+      ]),
+      city: _nullableString([
+        json['city'],
+        json['kota'],
+        address?['city'],
+        address?['kota'],
+      ]),
+      district: _nullableString([
+        json['district'],
+        json['kecamatan'],
+        address?['district'],
+        address?['kecamatan'],
+      ]),
+      province: _nullableString([
+        json['province'],
+        json['provinsi'],
+        address?['province'],
+        address?['provinsi'],
+      ]),
     );
+  }
+
+  static Map<String, dynamic>? _asMap(dynamic value) {
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return null;
+  }
+
+  static String _firstString(List<dynamic> values) {
+    for (final value in values) {
+      final text = value?.toString().trim();
+      if (text != null && text.isNotEmpty && text != 'null') return text;
+    }
+    return '';
+  }
+
+  static String? _nullableString(List<dynamic> values) {
+    final text = _firstString(values);
+    return text.isEmpty ? null : text;
+  }
+
+  static double? _toDouble(List<dynamic> values) {
+    for (final value in values) {
+      if (value is num) return value.toDouble();
+      final parsed = double.tryParse(value?.toString() ?? '');
+      if (parsed != null) return parsed;
+    }
+    return null;
   }
 }
 
@@ -86,14 +158,20 @@ class PlacesService {
     double? lat,
     double? lng,
   }) async {
-    if (query.trim().length < 3) return const [];
+    final trimmed = query.trim();
+    if (trimmed.length < 3) return const [];
     try {
       final data = await apiClient.postJson(
         '/api/places/autocomplete',
         body: {
-          'query': query.trim(),
+          'input': trimmed,
+          'query': trimmed,
           if (sessionToken != null) 'sessionToken': sessionToken,
-          if (lat != null && lng != null) 'location': {'lat': lat, 'lng': lng},
+          if (lat != null && lng != null) ...{
+            'location': '$lat,$lng',
+            'lat': lat,
+            'lng': lng,
+          },
         },
       );
       final raw = data is Map

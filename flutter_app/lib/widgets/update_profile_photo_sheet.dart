@@ -5,6 +5,7 @@ import '../services/api_client.dart';
 import '../services/member_service.dart';
 import '../state/member_store.dart';
 import '../utils/haptics.dart';
+import '../utils/read_only_mode.dart';
 import 'app_toast.dart';
 
 const _brandBlue = Color(0xFF0B7FEA);
@@ -107,6 +108,14 @@ class _UpdateProfilePhotoSheetState extends State<_UpdateProfilePhotoSheet> {
         'Upload foto gagal: ${error.message}',
         kind: ToastKind.error,
       );
+    } on ReadOnlyModeException {
+      if (!mounted) return;
+      AppHaptics.warning();
+      AppToast.show(
+        context,
+        'Mode aman aktif. Upload foto belum bisa dilakukan.',
+        kind: ToastKind.warning,
+      );
     } catch (error) {
       if (!mounted) return;
       AppHaptics.warning();
@@ -139,6 +148,14 @@ class _UpdateProfilePhotoSheetState extends State<_UpdateProfilePhotoSheet> {
         context,
         'Foto profil dihapus.',
         kind: ToastKind.success,
+      );
+    } on ReadOnlyModeException {
+      if (!mounted) return;
+      AppHaptics.warning();
+      AppToast.show(
+        context,
+        'Mode aman aktif. Hapus foto belum bisa dilakukan.',
+        kind: ToastKind.warning,
       );
     } catch (error) {
       if (!mounted) return;
@@ -345,4 +362,3 @@ class _PhotoActionTile extends StatelessWidget {
     );
   }
 }
-
