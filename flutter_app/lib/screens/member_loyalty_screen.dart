@@ -13,16 +13,27 @@ const _brandBlue = Color(0xFF0B7FEA);
 /// Tier penukaran poin → voucher. Match PWA `app/api/member/claim-voucher/route.ts`
 /// TIERS constant. Server adalah source of truth — kalau berubah di backend,
 /// update di sini juga. Untuk Phase 2 bisa fetch via GET endpoint.
+///
+/// Earn rate: 1 poin per Rp20.000 belanja (orders/route.ts).
+/// Setiap tier punya `minimumOrder` — voucher hanya valid saat subtotal
+/// checkout >= angka tsb.
 const _redeemTiers = <_LoyaltyTier>[
-  _LoyaltyTier(points: 50, discountAmount: 5000),
-  _LoyaltyTier(points: 100, discountAmount: 10000),
-  _LoyaltyTier(points: 200, discountAmount: 20000),
+  _LoyaltyTier(points: 20, discountAmount: 10000, minimumOrder: 150000),
+  _LoyaltyTier(points: 50, discountAmount: 25000, minimumOrder: 300000),
+  _LoyaltyTier(points: 75, discountAmount: 40000, minimumOrder: 500000),
+  _LoyaltyTier(points: 100, discountAmount: 60000, minimumOrder: 700000),
+  _LoyaltyTier(points: 200, discountAmount: 150000, minimumOrder: 1500000),
 ];
 
 class _LoyaltyTier {
   final int points;
   final int discountAmount;
-  const _LoyaltyTier({required this.points, required this.discountAmount});
+  final int minimumOrder;
+  const _LoyaltyTier({
+    required this.points,
+    required this.discountAmount,
+    required this.minimumOrder,
+  });
 }
 
 /// Screen tukar poin loyalty jadi voucher. Match PWA
@@ -83,6 +94,17 @@ class _MemberLoyaltyScreenState extends State<MemberLoyaltyScreen> {
                 ),
               ),
               const SizedBox(height: 8),
+              Text(
+                'Voucher berlaku dengan minimal belanja '
+                '${formatRupiah(tier.minimumOrder.toDouble())}.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Color(0xFF6B7280),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 6),
               const Text(
                 'Poin akan dipotong setelah kamu konfirmasi.',
                 textAlign: TextAlign.center,
@@ -468,6 +490,15 @@ class _TierCard extends StatelessWidget {
                   style: const TextStyle(
                     color: Color(0xFF6B7280),
                     fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Min. belanja ${formatRupiah(tier.minimumOrder.toDouble())}',
+                  style: const TextStyle(
+                    color: Color(0xFF94A3B8),
+                    fontSize: 11.5,
                     fontWeight: FontWeight.w700,
                   ),
                 ),

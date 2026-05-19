@@ -6,10 +6,15 @@ import { createPortal } from "react-dom";
 import { FiGift } from "react-icons/fi";
 import { natToast } from "@/components/Toast";
 
+// Tier loyalty — sinkron dengan TIERS di
+// app/api/member/claim-voucher/route.ts (server adalah source of truth).
+// Earn rate: 1 poin per Rp20.000 belanja.
 const VOUCHER_TIERS = [
-  { points: 50, discountAmount: 5000 },
-  { points: 100, discountAmount: 10000 },
-  { points: 200, discountAmount: 20000 },
+  { points: 20, discountAmount: 10000, minimumOrder: 150000 },
+  { points: 50, discountAmount: 25000, minimumOrder: 300000 },
+  { points: 75, discountAmount: 40000, minimumOrder: 500000 },
+  { points: 100, discountAmount: 60000, minimumOrder: 700000 },
+  { points: 200, discountAmount: 150000, minimumOrder: 1500000 },
 ] as const;
 
 type VoucherTier = (typeof VOUCHER_TIERS)[number];
@@ -27,9 +32,13 @@ export function RedeemPointsClient({ totalPoints }: { totalPoints: number }) {
 
   const modalDescription = useMemo(() => {
     if (!selectedTier) return "";
-    return `Voucher ${formatVoucherAmount(selectedTier.discountAmount)} akan ditukar dengan ${
-      selectedTier.points
-    } poin.`;
+    return (
+      `Voucher ${formatVoucherAmount(selectedTier.discountAmount)} akan ditukar dengan ${
+        selectedTier.points
+      } poin. Berlaku dengan minimal belanja ${formatVoucherAmount(
+        selectedTier.minimumOrder,
+      )}.`
+    );
   }, [selectedTier]);
 
   async function redeem() {
@@ -159,6 +168,9 @@ export function RedeemPointsClient({ totalPoints }: { totalPoints: number }) {
                   </h3>
                   <p className="mt-0.5 text-xs font-semibold text-slate-500">
                     Butuh {tier.points} poin
+                  </p>
+                  <p className="mt-0.5 text-[11px] font-semibold text-slate-400">
+                    Min. belanja {formatVoucherAmount(tier.minimumOrder)}
                   </p>
                 </div>
                 <button

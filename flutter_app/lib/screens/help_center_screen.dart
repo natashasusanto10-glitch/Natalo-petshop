@@ -121,7 +121,7 @@ class HelpCenterScreen extends StatelessWidget {
           const _FaqItem(
             question: 'Bagaimana cara tukar poin loyalty?',
             answer:
-                'Buka Akun → Loyalty → Tukar Poin Jadi Voucher. Setiap belanja Rp10.000 = 1 poin.',
+                'Buka Akun → Tukar Poin. Setiap belanja Rp20.000 = 1 poin. Tukar poin jadi voucher mulai dari 20 poin (Rp10.000, min belanja Rp150.000) sampai 200 poin (Rp150.000, min belanja Rp1.500.000).',
           ),
           const _FaqItem(
             question: 'Apakah bisa konsultasi hewan peliharaan?',

@@ -3,10 +3,15 @@
 import { useState } from "react";
 import { formatRupiah } from "@/lib/format";
 
+// Tier loyalty — sinkron dengan TIERS di
+// app/api/member/claim-voucher/route.ts (server adalah source of truth).
+// Earn rate: 1 poin per Rp20.000 belanja.
 const TIERS = [
-  { points: 50, discountAmount: 5000 },
-  { points: 100, discountAmount: 10000 },
-  { points: 200, discountAmount: 20000 },
+  { points: 20, discountAmount: 10000, minimumOrder: 150000 },
+  { points: 50, discountAmount: 25000, minimumOrder: 300000 },
+  { points: 75, discountAmount: 40000, minimumOrder: 500000 },
+  { points: 100, discountAmount: 60000, minimumOrder: 700000 },
+  { points: 200, discountAmount: 150000, minimumOrder: 1500000 },
 ] as const;
 
 interface Props {
@@ -94,6 +99,9 @@ export function ClaimVoucherButton({ totalPoints }: Props) {
                   <span className="mx-2 text-gray-400">→</span>
                   <span className="font-bold text-natalo-700">
                     voucher diskon {formatRupiah(tier.discountAmount)}
+                  </span>
+                  <span className="ml-2 block text-[11px] font-semibold text-gray-400">
+                    Min. belanja {formatRupiah(tier.minimumOrder)}
                   </span>
                   {!canAfford && (
                     <span className="ml-2 text-xs text-gray-400">
