@@ -837,7 +837,10 @@ class FeedUploadProgressScreen extends StatefulWidget {
 class _FeedUploadProgressScreenState extends State<FeedUploadProgressScreen> {
   bool _uploading = true;
   bool _started = false;
-  String _stage = 'Mengupload video...';
+  // Single unified message — user tidak perlu tau detail internal phase
+  // (compress / thumb upload / provision / TUS / finalize). Backend
+  // service detail tersembunyi, cuma progress bar yang update.
+  String _stage = 'Mengirim postingan...';
   int _progress = 0;
   String? _error;
 
@@ -877,7 +880,7 @@ class _FeedUploadProgressScreenState extends State<FeedUploadProgressScreen> {
     setState(() {
       _uploading = true;
       _error = null;
-      _stage = 'Mengupload video...';
+      _stage = 'Mengirim postingan...';
       _progress = 0;
     });
 
@@ -904,10 +907,8 @@ class _FeedUploadProgressScreenState extends State<FeedUploadProgressScreen> {
       // Kalau short video langsung dari pick (no trim), compress dulu.
       String videoPath = originalPath;
       if (widget.draft.trimmedVideoPath == null) {
-        setState(() {
-          _stage = 'Mengkompres video...';
-          _progress = 0;
-        });
+        // Silent compress — user tidak perlu tau internal backend service.
+        // _stage tetap "Mengirim postingan..." dari setState awal.
         try {
           final info = await VideoCompress.compressVideo(
             originalPath,
@@ -942,7 +943,8 @@ class _FeedUploadProgressScreenState extends State<FeedUploadProgressScreen> {
         );
       }
 
-      setState(() => _stage = 'Menyiapkan preview...');
+      // Silent thumbnail upload — _stage tidak berubah, user tetap lihat
+      // "Mengirim postingan..." dari awal sampai akhir.
       final thumbResult = await feedService.uploadFeedThumbnail(
         filePath: thumbPath,
         filename: 'thumbnail.jpg',
@@ -959,7 +961,7 @@ class _FeedUploadProgressScreenState extends State<FeedUploadProgressScreen> {
         feedService: feedService,
       );
 
-      setState(() => _stage = 'Menyiapkan upload...');
+      // Silent provision Bunny credentials.
       final provision = await bunnyService.provisionUpload(
         title: caption.isEmpty
             ? 'Postingan baru'
@@ -973,7 +975,8 @@ class _FeedUploadProgressScreenState extends State<FeedUploadProgressScreen> {
         thumbnailUrl: thumbResult.url,
       );
 
-      setState(() => _stage = 'Mengupload video...');
+      // Silent TUS upload — _stage tetap "Mengirim postingan..." sementara
+      // _progress percentage update real-time (cuma progress bar visible).
       if (provision.tus != null) {
         await bunnyService.uploadViaTus(
           videoFile: videoFile,
@@ -1002,8 +1005,8 @@ class _FeedUploadProgressScreenState extends State<FeedUploadProgressScreen> {
       }
 
       if (!mounted) return;
+      // Silent finalize — _stage tetap sama, cuma progress 100%.
       setState(() {
-        _stage = 'Memproses video...';
         _progress = 100;
       });
       await bunnyService.finalize(provision.postId);
@@ -1754,7 +1757,7 @@ class _UploadProgressContent extends StatelessWidget {
         ),
         const SizedBox(height: 28),
         Text(
-          stage.isEmpty ? 'Mengupload video...' : stage,
+          stage.isEmpty ? 'Mengirim postingan...' : stage,
           textAlign: TextAlign.center,
           style: const TextStyle(
             color: _feedUploadText,
