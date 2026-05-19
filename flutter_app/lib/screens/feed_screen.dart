@@ -1361,6 +1361,7 @@ class _FeedPostViewState extends State<_FeedPostView>
       authorId: post.author.id,
       authorName: post.author.isAdmin ? null : post.author.name,
       allowBlock: !post.author.isAdmin,
+      useFeedStyle: true,
     );
     if (mounted) widget.onOverlayStateChanged(false);
   }

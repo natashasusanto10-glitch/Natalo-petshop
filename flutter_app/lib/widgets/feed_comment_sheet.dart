@@ -764,6 +764,7 @@ class _CommentTile extends StatelessWidget {
           authorId: author.id,
           authorName: isOwnComment ? null : name,
           allowBlock: !isOwnComment,
+          useFeedStyle: true,
         );
       },
       child: Padding(

@@ -3,6 +3,12 @@ import 'package:flutter/material.dart';
 import '../services/block_service.dart';
 import '../services/report_service.dart';
 
+const _feedSheetSurface = Color(0xFF101114);
+const _feedSheetDivider = Color(0xFF2A2B2F);
+const _feedSheetHandle = Color(0xFF464A53);
+const _feedSheetText = Color(0xFFFFFFFF);
+const _feedSheetSubtext = Color(0xFFA3A3A3);
+
 /// Bottom sheet untuk action moderasi: Laporkan + Blokir user.
 ///
 /// Dipakai di 3 lokasi (Google Play UGC policy requirement):
@@ -38,17 +44,20 @@ Future<ModerationActionResult?> showModerationActions(
   String? authorId,
   String? authorName,
   bool allowBlock = true,
+  bool useFeedStyle = false,
 }) {
   return showModalBottomSheet<ModerationActionResult>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
+    barrierColor: Colors.black.withValues(alpha: useFeedStyle ? 0.40 : 0.25),
     builder: (sheetContext) => _ModerationSheet(
       targetKind: targetKind,
       targetId: targetId,
       authorId: authorId,
       authorName: authorName,
       allowBlock: allowBlock,
+      useFeedStyle: useFeedStyle,
     ),
   );
 }
@@ -59,6 +68,7 @@ class _ModerationSheet extends StatelessWidget {
   final String? authorId;
   final String? authorName;
   final bool allowBlock;
+  final bool useFeedStyle;
 
   const _ModerationSheet({
     required this.targetKind,
@@ -66,17 +76,29 @@ class _ModerationSheet extends StatelessWidget {
     this.authorId,
     this.authorName,
     required this.allowBlock,
+    required this.useFeedStyle,
   });
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
-      child: Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
+    final surfaceColor = useFeedStyle ? _feedSheetSurface : Colors.white;
+    final dividerColor =
+        useFeedStyle ? _feedSheetDivider : const Color(0xFFF3F4F6);
+    final handleColor =
+        useFeedStyle ? _feedSheetHandle : const Color(0xFFD1D5DB);
+    final labelColor = useFeedStyle ? _feedSheetText : const Color(0xFF111827);
+    final subtitleColor =
+        useFeedStyle ? _feedSheetSubtext : const Color(0xFF6B7280);
+    final neutralIconColor =
+        useFeedStyle ? _feedSheetSubtext : const Color(0xFF6B7280);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: SafeArea(
+        top: false,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -86,7 +108,7 @@ class _ModerationSheet extends StatelessWidget {
               width: 38,
               height: 4,
               decoration: BoxDecoration(
-                color: const Color(0xFFD1D5DB),
+                color: handleColor,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -97,6 +119,8 @@ class _ModerationSheet extends StatelessWidget {
               iconColor: const Color(0xFFEF4444),
               label: 'Laporkan ${targetKind.displayLabel}',
               subtitle: 'Kirim ke moderator Natalo untuk ditinjau',
+              labelColor: labelColor,
+              subtitleColor: subtitleColor,
               onTap: () async {
                 final result = await _openReportFlow(context);
                 if (!context.mounted) return;
@@ -107,14 +131,16 @@ class _ModerationSheet extends StatelessWidget {
             ),
             if (allowBlock &&
                 (authorId != null || (authorName?.isNotEmpty ?? false))) ...[
-              const Divider(height: 1, color: Color(0xFFF3F4F6)),
+              Divider(height: 1, color: dividerColor),
               _ActionTile(
                 icon: Icons.block_outlined,
-                iconColor: const Color(0xFF6B7280),
+                iconColor: neutralIconColor,
                 label: authorName != null && authorName!.isNotEmpty
                     ? 'Blokir $authorName'
                     : 'Blokir pengguna ini',
                 subtitle: 'Sembunyikan semua konten dari pengguna ini',
+                labelColor: labelColor,
+                subtitleColor: subtitleColor,
                 onTap: () async {
                   final confirmed = await _confirmBlock(context);
                   if (!confirmed) return;
@@ -139,11 +165,13 @@ class _ModerationSheet extends StatelessWidget {
                 },
               ),
             ],
-            const Divider(height: 1, color: Color(0xFFF3F4F6)),
+            Divider(height: 1, color: dividerColor),
             _ActionTile(
               icon: Icons.close_rounded,
-              iconColor: const Color(0xFF6B7280),
+              iconColor: neutralIconColor,
               label: 'Batal',
+              labelColor: labelColor,
+              subtitleColor: subtitleColor,
               onTap: () => Navigator.of(context).pop(),
             ),
             const SizedBox(height: 8),
@@ -158,9 +186,14 @@ class _ModerationSheet extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _ReasonPickerSheet(targetKind: targetKind),
+      barrierColor: Colors.black.withValues(alpha: useFeedStyle ? 0.40 : 0.25),
+      builder: (_) => _ReasonPickerSheet(
+        targetKind: targetKind,
+        useFeedStyle: useFeedStyle,
+      ),
     );
     if (reason == null) return false;
+    if (!context.mounted) return false;
     final ok = await _submitReport(context, reason);
     return ok;
   }
@@ -226,18 +259,31 @@ class _ModerationSheet extends StatelessWidget {
 
 class _ReasonPickerSheet extends StatelessWidget {
   final ReportTargetKind targetKind;
+  final bool useFeedStyle;
 
-  const _ReasonPickerSheet({required this.targetKind});
+  const _ReasonPickerSheet({
+    required this.targetKind,
+    required this.useFeedStyle,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
-      child: Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
+    final surfaceColor = useFeedStyle ? _feedSheetSurface : Colors.white;
+    final dividerColor =
+        useFeedStyle ? _feedSheetDivider : const Color(0xFFF3F4F6);
+    final handleColor =
+        useFeedStyle ? _feedSheetHandle : const Color(0xFFD1D5DB);
+    final labelColor = useFeedStyle ? _feedSheetText : const Color(0xFF111827);
+    final subtitleColor =
+        useFeedStyle ? _feedSheetSubtext : const Color(0xFF6B7280);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: SafeArea(
+        top: false,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -246,7 +292,7 @@ class _ReasonPickerSheet extends StatelessWidget {
               width: 38,
               height: 4,
               decoration: BoxDecoration(
-                color: const Color(0xFFD1D5DB),
+                color: handleColor,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -257,27 +303,27 @@ class _ReasonPickerSheet extends StatelessWidget {
                   Expanded(
                     child: Text(
                       'Alasan laporkan ${targetKind.displayLabel}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF111827),
+                        color: labelColor,
                       ),
                     ),
                   ),
                 ],
               ),
             ),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 0, 20, 12),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
               child: Text(
                 'Pilih satu yang paling sesuai. Moderator Natalo akan tinjau dalam 24 jam.',
                 style: TextStyle(
                   fontSize: 13,
-                  color: Color(0xFF6B7280),
+                  color: subtitleColor,
                 ),
               ),
             ),
-            const Divider(height: 1, color: Color(0xFFF3F4F6)),
+            Divider(height: 1, color: dividerColor),
             ConstrainedBox(
               constraints: BoxConstraints(
                 maxHeight: MediaQuery.of(context).size.height * 0.55,
@@ -286,20 +332,22 @@ class _ReasonPickerSheet extends StatelessWidget {
                 shrinkWrap: true,
                 itemCount: ReportReason.values.length,
                 separatorBuilder: (_, __) =>
-                    const Divider(height: 1, color: Color(0xFFF3F4F6)),
+                    Divider(height: 1, color: dividerColor),
                 itemBuilder: (_, i) {
                   final reason = ReportReason.values[i];
                   return ListTile(
                     title: Text(
                       reason.displayLabel,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 15,
-                        color: Color(0xFF111827),
+                        color: labelColor,
                       ),
                     ),
-                    trailing: const Icon(
+                    trailing: Icon(
                       Icons.chevron_right_rounded,
-                      color: Color(0xFF9CA3AF),
+                      color: useFeedStyle
+                          ? _feedSheetSubtext
+                          : const Color(0xFF9CA3AF),
                     ),
                     onTap: () => Navigator.of(context).pop(reason),
                   );
@@ -319,6 +367,8 @@ class _ActionTile extends StatelessWidget {
   final Color iconColor;
   final String label;
   final String? subtitle;
+  final Color labelColor;
+  final Color subtitleColor;
   final VoidCallback onTap;
 
   const _ActionTile({
@@ -326,6 +376,8 @@ class _ActionTile extends StatelessWidget {
     required this.iconColor,
     required this.label,
     this.subtitle,
+    required this.labelColor,
+    required this.subtitleColor,
     required this.onTap,
   });
 
@@ -345,19 +397,19 @@ class _ActionTile extends StatelessWidget {
                 children: [
                   Text(
                     label,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 15,
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xFF111827),
+                      fontWeight: FontWeight.w600,
+                      color: labelColor,
                     ),
                   ),
                   if (subtitle != null) ...[
                     const SizedBox(height: 2),
                     Text(
                       subtitle!,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12.5,
-                        color: Color(0xFF6B7280),
+                        color: subtitleColor,
                       ),
                     ),
                   ],
