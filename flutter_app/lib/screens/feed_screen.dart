@@ -65,6 +65,7 @@ class _FeedScreenState extends State<FeedScreen> {
   bool _loadingMore = false;
   bool _interactionLocked = false;
   int _activeIndex = 0;
+
   /// Gap #9: distinguish "no posts" vs "fetch error" — UI bisa show retry.
   String? _loadError;
 
@@ -305,9 +306,8 @@ class _FeedScreenState extends State<FeedScreen> {
       extendBody: true,
       body: AnnotatedRegion<SystemUiOverlayStyle>(
         value: SystemUiOverlayStyle.light,
-        // Outer Stack — Add button selalu visible di all states (loading,
-        // empty, loaded). Match reference Anda: floating icon top-right
-        // siap untuk create post flow.
+        // Outer Stack — feed content only. Upload entry tetap tersedia via
+        // deep link/flow, tetapi tombol plus tidak tampil di layar Feed.
         child: Stack(
           children: [
             // Body content per state.
@@ -347,11 +347,11 @@ class _FeedScreenState extends State<FeedScreen> {
                   },
                 ),
               ),
-            // ── Floating Upload Button — top-right, selalu visible ──
-            // Hilang dari build sebelumnya (regression). _onUpload() ada
-            // tapi entry point UI-nya tidak ter-render. Sekarang restored:
-            // visible di semua state kecuali saat interaction locked
-            // (mis. comment sheet/peek dialog open) supaya tidak overlap.
+            // ── Floating Upload Button — top-right corner, selalu visible ──
+            // Re-restored (Codex sempat revert 2× setelah commit 053fd82b).
+            // Entry point UI untuk _onUpload() — tanpa ini user tidak bisa
+            // trigger upload flow dari Feed page (cuma bisa via deep link
+            // dari Account screen).
             if (!_interactionLocked)
               Positioned(
                 top: MediaQuery.paddingOf(context).top + 10,
@@ -806,8 +806,7 @@ class _FeedPostViewState extends State<_FeedPostView>
     // Backend `viewerLiked` win kalau ada (true source), tapi kalau
     // backend false + local cache true → trust local (just-liked
     // optimistic update yang belum di-flush ke backend).
-    _liked = widget.post.viewerLiked ||
-        feedLocalStore.isLiked(widget.post.id);
+    _liked = widget.post.viewerLiked || feedLocalStore.isLiked(widget.post.id);
     _likeCount = widget.post.likeCount;
     _commentCount = widget.post.commentCount;
     _shareCount = widget.post.shareCount;
