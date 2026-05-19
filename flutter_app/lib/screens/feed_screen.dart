@@ -1554,7 +1554,16 @@ class _FeedPostViewState extends State<_FeedPostView>
                           ),
                         ),
                       ),
-                      if (_isPaused && _videoController != null)
+                      // Play + volume controls hide saat:
+                      // 1. Comment drawer open (mode preview minimized)
+                      // 2. Cinema/fullscreen mode (irrelevant — handled
+                      //    di Cinema screen sendiri)
+                      // Per user spec: play button besar tidak boleh
+                      // muncul di video preview saat comment drawer aktif.
+                      if (_isPaused &&
+                          _videoController != null &&
+                          !minimized &&
+                          !_commentSheetOpen)
                         Center(
                           child: _PausedVideoControls(
                             muted: appSettingsStore.feedMuted,
@@ -1604,12 +1613,18 @@ class _FeedPostViewState extends State<_FeedPostView>
                         // ── Right action column (Reels-style: tight + minimal) ──
                         // Sprint 4 #1 — Hide overlays selama long-press
                         // supaya user dapat clean view sementara hold.
+                        // Action rail hide saat comment drawer open + saat
+                        // long-press. Per user spec: video preview clean,
+                        // tidak ada actions yang mengganggu.
                         Positioned(
                           right: 18,
                           bottom: actionRailInset,
                           child: AnimatedOpacity(
-                            opacity: _hideOverlayForLongPress ? 0 : 1,
-                            duration: const Duration(milliseconds: 150),
+                            opacity: (_hideOverlayForLongPress ||
+                                    _commentSheetOpen)
+                                ? 0
+                                : 1,
+                            duration: const Duration(milliseconds: 200),
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [

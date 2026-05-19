@@ -339,12 +339,22 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
         : 0.0;
 
     return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
       child: Container(
-        color: Colors.white,
+        // Dark drawer Instagram Reels-style — bukan putih (user spec).
+        // Background, header text, divider, input — semua flip ke variant
+        // dark dengan white alpha variants untuk visual hierarchy.
+        decoration: BoxDecoration(
+          color: const Color(0xFF111417),
+          border: Border(
+            top: BorderSide(
+              color: Colors.white.withValues(alpha: 0.08),
+            ),
+          ),
+        ),
         child: Column(
           children: [
-            // ── Drag handle (tap area diteruskan ke parent untuk dismiss) ──
+            // ── Drag handle ──
             GestureDetector(
               behavior: HitTestBehavior.opaque,
               onVerticalDragUpdate: widget.onDragUpdate,
@@ -353,11 +363,11 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 alignment: Alignment.center,
                 child: Container(
-                  width: 36,
+                  width: 44,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: NataloColors.border,
-                    borderRadius: BorderRadius.circular(2),
+                    color: Colors.white.withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(99),
                   ),
                 ),
               ),
@@ -374,17 +384,17 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
                           ? 'Komentar'
                           : '${_comments.length}${_nextCursor != null ? '+' : ''} komentar',
                       style: const TextStyle(
-                        color: Color(0xFF111111),
-                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
                         fontSize: 15,
                       ),
                     ),
                   ),
                   IconButton(
                     onPressed: widget.onClose,
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.close_rounded,
-                      color: Color(0xFF8E939B),
+                      color: Colors.white.withValues(alpha: 0.70),
                       size: 22,
                     ),
                     tooltip: 'Tutup',
@@ -392,7 +402,11 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
                 ],
               ),
             ),
-            const Divider(height: 1, thickness: 0.5, color: Color(0xFFEEF1F4)),
+            Divider(
+              height: 1,
+              thickness: 0.5,
+              color: Colors.white.withValues(alpha: 0.08),
+            ),
 
             // ── List comments ──
             Expanded(
@@ -446,43 +460,41 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
       );
     }
     if (_comments.isEmpty) {
-      return NataloPawRefreshIndicator(
-        onRefresh: _refresh,
-        child: ListView(
-          controller: widget.sheetScrollController,
-          padding: const EdgeInsets.symmetric(vertical: 60, horizontal: 32),
-          children: const [
-            Center(
-              child: Column(
-                children: [
-                  Icon(
-                    Icons.mode_comment_outlined,
-                    color: Color(0xFF8E939B),
-                    size: 36,
+      return ListView(
+        controller: widget.sheetScrollController,
+        padding: const EdgeInsets.symmetric(vertical: 50, horizontal: 32),
+        children: [
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.mode_comment_outlined,
+                  color: Colors.white.withValues(alpha: 0.35),
+                  size: 40,
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Belum ada komentar',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
                   ),
-                  SizedBox(height: 10),
-                  Text(
-                    'Belum ada komentar',
-                    style: TextStyle(
-                      color: Color(0xFF111111),
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16,
-                    ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Jadi yang pertama berkomentar!',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.55),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
                   ),
-                  SizedBox(height: 4),
-                  Text(
-                    'Jadi yang pertama berkomentar!',
-                    style: TextStyle(
-                      color: Color(0xFF6B7280),
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       );
     }
 
@@ -569,10 +581,13 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     final isLoggedIn = memberStore.isLoggedIn;
 
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(
+        color: const Color(0xFF111417),
         border: Border(
-          top: BorderSide(color: Color(0xFFEEF1F4), width: 0.5),
+          top: BorderSide(
+            color: Colors.white.withValues(alpha: 0.08),
+            width: 0.5,
+          ),
         ),
       ),
       padding: EdgeInsets.fromLTRB(
@@ -586,12 +601,12 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            // Avatar user current (initial fallback).
+            // Avatar user current (initial fallback) — soft blue tile.
             Padding(
               padding: const EdgeInsets.only(bottom: 2),
               child: Container(
-                width: 32,
-                height: 32,
+                width: 34,
+                height: 34,
                 alignment: Alignment.center,
                 decoration: const BoxDecoration(
                   color: Color(0xFFEAF3FF),
@@ -609,16 +624,19 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
             ),
             const SizedBox(width: 10),
 
-            // Input field.
+            // Input field — dark transparent fill, white text + cursor.
             Expanded(
               child: Container(
                 constraints: const BoxConstraints(
-                  minHeight: 38,
+                  minHeight: 40,
                   maxHeight: 120,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF1F4F8),
+                  color: Colors.white.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(22),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.10),
+                  ),
                 ),
                 child: TextField(
                   controller: _inputCtrl,
@@ -628,11 +646,12 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
                   minLines: 1,
                   textCapitalization: TextCapitalization.sentences,
                   textInputAction: TextInputAction.newline,
+                  cursorColor: Colors.white,
                   inputFormatters: [
                     LengthLimitingTextInputFormatter(500),
                   ],
                   style: const TextStyle(
-                    color: Color(0xFF111111),
+                    color: Colors.white,
                     fontSize: 14,
                     height: 1.35,
                   ),
@@ -641,8 +660,8 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
                     hintText: isLoggedIn
                         ? 'Tambahkan komentar...'
                         : 'Login untuk komentar...',
-                    hintStyle: const TextStyle(
-                      color: Color(0xFF9CA3AF),
+                    hintStyle: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.45),
                       fontSize: 14,
                     ),
                     contentPadding: const EdgeInsets.symmetric(
