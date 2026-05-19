@@ -38,6 +38,7 @@ const _feedBlue = Color(0xFF0B7FEA);
 const _feedActionIconSize = 32.0;
 const _feedActionCountFontSize = 12.0;
 const _feedActionItemSpacing = 18.0;
+const _feedActionBottomInset = 24.0;
 
 /// Instagram Reels-style fullscreen vertical video feed.
 /// - Fullscreen video/image background per post (cover fit)
@@ -474,7 +475,7 @@ class _LoadingState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
-    final actionRailInset = mediaQuery.padding.bottom + 168;
+    const actionRailInset = _feedActionBottomInset;
     final feedInfoInset = mediaQuery.padding.bottom + 100;
 
     return Shimmer.fromColors(
@@ -510,18 +511,14 @@ class _LoadingState extends StatelessWidget {
             ),
           ),
 
-          // Right action rail mock — 5 circles (Like/Comment/Share/Bag/
-          // Fullscreen) stacked vertical. Match positioning aktual.
-          Positioned(
+          // Right action rail mock — Like/Comment/Share only. Match
+          // positioning aktual yang duduk tepat di atas bottom nav.
+          const Positioned(
             right: 18,
             bottom: actionRailInset,
-            child: const Column(
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _SkeletonCircle(size: 38),
-                SizedBox(height: 10),
-                _SkeletonCircle(size: 38),
-                SizedBox(height: 10),
                 _SkeletonCircle(size: 38),
                 SizedBox(height: 10),
                 _SkeletonCircle(size: 38),
@@ -865,7 +862,6 @@ class _FeedPostViewState extends State<_FeedPostView>
   bool _videoLoadFailed = false;
   bool _likeBusy = false;
   int _commentAddedCount = 0;
-  int _cartQuantityCount = 0;
   int _featuredProductIndex = 0;
   Timer? _productRotationTimer;
   double _commentDragOffset = 0;
@@ -904,8 +900,6 @@ class _FeedPostViewState extends State<_FeedPostView>
     _likeCount = widget.post.likeCount;
     _commentCount = widget.post.commentCount;
     _shareCount = widget.post.shareCount;
-    _cartQuantityCount = cartStore.totalQuantity;
-    cartStore.addListener(_syncCartCount);
 
     _heartBurstController = AnimationController(
       vsync: this,
@@ -1131,7 +1125,6 @@ class _FeedPostViewState extends State<_FeedPostView>
   void dispose() {
     _loadingSpinnerDelay?.cancel();
     _stopProductRotation();
-    cartStore.removeListener(_syncCartCount);
     _commentSheetController.removeListener(_syncCommentSheetProgress);
     _commentSheetController.dispose();
     _commentSheetProgress.dispose();
@@ -1150,13 +1143,6 @@ class _FeedPostViewState extends State<_FeedPostView>
     if ((_commentSheetProgress.value - progress).abs() > 0.002) {
       _commentSheetProgress.value = progress;
     }
-  }
-
-  void _syncCartCount() {
-    if (!mounted) return;
-    final next = cartStore.totalQuantity;
-    if (next == _cartQuantityCount) return;
-    setState(() => _cartQuantityCount = next);
   }
 
   List<FeedProductLink> _rotatingProductsForPost(FeedPost post) {
@@ -1665,7 +1651,6 @@ class _FeedPostViewState extends State<_FeedPostView>
         builder: (context, constraints) {
           final safeTop = MediaQuery.paddingOf(context).top;
           final keyboard = MediaQuery.viewInsetsOf(context).bottom;
-          final screenHeight = MediaQuery.sizeOf(context).height;
           // extendBody: false di Scaffold → body bottom = top edge bottom
           // nav (safeBottom sudah di-consume nav widget). Insets di sini
           // relatif ke body bottom, BUKAN screen bottom. Tidak perlu
@@ -1675,7 +1660,7 @@ class _FeedPostViewState extends State<_FeedPostView>
           // consumed via Scaffold. Yang perlu di sini cuma offset visual
           // antara overlay dengan top edge bottom nav.
           const feedInfoInset = 24.0;
-          final actionRailInset = screenHeight < 760 ? 88.0 : 100.0;
+          const actionRailInset = _feedActionBottomInset;
           final minimized = _commentSheetOpen;
 
           return ColoredBox(
@@ -1924,16 +1909,6 @@ class _FeedPostViewState extends State<_FeedPostView>
                                   color: Colors.white,
                                   count: _shareCount,
                                   onTap: _onShare,
-                                ),
-                                const SizedBox(height: _feedActionItemSpacing),
-                                _ReelsAction(
-                                  iconChild: const _ReelsBagGlyph(),
-                                  color: Colors.white,
-                                  count: null,
-                                  badgeCount: _cartQuantityCount > 0
-                                      ? _cartQuantityCount
-                                      : null,
-                                  onTap: _openFeedCartSheet,
                                 ),
                               ],
                             ),
@@ -2796,7 +2771,6 @@ class _ReelsAction extends StatelessWidget {
   final Widget? iconChild;
   final Color color;
   final int? count;
-  final int? badgeCount;
   final VoidCallback onTap;
 
   const _ReelsAction({
@@ -2804,13 +2778,12 @@ class _ReelsAction extends StatelessWidget {
     this.iconChild,
     required this.color,
     required this.count,
-    this.badgeCount,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final baseIcon = iconChild ??
+    final actionIcon = iconChild ??
         Icon(
           icon,
           color: color,
@@ -2819,19 +2792,6 @@ class _ReelsAction extends StatelessWidget {
             Shadow(color: Colors.black87, blurRadius: 8),
           ],
         );
-    final actionIcon = badgeCount == null || badgeCount! <= 0
-        ? baseIcon
-        : Stack(
-            clipBehavior: Clip.none,
-            children: [
-              baseIcon,
-              Positioned(
-                right: -8,
-                top: -8,
-                child: _ReelsActionBadge(count: badgeCount!),
-              ),
-            ],
-          );
 
     return SizedBox(
       width: 54,
@@ -2877,43 +2837,6 @@ class _ReelsAction extends StatelessWidget {
       return '${(count / 1000).toStringAsFixed(1)}K';
     }
     return '$count';
-  }
-}
-
-class _ReelsActionBadge extends StatelessWidget {
-  final int count;
-
-  const _ReelsActionBadge({required this.count});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(minWidth: 18),
-      height: 18,
-      padding: const EdgeInsets.symmetric(horizontal: 5),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEF4444),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white, width: 1.4),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.32),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        count > 99 ? '99+' : '$count',
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 9,
-          fontWeight: FontWeight.w900,
-          height: 1,
-        ),
-      ),
-    );
   }
 }
 
@@ -3022,59 +2945,6 @@ class _ShareGlyphPainter extends CustomPainter {
       ..lineTo(size.width * 0.10, size.height * 0.14);
 
     canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _ReelsBagGlyph extends StatelessWidget {
-  const _ReelsBagGlyph();
-
-  @override
-  Widget build(BuildContext context) {
-    return const SizedBox(
-      height: _feedActionIconSize,
-      width: _feedActionIconSize,
-      child: CustomPaint(painter: _BagGlyphPainter()),
-    );
-  }
-}
-
-class _BagGlyphPainter extends CustomPainter {
-  const _BagGlyphPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.35
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
-    final body = RRect.fromRectAndRadius(
-      Rect.fromLTWH(
-        size.width * 0.20,
-        size.height * 0.34,
-        size.width * 0.60,
-        size.height * 0.52,
-      ),
-      Radius.circular(size.width * 0.08),
-    );
-    canvas.drawRRect(body, paint);
-
-    final handle = Path()
-      ..moveTo(size.width * 0.36, size.height * 0.35)
-      ..cubicTo(
-        size.width * 0.36,
-        size.height * 0.20,
-        size.width * 0.64,
-        size.height * 0.20,
-        size.width * 0.64,
-        size.height * 0.35,
-      );
-    canvas.drawPath(handle, paint);
   }
 
   @override
