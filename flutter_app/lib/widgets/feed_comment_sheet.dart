@@ -662,6 +662,14 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
                   ),
                   decoration: InputDecoration(
                     isDense: true,
+                    // BUG FIX: global app theme set `filled: true` +
+                    // `fillColor: white surface`, yang override styling
+                    // wrapping Container. Hasil: input field tampil
+                    // solid white pill di dark drawer (bukan dark
+                    // transparent). Explicit `filled: false` + transparent
+                    // fillColor supaya theme global tidak bocor masuk.
+                    filled: false,
+                    fillColor: Colors.transparent,
                     hintText: isLoggedIn
                         ? 'Tambahkan komentar...'
                         : 'Login untuk komentar...',
@@ -676,6 +684,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
                     border: InputBorder.none,
                     enabledBorder: InputBorder.none,
                     focusedBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
                   ),
                   onChanged: (_) => setState(() {}),
                   onTap: () {

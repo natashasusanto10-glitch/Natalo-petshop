@@ -250,14 +250,43 @@ class NataloTheme {
       colorScheme: scheme,
       fontFamily: fontFamily,
       fontFamilyFallback: const ['Roboto', 'Arial'],
-      scaffoldBackgroundColor: scheme.surface,
+      // SOLID solid white scaffold — bukan `scheme.surface` yang
+      // Material 3 bisa blend dengan elevation tint saat ada konten
+      // scroll di belakang. Force explicit putih supaya tidak ada
+      // efek "blur/tint" di header maupun body.
+      scaffoldBackgroundColor:
+          isLight ? const Color(0xFFFFFFFF) : NataloColors.backgroundDark,
       textTheme: isLight ? _lightTextTheme : _darkTextTheme,
       primaryTextTheme: isLight ? _lightTextTheme : _darkTextTheme,
+      // BUG FIX (v1.0.13): user report header Keranjang / Tukar Poin /
+      // Riwayat Poin / Ulasan / Voucher / Alamat tampak "blur" / faded.
+      // Root cause Material 3:
+      //   - `surfaceTintColor` default = colorScheme.surfaceTint (primary
+      //     tone) → di-blend ke background saat ada elevation.
+      //   - `scrolledUnderElevation` default = 4.0 → saat content scroll
+      //     di belakang AppBar, elevation overlay aktif → header keliatan
+      //     tinted/blur, BUKAN solid white.
+      // Solusi: kill keduanya (surfaceTintColor → transparent,
+      // scrolledUnderElevation → 0) + force backgroundColor solid white +
+      // tambah border bottom tipis untuk crisp edge.
       appBarTheme: AppBarTheme(
-        backgroundColor: scheme.surface,
+        backgroundColor:
+            isLight ? const Color(0xFFFFFFFF) : NataloColors.surfaceDark,
         foregroundColor: scheme.onSurface,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
+        scrolledUnderElevation: 0,
         centerTitle: false,
+        shape: isLight
+            ? const Border(
+                bottom: BorderSide(color: Color(0xFFE5EAF2), width: 1),
+              )
+            : const Border(
+                bottom: BorderSide(
+                  color: NataloColors.borderDark,
+                  width: 1,
+                ),
+              ),
         titleTextStyle: const TextStyle(
           fontFamily: fontFamily,
           fontSize: 18,
@@ -416,6 +445,7 @@ class NataloTheme {
         backgroundColor: darkScaffold,
         foregroundColor: darkInk,
         elevation: 0,
+        scrolledUnderElevation: 0,
         centerTitle: false,
         surfaceTintColor: Colors.transparent,
         titleTextStyle: TextStyle(
