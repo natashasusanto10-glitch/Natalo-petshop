@@ -31,7 +31,6 @@ import '../widgets/bottom_nav.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import 'home_search_page.dart';
-import '../widgets/product_card.dart';
 import '../widgets/skeleton_product_card.dart';
 
 const _brandBlue = NataloColors.nataloBlue;
@@ -294,8 +293,7 @@ class _HomeScreenState extends State<HomeScreen> {
       for (final token in keyword.split(RegExp(r'\s+'))) {
         if (token.length < 2) continue;
         if (token != keyword) {
-          searchKeywords[token] =
-              (searchKeywords[token] ?? 0) + weight * 0.5;
+          searchKeywords[token] = (searchKeywords[token] ?? 0) + weight * 0.5;
         }
       }
     }
@@ -450,8 +448,7 @@ class _HomeScreenState extends State<HomeScreen> {
             // Filter: utamakan products dengan soldCount > 0 di top — yang
             // benar2 "laris" muncul lebih dulu. Kalau API belum return
             // soldCount yang valid, section fallback ke review-based.
-            final bestSellers = ([...products]
-                  ..sort((a, b) {
+            final bestSellers = ([...products]..sort((a, b) {
                     // Primary: soldCount desc (yang paling banyak terjual)
                     final byCount = b.soldCount.compareTo(a.soldCount);
                     if (byCount != 0) return byCount;
@@ -574,7 +571,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           if (_exploreProducts.isEmpty &&
                               !_exploreInitialLoaded) {
                             return const SkeletonProductCard(
-                              showAddToCart: true,
+                              showAddToCart: false,
                             );
                           }
                           if (index >= _exploreProducts.length) {
@@ -582,10 +579,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             return const SizedBox.shrink();
                           }
                           final product = _exploreProducts[index];
-                          return ProductCard(
+                          return _HomeProductCard(
                             product: product,
                             onTap: () => _openProductDetail(context, product),
-                            showAddToCart: true,
                           );
                         },
                         childCount:
@@ -2193,118 +2189,416 @@ class _FlashSaleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final off = product.discountPercent ?? 0;
-    final hasMarkdown = product.hasDiscount;
-
-    return GestureDetector(
+    return _HomeProductCard(
+      product: product,
       onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
+      imageHeight: 86,
+      nameFontSize: 10.8,
+      priceFontSize: 12,
+      compact: true,
+    );
+  }
+}
+
+class _HomeProductCard extends StatelessWidget {
+  final Product product;
+  final VoidCallback onTap;
+  final int? rank;
+  final double? width;
+  final double imageHeight;
+  final double nameFontSize;
+  final double priceFontSize;
+  final bool compact;
+
+  const _HomeProductCard({
+    required this.product,
+    required this.onTap,
+    this.rank,
+    this.width,
+    this.imageHeight = 132,
+    this.nameFontSize = 13,
+    this.priceFontSize = 16,
+    this.compact = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final padding = compact ? 8.0 : 10.0;
+    final nameHeight = compact ? 31.0 : 34.0;
+
+    return SizedBox(
+      width: width,
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
         clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFEEF3FB)),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF111111).withValues(alpha: 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            padding: EdgeInsets.all(padding),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFE5E7EB)),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x08000000),
+                  blurRadius: 10,
+                  offset: Offset(0, 4),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            AspectRatio(
-              aspectRatio: 1,
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: AppProductImage(
-                        imageUrl: product.imageUrl,
-                        fit: BoxFit.contain,
-                      ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Stack(
+                  children: [
+                    _HomeProductImage(
+                      imageUrl: product.imageUrl,
+                      height: imageHeight,
                     ),
-                  ),
-                  if (off > 0)
-                    Positioned(
-                      left: 6,
-                      top: 6,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFEF4444),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          '-$off%',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w900,
-                            height: 1,
-                          ),
-                        ),
+                    if (rank != null)
+                      Positioned(
+                        left: 8,
+                        top: 8,
+                        child: _HomeProductRankBadge(rank: rank!),
                       ),
-                    ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    height: 32,
-                    child: Text(
-                      product.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF334155),
-                        fontSize: 11,
-                        height: 1.25,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    formatRupiah(product.finalPrice),
-                    maxLines: 1,
+                  ],
+                ),
+                SizedBox(height: compact ? 8 : 10),
+                SizedBox(
+                  height: nameHeight,
+                  child: Text(
+                    product.title,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: NataloTextStyles.productPrice.copyWith(
-                      fontSize: 13,
-                      height: 1.05,
-                      fontWeight: FontWeight.w900,
+                    style: TextStyle(
+                      fontSize: nameFontSize,
+                      height: 1.25,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF111827),
                     ),
                   ),
-                  if (hasMarkdown)
-                    Text(
-                      formatRupiah(product.price),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF9CA3AF),
-                        fontSize: 10,
-                        decoration: TextDecoration.lineThrough,
-                      ),
-                    ),
-                ],
-              ),
+                ),
+                SizedBox(height: compact ? 7 : 8),
+                _HomeProductPriceRow(
+                  product: product,
+                  fontSize: priceFontSize,
+                  compact: compact,
+                ),
+                _HomeProductSavingBadge(product: product, compact: compact),
+                _HomeProductRatingSoldRow(product: product, compact: compact),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
   }
+}
+
+class _HomeProductImage extends StatelessWidget {
+  final String imageUrl;
+  final double height;
+
+  const _HomeProductImage({
+    required this.imageUrl,
+    required this.height,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasImage = imageUrl.trim().isNotEmpty;
+    if (!hasImage) {
+      return _HomeProductImagePlaceholder(height: height);
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: CachedNetworkImage(
+        imageUrl: imageUrl,
+        height: height,
+        width: double.infinity,
+        fit: BoxFit.contain,
+        placeholder: (_, __) => _HomeProductImagePlaceholder(height: height),
+        errorWidget: (_, __, ___) => _HomeProductImagePlaceholder(
+          height: height,
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeProductImagePlaceholder extends StatelessWidget {
+  final double height;
+
+  const _HomeProductImagePlaceholder({required this.height});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: height,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3F7FF),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: const Center(
+        child: Icon(
+          Icons.pets_rounded,
+          size: 34,
+          color: Color(0xFF94A3B8),
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeProductRankBadge extends StatelessWidget {
+  final int rank;
+
+  const _HomeProductRankBadge({required this.rank});
+
+  @override
+  Widget build(BuildContext context) {
+    return CircleAvatar(
+      radius: 12,
+      backgroundColor: rank == 1
+          ? const Color(0xFFF59E0B)
+          : rank == 2
+              ? const Color(0xFF94A3B8)
+              : _brandBlue,
+      child: Text(
+        '$rank',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.w900,
+          height: 1,
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeProductPriceRow extends StatelessWidget {
+  final Product product;
+  final double fontSize;
+  final bool compact;
+
+  const _HomeProductPriceRow({
+    required this.product,
+    required this.fontSize,
+    required this.compact,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final promoLabel = _homeProductPromoLabel(product);
+
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            formatRupiah(product.finalPrice),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: fontSize,
+              fontWeight: FontWeight.w800,
+              color: _brandBlue,
+              height: 1.1,
+            ),
+          ),
+        ),
+        if (promoLabel != null) ...[
+          SizedBox(width: compact ? 4 : 6),
+          Container(
+            padding: EdgeInsets.symmetric(
+              horizontal: compact ? 5 : 7,
+              vertical: 3,
+            ),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEFF6FF),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFF93C5FD)),
+            ),
+            child: Text(
+              promoLabel,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: compact ? 8.8 : 10,
+                fontWeight: FontWeight.w700,
+                color: _brandBlue,
+                height: 1,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _HomeProductSavingBadge extends StatelessWidget {
+  final Product product;
+  final bool compact;
+
+  const _HomeProductSavingBadge({
+    required this.product,
+    required this.compact,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final label = _homeProductSavingLabel(product);
+    if (label == null) return const SizedBox.shrink();
+
+    return Container(
+      constraints: const BoxConstraints(maxWidth: double.infinity),
+      margin: EdgeInsets.only(top: compact ? 5 : 6),
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 6 : 8,
+        vertical: compact ? 3 : 4,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF1F2),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFFCA5A5)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.confirmation_number_rounded,
+            size: compact ? 11 : 13,
+            color: const Color(0xFFEF4444),
+          ),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: compact ? 9.5 : 11,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFFEF4444),
+                height: 1,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HomeProductRatingSoldRow extends StatelessWidget {
+  final Product product;
+  final bool compact;
+
+  const _HomeProductRatingSoldRow({
+    required this.product,
+    required this.compact,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasRating = product.rating > 0;
+    final hasSold = product.soldCount > 0;
+    if (!hasRating && !hasSold) return const SizedBox.shrink();
+
+    final textSize = compact ? 10.2 : 11.0;
+
+    return Padding(
+      padding: EdgeInsets.only(top: compact ? 6 : 7),
+      child: Row(
+        children: [
+          if (hasRating) ...[
+            Icon(
+              Icons.star_rounded,
+              size: compact ? 12 : 14,
+              color: const Color(0xFFFACC15),
+            ),
+            const SizedBox(width: 3),
+            Text(
+              product.rating.toStringAsFixed(1),
+              style: TextStyle(
+                fontSize: textSize,
+                fontWeight: FontWeight.w500,
+                color: const Color(0xFF4B5563),
+                height: 1,
+              ),
+            ),
+          ],
+          if (hasRating && hasSold) ...[
+            const SizedBox(width: 5),
+            Text(
+              '•',
+              style: TextStyle(
+                fontSize: textSize,
+                color: const Color(0xFF9CA3AF),
+                height: 1,
+              ),
+            ),
+            const SizedBox(width: 5),
+          ],
+          if (hasSold)
+            Flexible(
+              child: Text(
+                '${_formatHomeProductSoldCount(product.soldCount)} terjual',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: textSize,
+                  fontWeight: FontWeight.w500,
+                  color: const Color(0xFF4B5563),
+                  height: 1,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+String? _homeProductPromoLabel(Product product) {
+  final percent = product.discountPercent;
+  if (percent != null && percent > 0) return 'Diskon $percent%';
+  if (product.voucherPreview != null) return 'Promo';
+  return null;
+}
+
+String? _homeProductSavingLabel(Product product) {
+  final voucher = product.voucherPreview;
+  final voucherSaving = voucher?.savingAmount ?? voucher?.discountAmount;
+  if (voucherSaving != null && voucherSaving > 0) {
+    return 'Hemat s.d. ${formatRupiah(voucherSaving)}';
+  }
+
+  final voucherPercent = voucher?.discountPercent;
+  if (voucherPercent != null && voucherPercent > 0) {
+    return 'Hemat s.d. ${voucherPercent.round()}%';
+  }
+
+  if (!product.hasDiscount) return null;
+  final savings = product.price - product.finalPrice;
+  if (savings <= 0) return null;
+  return 'Hemat s.d. ${formatRupiah(savings)}';
+}
+
+String _formatHomeProductSoldCount(int count) {
+  if (count >= 1000) {
+    final value = count / 1000;
+    final text =
+        value >= 10 ? value.toStringAsFixed(0) : value.toStringAsFixed(1);
+    return '${text.replaceAll('.', ',').replaceAll(',0', '')}rb+';
+  }
+  if (count >= 100) return '${(count ~/ 50) * 50}+';
+  if (count >= 10) return '${(count ~/ 10) * 10}+';
+  return count.toString();
 }
 
 class _HorizontalProductSection extends StatelessWidget {
@@ -2403,98 +2697,14 @@ class _MiniProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    return _HomeProductCard(
+      product: product,
       onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
-      child: Container(
-        width: 150,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFEEF3FB)),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF111111).withValues(alpha: 0.05),
-              blurRadius: 16,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: AppProductImage(
-                        imageUrl: product.imageUrl,
-                        fit: BoxFit.contain,
-                      ),
-                    ),
-                  ),
-                  if (rank != null)
-                    Positioned(
-                      left: 8,
-                      top: 8,
-                      child: CircleAvatar(
-                        radius: 12,
-                        backgroundColor: rank == 1
-                            ? const Color(0xFFF59E0B)
-                            : rank == 2
-                                ? const Color(0xFFE5E7EB)
-                                : _brandBlue,
-                        child: Text(
-                          '$rank',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    product.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF334155),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w900,
-                      height: 1.15,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    formatRupiah(product.finalPrice),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: NataloColors.nataloBlue,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 14,
-                      height: 1.05,
-                    ),
-                  ),
-                  ProductSavingsBadge(product: product),
-                  ProductRatingSoldMeta(product: product),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+      rank: rank,
+      width: 150,
+      imageHeight: 112,
+      priceFontSize: 14,
+      compact: true,
     );
   }
 }
@@ -3029,10 +3239,9 @@ class _RecommendationGrid extends StatelessWidget {
             ),
             itemBuilder: (context, index) {
               final product = products[index];
-              return ProductCard(
+              return _HomeProductCard(
                 product: product,
                 onTap: () => onTap(product),
-                showAddToCart: true,
               );
             },
           ),
