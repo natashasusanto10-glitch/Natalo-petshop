@@ -391,7 +391,7 @@ Future<void> _showVoucherPreviewSheet(
                       children: [
                         Text(
                           voucherTitle,
-                          style: TextStyle(
+                          style: const TextStyle(
                             color: NataloColors.grey900,
                             fontSize: 18,
                             fontWeight: FontWeight.w900,
