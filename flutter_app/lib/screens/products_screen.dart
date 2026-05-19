@@ -103,12 +103,30 @@ class _ProductsScreenState extends State<ProductsScreen> {
   int _pageLimit = 60;
   bool _loadingMore = false;
   bool _hasMore = true;
+  // ── Catalog rotation state — persisted via SharedPreferences ──
+  //
+  // Sebelumnya state in-memory only → reset tiap app restart, navigate
+  // away, atau iOS background-kill. User per session selalu lihat
+  // "fresh ordering" — tapi inconsistent: tap 2 produk hari ini,
+  // restart, tap lagi → counter restart dari 0, padahal user kira
+  // sudah dekat ke regenerate threshold.
+  //
+  // Sekarang persist ke SharedPreferences supaya:
+  // - Counter survive app kill/restart → user trust progress menuju
+  //   regenerate next.
+  // - Generation salt survive → ordering pattern stay konsisten
+  //   across sessions, tidak completely random saat reopen.
+  // - Reset hanya happen at threshold (3 atau 4) atau via clear cache.
+  static const _kKeyCatalogGeneration = 'products_catalog_generation';
+  static const _kKeyProductReturnCount = 'products_return_count';
+  static const _kKeyNextRegenerateAt = 'products_next_regenerate_at';
   int _catalogGeneration = 0;
   int _productReturnCount = 0;
   // Alternate 3 ↔ 4 (per user spec) — regenerate ordering setiap user
   // tap dan kembali 3-4 produk. Variable threshold supaya user tidak
   // bisa predict timing (always "feels fresh").
   int _nextCatalogRegenerateAt = 3;
+  bool _rotationStateLoaded = false;
 
   bool get _shouldGenerateAllProducts {
     return widget.selectedBrand == null &&
@@ -183,7 +201,42 @@ class _ProductsScreenState extends State<ProductsScreen> {
     }
     _scrollController.addListener(_onScroll);
     _loadSearchHistory();
+    _loadRotationState();
     _loadProducts();
+  }
+
+  /// Load persisted rotation counter + catalog generation dari prefs.
+  /// Fire-and-forget — kalau gagal/disk corrupt, pakai default values
+  /// (counter=0, generation=0, threshold=3) — first session behavior.
+  Future<void> _loadRotationState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      setState(() {
+        _catalogGeneration = prefs.getInt(_kKeyCatalogGeneration) ?? 0;
+        _productReturnCount = prefs.getInt(_kKeyProductReturnCount) ?? 0;
+        final saved = prefs.getInt(_kKeyNextRegenerateAt) ?? 3;
+        // Clamp ke 3 atau 4 — defense kalau prefs corrupt nilai weird.
+        _nextCatalogRegenerateAt = (saved == 3 || saved == 4) ? saved : 3;
+        _rotationStateLoaded = true;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _rotationStateLoaded = true);
+    }
+  }
+
+  /// Persist rotation state ke disk. Best-effort fire-and-forget — kalau
+  /// disk write gagal, state in-memory tetap update (next launch fallback
+  /// ke default kalau prefs unreadable).
+  Future<void> _persistRotationState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_kKeyCatalogGeneration, _catalogGeneration);
+      await prefs.setInt(_kKeyProductReturnCount, _productReturnCount);
+      await prefs.setInt(_kKeyNextRegenerateAt, _nextCatalogRegenerateAt);
+    } catch (_) {
+      // Silent fail — in-memory state masih valid.
+    }
   }
 
   @override
@@ -553,8 +606,14 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
   void _maybeRegenerateCatalogAfterReturn() {
     if (!mounted || !_shouldGenerateAllProducts) return;
+    if (!_rotationStateLoaded) return; // wait until prefs hydrated
     _productReturnCount += 1;
-    if (_productReturnCount < _nextCatalogRegenerateAt) return;
+    if (_productReturnCount < _nextCatalogRegenerateAt) {
+      // Counter < threshold — persist incremented count saja, no
+      // re-shuffle. User next session bisa lanjut dari sini.
+      _persistRotationState();
+      return;
+    }
     setState(() {
       _catalogGeneration += 1;
       _productReturnCount = 0;
@@ -563,6 +622,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
       // bisa scroll lebih lama tanpa shuffle terlalu sering.
       _nextCatalogRegenerateAt = _nextCatalogRegenerateAt == 3 ? 4 : 3;
     });
+    // Persist state baru setelah shuffle: generation++, count=0, threshold flipped.
+    _persistRotationState();
   }
 
   @override
