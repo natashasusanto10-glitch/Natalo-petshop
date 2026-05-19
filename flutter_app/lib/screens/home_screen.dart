@@ -29,6 +29,7 @@ import '../widgets/app_ui.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
+import 'home_search_page.dart';
 import '../widgets/product_card.dart';
 import '../widgets/skeleton_product_card.dart';
 
@@ -237,14 +238,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _openProductsWithQuery(BuildContext context, String query) {
-    Navigator.pushNamed(
-      context,
-      '/products',
-      arguments: ProductCatalogArgs(initialQuery: query),
-    );
-  }
-
   /// Personalized recommendation algorithm.
   ///
   /// Combines TWO behavior signals:
@@ -406,15 +399,21 @@ class _HomeScreenState extends State<HomeScreen> {
     return hash;
   }
 
-  Future<void> _openHomeSearch(BuildContext context) async {
-    final query = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => const _HomeSearchSheet(),
+  /// Open fullscreen search page (BerandaSearchPage).
+  ///
+  /// Previously pakai `showModalBottomSheet` dengan transparent
+  /// background → bug: blur abu-abu, input susah dilihat, layout
+  /// rusak saat keyboard muncul. Sekarang Navigator.push proper
+  /// fullscreen route, no blur, search input autofocus dengan
+  /// keyboard handle benar di iOS + Android.
+  void _openHomeSearch(BuildContext context) {
+    AppHaptics.tap();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const HomeSearchPage(),
+      ),
     );
-    if (!context.mounted || query == null || query.trim().isEmpty) return;
-    _openProductsWithQuery(context, query);
   }
 
   @override
