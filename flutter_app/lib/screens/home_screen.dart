@@ -844,7 +844,15 @@ class _HomeHeader extends StatelessWidget {
           ),
           SizedBox(height: gapBeforeTrust),
           // ── Trust strip — bagian dari sticky header (visible saat scroll) ──
-          _TrustMarquee(height: trustHeight),
+          // ValueKey stabil → State preserved meski header rebuild per frame
+          // saat scroll. Tanpa key, AnimationController bisa di-dispose-recreate
+          // → marquee animation restart dari posisi 0 setiap shrinkOffset
+          // berubah (jutaan kali per scroll). Dengan key, State + controller
+          // tetap hidup, marquee terus jalan smooth.
+          _TrustMarquee(
+            key: const ValueKey('home-trust-marquee'),
+            height: trustHeight,
+          ),
         ],
       ),
     );
@@ -1325,7 +1333,7 @@ class _TrustMarquee extends StatefulWidget {
   /// collapse di compact state (driven by _HomeHeader).
   final double height;
 
-  const _TrustMarquee({this.height = 38});
+  const _TrustMarquee({super.key, this.height = 38});
 
   @override
   State<_TrustMarquee> createState() => _TrustMarqueeState();
