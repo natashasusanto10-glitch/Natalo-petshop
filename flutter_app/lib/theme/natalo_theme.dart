@@ -250,12 +250,13 @@ class NataloTheme {
       colorScheme: scheme,
       fontFamily: fontFamily,
       fontFamilyFallback: const ['Roboto', 'Arial'],
-      // SOLID solid white scaffold — bukan `scheme.surface` yang
-      // Material 3 bisa blend dengan elevation tint saat ada konten
-      // scroll di belakang. Force explicit putih supaya tidak ada
-      // efek "blur/tint" di header maupun body.
+      // Scaffold bg slightly off-white (#F8FAFC) supaya card body white
+      // (#FFFFFF) tetap punya contrast → tidak "blank" look. AppBar
+      // sendiri solid white via appBarTheme.backgroundColor di bawah.
+      // Sebelumnya pure white #FFFFFF di-set di sini → card white-on-white
+      // jadi invisible (user report: "halaman detail pesanan blank").
       scaffoldBackgroundColor:
-          isLight ? const Color(0xFFFFFFFF) : NataloColors.backgroundDark,
+          isLight ? NataloColors.surface : NataloColors.backgroundDark,
       textTheme: isLight ? _lightTextTheme : _darkTextTheme,
       primaryTextTheme: isLight ? _lightTextTheme : _darkTextTheme,
       // BUG FIX (v1.0.13): user report header Keranjang / Tukar Poin /
