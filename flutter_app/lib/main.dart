@@ -39,6 +39,7 @@ import 'state/cart_store.dart';
 import 'state/feed_local_store.dart';
 import 'state/member_store.dart';
 import 'state/recently_viewed_store.dart';
+import 'state/search_history_store.dart';
 import 'state/settings_store.dart';
 import 'utils/motion_prefs.dart';
 import 'utils/read_only_mode.dart';
@@ -121,6 +122,9 @@ Future<void> main() async {
   // Recently viewed — load history dari disk supaya Home carousel
   // langsung populated saat user buka app.
   recentlyViewedStore.loadFromDisk();
+  // Search history — load query history dari disk supaya Home
+  // "Rekomendasi Untukmu" bisa langsung pakai keyword behavior user.
+  searchHistoryStore.initialize();
   // Feed local store — liked posts cache (#7) + offline feed cache (#11).
   // Fire-and-forget; feed_screen also re-init defensively saat first open.
   feedLocalStore.initialize();

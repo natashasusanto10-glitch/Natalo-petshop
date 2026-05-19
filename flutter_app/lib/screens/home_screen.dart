@@ -17,6 +17,7 @@ import '../services/app_analytics.dart';
 import '../services/search_service.dart';
 import '../services/product_service.dart';
 import '../state/recently_viewed_store.dart';
+import '../state/search_history_store.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
@@ -209,17 +210,34 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Personalized recommendation algorithm.
+  ///
+  /// Combines TWO behavior signals:
+  /// 1. **Recently viewed products** (`recentlyViewedStore`) — kebiasaan
+  ///    user buka detail produk. Brand + category dari viewed → score.
+  /// 2. **Search history** (`searchHistoryStore`) — kebiasaan user
+  ///    mencari produk (search queries di Produk screen). Token-match
+  ///    keyword vs product title/brand/category → score.
+  ///
+  /// Bobot search keyword PALING TINGGI (×2.0) untuk title match karena
+  /// search intent eksplisit lebih kuat dibanding pasif view. Recent
+  /// search dapat weight lebih tinggi via newest-first ordering.
+  ///
+  /// Fallback (kalau viewed + search semuanya kosong): pakai
+  /// `_fallbackRecommendations` (promo + popular by reviewCount).
   List<Product> _buildPersonalizedRecommendations(List<Product> products) {
     if (products.isEmpty) return const [];
 
     final viewed = recentlyViewedStore.items;
+    final searches = searchHistoryStore.entries;
     final fallback = _fallbackRecommendations(products);
-    if (viewed.isEmpty) return fallback;
+    if (viewed.isEmpty && searches.isEmpty) return fallback;
 
     final viewedIds = viewed.map((product) => product.id).toSet();
     final brandScores = <String, double>{};
     final categoryScores = <String, double>{};
 
+    // Signal 1: viewed products → brand + category preference.
     for (var index = 0; index < viewed.length; index += 1) {
       final product = viewed[index];
       final weight = (viewed.length - index).toDouble();
@@ -233,12 +251,47 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
+    // Signal 2: search history → keyword tokens dengan recency weight.
+    // Tokenize multi-word query (mis. "makanan kucing" → ['makanan',
+    // 'kucing']) supaya bisa match parsial dengan product field.
+    final searchKeywords = <String, double>{};
+    for (var i = 0; i < searches.length; i += 1) {
+      final keyword = searches[i].toLowerCase().trim();
+      if (keyword.isEmpty) continue;
+      final weight = (searches.length - i).toDouble();
+      // Whole query as one token (untuk exact match).
+      searchKeywords[keyword] = (searchKeywords[keyword] ?? 0) + weight;
+      // Plus individual tokens (untuk partial match).
+      for (final token in keyword.split(RegExp(r'\s+'))) {
+        if (token.length < 2) continue;
+        if (token != keyword) {
+          searchKeywords[token] =
+              (searchKeywords[token] ?? 0) + weight * 0.5;
+        }
+      }
+    }
+
     double score(Product product) {
       final brand = product.brand.trim().toLowerCase();
       final category = product.category.trim().toLowerCase();
+      final title = product.title.toLowerCase();
       var value = 0.0;
+
+      // From viewed-history signal (passive interest).
       value += (brandScores[brand] ?? 0) * 1.2;
       value += (categoryScores[category] ?? 0) * 1.8;
+
+      // From search-history signal (ACTIVE intent — bobot lebih tinggi).
+      // Title match = strongest signal (user explicitly searched something
+      // matching product name).
+      for (final entry in searchKeywords.entries) {
+        final keyword = entry.key;
+        final w = entry.value;
+        if (title.contains(keyword)) value += w * 2.4;
+        if (brand.contains(keyword)) value += w * 1.6;
+        if (category.contains(keyword)) value += w * 1.6;
+      }
+
       if (product.hasDiscount) value += 0.8;
       value += product.rating.clamp(0, 5) * 0.18;
       value += product.reviewCount.clamp(0, 500) / 500;

@@ -12,6 +12,7 @@ import '../theme/natalo_colors.dart';
 import '../models/product.dart';
 import '../services/product_service.dart';
 import '../state/recently_viewed_store.dart';
+import '../state/search_history_store.dart';
 import '../utils/formatters.dart';
 import '../utils/search_synonyms.dart';
 import '../widgets/app_cart_button.dart';
@@ -331,6 +332,11 @@ class _ProductsScreenState extends State<ProductsScreen> {
     setState(() => _searchHistory = next);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(_historyKey, next);
+    // Sync ke global searchHistoryStore (versioned key `search_history_v1`)
+    // supaya Home "Rekomendasi Untukmu" bisa pakai search behavior user
+    // untuk personalized scoring. Fire-and-forget — kalau gagal, fallback
+    // ke recently-viewed-based ranking saja.
+    searchHistoryStore.push(keyword);
   }
 
   Future<void> _clearSearchHistory() async {
