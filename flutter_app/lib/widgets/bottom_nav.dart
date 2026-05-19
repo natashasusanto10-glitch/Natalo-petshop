@@ -89,8 +89,12 @@ class BottomNavBar extends StatelessWidget {
       ),
       child: SafeArea(
         top: false,
+        // Compact nav — match Instagram/Tokopedia pattern (49-50px content
+        // height). Safe area bottom inset di-handle Scaffold's
+        // bottomNavigationBar slot, BUKAN tambah padding lagi di sini.
+        // Sebelumnya 58 + safe area = double padding terkesan tinggi.
         child: SizedBox(
-          height: 58,
+          height: 50,
           child: Row(
             children: [
               _BottomNavItem(
@@ -185,7 +189,7 @@ class _BottomNavItem extends StatelessWidget {
             highlightColor: activeColor.withValues(alpha: 0.06),
             child: Center(
               child: Padding(
-                padding: const EdgeInsets.only(top: 6, bottom: 4),
+                padding: const EdgeInsets.only(top: 4, bottom: 2),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   mainAxisAlignment: MainAxisAlignment.center,
