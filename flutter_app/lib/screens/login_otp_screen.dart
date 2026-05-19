@@ -161,8 +161,15 @@ class _LoginOtpScreenState extends State<LoginOtpScreen> {
         phone: phone,
         otp: otp,
       );
-      await memberStore.setSession(profile: profile);
-      await favoriteStore.refresh();
+      await memberStore.setSession(
+        profile: profile,
+        token: authService.lastSessionToken,
+      );
+      try {
+        await favoriteStore.refresh();
+      } catch (_) {
+        // Wishlist bisa di-refresh ulang dari halaman Akun/Wishlist.
+      }
       try {
         await cartStore.syncToServer();
       } catch (_) {
@@ -738,8 +745,7 @@ class _CodeStep extends StatelessWidget {
               const SizedBox(width: 6),
               Expanded(
                 child: TextButton(
-                  onPressed:
-                      (resendSeconds > 0 || loading) ? null : onResend,
+                  onPressed: (resendSeconds > 0 || loading) ? null : onResend,
                   child: Text(
                     resendSeconds > 0
                         ? 'Kirim ulang ($resendSeconds s)'

@@ -90,8 +90,15 @@ class _LoginScreenState extends State<LoginScreen> {
         identifier: _emailController.text,
         password: _passwordController.text,
       );
-      await memberStore.setSession(profile: profile);
-      await favoriteStore.refresh();
+      await memberStore.setSession(
+        profile: profile,
+        token: authService.lastSessionToken,
+      );
+      try {
+        await favoriteStore.refresh();
+      } catch (_) {
+        // Wishlist bisa di-refresh ulang dari halaman Akun/Wishlist.
+      }
       try {
         await cartStore.syncToServer();
       } catch (_) {

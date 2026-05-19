@@ -16,6 +16,9 @@ class ApiClient {
   /// Fire callback kalau response 401 Unauthorized — UI layer bisa
   /// subscribe untuk redirect ke /member/login.
   VoidCallback? onUnauthorized;
+  String? _lastSessionToken;
+
+  String? get lastSessionToken => _lastSessionToken;
 
   Map<String, String> _headers(
       {bool json = false, Map<String, String>? extra}) {
@@ -47,6 +50,7 @@ class ApiClient {
   /// Clear session token + cookies (logout). Beberapa code pakai
   /// `apiClient.clearSession()` saat user logout / 401 response.
   Future<void> clearSession() async {
+    _lastSessionToken = null;
     // TODO: clear cookie jar kalau pakai dio cookie_jar. Saat ini no-op
     // karena auth via memberStore.sessionToken yang di-clear di memberStore.logout().
     if (kDebugMode) debugPrint('[apiClient.clearSession] called');
@@ -166,6 +170,7 @@ class ApiClient {
   }
 
   dynamic _decode(http.Response res) {
+    _captureSessionToken(res);
     if (res.statusCode < 200 || res.statusCode >= 300) {
       _handleUnauthorized(res);
       throw ApiException(
@@ -181,6 +186,16 @@ class ApiClient {
     }
   }
 
+  void _captureSessionToken(http.Response response) {
+    final setCookie = response.headers['set-cookie'];
+    if (setCookie == null || setCookie.isEmpty) return;
+    final match =
+        RegExp(r'(?:^|,\s*)member_session=([^;,\s]+)').firstMatch(setCookie);
+    final token = match?.group(1);
+    if (token == null || token.isEmpty) return;
+    _lastSessionToken = token;
+  }
+
   void _handleUnauthorized(http.Response response) {
     if (response.statusCode != 401) return;
     // Fire-and-forget clear (async tapi tidak di-await — non-blocking).
@@ -191,6 +206,15 @@ class ApiClient {
 
   String _nonJsonMessage(http.Response response, String text) {
     final status = response.statusCode;
+    try {
+      final body = jsonDecode(text);
+      if (body is Map) {
+        final message = body['error'] ?? body['message'];
+        if (message != null && message.toString().trim().isNotEmpty) {
+          return message.toString();
+        }
+      }
+    } catch (_) {}
     if (status == 404) {
       return 'Endpoint belum tersedia di server.';
     }
