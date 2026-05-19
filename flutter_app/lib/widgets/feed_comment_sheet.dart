@@ -9,6 +9,7 @@ import '../state/member_store.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/haptics.dart';
 import 'app_toast.dart';
+import 'natalo_paw_refresh_indicator.dart';
 
 /// Comment sheet style Instagram Reels — 1:1 visual:
 ///
@@ -414,9 +415,8 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
       return const _CommentListSkeleton();
     }
     if (_error != null && _comments.isEmpty) {
-      return RefreshIndicator(
+      return NataloPawRefreshIndicator(
         onRefresh: _refresh,
-        color: NataloColors.primary,
         child: ListView(
           controller: widget.sheetScrollController,
           padding: const EdgeInsets.symmetric(vertical: 60, horizontal: 32),
@@ -446,9 +446,8 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
       );
     }
     if (_comments.isEmpty) {
-      return RefreshIndicator(
+      return NataloPawRefreshIndicator(
         onRefresh: _refresh,
-        color: NataloColors.primary,
         child: ListView(
           controller: widget.sheetScrollController,
           padding: const EdgeInsets.symmetric(vertical: 60, horizontal: 32),
@@ -489,9 +488,8 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
 
     final items = _buildDisplayItems();
 
-    return RefreshIndicator(
+    return NataloPawRefreshIndicator(
       onRefresh: _refresh,
-      color: NataloColors.primary,
       child: ListView.builder(
         controller: widget.sheetScrollController,
         padding: const EdgeInsets.fromLTRB(0, 8, 0, 24),

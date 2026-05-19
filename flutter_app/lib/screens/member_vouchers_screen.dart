@@ -6,6 +6,7 @@ import '../services/member_service.dart';
 import '../state/member_store.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_ui.dart';
+import '../widgets/natalo_paw_refresh_indicator.dart';
 
 const _brandBlue = Color(0xFF0B7FEA);
 
@@ -61,7 +62,7 @@ class _MemberVouchersScreenState extends State<MemberVouchersScreen> {
           // + subtitle + CTA tukar poin. RefreshIndicator tetap aktif supaya
           // user bisa pull-down refresh.
           if (vouchers.isEmpty) {
-            return RefreshIndicator(
+            return NataloPawRefreshIndicator(
               onRefresh: _refresh,
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
@@ -73,7 +74,7 @@ class _MemberVouchersScreenState extends State<MemberVouchersScreen> {
               ),
             );
           }
-          return RefreshIndicator(
+          return NataloPawRefreshIndicator(
             onRefresh: _refresh,
             child: ListView.separated(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),

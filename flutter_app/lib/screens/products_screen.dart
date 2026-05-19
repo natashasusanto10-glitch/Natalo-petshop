@@ -22,6 +22,7 @@ import '../widgets/skeleton_product_card.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/barcode_scanner_modal.dart';
+import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/voice_search_modal.dart';
 
 const _brandBlue = NataloColors.nataloBlue;
@@ -626,8 +627,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      body: RefreshIndicator(
-        color: NataloColors.primary,
+      body: NataloPawRefreshIndicator(
         onRefresh: _refreshAll,
         child: SafeArea(
           bottom: false,

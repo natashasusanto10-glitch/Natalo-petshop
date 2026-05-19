@@ -6,6 +6,7 @@ import 'dart:async';
 import '../models/member_profile.dart';
 import '../services/member_service.dart';
 import '../services/places_service.dart';
+import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/wilayah_picker.dart';
 import '../state/member_store.dart';
 import '../widgets/app_ui.dart';
@@ -153,7 +154,7 @@ class _MemberAddressesScreenState extends State<MemberAddressesScreen> {
             return const AppSkeletonList(itemCount: 5);
           }
           final addresses = snapshot.data ?? _addresses;
-          return RefreshIndicator(
+          return NataloPawRefreshIndicator(
             onRefresh: _refresh,
             child: ListView.separated(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 132),

@@ -9,6 +9,7 @@ import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/profile_avatar.dart';
 
 /// Profile member — full premium dengan hero card, quick stats, edit
@@ -69,8 +70,7 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
         builder: (context, _) {
           final profile = memberStore.profile;
           if (profile == null) return const _NotLoggedInState();
-          return RefreshIndicator(
-            color: NataloColors.primary,
+          return NataloPawRefreshIndicator(
             onRefresh: () async {
               await _loadStats();
               await favoriteStore.refresh();

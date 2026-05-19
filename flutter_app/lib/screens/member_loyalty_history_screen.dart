@@ -4,6 +4,7 @@ import '../services/member_service.dart';
 import '../state/member_store.dart';
 import '../utils/formatters.dart';
 import '../widgets/app_ui.dart';
+import '../widgets/natalo_paw_refresh_indicator.dart';
 
 const _brandBlue = Color(0xFF0B7FEA);
 const _primaryDark = Color(0xFF075CB5);
@@ -49,7 +50,7 @@ class _MemberLoyaltyHistoryScreenState
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Riwayat Poin')),
-      body: RefreshIndicator(
+      body: NataloPawRefreshIndicator(
         onRefresh: _refresh,
         child: FutureBuilder<List<LoyaltyHistoryEntry>>(
           future: _historyFuture,

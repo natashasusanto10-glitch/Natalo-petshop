@@ -11,6 +11,7 @@ import '../utils/read_only_mode.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/glass_surface.dart';
+import '../widgets/natalo_paw_refresh_indicator.dart';
 
 const _brandBlue = Color(0xFF0B7FEA);
 const _textPrimary = Color(0xFF17202A);
@@ -123,7 +124,7 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
               buttonLabel: 'Login',
               onPressed: () => Navigator.pushNamed(context, '/member/login'),
             )
-          : RefreshIndicator(
+          : NataloPawRefreshIndicator(
               onRefresh: _refresh,
               child: FutureBuilder<List<ReviewableItem>>(
                 future: _itemsFuture,

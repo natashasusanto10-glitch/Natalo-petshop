@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../models/my_feed_post.dart';
 import '../services/feed_service.dart';
 import '../utils/haptics.dart';
+import '../widgets/natalo_paw_refresh_indicator.dart';
 
 const _brandBlue = Color(0xFF0B7FEA);
 
@@ -106,7 +107,7 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
             onTap: _onTabChanged,
           ),
           Expanded(
-            child: RefreshIndicator(
+            child: NataloPawRefreshIndicator(
               onRefresh: _loadPosts,
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),

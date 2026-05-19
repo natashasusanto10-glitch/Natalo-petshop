@@ -27,6 +27,7 @@ import '../widgets/app_product_image.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/glass_surface.dart';
+import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/product_card.dart';
 import '../widgets/skeleton_product_card.dart';
 
@@ -357,9 +358,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   ..sort((a, b) => b.reviewCount.compareTo(a.reviewCount)))
                 .take(8)
                 .toList();
-            return RefreshIndicator(
+            return NataloPawRefreshIndicator(
               onRefresh: _refreshAll,
-              color: _brandBlue,
               child: CustomScrollView(
                 controller: _scrollController,
                 physics: const AlwaysScrollableScrollPhysics(),
