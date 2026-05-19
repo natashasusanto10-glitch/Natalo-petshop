@@ -9,6 +9,7 @@ import '../models/review.dart';
 import '../services/app_analytics.dart';
 import '../services/app_crashlytics.dart';
 import '../services/product_service.dart';
+import '../services/report_service.dart';
 import '../services/review_service.dart';
 import '../state/cart_store.dart';
 import '../state/recently_viewed_store.dart';
@@ -22,6 +23,7 @@ import '../widgets/app_ui.dart';
 import '../widgets/animated_price.dart';
 import '../widgets/favorite_button.dart';
 import '../widgets/glass_surface.dart';
+import '../widgets/moderation_action_sheet.dart';
 import 'image_viewer_screen.dart';
 
 const _brandBlue = Color(0xFF1565D8);
@@ -1419,15 +1421,43 @@ class _ReviewPreviewTile extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: _textDark,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: _textDark,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  // UGC moderation — review yang bukan milik user sendiri
+                  // ada tombol "more" untuk Report/Block (Google Play UGC
+                  // policy syarat). Tombol di-hide untuk review.isMine
+                  // karena tidak masuk akal laporkan review sendiri.
+                  if (!review.isMine)
+                    InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () => showModerationActions(
+                        context,
+                        targetKind: ReportTargetKind.productReview,
+                        targetId: review.id,
+                        authorName: review.userName,
+                      ),
+                      child: const Padding(
+                        padding: EdgeInsets.all(4),
+                        child: Icon(
+                          Icons.more_horiz_rounded,
+                          size: 18,
+                          color: _textGray,
+                        ),
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(height: 4),
               Row(

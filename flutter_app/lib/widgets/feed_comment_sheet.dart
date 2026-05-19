@@ -5,10 +5,12 @@ import '../models/feed_comment.dart';
 import '../models/feed_post.dart';
 import '../services/api_client.dart';
 import '../services/feed_service.dart';
+import '../services/report_service.dart';
 import '../state/member_store.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/haptics.dart';
 import 'app_toast.dart';
+import 'moderation_action_sheet.dart';
 import 'natalo_paw_refresh_indicator.dart';
 
 /// Comment sheet style Instagram Reels — 1:1 visual:
@@ -741,23 +743,42 @@ class _CommentTile extends StatelessWidget {
         name.isNotEmpty ? name.substring(0, 1).toUpperCase() : 'N';
     final avatarSize = isReply ? 28.0 : 36.0;
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        isReply ? 64 : 20,
-        7,
-        16,
-        7,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Avatar.
-          _CommentAvatar(
-            size: avatarSize,
-            initial: initial,
-            imageUrl: avatarUrl,
-          ),
-          const SizedBox(width: 10),
+    return GestureDetector(
+      // UGC moderation — long-press buka Report/Block sheet untuk comment
+      // ini. Long-press dipilih (bukan dedicated button) karena comment
+      // tile dense + horizontal space tight, dan pattern long-press
+      // familiar dari IG/Threads/Twitter untuk action menu.
+      // Google Play UGC policy requirement: setiap UGC harus ada cara
+      // user laporkan + blokir author.
+      behavior: HitTestBehavior.opaque,
+      onLongPress: () {
+        final isOwnComment = author.isAdmin;
+        showModerationActions(
+          context,
+          targetKind: ReportTargetKind.feedComment,
+          targetId: comment.id,
+          authorId: author.id,
+          authorName: isOwnComment ? null : name,
+          allowBlock: !isOwnComment,
+        );
+      },
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          isReply ? 64 : 20,
+          7,
+          16,
+          7,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Avatar.
+            _CommentAvatar(
+              size: avatarSize,
+              initial: initial,
+              imageUrl: avatarUrl,
+            ),
+            const SizedBox(width: 10),
 
           // Body: name + content + meta.
           Expanded(
@@ -844,12 +865,13 @@ class _CommentTile extends StatelessWidget {
             ),
           ),
 
-          // Like heart.
-          _CommentLikeButton(
-            liked: comment.viewerLiked,
-            onTap: onLike,
-          ),
-        ],
+            // Like heart.
+            _CommentLikeButton(
+              liked: comment.viewerLiked,
+              onTap: onLike,
+            ),
+          ],
+        ),
       ),
     );
   }
