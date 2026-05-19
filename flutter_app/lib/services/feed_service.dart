@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
+import '../models/feed_comment.dart';
 import '../models/feed_post.dart';
 import '../state/member_store.dart';
 import 'api_client.dart';
@@ -85,6 +86,148 @@ class FeedService {
         );
       }
       return FeedLikeResult(liked: !currentlyLiked, likeCount: 0);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException(e.toString(), cause: e);
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // Comments — Instagram Reels-style threading + likes + replies.
+  // Backend endpoint match Next.js /api/feed/posts/:id/comments.
+  // ──────────────────────────────────────────────────────────────
+
+  /// Fetch komentar untuk post, cursor-paginated (newest-first).
+  /// Backend bisa balikin flat list (parent+replies di-mix) atau nested
+  /// — model FeedComment punya `parentCommentId` untuk group client-side.
+  Future<FeedCommentPage> fetchComments(
+    String postId, {
+    String? cursor,
+    int limit = 30,
+  }) async {
+    try {
+      final uri = ApiConfig.uri('/api/feed/posts/$postId/comments', {
+        if (cursor != null) 'cursor': cursor,
+        'limit': limit,
+      });
+      final res = await http
+          .get(uri, headers: _headers)
+          .timeout(const Duration(seconds: 12));
+      if (res.statusCode != 200) {
+        throw ApiException(
+          'fetch comments failed',
+          statusCode: res.statusCode,
+        );
+      }
+      final body = jsonDecode(res.body);
+      if (body is! Map<String, dynamic>) return FeedCommentPage.empty;
+      final itemsJson =
+          (body['items'] ?? body['comments'] ?? body['data']) as List?;
+      final items = (itemsJson ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(FeedComment.fromApiJson)
+          .toList();
+      return FeedCommentPage(
+        items: items,
+        nextCursor: body['nextCursor'] as String?,
+      );
+    } catch (e) {
+      if (kDebugMode) debugPrint('[feedService.fetchComments] $e');
+      if (e is ApiException) rethrow;
+      return FeedCommentPage.empty;
+    }
+  }
+
+  /// Post komentar baru. `parentCommentId` opsional — kalau ada, ini
+  /// adalah reply ke komentar parent.
+  Future<FeedComment> postComment(
+    String postId, {
+    required String content,
+    String? parentCommentId,
+  }) async {
+    final uri = ApiConfig.uri('/api/feed/posts/$postId/comments');
+    try {
+      final res = await http
+          .post(
+            uri,
+            headers: _headers,
+            body: jsonEncode({
+              'content': content,
+              if (parentCommentId != null) 'parentCommentId': parentCommentId,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode == 401) {
+        throw const ApiException('unauthorized', statusCode: 401);
+      }
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        throw ApiException(
+          'post comment failed',
+          statusCode: res.statusCode,
+        );
+      }
+      final body = jsonDecode(res.body);
+      if (body is Map<String, dynamic>) {
+        // Backend bisa balikin nested `{comment: {...}}` atau langsung.
+        final commentJson = body['comment'] is Map<String, dynamic>
+            ? body['comment'] as Map<String, dynamic>
+            : body;
+        return FeedComment.fromApiJson(commentJson);
+      }
+      throw const ApiException('invalid response');
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException(e.toString(), cause: e);
+    }
+  }
+
+  /// Toggle like di komentar. Return likeCount terbaru dari backend.
+  Future<int> toggleCommentLike(
+    String commentId, {
+    required bool currentlyLiked,
+  }) async {
+    final method = currentlyLiked ? 'DELETE' : 'POST';
+    final uri = ApiConfig.uri('/api/feed/comments/$commentId/like');
+    try {
+      final req = http.Request(method, uri)..headers.addAll(_headers);
+      final streamed = await req.send().timeout(const Duration(seconds: 6));
+      final res = await http.Response.fromStream(streamed);
+      if (res.statusCode == 401) {
+        throw const ApiException('unauthorized', statusCode: 401);
+      }
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        throw ApiException(
+          'toggle comment like failed',
+          statusCode: res.statusCode,
+        );
+      }
+      final body = jsonDecode(res.body);
+      if (body is Map<String, dynamic>) {
+        return (body['likeCount'] as num?)?.toInt() ?? 0;
+      }
+      return 0;
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException(e.toString(), cause: e);
+    }
+  }
+
+  /// Delete komentar — backend cek ownership (cuma author yang boleh).
+  Future<void> deleteComment(String commentId) async {
+    final uri = ApiConfig.uri('/api/feed/comments/$commentId');
+    try {
+      final res = await http
+          .delete(uri, headers: _headers)
+          .timeout(const Duration(seconds: 6));
+      if (res.statusCode == 401) {
+        throw const ApiException('unauthorized', statusCode: 401);
+      }
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        throw ApiException(
+          'delete comment failed',
+          statusCode: res.statusCode,
+        );
+      }
     } catch (e) {
       if (e is ApiException) rethrow;
       throw ApiException(e.toString(), cause: e);
