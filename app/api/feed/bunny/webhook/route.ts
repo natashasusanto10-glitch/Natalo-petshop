@@ -32,6 +32,7 @@ import {
   bunnyThumbnailUrl,
   getBunnyConfig,
   getBunnyVideo,
+  preWarmBunnyAssets,
 } from "@/lib/feed/bunny";
 import { sendFeedPendingReviewNotification } from "@/lib/feed/notifications";
 import { ADMIN_VIDEO_CONFIG, USER_VIDEO_CONFIG } from "@/lib/feed/video-config";
@@ -167,6 +168,11 @@ export async function POST(request: NextRequest) {
     },
   });
   void sendFeedPendingReviewNotification({ postId: post.id });
+  // Fire-and-forget CDN edge pre-warm — fetch first 256KB MP4 + thumbnail
+  // dari server supaya edge POP terdekat sudah cache file sebelum user
+  // pertama buka. Tanpa ini, user pertama selalu kena cold-cache latency
+  // 2-5 detik (TTFB lambat). Lihat preWarmBunnyAssets() di lib/feed/bunny.ts.
+  void preWarmBunnyAssets(guid);
 
   return NextResponse.json({ ok: true, encoded: "ready" });
 }

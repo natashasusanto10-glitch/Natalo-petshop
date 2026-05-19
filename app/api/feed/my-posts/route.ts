@@ -21,7 +21,7 @@ import {
   MY_FEED_VISIBLE_STATUSES,
   normalizeMyFeedFilter,
 } from "@/lib/feed/my-posts";
-import { bunnyThumbnailUrl } from "@/lib/feed/bunny";
+import { bunnyThumbnailUrl, signBunnyUrl } from "@/lib/feed/bunny";
 
 export async function GET(request: NextRequest) {
   const session = await getSession("CUSTOMER");
@@ -77,10 +77,14 @@ export async function GET(request: NextRequest) {
       id: post.id,
       title: post.title,
       description: post.description,
+      // Sign Bunny CDN URLs supaya kompatibel dengan token authentication
+      // (kalau diaktifkan). Tanpa env var, signBunnyUrl return URL apa adanya.
       thumbnailUrl:
-        post.thumbnailUrl ??
-        (post.videoGuid ? bunnyThumbnailUrl(post.videoGuid) || null : null),
-      videoUrl: post.videoUrl,
+        signBunnyUrl(
+          post.thumbnailUrl ??
+            (post.videoGuid ? bunnyThumbnailUrl(post.videoGuid) || null : null),
+        ) ?? null,
+      videoUrl: signBunnyUrl(post.videoUrl) ?? null,
       videoDurationSec: post.videoDurationSec,
       createdAt: post.createdAt.toISOString(),
       status: post.status,

@@ -188,9 +188,9 @@ class _FeedScreenState extends State<FeedScreen> {
         appSettingsStore.feedVideoQuality != 'data_saver';
   }
 
-  /// Sliding window 3-item — keep prev, current, next controllers hidup
-  /// di RAM. Sesuai Reels/TikTok spec: swipe UP & DOWN dua-duanya smooth,
-  /// no jeda 500ms-2s init saat backward swipe.
+  /// Sliding window 4-item — keep prev, current, next, next+1 controllers
+  /// hidup di RAM. Sesuai Reels/TikTok spec: swipe forward smooth dua kali
+  /// berturut-turut tanpa loading spinner.
   ///
   /// State per slot setelah pre-init:
   ///   - prev (i-1):    paused, seek 0, prepared. Attached saat user
@@ -198,14 +198,20 @@ class _FeedScreenState extends State<FeedScreen> {
   ///   - current (i):   widget _FeedPostView manage sendiri (play loop).
   ///   - next (i+1):    paused, seek 0, prepared. Attached saat swipe
   ///                    forward → instant play.
+  ///   - next+1 (i+2):  paused, seek 0, prepared. Attached saat swipe
+  ///                    dua kali berturut-turut → tetap instant play.
   ///   - others (jauh): unloaded (dispose), free ~30MB native heap/slot.
   ///
-  /// Total RAM aktif: 3 controllers × ~30MB = ~90MB. Safe untuk phone
-  /// 2GB+ (Reels/TikTok pakai pattern sama).
+  /// Total RAM aktif: 4 controllers × ~30MB = ~120MB. Safe untuk phone
+  /// 2GB+. Android ExoPlayer limit ~8 slot di low-end device, kita pakai 4
+  /// jadi masih ample headroom untuk PIP/background notifications.
   Future<void> _managePreloadWindow(int activeIndex) async {
     // Build set of post IDs yang harus di-keep di window.
+    // Forward preload 2 (next + next+1) — penting untuk smooth TikTok-style
+    // swipe sequence. Backward preload 1 (prev) cukup karena user jarang
+    // swipe-back lebih dari sekali berturut-turut.
     final keepIds = <String>{};
-    for (final offset in const [-1, 0, 1]) {
+    for (final offset in const [-1, 0, 1, 2]) {
       final i = activeIndex + offset;
       if (i >= 0 && i < _posts.length) {
         keepIds.add(_posts[i].id);

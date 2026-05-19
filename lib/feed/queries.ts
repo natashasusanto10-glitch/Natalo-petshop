@@ -10,6 +10,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import type { FeedPostTab } from "@prisma/client";
+import { signBunnyUrl } from "./bunny";
 import type {
   FeedCommentItem,
   FeedCommentsResponse,
@@ -163,8 +164,10 @@ export async function listFeedPosts({
     status: p.status,
     title: p.title,
     description: p.description,
-    videoUrl: p.videoUrl,
-    thumbnailUrl: p.thumbnailUrl,
+    // Sign URL dengan Bunny CDN token kalau BUNNY_TOKEN_SECURITY_KEY di-set
+    // (defense untuk hotlink protection). Tanpa env, return as-is.
+    videoUrl: signBunnyUrl(p.videoUrl) ?? null,
+    thumbnailUrl: signBunnyUrl(p.thumbnailUrl) ?? null,
     thumbnailBlurhash: p.thumbnailBlurhash,
     videoDurationSec: p.videoDurationSec,
     videoWidth: p.videoWidth,

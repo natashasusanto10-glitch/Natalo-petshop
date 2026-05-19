@@ -18,6 +18,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { signBunnyUrl } from "@/lib/feed/bunny";
 
 export const revalidate = 60;
 
@@ -95,7 +96,7 @@ export async function GET(
     items: posts.map((p) => ({
       id: p.id,
       title: p.title,
-      thumbnailUrl: p.thumbnailUrl,
+      thumbnailUrl: signBunnyUrl(p.thumbnailUrl) ?? null,
       videoDurationSec: p.videoDurationSec,
       likeCount: p.likeCount,
       commentCount: p.commentCount,

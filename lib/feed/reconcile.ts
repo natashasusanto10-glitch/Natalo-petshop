@@ -15,6 +15,7 @@ import {
   bunnyMp4Url,
   bunnyThumbnailUrl,
   getBunnyVideo,
+  preWarmBunnyAssets,
 } from "./bunny";
 import { generateBlurhashFromUrl } from "./blurhash";
 import { sendFeedPendingReviewNotification } from "./notifications";
@@ -71,6 +72,8 @@ export async function reconcileFeedPost(
       },
     });
     void sendFeedPendingReviewNotification({ postId: post.id });
+    // Pre-warm CDN edge — same alasan dengan webhook path.
+    void preWarmBunnyAssets(post.videoGuid);
     return { action: "ready", postId };
   }
 

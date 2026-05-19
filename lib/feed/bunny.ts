@@ -25,7 +25,19 @@
  *                              callback came from Bunny.
  */
 
+import crypto from "node:crypto";
+
 const BUNNY_API_BASE = "https://video.bunnycdn.com";
+
+/**
+ * Default expiry untuk signed URL — 6 jam. Cukup panjang supaya feed yang
+ * di-cache di Flutter offline_cache_v1 (lihat feed_local_store.dart) tetap
+ * playable saat user buka app offline. Trade-off: token expiry tidak ideal
+ * untuk hotlink prevention murni (orang lain bisa hotlink selama 6 jam),
+ * tapi praktis untuk UX feed. Kalau mau super-strict, turunkan ke 30 menit
+ * via param expirySeconds.
+ */
+const SIGNED_URL_DEFAULT_EXPIRY_SEC = 6 * 60 * 60;
 
 export type BunnyConfig = {
   libraryId: string;
@@ -235,6 +247,106 @@ export function bunnyThumbnailUrl(guid: string): string {
   const cfg = getBunnyConfig();
   if (!cfg) return "";
   return `https://${cfg.cdnHostname}/${guid}/thumbnail.jpg`;
+}
+
+/**
+ * Sign Bunny CDN URL dengan token authentication.
+ *
+ * Bunny CDN Token Authentication scheme (https://docs.bunny.net/docs/cdn-token-authentication):
+ *   expires    = unixTimestamp + expirySeconds
+ *   tokenInput = securityKey + url_path + expires
+ *   token      = base64UrlSafe( SHA256(tokenInput) )
+ *
+ * Aktif HANYA kalau env `BUNNY_TOKEN_SECURITY_KEY` di-set. Tanpa env,
+ * function return URL apa adanya — supaya deploy aman incremental: code
+ * bisa di-deploy duluan tanpa break, baru aktifkan token authentication di
+ * Bunny dashboard + env var. Reverse: kalau dashboard di-disable, signed
+ * URL tetap bekerja (token diabaikan).
+ *
+ * Hanya sign URL yang host-nya match `BUNNY_CDN_HOSTNAME` — URL eksternal
+ * atau legacy UploadThing return as-is supaya tidak rusak.
+ */
+export function signBunnyUrl(
+  url: string | null | undefined,
+  expirySeconds: number = SIGNED_URL_DEFAULT_EXPIRY_SEC,
+): string | null | undefined {
+  if (!url) return url;
+  const securityKey = process.env.BUNNY_TOKEN_SECURITY_KEY;
+  if (!securityKey) return url;
+
+  const cfg = getBunnyConfig();
+  if (!cfg) return url;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url;
+  }
+  if (parsed.hostname !== cfg.cdnHostname) return url;
+
+  const expires = Math.floor(Date.now() / 1000) + expirySeconds;
+  const hashInput = `${securityKey}${parsed.pathname}${expires}`;
+  const token = crypto
+    .createHash("sha256")
+    .update(hashInput)
+    .digest("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
+
+  parsed.searchParams.set("token", token);
+  parsed.searchParams.set("expires", String(expires));
+  return parsed.toString();
+}
+
+/**
+ * Pre-warm Bunny CDN edge cache untuk video yang baru selesai encoding.
+ *
+ * Bunny pakai pull-CDN — file dari origin baru di-cache di edge POP saat
+ * ada request pertama. User pertama yang buka video baru selalu kena
+ * cold-cache latency 2-5 detik (TTFB lambat). Pre-warm dari server
+ * supaya edge POP terdekat ke server (biasanya Singapore region untuk
+ * Vercel Asia) udah punya file sebelum user pertama.
+ *
+ * Strategi: GET first 256KB MP4 (cover moov atom + first segment) +
+ * full thumbnail JPG. 256KB cukup untuk start playback instan — selebihnya
+ * stream normal. Total bandwidth: ~280KB per pre-warm × N edges.
+ *
+ * Fire-and-forget: error di-swallow karena ini cuma optimasi, bukan
+ * critical path. Webhook tetap return success walaupun pre-warm gagal.
+ */
+export async function preWarmBunnyAssets(guid: string): Promise<void> {
+  const cfg = getBunnyConfig();
+  if (!cfg) return;
+
+  // Sign URL kalau token authentication aktif — kalau enggak, signBunnyUrl
+  // return URL as-is. Tanpa signing, request bakal di-403 oleh Bunny kalau
+  // hotlink/token protection on.
+  const mp4Url = signBunnyUrl(bunnyMp4Url(guid, 720)) ?? "";
+  const thumbUrl = signBunnyUrl(bunnyThumbnailUrl(guid)) ?? "";
+  if (!mp4Url || !thumbUrl) return;
+
+  // Range request hanya untuk MP4 — thumbnail kecil (~20KB) jadi full GET.
+  // AbortController dengan timeout 8s supaya pre-warm tidak gantung webhook.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+
+  try {
+    await Promise.allSettled([
+      fetch(mp4Url, {
+        headers: { Range: "bytes=0-262143" },
+        signal: controller.signal,
+      }).then((r) => r.arrayBuffer()).catch(() => {}),
+      fetch(thumbUrl, { signal: controller.signal })
+        .then((r) => r.arrayBuffer())
+        .catch(() => {}),
+    ]);
+  } catch {
+    // Swallow — pre-warm bukan critical path.
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 /**
