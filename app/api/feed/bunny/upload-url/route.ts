@@ -42,6 +42,7 @@ import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
 import {
   createBunnyVideo,
+  deleteBunnyVideo,
   generateBunnyTusCredentials,
   getBunnyConfig,
   bunnyUploadUrl,
@@ -148,6 +149,34 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Validate productIds DULU sebelum bikin Bunny placeholder — supaya kalau
+  // user kirim ID invalid, kita gagal cepat tanpa leak orphan video di
+  // Bunny library. Sebelumnya: validasi cuma di transaction (FK violation)
+  // yang throw setelah Bunny placeholder dibuat → orphan video numpuk.
+  const productIdsToVerify = [
+    ...new Set([
+      ...productIds,
+      ...(productIds.length === 0 && body.productId
+        ? [String(body.productId).trim()]
+        : []),
+    ]),
+  ].filter(Boolean);
+  if (productIdsToVerify.length > 0) {
+    const validProducts = await prisma.product.findMany({
+      where: { id: { in: productIdsToVerify } },
+      select: { id: true },
+    });
+    if (validProducts.length !== productIdsToVerify.length) {
+      return NextResponse.json(
+        {
+          error:
+            "Produk yang di-tag tidak ditemukan. Refresh app lalu coba lagi.",
+        },
+        { status: 400 },
+      );
+    }
+  }
+
   // Bunny: create the video record first. If this fails, no DB row is
   // created — caller can retry without orphan.
   const bunnyCreated = await createBunnyVideo({
@@ -225,7 +254,9 @@ export async function POST(request: NextRequest) {
   // Shop the Look: simpan multi-tag ke FeedPostProduct table dalam satu
   // transaction. FeedPost.productId tetap di-set ke primary product
   // (productIds[0]) untuk legacy display + product page query.
-  const post = await prisma.$transaction(async (tx) => {
+  let post: { id: string };
+  try {
+    post = await prisma.$transaction(async (tx) => {
     const created = await tx.feedPost.create({
       data: {
         authorId: session.sub,
@@ -279,7 +310,24 @@ export async function POST(request: NextRequest) {
       });
     }
     return created;
-  });
+    });
+  } catch (err) {
+    // Prisma transaction gagal padahal Bunny placeholder sudah dibuat.
+    // Tanpa cleanup, placeholder jadi orphan video kosong di Bunny library
+    // (lihat 2 video "Created" 0x0 yang muncul saat user pertama gagal
+    // upload). Fire-and-forget delete supaya library bersih.
+    void deleteBunnyVideo(bunnyCreated.guid).catch((delErr) => {
+      console.warn("[upload-url] orphan cleanup failed:", delErr);
+    });
+    console.error("[upload-url] prisma transaction failed:", err);
+    return NextResponse.json(
+      {
+        error:
+          "Gagal simpan postingan ke database. Coba lagi, atau hubungi admin kalau berulang.",
+      },
+      { status: 500 },
+    );
+  }
 
   // Generate TUS credentials selain PUT URL. Client pilih path:
   //   - File besar (>50 MB) atau koneksi unstable → TUS resumable
