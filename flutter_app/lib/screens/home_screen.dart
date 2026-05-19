@@ -354,8 +354,22 @@ class _HomeScreenState extends State<HomeScreen> {
             final products = result?.products ?? const <Product>[];
             final flashSale =
                 products.where((p) => p.hasDiscount).take(8).toList();
+            // Produk Terlaris — ranked by SOLD COUNT (jumlah terjual) sebagai
+            // primary key. Tie-break ke reviewCount kalau soldCount sama
+            // (mis. saat API list endpoint return soldCount=0 — fallback
+            // graceful ke review-based ranking yang previously hardcoded).
+            //
+            // Filter: utamakan products dengan soldCount > 0 di top — yang
+            // benar2 "laris" muncul lebih dulu. Kalau API belum return
+            // soldCount yang valid, section fallback ke review-based.
             final bestSellers = ([...products]
-                  ..sort((a, b) => b.reviewCount.compareTo(a.reviewCount)))
+                  ..sort((a, b) {
+                    // Primary: soldCount desc (yang paling banyak terjual)
+                    final byCount = b.soldCount.compareTo(a.soldCount);
+                    if (byCount != 0) return byCount;
+                    // Tie-break: reviewCount desc
+                    return b.reviewCount.compareTo(a.reviewCount);
+                  }))
                 .take(8)
                 .toList();
             return NataloPawRefreshIndicator(
