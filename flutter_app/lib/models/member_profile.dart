@@ -20,6 +20,9 @@ class MemberProfile {
   final String? phone;
   final String role;
   final DateTime? birthDate;
+  final DateTime? createdAt;
+  final int points;
+  final String? profilePhotoUrl;
 
   const MemberProfile({
     required this.id,
@@ -28,9 +31,15 @@ class MemberProfile {
     this.phone,
     this.role = 'CUSTOMER',
     this.birthDate,
+    this.createdAt,
+    this.points = 0,
+    this.profilePhotoUrl,
   });
 
   bool get isAdmin => role.toUpperCase() == 'ADMIN';
+  String get initial =>
+      name.trim().isEmpty ? 'N' : name.trim()[0].toUpperCase();
+  DateTime get memberSince => createdAt ?? DateTime.now();
 
   factory MemberProfile.fromJson(Map<String, dynamic> json) {
     return MemberProfile(
@@ -40,6 +49,15 @@ class MemberProfile {
       phone: json['phone'] as String?,
       role: json['role'] as String? ?? 'CUSTOMER',
       birthDate: _parseDate(json['birthDate']),
+      createdAt: _parseDate(json['createdAt'] ?? json['memberSince']),
+      points: _asInt(json['points'] ?? json['loyaltyPoints']),
+      profilePhotoUrl: _nullableString(
+        json['profilePhotoUrl'] ??
+            json['profile_photo_url'] ??
+            json['avatarUrl'] ??
+            json['photoUrl'] ??
+            json['imageUrl'],
+      ),
     );
   }
 
@@ -57,6 +75,9 @@ class MemberProfile {
         'phone': phone,
         'role': role,
         'birthDate': birthDate?.toIso8601String(),
+        'createdAt': createdAt?.toIso8601String(),
+        'points': points,
+        'profilePhotoUrl': profilePhotoUrl,
       };
 
   MemberProfile copyWith({
@@ -65,6 +86,10 @@ class MemberProfile {
     String? phone,
     String? role,
     DateTime? birthDate,
+    DateTime? createdAt,
+    int? points,
+    String? profilePhotoUrl,
+    bool clearProfilePhoto = false,
   }) {
     return MemberProfile(
       id: id,
@@ -73,6 +98,10 @@ class MemberProfile {
       phone: phone ?? this.phone,
       role: role ?? this.role,
       birthDate: birthDate ?? this.birthDate,
+      createdAt: createdAt ?? this.createdAt,
+      points: points ?? this.points,
+      profilePhotoUrl:
+          clearProfilePhoto ? null : profilePhotoUrl ?? this.profilePhotoUrl,
     );
   }
 }
@@ -236,6 +265,7 @@ class OrderSummary {
 
   // ── Items + timestamps ──
   final List<OrderItemSummary> items;
+
   /// Pre-computed item count dari API — dipakai kalau items[] belum di-load
   /// (mis. list endpoint return ringkas). Fallback ke `items.fold(quantity)`.
   final int itemCountFromApi;
@@ -405,6 +435,7 @@ class OrderItemSummary {
   final int price;
   final int quantity;
   final int weightGram;
+
   /// True kalau user sudah submit review untuk OrderItem ini (status APPROVED
   /// atau PENDING). Dipakai untuk hide tombol "Ulas" di order detail.
   final bool reviewed;
@@ -452,8 +483,7 @@ class OrderItemSummary {
       variantId: json['variantId'] as String?,
       variantLabel: json['variantLabel'] as String?,
       name: (json['name'] ?? productMap?['name']) as String? ?? '',
-      imageUrl:
-          (json['imageUrl'] ?? productMap?['imageUrl']) as String?,
+      imageUrl: (json['imageUrl'] ?? productMap?['imageUrl']) as String?,
       categoryName: (json['categoryName'] ??
           (productMap?['category'] is Map
               ? productMap!['category']['name']

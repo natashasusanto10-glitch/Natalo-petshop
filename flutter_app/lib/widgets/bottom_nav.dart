@@ -1,18 +1,23 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 /// Bottom nav bar Natalo: compact, integrated, 4 menu utama.
 ///
 /// `variant` tetap dipertahankan agar call-site lama tidak perlu berubah.
-/// Visual terbaru dibuat putih polos seperti marketplace besar: rendah,
-/// separator tipis, tanpa floating card dan tanpa shadow berat.
+/// - light: putih polos seperti marketplace besar (rendah, separator tipis)
+/// - dark: GLASS hitam (semi-transparent + BackdropFilter blur) untuk
+///   Feed page over video — visual Reels/TikTok style.
 enum BottomNavVariant { light, dark }
 
 const _navBackground = Color(0xFFFFFFFF);
 const _navTopBorder = Color(0xFFE5E7EB);
 const _navActiveBlue = Color(0xFF2563EB);
 const _navInactive = Color(0xFF6B7280);
-const _navDarkBackground = Color(0xFF000000);
-const _navDarkTopBorder = Color(0xFF1F2937);
+// Dark glass tokens — semi-transparent black supaya video di belakang
+// masih kelihatan, blur untuk feel "frosted glass dark mode".
+const _navDarkGlass = Color(0xCC0A0A0A); // black 80% alpha
+const _navDarkTopBorder = Color(0x33FFFFFF); // white 20% alpha
 const _navDarkActive = Color(0xFFFFFFFF);
 const _navDarkInactive = Color(0xFF9CA3AF);
 
@@ -67,12 +72,12 @@ class BottomNavBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dark = variant == BottomNavVariant.dark;
-    final background = dark ? _navDarkBackground : _navBackground;
+    final background = dark ? _navDarkGlass : _navBackground;
     final borderColor = dark ? _navDarkTopBorder : _navTopBorder;
     final activeColor = dark ? _navDarkActive : _navActiveBlue;
     final inactiveColor = dark ? _navDarkInactive : _navInactive;
 
-    return Container(
+    final content = Container(
       decoration: BoxDecoration(
         color: background,
         border: Border(
@@ -129,6 +134,18 @@ class BottomNavBar extends StatelessWidget {
         ),
       ),
     );
+
+    // Dark variant pakai true glass effect — BackdropFilter blur video di
+    // belakang. Light variant solid putih, no blur (no GPU cost).
+    if (dark) {
+      return ClipRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+          child: content,
+        ),
+      );
+    }
+    return content;
   }
 }
 
