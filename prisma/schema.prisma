@@ -474,6 +474,27 @@ model RegistrationOtp {
   @@index([expiresAt])
 }
 
+/// OTP untuk login passwordless via WhatsApp.
+/// Berbeda dari RegistrationOtp: user sudah terdaftar di tabel User,
+/// jadi tidak perlu simpan passwordHash. Foreign key `userId` di-resolve
+/// di endpoint request (lookup User by phone) — disimpan di sini supaya
+/// verify cukup compare otpHash + lookup user by id, anti enumeration.
+model LoginOtp {
+  id         String    @id @default(cuid())
+  userId     String
+  phone      String
+  otpHash    String
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  verifiedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([phone])
+  @@index([expiresAt])
+}
+
 enum ReviewStatus {
   VISIBLE
   HIDDEN // di-hide oleh admin

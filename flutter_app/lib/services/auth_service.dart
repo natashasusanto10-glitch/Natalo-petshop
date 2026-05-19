@@ -75,6 +75,65 @@ class AuthService {
     return null;
   }
 
+  /// Request OTP login via WhatsApp. Match endpoint POST
+  /// /api/auth/member-login-otp/request — body `{phone}`.
+  ///
+  /// Server selalu return success 200 (anti-enumeration): kalau nomor
+  /// tidak terdaftar, response sukses tapi WA tidak benar-benar dikirim.
+  /// Throw ApiException kalau ada error 429 / 5xx.
+  ///
+  /// OTP berlaku 5 menit, kirim via Fonnte. Rate limit 5/10menit per IP+phone.
+  Future<void> requestLoginOtp({required String phone}) async {
+    readOnlyMode.assertWritable('request_login_otp');
+    await apiClient.postJson(
+      '/api/auth/member-login-otp/request',
+      body: {'phone': phone.trim()},
+    );
+  }
+
+  /// Verify OTP login. Match endpoint POST /api/auth/member-login-otp/verify —
+  /// body `{phone, otp}`. Sukses → server set session cookie + return user.
+  ///
+  /// Returns full MemberProfile setelah login berhasil (re-fetch via /me
+  /// supaya field lengkap, sama seperti `login()` password flow).
+  /// Throw ApiException(401) kalau OTP salah, 400 kalau expired / belum diminta.
+  Future<MemberProfile> verifyLoginOtp({
+    required String phone,
+    required String otp,
+  }) async {
+    readOnlyMode.assertWritable('verify_login_otp');
+    final data = await apiClient.postJson(
+      '/api/auth/member-login-otp/verify',
+      body: {
+        'phone': phone.trim(),
+        'otp': otp.trim(),
+      },
+    );
+    final user = data['user'];
+    if (user is! Map<String, dynamic>) {
+      throw const ApiException('Response login OTP tidak valid.');
+    }
+
+    try {
+      final profile = await memberService.fetchProfile();
+      if (profile == null) {
+        throw const ApiException(
+          'Gagal load profile setelah login OTP.',
+          statusCode: 500,
+        );
+      }
+      return profile;
+    } on ApiException catch (error) {
+      if (error.statusCode == 401) {
+        throw const ApiException(
+          'Sesi login belum tersimpan. Coba login ulang.',
+          statusCode: 401,
+        );
+      }
+      return MemberProfile.fromApiJson(user);
+    }
+  }
+
   /// Request reset password link. Match endpoint PWA POST /api/auth/forgot-password.
   /// Server selalu return success (anti email enumeration) — kalau email tidak
   /// terdaftar, tetap sukses tapi tidak ada email yang dikirim. Rate limit 3/jam.
