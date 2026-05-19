@@ -19,6 +19,7 @@ class NotificationPreferencesScreen extends StatefulWidget {
 class _NotificationPreferencesScreenState
     extends State<NotificationPreferencesScreen> {
   static const _kPrefix = 'natalo_notif_pref_';
+  static const _catMaster = 'master';
   static const _catOrder = 'order';
   static const _catPromo = 'promo';
   static const _catVoucher = 'voucher';
@@ -27,6 +28,9 @@ class _NotificationPreferencesScreenState
   static const _catChat = 'chat';
   static const _catFeed = 'feed';
 
+  /// Master switch — kalau OFF, semua kategori jadi disabled (tidak terima
+  /// notif apapun selain critical seperti security alerts). Default ON.
+  bool _masterEnabled = true;
   bool _orderUpdates = true;
   bool _promoVoucher = true;
   bool _newProduct = false;
@@ -70,6 +74,7 @@ class _NotificationPreferencesScreenState
 
   Map<String, bool> _currentPreferences() {
     return {
+      _catMaster: _masterEnabled,
       _catOrder: _orderUpdates,
       _catPromo: _promoVoucher,
       _catVoucher: _promoVoucher,
@@ -82,6 +87,7 @@ class _NotificationPreferencesScreenState
 
   void _applyPreferencesFromLocal(SharedPreferences prefs) {
     _applyPreferences({
+      _catMaster: prefs.getBool(_prefKey(_catMaster)) ?? true,
       _catOrder: prefs.getBool(_prefKey(_catOrder)) ?? true,
       _catPromo: prefs.getBool(_prefKey(_catPromo)) ?? true,
       _catVoucher: prefs.getBool(_prefKey(_catVoucher)) ?? true,
@@ -93,12 +99,38 @@ class _NotificationPreferencesScreenState
   }
 
   void _applyPreferences(Map<String, bool> values) {
+    _masterEnabled = values[_catMaster] ?? _masterEnabled;
     _orderUpdates = values[_catOrder] ?? _orderUpdates;
     _promoVoucher = values[_catVoucher] ?? values[_catPromo] ?? _promoVoucher;
     _newProduct = values[_catProduct] ?? _newProduct;
     _loyaltyPoints = values[_catLoyalty] ?? _loyaltyPoints;
     _chatMessages = values[_catChat] ?? _chatMessages;
     _feedActivity = values[_catFeed] ?? _feedActivity;
+  }
+
+  Future<void> _resetToDefault() async {
+    AppHaptics.tap();
+    setState(() {
+      _masterEnabled = true;
+      _orderUpdates = true;
+      _promoVoucher = true;
+      _newProduct = false;
+      _loyaltyPoints = true;
+      _chatMessages = true;
+      _feedActivity = false;
+    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await _persistAll(prefs);
+      await notificationService.updatePreferences(_currentPreferences());
+    } catch (_) {}
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Preferensi notifikasi dikembalikan ke default.'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   Future<void> _persistAll(SharedPreferences prefs) async {
@@ -119,82 +151,121 @@ class _NotificationPreferencesScreenState
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const _SectionLabel('Pesanan'),
-          _ToggleTile(
-            icon: Icons.receipt_long_rounded,
-            iconColor: const Color(0xFF7C3AED),
-            title: 'Update Status Pesanan',
-            subtitle: 'PAID, DIKIRIM, SAMPAI, dst.',
-            value: _orderUpdates,
+          // ── Master switch — Enable/Disable semua notif sekaligus ──
+          // Saat OFF, semua per-category toggle jadi disabled (visual:
+          // opacity 0.4). Tetap respect "always-on critical" (security
+          // alerts) yang bypass master di server side.
+          _MasterSwitchCard(
+            enabled: _masterEnabled,
             onChanged: (v) {
-              setState(() => _orderUpdates = v);
-              _savePref(_catOrder, v);
+              AppHaptics.tap();
+              setState(() => _masterEnabled = v);
+              _savePref(_catMaster, v);
             },
           ),
-          _ToggleTile(
-            icon: Icons.chat_bubble_outline_rounded,
-            iconColor: const Color(0xFF1E5FBF),
-            title: 'Chat dari Admin',
-            subtitle: 'Balasan inquiry produk dari Natalo.',
-            value: _chatMessages,
-            onChanged: (v) {
-              setState(() => _chatMessages = v);
-              _savePref(_catChat, v);
-            },
+          const SizedBox(height: 20),
+          Opacity(
+            opacity: _masterEnabled ? 1.0 : 0.4,
+            child: IgnorePointer(
+              ignoring: !_masterEnabled,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const _SectionLabel('Pesanan'),
+                  _ToggleTile(
+                    icon: Icons.receipt_long_rounded,
+                    iconColor: const Color(0xFF7C3AED),
+                    title: 'Update Status Pesanan',
+                    subtitle: 'PAID, DIKIRIM, SAMPAI, dst.',
+                    value: _orderUpdates,
+                    onChanged: (v) {
+                      setState(() => _orderUpdates = v);
+                      _savePref(_catOrder, v);
+                    },
+                  ),
+                  _ToggleTile(
+                    icon: Icons.chat_bubble_outline_rounded,
+                    iconColor: const Color(0xFF1E5FBF),
+                    title: 'Chat dari Admin',
+                    subtitle: 'Balasan inquiry produk dari Natalo.',
+                    value: _chatMessages,
+                    onChanged: (v) {
+                      setState(() => _chatMessages = v);
+                      _savePref(_catChat, v);
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  const _SectionLabel('Promo & Voucher'),
+                  _ToggleTile(
+                    icon: Icons.local_offer_outlined,
+                    iconColor: const Color(0xFFEC4899),
+                    title: 'Voucher Baru',
+                    subtitle: 'Notif kalau ada voucher diskon atau gratis ongkir.',
+                    value: _promoVoucher,
+                    onChanged: (v) {
+                      setState(() => _promoVoucher = v);
+                      _savePref(_catPromo, v);
+                    },
+                  ),
+                  _ToggleTile(
+                    icon: Icons.workspace_premium_outlined,
+                    iconColor: const Color(0xFFF59E0B),
+                    title: 'Poin Loyalty',
+                    subtitle: 'Reminder poin earned + voucher hadiah ultah.',
+                    value: _loyaltyPoints,
+                    onChanged: (v) {
+                      setState(() => _loyaltyPoints = v);
+                      _savePref(_catLoyalty, v);
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  const _SectionLabel('Produk & Konten'),
+                  _ToggleTile(
+                    icon: Icons.fiber_new_rounded,
+                    iconColor: const Color(0xFF16A34A),
+                    title: 'Produk Baru',
+                    subtitle: 'Notif rilis produk baru / restock favorit.',
+                    value: _newProduct,
+                    onChanged: (v) {
+                      setState(() => _newProduct = v);
+                      _savePref(_catProduct, v);
+                    },
+                  ),
+                  _ToggleTile(
+                    icon: Icons.video_collection_outlined,
+                    iconColor: const Color(0xFFD97706),
+                    title: 'Feed Activity',
+                    subtitle: 'Komentar atau like di postingan Anda.',
+                    value: _feedActivity,
+                    onChanged: (v) {
+                      setState(() => _feedActivity = v);
+                      _savePref(_catFeed, v);
+                    },
+                  ),
+                ],
+              ),
+            ),
           ),
-          const SizedBox(height: 16),
-          const _SectionLabel('Promo & Voucher'),
-          _ToggleTile(
-            icon: Icons.local_offer_outlined,
-            iconColor: const Color(0xFFEC4899),
-            title: 'Voucher Baru',
-            subtitle: 'Notif kalau ada voucher diskon atau gratis ongkir.',
-            value: _promoVoucher,
-            onChanged: (v) {
-              setState(() => _promoVoucher = v);
-              _savePref(_catPromo, v);
-            },
+          const SizedBox(height: 18),
+          Center(
+            child: TextButton.icon(
+              onPressed: _resetToDefault,
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Kembalikan ke default'),
+              style: TextButton.styleFrom(
+                foregroundColor: NataloColors.textSecondary,
+                textStyle: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
           ),
-          _ToggleTile(
-            icon: Icons.workspace_premium_outlined,
-            iconColor: const Color(0xFFF59E0B),
-            title: 'Poin Loyalty',
-            subtitle: 'Reminder poin earned + voucher hadiah ultah.',
-            value: _loyaltyPoints,
-            onChanged: (v) {
-              setState(() => _loyaltyPoints = v);
-              _savePref(_catLoyalty, v);
-            },
-          ),
-          const SizedBox(height: 16),
-          const _SectionLabel('Produk & Konten'),
-          _ToggleTile(
-            icon: Icons.fiber_new_rounded,
-            iconColor: const Color(0xFF16A34A),
-            title: 'Produk Baru',
-            subtitle: 'Notif rilis produk baru / restock favorit.',
-            value: _newProduct,
-            onChanged: (v) {
-              setState(() => _newProduct = v);
-              _savePref(_catProduct, v);
-            },
-          ),
-          _ToggleTile(
-            icon: Icons.video_collection_outlined,
-            iconColor: const Color(0xFFD97706),
-            title: 'Feed Activity',
-            subtitle: 'Komentar atau like di postingan Anda.',
-            value: _feedActivity,
-            onChanged: (v) {
-              setState(() => _feedActivity = v);
-              _savePref(_catFeed, v);
-            },
-          ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             child: Text(
-              'Anda dapat mengubah pengaturan kapan saja. Notifikasi penting (mis. status pesanan) tetap dikirim untuk keamanan transaksi.',
+              'Anda dapat mengubah pengaturan kapan saja. Notifikasi penting (mis. konfirmasi keamanan) tetap dikirim demi keamanan akun.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: NataloColors.textTertiary,
@@ -203,6 +274,105 @@ class _NotificationPreferencesScreenState
                 height: 1.5,
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Master switch card di top — gradient biru + icon big + toggle.
+/// Saat OFF, semua per-category toggle di bawahnya jadi disabled.
+class _MasterSwitchCard extends StatelessWidget {
+  final bool enabled;
+  final ValueChanged<bool> onChanged;
+
+  const _MasterSwitchCard({
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: enabled
+            ? const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF0B7FEA), Color(0xFF075CB5)],
+              )
+            : const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFFCBD5E1), Color(0xFF94A3B8)],
+              ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: (enabled
+                    ? const Color(0xFF0B7FEA)
+                    : const Color(0xFF64748B))
+                .withValues(alpha: 0.20),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.20),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(
+              enabled
+                  ? Icons.notifications_active_rounded
+                  : Icons.notifications_off_rounded,
+              color: Colors.white,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Notifikasi Push',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  enabled
+                      ? 'Aktif — kamu menerima notif sesuai pengaturan.'
+                      : 'Nonaktif — semua notif di-mute.',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.86),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Switch.adaptive(
+            value: enabled,
+            activeThumbColor: Colors.white,
+            activeTrackColor: Colors.white.withValues(alpha: 0.35),
+            inactiveTrackColor: Colors.white.withValues(alpha: 0.20),
+            inactiveThumbColor: Colors.white,
+            onChanged: onChanged,
           ),
         ],
       ),

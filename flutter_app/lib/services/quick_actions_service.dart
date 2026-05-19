@@ -7,27 +7,17 @@ import 'package:quick_actions/quick_actions.dart';
 class AppQuickActions {
   AppQuickActions._();
 
+  // Custom shortcut icons (drawable XMLs) belum tersedia di
+  // android/app/src/main/res/drawable/ — pass `icon: null` supaya
+  // Android pakai default app icon untuk shortcut. iOS dynamic
+  // shortcuts juga support tanpa custom icon (pakai SF Symbols default
+  // by type kalau ada, else generic). Drawable XML bisa ditambah
+  // belakangan tanpa break call site ini.
   static const _shortcuts = <ShortcutItem>[
-    ShortcutItem(
-      type: 'cart',
-      localizedTitle: 'Keranjang',
-      icon: 'ic_shortcut_cart',
-    ),
-    ShortcutItem(
-      type: 'wishlist',
-      localizedTitle: 'Wishlist',
-      icon: 'ic_shortcut_heart',
-    ),
-    ShortcutItem(
-      type: 'orders',
-      localizedTitle: 'Pesanan Saya',
-      icon: 'ic_shortcut_orders',
-    ),
-    ShortcutItem(
-      type: 'loyalty',
-      localizedTitle: 'Tukar Poin',
-      icon: 'ic_shortcut_loyalty',
-    ),
+    ShortcutItem(type: 'cart', localizedTitle: 'Keranjang'),
+    ShortcutItem(type: 'wishlist', localizedTitle: 'Wishlist'),
+    ShortcutItem(type: 'orders', localizedTitle: 'Pesanan Saya'),
+    ShortcutItem(type: 'loyalty', localizedTitle: 'Tukar Poin'),
   ];
 
   static bool _initialized = false;

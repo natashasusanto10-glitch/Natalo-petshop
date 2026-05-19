@@ -6,6 +6,7 @@ import 'dart:async';
 import '../models/member_profile.dart';
 import '../services/member_service.dart';
 import '../services/places_service.dart';
+import '../widgets/address_autocomplete_field.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/wilayah_picker.dart';
 import '../state/member_store.dart';
@@ -946,13 +947,34 @@ class _AddressFormSheetState extends State<_AddressFormSheet> {
                 ],
               ),
               const SizedBox(height: 8),
-              _TextField(
+              // Inline autocomplete — user ngetik di sini, suggestion dropdown
+              // muncul realtime di bawah field (pattern Tokopedia/Shopee).
+              // Selain inline, user masih bisa pakai tombol GPS / Cari /
+              // Wilayah di atas untuk metode auto-fill alternatif.
+              AddressAutocompleteField(
                 controller: _addressController,
                 label: 'Nama jalan / alamat',
-                maxLines: 2,
+                hint: 'Ketik 3 huruf untuk cari alamat',
                 validator: (value) => (value?.trim().length ?? 0) < 5
                     ? 'Alamat minimal 5 karakter'
                     : null,
+                onSelected: (details) {
+                  setState(() {
+                    _addressController.text = details.formattedAddress;
+                    if (details.postalCode?.isNotEmpty == true) {
+                      _postalController.text = details.postalCode!;
+                    }
+                    if (details.city?.isNotEmpty == true) {
+                      _cityController.text = details.city!;
+                    }
+                    if (details.province?.isNotEmpty == true) {
+                      _provinceController.text = details.province!;
+                    }
+                    if (details.district?.isNotEmpty == true) {
+                      _districtController.text = details.district!;
+                    }
+                  });
+                },
               ),
               const SizedBox(height: 12),
               Row(
@@ -1027,14 +1049,12 @@ class _TextField extends StatelessWidget {
   final TextEditingController controller;
   final String label;
   final TextInputType? keyboardType;
-  final int maxLines;
   final String? Function(String?)? validator;
 
   const _TextField({
     required this.controller,
     required this.label,
     this.keyboardType,
-    this.maxLines = 1,
     this.validator,
   });
 
@@ -1043,7 +1063,6 @@ class _TextField extends StatelessWidget {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
-      maxLines: maxLines,
       validator: validator,
       decoration: InputDecoration(
         labelText: label,
