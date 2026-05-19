@@ -718,9 +718,12 @@ class _VoucherAndTrust extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final voucherLabel = product.voucherPreview?.badgeLabel.trim();
+    final voucher = product.voucherPreview;
+    final voucherLabel = voucher?.badgeLabel.trim();
     final subtitle = voucherLabel != null && voucherLabel.isNotEmpty
-        ? '$voucherLabel • cek di keranjang sebelum checkout'
+        ? voucher?.isNewMemberOnly == true
+            ? '$voucherLabel • khusus member baru saat checkout'
+            : '$voucherLabel • cek di keranjang sebelum checkout'
         : 'Cek voucher di keranjang sebelum checkout';
 
     return AppPressable(

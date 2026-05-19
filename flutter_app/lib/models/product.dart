@@ -160,6 +160,7 @@ class ProductVoucherPreview {
   final double minimumOrder;
   final double? savingAmount;
   final String? expiresAt;
+  final String targetUser;
   final bool loginRequired;
 
   const ProductVoucherPreview({
@@ -175,8 +176,17 @@ class ProductVoucherPreview {
     required this.minimumOrder,
     this.savingAmount,
     this.expiresAt,
+    this.targetUser = 'ALL_MEMBERS',
     required this.loginRequired,
   });
+
+  bool get isNewMemberOnly {
+    final normalizedTarget = targetUser.trim().toUpperCase();
+    if (normalizedTarget == 'NEW_MEMBER') return true;
+    final combinedCopy = '$title ${description ?? ''}'.toLowerCase();
+    return combinedCopy.contains('new member') ||
+        combinedCopy.contains('member baru');
+  }
 
   factory ProductVoucherPreview.fromJson(Map<String, dynamic> json) {
     return ProductVoucherPreview(
@@ -211,6 +221,10 @@ class ProductVoucherPreview {
         json['savingAmount'] ?? json['saving_amount'],
       ),
       expiresAt: _stringOrNull(json['expiresAt'] ?? json['expires_at']),
+      targetUser: _string(
+        json['targetUser'] ?? json['target_user'],
+        fallback: 'ALL_MEMBERS',
+      ),
       loginRequired: json['loginRequired'] != false,
     );
   }
@@ -228,6 +242,7 @@ class ProductVoucherPreview {
         'minimumOrder': minimumOrder,
         'savingAmount': savingAmount,
         'expiresAt': expiresAt,
+        'targetUser': targetUser,
         'loginRequired': loginRequired,
       };
 }

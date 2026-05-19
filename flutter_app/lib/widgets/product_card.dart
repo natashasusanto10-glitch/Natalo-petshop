@@ -325,6 +325,13 @@ Future<void> _showVoucherPreviewSheet(
     backgroundColor: Colors.transparent,
     builder: (context) {
       final isLoggedIn = memberStore.isLoggedIn;
+      final isNewMemberVoucher = voucher.isNewMemberOnly;
+      final voucherTitle = isNewMemberVoucher
+          ? 'Voucher New Member Natalo'
+          : 'Voucher Produk Natalo';
+      final voucherNote = isNewMemberVoucher
+          ? 'Voucher khusus member baru. Guest boleh melihat promo ini, tetapi perlu daftar atau login member baru untuk memakai voucher saat checkout.'
+          : 'Voucher akan dicek ulang otomatis saat checkout. Guest boleh melihat promo ini, tetapi perlu login member untuk memakai voucher.';
 
       return SafeArea(
         top: false,
@@ -382,8 +389,8 @@ Future<void> _showVoucherPreviewSheet(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Voucher Produk Natalo',
+                        Text(
+                          voucherTitle,
                           style: TextStyle(
                             color: NataloColors.grey900,
                             fontSize: 18,
@@ -438,6 +445,30 @@ Future<void> _showVoucherPreviewSheet(
                         fontWeight: FontWeight.w700,
                       ),
                     ),
+                    if (isNewMemberVoucher) ...[
+                      const SizedBox(height: AppSpacing.sm),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.sm,
+                          vertical: AppSpacing.xs,
+                        ),
+                        decoration: BoxDecoration(
+                          color: NataloColors.white.withValues(alpha: 0.74),
+                          borderRadius: AppRadius.pill,
+                          border: Border.all(
+                            color: NataloColors.danger.withValues(alpha: 0.22),
+                          ),
+                        ),
+                        child: const Text(
+                          'Khusus member baru',
+                          style: TextStyle(
+                            color: NataloColors.danger,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ],
                     if (voucher.description != null) ...[
                       const SizedBox(height: AppSpacing.sm),
                       Text(
@@ -454,9 +485,9 @@ Future<void> _showVoucherPreviewSheet(
                 ),
               ),
               const SizedBox(height: AppSpacing.md),
-              const Text(
-                'Voucher akan dicek ulang otomatis saat checkout. Guest boleh melihat promo ini, tetapi perlu login member untuk memakai voucher.',
-                style: TextStyle(
+              Text(
+                voucherNote,
+                style: const TextStyle(
                   color: NataloColors.grey500,
                   fontSize: 12.5,
                   fontWeight: FontWeight.w600,
@@ -484,7 +515,11 @@ Future<void> _showVoucherPreviewSheet(
                     ),
                   ),
                   child: Text(
-                    isLoggedIn ? 'Pakai di checkout' : 'Login untuk pakai',
+                    isLoggedIn
+                        ? 'Pakai di checkout'
+                        : isNewMemberVoucher
+                            ? 'Daftar/Login untuk pakai'
+                            : 'Login untuk pakai',
                     style: const TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w900,

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { VoucherType } from "@prisma/client";
+import { VoucherType, VoucherUserUsageLimitPeriod } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 export default async function AdminVoucherNewPage() {
@@ -8,9 +8,14 @@ export default async function AdminVoucherNewPage() {
     "use server";
 
     const name = String(formData.get("name") || "").trim() || null;
-    const code = String(formData.get("code") || "").trim().toUpperCase();
-    const description = String(formData.get("description") || "").trim() || null;
-    const typeRaw = String(formData.get("type") || "PUBLIC_PRODUCT_DISCOUNT").trim();
+    const code = String(formData.get("code") || "")
+      .trim()
+      .toUpperCase();
+    const description =
+      String(formData.get("description") || "").trim() || null;
+    const typeRaw = String(
+      formData.get("type") || "PUBLIC_PRODUCT_DISCOUNT"
+    ).trim();
     const type = (Object.values(VoucherType) as string[]).includes(typeRaw)
       ? (typeRaw as VoucherType)
       : VoucherType.PUBLIC_PRODUCT_DISCOUNT;
@@ -18,8 +23,8 @@ export default async function AdminVoucherNewPage() {
       type === "PRIVATE_MANUAL_CODE"
         ? "PRIVATE"
         : type === "LOYALTY_POINT_CLAIM"
-          ? "USER_OWNED"
-          : "PUBLIC";
+        ? "USER_OWNED"
+        : "PUBLIC";
     const discountScope =
       type === "PUBLIC_FREE_SHIPPING" ? "SHIPPING" : "PRODUCT";
     const discountPercent = formData.get("discountPercent")
@@ -31,15 +36,24 @@ export default async function AdminVoucherNewPage() {
     const maxDiscountAmount = formData.get("maxDiscountAmount")
       ? parseInt(String(formData.get("maxDiscountAmount")), 10)
       : null;
-    const minimumOrder = parseInt(String(formData.get("minimumOrder") || "0"), 10);
+    const minimumOrder = parseInt(
+      String(formData.get("minimumOrder") || "0"),
+      10
+    );
     const maxUsageRaw = String(formData.get("maxUsage") || "").trim();
     const maxUsage = maxUsageRaw ? parseInt(maxUsageRaw, 10) : null;
-    const usageLimitPerUserRaw = String(formData.get("usageLimitPerUser") ?? "").trim();
+    const usageLimitPerUserRaw = String(
+      formData.get("usageLimitPerUser") ?? ""
+    ).trim();
+    const usageLimitPeriodRaw = String(
+      formData.get("usageLimitPeriod") ?? ""
+    ).trim();
     const startsAtRaw = String(formData.get("startsAt") || "").trim();
     const startsAt = startsAtRaw ? new Date(startsAtRaw) : new Date();
     const expiresAtRaw = String(formData.get("expiresAt") || "").trim();
     const expiresAt = expiresAtRaw ? new Date(expiresAtRaw) : null;
-    const sourceType = type === "PRIVATE_MANUAL_CODE" ? "SELLER_MANUAL" : "CUSTOMER";
+    const sourceType =
+      type === "PRIVATE_MANUAL_CODE" ? "SELLER_MANUAL" : "CUSTOMER";
     const eligibleUserIds = String(formData.get("eligibleUserIds") || "")
       .split(/[\s,]+/)
       .map((value) => value.trim())
@@ -48,26 +62,36 @@ export default async function AdminVoucherNewPage() {
       .split(/[\s,]+/)
       .map((value) => value.trim())
       .filter(Boolean);
-    const eligibleCategoryIds = String(formData.get("eligibleCategoryIds") || "")
+    const eligibleCategoryIds = String(
+      formData.get("eligibleCategoryIds") || ""
+    )
       .split(/[\s,]+/)
       .map((value) => value.trim())
       .filter(Boolean);
 
-    if (type === "PUBLIC_FREE_SHIPPING" && !discountAmount && maxDiscountAmount) {
+    if (
+      type === "PUBLIC_FREE_SHIPPING" &&
+      !discountAmount &&
+      maxDiscountAmount
+    ) {
       discountAmount = maxDiscountAmount;
     }
 
     if (!code) return;
     // Derive `kind` dari `type` — kedua field tersimpan di DB untuk
     // backward compat (type lama vs kind baru). Mapping intuitive.
-    const kind: "PRODUCT_DISCOUNT" | "FREE_SHIPPING" | "LOYALTY_CLAIM" | "MANUAL_PRIVATE" =
+    const kind:
+      | "PRODUCT_DISCOUNT"
+      | "FREE_SHIPPING"
+      | "LOYALTY_CLAIM"
+      | "MANUAL_PRIVATE" =
       type === "PUBLIC_FREE_SHIPPING"
         ? "FREE_SHIPPING"
         : type === "LOYALTY_POINT_CLAIM"
-          ? "LOYALTY_CLAIM"
-          : type === "PRIVATE_MANUAL_CODE"
-            ? "MANUAL_PRIVATE"
-            : "PRODUCT_DISCOUNT";
+        ? "LOYALTY_CLAIM"
+        : type === "PRIVATE_MANUAL_CODE"
+        ? "MANUAL_PRIVATE"
+        : "PRODUCT_DISCOUNT";
     const isFreeShipping = kind === "FREE_SHIPPING";
     const defaultUsageLimitPerUser =
       kind === "MANUAL_PRIVATE" || kind === "LOYALTY_CLAIM" ? 1 : 0;
@@ -78,7 +102,17 @@ export default async function AdminVoucherNewPage() {
     const usageLimitPerUser = Number.isFinite(parsedUsageLimitPerUser)
       ? Math.max(0, parsedUsageLimitPerUser)
       : defaultUsageLimitPerUser;
-    const usageLimitPeriod = usageLimitPerUser <= 0 ? "NONE" : "LIFETIME";
+    const selectedUsageLimitPeriod = (
+      Object.values(VoucherUserUsageLimitPeriod) as string[]
+    ).includes(usageLimitPeriodRaw)
+      ? (usageLimitPeriodRaw as VoucherUserUsageLimitPeriod)
+      : VoucherUserUsageLimitPeriod.LIFETIME;
+    const usageLimitPeriod =
+      usageLimitPerUser <= 0
+        ? VoucherUserUsageLimitPeriod.NONE
+        : selectedUsageLimitPeriod === VoucherUserUsageLimitPeriod.NONE
+        ? VoucherUserUsageLimitPeriod.LIFETIME
+        : selectedUsageLimitPeriod;
     if (!isFreeShipping && !discountPercent && !discountAmount) return;
 
     // Form checkbox — "on" = checked, null/missing = unchecked.
@@ -119,10 +153,15 @@ export default async function AdminVoucherNewPage() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-5 md:py-10">
-      <Link href="/admin/vouchers" className="text-sm font-bold text-zinc-500 hover:text-zinc-950">
+      <Link
+        href="/admin/vouchers"
+        className="text-sm font-bold text-zinc-500 hover:text-zinc-950"
+      >
         ← Kembali ke voucher
       </Link>
-      <h1 className="mt-2 text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">Buat Voucher</h1>
+      <h1 className="mt-2 text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">
+        Buat Voucher
+      </h1>
 
       <form action={createVoucher} className="mt-5 space-y-5 md:mt-8">
         <Field
@@ -167,14 +206,6 @@ export default async function AdminVoucherNewPage() {
         </div>
 
         <Field
-          label="Maksimal diskon (Rp)"
-          name="maxDiscountAmount"
-          type="number"
-          placeholder="Contoh: 25000"
-          hint="Opsional. Dipakai untuk membatasi diskon persen."
-        />
-
-        <Field
           label="Minimum belanja (Rp)"
           name="minimumOrder"
           type="number"
@@ -183,14 +214,18 @@ export default async function AdminVoucherNewPage() {
         />
 
         <div>
-          <label className="block text-sm font-medium text-zinc-700">Tipe voucher Natalo</label>
+          <label className="block text-sm font-medium text-zinc-700">
+            Tipe voucher Natalo
+          </label>
           <select
             name="type"
             defaultValue="PUBLIC_PRODUCT_DISCOUNT"
             className="mt-1 block w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-600"
           >
             <option value="PUBLIC_FREE_SHIPPING">Public Gratis Ongkir</option>
-            <option value="PUBLIC_PRODUCT_DISCOUNT">Public Diskon Produk</option>
+            <option value="PUBLIC_PRODUCT_DISCOUNT">
+              Public Diskon Produk
+            </option>
             <option value="PRIVATE_MANUAL_CODE">Private / Manual Code</option>
           </select>
           <p className="mt-1 text-xs text-zinc-400">
@@ -244,6 +279,7 @@ export default async function AdminVoucherNewPage() {
             placeholder="0 = tanpa batas"
             hint="0 = user boleh pakai lagi di order berikutnya. 1 = tiap user hanya 1x."
           />
+          <UsageLimitPeriodField defaultValue="NONE" />
           <Field
             label="Berlaku hingga"
             name="expiresAt"
@@ -278,6 +314,30 @@ export default async function AdminVoucherNewPage() {
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+function UsageLimitPeriodField({ defaultValue }: { defaultValue: string }) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-zinc-700">
+        Periode batas per user
+      </label>
+      <select
+        name="usageLimitPeriod"
+        defaultValue={defaultValue}
+        className="mt-1 block w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-600"
+      >
+        <option value="NONE">Tanpa batas</option>
+        <option value="LIFETIME">Selamanya</option>
+        <option value="DAY">Per hari</option>
+        <option value="WEEK">Per minggu</option>
+        <option value="MONTH">Per bulan</option>
+      </select>
+      <p className="mt-1 text-xs text-zinc-400">
+        Jika batas per user 0, sistem otomatis memakai tanpa batas.
+      </p>
     </div>
   );
 }
