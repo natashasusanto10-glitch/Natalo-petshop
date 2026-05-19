@@ -233,13 +233,65 @@ class OrderService {
 final OrderService orderService = OrderService._();
 
 // ── Helpers untuk reorder parsing ──
+//
+// Backend response shape (lib/reorder.ts):
+//   {
+//     added: [
+//       {
+//         status: "added",
+//         item: { productId, variantId, variantLabel, name, price,
+//                 quantity, weightGram, stock, imageUrl },
+//         priceChanged: bool,
+//         previousPrice: number,
+//       },
+//       ...
+//     ],
+//     adjusted: [...same shape with requestedQuantity + availableStock],
+//     skipped: [...]
+//   }
+//
+// Entry-nya WRAPPED dengan `status` + `item` subobject — bukan flat
+// OrderItemSummary. Plus `id` field tidak ada di ReorderCartItem
+// (Flutter expects `id` as required String) → langsung crash dengan
+// "type 'Null' is not a subtype of type 'String' in type cast"
+// kalau pass ke OrderItemSummary.fromJson tanpa unwrap.
+//
+// Fix: unwrap `entry['item']`, lalu synthesize `id` dari productId +
+// variantId fallback supaya OrderItemSummary.fromJson punya valid id.
 List<OrderItemSummary> _parseReorderEntries(dynamic raw,
     {required bool adjusted}) {
   if (raw is! List) return const [];
-  return raw
-      .whereType<Map<String, dynamic>>()
-      .map(OrderItemSummary.fromJson)
-      .toList();
+  final result = <OrderItemSummary>[];
+  for (final entry in raw) {
+    if (entry is! Map<String, dynamic>) continue;
+    // Backend bisa kasih item di `entry['item']` (canonical) atau flat
+    // (legacy). Handle keduanya — coba unwrap dulu, fallback ke flat.
+    final rawItem = entry['item'];
+    final itemMap = rawItem is Map<String, dynamic>
+        ? Map<String, dynamic>.from(rawItem)
+        : Map<String, dynamic>.from(entry);
+
+    // Synthesize id kalau tidak ada — pakai productId + variantId
+    // (deterministic, OK untuk dedupe di cart). Tanpa ini, fromJson
+    // crash di line `json['id'] as String`.
+    if (itemMap['id'] == null) {
+      final productId = itemMap['productId']?.toString() ?? '';
+      final variantId = itemMap['variantId']?.toString();
+      itemMap['id'] = variantId != null && variantId.isNotEmpty
+          ? '$productId:$variantId'
+          : productId;
+    }
+    try {
+      result.add(OrderItemSummary.fromJson(itemMap));
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[reorder] skip malformed entry: $e — raw: $entry');
+      }
+      // Skip entry yang gagal parse, jangan throw — supaya item lain
+      // yang valid tetap bisa di-reorder.
+    }
+  }
+  return result;
 }
 
 List<String> _parseSkippedReasons(dynamic raw) {
