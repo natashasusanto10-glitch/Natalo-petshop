@@ -519,11 +519,7 @@ class _CartScreenState extends State<CartScreen> {
               // Conditional action: delete saat ada selected, storefront
               // saat cart kosong / tidak ada selection.
               if (cartStore.items.isEmpty) {
-                return IconButton(
-                  tooltip: 'Belanja',
-                  onPressed: () => Navigator.pushNamed(context, '/products'),
-                  icon: const Icon(Icons.storefront_outlined),
-                );
+                return const SizedBox.shrink();
               }
               if (_selectedItems.isNotEmpty) {
                 return IconButton(
@@ -2207,131 +2203,73 @@ class _EmptyCartState extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListView(
       controller: controller,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      padding: EdgeInsets.fromLTRB(
+        0,
+        14,
+        0,
+        28 + MediaQuery.paddingOf(context).bottom,
+      ),
       children: [
-        // ── Empty state card dengan illustration multi-pet emoji ──
-        Container(
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: const Color(0xFFDDE8F8)),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF111111).withValues(alpha: 0.04),
-                blurRadius: 18,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          child: Column(
-            children: [
-              const _EmptyCartIllustration(),
-              const SizedBox(height: 14),
-              const Text(
-                'Keranjang kamu masih kosong',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Color(0xFF17202A),
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8),
-                child: Text(
-                  'Yuk pilih makanan, vitamin, pasir, atau perlengkapan favorit untuk hewan kesayanganmu.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Color(0xFF6B7280),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    height: 1.5,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Produk yang kamu tambahkan akan muncul di sini.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Color(0xFF9CA3AF),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 18),
-              ElevatedButton(
-                onPressed: () {
-                  AppHaptics.tap();
-                  Navigator.pushReplacementNamed(context, '/products');
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _brandBlue,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 28,
-                    vertical: 14,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
-                child: const Text(
-                  'Jelajahi Produk',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-            ],
-          ),
+        _EmptyCartCard(
+          onExploreProduct: () {
+            AppHaptics.tap();
+            Navigator.pushReplacementNamed(context, '/products');
+          },
         ),
         if (recentlyViewed.isNotEmpty) ...[
-          const SizedBox(height: 22),
-          const _SectionHeader(
+          const SizedBox(height: 28),
+          _EmptyCartProductCarouselSection(
             title: 'Yuk dilihat lagi',
-            actionLabel: 'Lihat semua',
-            actionRoute: '/products',
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            height: 260,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: EdgeInsets.zero,
-              itemCount: recentlyViewed.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 10),
-              itemBuilder: (context, index) {
-                final product = recentlyViewed[index];
-                return SizedBox(
-                  width: 150,
-                  child: ProductCard(
-                    product: product,
-                    onTap: () {
-                      AppHaptics.tap();
-                      Navigator.pushNamed(
-                        context,
-                        '/product-detail',
-                        arguments: product,
-                      );
-                    },
-                  ),
-                );
-              },
-            ),
+            products: recentlyViewed,
+            onSeeAll: () => Navigator.pushNamed(context, '/products'),
+            onProductTap: (product) {
+              AppHaptics.tap();
+              Navigator.pushNamed(
+                context,
+                '/product-detail',
+                arguments: product,
+              );
+            },
+            onAddToCart: (product) {
+              cartStore.addProduct(product);
+              AppToast.showCartAdded(
+                context,
+                '${product.title} masuk keranjang',
+                actionLabel: 'Lihat Keranjang',
+                onTap: () => Navigator.pushNamed(context, '/cart'),
+              );
+            },
           ),
         ],
         if (bossProducts.isNotEmpty) ...[
-          const SizedBox(height: 22),
-          _CartRecommendationsSection(
+          const SizedBox(height: 28),
+          _EmptyCartProductCarouselSection(
             title: 'Ayoo diborong bossku',
             products: bossProducts,
-            loading: loadingBossProducts,
-            loadingMore: loadingMoreBossProducts,
-            showLoadingPlaceholder: false,
+            onSeeAll: () => Navigator.pushNamed(context, '/products'),
+            onProductTap: (product) {
+              AppHaptics.tap();
+              Navigator.pushNamed(
+                context,
+                '/product-detail',
+                arguments: product,
+              );
+            },
+            onAddToCart: (product) {
+              cartStore.addProduct(product);
+              AppToast.showCartAdded(
+                context,
+                '${product.title} masuk keranjang',
+                actionLabel: 'Lihat Keranjang',
+                onTap: () => Navigator.pushNamed(context, '/cart'),
+              );
+            },
+          ),
+        ] else if (loadingBossProducts || loadingMoreBossProducts) ...[
+          const SizedBox(height: 28),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: SkeletonProductGrid(count: 2, showAddToCart: true),
           ),
         ],
       ],
@@ -2339,133 +2277,84 @@ class _EmptyCartState extends StatelessWidget {
   }
 }
 
-class _SectionHeader extends StatelessWidget {
-  final String title;
-  final String actionLabel;
-  final String actionRoute;
+class _EmptyCartCard extends StatelessWidget {
+  final VoidCallback onExploreProduct;
 
-  const _SectionHeader({
-    required this.title,
-    required this.actionLabel,
-    required this.actionRoute,
-  });
+  const _EmptyCartCard({required this.onExploreProduct});
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            title,
-            style: const TextStyle(
-              color: Color(0xFF17202A),
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.fromLTRB(18, 20, 18, 22),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: const Color(0xFFD9E7FF),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.045),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          SizedBox(
+            height: 245,
+            width: double.infinity,
+            child: Image.asset(
+              'assets/illustrations/empty_cart_natalo_exact.png',
+              fit: BoxFit.contain,
             ),
           ),
-        ),
-        TextButton.icon(
-          onPressed: () => Navigator.pushNamed(context, actionRoute),
-          icon: const SizedBox.shrink(),
-          label: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                actionLabel,
-                style: const TextStyle(
-                  color: _brandBlue,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w900,
+          const SizedBox(height: 10),
+          const Text(
+            'Keranjang kamu masih kosong',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 24,
+              height: 1.18,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFF0F172A),
+              letterSpacing: -0.3,
+            ),
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'Yuk pilih makanan, vitamin, pasir, atau perlengkapan\nfavorit untuk hewan kesayanganmu.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 16,
+              height: 1.45,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF64748B),
+            ),
+          ),
+          const SizedBox(height: 22),
+          SizedBox(
+            width: double.infinity,
+            height: 56,
+            child: ElevatedButton(
+              onPressed: onExploreProduct,
+              style: ElevatedButton.styleFrom(
+                elevation: 0,
+                backgroundColor: _brandBlue,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(28),
                 ),
               ),
-              const Icon(
-                Icons.chevron_right_rounded,
-                color: _brandBlue,
-                size: 18,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Illustration empty cart — kumpulan emoji pet di ring dengan cart icon
-/// di tengah. Native Flutter (no extra asset), match feel PWA illustration.
-class _EmptyCartIllustration extends StatelessWidget {
-  const _EmptyCartIllustration();
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 130,
-      child: Stack(
-        alignment: Alignment.center,
-        clipBehavior: Clip.none,
-        children: [
-          // Background blob gradient halus
-          Container(
-            height: 130,
-            width: 200,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  _brandBlue.withValues(alpha: 0.06),
-                  const Color(0xFFFEF3F2).withValues(alpha: 0.10),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(28),
-            ),
-          ),
-          // Pet emojis di sekeliling
-          const Positioned(
-            left: 8,
-            top: 18,
-            child: Text('🐱', style: TextStyle(fontSize: 38)),
-          ),
-          const Positioned(
-            top: 0,
-            child: Text('🐶', style: TextStyle(fontSize: 44)),
-          ),
-          const Positioned(
-            right: 8,
-            top: 18,
-            child: Text('🐰', style: TextStyle(fontSize: 38)),
-          ),
-          const Positioned(
-            left: 30,
-            bottom: 4,
-            child: Text('🐠', style: TextStyle(fontSize: 30)),
-          ),
-          const Positioned(
-            right: 28,
-            bottom: 6,
-            child: Text('🐹', style: TextStyle(fontSize: 32)),
-          ),
-          // Cart icon di tengah bawah dengan blue circle
-          Positioned(
-            bottom: 18,
-            child: Container(
-              height: 62,
-              width: 62,
-              decoration: BoxDecoration(
-                color: _brandBlue,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: _brandBlue.withValues(alpha: 0.32),
-                    blurRadius: 14,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.shopping_cart_rounded,
-                color: Colors.white,
-                size: 32,
+              child: const Text(
+                'Jelajahi Produk',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
             ),
           ),
@@ -2473,4 +2362,402 @@ class _EmptyCartIllustration extends StatelessWidget {
       ),
     );
   }
+}
+
+class _EmptyCartProductCarouselSection extends StatelessWidget {
+  final String title;
+  final List<Product> products;
+  final VoidCallback onSeeAll;
+  final ValueChanged<Product> onProductTap;
+  final ValueChanged<Product> onAddToCart;
+
+  const _EmptyCartProductCarouselSection({
+    required this.title,
+    required this.products,
+    required this.onSeeAll,
+    required this.onProductTap,
+    required this.onAddToCart,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (products.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 21,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF0F172A),
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ),
+              GestureDetector(
+                onTap: onSeeAll,
+                behavior: HitTestBehavior.opaque,
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Lihat semua',
+                      style: TextStyle(
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w800,
+                        color: _brandBlue,
+                      ),
+                    ),
+                    SizedBox(width: 4),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 23,
+                      color: _brandBlue,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        SizedBox(
+          height: 336,
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            itemCount: products.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            itemBuilder: (context, index) {
+              final product = products[index];
+              return _EmptyCartProductCard(
+                product: product,
+                onTap: () => onProductTap(product),
+                onAddToCart: () => onAddToCart(product),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _EmptyCartProductCard extends StatelessWidget {
+  final Product product;
+  final VoidCallback onTap;
+  final VoidCallback onAddToCart;
+
+  const _EmptyCartProductCard({
+    required this.product,
+    required this.onTap,
+    required this.onAddToCart,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final discountPercent = productDiscountPercent(product);
+    final savingsLabel = _cartSavingsLabel(product);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Container(
+          width: 178,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: const Color(0xFFE7EEF9),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.045),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Stack(
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: SizedBox(
+                      height: 128,
+                      width: double.infinity,
+                      child: AppProductImage(
+                        imageUrl: product.imageUrl,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    product.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14.5,
+                      height: 1.22,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    formatRupiah(product.finalPrice),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                  if (product.hasDiscount)
+                    Text(
+                      formatRupiah(product.price),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF94A3B8),
+                        decoration: TextDecoration.lineThrough,
+                      ),
+                    ),
+                  const SizedBox(height: 6),
+                  _CartRatingSoldRow(product: product),
+                  const Spacer(),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: _CartSavingsBadge(text: savingsLabel ?? ''),
+                      ),
+                      const SizedBox(width: 8),
+                      _SmallCartButton(onTap: onAddToCart),
+                    ],
+                  ),
+                ],
+              ),
+              if (discountPercent != null)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  child: _CartDiscountBadge(percent: discountPercent),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CartRatingSoldRow extends StatelessWidget {
+  final Product product;
+
+  const _CartRatingSoldRow({required this.product});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasRating = product.rating > 0;
+    final hasSold = product.soldCount > 0;
+    if (!hasRating && !hasSold) return const SizedBox.shrink();
+
+    return Row(
+      children: [
+        if (hasRating) ...[
+          const Icon(
+            Icons.star_rounded,
+            size: 15,
+            color: Color(0xFFFBBF24),
+          ),
+          const SizedBox(width: 3),
+          Text(
+            product.rating.toStringAsFixed(1),
+            style: const TextStyle(
+              fontSize: 11.8,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF64748B),
+            ),
+          ),
+        ],
+        if (hasRating && hasSold) ...[
+          const SizedBox(width: 5),
+          const Text(
+            '|',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF94A3B8),
+            ),
+          ),
+          const SizedBox(width: 5),
+        ],
+        if (hasSold)
+          Expanded(
+            child: Text(
+              '${formatSoldCount(product.soldCount)} terjual',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 11.8,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF64748B),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _CartDiscountBadge extends StatelessWidget {
+  final int percent;
+
+  const _CartDiscountBadge({required this.percent});
+
+  @override
+  Widget build(BuildContext context) {
+    if (percent <= 0) return const SizedBox.shrink();
+
+    return Container(
+      width: 46,
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEF4444),
+        borderRadius: BorderRadius.circular(11),
+      ),
+      child: Column(
+        children: [
+          Text(
+            '$percent%',
+            style: const TextStyle(
+              fontSize: 13,
+              height: 1,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 2),
+          const Text(
+            'OFF',
+            style: TextStyle(
+              fontSize: 9.5,
+              height: 1,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CartSavingsBadge extends StatelessWidget {
+  final String text;
+
+  const _CartSavingsBadge({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    if (text.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      height: 28,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF1F2),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0xFFFFC9D0),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.confirmation_number_rounded,
+            size: 14,
+            color: Color(0xFFEF4444),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 10.8,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFFEF4444),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SmallCartButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _SmallCartButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: const Color(0xFFBFD5FF),
+              width: 1,
+            ),
+          ),
+          child: const Icon(
+            Icons.add_shopping_cart_rounded,
+            size: 21,
+            color: _brandBlue,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String? _cartSavingsLabel(Product product) {
+  final voucherLabel = product.voucherPreview?.badgeLabel.trim();
+  if (voucherLabel != null && voucherLabel.isNotEmpty) {
+    return voucherLabel;
+  }
+
+  final label = productSavingsLabel(product);
+  if (label == null) return null;
+  return label.replaceFirst('Hemat ', 'Hemat s.d. ');
 }

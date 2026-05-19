@@ -7,7 +7,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/cart_item.dart';
 import '../models/product.dart';
 import '../services/cart_service.dart';
-import '../utils/read_only_mode.dart';
 import 'member_store.dart';
 
 /// Cart state store — offline-first dengan optional remote sync.
@@ -33,6 +32,7 @@ class CartStore extends ChangeNotifier {
   List<CartItem> get items => _items.values.toList(growable: false);
   int get count => _items.values.fold(0, (sum, it) => sum + it.quantity);
   int get subtotal => _items.values.fold(0, (sum, it) => sum + it.lineTotal);
+
   /// Alias `subtotal` — beberapa code (checkout) pakai `total`. Note:
   /// tidak include shipping cost — itu di-add di checkout flow.
   int get total => subtotal;
@@ -74,7 +74,8 @@ class CartStore extends ChangeNotifier {
       notifyListeners();
       await _persist();
       if (kDebugMode) {
-        debugPrint('[CartStore.loadFromServer] OK — ${remoteItems.length} items');
+        debugPrint(
+            '[CartStore.loadFromServer] OK — ${remoteItems.length} items');
       }
     } catch (e) {
       // Server unreachable atau auth fail → tetap pakai local state.
@@ -116,7 +117,6 @@ class CartStore extends ChangeNotifier {
 
   /// Add cart line (atau increment qty kalau sudah ada).
   Future<void> addItem(CartItem item) async {
-    readOnlyMode.guard('addItem');
     final existing = _items[item.key];
     _items[item.key] = existing == null
         ? item
@@ -127,7 +127,6 @@ class CartStore extends ChangeNotifier {
   }
 
   Future<void> updateQuantity(String key, int quantity) async {
-    readOnlyMode.guard('updateQuantity');
     final item = _items[key];
     if (item == null) return;
     if (quantity <= 0) {
@@ -141,7 +140,6 @@ class CartStore extends ChangeNotifier {
   }
 
   Future<void> remove(String key) async {
-    readOnlyMode.guard('removeItem');
     if (_items.remove(key) != null) {
       notifyListeners();
       await _persist();
@@ -156,7 +154,6 @@ class CartStore extends ChangeNotifier {
   /// Kalau `index` di-pass + valid, item di-insert di posisi itu (preserve
   /// urutan visual). Default append ke akhir.
   Future<void> restore(CartItem item, {int? index}) async {
-    readOnlyMode.guard('restoreItem');
     if (index != null && index >= 0 && index < _items.length) {
       final entries = _items.entries.toList();
       entries.insert(index, MapEntry(item.key, item));
@@ -172,7 +169,6 @@ class CartStore extends ChangeNotifier {
   }
 
   Future<void> clear() async {
-    readOnlyMode.guard('clearCart');
     if (_items.isEmpty) return;
     _items.clear();
     notifyListeners();

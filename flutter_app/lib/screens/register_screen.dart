@@ -4,18 +4,15 @@ import 'package:flutter/services.dart';
 import '../services/auth_service.dart';
 import '../utils/haptics.dart';
 import '../utils/phone_formatter.dart';
-import '../widgets/loading_button.dart';
 
-const _brandBlue = Color(0xFF0B7FEA);
+const _brandBlue = Color(0xFF0787F5);
+const _brandBlueDark = Color(0xFF075FCC);
+const _darkNavy = Color(0xFF101828);
+const _textSecondary = Color(0xFF667085);
+const _softBlueBg = Color(0xFFF1F7FF);
+const _softBlueCard = Color(0xFFEAF5FF);
+const _borderSoft = Color(0xFFE0E7F0);
 
-/// Register screen — match Capacitor APK screenshot:
-/// - Custom back + "Daftar Member" centered title
-/// - Logo image + "Daftar Member Natalo" + subtitle "Gratis! Dapatkan harga khusus dan benefit member."
-/// - Form card dengan field: Nama lengkap / Email / No HP / (info OTP blue card) / Password / Konfirmasi password
-/// - "Kirim OTP" pill biru → trigger step 1 (kirim OTP ke email + WA)
-/// - Step 2: OTP field muncul → "Daftar" button
-/// - Manfaat card abu di bawah form
-/// - "Sudah punya akun? Masuk" footer
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
 
@@ -36,7 +33,32 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _otpSent = false; // step 1 sukses → tampilkan field OTP
 
   @override
+  void initState() {
+    super.initState();
+    for (final controller in [
+      _nameController,
+      _emailController,
+      _phoneController,
+      _passwordController,
+      _confirmController,
+      _otpController,
+    ]) {
+      controller.addListener(_onFormChanged);
+    }
+  }
+
+  @override
   void dispose() {
+    for (final controller in [
+      _nameController,
+      _emailController,
+      _phoneController,
+      _passwordController,
+      _confirmController,
+      _otpController,
+    ]) {
+      controller.removeListener(_onFormChanged);
+    }
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
@@ -44,6 +66,29 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _confirmController.dispose();
     _otpController.dispose();
     super.dispose();
+  }
+
+  void _onFormChanged() {
+    if (mounted) setState(() {});
+  }
+
+  bool get _hasValidEmail {
+    final email = _emailController.text.trim();
+    return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email);
+  }
+
+  bool get _hasValidPhone =>
+      _phoneController.text.replaceAll(RegExp(r'[^\d]'), '').length >= 8;
+
+  bool get _canSubmit {
+    final baseValid = _nameController.text.trim().isNotEmpty &&
+        _hasValidEmail &&
+        _hasValidPhone &&
+        _passwordController.text.length >= 8 &&
+        _passwordController.text == _confirmController.text;
+
+    if (!_otpSent) return baseValid;
+    return baseValid && _otpController.text.trim().length >= 4;
   }
 
   Future<void> _onPrimary() async {
@@ -110,12 +155,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return false;
     }
     if (_emailController.text.trim().isEmpty) {
-      _showError('Email harus diisi.');
+      _showError('Email wajib diisi.');
+      return false;
+    }
+    if (!_hasValidEmail) {
+      _showError('Format email belum sesuai.');
       return false;
     }
     // Validate digit count (skip dashes/spaces dari PhoneFormatter).
-    if (_phoneController.text.replaceAll(RegExp(r'[^\d]'), '').length < 8) {
-      _showError('Nomor handphone tidak valid.');
+    if (_phoneController.text.trim().isEmpty) {
+      _showError('Nomor handphone wajib diisi.');
+      return false;
+    }
+    if (!_hasValidPhone) {
+      _showError('Nomor handphone belum sesuai.');
       return false;
     }
     if (_passwordController.text.length < 8) {
@@ -146,14 +199,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7FAFF),
+      backgroundColor: _softBlueBg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF7FAFF),
+        backgroundColor: Colors.white,
         elevation: 0,
         scrolledUnderElevation: 0,
-        surfaceTintColor: const Color(0xFFF7FAFF),
+        surfaceTintColor: Colors.white,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF17202A)),
+          icon: const Icon(Icons.arrow_back_rounded, color: _darkNavy),
           onPressed: () => Navigator.pushReplacementNamed(
             context,
             '/member/login',
@@ -162,163 +215,79 @@ class _RegisterScreenState extends State<RegisterScreen> {
         title: const Text(
           'Daftar Member',
           style: TextStyle(
-            color: Color(0xFF17202A),
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
+            color: _darkNavy,
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
           ),
         ),
         centerTitle: true,
       ),
       body: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         child: Column(
           children: [
-            // ── Header section ──
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-              color: const Color(0xFFEFF2F6),
-              child: Column(
-                children: [
-                  Container(
-                    height: 88,
-                    width: 88,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(22),
-                      boxShadow: [
-                        BoxShadow(
-                          color: _brandBlue.withValues(alpha: 0.20),
-                          blurRadius: 18,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    // Pakai icon-only.png (square iOS-style) — exact match
-                    // Capacitor. brand/logo.png adalah wordmark horizontal
-                    // (akan ter-crop di square 88x88).
-                    child: Image.asset(
-                      'assets/native/icon-only.png',
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: _brandBlue,
-                        alignment: Alignment.center,
-                        child: const Text(
-                          'NL',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 32,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Daftar Member Natalo',
-                    style: TextStyle(
-                      color: Color(0xFF111111),
-                      fontSize: 26,
-                      fontWeight: FontWeight.w900,
-                      height: 1.1,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Gratis! Dapatkan harga khusus dan benefit member.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Color(0xFF6B7280),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      height: 1.5,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // ── Form card ──
+            const _RegisterHeroSection(),
+            const _RegisterBenefitChips(),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
               child: Container(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFFE5E7EB)),
+                  borderRadius: BorderRadius.circular(26),
+                  border: Border.all(color: _borderSoft),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.055),
+                      blurRadius: 24,
+                      offset: const Offset(0, 12),
+                    ),
+                  ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const _FieldLabel('Nama lengkap'),
-                    _PillTextField(
+                    _RegisterTextField(
                       controller: _nameController,
                       hint: 'Contoh: Andi Setiawan',
+                      icon: Icons.person_outline_rounded,
                     ),
                     const SizedBox(height: 14),
                     const _FieldLabel('Email'),
-                    _PillTextField(
+                    _RegisterTextField(
                       controller: _emailController,
                       hint: 'Contoh: nama@email.com',
+                      icon: Icons.mail_outline_rounded,
                       keyboardType: TextInputType.emailAddress,
                     ),
                     const SizedBox(height: 14),
                     const _FieldLabel('No. handphone'),
-                    _PillTextField(
+                    _RegisterTextField(
                       controller: _phoneController,
                       hint: 'Contoh: 0812-3456-789',
+                      icon: Icons.phone_outlined,
                       keyboardType: TextInputType.phone,
                       inputFormatters: [PhoneFormatter()],
                     ),
                     const SizedBox(height: 14),
-                    // ── Info OTP blue card ──
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFEAF5FF),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Kode OTP dikirim ke email dan WhatsApp kamu.',
-                            style: TextStyle(
-                              color: _brandBlue,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w900,
-                              height: 1.4,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            'Email biasanya masuk dalam beberapa detik. WhatsApp bisa butuh 30–60 detik. Cukup masukkan satu kode yang sama.',
-                            style: TextStyle(
-                              color: _brandBlue,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              height: 1.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    const _OtpInfoBox(),
                     const SizedBox(height: 14),
                     const _FieldLabel('Password'),
-                    _PillTextField(
+                    _RegisterTextField(
                       controller: _passwordController,
-                      hint: 'Masukkan password (min. 8 karakter)',
+                      hint: 'Minimal 8 karakter',
+                      icon: Icons.lock_outline_rounded,
                       obscure: _obscurePassword,
                       onToggleObscure: () =>
                           setState(() => _obscurePassword = !_obscurePassword),
                     ),
                     const SizedBox(height: 14),
                     const _FieldLabel('Konfirmasi password'),
-                    _PillTextField(
+                    _RegisterTextField(
                       controller: _confirmController,
                       hint: 'Ulangi password yang sama',
+                      icon: Icons.lock_outline_rounded,
                       obscure: _obscureConfirm,
                       onToggleObscure: () =>
                           setState(() => _obscureConfirm = !_obscureConfirm),
@@ -326,84 +295,29 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     if (_otpSent) ...[
                       const SizedBox(height: 14),
                       const _FieldLabel('Kode OTP'),
-                      _PillTextField(
+                      _RegisterTextField(
                         controller: _otpController,
                         hint: 'Masukkan 6 digit kode',
+                        icon: Icons.password_rounded,
                         keyboardType: TextInputType.number,
                       ),
                     ],
                     const SizedBox(height: 22),
-                    LoadingButton(
-                      onPressed: _onPrimary,
+                    _RegisterSubmitButton(
+                      onPressed: _canSubmit ? _onPrimary : null,
                       loading: _loading,
-                      color: _brandBlue,
-                      child: Text(_otpSent ? 'Daftar' : 'Kirim OTP'),
-                    ),
-                    const SizedBox(height: 16),
-                    // ── Manfaat card ──
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Column(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Text(
-                            'Manfaat jadi Member di Natalopetshop.com',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Color(0xFF111111),
-                              fontSize: 14,
-                              fontWeight: FontWeight.w900,
-                              height: 1.4,
-                            ),
-                          ),
-                          SizedBox(height: 12),
-                          _BenefitBullet(
-                              text:
-                                  'Kumpulkan Loyalty poin dari setiap transaksi anda.'),
-                          SizedBox(height: 8),
-                          _BenefitBullet(
-                              text:
-                                  'Belanja di natalopetshop.com lebih murah, cepat, hemat dan mudah.'),
-                        ],
-                      ),
+                      otpSent: _otpSent,
                     ),
                   ],
                 ),
               ),
             ),
-
-            // ── Footer "Sudah punya akun? Masuk" ──
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: GestureDetector(
-                onTap: () =>
-                    Navigator.pushReplacementNamed(context, '/member/login'),
-                child: const Text.rich(
-                  TextSpan(
-                    text: 'Sudah punya akun? ',
-                    style: TextStyle(
-                      color: Color(0xFF6B7280),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    children: [
-                      TextSpan(
-                        text: 'Masuk',
-                        style: TextStyle(
-                          color: _brandBlue,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+            const _RegisterMemberBenefitCard(),
+            _BackToLoginLink(
+              onTap: () =>
+                  Navigator.pushReplacementNamed(context, '/member/login'),
             ),
+            SizedBox(height: 24 + MediaQuery.of(context).padding.bottom),
           ],
         ),
       ),
@@ -413,7 +327,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
 class _FieldLabel extends StatelessWidget {
   final String label;
-  // ignore: unused_element_parameter
   const _FieldLabel(this.label);
 
   @override
@@ -423,26 +336,232 @@ class _FieldLabel extends StatelessWidget {
       child: Text(
         label,
         style: const TextStyle(
-          color: Color(0xFF111111),
+          color: _darkNavy,
           fontSize: 14,
-          fontWeight: FontWeight.w900,
+          fontWeight: FontWeight.w800,
         ),
       ),
     );
   }
 }
 
-class _PillTextField extends StatelessWidget {
+class _RegisterHeroSection extends StatelessWidget {
+  const _RegisterHeroSection();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.white, _softBlueBg],
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 10),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: AspectRatio(
+              aspectRatio: 853 / 385,
+              child: Image.asset(
+                'assets/images/register_member_hero_petshop.png',
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const _HeroFallback(),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 24),
+            child: Text(
+              'Daftar Member Natalo',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: _darkNavy,
+                fontSize: 30,
+                fontWeight: FontWeight.w900,
+                height: 1.08,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 30),
+            child: Text(
+              'Gratis! Kumpulkan poin dan dapatkan voucher khusus member.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: _textSecondary,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                height: 1.38,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroFallback extends StatelessWidget {
+  const _HeroFallback();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [_brandBlue, _brandBlueDark],
+        ),
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: const Center(
+        child: Icon(Icons.pets_rounded, color: Colors.white, size: 76),
+      ),
+    );
+  }
+}
+
+class _RegisterBenefitChips extends StatelessWidget {
+  const _RegisterBenefitChips();
+
+  @override
+  Widget build(BuildContext context) {
+    const items = [
+      _BenefitChipData(
+        icon: Icons.pets_rounded,
+        title: 'Poin Belanja',
+        subtitle: 'Kumpulkan poin setiap transaksi',
+      ),
+      _BenefitChipData(
+        icon: Icons.confirmation_number_rounded,
+        title: 'Voucher Member',
+        subtitle: 'Dapatkan voucher khusus member',
+      ),
+      _BenefitChipData(
+        icon: Icons.local_offer_rounded,
+        title: 'Promo Khusus',
+        subtitle: 'Harga spesial untuk member',
+      ),
+    ];
+
+    return SizedBox(
+      height: 96,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        itemCount: items.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemBuilder: (context, index) => _BenefitChip(item: items[index]),
+      ),
+    );
+  }
+}
+
+class _BenefitChipData {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  const _BenefitChipData({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+}
+
+class _BenefitChip extends StatelessWidget {
+  final _BenefitChipData item;
+
+  const _BenefitChip({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 190,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _borderSoft),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.045),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [_brandBlue, _brandBlueDark],
+              ),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(item.icon, color: Colors.white, size: 24),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: _darkNavy,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  item.subtitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: _textSecondary,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    height: 1.25,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RegisterTextField extends StatelessWidget {
   final TextEditingController controller;
   final String hint;
+  final IconData icon;
   final TextInputType? keyboardType;
   final bool obscure;
   final VoidCallback? onToggleObscure;
   final List<TextInputFormatter>? inputFormatters;
 
-  const _PillTextField({
+  const _RegisterTextField({
     required this.controller,
     required this.hint,
+    required this.icon,
     this.keyboardType,
     this.obscure = false,
     this.onToggleObscure,
@@ -456,15 +575,21 @@ class _PillTextField extends StatelessWidget {
       keyboardType: keyboardType,
       obscureText: obscure,
       inputFormatters: inputFormatters,
+      style: const TextStyle(
+        color: _darkNavy,
+        fontSize: 15,
+        fontWeight: FontWeight.w700,
+      ),
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: const TextStyle(
-          color: Color(0xFF9CA3AF),
+          color: Color(0xFF98A2B3),
           fontWeight: FontWeight.w600,
         ),
+        prefixIcon: Icon(icon, color: const Color(0xFF98A2B3), size: 22),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
-          vertical: 16,
+          vertical: 18,
         ),
         suffixIcon: onToggleObscure == null
             ? null
@@ -476,24 +601,228 @@ class _PillTextField extends StatelessWidget {
                   obscure
                       ? Icons.visibility_outlined
                       : Icons.visibility_off_outlined,
-                  color: const Color(0xFF9CA3AF),
+                  color: const Color(0xFF98A2B3),
                 ),
               ),
+        filled: true,
+        fillColor: const Color(0xFFF8FBFF),
         border: OutlineInputBorder(
-          // Capacitor pakai rounded rectangle (radius ~12-14) untuk input,
-          // NOT full pill. Pill cuma untuk button. radius 14 lebih
-          // konvensional + readable untuk form panjang.
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+          borderRadius: BorderRadius.circular(18),
+          borderSide: const BorderSide(color: _borderSoft),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+          borderRadius: BorderRadius.circular(18),
+          borderSide: const BorderSide(color: _borderSoft),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: _brandBlue, width: 1.4),
+          borderRadius: BorderRadius.circular(18),
+          borderSide: const BorderSide(color: _brandBlue, width: 1.5),
         ),
+      ),
+    );
+  }
+}
+
+class _RegisterSubmitButton extends StatelessWidget {
+  final VoidCallback? onPressed;
+  final bool loading;
+  final bool otpSent;
+
+  const _RegisterSubmitButton({
+    required this.onPressed,
+    required this.loading,
+    required this.otpSent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final label = loading
+        ? (otpSent ? 'Mendaftarkan...' : 'Mengirim OTP...')
+        : (otpSent ? 'Daftar' : 'Kirim OTP');
+
+    return SizedBox(
+      width: double.infinity,
+      height: 54,
+      child: ElevatedButton(
+        onPressed: loading ? null : onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: _brandBlue,
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: _brandBlue.withValues(alpha: 0.38),
+          disabledForegroundColor: Colors.white.withValues(alpha: 0.86),
+          elevation: onPressed == null ? 0 : 8,
+          shadowColor: _brandBlue.withValues(alpha: 0.28),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(999),
+          ),
+        ),
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 180),
+          child: Row(
+            key: ValueKey(label),
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (loading) ...[
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.2,
+                    valueColor: AlwaysStoppedAnimation(Colors.white),
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OtpInfoBox extends StatelessWidget {
+  const _OtpInfoBox();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _softBlueCard,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFD7E8FF)),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _CircleIcon(icon: Icons.info_rounded, size: 38),
+          SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Kode OTP dikirim ke email dan WhatsApp.',
+                  style: TextStyle(
+                    color: _brandBlueDark,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    height: 1.25,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Gunakan satu kode yang sama. WhatsApp bisa membutuhkan 30-60 detik.',
+                  style: TextStyle(
+                    color: Color(0xFF24527A),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    height: 1.32,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CircleIcon extends StatelessWidget {
+  final IconData icon;
+  final double size;
+
+  const _CircleIcon({required this.icon, this.size = 42});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(
+        color: _brandBlue,
+        shape: BoxShape.circle,
+      ),
+      child: Icon(icon, color: Colors.white, size: size * 0.54),
+    );
+  }
+}
+
+class _RegisterMemberBenefitCard extends StatelessWidget {
+  const _RegisterMemberBenefitCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 4, 20, 18),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: _borderSoft),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.045),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: _softBlueCard,
+              borderRadius: BorderRadius.circular(22),
+            ),
+            child: const Icon(
+              Icons.verified_user_rounded,
+              color: _brandBlue,
+              size: 42,
+            ),
+          ),
+          const SizedBox(width: 14),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Kenapa daftar member Natalo?',
+                  style: TextStyle(
+                    color: _darkNavy,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                SizedBox(height: 10),
+                _BenefitBullet(
+                  text: 'Kumpulkan loyalty poin setiap transaksi',
+                ),
+                SizedBox(height: 7),
+                _BenefitBullet(
+                  text: 'Dapat voucher dan promo khusus member',
+                ),
+                SizedBox(height: 7),
+                _BenefitBullet(
+                  text: 'Checkout lebih cepat dengan data akun tersimpan',
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -501,40 +830,70 @@ class _PillTextField extends StatelessWidget {
 
 class _BenefitBullet extends StatelessWidget {
   final String text;
+
   const _BenefitBullet({required this.text});
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Padding(
-            padding: EdgeInsets.only(top: 6, right: 8),
-            child: SizedBox(
-              height: 6,
-              width: 6,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Color(0xFF334155),
-                  shape: BoxShape.circle,
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(top: 1, right: 8),
+          child: Icon(
+            Icons.check_circle_rounded,
+            color: _brandBlue,
+            size: 17,
+          ),
+        ),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              color: _darkNavy,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              height: 1.25,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BackToLoginLink extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _BackToLoginLink({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+        child: Text.rich(
+          TextSpan(
+            text: 'Sudah punya akun? ',
+            style: TextStyle(
+              color: _textSecondary,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+            ),
+            children: [
+              TextSpan(
+                text: 'Masuk',
+                style: TextStyle(
+                  color: _brandBlueDark,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
-            ),
+            ],
           ),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(
-                color: Color(0xFF334155),
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                height: 1.5,
-              ),
-            ),
-          ),
-        ],
+          textAlign: TextAlign.center,
+        ),
       ),
     );
   }

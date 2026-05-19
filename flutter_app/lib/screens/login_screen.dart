@@ -12,15 +12,14 @@ import '../state/member_store.dart';
 import '../utils/haptics.dart';
 import '../widgets/loading_button.dart';
 
-const _brandBlue = Color(0xFF0B7FEA);
+const _brandBlue = Color(0xFF0787F5);
+const _brandBlueDark = Color(0xFF075FCC);
+const _darkNavy = Color(0xFF101828);
+const _textSecondary = Color(0xFF667085);
+const _softBlueBg = Color(0xFFF1F7FF);
+const _borderSoft = Color(0xFFE0E7F0);
 
-/// Login screen — match Capacitor APK persis:
-/// - Custom back button "Kembali" + title "Masuk" tengah
-/// - Logo image besar + judul "Masuk Member Natalo" + subtitle
-/// - White card form dengan field Email/No HP + Password
-/// - Field Email/No HP + Password (Lupa password? link)
-/// - "Masuk" pill button biru full width
-/// - Footer "Belum punya akun? Daftar gratis"
+/// Login member visual shell. Auth flow tetap memakai service existing.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -253,17 +252,27 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  void _openOtpLogin() {
+    AppHaptics.tap();
+    // Pass redirect arguments (kalau ada) ke OTP screen supaya post-login
+    // routing tetap sama (Tokopedia/Shopee pattern: bisa deep-link ke cart
+    // dan tetap balik ke cart setelah login via OTP).
+    final args = ModalRoute.of(context)?.settings.arguments;
+    Navigator.pushNamed(context, '/member/login-otp', arguments: args);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7FAFF),
+      backgroundColor: _softBlueBg,
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF7FAFF),
+        backgroundColor: Colors.white,
         elevation: 0,
         scrolledUnderElevation: 0,
-        surfaceTintColor: const Color(0xFFF7FAFF),
+        surfaceTintColor: Colors.white,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF17202A)),
+          icon: const Icon(Icons.arrow_back_rounded, color: _darkNavy),
           onPressed: () => Navigator.pushNamedAndRemoveUntil(
             context,
             '/',
@@ -273,7 +282,7 @@ class _LoginScreenState extends State<LoginScreen> {
         title: const Text(
           'Masuk',
           style: TextStyle(
-            color: Color(0xFF17202A),
+            color: _darkNavy,
             fontSize: 18,
             fontWeight: FontWeight.w900,
           ),
@@ -281,87 +290,29 @@ class _LoginScreenState extends State<LoginScreen> {
         centerTitle: true,
       ),
       body: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         child: Column(
           children: [
-            // ── Header section dengan logo + judul ──
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-              color: const Color(0xFFEFF2F6),
-              child: Column(
-                children: [
-                  // Logo Natalo (gambar) dengan halo putih shadow
-                  Container(
-                    height: 88,
-                    width: 88,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(22),
-                      boxShadow: [
-                        BoxShadow(
-                          color: _brandBlue.withValues(alpha: 0.20),
-                          blurRadius: 18,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    // Pakai icon-only.png (square iOS-style) — exact match
-                    // Capacitor. brand/logo.png adalah wordmark horizontal
-                    // (akan ter-crop di square 88x88).
-                    child: Image.asset(
-                      'assets/native/icon-only.png',
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: _brandBlue,
-                        alignment: Alignment.center,
-                        child: const Text(
-                          'NL',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 32,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Masuk Member Natalo',
-                    style: TextStyle(
-                      color: Color(0xFF111111),
-                      fontSize: 28,
-                      fontWeight: FontWeight.w900,
-                      height: 1.1,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(
-                      'Belanja kebutuhan hewan jadi lebih mudah, cepat, dan hemat.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Color(0xFF6B7280),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        height: 1.5,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+            const _LoginHeroSection(),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 14, 20, 0),
+              child: _MemberBenefitRow(),
             ),
-            // ── White card form ──
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
               child: Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFFE5E7EB)),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: _borderSoft),
+                  boxShadow: [
+                    BoxShadow(
+                      color: _brandBlueDark.withValues(alpha: 0.08),
+                      blurRadius: 28,
+                      offset: const Offset(0, 14),
+                    ),
+                  ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -370,45 +321,19 @@ class _LoginScreenState extends State<LoginScreen> {
                     const Text(
                       'Email / No. HP',
                       style: TextStyle(
-                        color: Color(0xFF111111),
+                        color: _darkNavy,
                         fontSize: 14,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
                     const SizedBox(height: 8),
-                    TextField(
+                    _LoginTextField(
                       controller: _emailController,
                       keyboardType: TextInputType.emailAddress,
-                      decoration: InputDecoration(
-                        hintText: 'Masukan Email / No Hp',
-                        hintStyle: const TextStyle(
-                          color: Color(0xFF9CA3AF),
-                          fontWeight: FontWeight.w600,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 16,
-                        ),
-                        // Match Capacitor: rounded rectangle (radius 14) NOT
-                        // full pill. Pill cuma untuk button "Masuk".
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide:
-                              const BorderSide(color: Color(0xFFE5E7EB)),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide:
-                              const BorderSide(color: Color(0xFFE5E7EB)),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide:
-                              const BorderSide(color: _brandBlue, width: 1.4),
-                        ),
-                      ),
+                      hint: 'Masukkan email atau nomor HP',
+                      prefixIcon: Icons.mail_outline_rounded,
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 16),
                     // Password label + Lupa password? link
                     Row(
                       children: [
@@ -416,7 +341,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: Text(
                             'Password',
                             style: TextStyle(
-                              color: Color(0xFF111111),
+                              color: _darkNavy,
                               fontSize: 14,
                               fontWeight: FontWeight.w900,
                             ),
@@ -437,47 +362,21 @@ class _LoginScreenState extends State<LoginScreen> {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    TextField(
+                    _LoginTextField(
                       controller: _passwordController,
                       obscureText: _obscure,
-                      decoration: InputDecoration(
-                        hintText: 'Masukkan password',
-                        hintStyle: const TextStyle(
-                          color: Color(0xFF9CA3AF),
-                          fontWeight: FontWeight.w600,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 16,
-                        ),
-                        suffixIcon: IconButton(
-                          onPressed: () => setState(() => _obscure = !_obscure),
-                          tooltip: _obscure
-                              ? 'Tampilkan password'
-                              : 'Sembunyikan password',
-                          icon: Icon(
-                            _obscure
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                            color: const Color(0xFF9CA3AF),
-                          ),
-                        ),
-                        // Match Capacitor: rounded rectangle (radius 14) NOT
-                        // full pill. Pill cuma untuk button "Masuk".
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide:
-                              const BorderSide(color: Color(0xFFE5E7EB)),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide:
-                              const BorderSide(color: Color(0xFFE5E7EB)),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide:
-                              const BorderSide(color: _brandBlue, width: 1.4),
+                      hint: 'Masukkan password',
+                      prefixIcon: Icons.lock_outline_rounded,
+                      suffix: IconButton(
+                        onPressed: () => setState(() => _obscure = !_obscure),
+                        tooltip: _obscure
+                            ? 'Tampilkan password'
+                            : 'Sembunyikan password',
+                        icon: Icon(
+                          _obscure
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
+                          color: const Color(0xFF7B8AA5),
                         ),
                       ),
                     ),
@@ -488,6 +387,20 @@ class _LoginScreenState extends State<LoginScreen> {
                       onPressed: _login,
                       loading: _loading,
                       color: _brandBlue,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _brandBlue,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size.fromHeight(54),
+                        elevation: 0,
+                        shadowColor: _brandBlue.withValues(alpha: 0.30),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
                       child: const Text('Masuk'),
                     ),
                     // Biometric login button — muncul kalau device support +
@@ -517,66 +430,510 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                     ],
-                    const SizedBox(height: 16),
-                    const Divider(color: Color(0xFFE5E7EB), height: 1),
-                    const SizedBox(height: 16),
-                    // Footer "Belum punya akun? Daftar gratis"
-                    Center(
-                      child: Column(
-                        children: [
-                          TextButton(
-                            onPressed: () => Navigator.pushNamed(
-                                context, '/member/register'),
-                            style: TextButton.styleFrom(
-                              foregroundColor: _brandBlue,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 10,
-                              ),
-                              minimumSize: const Size(44, 44),
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                            child: const Text.rich(
-                              TextSpan(
-                                text: 'Belum punya akun? ',
-                                style: TextStyle(
-                                  color: Color(0xFF6B7280),
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                children: [
-                                  TextSpan(
-                                    text: 'Daftar gratis',
-                                    style: TextStyle(
-                                      color: _brandBlue,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          const Text(
-                            'Daftar gratis dan mulai kumpulkan benefit member Natalo.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Color(0xFF9CA3AF),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    const SizedBox(height: 20),
+                    const _LoginSeparator(),
+                    const SizedBox(height: 14),
+                    _WhatsAppOtpButton(onTap: _openOtpLogin),
                   ],
                 ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+              child: _RegisterBenefitCard(
+                onRegister: () =>
+                    Navigator.pushNamed(context, '/member/register'),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 0, 20, 28),
+              child: _SecurityNote(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LoginHeroSection extends StatelessWidget {
+  const _LoginHeroSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    final imageWidth = width < 390 ? 230.0 : 260.0;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.white, Color(0xFFEAF5FF)],
+        ),
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 270),
+        child: Stack(
+          children: [
+            Positioned(
+              right: -18,
+              bottom: -6,
+              child: SizedBox(
+                width: imageWidth,
+                child: Image.asset(
+                  'assets/images/login_member_hero_petshop.png',
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const _HeroFallback(),
+                ),
+              ),
+            ),
+            SizedBox(
+              width: width < 390 ? 190 : 210,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    height: 66,
+                    width: 66,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _brandBlue.withValues(alpha: 0.18),
+                          blurRadius: 18,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: Image.asset(
+                      'assets/native/icon-only.png',
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        color: _brandBlue,
+                        alignment: Alignment.center,
+                        child: const Text(
+                          'NL',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'Masuk Member\nNatalo',
+                    style: TextStyle(
+                      color: _darkNavy,
+                      fontSize: 31,
+                      fontWeight: FontWeight.w900,
+                      height: 1.05,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Belanja kebutuhan hewan jadi lebih mudah, cepat, dan hemat.',
+                    style: TextStyle(
+                      color: _textSecondary,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      height: 1.45,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _HeroFallback extends StatelessWidget {
+  const _HeroFallback();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 220,
+      decoration: BoxDecoration(
+        color: const Color(0xFFEAF3FF),
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: const Icon(
+        Icons.pets_rounded,
+        color: _brandBlue,
+        size: 72,
+      ),
+    );
+  }
+}
+
+class _MemberBenefitRow extends StatelessWidget {
+  const _MemberBenefitRow();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      children: [
+        Expanded(
+          child: _BenefitCard(
+            icon: Icons.monetization_on_rounded,
+            title: 'Poin Member',
+            subtitle: 'Kumpulkan poin setiap belanja',
+          ),
+        ),
+        SizedBox(width: 12),
+        Expanded(
+          child: _BenefitCard(
+            icon: Icons.confirmation_number_rounded,
+            title: 'Voucher Eksklusif',
+            subtitle: 'Dapatkan voucher khusus member',
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BenefitCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  const _BenefitCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 106),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _borderSoft),
+        boxShadow: [
+          BoxShadow(
+            color: _brandBlueDark.withValues(alpha: 0.07),
+            blurRadius: 18,
+            offset: const Offset(0, 9),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: const BoxDecoration(
+              color: _brandBlue,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: Colors.white, size: 25),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: _darkNavy,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w900,
+                    height: 1.15,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: _textSecondary,
+                    fontSize: 12.3,
+                    fontWeight: FontWeight.w600,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LoginTextField extends StatelessWidget {
+  final TextEditingController controller;
+  final String hint;
+  final IconData prefixIcon;
+  final TextInputType? keyboardType;
+  final bool obscureText;
+  final Widget? suffix;
+
+  const _LoginTextField({
+    required this.controller,
+    required this.hint,
+    required this.prefixIcon,
+    this.keyboardType,
+    this.obscureText = false,
+    this.suffix,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      keyboardType: keyboardType,
+      obscureText: obscureText,
+      style: const TextStyle(
+        color: _darkNavy,
+        fontSize: 15,
+        fontWeight: FontWeight.w700,
+      ),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: const TextStyle(
+          color: Color(0xFF98A2B3),
+          fontWeight: FontWeight.w600,
+        ),
+        prefixIcon: Icon(prefixIcon, color: const Color(0xFF667085), size: 23),
+        prefixIconConstraints: const BoxConstraints(
+          minWidth: 48,
+          minHeight: 52,
+        ),
+        suffixIcon: suffix,
+        filled: true,
+        fillColor: const Color(0xFFF8FBFF),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Color(0xFFD5DEEC)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Color(0xFFD5DEEC)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: _brandBlue, width: 1.4),
+        ),
+      ),
+    );
+  }
+}
+
+class _LoginSeparator extends StatelessWidget {
+  const _LoginSeparator();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      children: [
+        Expanded(child: Divider(color: _borderSoft, height: 1)),
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: 12),
+          child: Text(
+            'atau masuk lebih cepat',
+            style: TextStyle(
+              color: _textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        Expanded(child: Divider(color: _borderSoft, height: 1)),
+      ],
+    );
+  }
+}
+
+class _WhatsAppOtpButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _WhatsAppOtpButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: OutlinedButton.icon(
+        onPressed: onTap,
+        icon: const Icon(
+          Icons.call_rounded,
+          color: Color(0xFF22C55E),
+          size: 22,
+        ),
+        label: const Text('Masuk dengan OTP WhatsApp'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: _darkNavy,
+          side: const BorderSide(color: _brandBlue, width: 1.3),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(999),
+          ),
+          textStyle: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RegisterBenefitCard extends StatelessWidget {
+  final VoidCallback onRegister;
+
+  const _RegisterBenefitCard({required this.onRegister});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: _borderSoft),
+        boxShadow: [
+          BoxShadow(
+            color: _brandBlueDark.withValues(alpha: 0.07),
+            blurRadius: 22,
+            offset: const Offset(0, 11),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 78,
+            height: 62,
+            child: Image.asset(
+              'assets/images/login_register_benefit.png',
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => const Icon(
+                Icons.card_giftcard_rounded,
+                color: _brandBlue,
+                size: 44,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                GestureDetector(
+                  onTap: onRegister,
+                  behavior: HitTestBehavior.opaque,
+                  child: const Text.rich(
+                    TextSpan(
+                      text: 'Belum punya akun? ',
+                      style: TextStyle(
+                        color: _darkNavy,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                      children: [
+                        TextSpan(
+                          text: 'Daftar gratis',
+                          style: TextStyle(
+                            color: _brandBlue,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Kumpulkan poin dan dapatkan voucher khusus member Natalo.',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: _textSecondary,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          OutlinedButton(
+            onPressed: onRegister,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: _brandBlue,
+              side: const BorderSide(color: _brandBlue, width: 1.2),
+              minimumSize: const Size(118, 44),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              textStyle: const TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: 13,
+              ),
+            ),
+            child: const Text('Daftar gratis'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SecurityNote extends StatelessWidget {
+  const _SecurityNote();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.lock_rounded, color: _brandBlue, size: 16),
+        SizedBox(width: 6),
+        Flexible(
+          child: Text.rich(
+            TextSpan(
+              text: 'Data akun kamu aman bersama ',
+              style: TextStyle(
+                color: _textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+              children: [
+                TextSpan(
+                  text: 'Natalo.',
+                  style: TextStyle(color: _brandBlue),
+                ),
+              ],
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ],
     );
   }
 }

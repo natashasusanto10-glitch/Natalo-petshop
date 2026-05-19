@@ -121,6 +121,8 @@ flutter:
     - assets/brand/
     - assets/brands/
     - assets/banners/
+    - assets/images/
+    - assets/illustrations/
     - assets/products/
     - assets/native/
     - assets/lottie/
