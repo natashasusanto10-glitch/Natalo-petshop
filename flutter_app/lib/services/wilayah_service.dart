@@ -34,11 +34,14 @@ class WilayahService {
   Future<List<WilayahRegion>> _fetch(String path) async {
     try {
       final data = await apiClient.getJson('/api/wilayah/$path');
-      final raw = data['items'] ?? data['data'] ?? data;
+      final raw = data is Map
+          ? (data['items'] ?? data['data'] ?? data['regions'])
+          : data;
       if (raw is! List) return const [];
       return raw
-          .whereType<Map<String, dynamic>>()
-          .map(WilayahRegion.fromJson)
+          .whereType<Map>()
+          .map(
+              (item) => WilayahRegion.fromJson(Map<String, dynamic>.from(item)))
           .toList();
     } catch (_) {
       return const [];

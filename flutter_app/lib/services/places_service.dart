@@ -58,14 +58,11 @@ class PlaceDetails {
     final lngRaw = loc is Map ? loc['lng'] : null;
     return PlaceDetails(
       placeId: (json['placeId'] ?? json['place_id'] ?? '').toString(),
-      formattedAddress: (json['formattedAddress'] ??
-              json['formatted_address'] ??
-              '')
-          .toString(),
-      latitude:
-          latRaw is num ? latRaw.toDouble() : double.tryParse('$latRaw'),
-      longitude:
-          lngRaw is num ? lngRaw.toDouble() : double.tryParse('$lngRaw'),
+      formattedAddress:
+          (json['formattedAddress'] ?? json['formatted_address'] ?? '')
+              .toString(),
+      latitude: latRaw is num ? latRaw.toDouble() : double.tryParse('$latRaw'),
+      longitude: lngRaw is num ? lngRaw.toDouble() : double.tryParse('$lngRaw'),
       postalCode: json['postalCode']?.toString(),
       city: json['city']?.toString(),
       district: json['district']?.toString(),
@@ -96,15 +93,17 @@ class PlacesService {
         body: {
           'query': query.trim(),
           if (sessionToken != null) 'sessionToken': sessionToken,
-          if (lat != null && lng != null)
-            'location': {'lat': lat, 'lng': lng},
+          if (lat != null && lng != null) 'location': {'lat': lat, 'lng': lng},
         },
       );
-      final raw = data['predictions'] ?? data['suggestions'] ?? data['items'];
+      final raw = data is Map
+          ? (data['predictions'] ?? data['suggestions'] ?? data['items'])
+          : data;
       if (raw is! List) return const [];
       return raw
-          .whereType<Map<String, dynamic>>()
-          .map(PlaceSuggestion.fromJson)
+          .whereType<Map>()
+          .map((item) =>
+              PlaceSuggestion.fromJson(Map<String, dynamic>.from(item)))
           .toList();
     } catch (_) {
       return const [];
@@ -125,7 +124,8 @@ class PlacesService {
           if (sessionToken != null) 'sessionToken': sessionToken,
         },
       );
-      return PlaceDetails.fromJson(data);
+      if (data is! Map) return null;
+      return PlaceDetails.fromJson(Map<String, dynamic>.from(data));
     } catch (_) {
       return null;
     }
@@ -142,7 +142,8 @@ class PlacesService {
         '/api/places/reverse-geocode',
         body: {'lat': latitude, 'lng': longitude},
       );
-      return PlaceDetails.fromJson(data);
+      if (data is! Map) return null;
+      return PlaceDetails.fromJson(Map<String, dynamic>.from(data));
     } catch (_) {
       return null;
     }
