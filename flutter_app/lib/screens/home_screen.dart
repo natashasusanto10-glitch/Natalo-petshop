@@ -2366,14 +2366,123 @@ class _MiniProductCard extends StatelessWidget {
   }
 }
 
-class _BrandChoiceSection extends StatelessWidget {
+/// Brand Favorit — 2×3 grid carousel dengan auto-slide.
+///
+/// Layout:
+/// - Max 6 brand per halaman (2 baris × 3 kolom)
+/// - Multi-page kalau brands > 6 (mis. 7-12 = 2 halaman, dst.)
+/// - Auto-slide setiap 3 detik, durasi 400ms easeOutCubic
+/// - Auto-slide CUMA aktif kalau halaman > 1
+/// - User swipe manual → timer di-reset (tidak overlap)
+/// - TIDAK ada indicator dots (sesuai spec)
+/// - Empty state → hidden (parent guard juga)
+class _BrandChoiceSection extends StatefulWidget {
   final List<PetBrand> brands;
   final ValueChanged<PetBrand> onTap;
 
   const _BrandChoiceSection({required this.brands, required this.onTap});
 
   @override
+  State<_BrandChoiceSection> createState() => _BrandChoiceSectionState();
+}
+
+class _BrandChoiceSectionState extends State<_BrandChoiceSection> {
+  static const int _itemsPerPage = 6; // 2 rows × 3 cols
+  static const Duration _autoSlideInterval = Duration(seconds: 3);
+  static const Duration _animDuration = Duration(milliseconds: 400);
+
+  late PageController _pageCtrl;
+  Timer? _autoSlideTimer;
+  int _currentPage = 0;
+  late List<List<PetBrand>> _pages;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageCtrl = PageController();
+    _pages = _chunkBrands(widget.brands);
+    _maybeStartAutoSlide();
+  }
+
+  @override
+  void didUpdateWidget(covariant _BrandChoiceSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Brand list bisa berubah saat API refresh — re-chunk + restart timer.
+    if (oldWidget.brands.length != widget.brands.length ||
+        !_sameBrandIds(oldWidget.brands, widget.brands)) {
+      setState(() {
+        _pages = _chunkBrands(widget.brands);
+        _currentPage = _currentPage.clamp(0, _pages.length - 1);
+      });
+      if (_pageCtrl.hasClients) {
+        _pageCtrl.jumpToPage(_currentPage);
+      }
+      _maybeStartAutoSlide();
+    }
+  }
+
+  bool _sameBrandIds(List<PetBrand> a, List<PetBrand> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].name != b[i].name) return false;
+    }
+    return true;
+  }
+
+  @override
+  void dispose() {
+    _autoSlideTimer?.cancel();
+    _pageCtrl.dispose();
+    super.dispose();
+  }
+
+  List<List<PetBrand>> _chunkBrands(List<PetBrand> brands) {
+    final pages = <List<PetBrand>>[];
+    for (var i = 0; i < brands.length; i += _itemsPerPage) {
+      final end = (i + _itemsPerPage) < brands.length
+          ? (i + _itemsPerPage)
+          : brands.length;
+      pages.add(brands.sublist(i, end));
+    }
+    return pages;
+  }
+
+  /// Start/restart auto-slide timer. Cancel kalau pages ≤ 1.
+  void _maybeStartAutoSlide() {
+    _autoSlideTimer?.cancel();
+    if (_pages.length <= 1) return;
+    _autoSlideTimer = Timer.periodic(_autoSlideInterval, (_) {
+      if (!mounted || !_pageCtrl.hasClients) return;
+      final nextPage = (_currentPage + 1) % _pages.length;
+      _pageCtrl.animateToPage(
+        nextPage,
+        duration: _animDuration,
+        curve: Curves.easeOutCubic,
+      );
+    });
+  }
+
+  void _handlePageChanged(int index) {
+    _currentPage = index;
+    // Reset timer setiap page change (baik auto-slide atau user swipe).
+    // Effect: user swipe manual → timer ulang 3 detik, tidak konflik.
+    _maybeStartAutoSlide();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (widget.brands.isEmpty || _pages.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    // Compute card height dari aspect ratio + screen width
+    // (childAspectRatio: 1.45 = width/height).
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final innerWidth = screenWidth - 32; // 16 padding × 2
+    final cardWidth = (innerWidth - 24) / 3; // 12 spacing × 2 between 3 cols
+    final cardHeight = cardWidth / 1.45;
+    final gridHeight = (cardHeight * 2) + 12; // 2 rows + mainAxisSpacing
+
     return Padding(
       padding: const EdgeInsets.only(top: 22),
       child: Column(
@@ -2402,58 +2511,98 @@ class _BrandChoiceSection extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           SizedBox(
-            height: 102,
-            child: ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              scrollDirection: Axis.horizontal,
-              itemCount: brands.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 10),
-              itemBuilder: (context, index) {
-                final brand = brands[index];
-                return InkWell(
-                  onTap: () => onTap(brand),
-                  borderRadius: BorderRadius.circular(18),
-                  child: Container(
-                    width: 112,
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: const Color(0xFFE5E7EB)),
+            height: gridHeight,
+            child: PageView.builder(
+              controller: _pageCtrl,
+              itemCount: _pages.length,
+              onPageChanged: _handlePageChanged,
+              itemBuilder: (context, pageIndex) {
+                final pageBrands = _pages[pageIndex];
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: GridView.builder(
+                    physics: const NeverScrollableScrollPhysics(),
+                    shrinkWrap: true,
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      mainAxisSpacing: 12,
+                      crossAxisSpacing: 12,
+                      childAspectRatio: 1.45,
                     ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          height: 46,
-                          width: 84,
-                          padding: const EdgeInsets.all(7),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: const Color(0xFFEEF3FB)),
-                          ),
-                          child: _BrandLogoImage(brand: brand),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          brand.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Color(0xFF111827),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ],
-                    ),
+                    itemCount: pageBrands.length,
+                    itemBuilder: (context, idx) {
+                      final brand = pageBrands[idx];
+                      return _BrandGridCard(
+                        brand: brand,
+                        onTap: () => widget.onTap(brand),
+                      );
+                    },
                   ),
                 );
               },
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Compact brand card untuk 2×3 grid carousel.
+/// Pertahankan visual style Natalo (white bg, soft border, soft shadow).
+class _BrandGridCard extends StatelessWidget {
+  final PetBrand brand;
+  final VoidCallback onTap;
+
+  const _BrandGridCard({required this.brand, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFE5E7EB)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.025),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Expanded(
+                flex: 5,
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: _BrandLogoImage(brand: brand),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                brand.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Color(0xFF111827),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
