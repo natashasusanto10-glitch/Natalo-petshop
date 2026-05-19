@@ -7,6 +7,7 @@ import 'firebase_options.dart';
 import 'models/cart_item.dart';
 import 'models/member_profile.dart';
 import 'models/product.dart';
+import 'screens/account_security_screen.dart';
 import 'screens/account_settings_screen.dart';
 import 'screens/all_brands_screen.dart';
 import 'screens/cart_screen.dart';
@@ -223,7 +224,12 @@ class NataloPetshopApp extends StatelessWidget {
               '/notifications' => const NotificationsScreen(),
               '/settings/notifications' =>
                 const NotificationPreferencesScreen(),
+              // Alias — beberapa caller pakai path baru, keep both untuk
+              // backward compat sambil migrate semua usage.
+              '/notifications/preferences' =>
+                const NotificationPreferencesScreen(),
               '/account/settings' => const AccountSettingsScreen(),
+              '/account/security' => const AccountSecurityScreen(),
               '/wishlist' => const WishlistScreen(),
               '/help' => const HelpCenterScreen(),
               '/feed' => const FeedScreen(),
@@ -238,6 +244,9 @@ class NataloPetshopApp extends StatelessWidget {
               '/member/loyalty' => const MemberLoyaltyScreen(),
               '/member/loyalty/history' => const MemberLoyaltyHistoryScreen(),
               '/member/postingan' => const MemberPostsScreen(),
+              // Alias EN — beberapa caller pakai /member/posts (profile
+              // quick actions). Keep both untuk konsistensi.
+              '/member/posts' => const MemberPostsScreen(),
               '/member/postingan-detail'
                   when settings.arguments is MyFeedPost =>
                 MemberPostDetailScreen(post: settings.arguments as MyFeedPost),

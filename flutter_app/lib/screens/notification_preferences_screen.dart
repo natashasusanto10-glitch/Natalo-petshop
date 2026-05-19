@@ -82,7 +82,7 @@ class _NotificationPreferencesScreenState
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _SectionLabel('Pesanan'),
+          const _SectionLabel('Pesanan'),
           _ToggleTile(
             icon: Icons.receipt_long_rounded,
             iconColor: const Color(0xFF7C3AED),
@@ -106,7 +106,7 @@ class _NotificationPreferencesScreenState
             },
           ),
           const SizedBox(height: 16),
-          _SectionLabel('Promo & Voucher'),
+          const _SectionLabel('Promo & Voucher'),
           _ToggleTile(
             icon: Icons.local_offer_outlined,
             iconColor: const Color(0xFFEC4899),
@@ -130,7 +130,7 @@ class _NotificationPreferencesScreenState
             },
           ),
           const SizedBox(height: 16),
-          _SectionLabel('Produk & Konten'),
+          const _SectionLabel('Produk & Konten'),
           _ToggleTile(
             icon: Icons.fiber_new_rounded,
             iconColor: const Color(0xFF16A34A),

@@ -455,6 +455,7 @@ class _EditableTilesGroup extends StatelessWidget {
     if (newValue == null) return;
     final trimmed = newValue.trim();
     if (trimmed.isEmpty || trimmed == initial.trim()) return;
+    if (!context.mounted) return;
     await _saveField(context, fieldKey, trimmed);
   }
 
@@ -471,6 +472,7 @@ class _EditableTilesGroup extends StatelessWidget {
     );
     if (picked == null) return;
     if (picked == profile.birthDate) return;
+    if (!context.mounted) return;
     await _saveField(context, 'birthDate', picked);
   }
 
@@ -490,6 +492,7 @@ class _EditableTilesGroup extends StatelessWidget {
     if (updated != null) {
       // Sync ke memberStore.
       await memberStore.setSession(profile: updated);
+      if (!context.mounted) return;
       AppHaptics.success();
       AppToast.show(
         context,
