@@ -116,21 +116,42 @@ class _NataloPawRefreshIndicatorState extends State<NataloPawRefreshIndicator>
     if (_isRefreshing) return false;
     if (n.metrics.axis != Axis.vertical) return false;
 
-    // Overscroll at top → accumulate pull amount.
-    if (n is OverscrollNotification && n.metrics.pixels <= 0) {
-      setState(() {
-        // Pull friction 0.5 — supaya gerakan terasa "berat" (resistance)
-        // bukan 1:1 dengan finger drag.
-        _overscroll = (_overscroll + n.overscroll.abs() * 0.5)
-            .clamp(0.0, widget.triggerOffset + 30);
-      });
+    // ── Compute "pull amount" universally — works for both physics ──
+    //
+    // ClampingScrollPhysics (default Android): scroll position clamps at
+    // 0, applyBoundaryConditions returns excess → OverscrollNotification
+    // fires dengan `overscroll` value. pixels tetap 0 di top.
+    //
+    // BouncingScrollPhysics (default iOS): scroll position bounces past 0
+    // ke NEGATIVE. applyBoundaryConditions return 0 → tidak ada
+    // OverscrollNotification — tapi metrics.pixels jadi negative.
+    //
+    // Logic baru: track pull amount dari NEGATIVE pixels (iOS bouncing)
+    // ATAU OverscrollNotification.overscroll (Android clamping).
+    final pixels = n.metrics.pixels;
+    final pullFromBouncing = pixels < 0 ? -pixels : 0.0;
+    final pullFromOverscroll =
+        (n is OverscrollNotification && pixels <= 0) ? n.overscroll.abs() : 0.0;
+
+    if (pullFromBouncing > 0 || pullFromOverscroll > 0) {
+      // BouncingScrollPhysics: pakai absolute -pixels (current scroll
+      // position) dengan friction 0.8 supaya gerakan terasa subtle.
+      // Clamping: accumulate dari overscroll delta * 0.5.
+      final newOverscroll = pullFromBouncing > 0
+          ? (pullFromBouncing * 0.8).clamp(0.0, widget.triggerOffset + 30)
+          : (_overscroll + pullFromOverscroll * 0.5)
+              .clamp(0.0, widget.triggerOffset + 30);
+
+      if (newOverscroll != _overscroll) {
+        setState(() => _overscroll = newOverscroll);
+      }
       // Threshold reached — haptic tap "armed".
       if (!_armed && _overscroll >= widget.triggerOffset) {
         _armed = true;
         AppHaptics.tap();
       }
-    } else if (n is ScrollUpdateNotification && n.metrics.pixels > 0) {
-      // User scroll ke bawah sebelum melepas → batal pull.
+    } else if (n is ScrollUpdateNotification && pixels > 0) {
+      // User scroll ke bawah past 0 (positive) → batal pull.
       if (_overscroll > 0) {
         setState(() {
           _overscroll = 0;
@@ -267,14 +288,12 @@ class _NataloPawRefreshIndicatorState extends State<NataloPawRefreshIndicator>
 
 /// ScrollBehavior khusus untuk child di `NataloPawRefreshIndicator`.
 ///
-/// 1. Force `BouncingScrollPhysics` di semua platform — supaya overscroll
-///    notification konsisten fire saat user drag past top (default Android
-///    `ClampingScrollPhysics` tidak fire notification).
+/// 1. Force `BouncingScrollPhysics` di semua platform — bukan untuk
+///    notification (handler udah support kedua physics via negative
+///    pixels detection), tapi supaya UX bouncing rubber-band konsisten
+///    iOS & Android. User feel "alami" saat drag past top.
 /// 2. Disable default Android glow / stretching overscroll indicator —
 ///    hindari dual indikator (glow + paw) tabrakan visual.
-///
-/// Drag device support disabled untuk web/desktop (default builder),
-/// scrollbar tidak ditampilkan (sama seperti Material default mobile).
 class _NataloPawScrollBehavior extends ScrollBehavior {
   const _NataloPawScrollBehavior();
 

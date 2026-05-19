@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
+import '../services/biometric_service.dart';
 import '../state/favorite_store.dart';
 import '../state/member_store.dart';
+import '../state/settings_store.dart';
 import '../utils/haptics.dart';
 import '../widgets/loading_button.dart';
 
@@ -28,6 +30,57 @@ class AccountSecurityScreen extends StatefulWidget {
 
 class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
   bool _revokingOthers = false;
+  bool _biometricSupported = false;
+  bool _checkingBiometric = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkBiometricSupport();
+  }
+
+  Future<void> _checkBiometricSupport() async {
+    final supported = await biometricService.isDeviceSupported();
+    if (!mounted) return;
+    setState(() {
+      _biometricSupported = supported;
+      _checkingBiometric = false;
+    });
+  }
+
+  Future<void> _toggleAppLock(bool enable) async {
+    AppHaptics.tap();
+    if (enable) {
+      // Sebelum enable, prompt biometric prove ownership — anti orang
+      // sembarangan enable lock di HP teman.
+      final ok = await biometricService.authenticate(
+        reason: 'Aktifkan kunci app dengan Face ID / Touch ID',
+      );
+      if (!ok) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Aktivasi dibatalkan.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+    }
+    await appSettingsStore.setAppLockEnabled(enable);
+    if (!mounted) return;
+    AppHaptics.success();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          enable
+              ? 'Kunci app aktif. Buka app berikutnya akan minta Face ID / Touch ID.'
+              : 'Kunci app dinonaktifkan.',
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
 
   Future<void> _sendPasswordResetEmail() async {
     final email = memberStore.profile?.email ?? '';
@@ -194,6 +247,33 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
             onTap: _sendPasswordResetEmail,
           ),
           const SizedBox(height: 22),
+          // ── App Lock section ──────────────────────────────────────────
+          // Biometric gate untuk app launch + resume dari background.
+          // Pattern banking: kalau HP user dipinjam, akun tidak bisa
+          // diakses tanpa Face ID / Touch ID.
+          if (!_checkingBiometric && _biometricSupported) ...[
+            const _SectionLabel('Kunci App'),
+            const SizedBox(height: 8),
+            AnimatedBuilder(
+              animation: appSettingsStore,
+              builder: (context, _) {
+                final enabled = appSettingsStore.appLockEnabled;
+                return _ToggleCard(
+                  icon: enabled
+                      ? Icons.lock_rounded
+                      : Icons.lock_open_rounded,
+                  iconColor: enabled ? _brandBlue : const Color(0xFF6B7280),
+                  title: 'Kunci dengan Face ID / Touch ID',
+                  subtitle: enabled
+                      ? 'Aktif — app minta biometric saat dibuka.'
+                      : 'Tambahan keamanan: minta biometric saat app dibuka.',
+                  value: enabled,
+                  onChanged: _toggleAppLock,
+                );
+              },
+            ),
+            const SizedBox(height: 22),
+          ],
           // ── Sessions section ─────────────────────────────────────────
           const _SectionLabel('Sesi Aktif'),
           const SizedBox(height: 8),
@@ -219,6 +299,84 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
             iconColor: _dangerRed,
             titleColor: _dangerRed,
             onTap: _confirmDeleteAccount,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Toggle card variant — mirror _ActionCard tapi pakai Switch trailing
+/// + ringan visual (no chevron, no tap-on-card → cuma switch).
+class _ToggleCard extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _ToggleCard({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: iconColor, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Color(0xFF17202A),
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: Color(0xFF64748B),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Switch.adaptive(
+            value: value,
+            activeThumbColor: _brandBlue,
+            onChanged: onChanged,
           ),
         ],
       ),

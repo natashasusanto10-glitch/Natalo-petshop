@@ -11,6 +11,7 @@ class AppSettingsStore extends ChangeNotifier {
   static const _feedAutoplayKey = 'settings_feed_autoplay';
   static const _feedVideoQualityKey = 'settings_feed_video_quality';
   static const _feedMutedKey = 'settings_feed_muted';
+  static const _appLockEnabledKey = 'settings_app_lock_enabled';
 
   ThemeMode _themeMode = ThemeMode.system;
   bool _hapticsEnabled = true;
@@ -23,6 +24,13 @@ class AppSettingsStore extends ChangeNotifier {
 
   /// Default mute saat start playback — match Instagram Reels behavior.
   bool _feedMuted = true;
+
+  /// Biometric app lock — saat ON, AppLockGate tampilkan lock screen di
+  /// cold start + setiap app kembali dari background (>= 60 detik).
+  /// User harus authenticate via Face ID / Touch ID / PIN sebelum akses.
+  /// TERPISAH dari biometricService.isEnabled() yang khusus untuk LOGIN
+  /// auto-fill credential (beda use case).
+  bool _appLockEnabled = false;
   bool _initialized = false;
 
   ThemeMode get themeMode => _themeMode;
@@ -39,6 +47,7 @@ class AppSettingsStore extends ChangeNotifier {
   }
 
   bool get feedMuted => _feedMuted;
+  bool get appLockEnabled => _appLockEnabled;
   bool get initialized => _initialized;
 
   /// Sync init — fire-and-forget. Default value sudah masuk akal walau disk
@@ -63,7 +72,18 @@ class AppSettingsStore extends ChangeNotifier {
       _feedAutoplay = prefs.getBool(_feedAutoplayKey) ?? true;
       _feedVideoQuality = prefs.getString(_feedVideoQualityKey) ?? 'auto';
       _feedMuted = prefs.getBool(_feedMutedKey) ?? true;
+      _appLockEnabled = prefs.getBool(_appLockEnabledKey) ?? false;
       notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<void> setAppLockEnabled(bool value) async {
+    if (_appLockEnabled == value) return;
+    _appLockEnabled = value;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_appLockEnabledKey, value);
     } catch (_) {}
   }
 
