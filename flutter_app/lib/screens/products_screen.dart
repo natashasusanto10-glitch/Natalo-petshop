@@ -15,21 +15,15 @@ import '../state/recently_viewed_store.dart';
 import '../state/search_history_store.dart';
 import '../utils/formatters.dart';
 import '../utils/search_synonyms.dart';
-import '../widgets/app_cart_button.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/app_ui.dart';
-import '../widgets/product_card.dart';
 import '../widgets/skeleton_product_card.dart';
 import '../widgets/bottom_nav.dart';
-import '../widgets/glass_surface.dart';
-import '../widgets/barcode_scanner_modal.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
-import '../widgets/voice_search_modal.dart';
 
 const _brandBlue = NataloColors.nataloBlue;
 const _textPrimary = Color(0xFF102033);
 const _textSecondary = Color(0xFF64748B);
-const _borderSoft = Color(0xFFE5EAF1);
 const _dangerRed = Color(0xFFEF4444);
 
 class ProductsScreen extends StatefulWidget {
@@ -94,15 +88,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
   List<String> get _categories {
     final values = _result.products
         .map((product) => product.category)
-        .toSet()
-        .toList()
-      ..sort();
-    return values;
-  }
-
-  List<String> get _brands {
-    final values = _result.products
-        .map((product) => product.brand)
         .toSet()
         .toList()
       ..sort();
@@ -399,49 +384,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
     return sorted;
   }
 
-  Future<void> _openSortSheet() async {
-    final option = await showModalBottomSheet<_SortOption>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _SortBottomSheet(
-        selectedSort: _filter.sort,
-        activeMode: _activeMode,
-        inStockOnly: _filter.inStockOnly,
-      ),
-    );
-    if (option == null) return;
-
-    setState(() {
-      switch (option) {
-        case _SortOption.defaultOrder:
-          _filter = _filter.copyWith(sort: ProductSort.newest);
-          if (_filter.category == null && _filter.brand == null) {
-            _activeMode = _ProductFilterMode.semua;
-          }
-          break;
-        case _SortOption.newest:
-          _filter = _filter.copyWith(sort: ProductSort.newest);
-          _activeMode = _ProductFilterMode.baru;
-          break;
-        case _SortOption.bestSeller:
-          _filter = _filter.copyWith(sort: ProductSort.popular);
-          _activeMode = _ProductFilterMode.populer;
-          break;
-        case _SortOption.priceLow:
-          _filter = _filter.copyWith(sort: ProductSort.priceLow);
-          break;
-        case _SortOption.priceHigh:
-          _filter = _filter.copyWith(sort: ProductSort.priceHigh);
-          break;
-        case _SortOption.inStock:
-          _filter = _filter.copyWith(inStockOnly: true);
-          break;
-      }
-    });
-    await _loadProducts();
-  }
-
   Future<void> _openCategorySheet() async {
     final category = await showModalBottomSheet<String>(
       context: context,
@@ -524,77 +466,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
     return hash;
   }
 
-  Future<void> _openFilterSheet() async {
-    final next = await showModalBottomSheet<ProductCatalogFilter>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _ProductFilterSheet(
-        initialFilter: _filter,
-        categories: _categories,
-        brands: _brands,
-        lockedBrand: widget.selectedBrand,
-      ),
-    );
-    if (next == null) return;
-    setState(() {
-      _filter = next;
-      if (next.category != null) {
-        _activeMode = _ProductFilterMode.kategori;
-      } else if (next.sort == ProductSort.popular) {
-        _activeMode = _ProductFilterMode.populer;
-      } else if (next.sort == ProductSort.newest) {
-        _activeMode = _ProductFilterMode.semua;
-      }
-    });
-    await _loadProducts();
-  }
-
-  /// Smart barcode lookup — pakai exact match dulu (slug, id, atau
-  /// product title contains code), kalau ketemu → langsung navigate
-  /// ke detail. Kalau tidak ketemu → fallback ke text search.
-  ///
-  /// Tidak butuh endpoint baru di backend — pure client-side dari
-  /// data product yang sudah di-fetch.
-  void _handleBarcodeResult(String code) {
-    final trimmed = code.trim();
-    if (trimmed.isEmpty) return;
-
-    // Try exact match: slug, id, atau title yang contains kode unik.
-    Product? match;
-    for (final product in _result.products) {
-      if (product.id == trimmed ||
-          product.slug == trimmed ||
-          product.slug.endsWith(trimmed) ||
-          product.title.toLowerCase().contains(trimmed.toLowerCase())) {
-        match = product;
-        break;
-      }
-    }
-
-    if (match != null) {
-      // Direct navigation — UX lebih cepat, tap scan = langsung detail.
-      _openProduct(match);
-      return;
-    }
-
-    // Fallback: set sebagai search query — user lihat list filtered
-    // pakai sinonim. Cocok kalau barcode kontain string brand/SKU.
-    _searchController.text = trimmed;
-    _searchController.selection = TextSelection.fromPosition(
-      TextPosition(offset: trimmed.length),
-    );
-    _commitSearch(trimmed);
-    // Tampilkan snackbar kasih konteks ke user.
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        content: Text(
-            'Produk dengan barcode "$trimmed" tidak ditemukan. Mencari di katalog...'),
-      ),
-    );
-  }
-
   void _openProduct(Product product) {
     // Preload images sebelum navigate → product detail render instant.
     // Native superpower: precacheImage warms ImageCache, jadi widget
@@ -626,10 +497,10 @@ class _ProductsScreenState extends State<ProductsScreen> {
   @override
   Widget build(BuildContext context) {
     final products = _products;
-    final title =
-        widget.selectedBrand == null ? 'Produk' : widget.selectedBrand!;
     final hasLoadError =
         !_result.fromApi && _result.error != null && products.isEmpty;
+    final bottomPadding =
+        kBottomNavigationBarHeight + MediaQuery.paddingOf(context).bottom + 16;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -641,28 +512,18 @@ class _ProductsScreenState extends State<ProductsScreen> {
             controller: _scrollController,
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
-              SliverToBoxAdapter(
-                child: _ProductPageHeader(title: title),
-              ),
+              const SliverToBoxAdapter(child: _ProductPageHeader()),
               SliverPersistentHeader(
                 pinned: true,
                 delegate: _PinnedHeaderDelegate(
-                  minExtent: 192,
-                  maxExtent: 192,
+                  minExtent: 114,
+                  maxExtent: 114,
                   child: _CatalogHeader(
                     controller: _searchController,
                     query: _query,
-                    visibleCount: products.length,
-                    totalCount: _result.total ?? products.length,
-                    loading: _loading,
-                    activeCategory: _filter.category,
-                    activeFilterCount: _filter.activeCount,
                     activeMode: _activeMode,
                     onQueryChanged: _onQueryChanged,
                     onSubmitQuery: _commitSearch,
-                    onBarcodeResult: _handleBarcodeResult,
-                    onOpenSort: _openSortSheet,
-                    onOpenFilters: _openFilterSheet,
                     onFilterModeChanged: _onFilterModeChanged,
                   ),
                 ),
@@ -688,18 +549,18 @@ class _ProductsScreenState extends State<ProductsScreen> {
                 )
               else if (_loading && products.isEmpty)
                 SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 112),
+                  padding: EdgeInsets.fromLTRB(16, 16, 16, bottomPadding),
                   sliver: SliverGrid(
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 2,
-                      mainAxisSpacing: 20,
-                      crossAxisSpacing: 14,
-                      childAspectRatio: 0.52,
+                      mainAxisSpacing: 12,
+                      crossAxisSpacing: 12,
+                      childAspectRatio: 0.58,
                     ),
                     delegate: SliverChildBuilderDelegate(
                       (context, index) => const SkeletonProductCard(
-                        showAddToCart: true,
+                        showAddToCart: false,
                       ),
                       childCount: 8,
                     ),
@@ -712,23 +573,21 @@ class _ProductsScreenState extends State<ProductsScreen> {
                 )
               else
                 SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 112),
+                  padding: EdgeInsets.fromLTRB(16, 16, 16, bottomPadding),
                   sliver: SliverGrid(
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 2,
-                      mainAxisSpacing: 20,
-                      crossAxisSpacing: 14,
-                      childAspectRatio: 0.52,
+                      mainAxisSpacing: 12,
+                      crossAxisSpacing: 12,
+                      childAspectRatio: 0.58,
                     ),
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
                         final product = products[index];
-                        return ProductCard(
+                        return _ProductsPageProductCard(
                           product: product,
                           onTap: () => _openProduct(product),
-                          showAddToCart: true,
-                          showWishlistButton: false,
                         );
                       },
                       childCount: products.length,
@@ -752,10 +611,10 @@ class _ProductsScreenState extends State<ProductsScreen> {
                   ),
                 )
               else if (!_hasMore && products.isNotEmpty)
-                const SliverToBoxAdapter(
+                SliverToBoxAdapter(
                   child: Padding(
-                    padding: EdgeInsets.fromLTRB(16, 4, 16, 116),
-                    child: Center(
+                    padding: EdgeInsets.fromLTRB(16, 4, 16, bottomPadding),
+                    child: const Center(
                       child: Text(
                         'Sudah sampai akhir katalog',
                         style: TextStyle(
@@ -777,31 +636,25 @@ class _ProductsScreenState extends State<ProductsScreen> {
 }
 
 class _ProductPageHeader extends StatelessWidget {
-  final String title;
-
-  const _ProductPageHeader({required this.title});
+  const _ProductPageHeader();
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: _textPrimary,
-                fontSize: 30,
-                fontWeight: FontWeight.w900,
-                height: 1.1,
-              ),
-            ),
+    return const ColoredBox(
+      color: Colors.white,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+        child: Text(
+          'Produk Natalo',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: Color(0xFF111827),
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            height: 1.2,
           ),
-          const AppCartButton(),
-        ],
+        ),
       ),
     );
   }
@@ -810,60 +663,36 @@ class _ProductPageHeader extends StatelessWidget {
 class _CatalogHeader extends StatelessWidget {
   final TextEditingController controller;
   final String query;
-  final int visibleCount;
-  final int totalCount;
-  final bool loading;
-  final String? activeCategory;
-  final int activeFilterCount;
   final _ProductFilterMode activeMode;
   final ValueChanged<String> onQueryChanged;
   final ValueChanged<String> onSubmitQuery;
-  final ValueChanged<String> onBarcodeResult;
-  final VoidCallback onOpenSort;
-  final VoidCallback onOpenFilters;
   final ValueChanged<_ProductFilterMode> onFilterModeChanged;
 
   const _CatalogHeader({
     required this.controller,
     required this.query,
-    required this.visibleCount,
-    required this.totalCount,
-    required this.loading,
-    required this.activeCategory,
-    required this.activeFilterCount,
     required this.activeMode,
     required this.onQueryChanged,
     required this.onSubmitQuery,
-    required this.onBarcodeResult,
-    required this.onOpenSort,
-    required this.onOpenFilters,
     required this.onFilterModeChanged,
   });
 
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.98),
-        border: const Border(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(
           bottom: BorderSide(color: Color(0xFFF1F5F9)),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.035),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            AppSearchField(
+            _ProductSearchBar(
               controller: controller,
-              hintText: 'Cari produk Natalo',
               query: query,
               onChanged: onQueryChanged,
               onClear: () {
@@ -871,41 +700,11 @@ class _CatalogHeader extends StatelessWidget {
                 onQueryChanged('');
               },
               onSubmitted: onSubmitQuery,
-              onVoiceTap: () async {
-                // Voice search — buka modal, kembalikan transcript final lalu
-                // commit search. Native SpeechRecognizer support partial +
-                // bahasa Indonesia (id_ID) jauh lebih akurat dari WebView API.
-                final result = await showVoiceSearchModal(context);
-                if (result == null || result.isEmpty) return;
-                controller.text = result;
-                controller.selection = TextSelection.fromPosition(
-                  TextPosition(offset: result.length),
-                );
-                onSubmitQuery(result);
-              },
-              onBarcodeTap: () async {
-                // Barcode scan — native camera + ML Kit barcode detection.
-                // Smart lookup: kalau code match product di list → langsung
-                // navigate ke detail. Kalau tidak → fallback ke search.
-                final code = await showBarcodeScanner(context);
-                if (code == null || code.isEmpty) return;
-                onBarcodeResult(code);
-              },
-            ),
-            const SizedBox(height: 14),
-            _ProductSummary(
-              visibleCount: visibleCount,
-              totalCount: totalCount,
-              loading: loading,
-              onOpenSort: onOpenSort,
             ),
             const SizedBox(height: 12),
-            _GlassyFilterBar(
+            _ProductFilterBar(
               selectedMode: activeMode,
-              activeCategory: activeCategory,
-              activeFilterCount: activeFilterCount,
               onChanged: onFilterModeChanged,
-              onOpenAdvancedFilter: onOpenFilters,
             ),
           ],
         ),
@@ -1071,130 +870,105 @@ extension _ProductFilterModeMeta on _ProductFilterMode {
         return 'Populer';
     }
   }
-
-  IconData get icon {
-    switch (this) {
-      case _ProductFilterMode.semua:
-        return Icons.apps_rounded;
-      case _ProductFilterMode.kategori:
-        return Icons.category_rounded;
-      case _ProductFilterMode.baru:
-        return Icons.fiber_new_rounded;
-      case _ProductFilterMode.populer:
-        return Icons.local_fire_department_rounded;
-    }
-  }
 }
 
-/// Summary row: counter "Menampilkan X dari Y" + chip pill aktif filter mode.
-class _ProductSummary extends StatelessWidget {
-  final int visibleCount;
-  final int totalCount;
-  final bool loading;
-  final VoidCallback onOpenSort;
+class _ProductSearchBar extends StatelessWidget {
+  final TextEditingController controller;
+  final String query;
+  final ValueChanged<String> onChanged;
+  final ValueChanged<String> onSubmitted;
+  final VoidCallback onClear;
 
-  const _ProductSummary({
-    required this.visibleCount,
-    required this.totalCount,
-    required this.loading,
-    required this.onOpenSort,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            loading
-                ? 'Memuat produk...'
-                : 'Menampilkan $visibleCount dari $totalCount produk',
-            style: const TextStyle(
-              color: _textSecondary,
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-        Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onOpenSort,
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              height: 36,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFEAF3FF),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _brandBlue.withValues(alpha: 0.14)),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Urutkan',
-                    style: TextStyle(
-                      color: _brandBlue,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  SizedBox(width: 5),
-                  Icon(
-                    Icons.swap_vert_rounded,
-                    color: _brandBlue,
-                    size: 17,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Pinned glassy filter bar — sticky di top scroll, 4 pills equal width,
-/// backdrop blur halus, animated selection. Tombol tune di kanan untuk
-/// advanced filter sheet (brand, sort, stock, discount).
-class _GlassyFilterBar extends StatelessWidget {
-  final _ProductFilterMode selectedMode;
-  final String? activeCategory;
-  final int activeFilterCount;
-  final ValueChanged<_ProductFilterMode> onChanged;
-  final VoidCallback onOpenAdvancedFilter;
-
-  const _GlassyFilterBar({
-    required this.selectedMode,
-    required this.activeCategory,
-    required this.activeFilterCount,
+  const _ProductSearchBar({
+    required this.controller,
+    required this.query,
     required this.onChanged,
-    required this.onOpenAdvancedFilter,
+    required this.onSubmitted,
+    required this.onClear,
   });
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 44,
+      height: 42,
+      child: TextField(
+        controller: controller,
+        onChanged: onChanged,
+        onSubmitted: onSubmitted,
+        textInputAction: TextInputAction.search,
+        style: const TextStyle(
+          color: Color(0xFF111827),
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
+        decoration: InputDecoration(
+          hintText: 'Cari produk Natalo',
+          hintStyle: const TextStyle(
+            color: Color(0xFF6B7280),
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
+          prefixIcon: const Icon(
+            Icons.search_rounded,
+            size: 22,
+            color: Color(0xFF6B7280),
+          ),
+          prefixIconConstraints:
+              const BoxConstraints(minWidth: 44, minHeight: 42),
+          suffixIcon: query.isEmpty
+              ? null
+              : IconButton(
+                  onPressed: onClear,
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                  color: const Color(0xFF6B7280),
+                  tooltip: 'Hapus',
+                  visualDensity: VisualDensity.compact,
+                ),
+          filled: true,
+          fillColor: Colors.white,
+          isDense: true,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: _brandBlue, width: 1.2),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProductFilterBar extends StatelessWidget {
+  final _ProductFilterMode selectedMode;
+  final ValueChanged<_ProductFilterMode> onChanged;
+
+  const _ProductFilterBar({
+    required this.selectedMode,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 36,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        itemCount: _ProductFilterMode.values.length + 1,
+        itemCount: _ProductFilterMode.values.length,
         separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
-          if (index == _ProductFilterMode.values.length) {
-            return _AdvancedFilterChip(
-              count: activeFilterCount,
-              onTap: onOpenAdvancedFilter,
-            );
-          }
           final mode = _ProductFilterMode.values[index];
-          return _FilterPill(
+          return _ProductFilterPill(
             mode: mode,
-            label: mode == _ProductFilterMode.kategori
-                ? activeCategory ?? mode.label
-                : mode.label,
+            label: mode.label,
             selected: selectedMode == mode,
             onTap: () => onChanged(mode),
           );
@@ -1204,73 +978,13 @@ class _GlassyFilterBar extends StatelessWidget {
   }
 }
 
-class _AdvancedFilterChip extends StatelessWidget {
-  final int count;
-  final VoidCallback onTap;
-
-  const _AdvancedFilterChip({
-    required this.count,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final active = count > 0;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          height: 42,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: active ? _brandBlue : Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: active ? _brandBlue : _borderSoft),
-            boxShadow: [
-              if (active)
-                BoxShadow(
-                  color: _brandBlue.withValues(alpha: 0.16),
-                  blurRadius: 12,
-                  offset: const Offset(0, 5),
-                ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.tune_rounded,
-                size: 18,
-                color: active ? Colors.white : _textSecondary,
-              ),
-              if (count > 0) ...[
-                const SizedBox(width: 6),
-                Text(
-                  '$count',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _FilterPill extends StatelessWidget {
+class _ProductFilterPill extends StatelessWidget {
   final _ProductFilterMode mode;
   final String label;
   final bool selected;
   final VoidCallback onTap;
 
-  const _FilterPill({
+  const _ProductFilterPill({
     required this.mode,
     required this.label,
     required this.selected,
@@ -1284,53 +998,337 @@ class _FilterPill extends StatelessWidget {
       curve: Curves.easeOutCubic,
       decoration: BoxDecoration(
         color: selected ? _brandBlue : Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: selected ? _brandBlue : _borderSoft),
-        boxShadow: [
-          if (selected)
-            BoxShadow(
-              color: _brandBlue.withValues(alpha: 0.16),
-              blurRadius: 12,
-              offset: const Offset(0, 5),
-            ),
-        ],
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: selected ? _brandBlue : const Color(0xFFD1D5DB),
+        ),
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(999),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  mode.icon,
-                  size: 17,
-                  color: selected ? Colors.white : _textSecondary,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Center(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: selected ? Colors.white : const Color(0xFF111827),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
                 ),
-                const SizedBox(width: 7),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 104),
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: selected ? Colors.white : _textPrimary,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
       ),
     );
   }
+}
+
+class _ProductsPageProductCard extends StatelessWidget {
+  final Product product;
+  final VoidCallback onTap;
+
+  const _ProductsPageProductCard({
+    required this.product,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFE5E7EB)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x08000000),
+                blurRadius: 10,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _ProductGridImage(imageUrl: product.imageUrl),
+              const SizedBox(height: 10),
+              Text(
+                product.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13,
+                  height: 1.25,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF111827),
+                ),
+              ),
+              const SizedBox(height: 8),
+              _ProductPriceRow(product: product),
+              _ProductSavingBadge(product: product),
+              _ProductRatingSoldRow(product: product),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProductGridImage extends StatelessWidget {
+  final String imageUrl;
+
+  const _ProductGridImage({required this.imageUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasImage = imageUrl.trim().isNotEmpty;
+    if (!hasImage) return const _ProductImagePlaceholder();
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: CachedNetworkImage(
+        imageUrl: imageUrl,
+        height: 132,
+        width: double.infinity,
+        fit: BoxFit.contain,
+        placeholder: (_, __) => const _ProductImagePlaceholder(),
+        errorWidget: (_, __, ___) => const _ProductImagePlaceholder(),
+      ),
+    );
+  }
+}
+
+class _ProductImagePlaceholder extends StatelessWidget {
+  const _ProductImagePlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 132,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3F7FF),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: const Center(
+        child: Icon(
+          Icons.pets_rounded,
+          size: 34,
+          color: Color(0xFF94A3B8),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProductPriceRow extends StatelessWidget {
+  final Product product;
+
+  const _ProductPriceRow({required this.product});
+
+  @override
+  Widget build(BuildContext context) {
+    final promoLabel = _productPromoLabel(product);
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            formatRupiah(product.finalPrice),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: _brandBlue,
+              height: 1.1,
+            ),
+          ),
+        ),
+        if (promoLabel != null) ...[
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEFF6FF),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFF93C5FD)),
+            ),
+            child: Text(
+              promoLabel,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: _brandBlue,
+                height: 1,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _ProductSavingBadge extends StatelessWidget {
+  final Product product;
+
+  const _ProductSavingBadge({required this.product});
+
+  @override
+  Widget build(BuildContext context) {
+    final label = _productSavingLabel(product);
+    if (label == null) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF1F2),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFFCA5A5)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.confirmation_number_rounded,
+            size: 13,
+            color: Color(0xFFEF4444),
+          ),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFFEF4444),
+                height: 1,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProductRatingSoldRow extends StatelessWidget {
+  final Product product;
+
+  const _ProductRatingSoldRow({required this.product});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasRating = product.rating > 0;
+    final hasSold = product.soldCount > 0;
+    if (!hasRating && !hasSold) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 7),
+      child: Row(
+        children: [
+          if (hasRating) ...[
+            const Icon(
+              Icons.star_rounded,
+              size: 14,
+              color: Color(0xFFFACC15),
+            ),
+            const SizedBox(width: 3),
+            Text(
+              product.rating.toStringAsFixed(1),
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF4B5563),
+                height: 1,
+              ),
+            ),
+          ],
+          if (hasRating && hasSold) ...[
+            const SizedBox(width: 5),
+            const Text(
+              '•',
+              style: TextStyle(
+                fontSize: 11,
+                color: Color(0xFF9CA3AF),
+                height: 1,
+              ),
+            ),
+            const SizedBox(width: 5),
+          ],
+          if (hasSold)
+            Flexible(
+              child: Text(
+                '${_formatProductSoldCount(product.soldCount)} terjual',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF4B5563),
+                  height: 1,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+String? _productPromoLabel(Product product) {
+  final percent = product.discountPercent;
+  if (percent != null && percent > 0) return 'Diskon $percent%';
+  if (product.voucherPreview != null) return 'Promo';
+  return null;
+}
+
+String? _productSavingLabel(Product product) {
+  final voucher = product.voucherPreview;
+  final voucherSaving = voucher?.savingAmount ?? voucher?.discountAmount;
+  if (voucherSaving != null && voucherSaving > 0) {
+    return 'Hemat s.d. ${formatRupiah(voucherSaving)}';
+  }
+
+  final voucherPercent = voucher?.discountPercent;
+  if (voucherPercent != null && voucherPercent > 0) {
+    return 'Hemat s.d. ${voucherPercent.round()}%';
+  }
+
+  if (!product.hasDiscount) return null;
+  final savings = product.price - product.finalPrice;
+  if (savings <= 0) return null;
+  return 'Hemat s.d. ${formatRupiah(savings)}';
+}
+
+String _formatProductSoldCount(int count) {
+  if (count >= 1000) {
+    final value = count / 1000;
+    final text =
+        value >= 10 ? value.toStringAsFixed(0) : value.toStringAsFixed(1);
+    return '${text.replaceAll('.', ',').replaceAll(',0', '')}rb+';
+  }
+  if (count >= 100) return '${(count ~/ 50) * 50}+';
+  if (count >= 10) return '${(count ~/ 10) * 10}+';
+  return count.toString();
 }
 
 class _CategoryBottomSheet extends StatelessWidget {
@@ -1380,122 +1378,6 @@ class _CategoryBottomSheet extends StatelessWidget {
       ),
     );
   }
-}
-
-enum _SortOption {
-  defaultOrder,
-  newest,
-  bestSeller,
-  priceLow,
-  priceHigh,
-  inStock,
-}
-
-class _SortBottomSheet extends StatelessWidget {
-  final ProductSort selectedSort;
-  final _ProductFilterMode activeMode;
-  final bool inStockOnly;
-
-  const _SortBottomSheet({
-    required this.selectedSort,
-    required this.activeMode,
-    required this.inStockOnly,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final options = [
-      _SortRowData(
-        option: _SortOption.defaultOrder,
-        title: 'Semua / Default',
-        icon: Icons.apps_rounded,
-        selected: activeMode == _ProductFilterMode.semua &&
-            selectedSort == ProductSort.newest,
-      ),
-      _SortRowData(
-        option: _SortOption.newest,
-        title: 'Terbaru',
-        icon: Icons.fiber_new_rounded,
-        selected: activeMode == _ProductFilterMode.baru &&
-            selectedSort == ProductSort.newest,
-      ),
-      _SortRowData(
-        option: _SortOption.bestSeller,
-        title: 'Terlaris',
-        icon: Icons.local_fire_department_rounded,
-        selected: selectedSort == ProductSort.popular,
-      ),
-      _SortRowData(
-        option: _SortOption.priceLow,
-        title: 'Harga termurah',
-        icon: Icons.south_rounded,
-        selected: selectedSort == ProductSort.priceLow,
-      ),
-      _SortRowData(
-        option: _SortOption.priceHigh,
-        title: 'Harga tertinggi',
-        icon: Icons.north_rounded,
-        selected: selectedSort == ProductSort.priceHigh,
-      ),
-      _SortRowData(
-        option: _SortOption.inStock,
-        title: 'Stok tersedia',
-        icon: Icons.inventory_2_rounded,
-        selected: inStockOnly,
-      ),
-    ];
-
-    return _SheetShell(
-      title: 'Urutkan Produk',
-      subtitle: 'Pilih urutan katalog yang paling nyaman untuk kamu.',
-      child: Flexible(
-        child: ListView.separated(
-          shrinkWrap: true,
-          itemCount: options.length,
-          separatorBuilder: (_, __) => const Divider(
-            height: 1,
-            color: Color(0xFFF1F5F9),
-          ),
-          itemBuilder: (context, index) {
-            final item = options[index];
-            return ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: SoftIconTile(
-                icon: item.icon,
-                size: 40,
-                color: item.selected ? _brandBlue : _textSecondary,
-              ),
-              title: Text(
-                item.title,
-                style: TextStyle(
-                  color: item.selected ? _brandBlue : _textPrimary,
-                  fontWeight: item.selected ? FontWeight.w900 : FontWeight.w700,
-                ),
-              ),
-              trailing: item.selected
-                  ? const Icon(Icons.check_rounded, color: _brandBlue)
-                  : null,
-              onTap: () => Navigator.pop(context, item.option),
-            );
-          },
-        ),
-      ),
-    );
-  }
-}
-
-class _SortRowData {
-  final _SortOption option;
-  final String title;
-  final IconData icon;
-  final bool selected;
-
-  const _SortRowData({
-    required this.option,
-    required this.title,
-    required this.icon,
-    required this.selected,
-  });
 }
 
 class _SheetShell extends StatelessWidget {
@@ -1925,352 +1807,6 @@ class ProductCatalogFilter {
       inStockOnly: inStockOnly ?? this.inStockOnly,
       discountOnly: discountOnly ?? this.discountOnly,
       withImageOnly: withImageOnly ?? this.withImageOnly,
-    );
-  }
-}
-
-class _ProductFilterSheet extends StatefulWidget {
-  final ProductCatalogFilter initialFilter;
-  final List<String> categories;
-  final List<String> brands;
-  final String? lockedBrand;
-
-  const _ProductFilterSheet({
-    required this.initialFilter,
-    required this.categories,
-    required this.brands,
-    this.lockedBrand,
-  });
-
-  @override
-  State<_ProductFilterSheet> createState() => _ProductFilterSheetState();
-}
-
-class _ProductFilterSheetState extends State<_ProductFilterSheet> {
-  late ProductCatalogFilter _draft = widget.initialFilter;
-
-  void _apply() => Navigator.pop(context, _draft);
-
-  void _reset() {
-    setState(() {
-      _draft = ProductCatalogFilter(
-        brand: widget.lockedBrand == null ? null : _draft.brand,
-      );
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-
-    return Padding(
-      padding: EdgeInsets.fromLTRB(12, 0, 12, bottomInset + 12),
-      child: GlassSurface(
-        radius: 30,
-        padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
-        child: SafeArea(
-          top: false,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.sizeOf(context).height * 0.82,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    height: 5,
-                    width: 46,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE2E8F0),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    const SoftIconTile(
-                      icon: Icons.tune_rounded,
-                      size: 44,
-                    ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Filter Produk',
-                            style: TextStyle(
-                              color: Color(0xFF17202A),
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          Text(
-                            'Atur katalog agar lebih cepat ketemu.',
-                            style: TextStyle(
-                              color: Color(0xFF6B7280),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    TextButton(onPressed: _reset, child: const Text('Reset')),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Flexible(
-                  child: ListView(
-                    shrinkWrap: true,
-                    children: [
-                      _FilterSection(
-                        title: 'Urutkan',
-                        child: Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            _SortChip(
-                              label: 'Terbaru',
-                              selected: _draft.sort == ProductSort.newest,
-                              onTap: () => setState(
-                                () => _draft = _draft.copyWith(
-                                  sort: ProductSort.newest,
-                                ),
-                              ),
-                            ),
-                            _SortChip(
-                              label: 'Terlaris',
-                              selected: _draft.sort == ProductSort.popular,
-                              onTap: () => setState(
-                                () => _draft = _draft.copyWith(
-                                  sort: ProductSort.popular,
-                                ),
-                              ),
-                            ),
-                            _SortChip(
-                              label: 'Rating',
-                              selected: _draft.sort == ProductSort.rating,
-                              onTap: () => setState(
-                                () => _draft = _draft.copyWith(
-                                  sort: ProductSort.rating,
-                                ),
-                              ),
-                            ),
-                            _SortChip(
-                              label: 'Harga rendah',
-                              selected: _draft.sort == ProductSort.priceLow,
-                              onTap: () => setState(
-                                () => _draft = _draft.copyWith(
-                                  sort: ProductSort.priceLow,
-                                ),
-                              ),
-                            ),
-                            _SortChip(
-                              label: 'Harga tinggi',
-                              selected: _draft.sort == ProductSort.priceHigh,
-                              onTap: () => setState(
-                                () => _draft = _draft.copyWith(
-                                  sort: ProductSort.priceHigh,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      _FilterSection(
-                        title: 'Kategori',
-                        child: _HorizontalChoices(
-                          values: widget.categories,
-                          selected: _draft.category,
-                          emptyLabel: 'Kategori belum tersedia',
-                          onSelected: (value) => setState(() {
-                            _draft = _draft.copyWith(
-                              category: value == _draft.category ? null : value,
-                              clearCategory: value == _draft.category,
-                            );
-                          }),
-                        ),
-                      ),
-                      if (widget.lockedBrand == null)
-                        _FilterSection(
-                          title: 'Brand',
-                          child: _HorizontalChoices(
-                            values: widget.brands,
-                            selected: _draft.brand,
-                            emptyLabel: 'Brand belum tersedia',
-                            onSelected: (value) => setState(() {
-                              _draft = _draft.copyWith(
-                                brand: value == _draft.brand ? null : value,
-                                clearBrand: value == _draft.brand,
-                              );
-                            }),
-                          ),
-                        ),
-                      _FilterSection(
-                        title: 'Preferensi',
-                        child: Column(
-                          children: [
-                            SwitchListTile(
-                              contentPadding: EdgeInsets.zero,
-                              value: _draft.inStockOnly,
-                              onChanged: (value) => setState(
-                                () => _draft =
-                                    _draft.copyWith(inStockOnly: value),
-                              ),
-                              title: const Text('Hanya produk tersedia'),
-                              subtitle: const Text('Sembunyikan stok kosong'),
-                            ),
-                            SwitchListTile(
-                              contentPadding: EdgeInsets.zero,
-                              value: _draft.discountOnly,
-                              onChanged: (value) => setState(
-                                () => _draft =
-                                    _draft.copyWith(discountOnly: value),
-                              ),
-                              title: const Text('Produk diskon'),
-                              subtitle:
-                                  const Text('Tampilkan yang sedang hemat'),
-                            ),
-                            SwitchListTile(
-                              contentPadding: EdgeInsets.zero,
-                              value: _draft.withImageOnly,
-                              onChanged: (value) => setState(
-                                () => _draft =
-                                    _draft.copyWith(withImageOnly: value),
-                              ),
-                              title: const Text('Dengan foto produk'),
-                              subtitle:
-                                  const Text('Prioritaskan katalog lengkap'),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: _apply,
-                    icon: const Icon(Icons.check_rounded),
-                    label: Text(
-                      _draft.activeCount == 0
-                          ? 'Terapkan Filter'
-                          : 'Terapkan ${_draft.activeCount} Filter',
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(52),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _FilterSection extends StatelessWidget {
-  final String title;
-  final Widget child;
-
-  const _FilterSection({required this.title, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              color: Color(0xFF17202A),
-              fontSize: 14,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 8),
-          child,
-        ],
-      ),
-    );
-  }
-}
-
-class _HorizontalChoices extends StatelessWidget {
-  final List<String> values;
-  final String? selected;
-  final String emptyLabel;
-  final ValueChanged<String> onSelected;
-
-  const _HorizontalChoices({
-    required this.values,
-    required this.selected,
-    required this.emptyLabel,
-    required this.onSelected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (values.isEmpty) {
-      return Text(
-        emptyLabel,
-        style: const TextStyle(
-          color: Color(0xFF6B7280),
-          fontWeight: FontWeight.w700,
-        ),
-      );
-    }
-
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: values.take(24).map((value) {
-        final active = value == selected;
-        return _SortChip(
-          label: value,
-          selected: active,
-          onTap: () => onSelected(value),
-        );
-      }).toList(),
-    );
-  }
-}
-
-class _SortChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _SortChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ChoiceChip(
-      selected: selected,
-      label: Text(label),
-      onSelected: (_) => onTap(),
-      selectedColor: _brandBlue,
-      backgroundColor: Colors.white.withValues(alpha: 0.82),
-      side: BorderSide(color: selected ? _brandBlue : const Color(0xFFE5E7EB)),
-      labelStyle: TextStyle(
-        color: selected ? Colors.white : const Color(0xFF475569),
-        fontWeight: FontWeight.w900,
-        fontSize: 12,
-      ),
     );
   }
 }

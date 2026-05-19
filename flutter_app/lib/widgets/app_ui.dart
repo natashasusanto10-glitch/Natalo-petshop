@@ -39,7 +39,6 @@ class AppSearchField extends StatelessWidget {
   final ValueChanged<String>? onSubmitted;
   final VoidCallback? onClear;
   final VoidCallback? onVoiceTap;
-  final VoidCallback? onBarcodeTap;
   final bool compact;
 
   const AppSearchField({
@@ -51,7 +50,6 @@ class AppSearchField extends StatelessWidget {
     this.onSubmitted,
     this.onClear,
     this.onVoiceTap,
-    this.onBarcodeTap,
     this.compact = false,
   });
 
@@ -68,30 +66,19 @@ class AppSearchField extends StatelessWidget {
         icon: const Icon(Icons.close_rounded),
         tooltip: 'Hapus',
       );
-    } else if (onBarcodeTap != null || onVoiceTap != null) {
+    } else if (onVoiceTap != null) {
       suffix = Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (onBarcodeTap != null)
-            IconButton(
-              onPressed: onBarcodeTap,
-              icon: const Icon(
-                Icons.qr_code_scanner_rounded,
-                color: NataloColors.primary,
-              ),
-              tooltip: 'Scan barcode',
-              visualDensity: VisualDensity.compact,
+          IconButton(
+            onPressed: onVoiceTap,
+            icon: const Icon(
+              Icons.mic_rounded,
+              color: NataloColors.primary,
             ),
-          if (onVoiceTap != null)
-            IconButton(
-              onPressed: onVoiceTap,
-              icon: const Icon(
-                Icons.mic_rounded,
-                color: NataloColors.primary,
-              ),
-              tooltip: 'Cari dengan suara',
-              visualDensity: VisualDensity.compact,
-            ),
+            tooltip: 'Cari dengan suara',
+            visualDensity: VisualDensity.compact,
+          ),
         ],
       );
     }

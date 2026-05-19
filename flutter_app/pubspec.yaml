@@ -78,15 +78,6 @@ dependencies:
   # bisa akses biometric hardware sama sekali (Web Authentication API
   # patchy & butuh server challenge).
   local_auth: ^2.3.0
-  # Barcode/QR scanner — native CameraX (Android) + AVFoundation (iOS)
-  # via Google ML Kit barcode detection. User di Products screen scan
-  # barcode produk → auto search SKU. Capacitor pakai @capacitor-mlkit/
-  # barcode-scanning yang functional tapi UI plain native dialog. Flutter
-  # punya custom overlay yang seamless dengan rest of app.
-  # mobile_scanner 5.x conflict dengan Firebase 11.x via GoogleDataTransport
-  # version range. Disabled sementara sampai mobile_scanner naik ke 7.x+.
-  # Re-enable saat MLKitCommon depend ke GoogleDataTransport >= 10.0.
-  # mobile_scanner: ^5.2.3
   # Connectivity status — detect kapan device offline / network type.
   # Tampilkan offline banner kalau koneksi hilang, hide otomatis saat
   # reconnect. PWA pakai navigator.onLine yang patchy di WebView Android.
