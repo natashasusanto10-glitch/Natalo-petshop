@@ -6,6 +6,7 @@ import '../state/member_store.dart';
 import '../theme/natalo_colors.dart';
 import '../widgets/app_cart_button.dart';
 import '../widgets/bottom_nav.dart';
+import '../widgets/haptic_refresh_indicator.dart';
 import '../widgets/product_card.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -49,11 +50,18 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF6F9FF),
       appBar: AppBar(
-        title: const Text('Natalo Petshop'),
+        title: const Text(
+          'Natalo Petshop',
+          style: TextStyle(
+            color: NataloColors.textPrimary,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
         actions: const [AppCartButton()],
       ),
       body: SafeArea(
-        child: RefreshIndicator(
+        bottom: false,
+        child: HapticRefreshIndicator(
           onRefresh: _refresh,
           child: FutureBuilder<List<Product>>(
             future: _productsFuture,
@@ -64,75 +72,93 @@ class _HomeScreenState extends State<HomeScreen> {
               final popular = [...products]
                 ..sort((a, b) => b.soldCount.compareTo(a.soldCount));
 
-              return ListView(
-                padding: const EdgeInsets.fromLTRB(0, 12, 0, 120),
-                children: [
-                  // Trust marquee bar — Gratis Ongkir + Original + Konsultasi
-                  const _TrustMarquee(),
-                  const SizedBox(height: 14),
-                  // Hero banner carousel (placeholder)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: _HeroBannerCard(
-                      onTap: () => _openProducts(),
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+              return CustomScrollView(
+                key: const PageStorageKey('home-scroll'),
+                primary: false,
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  SliverToBoxAdapter(
                     child: Column(
                       children: [
-                        _HomeGreeting(onOpenProducts: () => _openProducts()),
-                        const SizedBox(height: 18),
-                        // 8 kategori grid (2 rows × 4 cols)
-                        _CategoryGrid(
-                          onOpenCategory: (category) =>
-                              _openProducts(category: category),
-                          onOpenVoucher: () =>
-                              Navigator.pushNamed(context, '/member/vouchers'),
-                          onOpenLoyalty: () =>
-                              Navigator.pushNamed(context, '/member/loyalty'),
-                          onOpenGrooming: () => _openProducts(category: 'Grooming'),
-                          onOpenBlog: () =>
-                              Navigator.pushNamed(context, '/help'),
+                        const SizedBox(height: 12),
+                        const _TrustMarquee(),
+                        const SizedBox(height: 14),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: _HeroBannerCard(
+                            onTap: () => _openProducts(),
+                          ),
                         ),
+                        const SizedBox(height: 18),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Column(
+                            children: [
+                              _HomeGreeting(
+                                onOpenProducts: () => _openProducts(),
+                              ),
+                              const SizedBox(height: 18),
+                              _CategoryGrid(
+                                onOpenCategory: (category) =>
+                                    _openProducts(category: category),
+                                onOpenVoucher: () => Navigator.pushNamed(
+                                  context,
+                                  '/member/vouchers',
+                                ),
+                                onOpenLoyalty: () => Navigator.pushNamed(
+                                  context,
+                                  '/member/loyalty',
+                                ),
+                                onOpenGrooming: () =>
+                                    _openProducts(category: 'Grooming'),
+                                onOpenBlog: () =>
+                                    Navigator.pushNamed(context, '/help'),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 18),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 18),
                   if (snapshot.connectionState == ConnectionState.waiting &&
                       products.isEmpty)
-                    const Center(
+                    const SliverToBoxAdapter(
                       child: Padding(
                         padding: EdgeInsets.symmetric(vertical: 48),
-                        child: CircularProgressIndicator(),
+                        child: Center(child: CircularProgressIndicator()),
                       ),
                     )
                   else if (products.isEmpty)
-                    _EmptyHomeProducts(onRetry: _refresh)
+                    SliverToBoxAdapter(
+                      child: _EmptyHomeProducts(onRetry: _refresh),
+                    )
                   else ...[
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Column(
-                        children: [
-                          if (promo.isNotEmpty)
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Column(
+                          children: [
+                            if (promo.isNotEmpty)
+                              _HomeProductSection(
+                                title: 'Promo Natalo',
+                                subtitle: 'Produk hemat yang sedang aktif',
+                                products: promo.take(6).toList(),
+                                onTap: _openProduct,
+                                onSeeAll: () => _openProducts(),
+                              ),
+                            const SizedBox(height: 20),
                             _HomeProductSection(
-                              title: 'Promo Natalo',
-                              subtitle: 'Produk hemat yang sedang aktif',
-                              products: promo.take(6).toList(),
+                              title: 'Jelajahi Produk Natalo',
+                              subtitle:
+                                  'Temukan berbagai kebutuhan hewan kesayanganmu',
+                              products: popular.take(8).toList(),
                               onTap: _openProduct,
                               onSeeAll: () => _openProducts(),
                             ),
-                          const SizedBox(height: 20),
-                          _HomeProductSection(
-                            title: 'Jelajahi Produk Natalo',
-                            subtitle:
-                                'Temukan berbagai kebutuhan hewan kesayanganmu',
-                            products: popular.take(8).toList(),
-                            onTap: _openProduct,
-                            onSeeAll: () => _openProducts(),
-                          ),
-                        ],
+                            const SizedBox(height: 120),
+                          ],
+                        ),
                       ),
                     ),
                   ],
@@ -330,7 +356,6 @@ class _EmptyHomeProducts extends StatelessWidget {
   }
 }
 
-
 /// Trust marquee — horizontal bar 3 trust signals.
 class _TrustMarquee extends StatelessWidget {
   const _TrustMarquee();
@@ -338,11 +363,17 @@ class _TrustMarquee extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const items = [
-      (Icons.local_shipping_outlined, 'Gratis Ongkir Area Medan',
-          Color(0xFF16A34A)),
+      (
+        Icons.local_shipping_outlined,
+        'Gratis Ongkir Area Medan',
+        Color(0xFF16A34A)
+      ),
       (Icons.verified_outlined, 'Produk Original 100%', Color(0xFF1E5FBF)),
-      (Icons.chat_bubble_outline_rounded, 'Konsultasi via WA',
-          Color(0xFFEC4899)),
+      (
+        Icons.chat_bubble_outline_rounded,
+        'Konsultasi via WA',
+        Color(0xFFEC4899)
+      ),
     ];
     return SizedBox(
       height: 48,
