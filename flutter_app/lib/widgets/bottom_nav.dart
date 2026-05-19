@@ -11,6 +11,10 @@ const _navBackground = Color(0xFFFFFFFF);
 const _navTopBorder = Color(0xFFE5E7EB);
 const _navActiveBlue = Color(0xFF2563EB);
 const _navInactive = Color(0xFF6B7280);
+const _navDarkBackground = Color(0xFF000000);
+const _navDarkTopBorder = Color(0xFF1F2937);
+const _navDarkActive = Color(0xFFFFFFFF);
+const _navDarkInactive = Color(0xFF9CA3AF);
 
 class BottomNavBar extends StatelessWidget {
   final int currentIndex;
@@ -62,12 +66,18 @@ class BottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dark = variant == BottomNavVariant.dark;
+    final background = dark ? _navDarkBackground : _navBackground;
+    final borderColor = dark ? _navDarkTopBorder : _navTopBorder;
+    final activeColor = dark ? _navDarkActive : _navActiveBlue;
+    final inactiveColor = dark ? _navDarkInactive : _navInactive;
+
     return Container(
-      decoration: const BoxDecoration(
-        color: _navBackground,
+      decoration: BoxDecoration(
+        color: background,
         border: Border(
           top: BorderSide(
-            color: _navTopBorder,
+            color: borderColor,
             width: 0.5,
           ),
         ),
@@ -83,6 +93,8 @@ class BottomNavBar extends StatelessWidget {
                 selectedIcon: Icons.home_rounded,
                 label: 'Beranda',
                 selected: currentIndex == 0,
+                activeColor: activeColor,
+                inactiveColor: inactiveColor,
                 onTap: () => _onTap(context, 0),
               ),
               _BottomNavItem(
@@ -90,6 +102,8 @@ class BottomNavBar extends StatelessWidget {
                 selectedIcon: Icons.shopping_bag_rounded,
                 label: 'Produk',
                 selected: currentIndex == 1,
+                activeColor: activeColor,
+                inactiveColor: inactiveColor,
                 onTap: () => _onTap(context, 1),
               ),
               _BottomNavItem(
@@ -97,6 +111,8 @@ class BottomNavBar extends StatelessWidget {
                 selectedIcon: Icons.play_circle_fill_rounded,
                 label: 'Feed',
                 selected: currentIndex == 2,
+                activeColor: activeColor,
+                inactiveColor: inactiveColor,
                 onTap: () => _onTap(context, 2),
               ),
               _BottomNavItem(
@@ -104,6 +120,8 @@ class BottomNavBar extends StatelessWidget {
                 selectedIcon: Icons.person_rounded,
                 label: 'Akun',
                 selected: currentIndex == 3,
+                activeColor: activeColor,
+                inactiveColor: inactiveColor,
                 onTap: () => _onTap(context, 3),
               ),
             ],
@@ -119,6 +137,8 @@ class _BottomNavItem extends StatelessWidget {
   final IconData selectedIcon;
   final String label;
   final bool selected;
+  final Color activeColor;
+  final Color inactiveColor;
   final VoidCallback onTap;
 
   const _BottomNavItem({
@@ -126,12 +146,14 @@ class _BottomNavItem extends StatelessWidget {
     required this.selectedIcon,
     required this.label,
     required this.selected,
+    required this.activeColor,
+    required this.inactiveColor,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? _navActiveBlue : _navInactive;
+    final color = selected ? activeColor : inactiveColor;
 
     return Expanded(
       child: Semantics(
@@ -142,8 +164,8 @@ class _BottomNavItem extends StatelessWidget {
           color: Colors.transparent,
           child: InkWell(
             onTap: onTap,
-            splashColor: _navActiveBlue.withValues(alpha: 0.08),
-            highlightColor: _navActiveBlue.withValues(alpha: 0.04),
+            splashColor: activeColor.withValues(alpha: 0.08),
+            highlightColor: activeColor.withValues(alpha: 0.06),
             child: Center(
               child: Padding(
                 padding: const EdgeInsets.only(top: 6, bottom: 4),

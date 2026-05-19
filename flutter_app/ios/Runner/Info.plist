@@ -94,8 +94,10 @@
 		<key>NSFaceIDUsageDescription</key>
 		<string>Login ke akun Natalo Petshop kamu dengan Face ID — lebih cepat dan aman.</string>
 		<!-- Push notifications via firebase_messaging + flutter_local_notifications.
-	     Background mode "remote-notification" supaya APNs payload bisa
-	     wake app untuk fetch content. -->
+		     Background mode "remote-notification" supaya APNs payload bisa
+		     wake app untuk fetch content (FCM). Plus "fetch" untuk
+		     background fetch berkala. Tanpa ini, push notif tidak akan
+		     trigger app handler saat app di-background. -->
 		<key>UIBackgroundModes</key>
 		<array>
 			<string>fetch</string>
@@ -103,14 +105,18 @@
 		</array>
 		<key>UIStatusBarHidden</key>
 		<false/>
-		<!-- Background modes: remote-notification untuk FCM (firebase_messaging
-		     wake app saat APNs payload arrives); fetch untuk background fetch
-		     berkala. Tanpa ini, push notif tidak akan trigger app handler saat
-		     app di-background. -->
-		<key>UIBackgroundModes</key>
+		<!-- LSApplicationQueriesSchemes — diperlukan iOS 9+ untuk
+		     `canOpenURL` + `launchUrl` ke external app schemes. Tanpa
+		     ini, launchUrl(LaunchMode.externalApplication) untuk wa.me/...
+		     akan fallback ke Safari, BUKAN buka WhatsApp app. Apple
+		     mandates declare scheme yang app pakai. -->
+		<key>LSApplicationQueriesSchemes</key>
 		<array>
-			<string>fetch</string>
-			<string>remote-notification</string>
+			<string>https</string>
+			<string>http</string>
+			<string>mailto</string>
+			<string>tel</string>
+			<string>whatsapp</string>
 		</array>
 	</dict>
 </plist>

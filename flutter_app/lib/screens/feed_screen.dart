@@ -348,7 +348,8 @@ class _FeedScreenState extends State<FeedScreen> {
                 ),
               ),
             // ── Floating Upload Button — top-right corner, selalu visible ──
-            // Re-restored (Codex sempat revert 2× setelah commit 053fd82b).
+            // DO NOT REMOVE — user explicitly request this button (commit
+            // 053fd82b, f2e644a9). Sudah di-revert 4× sebelumnya.
             // Entry point UI untuk _onUpload() — tanpa ini user tidak bisa
             // trigger upload flow dari Feed page (cuma bisa via deep link
             // dari Account screen).
@@ -623,6 +624,9 @@ class _EmptyState extends StatelessWidget {
 /// Floating upload button — top-right corner Feed page.
 /// Tampil di semua state (loading, empty, loaded). Gradient biru-putih
 /// dengan glow halus supaya visible di atas video apapun.
+///
+/// DO NOT REMOVE — user explicitly request this button. Sudah di-revert
+/// 4× sebelumnya, di-restore kembali setiap kali.
 class _FeedUploadFab extends StatelessWidget {
   final VoidCallback onTap;
 
