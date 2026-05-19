@@ -41,24 +41,50 @@ class MemberAddress {
   }) : isMain = isPrimary ?? isMain;
 
   factory MemberAddress.fromJson(Map<String, dynamic> json) {
+    final id = _firstString(json['id'], json['_id']);
     return MemberAddress(
-      id: json['id'] as String,
-      label: json['label'] as String?,
-      recipient: json['recipient'] as String? ?? '',
-      phone: json['phone'] as String? ?? '',
-      address: json['address'] as String? ?? '',
-      city: json['city'] as String?,
-      postalCode: json['postalCode'] as String?,
-      areaId: json['areaId'] as String?,
-      areaLabel: json['areaLabel'] as String?,
-      provinceName: json['provinceName'] as String?,
-      cityName: json['cityName'] as String?,
-      districtName: json['districtName'] as String?,
-      isMain: json['isMain'] as bool? ?? false,
-      latitude: (json['latitude'] as num?)?.toDouble(),
-      longitude: (json['longitude'] as num?)?.toDouble(),
-      pinpointAddress: json['pinpointAddress'] as String?,
-      streetName: json['streetName'] as String?,
+      id: id,
+      label: _nullableString(json['label']),
+      recipient: _firstString(
+        json['recipient'],
+        json['recipientName'],
+        json['recipient_name'],
+        json['nama'],
+      ),
+      phone: _firstString(json['phone'], json['phoneNumber'], json['noHp']),
+      address: _firstString(
+        json['address'],
+        json['street'],
+        json['jalan'],
+        json['shippingAddress'],
+      ),
+      city: _nullableString(json['city'] ?? json['kota']),
+      postalCode: _nullableString(
+        json['postalCode'] ?? json['postal_code'] ?? json['kodePos'],
+      ),
+      areaId: _nullableString(json['areaId'] ?? json['area_id']),
+      areaLabel: _nullableString(json['areaLabel'] ?? json['area_label']),
+      provinceName: _nullableString(
+        json['provinceName'] ?? json['province_name'] ?? json['province'],
+      ),
+      cityName: _nullableString(
+        json['cityName'] ?? json['city_name'] ?? json['kota'],
+      ),
+      districtName: _nullableString(
+        json['districtName'] ?? json['district_name'] ?? json['district'],
+      ),
+      isMain: _boolValue(
+        json['isMain'] ??
+            json['isPrimary'] ??
+            json['is_primary'] ??
+            json['isUtama'],
+      ),
+      latitude: _doubleValue(json['latitude'] ?? json['lat']),
+      longitude: _doubleValue(json['longitude'] ?? json['lng']),
+      pinpointAddress: _nullableString(
+        json['pinpointAddress'] ?? json['pinpoint_address'],
+      ),
+      streetName: _nullableString(json['streetName'] ?? json['street_name']),
     );
   }
 
@@ -88,4 +114,29 @@ class MemberAddress {
       'streetName': streetName,
     };
   }
+}
+
+String _firstString(Object? first,
+    [Object? second, Object? third, Object? fourth]) {
+  for (final value in [first, second, third, fourth]) {
+    final text = _nullableString(value);
+    if (text != null) return text;
+  }
+  return '';
+}
+
+String? _nullableString(Object? value) {
+  final text = value?.toString().trim();
+  return text == null || text.isEmpty ? null : text;
+}
+
+bool _boolValue(Object? value) {
+  if (value is bool) return value;
+  final text = value?.toString().trim().toLowerCase();
+  return text == 'true' || text == '1' || text == 'ya';
+}
+
+double? _doubleValue(Object? value) {
+  if (value is num) return value.toDouble();
+  return double.tryParse(value?.toString().trim() ?? '');
 }

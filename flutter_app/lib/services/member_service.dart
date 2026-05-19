@@ -118,11 +118,10 @@ class MemberService {
 
   Future<List<MemberAddress>> fetchAddresses() async {
     try {
-      // Endpoint backend di-mount di `/api/addresses` (re-export dari
-      // /api/alamat). NextAuth session cookie member di-validate via
-      // getSession("CUSTOMER"). Pernah typo `/api/member/addresses` →
-      // 404 → empty list, fix di commit ini.
-      final uri = ApiConfig.uri('/api/addresses');
+      // Web/Capacitor lama memakai endpoint canonical `/api/alamat`.
+      // Jangan bergantung ke alias `/api/addresses`, karena APK production
+      // bisa jalan terhadap backend yang belum punya re-export alias itu.
+      final uri = ApiConfig.uri('/api/alamat');
       final res = await http
           .get(uri, headers: _authHeaders)
           .timeout(const Duration(seconds: 8));
@@ -133,8 +132,9 @@ class MemberService {
           : (body is Map ? body['addresses'] ?? body['data'] : null);
       if (list is! List) return const [];
       final addresses = list
-          .whereType<Map<String, dynamic>>()
-          .map(MemberAddress.fromJson)
+          .whereType<Map>()
+          .map(
+              (item) => MemberAddress.fromJson(Map<String, dynamic>.from(item)))
           .toList();
       memberStore.setAddresses(addresses);
       return addresses;
@@ -147,7 +147,7 @@ class MemberService {
   Future<MemberAddress> createAddress(MemberAddress address) async {
     readOnlyMode.assertWritable('address_create');
     final data = await apiClient.postJson(
-      '/api/addresses',
+      '/api/alamat',
       body: address.toApiJson(),
     );
     return _addressFromResponse(data);
@@ -156,7 +156,7 @@ class MemberService {
   Future<MemberAddress> updateAddress(MemberAddress address) async {
     readOnlyMode.assertWritable('address_update');
     final data = await apiClient.putJson(
-      '/api/addresses/${Uri.encodeComponent(address.id)}',
+      '/api/alamat/${Uri.encodeComponent(address.id)}',
       body: address.toApiJson(),
     );
     return _addressFromResponse(data);
@@ -165,7 +165,7 @@ class MemberService {
   Future<MemberAddress> setPrimaryAddress(String id) async {
     readOnlyMode.assertWritable('address_update');
     final data = await apiClient.postJson(
-      '/api/addresses/${Uri.encodeComponent(id)}/set-primary',
+      '/api/alamat/${Uri.encodeComponent(id)}/set-primary',
       body: const {},
     );
     return _addressFromResponse(data);
@@ -174,16 +174,14 @@ class MemberService {
   Future<void> deleteAddress(String id) async {
     readOnlyMode.assertWritable('address_delete');
     await apiClient.deleteJson(
-      '/api/addresses/${Uri.encodeComponent(id)}',
+      '/api/alamat/${Uri.encodeComponent(id)}',
     );
   }
 
   MemberAddress _addressFromResponse(dynamic data) {
-    final raw = data is Map<String, dynamic>
-        ? (data['address'] ?? data['data'] ?? data)
-        : null;
-    if (raw is Map<String, dynamic>) {
-      return MemberAddress.fromJson(raw);
+    final raw = data is Map ? (data['address'] ?? data['data'] ?? data) : null;
+    if (raw is Map) {
+      return MemberAddress.fromJson(Map<String, dynamic>.from(raw));
     }
     throw const ApiException('Response alamat tidak valid.');
   }

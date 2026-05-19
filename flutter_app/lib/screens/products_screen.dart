@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -108,15 +107,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
   int _productReturnCount = 0;
   int _nextCatalogRegenerateAt = 2;
 
-  // ── Connected glass dropdown untuk chip Kategori ──
-  // LayerLink jadi anchor — dropdown follow posisi chip via
-  // CompositedTransformFollower. Overlay rendered above semua content
-  // (di atas product grid + appBar). Animation open/close memberi kesan
-  // dropdown "keluar dari chip" dan "kembali ke chip".
-  final LayerLink _categoryLayerLink = LayerLink();
-  OverlayEntry? _categoryOverlay;
-  bool _categoryDropdownOpen = false;
-
   bool get _shouldGenerateAllProducts {
     return widget.selectedBrand == null &&
         _activeMode == _ProductFilterMode.semua &&
@@ -199,9 +189,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
     _searchController.dispose();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
-    // Cleanup overlay kalau masih open saat user navigate away.
-    _categoryOverlay?.remove();
-    _categoryOverlay = null;
     super.dispose();
   }
 
@@ -265,16 +252,14 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
   /// Handle tap pada pinned filter bar pill. Mapping mode → filter flags:
   /// - Semua: reset semua flag
-  /// - Kategori: keep current category, expose chips row di bawah bar
+  /// - Kategori: buka bottom sheet kategori
   /// - Produk Baru: set apiNewFilter
   /// - Populer: set apiPopularFilter
   void _onFilterModeChanged(_ProductFilterMode mode) {
     if (mode == _ProductFilterMode.kategori) {
-      _toggleCategoryDropdown();
+      _openCategoryBottomSheet();
       return;
     }
-    // Tutup dropdown kalau user pilih filter lain.
-    if (_categoryDropdownOpen) _closeCategoryDropdown();
     if (_activeMode == mode) return;
     setState(() {
       _activeMode = mode;
@@ -433,50 +418,37 @@ class _ProductsScreenState extends State<ProductsScreen> {
     return sorted;
   }
 
-  /// Toggle connected glass dropdown untuk kategori. Bukan bottom sheet —
-  /// overlay dengan LayerLink + CompositedTransformFollower supaya
-  /// dropdown "keluar dari" chip Kategori. Animation open/close
-  /// memberi kesan dropdown kembali ke chip.
-  void _toggleCategoryDropdown() {
-    if (_categoryDropdownOpen) {
-      _closeCategoryDropdown();
-    } else {
-      _showCategoryDropdown();
-    }
-  }
-
-  void _showCategoryDropdown() {
-    if (_categoryOverlay != null) return;
-    // Tutup keyboard kalau search bar lagi focus — supaya dropdown
-    // tidak ketabrak/overlay dengan keyboard.
+  Future<void> _openCategoryBottomSheet() async {
     FocusScope.of(context).unfocus();
     final categories = ['Semua', ..._categories];
-    final entry = OverlayEntry(
-      builder: (overlayContext) => _CategoryDropdownOverlay(
-        link: _categoryLayerLink,
-        categories: categories,
-        selectedCategory: _filter.category,
-        onSelect: _onCategorySelected,
-        onDismiss: _closeCategoryDropdown,
-      ),
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.25),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.58,
+          minChildSize: 0.35,
+          maxChildSize: 0.85,
+          expand: false,
+          builder: (context, scrollController) {
+            return _CategoryBottomSheet(
+              scrollController: scrollController,
+              selectedCategory: _filter.category,
+              categories: categories,
+              onSelected: (category) => Navigator.pop(context, category),
+            );
+          },
+        );
+      },
     );
-    Overlay.of(context).insert(entry);
-    _categoryOverlay = entry;
-    setState(() => _categoryDropdownOpen = true);
-  }
 
-  void _closeCategoryDropdown() {
-    final overlay = _categoryOverlay;
-    if (overlay == null) return;
-    overlay.remove();
-    _categoryOverlay = null;
-    if (mounted) {
-      setState(() => _categoryDropdownOpen = false);
-    }
+    if (picked == null || !mounted) return;
+    _onCategorySelected(picked);
   }
 
   void _onCategorySelected(String category) {
-    _closeCategoryDropdown();
     setState(() {
       if (category == 'Semua') {
         _filter = const ProductCatalogFilter();
@@ -492,7 +464,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
   Future<void> _openSortSheet() async {
     FocusScope.of(context).unfocus();
-    _closeCategoryDropdown();
     final picked = await showModalBottomSheet<ProductSort>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -621,7 +592,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
                     selectedCategory: _filter.category,
                     visibleCount: products.length,
                     totalCount: _result.products.length,
-                    categoryLayerLink: _categoryLayerLink,
                     onQueryChanged: _onQueryChanged,
                     onSubmitQuery: _commitSearch,
                     onFilterModeChanged: _onFilterModeChanged,
@@ -768,7 +738,6 @@ class _CatalogHeader extends StatelessWidget {
   final String? selectedCategory;
   final int visibleCount;
   final int totalCount;
-  final LayerLink categoryLayerLink;
   final ValueChanged<String> onQueryChanged;
   final ValueChanged<String> onSubmitQuery;
   final ValueChanged<_ProductFilterMode> onFilterModeChanged;
@@ -781,7 +750,6 @@ class _CatalogHeader extends StatelessWidget {
     required this.selectedCategory,
     required this.visibleCount,
     required this.totalCount,
-    required this.categoryLayerLink,
     required this.onQueryChanged,
     required this.onSubmitQuery,
     required this.onFilterModeChanged,
@@ -824,7 +792,6 @@ class _CatalogHeader extends StatelessWidget {
           _HorizontalProductFilterChips(
             selectedMode: activeMode,
             selectedCategory: selectedCategory,
-            categoryLayerLink: categoryLayerLink,
             onChanged: onFilterModeChanged,
           ),
           const SizedBox(height: 12),
@@ -1112,6 +1079,46 @@ extension _ProductFilterModeMeta on _ProductFilterMode {
         return Icons.local_fire_department_rounded;
     }
   }
+
+  Widget? get coloredIcon {
+    switch (this) {
+      case _ProductFilterMode.baru:
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          decoration: BoxDecoration(
+            color: const Color(0xFF16A34A),
+            borderRadius: BorderRadius.circular(5),
+          ),
+          child: const Text(
+            'NEW',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 8.5,
+              height: 1,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.1,
+            ),
+          ),
+        );
+      case _ProductFilterMode.populer:
+        return Container(
+          width: 20,
+          height: 20,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            color: Color(0xFFFFF1E7),
+          ),
+          child: const Icon(
+            Icons.local_fire_department_rounded,
+            size: 15,
+            color: Color(0xFFF97316),
+          ),
+        );
+      case _ProductFilterMode.semua:
+      case _ProductFilterMode.kategori:
+        return null;
+    }
+  }
 }
 
 class _ProductSearchBar extends StatelessWidget {
@@ -1190,17 +1197,14 @@ class _ProductSearchBar extends StatelessWidget {
 }
 
 /// Horizontal scroll chips dengan icon — Natalo style.
-/// Kategori chip jadi anchor LayerLink untuk dropdown glass.
 class _HorizontalProductFilterChips extends StatelessWidget {
   final _ProductFilterMode selectedMode;
   final String? selectedCategory;
-  final LayerLink categoryLayerLink;
   final ValueChanged<_ProductFilterMode> onChanged;
 
   const _HorizontalProductFilterChips({
     required this.selectedMode,
     required this.selectedCategory,
-    required this.categoryLayerLink,
     required this.onChanged,
   });
 
@@ -1216,23 +1220,22 @@ class _HorizontalProductFilterChips extends StatelessWidget {
           children: [
             for (final mode in _ProductFilterMode.values) ...[
               if (mode == _ProductFilterMode.kategori)
-                CompositedTransformTarget(
-                  link: categoryLayerLink,
-                  child: ProductFilterChip(
-                    // Apply formatter — defensive kalau backend kasih slug
-                    // mentah (mis. "snack-treat-anjing" → "Snack & Treat Anjing").
-                    label: selectedCategory != null
-                        ? formatCategoryLabel(selectedCategory!)
-                        : mode.label,
-                    icon: mode.icon,
-                    selected: selectedMode == _ProductFilterMode.kategori,
-                    onTap: () => onChanged(mode),
-                  ),
+                ProductFilterChip(
+                  // Apply formatter — defensive kalau backend kasih slug
+                  // mentah (mis. "snack-treat-anjing" → "Snack & Treat Anjing").
+                  label: selectedCategory != null
+                      ? formatCategoryLabel(selectedCategory!)
+                      : mode.label,
+                  icon: mode.icon,
+                  leadingIcon: mode.coloredIcon,
+                  selected: selectedMode == _ProductFilterMode.kategori,
+                  onTap: () => onChanged(mode),
                 )
               else
                 ProductFilterChip(
                   label: mode.label,
                   icon: mode.icon,
+                  leadingIcon: mode.coloredIcon,
                   selected: selectedMode == mode,
                   onTap: () => onChanged(mode),
                 ),
@@ -1250,6 +1253,7 @@ class _HorizontalProductFilterChips extends StatelessWidget {
 class ProductFilterChip extends StatelessWidget {
   final String label;
   final IconData icon;
+  final Widget? leadingIcon;
   final bool selected;
   final VoidCallback onTap;
 
@@ -1257,6 +1261,7 @@ class ProductFilterChip extends StatelessWidget {
     super.key,
     required this.label,
     required this.icon,
+    this.leadingIcon,
     required this.selected,
     required this.onTap,
   });
@@ -1312,13 +1317,12 @@ class ProductFilterChip extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  icon,
-                  size: 18,
-                  color: selected
-                      ? Colors.white
-                      : const Color(0xFF64748B),
-                ),
+                leadingIcon ??
+                    Icon(
+                      icon,
+                      size: 18,
+                      color: selected ? Colors.white : const Color(0xFF64748B),
+                    ),
                 const SizedBox(width: 6),
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 180),
@@ -1327,9 +1331,7 @@ class ProductFilterChip extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: selected
-                          ? Colors.white
-                          : const Color(0xFF111827),
+                      color: selected ? Colors.white : const Color(0xFF111827),
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
                     ),
@@ -1644,127 +1646,6 @@ String _formatProductSoldCount(int count) {
   if (count >= 100) return '${(count ~/ 50) * 50}+';
   if (count >= 10) return '${(count ~/ 10) * 10}+';
   return count.toString();
-}
-
-class _CategoryBottomSheet extends StatelessWidget {
-  final List<String> categories;
-  final String? selectedCategory;
-
-  const _CategoryBottomSheet({
-    required this.categories,
-    required this.selectedCategory,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final items = ['Semua', ...categories];
-    return _SheetShell(
-      title: 'Pilih Kategori',
-      subtitle: 'Filter produk berdasarkan kebutuhan hewan peliharaanmu.',
-      child: Flexible(
-        child: ListView.separated(
-          shrinkWrap: true,
-          itemCount: items.length,
-          separatorBuilder: (_, __) => const Divider(
-            height: 1,
-            color: Color(0xFFF1F5F9),
-          ),
-          itemBuilder: (context, index) {
-            final category = items[index];
-            final selected = category == 'Semua'
-                ? selectedCategory == null
-                : selectedCategory == category;
-            return ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(
-                category,
-                style: TextStyle(
-                  color: selected ? _brandBlue : _textPrimary,
-                  fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
-                ),
-              ),
-              trailing: selected
-                  ? const Icon(Icons.check_rounded, color: _brandBlue)
-                  : null,
-              onTap: () => Navigator.pop(context, category),
-            );
-          },
-        ),
-      ),
-    );
-  }
-}
-
-class _SheetShell extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final Widget child;
-
-  const _SheetShell({
-    required this.title,
-    required this.subtitle,
-    required this.child,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(12, 0, 12, bottomInset + 12),
-      child: Material(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
-        clipBehavior: Clip.antiAlias,
-        child: SafeArea(
-          top: false,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.sizeOf(context).height * 0.72,
-            ),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      height: 5,
-                      width: 46,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE2E8F0),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: _textPrimary,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      color: _textSecondary,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  child,
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 /// Pinned header delegate untuk sliver yang stick di top scroll.
@@ -2127,243 +2008,97 @@ class ProductCatalogFilter {
 }
 
 // ════════════════════════════════════════════════════════════════
-// Connected glass dropdown — kategori chip anchor → dropdown
+// Category bottom sheet — modal kategori untuk halaman Produk
 // ════════════════════════════════════════════════════════════════
 
-class _CategoryDropdownOverlay extends StatefulWidget {
-  final LayerLink link;
+class _CategoryBottomSheet extends StatelessWidget {
+  final ScrollController scrollController;
   final List<String> categories;
   final String? selectedCategory;
-  final ValueChanged<String> onSelect;
-  final VoidCallback onDismiss;
+  final ValueChanged<String> onSelected;
 
-  const _CategoryDropdownOverlay({
-    required this.link,
+  const _CategoryBottomSheet({
+    required this.scrollController,
     required this.categories,
     required this.selectedCategory,
-    required this.onSelect,
-    required this.onDismiss,
+    required this.onSelected,
   });
 
   @override
-  State<_CategoryDropdownOverlay> createState() =>
-      _CategoryDropdownOverlayState();
-}
-
-class _CategoryDropdownOverlayState extends State<_CategoryDropdownOverlay>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-  late final Animation<double> _opacity;
-  late final Animation<double> _scaleY;
-  late final Animation<Offset> _offset;
-
-  static const _openDuration = Duration(milliseconds: 240);
-  static const _closeDuration = Duration(milliseconds: 200);
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: _openDuration,
-      reverseDuration: _closeDuration,
-    );
-    _opacity = CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic);
-    _scaleY = Tween<double>(begin: 0.88, end: 1.0).animate(
-      CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic),
-    );
-    _offset = Tween<Offset>(
-      begin: const Offset(0, -8),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic),
-    );
-    _ctrl.forward();
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _dismissWithAnimation() async {
-    await _ctrl.reverse();
-    if (mounted) widget.onDismiss();
-  }
-
-  Future<void> _handleSelect(String category) async {
-    await _ctrl.reverse();
-    if (!mounted) return;
-    widget.onSelect(category);
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final screenSize = MediaQuery.sizeOf(context);
-    // Spec: max 46% screen height — supaya product grid masih terlihat
-    // sebagian di bawah sheet (visual reassurance konten tetap ada).
-    final maxHeight = screenSize.height * 0.46;
-    return Stack(
-      children: [
-        // Backdrop tap dismiss — transparent layer cover whole screen.
-        Positioned.fill(
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _dismissWithAnimation,
-          ),
-        ),
-        // Dropdown anchored ke chip Kategori via LayerLink.
-        Positioned(
-          left: 16,
-          right: 16,
-          // Offset top: chip 44px height + gap 8 = 52
-          child: CompositedTransformFollower(
-            link: widget.link,
-            showWhenUnlinked: false,
-            offset: const Offset(0, 52),
-            child: Material(
-              color: Colors.transparent,
-              child: FadeTransition(
-                opacity: _opacity,
-                child: SlideTransition(
-                  position: _offset,
-                  child: ScaleTransition(
-                    scale: _scaleY,
-                    alignment: Alignment.topCenter,
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(maxHeight: maxHeight),
-                      child: _GlassCategoryDropdown(
-                        categories: widget.categories,
-                        selectedCategory: widget.selectedCategory,
-                        onSelect: _handleSelect,
-                      ),
-                    ),
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            const SizedBox(height: 10),
+            Container(
+              width: 48,
+              height: 5,
+              decoration: BoxDecoration(
+                color: const Color(0xFFD1D5DB),
+                borderRadius: BorderRadius.circular(99),
+              ),
+            ),
+            const SizedBox(height: 18),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Pilih Kategori',
+                  style: TextStyle(
+                    color: Color(0xFF111827),
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
               ),
             ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Glass sheet untuk daftar kategori, anchored ke chip Kategori.
-///
-/// Spec:
-/// - Frosted glass via BackdropFilter sigma 14 + bg white 0.78
-/// - Border `#D9E8FA` 0.9 width 1, radius 24
-/// - Soft shadow `#0F172A` 0.08 blur 28 offset (0, 14)
-/// - List text-only (NO icon kategori, NO chevron right)
-/// - Item padding horizontal 20, vertical 17
-/// - Divider thin `#E6EEF8`
-/// - Selected item: card bg `#EAF3FF` 0.88 + border `#C9DFFF` + radius 14,
-///   text color `#1467D9` w800, check icon kanan
-/// - Max height 46% screen, scrollable
-/// - Connected notch (rotated square) di atas — visual connector ke chip aktif
-class _GlassCategoryDropdown extends StatelessWidget {
-  final List<String> categories;
-  final String? selectedCategory;
-  final ValueChanged<String> onSelect;
-
-  const _GlassCategoryDropdown({
-    required this.categories,
-    required this.selectedCategory,
-    required this.onSelect,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.78),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(
-                  color: const Color(0xFFD9E8FA).withValues(alpha: 0.9),
-                  width: 1,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF0F172A).withValues(alpha: 0.08),
-                    blurRadius: 28,
-                    offset: const Offset(0, 14),
-                  ),
-                ],
-              ),
+            const SizedBox(height: 12),
+            Expanded(
               child: ListView.separated(
-                shrinkWrap: true,
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                controller: scrollController,
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
                 itemCount: categories.length,
                 separatorBuilder: (_, __) => const Divider(
                   height: 1,
-                  thickness: 1,
-                  color: Color(0xFFE6EEF8),
-                  indent: 8,
-                  endIndent: 8,
+                  color: Color(0xFFE5EAF2),
                 ),
                 itemBuilder: (context, index) {
-                  final rawName = categories[index];
-                  final label = rawName == 'Semua'
+                  final category = categories[index];
+                  final label = category == 'Semua'
                       ? 'Semua'
-                      : formatCategoryLabel(rawName);
+                      : formatCategoryLabel(category);
                   final isSelected =
-                      (selectedCategory == null && rawName == 'Semua') ||
-                          (selectedCategory != null &&
-                              rawName == selectedCategory);
-                  return _CategoryDropdownItem(
+                      (selectedCategory == null && category == 'Semua') ||
+                          selectedCategory == category;
+
+                  return _CategoryBottomSheetItem(
                     label: label,
                     isSelected: isSelected,
-                    onTap: () => onSelect(rawName),
+                    onTap: () => onSelected(category),
                   );
                 },
               ),
             ),
-          ),
+          ],
         ),
-        // Connected notch — small rotated square di atas sheet untuk visual
-        // connector ke chip aktif. Border top + left supaya match border
-        // sheet (yang dirotate 45°). Size 18 cukup kecil, tidak dominan.
-        Positioned(
-          top: -8,
-          left: 0,
-          right: 0,
-          child: Center(
-            child: Transform.rotate(
-              angle: 0.785398, // 45° in radians
-              child: Container(
-                width: 16,
-                height: 16,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.85),
-                  border: Border.all(
-                    color: const Color(0xFFD9E8FA),
-                    width: 1,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
 
-class _CategoryDropdownItem extends StatelessWidget {
+class _CategoryBottomSheetItem extends StatelessWidget {
   final String label;
   final bool isSelected;
   final VoidCallback onTap;
 
-  const _CategoryDropdownItem({
+  const _CategoryBottomSheetItem({
     required this.label,
     required this.isSelected,
     required this.onTap,
@@ -2375,15 +2110,16 @@ class _CategoryDropdownItem extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 17),
+          margin: const EdgeInsets.symmetric(vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           decoration: isSelected
               ? BoxDecoration(
-                  color: const Color(0xFFEAF3FF).withValues(alpha: 0.88),
-                  borderRadius: BorderRadius.circular(14),
+                  color: const Color(0xFFEAF4FF),
+                  borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: const Color(0xFFC9DFFF),
+                    color: const Color(0xFFB9DAFF),
                     width: 1,
                   ),
                 )
@@ -2397,10 +2133,9 @@ class _CategoryDropdownItem extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 15,
-                    fontWeight:
-                        isSelected ? FontWeight.w800 : FontWeight.w600,
+                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
                     color: isSelected
-                        ? const Color(0xFF1467D9)
+                        ? const Color(0xFF0D6FE8)
                         : const Color(0xFF111827),
                   ),
                 ),
@@ -2408,7 +2143,7 @@ class _CategoryDropdownItem extends StatelessWidget {
               if (isSelected)
                 const Icon(
                   Icons.check_rounded,
-                  color: Color(0xFF1467D9),
+                  color: Color(0xFF0D6FE8),
                   size: 24,
                 ),
             ],
