@@ -6,7 +6,6 @@ import '../state/member_store.dart';
 import '../theme/natalo_colors.dart';
 import '../widgets/app_cart_button.dart';
 import '../widgets/bottom_nav.dart';
-import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/product_card.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -18,6 +17,9 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   late Future<List<Product>> _productsFuture;
+  final ScrollController _scrollController = ScrollController(
+    keepScrollOffset: false,
+  );
 
   @override
   void initState() {
@@ -29,6 +31,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final future = productService.fetchAll(limit: 24);
     setState(() => _productsFuture = future);
     await future;
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   void _openProducts({String? category}) {
@@ -45,6 +53,18 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.pushNamed(context, '/product-detail', arguments: product);
   }
 
+  List<Product> _dedupeProducts(List<Product> products) {
+    final seen = <String>{};
+    final unique = <Product>[];
+
+    for (final product in products) {
+      final key = product.id.isNotEmpty ? product.id : product.slug;
+      if (seen.add(key)) unique.add(product);
+    }
+
+    return unique;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -59,16 +79,15 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         actions: const [AppCartButton()],
       ),
-      body: SafeArea(
-        bottom: false,
-        child: NataloPawRefreshIndicator(
-          onRefresh: _refresh,
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(0, 12, 0, 120),
+      body: RefreshIndicator(
+        color: NataloColors.primary,
+        onRefresh: _refresh,
+        child: SingleChildScrollView(
+          controller: _scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(0, 12, 0, 120),
+          child: Column(
             children: [
-              const _TrustMarquee(),
-              const SizedBox(height: 14),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: _HeroBannerCard(onTap: () => _openProducts()),
@@ -97,10 +116,22 @@ class _HomeScreenState extends State<HomeScreen> {
               FutureBuilder<List<Product>>(
                 future: _productsFuture,
                 builder: (context, snapshot) {
-                  final products = snapshot.data ?? const <Product>[];
+                  final products = _dedupeProducts(
+                    snapshot.data ?? const <Product>[],
+                  );
                   final promo =
                       products.where((product) => product.hasDiscount).toList();
-                  final popular = [...products]
+                  final promoIds = {
+                    for (final product in promo)
+                      product.id.isNotEmpty ? product.id : product.slug,
+                  };
+                  final popular = products
+                      .where(
+                        (product) => !promoIds.contains(
+                          product.id.isNotEmpty ? product.id : product.slug,
+                        ),
+                      )
+                      .toList()
                     ..sort((a, b) => b.soldCount.compareTo(a.soldCount));
 
                   if (snapshot.connectionState == ConnectionState.waiting &&
@@ -129,14 +160,15 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           const SizedBox(height: 20),
                         ],
-                        _HomeProductSection(
-                          title: 'Jelajahi Produk Natalo',
-                          subtitle:
-                              'Temukan berbagai kebutuhan hewan kesayanganmu',
-                          products: popular.take(8).toList(),
-                          onTap: _openProduct,
-                          onSeeAll: () => _openProducts(),
-                        ),
+                        if (popular.isNotEmpty)
+                          _HomeProductSection(
+                            title: 'Jelajahi Produk Natalo',
+                            subtitle:
+                                'Temukan berbagai kebutuhan hewan kesayanganmu',
+                            products: popular.take(8).toList(),
+                            onTap: _openProduct,
+                            onSeeAll: () => _openProducts(),
+                          ),
                       ],
                     ),
                   );
@@ -278,22 +310,27 @@ class _HomeProductSection extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: products.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            childAspectRatio: 0.56,
-          ),
-          itemBuilder: (context, index) {
-            final product = products[index];
-            return ProductCard(
-              product: product,
-              onTap: () => onTap(product),
-              showAddToCart: true,
+        LayoutBuilder(
+          builder: (context, constraints) {
+            const spacing = 12.0;
+            final itemWidth = (constraints.maxWidth - spacing) / 2;
+            final itemHeight = itemWidth / 0.56;
+
+            return Wrap(
+              spacing: spacing,
+              runSpacing: spacing,
+              children: [
+                for (final product in products)
+                  SizedBox(
+                    width: itemWidth,
+                    height: itemHeight,
+                    child: ProductCard(
+                      product: product,
+                      onTap: () => onTap(product),
+                      showAddToCart: true,
+                    ),
+                  ),
+              ],
             );
           },
         ),
@@ -329,64 +366,6 @@ class _EmptyHomeProducts extends StatelessWidget {
             child: const Text('Coba lagi'),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Trust marquee — horizontal bar 3 trust signals.
-class _TrustMarquee extends StatelessWidget {
-  const _TrustMarquee();
-
-  @override
-  Widget build(BuildContext context) {
-    const items = [
-      (
-        Icons.local_shipping_outlined,
-        'Gratis Ongkir Area Medan',
-        Color(0xFF16A34A)
-      ),
-      (Icons.verified_outlined, 'Produk Original 100%', Color(0xFF1E5FBF)),
-      (
-        Icons.chat_bubble_outline_rounded,
-        'Konsultasi via WA',
-        Color(0xFFEC4899)
-      ),
-    ];
-    return SizedBox(
-      height: 48,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: items.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (context, i) {
-          final item = items[i];
-          return Container(
-            alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: const Color(0xFFE5EAF3)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(item.$1, color: item.$3, size: 16),
-                const SizedBox(width: 6),
-                Text(
-                  item.$2,
-                  style: const TextStyle(
-                    color: NataloColors.textPrimary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
       ),
     );
   }
@@ -649,58 +628,65 @@ class _CategoryGrid extends StatelessWidget {
       ),
     ];
 
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 4,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 0.88,
-      ),
-      itemCount: items.length,
-      itemBuilder: (context, i) {
-        final item = items[i];
-        return InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: item.onTap,
-          child: Ink(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFE5EAF3)),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: item.bg,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(item.icon, color: item.iconColor, size: 24),
-                ),
-                const SizedBox(height: 8),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Text(
-                    item.label,
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: NataloColors.textPrimary,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      height: 1.2,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const spacing = 12.0;
+        final itemWidth = (constraints.maxWidth - (spacing * 3)) / 4;
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: [
+            for (final item in items)
+              SizedBox(
+                width: itemWidth,
+                height: itemWidth / 0.88,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: item.onTap,
+                  child: Ink(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFE5EAF3)),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: item.bg,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            item.icon,
+                            color: item.iconColor,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: Text(
+                            item.label,
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: NataloColors.textPrimary,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              height: 1.2,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-              ],
-            ),
-          ),
+              ),
+          ],
         );
       },
     );
