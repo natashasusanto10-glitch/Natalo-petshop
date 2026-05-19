@@ -720,10 +720,10 @@ class _ApiFallbackNotice extends StatelessWidget {
 /// menyusut ke compact state (logo kecil, no subtitle, search+trust)
 /// saat user scroll. Lerp via shrinkOffset progress 0→1.
 ///
-/// Top state: 166px (logo 48 + subtitle visible + search 42 + trust 36)
-/// Compact state: 138px (logo 36 + no subtitle + search 42 + trust 32)
+/// Top state: 166px (logo 48 + subtitle visible + search 38 + trust 36)
+/// Compact state: 138px (logo 36 + no subtitle + search 38 + trust 32)
 ///
-/// Spec acceptance: search bar selalu 42px di kedua state, no double
+/// Spec acceptance: search bar selalu 38px di kedua state, no double
 /// safe padding di iOS/Android, smooth easeOutCubic transition.
 class _HomeStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
   final VoidCallback onOpenProducts;
@@ -801,7 +801,7 @@ class _HomeStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
 /// - Logo box: 44 → 32 (lerp)
 /// - Title font: 18 → 16
 /// - Subtitle: opacity 1 → 0, height 18 → 0 (fully collapses)
-/// - Search bar: TETAP 42px (spec acceptance)
+/// - Search bar: TETAP 38px (spec acceptance)
 /// - Trust strip: 36 → 32 (subtle)
 /// - Outer padding: top 8 → 6, bottom 12 → 8
 class _HomeHeader extends StatelessWidget {
@@ -907,23 +907,23 @@ class _HomeHeader extends StatelessWidget {
             ],
           ),
           SizedBox(height: gapAfterRow),
-          // ── Search bar — TETAP 42px di kedua state (spec) ──
+          // ── Search bar — TETAP 38px di kedua state (spec) ──
           GestureDetector(
             onTap: onOpenSearch,
             behavior: HitTestBehavior.opaque,
             child: Container(
-              height: 42,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
+              height: 38,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
                 color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: const Color(0xFFE5E7EB)),
               ),
               child: const Row(
                 children: [
                   Icon(
                     Icons.search_rounded,
-                    size: 20,
+                    size: 18,
                     color: Color(0xFF94A3B8),
                   ),
                   SizedBox(width: 10),
@@ -934,7 +934,7 @@ class _HomeHeader extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: Color(0xFF94A3B8),
-                        fontSize: 14,
+                        fontSize: 13,
                         fontWeight: FontWeight.w600,
                         height: 1.2,
                       ),
