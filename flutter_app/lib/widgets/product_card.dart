@@ -511,34 +511,53 @@ class ProductRatingSoldMeta extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasRating = product.rating > 0;
+    final hasReview = product.reviewCount > 0;
     final hasSold = product.soldCount > 0;
 
-    if (!hasRating && !hasSold) return const SizedBox.shrink();
+    if (!hasRating && !hasReview && !hasSold) return const SizedBox.shrink();
 
     return Padding(
       padding: const EdgeInsets.only(top: AppSpacing.xs),
       child: Row(
         children: [
-          if (hasRating) ...[
+          if (hasRating || hasReview) ...[
             const Icon(
               Icons.star_rounded,
               size: 13,
               color: NataloColors.warning,
             ),
             const SizedBox(width: AppSpacing.xs),
-            Text(
-              product.rating.toStringAsFixed(1),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: NataloColors.grey600,
-                fontSize: 11.2,
-                fontWeight: FontWeight.w800,
-                height: 1,
+            Flexible(
+              child: RichText(
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                text: TextSpan(
+                  style: const TextStyle(
+                    color: NataloColors.grey600,
+                    fontSize: 11.2,
+                    fontWeight: FontWeight.w800,
+                    height: 1,
+                  ),
+                  children: [
+                    if (hasRating)
+                      TextSpan(text: product.rating.toStringAsFixed(1)),
+                    if (hasRating && hasReview) const TextSpan(text: ' '),
+                    if (hasReview)
+                      TextSpan(
+                        text: hasRating
+                            ? '(${formatSoldCount(product.reviewCount)})'
+                            : '${formatSoldCount(product.reviewCount)} ulasan',
+                        style: const TextStyle(
+                          color: NataloColors.grey500,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ],
-          if (hasRating && hasSold) ...[
+          if ((hasRating || hasReview) && hasSold) ...[
             const SizedBox(width: AppSpacing.sm),
             const Text(
               '•',
@@ -583,8 +602,8 @@ String? productSavingsLabel(Product product) {
 int? productDiscountPercent(Product product) {
   if (!product.hasDiscount) return null;
   if (product.price <= 0) return null;
-  final pct = ((product.price - product.finalPrice) / product.price * 100)
-      .floor();
+  final pct =
+      ((product.price - product.finalPrice) / product.price * 100).floor();
   if (pct <= 0) return null;
   // Cap di 99 supaya pill tidak overflow visual (mis. 3-digit "100%").
   return pct > 99 ? 99 : pct;

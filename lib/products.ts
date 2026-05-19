@@ -46,6 +46,7 @@ export type StoreProduct = {
   hasVariants: boolean;
   avgRating: number;
   reviewCount: number;
+  soldCount?: number;
   categoryId?: string | null;
   categorySlug?: string | null;
   voucherPreview?: ProductVoucherPreview | null;
@@ -130,6 +131,36 @@ function mapProductListRecord(p: ProductListRecord): StoreProduct {
 
 async function withVoucherPreviews(products: StoreProduct[]) {
   return attachPublicProductVoucherPreviews(products);
+}
+
+async function withSoldCounts(products: StoreProduct[]): Promise<StoreProduct[]> {
+  if (products.length === 0) return products;
+
+  const productIds = products.map((product) => product.id);
+  const rows = await prisma.orderItem.groupBy({
+    by: ["productId"],
+    where: {
+      productId: { in: productIds },
+      order: {
+        paymentStatus: "PAID",
+        status: { in: VALID_SALES_ORDER_STATUSES },
+      },
+    },
+    _sum: { quantity: true },
+  });
+
+  const soldByProductId = new Map(
+    rows.map((row) => [row.productId, row._sum.quantity ?? 0]),
+  );
+
+  return products.map((product) => ({
+    ...product,
+    soldCount: soldByProductId.get(product.id) ?? 0,
+  }));
+}
+
+async function withProductListMeta(products: StoreProduct[]) {
+  return withVoucherPreviews(await withSoldCounts(products));
 }
 
 export type NewProductFilter =
@@ -496,7 +527,7 @@ export async function getProducts(opts?: {
         include: productListInclude,
       });
 
-      return withVoucherPreviews(products
+      return withProductListMeta(products
         .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
         .map(mapProductListRecord));
     }
@@ -515,7 +546,7 @@ export async function getProducts(opts?: {
         include: productListInclude,
       });
 
-      return withVoucherPreviews(products
+      return withProductListMeta(products
         .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
         .map(mapProductListRecord));
     }
@@ -549,7 +580,7 @@ export async function getProducts(opts?: {
         include: productListInclude,
       });
 
-      return withVoucherPreviews(products
+      return withProductListMeta(products
         .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
         .map(mapProductListRecord));
     }
@@ -569,10 +600,10 @@ export async function getProducts(opts?: {
 
     if (!products.length) {
       if (category || brand || search || newFilter || popularFilter) return [];
-      return withVoucherPreviews(sampleProducts);
+      return withProductListMeta(sampleProducts);
     }
 
-    return withVoucherPreviews(products.map(mapProductListRecord));
+    return withProductListMeta(products.map(mapProductListRecord));
   } catch {
     if (randomSeed) return [];
     if (category || brand || search || newFilter || popularFilter) return [];

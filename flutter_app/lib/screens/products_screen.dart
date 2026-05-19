@@ -180,7 +180,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                         crossAxisCount: 2,
                         mainAxisSpacing: 12,
                         crossAxisSpacing: 12,
-                        childAspectRatio: 0.56,
+                        childAspectRatio: 0.62,
                       ),
                       delegate: SliverChildBuilderDelegate(
                         (context, index) {
@@ -188,7 +188,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                           return ProductCard(
                             product: product,
                             onTap: () => _openProduct(product),
-                            showAddToCart: false,
+                            showAddToCart: true,
                             showWishlistButton: false,
                           );
                         },
