@@ -473,9 +473,19 @@ class _HomeScreenState extends State<HomeScreen> {
                   if (result?.fromApi == false && result?.error != null)
                     SliverToBoxAdapter(
                         child: _ApiFallbackNotice(error: result!.error!)),
-                  // Trust marquee sekarang di dalam _HomeStickyHeaderDelegate
-                  // supaya tetap visible saat user scroll (sticky bersama
-                  // search bar). SliverToBoxAdapter duplicate dihapus.
+                  // Trust marquee — TIDAK sticky. Ikut scroll bersama content
+                  // di bawah sticky header (search bar). Saat user scroll
+                  // ke bawah, trust strip hilang dari viewport, hanya search
+                  // bar yang tetap visible.
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
+                      child: _TrustMarquee(
+                        key: ValueKey('home-trust-marquee'),
+                        height: 36,
+                      ),
+                    ),
+                  ),
                   // API banner carousel kalau ada banner aktif dari admin.
                   // Section auto-hide kalau _banners kosong (di _HeroBanner).
                   SliverToBoxAdapter(child: _HeroBanner(banners: _banners)),
@@ -730,8 +740,11 @@ class _HomeStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.onOpenSearch,
   });
 
-  static const double _topExtent = 166;
-  static const double _compactExtent = 138;
+  // Trust marquee dipindah keluar sticky → extent berkurang sekitar 46 (top)
+  // dan 38 (compact). Sticky sekarang hanya: logo+title row, search bar 38px,
+  // plus padding atas/bawah.
+  static const double _topExtent = 120;
+  static const double _compactExtent = 100;
 
   @override
   double get minExtent => _compactExtent;
@@ -798,8 +811,11 @@ class _HomeStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
 /// - Title font: 18 → 16
 /// - Subtitle: opacity 1 → 0, height 18 → 0 (fully collapses)
 /// - Search bar: TETAP 38px (spec acceptance)
-/// - Trust strip: 36 → 32 (subtle)
 /// - Outer padding: top 8 → 6, bottom 12 → 8
+///
+/// Catatan: trust marquee TIDAK lagi bagian sticky header. Trust strip
+/// di-render sebagai SliverToBoxAdapter terpisah di bawah sticky header
+/// sehingga ikut scroll bersama content (user request).
 class _HomeHeader extends StatelessWidget {
   final VoidCallback onOpenProducts;
   final VoidCallback onOpenSearch;
@@ -821,8 +837,6 @@ class _HomeHeader extends StatelessWidget {
     final paddingTop = ui.lerpDouble(8, 6, progress)!;
     final paddingBottom = ui.lerpDouble(12, 8, progress)!;
     final gapAfterRow = ui.lerpDouble(10, 8, progress)!;
-    final gapBeforeTrust = ui.lerpDouble(10, 6, progress)!;
-    final trustHeight = ui.lerpDouble(36, 32, progress)!;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(16, paddingTop, 16, paddingBottom),
@@ -985,17 +999,9 @@ class _HomeHeader extends StatelessWidget {
               ),
             ),
           ),
-          SizedBox(height: gapBeforeTrust),
-          // ── Trust strip — bagian dari sticky header (visible saat scroll) ──
-          // ValueKey stabil → State preserved meski header rebuild per frame
-          // saat scroll. Tanpa key, AnimationController bisa di-dispose-recreate
-          // → marquee animation restart dari posisi 0 setiap shrinkOffset
-          // berubah (jutaan kali per scroll). Dengan key, State + controller
-          // tetap hidup, marquee terus jalan smooth.
-          _TrustMarquee(
-            key: const ValueKey('home-trust-marquee'),
-            height: trustHeight,
-          ),
+          // Trust marquee dipindah keluar sticky header — sekarang berada
+          // di SliverToBoxAdapter terpisah di bawah ini (ikut scroll, bukan
+          // pinned). Bentuknya tetap _TrustMarquee dengan ValueKey stabil.
         ],
       ),
     );
