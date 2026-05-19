@@ -1787,6 +1787,7 @@ class _FeedPostViewState extends State<_FeedPostView>
                 _CommentVideoFrame(
                   open: minimized,
                   progressListenable: _commentSheetProgress,
+                  dragOffsetPx: _commentDragOffset,
                   safeTop: safeTop,
                   screenSize: constraints.biggest,
                   child: Stack(
@@ -2084,6 +2085,11 @@ class _FeedPostViewState extends State<_FeedPostView>
 class _CommentVideoFrame extends StatelessWidget {
   final bool open;
   final ValueListenable<double> progressListenable;
+  // Visual translate offset saat drawer di-drag down untuk dismiss
+  // gesture (drawer di-translate, bukan di-resize). Video frame harus
+  // track ini supaya bottom edge ikut drawer's visual top edge — tidak
+  // ada black gap antara video dan drawer saat dismiss gesture.
+  final double dragOffsetPx;
   final double safeTop;
   final Size screenSize;
   final Widget child;
@@ -2091,6 +2097,7 @@ class _CommentVideoFrame extends StatelessWidget {
   const _CommentVideoFrame({
     required this.open,
     required this.progressListenable,
+    required this.dragOffsetPx,
     required this.safeTop,
     required this.screenSize,
     required this.child,
@@ -2116,10 +2123,16 @@ class _CommentVideoFrame extends StatelessWidget {
             // video shrink vertically dari bawah. Saat drawer drag ke
             // bawah, video expand lagi. Width selalu full screen.
             //
-            // Drawer extent linear interpolate: 0.60 (initial) → 0.90
-            // (max) berdasarkan progress 0..1. Drawer top edge =
-            // height * (1 - extent). Video bottom = drawerTopY (touching
-            // drawer top edge, no gap). Video top = 0 (status bar area).
+            // Drawer extent interpolate: 0.60 (initial) → 0.90 (max).
+            // Progress 0..1 dari ValueListenable maps initial..max range
+            // (di feed_screen._syncCommentSheetProgress).
+            //
+            // BUG FIX: dulu video tidak ikut drawer saat user drag-down
+            // untuk dismiss. Drawer di-translate via Transform.translate
+            // (BUKAN resize), tapi video frame cuma track controller.size
+            // → black gap antara video bottom dan drawer's visual top.
+            // Solusi: tambah dragOffsetPx ke drawerTopY supaya video
+            // bottom ikut drawer's visual position 1:1, real-time.
             const drawerInitialExtent = 0.60;
             const drawerMaxExtent = 0.90;
             final drawerExtent = ui.lerpDouble(
@@ -2127,12 +2140,19 @@ class _CommentVideoFrame extends StatelessWidget {
               drawerMaxExtent,
               clampedProgress,
             )!;
-            final drawerTopY = height * (1 - drawerExtent);
+            final drawerTopY = height * (1 - drawerExtent) + dragOffsetPx;
             final fullRect = Rect.fromLTWH(0, 0, width, height);
             // Video frame saat drawer open: full width, dari y=0 sampai
-            // drawer top edge. Animasi rect interpolate dari fullscreen
+            // drawer's visual top edge (extent + translate). Saat dismiss
+            // gesture, dragOffsetPx > 0 → video grow vertically follow
+            // drawer turun. Animasi rect interpolate dari fullscreen
             // (openProgress=0) ke aboveDrawer rect (openProgress=1).
-            final aboveDrawerRect = Rect.fromLTWH(0, 0, width, drawerTopY);
+            final aboveDrawerRect = Rect.fromLTWH(
+              0,
+              0,
+              width,
+              drawerTopY.clamp(0.0, height),
+            );
             final rect = Rect.lerp(fullRect, aboveDrawerRect, openProgress)!;
             // Tidak ada rounded corners / shadow karena video fill full
             // width — flat edge to drawer top. Drawer punya rounded top
