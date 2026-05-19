@@ -369,10 +369,14 @@ class NataloTheme {
 
       // Page transitions tetap pakai predictive back (Android 13+) +
       // iOS Cupertino style — feel native per platform.
+      // Page transitions: Android pakai PredictiveBack (Android 13+), iOS
+      // pakai DEFAULT Cupertino slide — tidak perlu specify
+      // `CupertinoPageTransitionsBuilder` karena Codemagic Flutter SDK
+      // version-nya tidak resolve symbol itu dari material.dart. Default
+      // iOS behavior sudah Cupertino slide.
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
           TargetPlatform.android: PredictiveBackPageTransitionsBuilder(),
-          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
         },
       ),
     );
@@ -535,10 +539,14 @@ class NataloTheme {
         color: darkBorder,
         thickness: 1,
       ),
+      // Page transitions: Android pakai PredictiveBack (Android 13+), iOS
+      // pakai DEFAULT Cupertino slide — tidak perlu specify
+      // `CupertinoPageTransitionsBuilder` karena Codemagic Flutter SDK
+      // version-nya tidak resolve symbol itu dari material.dart. Default
+      // iOS behavior sudah Cupertino slide.
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
           TargetPlatform.android: PredictiveBackPageTransitionsBuilder(),
-          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
         },
       ),
     );
