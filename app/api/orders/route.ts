@@ -6,9 +6,10 @@ import { createOrderNumber } from "@/lib/format";
 import { createOrderSchema } from "@/lib/validation";
 import type { CheckedOutItem } from "@/lib/checkout-items";
 import { InvalidCustomerSessionError, resolveOrderIdentity } from "@/lib/order-identity";
-import { buildOrderDetailPath, buildOrderDetailUrl, buildOrderSuccessUrl, createTrackingToken } from "@/lib/order-detail";
+import { buildOrderDetailPath, buildOrderSuccessUrl, createTrackingToken } from "@/lib/order-detail";
 import { SELF_PICKUP_METHOD, SELF_PICKUP_STORE } from "@/lib/self-pickup";
-import { sendAdminOrderCreated, sendOrderCreated } from "@/lib/whatsapp";
+// Catatan: notifikasi order via WhatsApp sudah dihapus (per keputusan
+// product owner). Customer dapat info order via email + push notification.
 import {
   calcVoucherScopedDiscount,
   getNewMemberVoucherDisabledReason,
@@ -33,21 +34,6 @@ class VoucherValidationError extends Error {
 
 function itemLabel(item: Pick<CheckedOutItem, "name" | "variantLabel">) {
   return `${item.name}${item.variantLabel ? ` (${item.variantLabel})` : ""}`;
-}
-
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string) {
-  return Promise.race([
-    promise,
-    new Promise<T>((resolve) => {
-      setTimeout(() => {
-        resolve({
-          ok: false,
-          skipped: true,
-          reason: `${label} timeout`,
-        } as T);
-      }, timeoutMs);
-    }),
-  ]);
 }
 
 async function createMidtransPayment(order: { orderNumber: string; trackingToken?: string | null; total: number; customerName: string; customerEmail?: string | null; customerPhone: string }) {
@@ -761,28 +747,10 @@ export async function POST(request: Request) {
       });
     }
 
-    const orderNotification = {
-      ...order,
-      paymentUrl,
-      paymentReference,
-      trackingUrl: buildOrderDetailUrl(order.orderNumber, order.trackingToken),
-      items: checkoutItems,
-    };
-
-    const waResults = await Promise.allSettled([
-      withTimeout(sendOrderCreated(orderNotification), 8000, "customer order notification"),
-      withTimeout(sendAdminOrderCreated(orderNotification), 8000, "admin order notification"),
-    ]);
-
-    waResults.forEach((result) => {
-      if (result.status === "rejected") {
-        console.error("[whatsapp] order notification failed", result.reason);
-        return;
-      }
-      if (!result.value?.ok) {
-        console.error("[whatsapp] order notification not sent", result.value);
-      }
-    });
+    // Notifikasi order via WhatsApp dihapus — customer dapat konfirmasi
+    // lewat halaman success + email. Push notification akan dipakai untuk
+    // status update berikutnya (PAID, SHIPPED, dst.) lewat sendOrderStatusPush
+    // di route lain. WA Fonnte sekarang reserved khusus untuk OTP.
 
     return NextResponse.json({
       message: input.paymentProvider === "MANUAL"

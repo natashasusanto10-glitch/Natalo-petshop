@@ -4,7 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { createBiteshipShipmentIfReady } from "@/lib/biteship";
 import { sendOrderStatusPush } from "@/lib/push";
 import { SELF_PICKUP_METHOD } from "@/lib/self-pickup";
-import { sendPaymentConfirmed } from "@/lib/whatsapp";
+// Notifikasi payment confirmed via WhatsApp dihapus — customer dapat
+// konfirmasi via email + push (sendOrderStatusPush) saja. Fonnte sekarang
+// hanya untuk OTP register & login.
 
 type MidtransNotification = {
   order_id: string;
@@ -105,9 +107,6 @@ export async function POST(request: NextRequest) {
       updatedOrder.orderNumber,
       "PAID"
     ).catch(() => {});
-    sendPaymentConfirmed(updatedOrder).catch((error) => {
-      console.error("[whatsapp] payment confirmed notification failed", error);
-    });
   }
 
   if (paymentStatus === "REFUNDED" && order.paymentStatus !== "REFUNDED") {
