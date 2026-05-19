@@ -272,11 +272,28 @@ class NataloTheme {
       appBarTheme: AppBarTheme(
         backgroundColor:
             isLight ? const Color(0xFFFFFFFF) : NataloColors.surfaceDark,
-        foregroundColor: scheme.onSurface,
+        // HARDCODED foreground (not scheme.onSurface) — fix5 user report
+        // "header tidak ada" suggests scheme.onSurface mungkin resolve ke
+        // value yang bermasalah di build production. Explicit hex value
+        // jamin title text + back button + actions visible di white bg.
+        foregroundColor:
+            isLight ? NataloColors.textPrimary : NataloColors.textPrimaryDark,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
+        iconTheme: IconThemeData(
+          color: isLight
+              ? NataloColors.textPrimary
+              : NataloColors.textPrimaryDark,
+          size: 26,
+        ),
+        actionsIconTheme: IconThemeData(
+          color: isLight
+              ? NataloColors.textPrimary
+              : NataloColors.textPrimaryDark,
+          size: 25,
+        ),
         shape: isLight
             ? const Border(
                 bottom: BorderSide(color: Color(0xFFE5EAF2), width: 1),
@@ -287,12 +304,15 @@ class NataloTheme {
                   width: 1,
                 ),
               ),
-        titleTextStyle: const TextStyle(
+        titleTextStyle: TextStyle(
           fontFamily: fontFamily,
           fontSize: 18,
           fontWeight: FontWeight.w800,
           height: 1.25,
           letterSpacing: -0.3,
+          // EXPLICIT color — jangan rely ke foregroundColor inheritance.
+          color:
+              isLight ? NataloColors.textPrimary : NataloColors.textPrimaryDark,
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
