@@ -118,7 +118,11 @@ class MemberService {
 
   Future<List<MemberAddress>> fetchAddresses() async {
     try {
-      final uri = ApiConfig.uri('/api/member/addresses');
+      // Endpoint backend di-mount di `/api/addresses` (re-export dari
+      // /api/alamat). NextAuth session cookie member di-validate via
+      // getSession("CUSTOMER"). Pernah typo `/api/member/addresses` →
+      // 404 → empty list, fix di commit ini.
+      final uri = ApiConfig.uri('/api/addresses');
       final res = await http
           .get(uri, headers: _authHeaders)
           .timeout(const Duration(seconds: 8));
@@ -143,7 +147,7 @@ class MemberService {
   Future<MemberAddress> createAddress(MemberAddress address) async {
     readOnlyMode.assertWritable('address_create');
     final data = await apiClient.postJson(
-      '/api/member/addresses',
+      '/api/addresses',
       body: address.toApiJson(),
     );
     return _addressFromResponse(data);
@@ -152,7 +156,7 @@ class MemberService {
   Future<MemberAddress> updateAddress(MemberAddress address) async {
     readOnlyMode.assertWritable('address_update');
     final data = await apiClient.putJson(
-      '/api/member/addresses/${Uri.encodeComponent(address.id)}',
+      '/api/addresses/${Uri.encodeComponent(address.id)}',
       body: address.toApiJson(),
     );
     return _addressFromResponse(data);
@@ -161,7 +165,7 @@ class MemberService {
   Future<MemberAddress> setPrimaryAddress(String id) async {
     readOnlyMode.assertWritable('address_update');
     final data = await apiClient.postJson(
-      '/api/member/addresses/${Uri.encodeComponent(id)}/set-primary',
+      '/api/addresses/${Uri.encodeComponent(id)}/set-primary',
       body: const {},
     );
     return _addressFromResponse(data);
@@ -170,7 +174,7 @@ class MemberService {
   Future<void> deleteAddress(String id) async {
     readOnlyMode.assertWritable('address_delete');
     await apiClient.deleteJson(
-      '/api/member/addresses/${Uri.encodeComponent(id)}',
+      '/api/addresses/${Uri.encodeComponent(id)}',
     );
   }
 
