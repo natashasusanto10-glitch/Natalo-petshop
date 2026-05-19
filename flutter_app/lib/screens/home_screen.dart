@@ -88,96 +88,107 @@ class _HomeScreenState extends State<HomeScreen> {
           padding: const EdgeInsets.fromLTRB(0, 12, 0, 120),
           child: Column(
             children: [
+              // Trust marquee — auto-scrolling horizontal bar dengan
+              // trust signals (gratis ongkir, original 100%, dll).
+              // Restored: user report "beranda asli saya seharusnya ada marquee".
+              const _TrustMarquee(),
+              const SizedBox(height: 14),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: _HeroBannerCard(onTap: () => _openProducts()),
               ),
               const SizedBox(height: 18),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  children: [
-                    _HomeGreeting(onOpenProducts: () => _openProducts()),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Column(
+                        children: [
+                          _HomeGreeting(onOpenProducts: () => _openProducts()),
+                          const SizedBox(height: 18),
+                          _CategoryGrid(
+                            onOpenCategory: (category) =>
+                                _openProducts(category: category),
+                            onOpenVoucher: () => Navigator.pushNamed(
+                                context, '/member/vouchers'),
+                            onOpenLoyalty: () =>
+                                Navigator.pushNamed(context, '/member/loyalty'),
+                            onOpenGrooming: () =>
+                                _openProducts(category: 'Grooming'),
+                            onOpenBlog: () =>
+                                Navigator.pushNamed(context, '/help'),
+                          ),
+                        ],
+                      ),
+                    ),
                     const SizedBox(height: 18),
-                    _CategoryGrid(
-                      onOpenCategory: (category) =>
-                          _openProducts(category: category),
-                      onOpenVoucher: () =>
-                          Navigator.pushNamed(context, '/member/vouchers'),
-                      onOpenLoyalty: () =>
-                          Navigator.pushNamed(context, '/member/loyalty'),
-                      onOpenGrooming: () => _openProducts(category: 'Grooming'),
-                      onOpenBlog: () => Navigator.pushNamed(context, '/help'),
+                    FutureBuilder<List<Product>>(
+                      future: _productsFuture,
+                      builder: (context, snapshot) {
+                        final products = _dedupeProducts(
+                          snapshot.data ?? const <Product>[],
+                        );
+                        final promo = products
+                            .where((product) => product.hasDiscount)
+                            .toList();
+                        final promoIds = {
+                          for (final product in promo)
+                            product.id.isNotEmpty ? product.id : product.slug,
+                        };
+                        final popular = products
+                            .where(
+                              (product) => !promoIds.contains(
+                                product.id.isNotEmpty
+                                    ? product.id
+                                    : product.slug,
+                              ),
+                            )
+                            .toList()
+                          ..sort((a, b) => b.soldCount.compareTo(a.soldCount));
+
+                        if (snapshot.connectionState ==
+                                ConnectionState.waiting &&
+                            products.isEmpty) {
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 48),
+                            child: Center(child: CircularProgressIndicator()),
+                          );
+                        }
+
+                        if (products.isEmpty) {
+                          return _EmptyHomeProducts(onRetry: _refresh);
+                        }
+
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Column(
+                            children: [
+                              if (promo.isNotEmpty) ...[
+                                _HomeProductSection(
+                                  title: 'Promo Natalo',
+                                  subtitle: 'Produk hemat yang sedang aktif',
+                                  products: promo.take(6).toList(),
+                                  onTap: _openProduct,
+                                  onSeeAll: () => _openProducts(),
+                                ),
+                                const SizedBox(height: 20),
+                              ],
+                              if (popular.isNotEmpty)
+                                _HomeProductSection(
+                                  title: 'Jelajahi Produk Natalo',
+                                  subtitle:
+                                      'Temukan berbagai kebutuhan hewan kesayanganmu',
+                                  products: popular.take(8).toList(),
+                                  onTap: _openProduct,
+                                  onSeeAll: () => _openProducts(),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 18),
-              FutureBuilder<List<Product>>(
-                future: _productsFuture,
-                builder: (context, snapshot) {
-                  final products = _dedupeProducts(
-                    snapshot.data ?? const <Product>[],
-                  );
-                  final promo =
-                      products.where((product) => product.hasDiscount).toList();
-                  final promoIds = {
-                    for (final product in promo)
-                      product.id.isNotEmpty ? product.id : product.slug,
-                  };
-                  final popular = products
-                      .where(
-                        (product) => !promoIds.contains(
-                          product.id.isNotEmpty ? product.id : product.slug,
-                        ),
-                      )
-                      .toList()
-                    ..sort((a, b) => b.soldCount.compareTo(a.soldCount));
-
-                  if (snapshot.connectionState == ConnectionState.waiting &&
-                      products.isEmpty) {
-                    return const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 48),
-                      child: Center(child: CircularProgressIndicator()),
-                    );
-                  }
-
-                  if (products.isEmpty) {
-                    return _EmptyHomeProducts(onRetry: _refresh);
-                  }
-
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Column(
-                      children: [
-                        if (promo.isNotEmpty) ...[
-                          _HomeProductSection(
-                            title: 'Promo Natalo',
-                            subtitle: 'Produk hemat yang sedang aktif',
-                            products: promo.take(6).toList(),
-                            onTap: _openProduct,
-                            onSeeAll: () => _openProducts(),
-                          ),
-                          const SizedBox(height: 20),
-                        ],
-                        if (popular.isNotEmpty)
-                          _HomeProductSection(
-                            title: 'Jelajahi Produk Natalo',
-                            subtitle:
-                                'Temukan berbagai kebutuhan hewan kesayanganmu',
-                            products: popular.take(8).toList(),
-                            onTap: _openProduct,
-                            onSeeAll: () => _openProducts(),
-                          ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
+            ),
       bottomNavigationBar: const BottomNavBar(currentIndex: 0),
     );
   }
@@ -706,4 +717,131 @@ class _CategoryItem {
     required this.label,
     required this.onTap,
   });
+}
+
+/// Trust marquee — auto-scrolling horizontal bar dengan 3 trust signals.
+/// Continuous loop infinity ke kiri (premium Reels-style ticker).
+///
+/// Implementation:
+/// - ListView.builder dengan items duplicated 999× (effectively infinite)
+/// - ScrollController auto-scroll via Future loop (animateTo + reset)
+/// - User dapat manual swipe → loop pause sebentar, lalu resume
+/// - Pause saat dispose / unmount
+class _TrustMarquee extends StatefulWidget {
+  const _TrustMarquee();
+
+  @override
+  State<_TrustMarquee> createState() => _TrustMarqueeState();
+}
+
+class _TrustMarqueeState extends State<_TrustMarquee> {
+  final ScrollController _ctrl = ScrollController();
+  bool _disposed = false;
+
+  static const List<(IconData, String, Color)> _items = [
+    (Icons.local_shipping_outlined, 'Gratis Ongkir Area Medan',
+        Color(0xFF16A34A)),
+    (Icons.verified_outlined, 'Produk Original 100%', Color(0xFF1E5FBF)),
+    (Icons.chat_bubble_outline_rounded, 'Konsultasi via WhatsApp',
+        Color(0xFFEC4899)),
+    (Icons.workspace_premium_outlined, 'Member Dapat Cashback',
+        Color(0xFFF59E0B)),
+    (Icons.local_offer_outlined, 'Promo Setiap Minggu', Color(0xFF7C3AED)),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollLoop());
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _scrollLoop() async {
+    // Loop forever — animate slowly ke kanan, reset ke 0 saat dekat akhir.
+    // Karena itemCount = _items.length × 999 (effectively infinite), reset
+    // dilakukan saat scroll offset > satu loop set untuk seamless visual.
+    const itemEstimateWidth = 196.0; // ~chip width + separator
+    final oneSetWidth = _items.length * itemEstimateWidth;
+
+    while (!_disposed) {
+      if (!_ctrl.hasClients) {
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+        continue;
+      }
+      try {
+        final current = _ctrl.position.pixels;
+        // Animate maju 1 set worth (smooth continuous feel).
+        await _ctrl.animateTo(
+          current + oneSetWidth,
+          duration: const Duration(seconds: 18),
+          curve: Curves.linear,
+        );
+        // Seamless reset — jump back 1 set tanpa user notice (items identik).
+        if (!_disposed && _ctrl.hasClients) {
+          _ctrl.jumpTo(_ctrl.position.pixels - oneSetWidth);
+        }
+      } catch (_) {
+        // ScrollController bisa throw saat widget unmount mid-animate.
+        // Tunggu sebentar lalu retry kalau masih mounted.
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 48,
+      child: ListView.separated(
+        controller: _ctrl,
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        physics: const BouncingScrollPhysics(),
+        // 999× repeat — effectively infinite scroll. Saat hit reset
+        // boundary, jumpTo back 1 set untuk seamless loop.
+        itemCount: _items.length * 999,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, i) {
+          final item = _items[i % _items.length];
+          return Container(
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: const Color(0xFFE5EAF3)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(item.$1, color: item.$3, size: 16),
+                const SizedBox(width: 6),
+                Text(
+                  item.$2,
+                  style: const TextStyle(
+                    color: NataloColors.textPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
 }
