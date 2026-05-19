@@ -500,7 +500,7 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
     try {
       final info = await VideoCompress.compressVideo(
         source,
-        quality: VideoQuality.MediumQuality,
+        quality: VideoQuality.Res1920x1080Quality,
         deleteOrigin: false,
         includeAudio: true,
         startTime: _range.start.floor(),
@@ -891,8 +891,10 @@ class _FeedUploadProgressScreenState extends State<FeedUploadProgressScreen> {
 
       // Two-stage compression:
       // 1. Client (HP user) — di sini, sebelum upload. Pakai
-      //    video_compress MediumQuality (~720p). Tujuan: kurangi
-      //    bandwidth + speed up TUS upload.
+      //    video_compress Res1920x1080Quality (max 1080p — Bunny
+      //    Stream akan generate adaptive variants 720p + 1080p untuk
+      //    streaming). Tujuan: kurangi bandwidth + speed up TUS upload
+      //    sambil tetap preserve quality untuk display device modern.
       // 2. Server (Bunny Stream) — auto re-encode jadi multiple
       //    resolutions (240p/360p/480p/720p/1080p) untuk adaptive
       //    streaming. Handled di Bunny side, tidak perlu code di client.
@@ -909,7 +911,7 @@ class _FeedUploadProgressScreenState extends State<FeedUploadProgressScreen> {
         try {
           final info = await VideoCompress.compressVideo(
             originalPath,
-            quality: VideoQuality.MediumQuality,
+            quality: VideoQuality.Res1920x1080Quality,
             deleteOrigin: false,
             includeAudio: true,
           );
