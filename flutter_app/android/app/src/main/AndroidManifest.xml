@@ -75,10 +75,38 @@
          https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
+    <!-- Package visibility (Android 11+): app perlu declare paket/intent
+         yang dia query supaya canLaunchUrl/launchUrl bekerja. Tanpa block
+         ini, launchUrl(wa.me/...) di Android 11+ akan fallback ke browser
+         (sama issue iOS tanpa LSApplicationQueriesSchemes).
+         Match iOS: Info.plist LSApplicationQueriesSchemes [https, http,
+         mailto, tel, whatsapp]. -->
     <queries>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- url_launcher web links (https / http). -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="http"/>
+        </intent>
+        <!-- mailto + tel — kalau Anda nanti tambah email/phone tap. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="mailto"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="tel"/>
+        </intent>
+        <!-- WhatsApp deep link langsung ke app (kalau install). Tanpa ini
+             wa.me/... fallback ke Chrome/Safari. -->
+        <package android:name="com.whatsapp"/>
+        <package android:name="com.whatsapp.w4b"/>
     </queries>
 </manifest>
