@@ -259,14 +259,12 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _showGoogleLoginComingSoon() {
+  void _openOtpLogin() {
     AppHaptics.tap();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Login Google akan segera tersedia.'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    // Pass redirect arguments (kalau ada) ke OTP screen supaya post-login
+    // routing tetap sama (deep link ke cart bisa balik ke cart setelah OTP).
+    final args = ModalRoute.of(context)?.settings.arguments;
+    Navigator.pushNamed(context, '/member/login-otp', arguments: args);
   }
 
   @override
@@ -469,7 +467,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           const SizedBox(height: 20),
                           const _LoginSeparator(),
                           const SizedBox(height: 14),
-                          _GoogleLoginButton(onTap: _showGoogleLoginComingSoon),
+                          _WhatsAppOtpLoginButton(onTap: _openOtpLogin),
                         ],
                       ),
                     ),
@@ -790,10 +788,26 @@ class _LoginSeparator extends StatelessWidget {
   }
 }
 
-class _GoogleLoginButton extends StatelessWidget {
+/// CTA login alternatif via OTP WhatsApp (Fonnte gateway).
+///
+/// Per user spec: hapus tombol "Masuk dengan Google" + icon G, ganti
+/// jadi "Masuk dengan OTP WhatsApp" + icon WA hijau. Tap → push ke
+/// `/member/login-otp` (LoginOtpScreen) yang handle 2-step flow:
+/// 1. Input nomor HP → server kirim 6-digit OTP via Fonnte
+/// 2. Input OTP → verify + session creation
+///
+/// Backend OTP path:
+/// - POST /api/auth/member-login-otp/request — pakai sendCustomMessage
+///   dari lib/whatsapp.js → callFonnte() dengan FONNTE_TOKEN env.
+/// - POST /api/auth/member-login-otp/verify — bcrypt compare + JWT
+///   session token.
+///
+/// Pastikan FONNTE_TOKEN env Vercel sudah di-set (Production + Preview
+/// + Development) untuk OTP delivery jalan di production.
+class _WhatsAppOtpLoginButton extends StatelessWidget {
   final VoidCallback onTap;
 
-  const _GoogleLoginButton({required this.onTap});
+  const _WhatsAppOtpLoginButton({required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -803,24 +817,20 @@ class _GoogleLoginButton extends StatelessWidget {
       child: OutlinedButton.icon(
         onPressed: onTap,
         icon: Container(
-          width: 22,
-          height: 22,
+          width: 26,
+          height: 26,
           alignment: Alignment.center,
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: Colors.white,
+            color: const Color(0xFF22C55E).withValues(alpha: 0.12),
           ),
-          child: const Text(
-            'G',
-            style: TextStyle(
-              color: Color(0xFF4285F4),
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              height: 1,
-            ),
+          child: const Icon(
+            Icons.chat_rounded,
+            color: Color(0xFF22C55E),
+            size: 16,
           ),
         ),
-        label: const Text('Masuk dengan Google'),
+        label: const Text('Masuk dengan OTP WhatsApp'),
         style: OutlinedButton.styleFrom(
           foregroundColor: _darkNavy,
           side: const BorderSide(color: _borderSoft, width: 1.3),
