@@ -19,7 +19,12 @@ export type ShippingArea = {
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const keyword = (url.searchParams.get("keyword") ?? "").trim();
+  const keyword = (
+    url.searchParams.get("keyword") ??
+    url.searchParams.get("q") ??
+    url.searchParams.get("input") ??
+    ""
+  ).trim();
 
   if (keyword.length < 3) {
     return NextResponse.json({ areas: [] });

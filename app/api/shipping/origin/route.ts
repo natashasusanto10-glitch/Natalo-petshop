@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  getOriginCoordinates,
   logMissingOriginArea,
   ORIGIN_AREA_NOT_CONFIGURED_CODE,
   resolveOriginAreaId,
@@ -8,6 +9,7 @@ import {
 
 export async function GET() {
   const originAreaId = await resolveOriginAreaId();
+  const originCoordinates = getOriginCoordinates();
 
   if (!originAreaId) {
     logMissingOriginArea();
@@ -22,5 +24,11 @@ export async function GET() {
     );
   }
 
-  return NextResponse.json({ success: true, configured: true });
+  return NextResponse.json({
+    success: true,
+    configured: true,
+    areaId: originAreaId,
+    latitude: originCoordinates.latitude,
+    longitude: originCoordinates.longitude,
+  });
 }

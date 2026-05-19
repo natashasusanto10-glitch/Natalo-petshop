@@ -10,10 +10,12 @@
  * fallback default Natalo Petshop Medan.
  */
 import { NextResponse } from "next/server";
+import { DEFAULT_SHOP_ORIGIN, getOriginCoordinates } from "@/lib/shipping-origin";
 
 export const revalidate = 3600; // 1 jam — static config
 
 export async function GET() {
+  const originCoordinates = getOriginCoordinates();
   const whatsappRaw =
     process.env.NEXT_PUBLIC_WA_NUMBER ??
     process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ??
@@ -31,15 +33,12 @@ export async function GET() {
           postalCode: "20212",
           country: "Indonesia",
         },
-        // Koordinat untuk maps — Natalo Petshop Medan.
-        // Override via env GOOGLE_STORE_LAT / GOOGLE_STORE_LNG kalau geser.
+        // Koordinat untuk maps — Natalo Petshop Medan / warehouse pickup.
+        // Override via env SHOP_ORIGIN_LATITUDE/LONGITUDE atau
+        // GOOGLE_STORE_LAT/LNG kalau titik toko geser.
         coordinates: {
-          latitude: Number(
-            process.env.GOOGLE_STORE_LAT ?? "3.5790",
-          ),
-          longitude: Number(
-            process.env.GOOGLE_STORE_LNG ?? "98.6760",
-          ),
+          latitude: originCoordinates.latitude ?? DEFAULT_SHOP_ORIGIN.latitude,
+          longitude: originCoordinates.longitude ?? DEFAULT_SHOP_ORIGIN.longitude,
         },
         hours: {
           weekday: { open: "09:00", close: "18:00" },

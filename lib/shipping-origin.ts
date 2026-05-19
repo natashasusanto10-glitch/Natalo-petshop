@@ -21,12 +21,41 @@ type OriginInput = {
   warehouse?: WarehouseOrigin | null;
 };
 
+export const DEFAULT_SHOP_ORIGIN = {
+  name: "Natalo Petshop / Sinar Petstore",
+  address: "Jl. MT Haryono No. 103 D Medan",
+  district: "Medan Kota",
+  city: "Medan",
+  province: "Sumatera Utara",
+  postalCode: "20212",
+  latitude: 3.5884775,
+  longitude: 98.6890277,
+} as const;
+
 function normalizeOriginValue(value: unknown) {
   const normalized = String(value ?? "").trim();
   return normalized.length > 0 ? normalized : null;
 }
 
+function numberOrNull(value: unknown) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 let resolvedOriginAreaId: string | null | undefined;
+
+export function getOriginCoordinates() {
+  const latitude =
+    numberOrNull(process.env.SHOP_ORIGIN_LATITUDE) ??
+    numberOrNull(process.env.GOOGLE_STORE_LAT) ??
+    DEFAULT_SHOP_ORIGIN.latitude;
+  const longitude =
+    numberOrNull(process.env.SHOP_ORIGIN_LONGITUDE) ??
+    numberOrNull(process.env.GOOGLE_STORE_LNG) ??
+    DEFAULT_SHOP_ORIGIN.longitude;
+
+  return { latitude, longitude };
+}
 
 export function getOriginAreaId({ shop, warehouse }: OriginInput = {}) {
   return (
@@ -53,12 +82,24 @@ export async function resolveOriginAreaId(input: OriginInput = {}) {
 
   if (resolvedOriginAreaId !== undefined) return resolvedOriginAreaId;
 
-  const address = normalizeOriginValue(process.env.SHOP_ORIGIN_ADDRESS);
-  const district = normalizeOriginValue(process.env.SHOP_ORIGIN_DISTRICT);
-  const city = normalizeOriginValue(process.env.SHOP_ORIGIN_CITY);
-  const province = normalizeOriginValue(process.env.SHOP_ORIGIN_PROVINCE);
-  const postalCode = normalizeOriginValue(process.env.SHOP_ORIGIN_POSTAL_CODE);
-  const publicAddress = normalizeOriginValue(process.env.NEXT_PUBLIC_STORE_ADDRESS);
+  const address =
+    normalizeOriginValue(process.env.SHOP_ORIGIN_ADDRESS) ||
+    DEFAULT_SHOP_ORIGIN.address;
+  const district =
+    normalizeOriginValue(process.env.SHOP_ORIGIN_DISTRICT) ||
+    DEFAULT_SHOP_ORIGIN.district;
+  const city =
+    normalizeOriginValue(process.env.SHOP_ORIGIN_CITY) ||
+    DEFAULT_SHOP_ORIGIN.city;
+  const province =
+    normalizeOriginValue(process.env.SHOP_ORIGIN_PROVINCE) ||
+    DEFAULT_SHOP_ORIGIN.province;
+  const postalCode =
+    normalizeOriginValue(process.env.SHOP_ORIGIN_POSTAL_CODE) ||
+    DEFAULT_SHOP_ORIGIN.postalCode;
+  const publicAddress =
+    normalizeOriginValue(process.env.NEXT_PUBLIC_STORE_ADDRESS) ||
+    DEFAULT_SHOP_ORIGIN.address;
 
   const candidates = uniqueCandidates([
     [district, city, postalCode].filter(Boolean).join(" "),

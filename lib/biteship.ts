@@ -1,6 +1,7 @@
 import type { Order, OrderItem } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
+  getOriginCoordinates,
   logMissingOriginArea,
   resolveOriginAreaId,
   SHIPPING_ORIGIN_UNAVAILABLE_MESSAGE,
@@ -19,11 +20,6 @@ type BiteshipItem = {
 };
 
 type OrderWithItems = Order & { items: OrderItem[] };
-
-function envNumber(name: string) {
-  const value = Number(process.env[name]);
-  return Number.isFinite(value) ? value : null;
-}
 
 function isInstantCourier(order: Pick<Order, "courierCode" | "courierService">) {
   const code = (order.courierCode ?? "").toLowerCase();
@@ -46,8 +42,8 @@ function buildItems(items: OrderItem[]): BiteshipItem[] {
 }
 
 async function getCreateOrderPayload(order: OrderWithItems) {
-  const originLatitude = envNumber("SHOP_ORIGIN_LATITUDE");
-  const originLongitude = envNumber("SHOP_ORIGIN_LONGITUDE");
+  const { latitude: originLatitude, longitude: originLongitude } =
+    getOriginCoordinates();
   const originAreaId = await resolveOriginAreaId();
   const destinationLatitude = order.shippingLatitude;
   const destinationLongitude = order.shippingLongitude;

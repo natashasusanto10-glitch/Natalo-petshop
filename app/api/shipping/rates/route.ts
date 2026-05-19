@@ -18,6 +18,7 @@
  */
 import { NextResponse } from "next/server";
 import {
+  getOriginCoordinates,
   logMissingOriginArea,
   ORIGIN_AREA_NOT_CONFIGURED_CODE,
   resolveOriginAreaId,
@@ -55,8 +56,8 @@ export async function POST(request: Request) {
   const body = await request.json();
   const apiKey = process.env.BITESHIP_API_KEY;
   const originAreaId = await resolveOriginAreaId();
-  const originLatitude = numberOrNull(process.env.SHOP_ORIGIN_LATITUDE);
-  const originLongitude = numberOrNull(process.env.SHOP_ORIGIN_LONGITUDE);
+  const { latitude: originLatitude, longitude: originLongitude } =
+    getOriginCoordinates();
 
   if (!originAreaId) {
     logMissingOriginArea();
@@ -185,6 +186,8 @@ export async function POST(request: Request) {
       rates,
       instantUnavailableReason: hasInstantRates
         ? null
+        : !originHasCoordinates
+        ? "Titik pickup toko belum dikonfigurasi untuk Gojek Instant dan Grab Instant."
         : !destinationHasCoordinates
         ? "Lengkapi titik lokasi alamat agar Gojek Instant dan Grab Instant tersedia."
         : "Gojek Instant dan Grab Instant belum tersedia untuk alamat ini.",
