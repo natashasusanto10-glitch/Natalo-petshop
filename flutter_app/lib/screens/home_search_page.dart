@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../models/product.dart';
 import '../state/recently_viewed_store.dart';
 import '../state/search_history_store.dart';
+import '../state/trending_placeholder_controller.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
@@ -38,10 +39,12 @@ class _HomeSearchPageState extends State<HomeSearchPage> {
   @override
   void initState() {
     super.initState();
-    _searchController.addListener(() {
-      final v = _searchController.text;
-      if (v != _query) setState(() => _query = v);
-    });
+    _searchController.addListener(_handleInputChange);
+    _searchFocus.addListener(_handleFocusChange);
+    // Pause placeholder rotation saat halaman search aktif — user akan
+    // langsung type, jadi placeholder sebaiknya stable (current value).
+    // Resume saat halaman close (dispose).
+    trendingPlaceholderController.pause();
     // Autofocus search field setelah first frame supaya keyboard muncul
     // sambil halaman selesai animate-in.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -52,9 +55,28 @@ class _HomeSearchPageState extends State<HomeSearchPage> {
 
   @override
   void dispose() {
+    _searchController.removeListener(_handleInputChange);
+    _searchFocus.removeListener(_handleFocusChange);
     _searchController.dispose();
     _searchFocus.dispose();
+    // Resume rotation saat halaman search dispose — kembali ke Beranda,
+    // placeholder Beranda search bar lanjut rotating.
+    trendingPlaceholderController.resume();
     super.dispose();
+  }
+
+  void _handleInputChange() {
+    final v = _searchController.text;
+    if (v != _query) setState(() => _query = v);
+  }
+
+  void _handleFocusChange() {
+    // Field focus → ensure pause (defensive). Unfocus + empty → resume.
+    if (_searchFocus.hasFocus) {
+      trendingPlaceholderController.pause();
+    } else if (_searchController.text.trim().isEmpty) {
+      trendingPlaceholderController.resume();
+    }
   }
 
   void _submitQuery(String raw) {
@@ -189,7 +211,12 @@ class _SearchHeader extends StatelessWidget {
                 ],
                 decoration: InputDecoration(
                   isDense: true,
-                  hintText: 'Cari makanan, pasir, vitamin...',
+                  // Pakai placeholder current dari trending controller —
+                  // saat user tap search bar Beranda, controller di-pause
+                  // jadi hint TextField sama dengan placeholder Beranda
+                  // saat itu (kontinuitas visual). Tetap static selama
+                  // user di halaman ini.
+                  hintText: trendingPlaceholderController.currentPlaceholder,
                   hintStyle: const TextStyle(
                     color: Color(0xFF94A3B8),
                     fontSize: 14,

@@ -18,6 +18,7 @@ import '../services/search_service.dart';
 import '../services/product_service.dart';
 import '../state/recently_viewed_store.dart';
 import '../state/search_history_store.dart';
+import '../state/trending_placeholder_controller.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
@@ -918,25 +919,56 @@ class _HomeHeader extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: const Color(0xFFE5E7EB)),
               ),
-              child: const Row(
+              child: Row(
                 children: [
-                  Icon(
+                  const Icon(
                     Icons.search_rounded,
                     size: 18,
                     color: Color(0xFF94A3B8),
                   ),
-                  SizedBox(width: 10),
+                  const SizedBox(width: 10),
+                  // Dynamic placeholder — rotates dari trending search API +
+                  // fallback static. Hanya widget Text ini yang rebuild
+                  // (via AnimatedBuilder listen trendingPlaceholderController),
+                  // banner/kategori/produk sections TIDAK ke-rebuild saat
+                  // placeholder ganti setiap 4 detik.
                   Expanded(
-                    child: Text(
-                      'Cari makanan kucing, pasir, vitamin...',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Color(0xFF94A3B8),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        height: 1.2,
-                      ),
+                    child: AnimatedBuilder(
+                      animation: trendingPlaceholderController,
+                      builder: (context, _) {
+                        final text =
+                            trendingPlaceholderController.currentPlaceholder;
+                        return AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 300),
+                          switchInCurve: Curves.easeOutCubic,
+                          switchOutCurve: Curves.easeInCubic,
+                          transitionBuilder: (child, animation) {
+                            final slide = Tween<Offset>(
+                              begin: const Offset(0, 0.3),
+                              end: Offset.zero,
+                            ).animate(animation);
+                            return FadeTransition(
+                              opacity: animation,
+                              child: SlideTransition(
+                                position: slide,
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: Text(
+                            text,
+                            key: ValueKey(text),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xFF94A3B8),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              height: 1.2,
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ],

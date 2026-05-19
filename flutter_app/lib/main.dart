@@ -41,6 +41,7 @@ import 'state/member_store.dart';
 import 'state/recently_viewed_store.dart';
 import 'state/search_history_store.dart';
 import 'state/settings_store.dart';
+import 'state/trending_placeholder_controller.dart';
 import 'utils/motion_prefs.dart';
 import 'utils/read_only_mode.dart';
 import 'screens/products_screen.dart';
@@ -125,6 +126,10 @@ Future<void> main() async {
   // Search history — load query history dari disk supaya Home
   // "Rekomendasi Untukmu" bisa langsung pakai keyword behavior user.
   searchHistoryStore.initialize();
+  // Trending placeholder — fetch trending search terms untuk dynamic
+  // placeholder di search bar Beranda. Fire-and-forget; loads fallback
+  // first kalau API belum respond.
+  trendingPlaceholderController.initialize();
   // Feed local store — liked posts cache (#7) + offline feed cache (#11).
   // Fire-and-forget; feed_screen also re-init defensively saat first open.
   feedLocalStore.initialize();
