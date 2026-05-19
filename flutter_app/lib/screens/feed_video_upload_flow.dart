@@ -935,6 +935,9 @@ class _FeedUploadProgressScreenState extends State<FeedUploadProgressScreen> {
         }
       }
 
+      // Step labels untuk error visibility — saat ada error, user lihat
+      // "[Thumbnail] timeout" instead of generic "Upload belum berhasil".
+      // Mudah debug + actionable hint untuk user retry / lapor admin.
       final thumbPath = widget.draft.thumbnailPath ??
           await _generateVideoThumbnail(videoPath, timeMs: 500);
       if (thumbPath == null || thumbPath.isEmpty) {
@@ -945,13 +948,24 @@ class _FeedUploadProgressScreenState extends State<FeedUploadProgressScreen> {
 
       // Silent thumbnail upload — _stage tidak berubah, user tetap lihat
       // "Mengirim postingan..." dari awal sampai akhir.
-      final thumbResult = await feedService.uploadFeedThumbnail(
-        filePath: thumbPath,
-        filename: 'thumbnail.jpg',
-        contentType: 'image/jpeg',
-      );
+      final FeedUploadResult thumbResult;
+      try {
+        thumbResult = await feedService.uploadFeedThumbnail(
+          filePath: thumbPath,
+          filename: 'thumbnail.jpg',
+          contentType: 'image/jpeg',
+        );
+      } catch (error) {
+        if (kDebugMode) debugPrint('[feed-upload] thumbnail upload error: $error');
+        throw _FeedVideoFlowException(
+          '[Thumbnail] ${_friendlyErrorMessage(error)}',
+        );
+      }
       if (thumbResult.url.isEmpty) {
-        throw const ApiException('Upload thumbnail belum mengembalikan URL.');
+        throw const _FeedVideoFlowException(
+          '[Thumbnail] Server tidak mengembalikan URL — coba lagi atau '
+          'hubungi admin.',
+        );
       }
 
       final videoFile = File(videoPath);
@@ -962,45 +976,61 @@ class _FeedUploadProgressScreenState extends State<FeedUploadProgressScreen> {
       );
 
       // Silent provision Bunny credentials.
-      final provision = await bunnyService.provisionUpload(
-        title: caption.isEmpty
-            ? 'Postingan baru'
-            : caption.substring(0, math.min(80, caption.length)),
-        description: caption.isEmpty ? null : caption,
-        videoDurationSec:
-            (widget.draft.finalDuration?.inSeconds ?? _maxFeedVideoSeconds)
-                .clamp(_minFeedVideoSeconds, _maxFeedVideoSeconds)
-                .toInt(),
-        productIds: widget.draft.taggedProductIds,
-        thumbnailUrl: thumbResult.url,
-      );
+      final BunnyUploadProvision provision;
+      try {
+        provision = await bunnyService.provisionUpload(
+          title: caption.isEmpty
+              ? 'Postingan baru'
+              : caption.substring(0, math.min(80, caption.length)),
+          description: caption.isEmpty ? null : caption,
+          videoDurationSec:
+              (widget.draft.finalDuration?.inSeconds ?? _maxFeedVideoSeconds)
+                  .clamp(_minFeedVideoSeconds, _maxFeedVideoSeconds)
+                  .toInt(),
+          productIds: widget.draft.taggedProductIds,
+          thumbnailUrl: thumbResult.url,
+        );
+      } catch (error) {
+        if (kDebugMode) debugPrint('[feed-upload] provision error: $error');
+        throw _FeedVideoFlowException(
+          '[Provision] ${_friendlyErrorMessage(error)}',
+        );
+      }
 
       // Silent TUS upload — _stage tetap "Mengirim postingan..." sementara
       // _progress percentage update real-time (cuma progress bar visible).
-      if (provision.tus != null) {
-        await bunnyService.uploadViaTus(
-          videoFile: videoFile,
-          credentials: provision.tus!,
-          filetype:
-              widget.draft.mimeType ?? _videoMimeType(videoFile.path, null),
-          title: widget.draft.originalFilename ?? 'feed-video.mp4',
-          onProgress: (percent, _, __) {
-            if (mounted) setState(() => _progress = percent);
-          },
-        );
-      } else if (provision.uploadUrl != null &&
-          provision.uploadUrl!.isNotEmpty) {
-        await bunnyService.uploadViaPut(
-          videoFile: videoFile,
-          uploadUrl: provision.uploadUrl!,
-          headers: provision.uploadHeaders,
-          onProgress: (percent, _, __) {
-            if (mounted) setState(() => _progress = percent);
-          },
-        );
-      } else {
-        throw const ApiException(
-          'Server tidak mengembalikan endpoint upload yang valid.',
+      try {
+        if (provision.tus != null) {
+          await bunnyService.uploadViaTus(
+            videoFile: videoFile,
+            credentials: provision.tus!,
+            filetype:
+                widget.draft.mimeType ?? _videoMimeType(videoFile.path, null),
+            title: widget.draft.originalFilename ?? 'feed-video.mp4',
+            onProgress: (percent, _, __) {
+              if (mounted) setState(() => _progress = percent);
+            },
+          );
+        } else if (provision.uploadUrl != null &&
+            provision.uploadUrl!.isNotEmpty) {
+          await bunnyService.uploadViaPut(
+            videoFile: videoFile,
+            uploadUrl: provision.uploadUrl!,
+            headers: provision.uploadHeaders,
+            onProgress: (percent, _, __) {
+              if (mounted) setState(() => _progress = percent);
+            },
+          );
+        } else {
+          throw const _FeedVideoFlowException(
+            '[Upload] Server tidak mengembalikan endpoint upload yang valid.',
+          );
+        }
+      } catch (error) {
+        if (kDebugMode) debugPrint('[feed-upload] video upload error: $error');
+        if (error is _FeedVideoFlowException) rethrow;
+        throw _FeedVideoFlowException(
+          '[Upload] ${_friendlyErrorMessage(error)}',
         );
       }
 
@@ -2330,4 +2360,46 @@ String _messageFor(Object error, String fallback) {
   if (error is ApiException) return error.message;
   if (error is _FeedVideoFlowException) return error.message;
   return fallback;
+}
+
+/// Translate raw exception jadi pesan singkat actionable.
+///
+/// Dipakai saat upload step tertentu (thumbnail/provision/TUS) gagal —
+/// disambung dengan label step `[Thumbnail]` / `[Provision]` / `[Upload]`
+/// supaya user tahu mana yang failing kalau lapor admin.
+String _friendlyErrorMessage(Object error) {
+  if (error is ApiException) {
+    if (error.statusCode == 401) {
+      return 'Sesi login expired. Login ulang lalu coba lagi.';
+    }
+    if (error.statusCode == 403) {
+      return 'Kamu belum punya izin upload video. Hubungi admin.';
+    }
+    if (error.statusCode == 413) {
+      return 'File terlalu besar. Pilih video lebih pendek.';
+    }
+    if (error.statusCode == 429) {
+      return 'Batas upload tercapai (3/hari untuk member). Coba lagi besok.';
+    }
+    if (error.statusCode == 503) {
+      return 'Layanan video sementara tidak tersedia. Coba lagi nanti.';
+    }
+    if (error.statusCode != null && error.statusCode! >= 500) {
+      return 'Server bermasalah. Coba lagi 1-2 menit.';
+    }
+    return error.message;
+  }
+  final raw = error.toString().toLowerCase();
+  if (raw.contains('socketexception') ||
+      raw.contains('failed host lookup') ||
+      raw.contains('connection refused')) {
+    return 'Tidak bisa connect ke server. Cek koneksi internet.';
+  }
+  if (raw.contains('timeout')) {
+    return 'Koneksi lambat. Pakai WiFi yang lebih stabil.';
+  }
+  if (raw.contains('handshake')) {
+    return 'Masalah SSL/handshake. Coba lagi atau ganti jaringan.';
+  }
+  return error.toString().split('\n').first;
 }
