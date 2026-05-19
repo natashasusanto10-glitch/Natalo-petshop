@@ -101,22 +101,37 @@ class _FeedScreenState extends State<FeedScreen> {
 
   /// Gap #11: hydrate dari offline cache supaya feed tidak blank saat
   /// network slow. Cache otomatis di-replace saat fetch sukses.
+  ///
+  /// Defensive: kalau SharedPreferences corrupt atau decode fail, log
+  /// + continue (jangan crash app). User crash report "saat buka feed
+  /// langsung crash" sering disebabkan unhandled exception di sini.
   Future<void> _bootstrapFromCache() async {
-    await feedLocalStore.initialize();
-    if (!mounted) return;
-    final cached = feedLocalStore.cachedPosts;
-    if (cached.isNotEmpty && _posts.isEmpty) {
-      setState(() {
-        _posts = List<FeedPost>.from(cached);
-        // Tetap _loading=true sampai fetch network done — supaya kalau
-        // network sukses, cache di-replace tanpa flicker UX.
-      });
+    try {
+      await feedLocalStore.initialize();
+      if (!mounted) return;
+      final cached = feedLocalStore.cachedPosts;
+      if (cached.isNotEmpty && _posts.isEmpty) {
+        setState(() {
+          _posts = List<FeedPost>.from(cached);
+          // Tetap _loading=true sampai fetch network done — supaya kalau
+          // network sukses, cache di-replace tanpa flicker UX.
+        });
+      }
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('[feed] _bootstrapFromCache error: $e\n$st');
+      }
+      // Silent fail — network fetch akan retake over.
     }
   }
 
   /// Gap #9: error-aware loader. Sebelumnya error di-swallow → user
   /// lihat empty state misleading. Sekarang catch + set _loadError +
   /// fall back ke cache kalau ada.
+  ///
+  /// Defensive 2: catch generic Exception too (was: only ApiException).
+  /// Kalau JSON parse / type cast error throw uncaught → crash app saat
+  /// buka tab Feed. Sekarang fallback ke error state dengan retry.
   Future<void> _loadInitial() async {
     setState(() {
       _loading = true;
@@ -126,9 +141,13 @@ class _FeedScreenState extends State<FeedScreen> {
       final page = await feedService.fetchPublicFeed();
       if (!mounted) return;
       // Gap #7: merge backend viewerLiked dengan local cache.
-      feedLocalStore.mergeBackendLiked(page.items);
-      // Gap #11: persist fresh fetch ke offline cache.
-      await feedLocalStore.cachePosts(page.items);
+      try {
+        feedLocalStore.mergeBackendLiked(page.items);
+        await feedLocalStore.cachePosts(page.items);
+      } catch (e) {
+        // Cache fail tidak block UI — log only.
+        if (kDebugMode) debugPrint('[feed] cache persist error: $e');
+      }
       if (!mounted) return;
       setState(() {
         _posts = page.items;
@@ -140,12 +159,24 @@ class _FeedScreenState extends State<FeedScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        // Kalau ada stale cache, keep showing it dengan banner.
-        // Kalau tidak, _loadError biar UI show error state.
         _loadError = _posts.isEmpty
             ? (e.statusCode != null
                 ? 'Feed tidak bisa dimuat (${e.statusCode}).'
                 : 'Periksa koneksi internet lalu coba lagi.')
+            : null;
+      });
+    } catch (e, st) {
+      // Generic catch — JSON parse error, type cast error, dst yang
+      // sebelumnya leak ke runtime crash. User pernah report "crash
+      // saat tap tab Feed" → root cause sering di sini.
+      if (kDebugMode) {
+        debugPrint('[feed] _loadInitial unexpected error: $e\n$st');
+      }
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _loadError = _posts.isEmpty
+            ? 'Feed sedang bermasalah. Tap untuk coba lagi.'
             : null;
       });
     }
