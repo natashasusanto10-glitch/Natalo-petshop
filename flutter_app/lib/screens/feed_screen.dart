@@ -66,6 +66,7 @@ class _FeedScreenState extends State<FeedScreen> {
   bool _loadingMore = false;
   bool _interactionLocked = false;
   int _activeIndex = 0;
+  int _cartCount = 0;
 
   /// Gap #9: distinguish "no posts" vs "fetch error" — UI bisa show retry.
   String? _loadError;
@@ -77,6 +78,10 @@ class _FeedScreenState extends State<FeedScreen> {
     // sambil network fetch jalan. Plus #7: hydrate likedStore.
     _bootstrapFromCache();
     _loadInitial();
+    // Top-right cart icon — sync badge ke cartStore.totalQuantity supaya
+    // real-time match dengan keranjang. Listener di-detach di dispose().
+    _cartCount = cartStore.totalQuantity;
+    cartStore.addListener(_syncTopCartCount);
     // Auto-trigger upload kalau dipush dari UploadVideoCta (Account screen
     // "Upload Video" button) yang kirim arguments `{openUpload: true}`.
     // Pakai post-frame callback supaya context.modalRoute settled.
@@ -91,12 +96,28 @@ class _FeedScreenState extends State<FeedScreen> {
 
   @override
   void dispose() {
+    cartStore.removeListener(_syncTopCartCount);
     for (final controller in _preloadedControllers.values) {
       controller.dispose();
     }
     _preloadedControllers.clear();
     _pageController.dispose();
     super.dispose();
+  }
+
+  void _syncTopCartCount() {
+    final next = cartStore.totalQuantity;
+    if (!mounted || next == _cartCount) return;
+    setState(() => _cartCount = next);
+  }
+
+  void _openCartPage() {
+    AppHaptics.tap();
+    Navigator.pushNamed(
+      context,
+      '/cart',
+      arguments: const {'origin': 'feed'},
+    );
   }
 
   /// Gap #11: hydrate dari offline cache supaya feed tidak blank saat
@@ -390,8 +411,32 @@ class _FeedScreenState extends State<FeedScreen> {
                   },
                 ),
               ),
-            // Upload entry — via bottom nav center "+" (Reels/TikTok pattern),
-            // BUKAN floating top-right FAB. Removed per user clarification.
+            // Top overlay — `+` upload (kiri) + cart icon dengan badge (kanan).
+            // Plain icons (no glass/blur pill) per mockup TikTok-style. Safe
+            // area aware via MediaQuery.padding.top supaya tidak overlap
+            // dengan notch / status bar di iOS+Android. Hide saat interaction
+            // locked (comment drawer / cinema mode) supaya tidak distract.
+            if (!_interactionLocked) ...[
+              Positioned(
+                top: MediaQuery.paddingOf(context).top + 8,
+                left: 4,
+                child: _FeedTopIconButton(
+                  icon: Icons.add_rounded,
+                  onTap: _onUpload,
+                  tooltip: 'Upload video',
+                ),
+              ),
+              Positioned(
+                top: MediaQuery.paddingOf(context).top + 8,
+                right: 4,
+                child: _FeedTopIconButton(
+                  icon: Icons.shopping_bag_outlined,
+                  onTap: _openCartPage,
+                  tooltip: 'Keranjang',
+                  badgeCount: _cartCount > 0 ? _cartCount : null,
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -510,6 +555,82 @@ class _LoadingState extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Plain top-overlay icon button untuk feed (`+` upload kiri, keranjang
+/// kanan). NO glass pill / blur / background — TikTok style polos cuma
+/// icon putih dengan soft drop shadow biar tetap legible di atas video
+/// yang bright. Optional badgeCount untuk indikator jumlah keranjang.
+class _FeedTopIconButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final String? tooltip;
+  final int? badgeCount;
+
+  const _FeedTopIconButton({
+    required this.icon,
+    required this.onTap,
+    this.tooltip,
+    this.badgeCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final iconWidget = Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Icon(
+          icon,
+          color: Colors.white,
+          size: 28,
+          shadows: const [
+            Shadow(
+              color: Color(0xCC000000),
+              blurRadius: 10,
+              offset: Offset(0, 1),
+            ),
+          ],
+        ),
+        if (badgeCount != null && badgeCount! > 0)
+          Positioned(
+            top: -4,
+            right: -6,
+            child: Container(
+              constraints: const BoxConstraints(
+                minWidth: 18,
+                minHeight: 18,
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 5),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEF4444),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: Colors.black, width: 1.2),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                badgeCount! > 99 ? '99+' : '$badgeCount',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                  height: 1,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+    final button = InkResponse(
+      onTap: onTap,
+      radius: 26,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: iconWidget,
+      ),
+    );
+    if (tooltip == null) return button;
+    return Tooltip(message: tooltip!, child: button);
   }
 }
 
@@ -749,6 +870,15 @@ class _FeedPostViewState extends State<_FeedPostView>
   Timer? _productRotationTimer;
   double _commentDragOffset = 0;
 
+  // End-of-video product CTA — slide-in card di 2.5s terakhir tiap loop
+  // supaya user yang nonton sampai abis lihat reminder produk dengan tombol
+  // "Beli" lebih prominent dari `_ProductLinkChip` yang selalu visible kecil
+  // di bawah. Reset tiap loop wrap (position < 500ms), tapi sticky setelah
+  // user dismiss (per-session). Skip untuk post tanpa tagged products atau
+  // video <3 detik.
+  bool _endOfVideoCtaVisible = false;
+  bool _endOfVideoCtaDismissed = false;
+
   // Animation untuk heart burst di tengah saat double-tap.
   late final AnimationController _heartBurstController;
   late final Animation<double> _heartScale;
@@ -828,11 +958,53 @@ class _FeedPostViewState extends State<_FeedPostView>
     final controller = widget.preloadedController;
     if (controller == null) return;
     _videoController = controller;
+    controller.addListener(_handleVideoPositionForCta);
     await controller.setVolume(appSettingsStore.feedMuted ? 0 : 1);
     if (widget.isActive && _shouldAutoplay) {
       await controller.play();
     }
     if (mounted) setState(() {});
+  }
+
+  /// Listener position video → toggle end-of-video product CTA visibility.
+  /// Dipanggil tiap frame video (puluhan kali/detik). Cepat-keluar untuk
+  /// kondisi yang gak perlu re-render supaya gak ngabisin frame budget.
+  void _handleVideoPositionForCta() {
+    final ctrl = _videoController;
+    if (ctrl == null || !mounted) return;
+    final value = ctrl.value;
+    if (!value.isInitialized) return;
+
+    final durMs = value.duration.inMilliseconds;
+    // Skip ultra-short clips (<3s) — gak ada window 2.5s yang masuk akal.
+    if (durMs < 3000) return;
+    final posMs = value.position.inMilliseconds;
+
+    // Detect loop wrap (position balik ke awal) — reset visibility supaya
+    // CTA muncul lagi di loop berikutnya. Dismissed flag tetap di-hormati.
+    if (posMs < 500 && _endOfVideoCtaVisible) {
+      setState(() => _endOfVideoCtaVisible = false);
+      return;
+    }
+
+    // Show window: 2.5 detik terakhir, kecuali 50ms terakhir (avoid flicker
+    // di loop boundary saat position mau wrap).
+    final remainingMs = durMs - posMs;
+    final inShowWindow = remainingMs > 50 && remainingMs <= 2500;
+    if (inShowWindow && !_endOfVideoCtaVisible && !_endOfVideoCtaDismissed) {
+      // Cek post punya tagged product yang valid sebelum trigger setState —
+      // hindari render kosong.
+      if (_rotatingProductsForPost(widget.post).isEmpty) return;
+      setState(() => _endOfVideoCtaVisible = true);
+    }
+  }
+
+  void _dismissEndOfVideoCta() {
+    if (!mounted) return;
+    setState(() {
+      _endOfVideoCtaVisible = false;
+      _endOfVideoCtaDismissed = true;
+    });
   }
 
   @override
@@ -852,6 +1024,10 @@ class _FeedPostViewState extends State<_FeedPostView>
         _featuredProductIndex = 0;
         _commentDragOffset = 0;
         _commentSheetProgress.value = 0;
+        // Reset CTA: user swipe ke post lain → next visit dapat fresh
+        // chance (dismissed flag clear, visible flag clear).
+        _endOfVideoCtaVisible = false;
+        _endOfVideoCtaDismissed = false;
         widget.onOverlayStateChanged(false);
         _videoController?.pause();
         _videoController?.seekTo(Duration.zero);
@@ -862,6 +1038,8 @@ class _FeedPostViewState extends State<_FeedPostView>
         oldWidget.post.taggedProducts.length !=
             widget.post.taggedProducts.length) {
       _featuredProductIndex = 0;
+      _endOfVideoCtaVisible = false;
+      _endOfVideoCtaDismissed = false;
       _syncProductRotation();
     }
   }
@@ -879,6 +1057,7 @@ class _FeedPostViewState extends State<_FeedPostView>
       final controller =
           VideoPlayerController.networkUrl(Uri.parse(resolvedUrl));
       _videoController = controller;
+      controller.addListener(_handleVideoPositionForCta);
       if (mounted) setState(() {});
       await controller.initialize();
       if (!mounted) {
@@ -907,6 +1086,7 @@ class _FeedPostViewState extends State<_FeedPostView>
     _commentSheetController.removeListener(_syncCommentSheetProgress);
     _commentSheetController.dispose();
     _commentSheetProgress.dispose();
+    _videoController?.removeListener(_handleVideoPositionForCta);
     _videoController?.dispose();
     _heartBurstController.dispose();
     super.dispose();
@@ -1703,6 +1883,46 @@ class _FeedPostViewState extends State<_FeedPostView>
                             ),
                           ),
                         ),
+                        // ── End-of-video product CTA — slide-in card 2.5s
+                        //    sebelum video selesai loop. Lebih prominent dari
+                        //    `_ProductLinkChip` yang selalu visible, untuk
+                        //    convert user yang nonton sampai abis. Hide saat
+                        //    long-press / comment sheet open.
+                        if (featuredProduct != null)
+                          Positioned(
+                            left: 16,
+                            right: 16,
+                            bottom: feedInfoInset + 96,
+                            child: AnimatedSlide(
+                              duration: const Duration(milliseconds: 280),
+                              curve: Curves.easeOutCubic,
+                              offset: _endOfVideoCtaVisible &&
+                                      !_hideOverlayForLongPress &&
+                                      !_commentSheetOpen
+                                  ? Offset.zero
+                                  : const Offset(0, 0.5),
+                              child: AnimatedOpacity(
+                                duration: const Duration(milliseconds: 220),
+                                opacity: _endOfVideoCtaVisible &&
+                                        !_hideOverlayForLongPress &&
+                                        !_commentSheetOpen
+                                    ? 1
+                                    : 0,
+                                child: IgnorePointer(
+                                  ignoring: !_endOfVideoCtaVisible ||
+                                      _hideOverlayForLongPress ||
+                                      _commentSheetOpen,
+                                  child: _EndOfVideoProductCta(
+                                    product: featuredProduct,
+                                    onTap: () => _onProductsTap(products),
+                                    onBuy: () =>
+                                        _quickAddProduct(featuredProduct),
+                                    onDismiss: _dismissEndOfVideoCta,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
                         // ── Bottom info: product tag + creator + caption ──
                         // Same AnimatedOpacity wrapper untuk hide saat long-press.
                         Positioned(
@@ -2831,23 +3051,39 @@ class _ProductLinkChip extends StatelessWidget {
     final kicker = hasMultiple
         ? 'Produk ${featuredIndex + 1}/${products.length} di video'
         : 'Produk di video';
+    // Glassy pill: BackdropFilter blur sigma 16 di belakang container
+    // translucent white. Border 1px soft highlight + inner gradient
+    // memberi efek "frosted glass" mirip Instagram Stories tag chip.
+    // Container content tetap render full opacity di atas blur.
     return Material(
       color: Colors.transparent,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 316),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.50),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.22),
-              blurRadius: 18,
-              offset: const Offset(0, 8),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 316),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white.withValues(alpha: 0.22),
+                  Colors.white.withValues(alpha: 0.10),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(14),
+              border:
+                  Border.all(color: Colors.white.withValues(alpha: 0.32)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.22),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: Row(
+            child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Flexible(
@@ -3001,6 +3237,8 @@ class _ProductLinkChip extends StatelessWidget {
               ),
             ),
           ],
+        ),
+          ),
         ),
       ),
     );
@@ -4314,6 +4552,177 @@ class _ProductMetaChip extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// End-of-video product CTA — card prominent yang muncul slide-up dari bawah
+/// di ~2.5 detik terakhir tiap loop video. Lebih besar + lebih visible dari
+/// `_ProductLinkChip` di bottom info biar user yang nonton sampai abis lihat
+/// reminder produk dengan tombol "Beli" jelas. Hidden saat long-press
+/// preview atau comment sheet open. Dismissable via X icon (sticky sampai
+/// user swipe ke post lain).
+class _EndOfVideoProductCta extends StatelessWidget {
+  final FeedProductLink product;
+  final VoidCallback onTap;
+  final VoidCallback onBuy;
+  final VoidCallback onDismiss;
+
+  const _EndOfVideoProductCta({
+    required this.product,
+    required this.onTap,
+    required this.onBuy,
+    required this.onDismiss,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final pricing = _feedProductPricing(product);
+    final canBuy = product.isAvailable && product.stock > 0;
+    final imageUrl = product.imageUrl;
+
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.97),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.35),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 10, 12, 10),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Product image
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: SizedBox(
+                    width: 56,
+                    height: 56,
+                    child: imageUrl != null && imageUrl.isNotEmpty
+                        ? CachedNetworkImage(
+                            imageUrl: imageUrl,
+                            fit: BoxFit.cover,
+                            placeholder: (_, __) =>
+                                Container(color: const Color(0xFFF1F1F1)),
+                            errorWidget: (_, __, ___) =>
+                                Container(color: const Color(0xFFF1F1F1)),
+                          )
+                        : Container(color: const Color(0xFFF1F1F1)),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                // Name + price
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        product.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF111111),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          height: 1.18,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            formatRupiah(pricing.displayPrice),
+                            style: const TextStyle(
+                              color: Color(0xFFEF4444),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w900,
+                              height: 1,
+                            ),
+                          ),
+                          if (pricing.hasPromo) ...[
+                            const SizedBox(width: 6),
+                            Text(
+                              formatRupiah(pricing.originalPrice),
+                              style: const TextStyle(
+                                color: Color(0xFF9AA0A6),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                decoration: TextDecoration.lineThrough,
+                                height: 1,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                // Beli button (atau "Habis" kalau stok kosong)
+                _CtaBuyButton(enabled: canBuy, onTap: canBuy ? onBuy : null),
+                const SizedBox(width: 4),
+                // Dismiss
+                InkResponse(
+                  onTap: onDismiss,
+                  radius: 18,
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(
+                      Icons.close_rounded,
+                      size: 18,
+                      color: Color(0xFF6B7280),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CtaBuyButton extends StatelessWidget {
+  final bool enabled;
+  final VoidCallback? onTap;
+
+  const _CtaBuyButton({required this.enabled, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: enabled ? const Color(0xFFEF4444) : const Color(0xFFE5E7EB),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          enabled ? 'Beli' : 'Habis',
+          style: TextStyle(
+            color: enabled ? Colors.white : const Color(0xFF9CA3AF),
+            fontSize: 12,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0.2,
+          ),
+        ),
       ),
     );
   }
