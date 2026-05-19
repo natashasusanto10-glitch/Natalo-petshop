@@ -744,11 +744,11 @@ class _HomeHeader extends StatelessWidget {
             onTap: onOpenSearch,
             behavior: HitTestBehavior.opaque,
             child: Container(
-              height: 48,
+              height: 42,
               padding: const EdgeInsets.symmetric(horizontal: 14),
               decoration: BoxDecoration(
                 color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: const Color(0xFFE5E7EB)),
               ),
               child: const Row(

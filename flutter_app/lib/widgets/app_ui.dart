@@ -31,6 +31,123 @@ class AppHeaderIconButton extends StatelessWidget {
   }
 }
 
+class AppSearchField extends StatelessWidget {
+  final TextEditingController controller;
+  final String hintText;
+  final String query;
+  final ValueChanged<String> onChanged;
+  final ValueChanged<String>? onSubmitted;
+  final VoidCallback? onClear;
+  final VoidCallback? onVoiceTap;
+  final VoidCallback? onBarcodeTap;
+  final bool compact;
+
+  const AppSearchField({
+    super.key,
+    required this.controller,
+    required this.hintText,
+    required this.query,
+    required this.onChanged,
+    this.onSubmitted,
+    this.onClear,
+    this.onVoiceTap,
+    this.onBarcodeTap,
+    this.compact = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    Widget? suffix;
+    if (query.isNotEmpty) {
+      suffix = IconButton(
+        onPressed: onClear ??
+            () {
+              controller.clear();
+              onChanged('');
+            },
+        icon: const Icon(Icons.close_rounded),
+        tooltip: 'Hapus',
+      );
+    } else if (onBarcodeTap != null || onVoiceTap != null) {
+      suffix = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (onBarcodeTap != null)
+            IconButton(
+              onPressed: onBarcodeTap,
+              icon: const Icon(
+                Icons.qr_code_scanner_rounded,
+                color: NataloColors.primary,
+              ),
+              tooltip: 'Scan barcode',
+              visualDensity: VisualDensity.compact,
+            ),
+          if (onVoiceTap != null)
+            IconButton(
+              onPressed: onVoiceTap,
+              icon: const Icon(
+                Icons.mic_rounded,
+                color: NataloColors.primary,
+              ),
+              tooltip: 'Cari dengan suara',
+              visualDensity: VisualDensity.compact,
+            ),
+        ],
+      );
+    }
+
+    final field = TextField(
+      controller: controller,
+      style: const TextStyle(fontSize: 13),
+      onChanged: onChanged,
+      onSubmitted: onSubmitted,
+      textInputAction: TextInputAction.search,
+      decoration: InputDecoration(
+        hintText: hintText,
+        hintStyle: const TextStyle(
+          color: Color(0xFF94A3B8),
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+        prefixIcon: const Icon(Icons.search_rounded, size: 20),
+        // Compact 42px height: minHeight 42 + vertical padding 8 supaya
+        // total field rendered = 42px (match home_screen search pill).
+        prefixIconConstraints:
+            const BoxConstraints(minWidth: 42, minHeight: 42),
+        suffixIcon: suffix,
+        filled: true,
+        fillColor: compact
+            ? const Color(0xFFF8FAFC)
+            : Colors.white.withValues(alpha: 0.90),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: NataloColors.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: NataloColors.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: NataloColors.primary, width: 1.4),
+        ),
+        // Total height: 8 + ~24 (text 13 + line-height) + 8 = ~40px content
+        // + 2px border = ~42px. Match home_screen tap-area search pill.
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 8,
+        ),
+        isDense: true,
+      ),
+    );
+
+    // Selalu fix tinggi 42px — konsisten di Beranda + Produk screen,
+    // match pattern Tokopedia/Shopee. `compact` flag tetap ada untuk
+    // backward compat tapi sekarang affect fill color saja, bukan size.
+    return SizedBox(height: 42, child: field);
+  }
+}
+
 /// Skeleton placeholder untuk list saat loading.
 class AppSkeletonList extends StatelessWidget {
   final int itemCount;
@@ -380,14 +497,20 @@ class AppEmptyState extends StatelessWidget {
   final IconData icon;
   final String title;
   final String? subtitle;
+  final String? body;
   final Widget? action;
+  final String? buttonLabel;
+  final VoidCallback? onPressed;
 
   const AppEmptyState({
     super.key,
     this.icon = Icons.inbox_outlined,
     required this.title,
     this.subtitle,
+    this.body,
     this.action,
+    this.buttonLabel,
+    this.onPressed,
   });
 
   @override
@@ -408,17 +531,22 @@ class AppEmptyState extends StatelessWidget {
                 fontSize: 16,
               ),
             ),
-            if (subtitle != null) ...[
+            if (subtitle != null || body != null) ...[
               const SizedBox(height: AppSpacing.sm),
               Text(
-                subtitle!,
+                subtitle ?? body!,
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: NataloColors.textSecondary),
               ),
             ],
-            if (action != null) ...[
+            if (action != null ||
+                (buttonLabel != null && onPressed != null)) ...[
               const SizedBox(height: AppSpacing.lg),
-              action!,
+              action ??
+                  ElevatedButton(
+                    onPressed: onPressed,
+                    child: Text(buttonLabel!),
+                  ),
             ],
           ],
         ),
