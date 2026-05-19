@@ -22,6 +22,54 @@ class MemberService {
     };
   }
 
+  /// Update profil member — PATCH /api/auth/me (atau /api/member/profile
+  /// kalau backend pakai route lain). Field opsional — hanya yang
+  /// non-null yang dikirim. Return profile baru kalau sukses, null
+  /// kalau gagal (404/405/network), exception bubble up untuk validation
+  /// errors.
+  Future<MemberProfile?> updateProfile({
+    String? name,
+    String? email,
+    String? phone,
+    DateTime? birthDate,
+  }) async {
+    try {
+      final uri = ApiConfig.uri('/api/auth/me');
+      final body = <String, dynamic>{};
+      if (name != null) body['name'] = name;
+      if (email != null) body['email'] = email;
+      if (phone != null) body['phone'] = phone;
+      if (birthDate != null) body['birthDate'] = birthDate.toIso8601String();
+      if (body.isEmpty) return memberStore.profile;
+      final res = await http
+          .patch(
+            uri,
+            headers: _authHeaders,
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        if (kDebugMode) {
+          debugPrint(
+            '[memberService.updateProfile] failed ${res.statusCode}: ${res.body}',
+          );
+        }
+        return null;
+      }
+      final json = jsonDecode(res.body);
+      if (json is Map<String, dynamic>) {
+        final raw = json['user'] ?? json['data'] ?? json;
+        if (raw is Map<String, dynamic>) {
+          return MemberProfile.fromJson(raw);
+        }
+      }
+      return null;
+    } catch (e) {
+      if (kDebugMode) debugPrint('[memberService.updateProfile] $e');
+      return null;
+    }
+  }
+
   Future<MemberProfile?> fetchProfile() async {
     try {
       final uri = ApiConfig.uri('/api/auth/me');

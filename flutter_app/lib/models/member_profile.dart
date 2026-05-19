@@ -58,6 +58,23 @@ class MemberProfile {
         'role': role,
         'birthDate': birthDate?.toIso8601String(),
       };
+
+  MemberProfile copyWith({
+    String? name,
+    String? email,
+    String? phone,
+    String? role,
+    DateTime? birthDate,
+  }) {
+    return MemberProfile(
+      id: id,
+      name: name ?? this.name,
+      email: email ?? this.email,
+      phone: phone ?? this.phone,
+      role: role ?? this.role,
+      birthDate: birthDate ?? this.birthDate,
+    );
+  }
 }
 
 class MemberVoucher {
