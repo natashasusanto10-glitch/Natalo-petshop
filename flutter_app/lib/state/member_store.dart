@@ -94,6 +94,21 @@ class MemberStore extends ChangeNotifier {
     hydrateFromApi();
   }
 
+  /// Update profile + persist ke disk **tanpa** menyentuh session token.
+  /// Dipakai saat user update foto profil / data pribadi dari EditProfile
+  /// atau bottom sheet update foto — jangan log out karena setSession()
+  /// akan remove token kalau token null.
+  Future<void> persistProfileUpdate(MemberProfile profile) async {
+    _profile = profile;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_profileKey, jsonEncode(profile.toJson()));
+    } catch (_) {
+      // Disk write best-effort — in-memory tetap update.
+    }
+  }
+
   Future<void> setSession({
     required MemberProfile profile,
     String? token,

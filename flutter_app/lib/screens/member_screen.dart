@@ -10,6 +10,7 @@ import '../widgets/app_ui.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/profile_avatar.dart';
+import '../widgets/update_profile_photo_sheet.dart';
 
 const _brandBlue = Color(0xFF0B7FEA);
 const _pageBg = Color(0xFFF8FAFC);
@@ -133,65 +134,103 @@ class _MemberDashboard extends StatelessWidget {
           children: const [
             _MenuCard(
               route: '/member/vouchers',
-              icon: Icons.confirmation_number_outlined,
+              icon: Icons.confirmation_number_rounded,
+              iconColor: Color(0xFFF59E0B),
+              iconBg: Color(0xFFFFF7E0),
               title: 'Voucher',
               subtitle: 'Promo member',
             ),
             _MenuCard(
               route: '/wishlist',
-              icon: Icons.favorite_border_rounded,
+              icon: Icons.favorite_rounded,
+              iconColor: Color(0xFFEF4444),
+              iconBg: Color(0xFFFFE4E6),
               title: 'Wishlist',
               subtitle: 'Produk favorit',
             ),
             _MenuCard(
               route: '/member/reviews',
-              icon: Icons.rate_review_outlined,
-              title: 'Review',
+              icon: Icons.rate_review_rounded,
+              iconColor: Color(0xFF8B5CF6),
+              iconBg: Color(0xFFF3E8FF),
+              title: 'Ulasan',
               subtitle: 'Ulas produk',
             ),
             _MenuCard(
               route: '/member/addresses',
-              icon: Icons.location_on_outlined,
+              icon: Icons.location_on_rounded,
+              iconColor: Color(0xFF22C55E),
+              iconBg: Color(0xFFE8F8EC),
               title: 'Alamat',
               subtitle: 'Kelola pengiriman',
             ),
             _MenuCard(
               route: '/member/loyalty',
               icon: Icons.stars_rounded,
+              iconColor: Color(0xFFFBBF24),
+              iconBg: Color(0xFFFFF6CC),
               title: 'Tukar Poin',
               subtitle: 'Poin jadi voucher',
             ),
             _MenuCard(
               route: '/member/loyalty/history',
               icon: Icons.history_rounded,
+              iconColor: Color(0xFF0EA5E9),
+              iconBg: Color(0xFFE0F2FE),
               title: 'Riwayat Poin',
-              subtitle: 'Earn & redeem',
+              subtitle: 'Riwayat masuk & tukar',
             ),
           ],
         ),
         const SizedBox(height: 24),
-        const _SectionTitle('Feed Saya'),
+        const _SectionTitle('Postingan Saya'),
         const SizedBox(height: 12),
-        _FeedTile(
-          icon: Icons.play_circle_outline_rounded,
-          title: 'Postingan Saya',
-          subtitle: 'Kelola video Feed yang kamu upload',
-          onTap: () => Navigator.pushNamed(context, '/member/postingan'),
-        ),
-        const SizedBox(height: 12),
-        const _UploadVideoCta(),
+        const _MyPostsEmptyState(),
       ],
     );
   }
 }
 
-class _MemberProfileCard extends StatelessWidget {
+class _MemberProfileCard extends StatefulWidget {
   final MemberProfile profile;
 
   const _MemberProfileCard({required this.profile});
 
   @override
+  State<_MemberProfileCard> createState() => _MemberProfileCardState();
+}
+
+class _MemberProfileCardState extends State<_MemberProfileCard> {
+  late Future<int> _voucherCountFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _voucherCountFuture = _loadVoucherCount();
+  }
+
+  Future<int> _loadVoucherCount() async {
+    try {
+      final vouchers = await memberService.fetchVouchers();
+      // Count yang masih applicable (belum expired + cukup minimum order
+      // global = bisa dipakai). UI hanya butuh angka aktif.
+      final now = DateTime.now();
+      return vouchers
+          .where((v) => v.applicable && v.expiresAt.isAfter(now))
+          .length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  void _openUpdatePhoto() {
+    AppHaptics.tap();
+    showUpdateProfilePhotoSheet(context);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final profile = widget.profile;
     final firstName = profile.name.split(' ').first;
     return Container(
       padding: const EdgeInsets.all(18),
@@ -214,62 +253,52 @@ class _MemberProfileCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            children: [
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: const Text(
-                  'Member Natalo',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               ProfileAvatar(
                 initial: profile.initial,
                 imageUrl: profile.profilePhotoUrl,
-                size: 70,
-                fontSize: 26,
+                size: 72,
+                fontSize: 28,
                 showCameraBadge: true,
-                onTap: () => Navigator.pushNamed(context, '/member/profile'),
+                // Tap avatar (atau camera badge) → buka bottom sheet
+                // "Ubah Foto Profil". Single tappable area covering both
+                // circle + camera icon via ProfileAvatar.onTap.
+                onTap: _openUpdatePhoto,
               ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: const Text(
+                        'Member Natalo',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
                     Text(
-                      'Halo, $firstName!',
+                      profile.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 22,
+                        fontSize: 20,
                         fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Senang melihatmu kembali di Natalo',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.86),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        height: 1.35,
+                        height: 1.15,
                       ),
                     ),
                   ],
@@ -277,18 +306,59 @@ class _MemberProfileCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
+          Text(
+            'Halo, $firstName!',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'Terima kasih sudah menjadi bagian dari Natalo Petshop.',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.86),
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 14),
           Divider(
             height: 1,
             color: Colors.white.withValues(alpha: 0.20),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
                 child: _ProfileStat(
                   value: '${profile.points}',
-                  label: 'Loyalty point',
+                  label: 'Poin loyalti',
+                ),
+              ),
+              Container(
+                width: 1,
+                height: 34,
+                color: Colors.white.withValues(alpha: 0.18),
+              ),
+              Expanded(
+                child: FutureBuilder<int>(
+                  future: _voucherCountFuture,
+                  initialData: 0,
+                  builder: (context, snapshot) {
+                    return _ProfileStat(
+                      value: '${snapshot.data ?? 0}',
+                      label: 'Voucher aktif',
+                      alignCenter: true,
+                    );
+                  },
                 ),
               ),
               Container(
@@ -315,18 +385,22 @@ class _ProfileStat extends StatelessWidget {
   final String value;
   final String label;
   final bool alignRight;
+  final bool alignCenter;
 
   const _ProfileStat({
     required this.value,
     required this.label,
     this.alignRight = false,
+    this.alignCenter = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final cross = alignCenter
+        ? CrossAxisAlignment.center
+        : (alignRight ? CrossAxisAlignment.end : CrossAxisAlignment.start);
     return Column(
-      crossAxisAlignment:
-          alignRight ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      crossAxisAlignment: cross,
       children: [
         Text(
           value,
@@ -334,7 +408,7 @@ class _ProfileStat extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
             color: Colors.white,
-            fontSize: 19,
+            fontSize: 18,
             fontWeight: FontWeight.w900,
           ),
         ),
@@ -343,7 +417,7 @@ class _ProfileStat extends StatelessWidget {
           label,
           style: TextStyle(
             color: Colors.white.withValues(alpha: 0.78),
-            fontSize: 12,
+            fontSize: 11.5,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -444,25 +518,33 @@ class _OrderStatusCardState extends State<_OrderStatusCard> {
               Row(
                 children: [
                   _OrderStatusItem(
-                    icon: Icons.credit_card_rounded,
+                    icon: Icons.account_balance_wallet_rounded,
+                    iconColor: const Color(0xFFF59E0B),
+                    iconBg: const Color(0xFFFFF7E0),
                     label: 'Belum Bayar',
                     count: counts.unpaid,
                     onTap: () => _openOrdersByStatus(context, 'unpaid'),
                   ),
                   _OrderStatusItem(
-                    icon: Icons.inventory_2_outlined,
+                    icon: Icons.inventory_2_rounded,
+                    iconColor: const Color(0xFF0B7FEA),
+                    iconBg: const Color(0xFFEAF5FF),
                     label: 'Diproses',
                     count: counts.processing,
                     onTap: () => _openOrdersByStatus(context, 'processing'),
                   ),
                   _OrderStatusItem(
-                    icon: Icons.local_shipping_outlined,
+                    icon: Icons.local_shipping_rounded,
+                    iconColor: const Color(0xFF22C55E),
+                    iconBg: const Color(0xFFE8F8EC),
                     label: 'Dikirim',
                     count: counts.shipped,
                     onTap: () => _openOrdersByStatus(context, 'shipped'),
                   ),
                   _OrderStatusItem(
-                    icon: Icons.check_circle_outline_rounded,
+                    icon: Icons.check_circle_rounded,
+                    iconColor: const Color(0xFF8B5CF6),
+                    iconBg: const Color(0xFFF3E8FF),
                     label: 'Selesai',
                     count: counts.recentCompleted,
                     onTap: () => _openOrdersByStatus(context, 'delivered'),
@@ -550,12 +632,16 @@ class _OrderStatusCounts {
 
 class _OrderStatusItem extends StatelessWidget {
   final IconData icon;
+  final Color iconColor;
+  final Color iconBg;
   final String label;
   final int count;
   final VoidCallback onTap;
 
   const _OrderStatusItem({
     required this.icon,
+    required this.iconColor,
+    required this.iconBg,
     required this.label,
     required this.count,
     required this.onTap,
@@ -579,13 +665,13 @@ class _OrderStatusItem extends StatelessWidget {
                   clipBehavior: Clip.none,
                   children: [
                     Container(
-                      height: 46,
-                      width: 46,
+                      height: 48,
+                      width: 48,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEAF5FF),
+                        color: iconBg,
                         borderRadius: BorderRadius.circular(16),
                       ),
-                      child: Icon(icon, color: _brandBlue, size: 23),
+                      child: Icon(icon, color: iconColor, size: 26),
                     ),
                     Positioned(
                       right: -5,
@@ -645,8 +731,10 @@ class _OrderStatusBadge extends StatelessWidget {
       constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
       padding: const EdgeInsets.symmetric(horizontal: 5),
       alignment: Alignment.center,
+      // Spec: badge angka di kanan atas WAJIB merah solid (#FF3B30 iOS-style),
+      // bukan biru — biru sudah dipakai brand/active state.
       decoration: const BoxDecoration(
-        color: Color(0xFFFF2D3D),
+        color: Color(0xFFFF3B30),
         shape: BoxShape.circle,
       ),
       child: Text(
@@ -662,17 +750,23 @@ class _OrderStatusBadge extends StatelessWidget {
   }
 }
 
+/// Card menu transaksi — 2D colorful icon di tile pastel kecil.
+/// Per spec: ukuran icon 24-30px, container 44-52px, label 13-14px.
 class _MenuCard extends StatelessWidget {
   final String route;
   final IconData icon;
   final String title;
   final String subtitle;
+  final Color iconColor;
+  final Color iconBg;
 
   const _MenuCard({
     required this.route,
     required this.icon,
     required this.title,
     required this.subtitle,
+    this.iconColor = _brandBlue,
+    this.iconBg = const Color(0xFFEAF5FF),
   });
 
   @override
@@ -687,7 +781,15 @@ class _MenuCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SoftIconTile(icon: icon, color: _brandBlue, size: 42),
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: iconBg,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(icon, color: iconColor, size: 26),
+            ),
             const Spacer(),
             Text(
               title,
@@ -695,14 +797,14 @@ class _MenuCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: Color(0xFF17202A),
-                fontSize: 15,
+                fontSize: 14.5,
                 fontWeight: FontWeight.w900,
               ),
             ),
             const SizedBox(height: 3),
             Text(
               subtitle,
-              maxLines: 2,
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: Color(0xFF64748B),
@@ -717,140 +819,121 @@ class _MenuCard extends StatelessWidget {
   }
 }
 
-class _FeedTile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  const _FeedTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
+/// Empty state "Postingan Saya" — card putih dengan ilustrasi soft +
+/// copy + CTA "Buat Postingan". Per spec: jangan card kosong besar
+/// hanya dengan icon kecil; CTA mengarah ke flow create post existing
+/// (untuk sekarang: navigate ke /feed dengan flag openUpload).
+///
+/// Future improvement: kalau user sudah punya postingan, ganti widget
+/// ini dengan list horizontal terakhir + "Lihat semua" → /member/posts.
+class _MyPostsEmptyState extends StatelessWidget {
+  const _MyPostsEmptyState();
 
   @override
   Widget build(BuildContext context) {
-    return AppPressable(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: GlassSurface(
-        radius: 20,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        tint: Colors.white,
-        child: Row(
-          children: [
-            SoftIconTile(icon: icon, color: _brandBlue, size: 44),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: Color(0xFF17202A),
-                      fontSize: 15,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF64748B),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
+    return GlassSurface(
+      radius: 22,
+      padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
+      tint: Colors.white,
+      child: Column(
+        children: [
+          Container(
+            width: 84,
+            height: 84,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFFEAF5FF), Color(0xFFF5EEFF)],
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: _brandBlue.withValues(alpha: 0.10),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ],
             ),
-            const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _UploadVideoCta extends StatelessWidget {
-  const _UploadVideoCta();
-
-  @override
-  Widget build(BuildContext context) {
-    return AppPressable(
-      onTap: () {
-        AppHaptics.tap();
-        Navigator.pushNamed(context, '/feed', arguments: {'openUpload': true});
-      },
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF0B7FEA), Color(0xFF075CB5)],
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                const Positioned(
+                  left: 18,
+                  top: 22,
+                  child: Icon(
+                    Icons.pets_rounded,
+                    color: Color(0xFFFBBF24),
+                    size: 28,
+                  ),
+                ),
+                Positioned(
+                  right: 16,
+                  bottom: 18,
+                  child: Icon(
+                    Icons.favorite_rounded,
+                    color: const Color(0xFFEF4444).withValues(alpha: 0.85),
+                    size: 22,
+                  ),
+                ),
+                const Icon(
+                  Icons.photo_camera_rounded,
+                  color: _brandBlue,
+                  size: 30,
+                ),
+              ],
+            ),
           ),
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: _brandBlue.withValues(alpha: 0.26),
-              blurRadius: 18,
-              offset: const Offset(0, 8),
+          const SizedBox(height: 14),
+          const Text(
+            'Belum ada postingan',
+            style: TextStyle(
+              color: Color(0xFF17202A),
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
             ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: const Icon(
-                Icons.videocam_rounded,
-                color: Colors.white,
-                size: 23,
-              ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Bagikan momen seru hewan peliharaanmu di Natalo Feed.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Color(0xFF64748B),
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              height: 1.45,
             ),
-            const SizedBox(width: 14),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Upload Video',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    'Bagikan momen seru hewan peliharaanmu',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            height: 46,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                AppHaptics.tap();
+                Navigator.pushNamed(
+                  context,
+                  '/feed',
+                  arguments: {'openUpload': true},
+                );
+              },
+              icon: const Icon(Icons.add_rounded, size: 20),
+              label: const Text('Buat Postingan'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _brandBlue,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                textStyle: const TextStyle(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
             ),
-            const Icon(Icons.arrow_forward_rounded, color: Colors.white),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
