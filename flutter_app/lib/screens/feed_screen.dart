@@ -13,6 +13,7 @@ import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 import '../config/api_config.dart';
+import '../features/feed/widgets/feed_video_progress_bar.dart';
 import '../models/cart_item.dart';
 import '../models/feed_post.dart';
 import '../models/product.dart';
@@ -1072,9 +1073,13 @@ class _FeedPostViewState extends State<_FeedPostView>
     } catch (_) {}
   }
 
-  void _openCart() {
+  void _openCart({bool fromFeed = false}) {
     AppHaptics.tap();
-    Navigator.pushNamed(context, '/cart');
+    Navigator.pushNamed(
+      context,
+      '/cart',
+      arguments: fromFeed ? const {'origin': 'feed'} : null,
+    );
   }
 
   /// Sprint 3 #10 — Cinema mode fullscreen native player.
@@ -1119,13 +1124,9 @@ class _FeedPostViewState extends State<_FeedPostView>
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black.withValues(alpha: 0.22),
       builder: (sheetContext) => _FeedCartSheet(
-        onCheckout: () {
-          Navigator.of(sheetContext).pop();
-          Navigator.of(context).pushNamed('/checkout');
-        },
         onOpenFullCart: () {
           Navigator.of(sheetContext).pop();
-          _openCart();
+          _openCart(fromFeed: true);
         },
       ),
     ).whenComplete(() => widget.onOverlayStateChanged(false));
@@ -1568,6 +1569,7 @@ class _FeedPostViewState extends State<_FeedPostView>
                           child: _PausedVideoControls(
                             muted: appSettingsStore.feedMuted,
                             onToggleMute: _toggleMuteWhilePaused,
+                            onTogglePlayPause: _onTapMedia,
                           ),
                         ),
                       if (!minimized) ...[
@@ -1576,9 +1578,6 @@ class _FeedPostViewState extends State<_FeedPostView>
                         // tetap fullscreen vertical default. Cinema mode
                         // (kalau perlu nanti) bisa di-trigger lewat
                         // long-press atau gesture, bukan dedicated button.
-                        // _openCinemaMode + _PausedFullscreenButton tetap
-                        // available di codebase untuk re-enable kalau
-                        // diperlukan via flag/setting.
                         // ── Bottom gradient untuk text readability ──
                         Positioned(
                           left: 0,
@@ -1602,14 +1601,15 @@ class _FeedPostViewState extends State<_FeedPostView>
                             ),
                           ),
                         ),
-                        Positioned(
-                          left: 0,
-                          right: 0,
-                          bottom: 0,
-                          child: _FeedVideoProgressBar(
-                            controller: _videoController,
+                        if (_videoController != null)
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            child: FeedVideoProgressBar(
+                              controller: _videoController!,
+                            ),
                           ),
-                        ),
                         // ── Right action column (Reels-style: tight + minimal) ──
                         // Sprint 4 #1 — Hide overlays selama long-press
                         // supaya user dapat clean view sementara hold.
@@ -1620,10 +1620,10 @@ class _FeedPostViewState extends State<_FeedPostView>
                           right: 18,
                           bottom: actionRailInset,
                           child: AnimatedOpacity(
-                            opacity: (_hideOverlayForLongPress ||
-                                    _commentSheetOpen)
-                                ? 0
-                                : 1,
+                            opacity:
+                                (_hideOverlayForLongPress || _commentSheetOpen)
+                                    ? 0
+                                    : 1,
                             duration: const Duration(milliseconds: 200),
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
@@ -1656,7 +1656,8 @@ class _FeedPostViewState extends State<_FeedPostView>
                                 _ReelsAction(
                                   iconChild: const _ReelsBagGlyph(),
                                   color: Colors.white,
-                                  count: _cartQuantityCount > 0
+                                  count: null,
+                                  badgeCount: _cartQuantityCount > 0
                                       ? _cartQuantityCount
                                       : null,
                                   onTap: _openFeedCartSheet,
@@ -2360,150 +2361,6 @@ bool _isHorizontalSize(Size size) {
   return size.width > size.height;
 }
 
-/// Sprint 4 #3 — Scrubbing progress bar.
-///
-/// Drag horizontal di area progress bar untuk seek video. Saat scrub
-/// aktif: bar tinggi 6px (vs 2px normal) supaya touch target jelas, plus
-/// thumb dot di posisi current. Drag end → seekTo() ke posisi final.
-///
-/// Auto-pause selama scrub supaya frame target jelas. Auto-resume saat
-/// drag end (kalau sebelumnya playing).
-class _FeedVideoProgressBar extends StatefulWidget {
-  final VideoPlayerController? controller;
-
-  const _FeedVideoProgressBar({required this.controller});
-
-  @override
-  State<_FeedVideoProgressBar> createState() => _FeedVideoProgressBarState();
-}
-
-class _FeedVideoProgressBarState extends State<_FeedVideoProgressBar> {
-  bool _scrubbing = false;
-  double _scrubProgress = 0;
-  bool _wasPlayingBeforeScrub = false;
-
-  void _onScrubStart(DragStartDetails details, double width, int duration) {
-    final ctrl = widget.controller;
-    if (ctrl == null || !ctrl.value.isInitialized) return;
-    AppHaptics.tap();
-    _wasPlayingBeforeScrub = ctrl.value.isPlaying;
-    if (_wasPlayingBeforeScrub) ctrl.pause();
-    setState(() {
-      _scrubbing = true;
-      _scrubProgress = (details.localPosition.dx / width).clamp(0.0, 1.0);
-    });
-  }
-
-  void _onScrubUpdate(DragUpdateDetails details, double width) {
-    if (!_scrubbing) return;
-    setState(() {
-      _scrubProgress = (details.localPosition.dx / width).clamp(0.0, 1.0);
-    });
-  }
-
-  void _onScrubEnd(DragEndDetails details, int duration) {
-    if (!_scrubbing) return;
-    final ctrl = widget.controller;
-    if (ctrl != null && ctrl.value.isInitialized) {
-      final targetMs = (_scrubProgress * duration).round();
-      ctrl.seekTo(Duration(milliseconds: targetMs));
-      if (_wasPlayingBeforeScrub) {
-        ctrl.play();
-      }
-    }
-    setState(() => _scrubbing = false);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final ctrl = widget.controller;
-    if (ctrl == null) return const SizedBox.shrink();
-
-    return AnimatedBuilder(
-      animation: ctrl,
-      builder: (context, _) {
-        final value = ctrl.value;
-        final duration = value.duration.inMilliseconds;
-        if (!value.isInitialized || duration <= 0) {
-          return const SizedBox.shrink();
-        }
-        final position = value.position.inMilliseconds.clamp(0, duration);
-        final naturalProgress = position / duration;
-        final progress = _scrubbing ? _scrubProgress : naturalProgress;
-
-        // Touch target area lebih besar dari visible bar — wrap di
-        // Container vertical 16px supaya gampang di-grab.
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final width = constraints.maxWidth;
-            return GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onHorizontalDragStart: (d) => _onScrubStart(d, width, duration),
-              onHorizontalDragUpdate: (d) => _onScrubUpdate(d, width),
-              onHorizontalDragEnd: (d) => _onScrubEnd(d, duration),
-              onHorizontalDragCancel: () {
-                if (_scrubbing && _wasPlayingBeforeScrub) {
-                  ctrl.play();
-                }
-                setState(() => _scrubbing = false);
-              },
-              child: SizedBox(
-                height: 16, // extended touch target
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    // Visible bar — tinggi 2px normal, 6px saat scrub.
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 120),
-                      height: _scrubbing ? 6 : 2,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(999),
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            ColoredBox(
-                              color: Colors.white.withValues(alpha: 0.22),
-                            ),
-                            FractionallySizedBox(
-                              alignment: Alignment.centerLeft,
-                              widthFactor: progress.clamp(0.0, 1.0),
-                              child: const ColoredBox(color: Colors.white),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    // Thumb dot — visible saat scrubbing aktif.
-                    if (_scrubbing)
-                      Positioned(
-                        left: (width * progress).clamp(0.0, width) - 7,
-                        child: Container(
-                          width: 14,
-                          height: 14,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.32),
-                                blurRadius: 6,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
 class _VideoRetryButton extends StatelessWidget {
   final VoidCallback onRetry;
 
@@ -2547,10 +2404,12 @@ class _VideoRetryButton extends StatelessWidget {
 class _PausedVideoControls extends StatelessWidget {
   final bool muted;
   final VoidCallback onToggleMute;
+  final VoidCallback onTogglePlayPause;
 
   const _PausedVideoControls({
     required this.muted,
     required this.onToggleMute,
+    required this.onTogglePlayPause,
   });
 
   @override
@@ -2586,63 +2445,35 @@ class _PausedVideoControls extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        Container(
-          height: 72,
-          width: 72,
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.45),
-            shape: BoxShape.circle,
-          ),
-          child: const Icon(
-            Icons.play_arrow_rounded,
-            color: Colors.white,
-            size: 44,
+        Material(
+          color: Colors.transparent,
+          shape: const CircleBorder(),
+          child: InkResponse(
+            onTap: onTogglePlayPause,
+            radius: 42,
+            child: Container(
+              height: 80,
+              width: 80,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.45),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.12),
+                ),
+              ),
+              child: const Icon(
+                Icons.play_arrow_rounded,
+                color: Colors.white,
+                size: 46,
+                shadows: [
+                  Shadow(color: Colors.black87, blurRadius: 8),
+                ],
+              ),
+            ),
           ),
         ),
       ],
-    );
-  }
-}
-
-// ignore: unused_element
-class _PausedFullscreenButton extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _PausedFullscreenButton({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      shape: const CircleBorder(),
-      child: InkResponse(
-        onTap: onTap,
-        radius: 20,
-        child: Container(
-          height: 34,
-          width: 34,
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.42),
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.18),
-              width: 0.8,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.22),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: const Icon(
-            Icons.fullscreen_rounded,
-            color: Colors.white,
-            size: 19,
-          ),
-        ),
-      ),
     );
   }
 }
@@ -2652,6 +2483,7 @@ class _ReelsAction extends StatelessWidget {
   final Widget? iconChild;
   final Color color;
   final int? count;
+  final int? badgeCount;
   final VoidCallback onTap;
 
   const _ReelsAction({
@@ -2659,11 +2491,35 @@ class _ReelsAction extends StatelessWidget {
     this.iconChild,
     required this.color,
     required this.count,
+    this.badgeCount,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final baseIcon = iconChild ??
+        Icon(
+          icon,
+          color: color,
+          size: _feedActionIconSize,
+          shadows: const [
+            Shadow(color: Colors.black87, blurRadius: 8),
+          ],
+        );
+    final actionIcon = badgeCount == null || badgeCount! <= 0
+        ? baseIcon
+        : Stack(
+            clipBehavior: Clip.none,
+            children: [
+              baseIcon,
+              Positioned(
+                right: -8,
+                top: -8,
+                child: _ReelsActionBadge(count: badgeCount!),
+              ),
+            ],
+          );
+
     return SizedBox(
       width: 54,
       child: Material(
@@ -2676,15 +2532,7 @@ class _ReelsAction extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                iconChild ??
-                    Icon(
-                      icon,
-                      color: color,
-                      size: _feedActionIconSize,
-                      shadows: const [
-                        Shadow(color: Colors.black87, blurRadius: 8),
-                      ],
-                    ),
+                actionIcon,
                 if (count != null) ...[
                   const SizedBox(height: 2),
                   Text(
@@ -2716,6 +2564,43 @@ class _ReelsAction extends StatelessWidget {
       return '${(count / 1000).toStringAsFixed(1)}K';
     }
     return '$count';
+  }
+}
+
+class _ReelsActionBadge extends StatelessWidget {
+  final int count;
+
+  const _ReelsActionBadge({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 18),
+      height: 18,
+      padding: const EdgeInsets.symmetric(horizontal: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEF4444),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white, width: 1.4),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.32),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        count > 99 ? '99+' : '$count',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 9,
+          fontWeight: FontWeight.w900,
+          height: 1,
+        ),
+      ),
+    );
   }
 }
 
@@ -3600,11 +3485,9 @@ class _FeedPrimaryProductButton extends StatelessWidget {
 }
 
 class _FeedCartSheet extends StatelessWidget {
-  final VoidCallback onCheckout;
   final VoidCallback onOpenFullCart;
 
   const _FeedCartSheet({
-    required this.onCheckout,
     required this.onOpenFullCart,
   });
 
@@ -3653,11 +3536,11 @@ class _FeedCartSheet extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    Row(
+                    const Row(
                       children: [
-                        const Expanded(
+                        Expanded(
                           child: Text(
-                            'Keranjang',
+                            'Keranjang Feed',
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 18,
@@ -3665,22 +3548,11 @@ class _FeedCartSheet extends StatelessWidget {
                             ),
                           ),
                         ),
-                        TextButton(
-                          onPressed: onOpenFullCart,
-                          style: TextButton.styleFrom(
-                            foregroundColor: Colors.white70,
-                            visualDensity: VisualDensity.compact,
-                          ),
-                          child: const Text(
-                            'Lihat penuh',
-                            style: TextStyle(fontWeight: FontWeight.w800),
-                          ),
-                        ),
                       ],
                     ),
                     Text(
                       itemCount > 0
-                          ? '$itemCount item siap checkout dari Feed.'
+                          ? '$itemCount item di keranjang utama.'
                           : 'Keranjang masih kosong.',
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.58),
@@ -3744,16 +3616,12 @@ class _FeedCartSheet extends StatelessWidget {
                             ),
                           ),
                           FilledButton(
-                            onPressed: items.isEmpty ? null : onCheckout,
+                            onPressed: onOpenFullCart,
                             style: FilledButton.styleFrom(
                               backgroundColor: Colors.white,
                               foregroundColor: Colors.black,
-                              disabledBackgroundColor:
-                                  Colors.white.withValues(alpha: 0.14),
-                              disabledForegroundColor:
-                                  Colors.white.withValues(alpha: 0.42),
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 22,
+                                horizontal: 20,
                                 vertical: 13,
                               ),
                               shape: RoundedRectangleBorder(
@@ -3761,7 +3629,7 @@ class _FeedCartSheet extends StatelessWidget {
                               ),
                             ),
                             child: const Text(
-                              'Checkout',
+                              'Lihat Keranjang',
                               style: TextStyle(
                                 fontSize: 13.5,
                                 fontWeight: FontWeight.w900,
@@ -3847,7 +3715,6 @@ class _FeedCartItemTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final imageUrl = item.product.imageUrl;
-    final canAdd = item.quantity < item.effectiveStock;
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -3919,7 +3786,7 @@ class _FeedCartItemTile extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        formatRupiah(item.lineTotal),
+                        formatRupiah(item.unitPrice),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -3929,35 +3796,27 @@ class _FeedCartItemTile extends StatelessWidget {
                         ),
                       ),
                     ),
-                    _FeedCartQtyButton(
-                      icon: Icons.remove_rounded,
-                      enabled: item.quantity > 1,
-                      onTap: () =>
-                          cartStore.updateQuantity(item.key, item.quantity - 1),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: Text(
-                        '${item.quantity}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w900,
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.12),
                         ),
                       ),
-                    ),
-                    _FeedCartQtyButton(
-                      icon: Icons.add_rounded,
-                      enabled: canAdd,
-                      onTap: () =>
-                          cartStore.updateQuantity(item.key, item.quantity + 1),
-                    ),
-                    const SizedBox(width: 2),
-                    _FeedCartQtyButton(
-                      icon: Icons.close_rounded,
-                      enabled: true,
-                      danger: true,
-                      onTap: () => cartStore.remove(item.key),
+                      child: Text(
+                        'x${item.quantity}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                          height: 1,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -3965,45 +3824,6 @@ class _FeedCartItemTile extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _FeedCartQtyButton extends StatelessWidget {
-  final IconData icon;
-  final bool enabled;
-  final bool danger;
-  final VoidCallback onTap;
-
-  const _FeedCartQtyButton({
-    required this.icon,
-    required this.enabled,
-    required this.onTap,
-    this.danger = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final color = danger ? const Color(0xFFFCA5A5) : Colors.white;
-    return InkResponse(
-      onTap: enabled ? onTap : null,
-      radius: 18,
-      child: Container(
-        height: 27,
-        width: 27,
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: enabled ? 0.10 : 0.035),
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: color.withValues(alpha: enabled ? 0.18 : 0.06),
-          ),
-        ),
-        child: Icon(
-          icon,
-          color: color.withValues(alpha: enabled ? 0.90 : 0.26),
-          size: 17,
-        ),
       ),
     );
   }

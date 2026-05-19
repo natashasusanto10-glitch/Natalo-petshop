@@ -438,17 +438,17 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
             Center(
               child: Column(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.wifi_off_rounded,
-                    color: Color(0xFF8E939B),
-                    size: 36,
+                    color: Colors.white.withValues(alpha: 0.35),
+                    size: 40,
                   ),
                   const SizedBox(height: 10),
                   Text(
                     _error!,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Color(0xFF6B7280),
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.65),
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -540,10 +540,15 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     final name = target.author.username ?? target.author.name;
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 8, 8, 8),
-      decoration: const BoxDecoration(
-        color: Color(0xFFF6F9FF),
+      decoration: BoxDecoration(
+        // Reply banner di atas composer — slightly lighter than drawer
+        // bg untuk kasih hint "ini area different state".
+        color: Colors.white.withValues(alpha: 0.05),
         border: Border(
-          top: BorderSide(color: Color(0xFFEEF1F4), width: 0.5),
+          top: BorderSide(
+            color: Colors.white.withValues(alpha: 0.08),
+            width: 0.5,
+          ),
         ),
       ),
       child: Row(
@@ -551,8 +556,8 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
           Expanded(
             child: Text(
               'Membalas @$name',
-              style: const TextStyle(
-                color: Color(0xFF6B7280),
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.75),
                 fontWeight: FontWeight.w700,
                 fontSize: 12.5,
               ),
@@ -561,10 +566,10 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
           IconButton(
             visualDensity: VisualDensity.compact,
             onPressed: () => _setReplyTarget(null),
-            icon: const Icon(
+            icon: Icon(
               Icons.close_rounded,
               size: 18,
-              color: Color(0xFF6B7280),
+              color: Colors.white.withValues(alpha: 0.65),
             ),
             tooltip: 'Batal balas',
           ),
@@ -758,7 +763,10 @@ class _CommentTile extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          color: Color(0xFF111111),
+                          // White untuk dark drawer (was 0xFF111111 dark
+                          // text di dark bg → poor contrast, terlihat
+                          // bluish/faded di screenshot user).
+                          color: Colors.white,
                           fontWeight: FontWeight.w800,
                           fontSize: 12.5,
                         ),
@@ -775,8 +783,8 @@ class _CommentTile extends StatelessWidget {
                     const SizedBox(width: 6),
                     Text(
                       _timeAgo(comment.createdAt),
-                      style: const TextStyle(
-                        color: Color(0xFF8E939B),
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.55),
                         fontWeight: FontWeight.w600,
                         fontSize: 11.5,
                       ),
@@ -786,8 +794,11 @@ class _CommentTile extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   comment.content,
-                  style: const TextStyle(
-                    color: Color(0xFF1F2937),
+                  style: TextStyle(
+                    // White alpha 90% — primary content content readable
+                    // di dark bg, slightly softer dari 100% white untuk
+                    // mengurangi eye strain di long scroll.
+                    color: Colors.white.withValues(alpha: 0.90),
                     fontSize: 13.5,
                     height: 1.35,
                   ),
@@ -798,8 +809,8 @@ class _CommentTile extends StatelessWidget {
                     if (comment.likeCount > 0) ...[
                       Text(
                         '${_formatCount(comment.likeCount)} suka',
-                        style: const TextStyle(
-                          color: Color(0xFF8E939B),
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.55),
                           fontWeight: FontWeight.w700,
                           fontSize: 11.5,
                         ),
@@ -809,10 +820,10 @@ class _CommentTile extends StatelessWidget {
                     GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: onReply,
-                      child: const Text(
+                      child: Text(
                         'Balas',
                         style: TextStyle(
-                          color: Color(0xFF8E939B),
+                          color: Colors.white.withValues(alpha: 0.70),
                           fontWeight: FontWeight.w800,
                           fontSize: 11.5,
                         ),
@@ -960,8 +971,10 @@ class _CommentLikeButtonState extends State<_CommentLikeButton>
               key: ValueKey(widget.liked),
               color: widget.liked
                   ? const Color(0xFFEF4444)
-                  : const Color(0xFF8E939B),
-              size: 16,
+                  // Outline heart pakai white alpha 60% — readable di
+                  // dark drawer (was 0xFF8E939B gray = too dim).
+                  : Colors.white.withValues(alpha: 0.60),
+              size: 18,
             ),
           ),
         ),
@@ -1013,7 +1026,10 @@ class _SendButton extends StatelessWidget {
             Icons.send_rounded,
             color: enabled
                 ? NataloColors.primary
-                : const Color(0xFFC4C8CF),
+                // Disabled state pakai white alpha 30% — visible di dark
+                // bg tapi clearly "inactive" (was 0xFFC4C8CF light gray =
+                // hilang di dark drawer).
+                : Colors.white.withValues(alpha: 0.30),
             size: 22,
           ),
         ),
@@ -1040,8 +1056,8 @@ class _CommentListSkeleton extends StatelessWidget {
               Container(
                 width: 36,
                 height: 36,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFEEF1F4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.08),
                   shape: BoxShape.circle,
                 ),
               ),
@@ -1054,7 +1070,7 @@ class _CommentListSkeleton extends StatelessWidget {
                       height: 10,
                       width: 100,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEEF1F4),
+                        color: Colors.white.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(4),
                       ),
                     ),
@@ -1063,7 +1079,7 @@ class _CommentListSkeleton extends StatelessWidget {
                       height: 10,
                       width: double.infinity,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEEF1F4),
+                        color: Colors.white.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(4),
                       ),
                     ),
@@ -1072,7 +1088,7 @@ class _CommentListSkeleton extends StatelessWidget {
                       height: 10,
                       width: 180,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEEF1F4),
+                        color: Colors.white.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(4),
                       ),
                     ),
