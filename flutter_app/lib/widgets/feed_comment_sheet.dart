@@ -341,18 +341,22 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
         : 0.0;
 
     return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
+      // 14px corner radius — match Instagram Reels comment drawer
+      // (sebelumnya 26 = lebih bulat dari Instagram, terasa less native).
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
       child: Container(
         // Dark drawer Instagram Reels-style — bukan putih (user spec).
         // Background, header text, divider, input — semua flip ke variant
         // dark dengan white alpha variants untuk visual hierarchy.
-        decoration: BoxDecoration(
-          color: const Color(0xFF111417),
-          border: Border(
-            top: BorderSide(
-              color: Colors.white.withValues(alpha: 0.08),
-            ),
-          ),
+        //
+        // BUG FIX: SEBELUMNYA ada border: Border(top: BorderSide(white
+        // alpha 0.08)) yang render 1px line subtle di tepi atas drawer.
+        // Di TestFlight build, line ini visible sebagai "blur line"
+        // mengganggu antara video terang di atas dan drawer gelap di
+        // bawah. Removed — Instagram Reels TIDAK punya border line di
+        // tepi atas drawer.
+        decoration: const BoxDecoration(
+          color: Color(0xFF111417),
         ),
         child: Column(
           children: [
