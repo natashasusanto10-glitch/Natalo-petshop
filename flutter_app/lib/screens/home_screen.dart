@@ -722,15 +722,17 @@ class _ApiFallbackNotice extends StatelessWidget {
   }
 }
 
-/// Collapsible sticky header — top state (logo+subtitle+search+trust)
-/// menyusut ke compact state (logo kecil, no subtitle, search+trust)
-/// saat user scroll. Lerp via shrinkOffset progress 0→1.
+/// Collapsible sticky header — top state (logo+subtitle+search) menyusut
+/// ke compact state (logo kecil, no subtitle, search) saat user scroll.
+/// Lerp via shrinkOffset progress 0→1.
 ///
-/// Top state: 166px (logo 48 + subtitle visible + search 38 + trust 36)
-/// Compact state: 138px (logo 36 + no subtitle + search 38 + trust 32)
+/// Top state: 128px (logo 44 + subtitle visible + search 42 + paddings)
+/// Compact state: 120px (logo 32 + no subtitle + search 42 + paddings)
 ///
-/// Spec acceptance: search bar selalu 38px di kedua state, no double
-/// safe padding di iOS/Android, smooth easeOutCubic transition.
+/// Spec acceptance: search bar 42px konsisten di kedua state, breathing
+/// room cukup supaya tidak ke-clip oleh sliver boundary, smooth
+/// easeOutCubic transition. Trust marquee bukan bagian sticky (sudah
+/// dipindah ke SliverToBoxAdapter terpisah).
 class _HomeStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
   final VoidCallback onOpenProducts;
   final VoidCallback onOpenSearch;
@@ -740,11 +742,15 @@ class _HomeStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.onOpenSearch,
   });
 
-  // Trust marquee dipindah keluar sticky → extent berkurang sekitar 46 (top)
-  // dan 38 (compact). Sticky sekarang hanya: logo+title row, search bar 38px,
-  // plus padding atas/bawah.
-  static const double _topExtent = 120;
-  static const double _compactExtent = 100;
+  // Extent calc — Row di sticky di-dominasi IconButton (Bell + Cart) yang
+  // Material default min height 48px (touch target), BUKAN logo 32-44.
+  // Content compact: padTop 6 + Row 48 + gap 8 + search 42 + padBottom 10 = 114
+  // Content top:     padTop 8 + Row 48 + gap 10 + search 42 + padBottom 12 = 120
+  // Extent perlu ≥ content + breathing room supaya shadow + radius search
+  // tidak ke-clip oleh sliver boundary. Sebelumnya compact 100 → overflow
+  // 8px → search bar bottom kepotong saat scroll (user report).
+  static const double _topExtent = 128;
+  static const double _compactExtent = 120;
 
   @override
   double get minExtent => _compactExtent;
@@ -810,8 +816,8 @@ class _HomeStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
 /// - Logo box: 44 → 32 (lerp)
 /// - Title font: 18 → 16
 /// - Subtitle: opacity 1 → 0, height 18 → 0 (fully collapses)
-/// - Search bar: TETAP 38px (spec acceptance)
-/// - Outer padding: top 8 → 6, bottom 12 → 8
+/// - Search bar: TETAP 42px (was 38 — terlalu rapat, ke-clip di compact)
+/// - Outer padding: top 8 → 6, bottom 12 → 10 (was 8, ke-clip)
 ///
 /// Catatan: trust marquee TIDAK lagi bagian sticky header. Trust strip
 /// di-render sebagai SliverToBoxAdapter terpisah di bawah sticky header
@@ -835,7 +841,10 @@ class _HomeHeader extends StatelessWidget {
     final subtitleOpacity = (1 - progress * 1.6).clamp(0.0, 1.0);
     final subtitleHeight = ui.lerpDouble(18, 0, progress)!;
     final paddingTop = ui.lerpDouble(8, 6, progress)!;
-    final paddingBottom = ui.lerpDouble(12, 8, progress)!;
+    // Padding bottom: spec minta 10-12px supaya search bar tidak nempel
+    // ke border bawah sticky (sebelumnya 8 di compact = terlalu rapat,
+    // shadow + radius search ke-clip).
+    final paddingBottom = ui.lerpDouble(12, 10, progress)!;
     final gapAfterRow = ui.lerpDouble(10, 8, progress)!;
 
     return Padding(
@@ -917,12 +926,14 @@ class _HomeHeader extends StatelessWidget {
             ],
           ),
           SizedBox(height: gapAfterRow),
-          // ── Search bar — TETAP 38px di kedua state (spec) ──
+          // ── Search bar 42px (spec: 42-44 untuk ruang vertikal cukup
+          // termasuk border + radius + shadow). Sebelumnya 38 → kurang
+          // ruang di compact state, bagian bawah ke-clip saat scroll.
           GestureDetector(
             onTap: onOpenSearch,
             behavior: HitTestBehavior.opaque,
             child: Container(
-              height: 38,
+              height: 42,
               padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
                 color: const Color(0xFFF8FAFC),
