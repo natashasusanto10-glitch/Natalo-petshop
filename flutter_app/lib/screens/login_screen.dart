@@ -259,17 +259,24 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _openOtpLogin() {
+  void _showGoogleLoginComingSoon() {
     AppHaptics.tap();
-    // Pass redirect arguments (kalau ada) ke OTP screen supaya post-login
-    // routing tetap sama (Tokopedia/Shopee pattern: bisa deep-link ke cart
-    // dan tetap balik ke cart setelah login via OTP).
-    final args = ModalRoute.of(context)?.settings.arguments;
-    Navigator.pushNamed(context, '/member/login-otp', arguments: args);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Login Google akan segera tersedia.'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    final isSmallHeight = size.height < 720;
+    final isSmallWidth = size.width < 360;
+    final horizontalPadding = isSmallWidth ? 16.0 : 20.0;
+    final sectionGap = isSmallHeight ? 20.0 : 26.0;
+
     return Scaffold(
       backgroundColor: _softBlueBg,
       resizeToAvoidBottomInset: true,
@@ -296,167 +303,192 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        child: Column(
-          children: [
-            const _LoginHeroSection(),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 14, 20, 0),
-              child: _MemberBenefitRow(),
+      body: SafeArea(
+        top: false,
+        child: DecoratedBox(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Colors.white, Color(0xFFF1F7FF)],
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: _borderSoft),
-                  boxShadow: [
-                    BoxShadow(
-                      color: _brandBlueDark.withValues(alpha: 0.08),
-                      blurRadius: 28,
-                      offset: const Offset(0, 14),
-                    ),
-                  ],
-                ),
+          ),
+          child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsets.only(
+              left: horizontalPadding,
+              right: horizontalPadding,
+              top: isSmallHeight ? 18 : 26,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+            ),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 430),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Email / No HP field
-                    const Text(
-                      'Email / No. HP',
-                      style: TextStyle(
-                        color: _darkNavy,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w900,
+                    _LoginHeroSection(
+                      logoSize: isSmallHeight ? 72 : 84,
+                      titleSize: isSmallWidth ? 34 : 40,
+                    ),
+                    SizedBox(height: sectionGap),
+                    const _MemberBenefitRow(),
+                    SizedBox(height: isSmallHeight ? 18 : 22),
+                    Container(
+                      padding: EdgeInsets.all(isSmallWidth ? 18 : 20),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: _borderSoft),
+                        boxShadow: [
+                          BoxShadow(
+                            color: _brandBlueDark.withValues(alpha: 0.08),
+                            blurRadius: 28,
+                            offset: const Offset(0, 14),
+                          ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    _LoginTextField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      hint: 'Masukkan email atau nomor HP',
-                      prefixIcon: Icons.mail_outline_rounded,
-                    ),
-                    const SizedBox(height: 16),
-                    // Password label + Lupa password? link
-                    Row(
-                      children: [
-                        const Expanded(
-                          child: Text(
-                            'Password',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Email / No HP field
+                          const Text(
+                            'Email / No. HP',
                             style: TextStyle(
                               color: _darkNavy,
                               fontSize: 14,
                               fontWeight: FontWeight.w900,
                             ),
                           ),
-                        ),
-                        GestureDetector(
-                          onTap: () => Navigator.pushNamed(
-                              context, '/member/forgot-password'),
-                          child: const Text(
-                            'Lupa password?',
-                            style: TextStyle(
-                              color: _brandBlue,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w900,
+                          const SizedBox(height: 8),
+                          _LoginTextField(
+                            controller: _emailController,
+                            keyboardType: TextInputType.emailAddress,
+                            hint: 'Masukkan email atau nomor HP',
+                            prefixIcon: Icons.mail_outline_rounded,
+                          ),
+                          const SizedBox(height: 16),
+                          // Password label + Lupa password? link
+                          Row(
+                            children: [
+                              const Expanded(
+                                child: Text(
+                                  'Password',
+                                  style: TextStyle(
+                                    color: _darkNavy,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ),
+                              GestureDetector(
+                                onTap: () => Navigator.pushNamed(
+                                    context, '/member/forgot-password'),
+                                child: const Text(
+                                  'Lupa password?',
+                                  style: TextStyle(
+                                    color: _brandBlue,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          _LoginTextField(
+                            controller: _passwordController,
+                            obscureText: _obscure,
+                            hint: 'Masukkan password',
+                            prefixIcon: Icons.lock_outline_rounded,
+                            suffix: IconButton(
+                              onPressed: () =>
+                                  setState(() => _obscure = !_obscure),
+                              tooltip: _obscure
+                                  ? 'Tampilkan password'
+                                  : 'Sembunyikan password',
+                              icon: Icon(
+                                _obscure
+                                    ? Icons.visibility_outlined
+                                    : Icons.visibility_off_outlined,
+                                color: const Color(0xFF7B8AA5),
+                              ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    _LoginTextField(
-                      controller: _passwordController,
-                      obscureText: _obscure,
-                      hint: 'Masukkan password',
-                      prefixIcon: Icons.lock_outline_rounded,
-                      suffix: IconButton(
-                        onPressed: () => setState(() => _obscure = !_obscure),
-                        tooltip: _obscure
-                            ? 'Tampilkan password'
-                            : 'Sembunyikan password',
-                        icon: Icon(
-                          _obscure
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined,
-                          color: const Color(0xFF7B8AA5),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 22),
-                    // Masuk button — pill blue dengan loading state otomatis
-                    // dari LoadingButton (spinner replace text saat _loading).
-                    LoadingButton(
-                      onPressed: _login,
-                      loading: _loading,
-                      color: _brandBlue,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _brandBlue,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size.fromHeight(54),
-                        elevation: 0,
-                        shadowColor: _brandBlue.withValues(alpha: 0.30),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        textStyle: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      child: const Text('Masuk'),
-                    ),
-                    // Biometric login button — muncul kalau device support +
-                    // sudah pernah login + user enable biometric sebelumnya.
-                    if (_biometricEnabled) ...[
-                      const SizedBox(height: 12),
-                      OutlinedButton.icon(
-                        onPressed: _loading ? null : _loginWithBiometric,
-                        icon: const Icon(
-                          Icons.fingerprint_rounded,
-                          color: _brandBlue,
-                          size: 24,
-                        ),
-                        label: const Text(
-                          'Login dengan sidik jari',
-                          style: TextStyle(
+                          const SizedBox(height: 22),
+                          // Masuk button — pill blue dengan loading state otomatis
+                          // dari LoadingButton (spinner replace text saat _loading).
+                          LoadingButton(
+                            onPressed: _login,
+                            loading: _loading,
                             color: _brandBlue,
-                            fontWeight: FontWeight.w900,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _brandBlue,
+                              foregroundColor: Colors.white,
+                              minimumSize: const Size.fromHeight(54),
+                              elevation: 0,
+                              shadowColor: _brandBlue.withValues(alpha: 0.30),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              textStyle: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            child: const Text('Masuk'),
                           ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size.fromHeight(50),
-                          side: const BorderSide(color: _brandBlue, width: 1.4),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                        ),
+                          // Biometric login button — muncul kalau device support +
+                          // sudah pernah login + user enable biometric sebelumnya.
+                          if (_biometricEnabled) ...[
+                            const SizedBox(height: 12),
+                            OutlinedButton.icon(
+                              onPressed: _loading ? null : _loginWithBiometric,
+                              icon: const Icon(
+                                Icons.fingerprint_rounded,
+                                color: _brandBlue,
+                                size: 24,
+                              ),
+                              label: const Text(
+                                'Login dengan sidik jari',
+                                style: TextStyle(
+                                  color: _brandBlue,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: const Size.fromHeight(50),
+                                side: const BorderSide(
+                                    color: _brandBlue, width: 1.4),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 20),
+                          const _LoginSeparator(),
+                          const SizedBox(height: 14),
+                          _GoogleLoginButton(onTap: _showGoogleLoginComingSoon),
+                        ],
                       ),
-                    ],
-                    const SizedBox(height: 20),
-                    const _LoginSeparator(),
-                    const SizedBox(height: 14),
-                    _WhatsAppOtpButton(onTap: _openOtpLogin),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 16, bottom: 12),
+                      child: _RegisterBenefitCard(
+                        onRegister: () =>
+                            Navigator.pushNamed(context, '/member/register'),
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 4),
+                      child: _SecurityNote(),
+                    ),
                   ],
                 ),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-              child: _RegisterBenefitCard(
-                onRegister: () =>
-                    Navigator.pushNamed(context, '/member/register'),
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 0, 20, 28),
-              child: _SecurityNote(),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -464,141 +496,89 @@ class _LoginScreenState extends State<LoginScreen> {
 }
 
 class _LoginHeroSection extends StatelessWidget {
-  const _LoginHeroSection();
+  final double logoSize;
+  final double titleSize;
+
+  const _LoginHeroSection({
+    required this.logoSize,
+    required this.titleSize,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = constraints.maxWidth;
-        final isCompact = width < 380;
-        final heroHeight = isCompact ? 430.0 : 460.0;
-        final imageWidth = width * (isCompact ? 0.62 : 0.64);
-        final subtitleWidth = width * (isCompact ? 0.46 : 0.44);
-        final imageRight = isCompact ? -40.0 : -54.0;
-
-        return Container(
-          width: double.infinity,
-          height: heroHeight,
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Colors.white, Color(0xFFEAF5FF)],
-            ),
+    return Stack(
+      children: [
+        Positioned(
+          right: 18,
+          top: 8,
+          child: Icon(
+            Icons.pets_rounded,
+            color: _brandBlue.withValues(alpha: 0.07),
+            size: 58,
           ),
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Positioned(
-                right: imageRight,
-                bottom: 0,
-                child: SizedBox(
-                  width: imageWidth,
-                  child: Image.asset(
-                    'assets/images/login_member_hero_petshop.png',
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => const _HeroFallback(),
+        ),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              height: logoSize,
+              width: logoSize,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(logoSize * 0.30),
+                boxShadow: [
+                  BoxShadow(
+                    color: _brandBlue.withValues(alpha: 0.18),
+                    blurRadius: 22,
+                    offset: const Offset(0, 10),
                   ),
-                ),
+                ],
               ),
-              Positioned(
-                left: 0,
-                top: 26,
-                child: Container(
-                  height: 72,
-                  width: 72,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(22),
-                    boxShadow: [
-                      BoxShadow(
-                        color: _brandBlue.withValues(alpha: 0.20),
-                        blurRadius: 22,
-                        offset: const Offset(0, 10),
-                      ),
-                    ],
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: Image.asset(
-                    'assets/native/icon-only.png',
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      color: _brandBlue,
-                      alignment: Alignment.center,
-                      child: const Text(
-                        'NL',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                left: 0,
-                top: 124,
-                child: SizedBox(
-                  width: width - 40,
-                  child: const Text(
-                    'Masuk Member\nNatalo',
-                    maxLines: 2,
-                    overflow: TextOverflow.visible,
+              clipBehavior: Clip.antiAlias,
+              child: Image.asset(
+                'assets/native/icon-only.png',
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  color: _brandBlue,
+                  alignment: Alignment.center,
+                  child: Text(
+                    'NL',
                     style: TextStyle(
-                      color: _darkNavy,
-                      fontSize: 31,
+                      color: Colors.white,
+                      fontSize: logoSize * 0.34,
                       fontWeight: FontWeight.w900,
-                      height: 1.06,
-                      letterSpacing: -0.5,
                     ),
                   ),
                 ),
               ),
-              Positioned(
-                left: 0,
-                top: 218,
-                child: SizedBox(
-                  width: subtitleWidth,
-                  child: const Text(
-                    'Belanja kebutuhan hewan jadi lebih mudah, cepat, dan hemat.',
-                    maxLines: 4,
-                    overflow: TextOverflow.visible,
-                    style: TextStyle(
-                      color: _textSecondary,
-                      fontSize: 15.5,
-                      fontWeight: FontWeight.w700,
-                      height: 1.45,
-                    ),
-                  ),
-                ),
+            ),
+            const SizedBox(height: 26),
+            Text(
+              'Masuk Member\nNatalo',
+              maxLines: 2,
+              overflow: TextOverflow.visible,
+              style: TextStyle(
+                color: _darkNavy,
+                fontSize: titleSize,
+                fontWeight: FontWeight.w900,
+                height: 1.05,
+                letterSpacing: -0.4,
               ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _HeroFallback extends StatelessWidget {
-  const _HeroFallback();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 220,
-      decoration: BoxDecoration(
-        color: const Color(0xFFEAF3FF),
-        borderRadius: BorderRadius.circular(28),
-      ),
-      child: const Icon(
-        Icons.pets_rounded,
-        color: _brandBlue,
-        size: 72,
-      ),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Belanja kebutuhan hewan\njadi lebih mudah, cepat,\ndan hemat.',
+              maxLines: 3,
+              overflow: TextOverflow.visible,
+              style: TextStyle(
+                color: _textSecondary,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                height: 1.42,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -810,10 +790,10 @@ class _LoginSeparator extends StatelessWidget {
   }
 }
 
-class _WhatsAppOtpButton extends StatelessWidget {
+class _GoogleLoginButton extends StatelessWidget {
   final VoidCallback onTap;
 
-  const _WhatsAppOtpButton({required this.onTap});
+  const _GoogleLoginButton({required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -822,17 +802,30 @@ class _WhatsAppOtpButton extends StatelessWidget {
       height: 52,
       child: OutlinedButton.icon(
         onPressed: onTap,
-        icon: const Icon(
-          Icons.call_rounded,
-          color: Color(0xFF22C55E),
-          size: 22,
+        icon: Container(
+          width: 22,
+          height: 22,
+          alignment: Alignment.center,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.white,
+          ),
+          child: const Text(
+            'G',
+            style: TextStyle(
+              color: Color(0xFF4285F4),
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              height: 1,
+            ),
+          ),
         ),
-        label: const Text('Masuk dengan OTP WhatsApp'),
+        label: const Text('Masuk dengan Google'),
         style: OutlinedButton.styleFrom(
           foregroundColor: _darkNavy,
-          side: const BorderSide(color: _brandBlue, width: 1.3),
+          side: const BorderSide(color: _borderSoft, width: 1.3),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(999),
+            borderRadius: BorderRadius.circular(16),
           ),
           textStyle: const TextStyle(
             fontSize: 14,
