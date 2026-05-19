@@ -319,7 +319,7 @@ class _FeedScreenState extends State<FeedScreen> {
             else if (_loadError != null && _posts.isEmpty)
               _FeedErrorState(message: _loadError!, onRetry: _loadInitial)
             else if (_posts.isEmpty)
-              const _EmptyState()
+              _EmptyState(onCreatePost: _onUpload)
             else
               RefreshIndicator(
                 color: Colors.white,
@@ -346,6 +346,17 @@ class _FeedScreenState extends State<FeedScreen> {
                     );
                   },
                 ),
+              ),
+            // ── Floating Upload Button — top-right, selalu visible ──
+            // Hilang dari build sebelumnya (regression). _onUpload() ada
+            // tapi entry point UI-nya tidak ter-render. Sekarang restored:
+            // visible di semua state kecuali saat interaction locked
+            // (mis. comment sheet/peek dialog open) supaya tidak overlap.
+            if (!_interactionLocked)
+              Positioned(
+                top: MediaQuery.paddingOf(context).top + 10,
+                right: 14,
+                child: _FeedUploadFab(onTap: _onUpload),
               ),
           ],
         ),
@@ -527,7 +538,9 @@ class _SkeletonBar extends StatelessWidget {
 }
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState();
+  final VoidCallback? onCreatePost;
+
+  const _EmptyState({this.onCreatePost});
 
   @override
   Widget build(BuildContext context) {
@@ -562,7 +575,7 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             const Text(
-              'Pantau lagi nanti untuk video & promo terbaru dari Natalo.',
+              'Jadi yang pertama berbagi video — pamerkan hewan kesayanganmu!',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.white70,
@@ -571,7 +584,84 @@ class _EmptyState extends StatelessWidget {
                 height: 1.5,
               ),
             ),
+            if (onCreatePost != null) ...[
+              const SizedBox(height: 22),
+              ElevatedButton.icon(
+                onPressed: () {
+                  AppHaptics.tap();
+                  onCreatePost!();
+                },
+                icon: const Icon(Icons.add_rounded, size: 20),
+                label: const Text(
+                  'Buat Postingan',
+                  style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: const Color(0xFF111111),
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 22,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(28),
+                  ),
+                ),
+              ),
+            ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Floating upload button — top-right corner Feed page.
+/// Tampil di semua state (loading, empty, loaded). Gradient biru-putih
+/// dengan glow halus supaya visible di atas video apapun.
+class _FeedUploadFab extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _FeedUploadFab({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const LinearGradient(
+              colors: [Color(0xFF1E5FBF), Color(0xFF60A5FA)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.85),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.35),
+                blurRadius: 14,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: const Icon(
+            Icons.add_rounded,
+            color: Colors.white,
+            size: 24,
+          ),
         ),
       ),
     );
