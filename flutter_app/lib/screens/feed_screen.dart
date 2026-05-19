@@ -2111,18 +2111,15 @@ class _CommentVideoFrame extends StatelessWidget {
           child: child,
           builder: (context, sheetProgress, child) {
             final clampedProgress = sheetProgress.clamp(0.0, 1.0).toDouble();
-            final previewWidth =
-                (width * ui.lerpDouble(0.46, 0.28, clampedProgress)!)
-                    .clamp(104.0, width - 28)
-                    .toDouble();
-            final previewHeight = previewWidth * 16 / 9;
-            // Dynamic preview position — track drawer top edge supaya
-            // video preview tetap muat di area ABOVE drawer, tidak overlap
-            // dengan "Komentar" header saat user drag drawer ke max
-            // extent. Drawer extent linear interpolation: 0.60 (initial)
-            // → 0.90 (max) sebagai progress 0..1. Drawer top edge =
-            // height * (1 - extent). Preview bottom = drawerTop - 12px
-            // gap. Preview top = bottom - height.
+            // Pattern YouTube/Threads: video FILLS area di atas drawer,
+            // bukan floating preview di tengah. Saat drawer grow ke atas,
+            // video shrink vertically dari bawah. Saat drawer drag ke
+            // bawah, video expand lagi. Width selalu full screen.
+            //
+            // Drawer extent linear interpolate: 0.60 (initial) → 0.90
+            // (max) berdasarkan progress 0..1. Drawer top edge =
+            // height * (1 - extent). Video bottom = drawerTopY (touching
+            // drawer top edge, no gap). Video top = 0 (status bar area).
             const drawerInitialExtent = 0.60;
             const drawerMaxExtent = 0.90;
             final drawerExtent = ui.lerpDouble(
@@ -2131,75 +2128,23 @@ class _CommentVideoFrame extends StatelessWidget {
               clampedProgress,
             )!;
             final drawerTopY = height * (1 - drawerExtent);
-            final previewTopRaw = drawerTopY - previewHeight - 12;
-            final previewTop =
-                previewTopRaw.clamp(safeTop + 8, drawerTopY).toDouble();
-            // Fade out preview as drawer mendekati max extent — Instagram
-            // pattern: drag drawer ke atas = focus to comments, video
-            // preview menghilang. Fade window 0.5..0.85.
-            final fadeProgress =
-                ((clampedProgress - 0.5) / (0.85 - 0.5)).clamp(0.0, 1.0);
-            final previewOpacity = 1.0 - fadeProgress;
             final fullRect = Rect.fromLTWH(0, 0, width, height);
-            final previewRect = Rect.fromLTWH(
-              (width - previewWidth) / 2,
-              previewTop,
-              previewWidth,
-              previewHeight,
-            );
-            final rect = Rect.lerp(fullRect, previewRect, openProgress)!;
-            final previewRadius = ui.lerpDouble(
-              18,
-              10,
-              clampedProgress,
-            )!;
-            final radius = ui.lerpDouble(0, previewRadius, openProgress)!;
-            final shadowOpacity =
-                ui.lerpDouble(0, 0.44, openProgress)! * previewOpacity;
-            // Combined opacity: openProgress (1 = open) × previewOpacity
-            // (fade out near max). Saat closed → openProgress=0 → full
-            // rect, opacity should jadi 1 (kembali ke fullscreen). Trick:
-            // hanya apply previewOpacity saat openProgress mendekati 1.
-            final finalOpacity =
-                ui.lerpDouble(1.0, previewOpacity, openProgress)!;
+            // Video frame saat drawer open: full width, dari y=0 sampai
+            // drawer top edge. Animasi rect interpolate dari fullscreen
+            // (openProgress=0) ke aboveDrawer rect (openProgress=1).
+            final aboveDrawerRect = Rect.fromLTWH(0, 0, width, drawerTopY);
+            final rect = Rect.lerp(fullRect, aboveDrawerRect, openProgress)!;
+            // Tidak ada rounded corners / shadow karena video fill full
+            // width — flat edge to drawer top. Drawer punya rounded top
+            // corners-nya sendiri yang akan visible di drawer body.
 
             return Positioned.fromRect(
               rect: rect,
-              child: IgnorePointer(
-                // Saat preview sudah fade nearly invisible, jangan block
-                // tap ke drawer di belakang.
-                ignoring: previewOpacity < 0.05,
-                child: Opacity(
-                  opacity: finalOpacity.clamp(0.0, 1.0),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Colors.black,
-                      borderRadius: BorderRadius.circular(radius),
-                      boxShadow: shadowOpacity <= 0
-                          ? const []
-                          : [
-                              BoxShadow(
-                                color: Colors.black.withValues(
-                                  alpha: shadowOpacity,
-                                ),
-                                blurRadius: ui.lerpDouble(
-                                  0,
-                                  22,
-                                  openProgress,
-                                )!,
-                                offset: Offset(
-                                  0,
-                                  ui.lerpDouble(0, 12, openProgress)!,
-                                ),
-                              ),
-                            ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(radius),
-                      child: child,
-                    ),
-                  ),
+              child: DecoratedBox(
+                decoration: const BoxDecoration(
+                  color: Colors.black,
                 ),
+                child: child,
               ),
             );
           },
