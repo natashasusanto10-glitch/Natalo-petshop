@@ -27,6 +27,40 @@ const _textPrimary = Color(0xFF102033);
 const _textSecondary = Color(0xFF64748B);
 const _dangerRed = Color(0xFFEF4444);
 
+/// Format raw category slug ke label readable. Defensive helper — kalau
+/// backend Capacitor return slug-style (mis. `snack-treat-anjing`) langsung,
+/// formatter ini auto-translate ke label rapi sebelum di-display.
+///
+/// Map dictionary di-prioritaskan; kalau tidak match, fallback ke
+/// title-case dari split("-").
+///
+/// Aman dipanggil walau backend sudah return label rapi (mis. "Makanan
+/// Kucing") — string tanpa `-` lewat fallback tidak akan diubah.
+String formatCategoryLabel(String raw) {
+  const map = {
+    'semua': 'Semua',
+    'aksesoris-perlengkapan': 'Aksesoris & Perlengkapan',
+    'aquarium-kolam': 'Aquarium & Kolam',
+    'kesehatan-vitamin-anjing': 'Vitamin Anjing',
+    'kesehatan-vitamin-kucing': 'Vitamin Kucing',
+    'makanan-ikan': 'Makanan Ikan',
+    'makanan-kucing': 'Makanan Kucing',
+    'makanan-anjing': 'Makanan Anjing',
+    'peralatan-aquarium': 'Peralatan Aquarium',
+    'snack-treat-anjing': 'Snack & Treat Anjing',
+    'snack-treat-kucing': 'Snack & Treat Kucing',
+  };
+  final key = raw.trim().toLowerCase();
+  if (map.containsKey(key)) return map[key]!;
+  // Kalau sudah label rapi (mis. "Makanan Kucing"), return as-is.
+  if (!raw.contains('-')) return raw;
+  return raw
+      .split('-')
+      .where((word) => word.trim().isNotEmpty)
+      .map((word) => '${word[0].toUpperCase()}${word.substring(1)}')
+      .join(' ');
+}
+
 class ProductsScreen extends StatefulWidget {
   final String? selectedBrand;
   final String? initialQuery;
@@ -853,20 +887,32 @@ class _ProductCountAndSortRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
+          // Urutkan button — glass ringan style match spec (inactive chip
+          // family). Selaras visual dengan chip "Semua" / "Produk Baru"
+          // di bawahnya supaya tidak ada inconsistency dua kotak yang
+          // serupa tapi style beda.
           Material(
             color: Colors.transparent,
             child: InkWell(
               onTap: onOpenSort,
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(22),
               child: Container(
                 height: 40,
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEAF3FF),
-                  borderRadius: BorderRadius.circular(18),
+                  color: Colors.white.withValues(alpha: 0.72),
+                  borderRadius: BorderRadius.circular(22),
                   border: Border.all(
-                    color: const Color(0xFFD8E3F2),
+                    color: const Color(0xFFD8E4F4),
+                    width: 1,
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.035),
+                      blurRadius: 14,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
                 ),
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
@@ -876,14 +922,14 @@ class _ProductCountAndSortRow extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF2568C7),
+                        color: Color(0xFF111827),
                       ),
                     ),
                     SizedBox(width: 6),
                     Icon(
                       Icons.swap_vert_rounded,
                       size: 19,
-                      color: Color(0xFF2568C7),
+                      color: Color(0xFF64748B),
                     ),
                   ],
                 ),
@@ -1173,7 +1219,11 @@ class _HorizontalProductFilterChips extends StatelessWidget {
                 CompositedTransformTarget(
                   link: categoryLayerLink,
                   child: ProductFilterChip(
-                    label: selectedCategory ?? mode.label,
+                    // Apply formatter — defensive kalau backend kasih slug
+                    // mentah (mis. "snack-treat-anjing" → "Snack & Treat Anjing").
+                    label: selectedCategory != null
+                        ? formatCategoryLabel(selectedCategory!)
+                        : mode.label,
                     icon: mode.icon,
                     selected: selectedMode == _ProductFilterMode.kategori,
                     onTap: () => onChanged(mode),
@@ -1218,26 +1268,45 @@ class ProductFilterChip extends StatelessWidget {
       curve: Curves.easeOutCubic,
       height: 44,
       decoration: BoxDecoration(
-        color: selected ? const Color(0xFF2568C7) : Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: selected
-            ? null
-            : Border.all(color: const Color(0xFFE2E8F0), width: 1),
+        // Active: glossy gradient biru Natalo dengan white border 0.35
+        // untuk highlight glass effect. Inactive: glass ringan (white 0.72
+        // + border `#D8E4F4`) — spec "Visual Direction".
+        gradient: selected
+            ? const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF2F7BEF), Color(0xFF0F63D8)],
+              )
+            : null,
+        color: selected ? null : Colors.white.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: selected
+              ? Colors.white.withValues(alpha: 0.35)
+              : const Color(0xFFD8E4F4),
+          width: 1,
+        ),
         boxShadow: selected
             ? [
                 BoxShadow(
-                  color: const Color(0xFF2568C7).withValues(alpha: 0.18),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
+                  color: const Color(0xFF1F6FD1).withValues(alpha: 0.22),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
                 ),
               ]
-            : null,
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.035),
+                  blurRadius: 14,
+                  offset: const Offset(0, 6),
+                ),
+              ],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(22),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14),
             child: Row(
@@ -1252,7 +1321,7 @@ class ProductFilterChip extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 160),
+                  constraints: const BoxConstraints(maxWidth: 180),
                   child: Text(
                     label,
                     maxLines: 1,
@@ -1260,8 +1329,8 @@ class ProductFilterChip extends StatelessWidget {
                     style: TextStyle(
                       color: selected
                           ? Colors.white
-                          : const Color(0xFF0F172A),
-                      fontSize: 13.5,
+                          : const Color(0xFF111827),
+                      fontSize: 14,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -2132,7 +2201,9 @@ class _CategoryDropdownOverlayState extends State<_CategoryDropdownOverlay>
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.sizeOf(context);
-    final maxHeight = screenSize.height * 0.55;
+    // Spec: max 46% screen height — supaya product grid masih terlihat
+    // sebagian di bawah sheet (visual reassurance konten tetap ada).
+    final maxHeight = screenSize.height * 0.46;
     return Stack(
       children: [
         // Backdrop tap dismiss — transparent layer cover whole screen.
@@ -2179,6 +2250,19 @@ class _CategoryDropdownOverlayState extends State<_CategoryDropdownOverlay>
   }
 }
 
+/// Glass sheet untuk daftar kategori, anchored ke chip Kategori.
+///
+/// Spec:
+/// - Frosted glass via BackdropFilter sigma 14 + bg white 0.78
+/// - Border `#D9E8FA` 0.9 width 1, radius 24
+/// - Soft shadow `#0F172A` 0.08 blur 28 offset (0, 14)
+/// - List text-only (NO icon kategori, NO chevron right)
+/// - Item padding horizontal 20, vertical 17
+/// - Divider thin `#E6EEF8`
+/// - Selected item: card bg `#EAF3FF` 0.88 + border `#C9DFFF` + radius 14,
+///   text color `#1467D9` w800, check icon kanan
+/// - Max height 46% screen, scrollable
+/// - Connected notch (rotated square) di atas — visual connector ke chip aktif
 class _GlassCategoryDropdown extends StatelessWidget {
   final List<String> categories;
   final String? selectedCategory;
@@ -2192,61 +2276,95 @@ class _GlassCategoryDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.82),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.65),
-              width: 1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF0F172A).withValues(alpha: 0.12),
-                blurRadius: 24,
-                offset: const Offset(0, 12),
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.78),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: const Color(0xFFD9E8FA).withValues(alpha: 0.9),
+                  width: 1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF0F172A).withValues(alpha: 0.08),
+                    blurRadius: 28,
+                    offset: const Offset(0, 14),
+                  ),
+                ],
               ),
-            ],
-          ),
-          child: ListView.separated(
-            shrinkWrap: true,
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            itemCount: categories.length,
-            separatorBuilder: (_, __) => Divider(
-              height: 1,
-              thickness: 1,
-              color: const Color(0xFFE2E8F0).withValues(alpha: 0.75),
-              indent: 18,
-              endIndent: 18,
+              child: ListView.separated(
+                shrinkWrap: true,
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                itemCount: categories.length,
+                separatorBuilder: (_, __) => const Divider(
+                  height: 1,
+                  thickness: 1,
+                  color: Color(0xFFE6EEF8),
+                  indent: 8,
+                  endIndent: 8,
+                ),
+                itemBuilder: (context, index) {
+                  final rawName = categories[index];
+                  final label = rawName == 'Semua'
+                      ? 'Semua'
+                      : formatCategoryLabel(rawName);
+                  final isSelected =
+                      (selectedCategory == null && rawName == 'Semua') ||
+                          (selectedCategory != null &&
+                              rawName == selectedCategory);
+                  return _CategoryDropdownItem(
+                    label: label,
+                    isSelected: isSelected,
+                    onTap: () => onSelect(rawName),
+                  );
+                },
+              ),
             ),
-            itemBuilder: (context, index) {
-              final name = categories[index];
-              final isSelected = (selectedCategory == null && name == 'Semua') ||
-                  (selectedCategory != null && name == selectedCategory);
-              return _CategoryDropdownItem(
-                name: name,
-                isSelected: isSelected,
-                onTap: () => onSelect(name),
-              );
-            },
           ),
         ),
-      ),
+        // Connected notch — small rotated square di atas sheet untuk visual
+        // connector ke chip aktif. Border top + left supaya match border
+        // sheet (yang dirotate 45°). Size 18 cukup kecil, tidak dominan.
+        Positioned(
+          top: -8,
+          left: 0,
+          right: 0,
+          child: Center(
+            child: Transform.rotate(
+              angle: 0.785398, // 45° in radians
+              child: Container(
+                width: 16,
+                height: 16,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.85),
+                  border: Border.all(
+                    color: const Color(0xFFD9E8FA),
+                    width: 1,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
 
 class _CategoryDropdownItem extends StatelessWidget {
-  final String name;
+  final String label;
   final bool isSelected;
   final VoidCallback onTap;
 
   const _CategoryDropdownItem({
-    required this.name,
+    required this.label,
     required this.isSelected,
     required this.onTap,
   });
@@ -2254,40 +2372,45 @@ class _CategoryDropdownItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: isSelected
-          ? const Color(0xFFEAF3FF)
-          : Colors.transparent,
+      color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
         child: Container(
-          height: 52,
-          padding: const EdgeInsets.symmetric(horizontal: 18),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 17),
+          decoration: isSelected
+              ? BoxDecoration(
+                  color: const Color(0xFFEAF3FF).withValues(alpha: 0.88),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: const Color(0xFFC9DFFF),
+                    width: 1,
+                  ),
+                )
+              : null,
           child: Row(
             children: [
               Expanded(
                 child: Text(
-                  name,
+                  label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 14,
+                    fontSize: 15,
                     fontWeight:
-                        isSelected ? FontWeight.w700 : FontWeight.w600,
+                        isSelected ? FontWeight.w800 : FontWeight.w600,
                     color: isSelected
-                        ? const Color(0xFF2568C7)
-                        : const Color(0xFF0F172A),
+                        ? const Color(0xFF1467D9)
+                        : const Color(0xFF111827),
                   ),
                 ),
               ),
-              Icon(
-                isSelected
-                    ? Icons.check_rounded
-                    : Icons.chevron_right_rounded,
-                size: isSelected ? 20 : 21,
-                color: isSelected
-                    ? const Color(0xFF2568C7)
-                    : const Color(0xFF64748B),
-              ),
+              if (isSelected)
+                const Icon(
+                  Icons.check_rounded,
+                  color: Color(0xFF1467D9),
+                  size: 24,
+                ),
             ],
           ),
         ),
