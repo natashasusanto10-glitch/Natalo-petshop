@@ -461,97 +461,117 @@ class _LoginHeroSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.sizeOf(context).width;
-    final imageWidth = width < 390 ? 230.0 : 260.0;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final isCompact = width < 380;
+        final heroHeight = isCompact ? 430.0 : 460.0;
+        final imageWidth = width * (isCompact ? 0.62 : 0.64);
+        final subtitleWidth = width * (isCompact ? 0.46 : 0.44);
+        final imageRight = isCompact ? -40.0 : -54.0;
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Colors.white, Color(0xFFEAF5FF)],
-        ),
-      ),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 270),
-        child: Stack(
-          children: [
-            Positioned(
-              right: -18,
-              bottom: -6,
-              child: SizedBox(
-                width: imageWidth,
-                child: Image.asset(
-                  'assets/images/login_member_hero_petshop.png',
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => const _HeroFallback(),
+        return Container(
+          width: double.infinity,
+          height: heroHeight,
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Colors.white, Color(0xFFEAF5FF)],
+            ),
+          ),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned(
+                right: imageRight,
+                bottom: 0,
+                child: SizedBox(
+                  width: imageWidth,
+                  child: Image.asset(
+                    'assets/images/login_member_hero_petshop.png',
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const _HeroFallback(),
+                  ),
                 ),
               ),
-            ),
-            SizedBox(
-              width: width < 390 ? 190 : 210,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    height: 66,
-                    width: 66,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(18),
-                      boxShadow: [
-                        BoxShadow(
-                          color: _brandBlue.withValues(alpha: 0.18),
-                          blurRadius: 18,
-                          offset: const Offset(0, 10),
-                        ),
-                      ],
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: Image.asset(
-                      'assets/native/icon-only.png',
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: _brandBlue,
-                        alignment: Alignment.center,
-                        child: const Text(
-                          'NL',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 24,
-                            fontWeight: FontWeight.w900,
-                          ),
+              Positioned(
+                left: 0,
+                top: 26,
+                child: Container(
+                  height: 72,
+                  width: 72,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(22),
+                    boxShadow: [
+                      BoxShadow(
+                        color: _brandBlue.withValues(alpha: 0.20),
+                        blurRadius: 22,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Image.asset(
+                    'assets/native/icon-only.png',
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      color: _brandBlue,
+                      alignment: Alignment.center,
+                      child: const Text(
+                        'NL',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.w900,
                         ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 18),
-                  const Text(
+                ),
+              ),
+              Positioned(
+                left: 0,
+                top: 124,
+                child: SizedBox(
+                  width: width - 40,
+                  child: const Text(
                     'Masuk Member\nNatalo',
+                    maxLines: 2,
+                    overflow: TextOverflow.visible,
                     style: TextStyle(
                       color: _darkNavy,
                       fontSize: 31,
                       fontWeight: FontWeight.w900,
-                      height: 1.05,
+                      height: 1.06,
+                      letterSpacing: -0.5,
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  const Text(
+                ),
+              ),
+              Positioned(
+                left: 0,
+                top: 218,
+                child: SizedBox(
+                  width: subtitleWidth,
+                  child: const Text(
                     'Belanja kebutuhan hewan jadi lebih mudah, cepat, dan hemat.',
+                    maxLines: 4,
+                    overflow: TextOverflow.visible,
                     style: TextStyle(
                       color: _textSecondary,
-                      fontSize: 15,
+                      fontSize: 15.5,
                       fontWeight: FontWeight.w700,
                       height: 1.45,
                     ),
                   ),
-                ],
+                ),
               ),
-            ),
-          ],
-        ),
-      ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -595,7 +615,7 @@ class _MemberBenefitRow extends StatelessWidget {
           child: _BenefitCard(
             icon: Icons.confirmation_number_rounded,
             title: 'Voucher Eksklusif',
-            subtitle: 'Dapatkan voucher khusus member',
+            subtitle: 'Voucher khusus member',
           ),
         ),
       ],
@@ -616,66 +636,81 @@ class _BenefitCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(minHeight: 106),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _borderSoft),
-        boxShadow: [
-          BoxShadow(
-            color: _brandBlueDark.withValues(alpha: 0.07),
-            blurRadius: 18,
-            offset: const Offset(0, 9),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 180;
+        final iconWidget = Container(
+          width: compact ? 46 : 52,
+          height: compact ? 46 : 52,
+          decoration: const BoxDecoration(
+            color: _brandBlue,
+            shape: BoxShape.circle,
           ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: const BoxDecoration(
-              color: _brandBlue,
-              shape: BoxShape.circle,
+          child: Icon(icon, color: Colors.white, size: compact ? 24 : 27),
+        );
+        final textWidget = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              title,
+              maxLines: 2,
+              overflow: TextOverflow.visible,
+              style: const TextStyle(
+                color: _darkNavy,
+                fontSize: 15,
+                fontWeight: FontWeight.w900,
+                height: 1.16,
+              ),
             ),
-            child: Icon(icon, color: Colors.white, size: 25),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: _darkNavy,
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w900,
-                    height: 1.15,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: _textSecondary,
-                    fontSize: 12.3,
-                    fontWeight: FontWeight.w600,
-                    height: 1.35,
-                  ),
-                ),
-              ],
+            const SizedBox(height: 6),
+            Text(
+              subtitle,
+              maxLines: 3,
+              overflow: TextOverflow.visible,
+              style: const TextStyle(
+                color: _textSecondary,
+                fontSize: 12.8,
+                fontWeight: FontWeight.w600,
+                height: 1.28,
+              ),
             ),
+          ],
+        );
+
+        return Container(
+          constraints: const BoxConstraints(minHeight: 118),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: _borderSoft),
+            boxShadow: [
+              BoxShadow(
+                color: _brandBlueDark.withValues(alpha: 0.07),
+                blurRadius: 18,
+                offset: const Offset(0, 9),
+              ),
+            ],
           ),
-        ],
-      ),
+          child: compact
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    iconWidget,
+                    const SizedBox(height: 12),
+                    textWidget,
+                  ],
+                )
+              : Row(
+                  children: [
+                    iconWidget,
+                    const SizedBox(width: 12),
+                    Expanded(child: textWidget),
+                  ],
+                ),
+        );
+      },
     );
   }
 }
