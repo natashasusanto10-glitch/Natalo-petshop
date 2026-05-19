@@ -61,8 +61,23 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _exploreLoading = false;
   bool _exploreInitialLoaded = false;
   int _exploreGeneration = 0;
-  int _homeReturnCount = 0;
-  int _nextExploreRegenerateAt = 2;
+
+  // ── Global counter — survive across HomeScreen instances ──
+  //
+  // Counter di-static supaya hidup across navigation. Setiap kali user
+  // "balik ke Beranda" (initState run lagi via tab switch atau product
+  // detail close), counter +1. Saat counter >= threshold, reshuffle
+  // explore products dengan generation baru.
+  //
+  // Threshold alternate 2-3 — user spec "berubah setiap 2-3x user balik
+  // ke halaman Beranda". Bukan strict 2 atau 3, tapi variasi supaya
+  // user tidak bisa predict timing.
+  //
+  // Counter reset ke 0 saat app fully restart. Acceptable behavior:
+  // fresh session = fresh first ordering.
+  static int _globalHomeVisitCount = 0;
+  static int _globalExploreGeneration = 0;
+  static int _globalNextRegenerateThreshold = 2;
 
   // ── Brand, Category, Banner dynamic fetch ──
   List<PetBrand> _brands = const [];
@@ -72,6 +87,19 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    // Increment global visit counter — every initState (fresh HomeScreen
+    // instance) counts as "user balik ke Beranda". Tab switch via
+    // pushNamedAndRemoveUntil creates fresh instance → triggers ini.
+    _globalHomeVisitCount += 1;
+    if (_globalHomeVisitCount >= _globalNextRegenerateThreshold) {
+      _globalHomeVisitCount = 0;
+      _globalExploreGeneration += 1;
+      // Alternate threshold 2 ↔ 3 supaya rotation tidak strict pattern.
+      _globalNextRegenerateThreshold =
+          _globalNextRegenerateThreshold == 2 ? 3 : 2;
+    }
+    _exploreGeneration = _globalExploreGeneration;
+
     _productsFuture = productService.fetchProducts(limit: 48);
     _scrollController.addListener(_onScroll);
     _loadMoreExplore(initial: true);
@@ -155,7 +183,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _resetExploreProducts({required bool regenerate}) {
     setState(() {
-      if (regenerate) _exploreGeneration += 1;
+      if (regenerate) {
+        _globalExploreGeneration += 1;
+        _exploreGeneration = _globalExploreGeneration;
+      }
       _exploreProducts.clear();
       _exploreNextCursor = null;
       _exploreHasMore = true;
@@ -181,12 +212,16 @@ class _HomeScreenState extends State<HomeScreen> {
         .whenComplete(_maybeRegenerateExploreAfterReturn);
   }
 
+  /// Trigger setelah product detail close (`.whenComplete`). User
+  /// "balik ke Beranda" via back navigation dari detail = same count
+  /// sebagai tab switch back to Beranda. Pakai global counter.
   void _maybeRegenerateExploreAfterReturn() {
     if (!mounted || _exploreLoading) return;
-    _homeReturnCount += 1;
-    if (_homeReturnCount < _nextExploreRegenerateAt) return;
-    _homeReturnCount = 0;
-    _nextExploreRegenerateAt = _nextExploreRegenerateAt == 2 ? 3 : 2;
+    _globalHomeVisitCount += 1;
+    if (_globalHomeVisitCount < _globalNextRegenerateThreshold) return;
+    _globalHomeVisitCount = 0;
+    _globalNextRegenerateThreshold =
+        _globalNextRegenerateThreshold == 2 ? 3 : 2;
     _resetExploreProducts(regenerate: true);
     _loadMoreExplore(initial: true);
   }
