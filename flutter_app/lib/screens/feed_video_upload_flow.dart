@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
@@ -26,7 +27,10 @@ const _feedUploadCard = Color(0xFF11141B);
 const _feedUploadBorder = Color(0xFF252A35);
 const _feedUploadText = Color(0xFFFFFFFF);
 const _feedUploadMuted = Color(0xFFAEB7C7);
-const _maxFeedVideoBytes = 20 * 1024 * 1024;
+/// Max video size yang user boleh pick dari galeri/kamera.
+/// 200MB cukup untuk 1080p 60s @ 25Mbps bitrate (typical iPhone source).
+/// Compression akan turunkan jadi ~5-15MB sebelum upload ke Bunny.
+const _maxFeedVideoBytes = 200 * 1024 * 1024;
 const _minFeedVideoSeconds = 1;
 const _maxFeedVideoSeconds = 45;
 
@@ -878,12 +882,56 @@ class _FeedUploadProgressScreenState extends State<FeedUploadProgressScreen> {
     });
 
     try {
-      final videoPath = widget.draft.finalVideoPath;
-      if (videoPath == null) {
+      final originalPath = widget.draft.finalVideoPath;
+      if (originalPath == null) {
         throw const _FeedVideoFlowException(
           'Video tidak tersedia. Kembali ke detail postingan.',
         );
       }
+
+      // Two-stage compression:
+      // 1. Client (HP user) — di sini, sebelum upload. Pakai
+      //    video_compress MediumQuality (~720p). Tujuan: kurangi
+      //    bandwidth + speed up TUS upload.
+      // 2. Server (Bunny Stream) — auto re-encode jadi multiple
+      //    resolutions (240p/360p/480p/720p/1080p) untuk adaptive
+      //    streaming. Handled di Bunny side, tidak perlu code di client.
+      //
+      // Kalau video sudah lewat trim screen (>45s),
+      // `trimmedVideoPath` sudah hasil VideoCompress — skip re-compress.
+      // Kalau short video langsung dari pick (no trim), compress dulu.
+      String videoPath = originalPath;
+      if (widget.draft.trimmedVideoPath == null) {
+        setState(() {
+          _stage = 'Mengkompres video...';
+          _progress = 0;
+        });
+        try {
+          final info = await VideoCompress.compressVideo(
+            originalPath,
+            quality: VideoQuality.MediumQuality,
+            deleteOrigin: false,
+            includeAudio: true,
+          );
+          final compressed = info?.file;
+          if (compressed != null && await compressed.exists()) {
+            videoPath = compressed.path;
+            if (kDebugMode) {
+              final origSize = await File(originalPath).length();
+              final newSize = await compressed.length();
+              debugPrint(
+                '[feed-upload] compressed: ${origSize ~/ 1024}KB → '
+                '${newSize ~/ 1024}KB (${(100 - newSize / origSize * 100).round()}% reduction)',
+              );
+            }
+          }
+        } catch (e) {
+          // Kalau compress fail, fall back ke original. Bunny tetap
+          // bisa accept + re-encode, user tetap bisa upload.
+          if (kDebugMode) debugPrint('[feed-upload] compress failed: $e');
+        }
+      }
+
       final thumbPath = widget.draft.thumbnailPath ??
           await _generateVideoThumbnail(videoPath, timeMs: 500);
       if (thumbPath == null || thumbPath.isEmpty) {
