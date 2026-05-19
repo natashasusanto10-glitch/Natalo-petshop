@@ -38,6 +38,31 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
   void initState() {
     super.initState();
     _itemsFuture = _loadItems();
+    // Deep link integration: kalau dipush dengan arguments `{orderItemId}`
+    // (mis. dari order detail "Review" button), auto-open submit sheet
+    // untuk item tsb setelah list loaded. UX: user tidak perlu cari item
+    // ulang di list — langsung masuk form review.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final args = ModalRoute.of(context)?.settings.arguments;
+      final targetItemId = args is Map ? args['orderItemId']?.toString() : null;
+      if (targetItemId == null || targetItemId.isEmpty) return;
+      try {
+        final items = await _itemsFuture;
+        if (!mounted) return;
+        final target = items.firstWhere(
+          (i) => i.orderItemId == targetItemId && !i.hasReviewed,
+          orElse: () => items.isNotEmpty
+              ? items.first
+              : throw StateError('no items'),
+        );
+        if (target.orderItemId == targetItemId && !target.hasReviewed) {
+          _openReviewForm(target);
+        }
+      } catch (_) {
+        // Item not reviewable atau list empty — biarin user lihat list.
+      }
+    });
   }
 
   Future<List<ReviewableItem>> _loadItems() {

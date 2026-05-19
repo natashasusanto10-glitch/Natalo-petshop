@@ -57,6 +57,7 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
   late OrderSummary _order;
   late Future<OrderSummary> _orderFuture;
   bool _reordering = false;
+  bool _cancelling = false;
 
   @override
   void initState() {
@@ -125,6 +126,108 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
         return 'Dibatalkan';
       default:
         return status;
+    }
+  }
+
+  Future<void> _confirmCancel(BuildContext context, OrderSummary order) async {
+    if (_cancelling) return;
+    AppHaptics.tap();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        icon: Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: const Color(0xFFFEE2E2),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: const Icon(
+            Icons.cancel_outlined,
+            color: Color(0xFFEF4444),
+            size: 28,
+          ),
+        ),
+        title: const Text(
+          'Batalkan pesanan?',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Pesanan ${order.orderNumber} akan dibatalkan dan tidak bisa '
+              'dikembalikan. Stock produk akan otomatis tersedia lagi.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Color(0xFF6B7280),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                height: 1.5,
+              ),
+            ),
+            if (order.voucherCode != null && order.voucherCode!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              const Text(
+                'Voucher yang dipakai akan bisa digunakan ulang.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Color(0xFF9CA3AF),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: const Text('Tidak Jadi'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFEF4444),
+            ),
+            child: const Text('Ya, Batalkan'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _executeCancel(order);
+  }
+
+  Future<void> _executeCancel(OrderSummary order) async {
+    setState(() => _cancelling = true);
+    try {
+      await orderService.cancelOrder(orderNumber: order.orderNumber);
+      if (!mounted) return;
+      AppHaptics.success();
+      // Refresh order detail dari server supaya status update ke CANCELLED.
+      await _refreshOrder();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Pesanan berhasil dibatalkan.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      AppHaptics.warning();
+      final message = error.toString().replaceFirst('Exception: ', '');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Pembatalan gagal: $message'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _cancelling = false);
     }
   }
 
@@ -229,6 +332,13 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
                 ],
                 if (_shouldShowPaymentProof(order)) ...[
                   _PaymentProofCard(order: order, onUploaded: _refreshOrder),
+                  const SizedBox(height: 12),
+                ],
+                if (_canCancelOrder(order)) ...[
+                  _CancelOrderCard(
+                    loading: _cancelling,
+                    onCancel: () => _confirmCancel(context, order),
+                  ),
                   const SizedBox(height: 12),
                 ],
                 _OrderItemsCard(order: order),
@@ -658,7 +768,10 @@ class _PickupInfoCard extends StatelessWidget {
             content: hours,
           ),
           const SizedBox(height: 18),
-          _PickupCodeBox(pickupCode: order.pickupCode),
+          _PickupCodeBox(
+            pickupCode: order.pickupCode,
+            orderStatus: order.status,
+          ),
           const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
@@ -688,56 +801,150 @@ class _PickupInfoCard extends StatelessWidget {
 
 class _PickupCodeBox extends StatelessWidget {
   final String? pickupCode;
+  final String? orderStatus;
 
-  const _PickupCodeBox({required this.pickupCode});
+  const _PickupCodeBox({required this.pickupCode, this.orderStatus});
+
+  /// Status pill yang relevant untuk pickup:
+  /// - PENDING/PAID/PROCESSING → "Sedang disiapkan" (kuning)
+  /// - READY_FOR_PICKUP → "Siap diambil!" (hijau gradient + animated)
+  /// - DELIVERED → "Sudah diambil" (abu, faded)
+  ({String label, Color bg, Color fg, IconData icon})? _statusBadge() {
+    final status = (orderStatus ?? '').toUpperCase();
+    if (status == 'READY_FOR_PICKUP') {
+      return (
+        label: 'Siap diambil',
+        bg: const Color(0xFF16A34A),
+        fg: Colors.white,
+        icon: Icons.check_circle_rounded,
+      );
+    }
+    if (status == 'DELIVERED' || status == 'COMPLETED') {
+      return (
+        label: 'Sudah diambil',
+        bg: const Color(0xFFE5E7EB),
+        fg: const Color(0xFF6B7280),
+        icon: Icons.task_alt_rounded,
+      );
+    }
+    if (status == 'PROCESSING' ||
+        status == 'PAID' ||
+        status == 'PENDING') {
+      return (
+        label: 'Sedang disiapkan',
+        bg: const Color(0xFFFFF7E0),
+        fg: const Color(0xFFB45309),
+        icon: Icons.inventory_2_rounded,
+      );
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
     final code = pickupCode?.trim();
     final hasCode = code != null && code.isNotEmpty;
+    final badge = _statusBadge();
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEAF8EF),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFCBEFD8)),
-      ),
-      child: Column(
-        children: [
-          const Text(
-            'Kode Pengambilan',
-            style: TextStyle(
-              color: Color(0xFF087A3A),
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
+    return InkWell(
+      onTap: hasCode
+          ? () {
+              AppHaptics.tap();
+              Clipboard.setData(ClipboardData(text: code));
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Kode "$code" disalin ke clipboard.'),
+                  behavior: SnackBarBehavior.floating,
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            }
+          : null,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEAF8EF),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFCBEFD8)),
+        ),
+        child: Column(
+          children: [
+            const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.qr_code_2_rounded,
+                  size: 16,
+                  color: Color(0xFF087A3A),
+                ),
+                SizedBox(width: 6),
+                Text(
+                  'Kode Pengambilan',
+                  style: TextStyle(
+                    color: Color(0xFF087A3A),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            hasCode ? code : 'Kode pengambilan belum tersedia',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: const Color(0xFF087A3A),
-              fontSize: hasCode ? 28 : 15,
-              fontWeight: FontWeight.w900,
-              letterSpacing: hasCode ? 3 : 0,
-              height: 1.15,
+            const SizedBox(height: 8),
+            Text(
+              hasCode ? code : 'Kode pengambilan belum tersedia',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: const Color(0xFF087A3A),
+                fontSize: hasCode ? 28 : 15,
+                fontWeight: FontWeight.w900,
+                letterSpacing: hasCode ? 3 : 0,
+                height: 1.15,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Tunjukkan kode ini ke kasir saat mengambil pesanan.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Color(0xFF087A3A),
-              fontSize: 13,
-              height: 1.4,
-              fontWeight: FontWeight.w600,
+            const SizedBox(height: 8),
+            Text(
+              hasCode
+                  ? 'Tap untuk salin — tunjukkan ke kasir saat ambil.'
+                  : 'Kode keluar saat pesanan selesai disiapkan toko.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Color(0xFF087A3A),
+                fontSize: 12.5,
+                height: 1.4,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-          ),
-        ],
+            if (badge != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: badge.bg,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(badge.icon, color: badge.fg, size: 14),
+                    const SizedBox(width: 5),
+                    Text(
+                      badge.label,
+                      style: TextStyle(
+                        color: badge.fg,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -1375,10 +1582,15 @@ class _OrderProductTile extends StatelessWidget {
                   ),
                   if (canReview)
                     TextButton.icon(
-                      onPressed: () =>
-                          Navigator.pushNamed(context, '/member/reviews'),
+                      // Pass orderItemId — member_reviews_screen akan
+                      // auto-open submit sheet untuk item ini langsung.
+                      onPressed: () => Navigator.pushNamed(
+                        context,
+                        '/member/reviews',
+                        arguments: {'orderItemId': item.id},
+                      ),
                       icon: const Icon(Icons.edit_note_rounded),
-                      label: const Text('Review'),
+                      label: const Text('Ulas'),
                     ),
                 ],
               ),
@@ -1659,6 +1871,108 @@ bool _shouldShowPaymentAction(OrderSummary order) {
   if (paid) return false;
   if (order.paymentProvider.toUpperCase() == 'MANUAL') return true;
   return order.paymentUrl?.isNotEmpty ?? false;
+}
+
+/// Order bisa dibatalkan customer kalau:
+/// - Status masih PENDING (belum diproses admin)
+/// - Belum dibayar (paymentStatus != PAID)
+/// Setelah masuk PROCESSING/SHIPPED/dst, harus kontak admin manual.
+bool _canCancelOrder(OrderSummary order) {
+  final status = order.status.toUpperCase();
+  final paymentStatus = order.paymentStatus.toUpperCase();
+  return status == 'PENDING' && paymentStatus != 'PAID';
+}
+
+/// Card "Batalkan Pesanan" — muncul kalau order masih PENDING + belum dibayar.
+/// Style: subtle red border, danger button. Sengaja tidak prominent supaya
+/// user tidak accidentally click — primary action di order pending adalah
+/// "Bayar Sekarang" via _PaymentActionCard di atas.
+class _CancelOrderCard extends StatelessWidget {
+  final bool loading;
+  final VoidCallback onCancel;
+
+  const _CancelOrderCard({required this.loading, required this.onCancel});
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassSurface(
+      radius: 20,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      tint: Colors.white,
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFEE2E2),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              Icons.cancel_outlined,
+              color: Color(0xFFEF4444),
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Mau batalkan pesanan?',
+                  style: TextStyle(
+                    color: Color(0xFF17202A),
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Bisa dibatalkan sebelum dibayar.',
+                  style: TextStyle(
+                    color: Color(0xFF6B7280),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            height: 38,
+            child: OutlinedButton(
+              onPressed: loading ? null : onCancel,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFEF4444),
+                side: const BorderSide(color: Color(0xFFFCA5A5), width: 1.2),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                textStyle: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              child: loading
+                  ? const SizedBox(
+                      height: 16,
+                      width: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Color(0xFFEF4444),
+                      ),
+                    )
+                  : const Text('Batalkan'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 void _showSnack(BuildContext context, String message) {
