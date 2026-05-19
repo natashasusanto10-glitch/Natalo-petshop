@@ -128,10 +128,12 @@ class AppSearchField extends StatelessWidget {
       ),
     );
 
-    // Selalu fix tinggi 42px — konsisten di Beranda + Produk screen,
-    // match pattern Tokopedia/Shopee. `compact` flag tetap ada untuk
-    // backward compat tapi sekarang affect fill color saja, bukan size.
-    return SizedBox(height: 42, child: field);
+    // Tinggi 44px — Apple HIG minimum touch target untuk actual TextField
+    // input. Beranda search bar (tap-only display) tetap 38px untuk
+    // compact Instagram-style cue. Produk + HomeSearchPage pakai 44px
+    // untuk typing comfort (Option B pattern: tap target compact, input
+    // target generous).
+    return SizedBox(height: 44, child: field);
   }
 }
 
