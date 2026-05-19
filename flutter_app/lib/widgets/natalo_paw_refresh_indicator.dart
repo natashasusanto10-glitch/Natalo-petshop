@@ -176,6 +176,7 @@ class _NataloPawRefreshIndicatorState extends State<NataloPawRefreshIndicator>
     final progress = (_overscroll / widget.triggerOffset).clamp(0.0, 1.0);
 
     return Stack(
+      fit: StackFit.expand,
       children: [
         NotificationListener<ScrollNotification>(
           onNotification: _handleScroll,
@@ -192,9 +193,7 @@ class _NataloPawRefreshIndicatorState extends State<NataloPawRefreshIndicator>
                   animation: Listenable.merge([_spinCtrl, _fadeCtrl]),
                   builder: (context, _) {
                     // Scale: 0.5 → 1.0 based on pull progress, lock 1.0 saat refresh.
-                    final scale = _isRefreshing
-                        ? 1.0
-                        : 0.5 + (progress * 0.5);
+                    final scale = _isRefreshing ? 1.0 : 0.5 + (progress * 0.5);
                     // Rotation: 0 → π/2 saat pulling (turn-in feel),
                     // continuous spin saat refreshing.
                     final rotation = _isRefreshing
