@@ -28,8 +28,17 @@ import '../utils/haptics.dart';
 /// Limitations:
 /// - Tidak fully replicate physics rubber-band iOS native — overlay
 ///   shows on top, child tidak ikut ter-translate ke bawah
-/// - ClampingScrollPhysics (Android) → paw masih muncul karena listen
-///   OverscrollNotification (notification fires regardless of clamp)
+///
+/// Cross-platform note:
+/// Default Android pakai `ClampingScrollPhysics` — kalau user drag past
+/// top, position di-clamp ke 0, applyUserOffset return tanpa setPixels,
+/// `OverscrollNotification` TIDAK fire → paw tidak akan pernah armed
+/// di Android. Untuk fix-nya, widget ini wrap child di `ScrollConfiguration`
+/// dengan custom behavior yang force `BouncingScrollPhysics` di semua
+/// platform — supaya overscroll notification konsisten fire iOS + Android.
+/// Glowing/Stretching overscroll indicator default Android juga di-disable
+/// (`buildOverscrollIndicator` return child apa adanya) supaya tidak ada
+/// dua indikator yang muncul bersamaan (glow Android + paw kita).
 ///
 /// Usage:
 /// ```dart
@@ -178,9 +187,15 @@ class _NataloPawRefreshIndicatorState extends State<NataloPawRefreshIndicator>
     return Stack(
       fit: StackFit.expand,
       children: [
-        NotificationListener<ScrollNotification>(
-          onNotification: _handleScroll,
-          child: widget.child,
+        // ScrollConfiguration force bouncing physics di Android supaya
+        // OverscrollNotification fire saat user drag past top (default
+        // ClampingScrollPhysics tidak fire → paw tidak armed di Android).
+        ScrollConfiguration(
+          behavior: const _NataloPawScrollBehavior(),
+          child: NotificationListener<ScrollNotification>(
+            onNotification: _handleScroll,
+            child: widget.child,
+          ),
         ),
         if (visible)
           Positioned(
@@ -247,5 +262,37 @@ class _NataloPawRefreshIndicatorState extends State<NataloPawRefreshIndicator>
           ),
       ],
     );
+  }
+}
+
+/// ScrollBehavior khusus untuk child di `NataloPawRefreshIndicator`.
+///
+/// 1. Force `BouncingScrollPhysics` di semua platform — supaya overscroll
+///    notification konsisten fire saat user drag past top (default Android
+///    `ClampingScrollPhysics` tidak fire notification).
+/// 2. Disable default Android glow / stretching overscroll indicator —
+///    hindari dual indikator (glow + paw) tabrakan visual.
+///
+/// Drag device support disabled untuk web/desktop (default builder),
+/// scrollbar tidak ditampilkan (sama seperti Material default mobile).
+class _NataloPawScrollBehavior extends ScrollBehavior {
+  const _NataloPawScrollBehavior();
+
+  @override
+  ScrollPhysics getScrollPhysics(BuildContext context) {
+    return const BouncingScrollPhysics(
+      parent: AlwaysScrollableScrollPhysics(),
+    );
+  }
+
+  @override
+  Widget buildOverscrollIndicator(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
+    // Hilangkan glow/stretch indicator default Android — paw kita pakai
+    // sendiri. Tidak butuh wrapping apapun.
+    return child;
   }
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/member_profile.dart';
@@ -358,12 +360,23 @@ class _OrderStatusCard extends StatefulWidget {
 }
 
 class _OrderStatusCardState extends State<_OrderStatusCard> {
+  static const _pollInterval = Duration(seconds: 30);
+
   late Future<List<OrderSummary>> _ordersFuture;
+  Timer? _pollTimer;
+  bool _pollingRefreshInFlight = false;
 
   @override
   void initState() {
     super.initState();
     _ordersFuture = _loadOrders();
+    _pollTimer = Timer.periodic(_pollInterval, (_) => _refreshOrdersSilently());
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
   }
 
   Future<List<OrderSummary>> _loadOrders() async {
@@ -371,6 +384,20 @@ class _OrderStatusCardState extends State<_OrderStatusCard> {
       return await memberService.fetchOrders();
     } catch (_) {
       return memberStore.orders;
+    }
+  }
+
+  Future<void> _refreshOrdersSilently() async {
+    if (!mounted || _pollingRefreshInFlight || !memberStore.isLoggedIn) return;
+    _pollingRefreshInFlight = true;
+    try {
+      final orders = await _loadOrders();
+      if (!mounted) return;
+      setState(() {
+        _ordersFuture = Future.value(orders);
+      });
+    } finally {
+      _pollingRefreshInFlight = false;
     }
   }
 
