@@ -283,7 +283,6 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
         final loading = snapshot.connectionState == ConnectionState.waiting;
 
         return Scaffold(
-          backgroundColor: Colors.transparent,
           appBar: AppBar(
             title: const Text('Detail Pesanan'),
             actions: [

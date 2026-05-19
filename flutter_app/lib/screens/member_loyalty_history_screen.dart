@@ -48,7 +48,6 @@ class _MemberLoyaltyHistoryScreenState
     final points = memberStore.profile?.points ?? 0;
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Riwayat Poin')),
       body: NataloPawRefreshIndicator(
         onRefresh: _refresh,

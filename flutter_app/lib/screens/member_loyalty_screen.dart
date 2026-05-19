@@ -177,7 +177,6 @@ class _MemberLoyaltyScreenState extends State<MemberLoyaltyScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Tukar Poin')),
       body: AnimatedBuilder(
         animation: memberStore,

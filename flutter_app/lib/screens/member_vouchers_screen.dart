@@ -48,7 +48,6 @@ class _MemberVouchersScreenState extends State<MemberVouchersScreen> {
     }
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Voucher Member')),
       body: FutureBuilder<List<MemberVoucher>>(
         future: _vouchersFuture,

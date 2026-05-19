@@ -46,32 +46,45 @@ class AppTheme {
     return ThemeData(
       colorScheme: scheme,
       useMaterial3: true,
-      scaffoldBackgroundColor: Colors.transparent,
+      // Solid bg (was transparent → screen yang Scaffold tidak override
+      // bg sendiri nampak weird/blur di iOS karena BackdropFilter di
+      // GlassSurface/AppBackdrop punya nothing to blur → content tidak
+      // ke-render proper. User report headers blur di Keranjang, Tukar
+      // Poin, Riwayat Poin, Ulasan, Voucher Member, Alamat).
+      scaffoldBackgroundColor: NataloColors.background,
       fontFamily: 'PlusJakartaSans',
       fontFamilyFallback: const ['Roboto', 'Arial'],
       visualDensity: VisualDensity.standard,
       splashFactory: InkSparkle.splashFactory,
-      appBarTheme: AppBarTheme(
+      appBarTheme: const AppBarTheme(
         centerTitle: false,
-        backgroundColor: NataloColors.surface.withValues(alpha: 0.90),
+        // SOLID white (was surface.withValues(alpha: 0.90) = 90% opaque
+        // = semi-transparent → header nampak blur/faded di screen
+        // dengan content gradient/colorful behind). Per user spec:
+        // header WAJIB solid, sharp, readable.
+        backgroundColor: Colors.white,
         foregroundColor: NataloColors.textPrimary,
-        surfaceTintColor: Colors.transparent,
+        surfaceTintColor: Colors.white,
         elevation: 0,
         scrolledUnderElevation: 0,
         titleSpacing: 16,
-        titleTextStyle: const TextStyle(
-          color: NataloColors.textPrimary,
-          fontSize: 22,
-          fontWeight: FontWeight.w800,
-          letterSpacing: -0.4,
+        // Border bottom tipis untuk crisp visual edge (was no border).
+        shape: Border(
+          bottom: BorderSide(color: Color(0xFFE5EAF2), width: 1),
         ),
-        iconTheme: const IconThemeData(
+        titleTextStyle: TextStyle(
           color: NataloColors.textPrimary,
-          size: 28,
+          fontSize: 18,
+          fontWeight: FontWeight.w900,
+          letterSpacing: -0.2,
         ),
-        actionsIconTheme: const IconThemeData(
+        iconTheme: IconThemeData(
           color: NataloColors.textPrimary,
-          size: 27,
+          size: 26,
+        ),
+        actionsIconTheme: IconThemeData(
+          color: NataloColors.textPrimary,
+          size: 25,
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
@@ -239,27 +252,35 @@ class AppTheme {
       colorScheme: scheme,
       brightness: Brightness.dark,
       useMaterial3: true,
-      scaffoldBackgroundColor: Colors.transparent,
+      // Solid dark bg (was transparent — same issue dengan light theme).
+      scaffoldBackgroundColor: NataloColors.backgroundDark,
       fontFamily: 'PlusJakartaSans',
       fontFamilyFallback: const ['Roboto', 'Arial'],
       visualDensity: VisualDensity.standard,
       splashFactory: InkSparkle.splashFactory,
       appBarTheme: AppBarTheme(
         centerTitle: false,
-        backgroundColor: darkSurface.withValues(alpha: 0.85),
+        // Solid dark surface (was alpha 0.85 = semi-transparent).
+        backgroundColor: darkSurface,
         foregroundColor: darkInk,
-        surfaceTintColor: Colors.transparent,
+        surfaceTintColor: darkSurface,
         elevation: 0,
         scrolledUnderElevation: 0,
         titleSpacing: 16,
+        shape: Border(
+          bottom: BorderSide(
+            color: Colors.white.withValues(alpha: 0.06),
+            width: 1,
+          ),
+        ),
         titleTextStyle: const TextStyle(
           color: darkInk,
-          fontSize: 22,
-          fontWeight: FontWeight.w800,
-          letterSpacing: -0.4,
+          fontSize: 18,
+          fontWeight: FontWeight.w900,
+          letterSpacing: -0.2,
         ),
-        iconTheme: const IconThemeData(color: darkInk, size: 28),
-        actionsIconTheme: const IconThemeData(color: darkInk, size: 27),
+        iconTheme: const IconThemeData(color: darkInk, size: 26),
+        actionsIconTheme: const IconThemeData(color: darkInk, size: 25),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(

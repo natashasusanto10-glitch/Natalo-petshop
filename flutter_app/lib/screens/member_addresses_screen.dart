@@ -210,7 +210,6 @@ class _LoginRequiredScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
       appBar: AppBar(title: Text(title)),
       body: Center(
         child: Padding(
