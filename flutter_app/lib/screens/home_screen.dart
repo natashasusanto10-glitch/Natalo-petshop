@@ -938,6 +938,19 @@ class _HomeHeader extends StatelessWidget {
                           duration: const Duration(milliseconds: 300),
                           switchInCurve: Curves.easeOutCubic,
                           switchOutCurve: Curves.easeInCubic,
+                          // Override default Stack(alignment: center) — supaya
+                          // text placeholder rata KIRI (sebelah kanan icon),
+                          // bukan center di Expanded space. Pattern marketplace
+                          // standard: icon + text mengalir dari kiri.
+                          layoutBuilder: (currentChild, previousChildren) {
+                            return Stack(
+                              alignment: Alignment.centerLeft,
+                              children: <Widget>[
+                                ...previousChildren,
+                                if (currentChild != null) currentChild,
+                              ],
+                            );
+                          },
                           transitionBuilder: (child, animation) {
                             final slide = Tween<Offset>(
                               begin: const Offset(0, 0.3),
@@ -956,6 +969,7 @@ class _HomeHeader extends StatelessWidget {
                             key: ValueKey(text),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.left,
                             style: const TextStyle(
                               color: Color(0xFF94A3B8),
                               fontSize: 13,
