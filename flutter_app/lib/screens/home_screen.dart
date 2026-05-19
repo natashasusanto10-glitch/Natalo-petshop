@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -331,7 +332,13 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _surface,
+      // SafeArea(top: true, bottom: false) — top handle status bar / notch /
+      // camera punch-hole (Android). Bottom inset di-handle Scaffold
+      // bottomNavigationBar slot, BUKAN SafeArea internal — supaya tidak
+      // double padding di iPhone X+ (home indicator) atau Android gesture.
       body: SafeArea(
+        top: true,
+        bottom: false,
         child: FutureBuilder<ProductResult>(
           future: _productsFuture,
           // Initial data empty supaya skeleton/loading UI muncul first paint
@@ -367,7 +374,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   if (result?.fromApi == false && result?.error != null)
                     SliverToBoxAdapter(
                         child: _ApiFallbackNotice(error: result!.error!)),
-                  const SliverToBoxAdapter(child: _TrustMarquee()),
+                  // Trust marquee sekarang di dalam _HomeStickyHeaderDelegate
+                  // supaya tetap visible saat user scroll (sticky bersama
+                  // search bar). SliverToBoxAdapter duplicate dihapus.
                   // API banner carousel kalau ada banner aktif dari admin.
                   // Section auto-hide kalau _banners kosong (di _HeroBanner).
                   SliverToBoxAdapter(child: _HeroBanner(banners: _banners)),
@@ -605,6 +614,15 @@ class _ApiFallbackNotice extends StatelessWidget {
   }
 }
 
+/// Collapsible sticky header — top state (logo+subtitle+search+trust)
+/// menyusut ke compact state (logo kecil, no subtitle, search+trust)
+/// saat user scroll. Lerp via shrinkOffset progress 0→1.
+///
+/// Top state: 166px (logo 48 + subtitle visible + search 42 + trust 36)
+/// Compact state: 138px (logo 36 + no subtitle + search 42 + trust 32)
+///
+/// Spec acceptance: search bar selalu 42px di kedua state, no double
+/// safe padding di iOS/Android, smooth easeOutCubic transition.
 class _HomeStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
   final VoidCallback onOpenProducts;
   final VoidCallback onOpenSearch;
@@ -614,11 +632,14 @@ class _HomeStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.onOpenSearch,
   });
 
-  @override
-  double get minExtent => 128;
+  static const double _topExtent = 166;
+  static const double _compactExtent = 138;
 
   @override
-  double get maxExtent => 128;
+  double get minExtent => _compactExtent;
+
+  @override
+  double get maxExtent => _topExtent;
 
   @override
   Widget build(
@@ -626,18 +647,29 @@ class _HomeStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
     double shrinkOffset,
     bool overlapsContent,
   ) {
+    final maxShrink = (maxExtent - minExtent).clamp(1, double.infinity);
+    final rawProgress = (shrinkOffset / maxShrink).clamp(0.0, 1.0).toDouble();
+    // easeOutCubic untuk natural deceleration — match spec.
+    final t = Curves.easeOutCubic.transform(rawProgress);
+
     return DecoratedBox(
       decoration: BoxDecoration(
         color: Colors.white,
-        border: const Border(
-          bottom: BorderSide(color: Color(0xFFEFF4FA)),
+        border: Border(
+          bottom: BorderSide(
+            color: Color.lerp(
+              const Color(0x00EFF4FA),
+              const Color(0xFFEFF4FA),
+              t,
+            )!,
+          ),
         ),
-        boxShadow: overlapsContent || shrinkOffset > 0
+        boxShadow: t > 0.05
             ? [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.06),
-                  blurRadius: 16,
-                  offset: const Offset(0, 6),
+                  color: Colors.black.withValues(alpha: 0.04 + 0.04 * t),
+                  blurRadius: 12 * t,
+                  offset: Offset(0, 4 * t),
                 ),
               ]
             : const [],
@@ -645,6 +677,7 @@ class _HomeStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
       child: _HomeHeader(
         onOpenProducts: onOpenProducts,
         onOpenSearch: onOpenSearch,
+        progress: t,
       ),
     );
   }
@@ -656,77 +689,112 @@ class _HomeStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
   }
 }
 
+/// Header Beranda dengan collapsible behavior.
+///
+/// [progress] 0.0 = top state (full), 1.0 = compact (scrolled).
+/// Driven by parent `_HomeStickyHeaderDelegate` via shrinkOffset lerp
+/// dengan easeOutCubic.
+///
+/// Visual changes saat scroll:
+/// - Logo box: 44 → 32 (lerp)
+/// - Title font: 18 → 16
+/// - Subtitle: opacity 1 → 0, height 18 → 0 (fully collapses)
+/// - Search bar: TETAP 42px (spec acceptance)
+/// - Trust strip: 36 → 32 (subtle)
+/// - Outer padding: top 8 → 6, bottom 12 → 8
 class _HomeHeader extends StatelessWidget {
   final VoidCallback onOpenProducts;
   final VoidCallback onOpenSearch;
+  final double progress;
 
   const _HomeHeader({
     required this.onOpenProducts,
     required this.onOpenSearch,
+    this.progress = 0.0,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Clean header sesuai design pattern reference:
-    // - Logo box compact dengan brand primary bg + radius 13
-    // - Title 17 w900 + subtitle 12 textSecondary
-    // - 2 icon button kanan (notifikasi, cart)
-    // - Search field full-width pakai default Material 3 input
-    // No glass wrapper — pakai surface ThemeData (lebih cepat di HP murah,
-    // lebih readable outdoor).
+    final logoSize = ui.lerpDouble(44, 32, progress)!;
+    final logoRadius = ui.lerpDouble(13, 10, progress)!;
+    final titleSize = ui.lerpDouble(18, 16, progress)!;
+    final subtitleOpacity = (1 - progress * 1.6).clamp(0.0, 1.0);
+    final subtitleHeight = ui.lerpDouble(18, 0, progress)!;
+    final paddingTop = ui.lerpDouble(8, 6, progress)!;
+    final paddingBottom = ui.lerpDouble(12, 8, progress)!;
+    final gapAfterRow = ui.lerpDouble(10, 8, progress)!;
+    final gapBeforeTrust = ui.lerpDouble(10, 6, progress)!;
+    final trustHeight = ui.lerpDouble(36, 32, progress)!;
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 13),
+      padding: EdgeInsets.fromLTRB(16, paddingTop, 16, paddingBottom),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
+          // ── Row 1: Logo + Title (+ Subtitle saat top) + Bell + Cart ──
           Row(
             children: [
               Container(
-                width: 38,
-                height: 38,
+                width: logoSize,
+                height: logoSize,
                 decoration: BoxDecoration(
                   color: const Color(0xFF0B7FEA),
-                  borderRadius: BorderRadius.circular(13),
+                  borderRadius: BorderRadius.circular(logoRadius),
                 ),
                 clipBehavior: Clip.antiAlias,
                 alignment: Alignment.center,
-                // Logo asset utama — pakai icon-only.png (square iOS-style)
-                // yang exact match dengan logo Capacitor. assets/brand/logo.png
-                // adalah wordmark horizontal lebar (kurang cocok untuk 42x42
-                // square box karena BoxFit.cover akan crop). Fallback ke "NL"
-                // letter kalau image hilang (defensive).
+                // Logo asset square — match Capacitor. Fallback "NL" text.
                 child: Image.asset(
                   'assets/native/icon-only.png',
-                  width: 38,
-                  height: 38,
+                  width: logoSize,
+                  height: logoSize,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const Text(
+                  errorBuilder: (_, __, ___) => Text(
                     'NL',
                     style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w900,
+                      fontSize: logoSize * 0.4,
                     ),
                   ),
                 ),
               ),
               const SizedBox(width: 10),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       'Natalo Petshop',
                       style: TextStyle(
-                        fontSize: 17,
+                        fontSize: titleSize,
                         fontWeight: FontWeight.w900,
-                        color: Color(0xFF17202A),
+                        color: const Color(0xFF17202A),
+                        height: 1.15,
                       ),
                     ),
-                    SizedBox(height: 2),
-                    Text(
-                      'Kebutuhan hewan kesayanganmu',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF6B7280),
+                    // Subtitle — fade + collapse saat scroll.
+                    // ClipRect supaya overflow tidak bocor saat height 0.
+                    ClipRect(
+                      child: SizedBox(
+                        height: subtitleHeight,
+                        child: Opacity(
+                          opacity: subtitleOpacity,
+                          child: const Padding(
+                            padding: EdgeInsets.only(top: 2),
+                            child: Text(
+                              'Kebutuhan hewan kesayanganmu',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF6B7280),
+                                height: 1.1,
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -736,10 +804,8 @@ class _HomeHeader extends StatelessWidget {
               const AppCartButton(),
             ],
           ),
-          const SizedBox(height: 10),
-          // Search field — tap area buka full-screen search sheet.
-          // Render custom pill agar tidak mewarisi intrinsic height TextField
-          // yang bisa overflow 1-2 px di debug mode pada device tertentu.
+          SizedBox(height: gapAfterRow),
+          // ── Search bar — TETAP 42px di kedua state (spec) ──
           GestureDetector(
             onTap: onOpenSearch,
             behavior: HitTestBehavior.opaque,
@@ -748,7 +814,7 @@ class _HomeHeader extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 14),
               decoration: BoxDecoration(
                 color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: const Color(0xFFE5E7EB)),
               ),
               child: const Row(
@@ -761,12 +827,12 @@ class _HomeHeader extends StatelessWidget {
                   SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Cari makanan, vitamin, pasir...',
+                      'Cari makanan kucing, pasir, vitamin...',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: Color(0xFF94A3B8),
-                        fontSize: 13,
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
                         height: 1.2,
                       ),
@@ -776,6 +842,9 @@ class _HomeHeader extends StatelessWidget {
               ),
             ),
           ),
+          SizedBox(height: gapBeforeTrust),
+          // ── Trust strip — bagian dari sticky header (visible saat scroll) ──
+          _TrustMarquee(height: trustHeight),
         ],
       ),
     );
@@ -1252,7 +1321,11 @@ class _HomeProductSuggestionRow extends StatelessWidget {
 }
 
 class _TrustMarquee extends StatefulWidget {
-  const _TrustMarquee();
+  /// Visual height — default 38 (top state), lerp ke 32 saat header
+  /// collapse di compact state (driven by _HomeHeader).
+  final double height;
+
+  const _TrustMarquee({this.height = 38});
 
   @override
   State<_TrustMarquee> createState() => _TrustMarqueeState();
@@ -1330,7 +1403,7 @@ class _TrustMarqueeState extends State<_TrustMarquee>
     final items = _items(context);
     final groupWidth = _estimateGroupWidth(items);
     return Container(
-      height: 38,
+      height: widget.height,
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           colors: [
