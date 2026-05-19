@@ -86,6 +86,13 @@ class _ProductsScreenState extends State<ProductsScreen> {
   SearchSuggestionResult _suggestions = const SearchSuggestionResult();
   List<String> _searchHistory = const [];
   bool _suggestionLoading = false;
+  // Gate untuk render suggestion panel — true HANYA saat user aktif
+  // mengetik di search field, false setelah commit/apply/reset supaya
+  // tidak ada gap kosong + icon search ngambang di antara filter chips
+  // dan product grid (bug visual yang user report: "ruang kosong besar
+  // di tengah halaman + icon search/panah melayang"). Sebelumnya panel
+  // pake `query.length >= 2` doang → tetap show setelah commit search.
+  bool _showSuggestionPanel = false;
   ProductCatalogFilter _filter = const ProductCatalogFilter();
   // Active filter mode untuk pinned glassy bar: semua/kategori/baru/populer.
   // State terpisah dari _filter karena UI bar pakai single-select pills.
@@ -355,12 +362,18 @@ class _ProductsScreenState extends State<ProductsScreen> {
       _suggestions = const SearchSuggestionResult();
       _filter = const ProductCatalogFilter();
       _activeMode = _ProductFilterMode.semua;
+      _showSuggestionPanel = false;
     });
     _loadProducts();
   }
 
   void _onQueryChanged(String value) {
-    setState(() => _query = value);
+    setState(() {
+      _query = value;
+      // Panel open ketika user actively typing (apapun text yang ada).
+      // Auto-close kalau field di-clear ke kosong.
+      _showSuggestionPanel = value.isNotEmpty;
+    });
     _searchDebounce?.cancel();
     _searchDebounce = Timer(const Duration(milliseconds: 360), () {
       _loadProducts();
@@ -427,7 +440,13 @@ class _ProductsScreenState extends State<ProductsScreen> {
     setState(() {
       _query = keyword;
       _suggestions = const SearchSuggestionResult();
+      // Setelah commit search → suggestion panel tutup. Grid produk
+      // muncul langsung di bawah filter chips tanpa gap kosong.
+      _showSuggestionPanel = false;
     });
+    // Hapus focus dari search field supaya keyboard tutup + tidak
+    // re-trigger panel via focus listener (kalau ada di masa depan).
+    FocusManager.instance.primaryFocus?.unfocus();
     await _saveSearch(keyword);
     await _loadProducts();
   }
@@ -436,7 +455,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
     setState(() {
       _filter = _filter.copyWith(category: name);
       _suggestions = const SearchSuggestionResult();
+      _showSuggestionPanel = false;
     });
+    FocusManager.instance.primaryFocus?.unfocus();
     _loadProducts();
   }
 
@@ -444,7 +465,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
     setState(() {
       _filter = _filter.copyWith(brand: name);
       _suggestions = const SearchSuggestionResult();
+      _showSuggestionPanel = false;
     });
+    FocusManager.instance.primaryFocus?.unfocus();
     _loadProducts();
   }
 
@@ -668,6 +691,10 @@ class _ProductsScreenState extends State<ProductsScreen> {
               ),
               SliverToBoxAdapter(
                 child: _SearchSuggestionPanel(
+                  // open: gate utama untuk render panel. Kalau false →
+                  // SizedBox.shrink, no vertical space taken → product
+                  // grid muncul langsung di bawah filter chips.
+                  open: _showSuggestionPanel,
                   query: _query,
                   suggestions: _suggestions,
                   loading: _suggestionLoading,
@@ -1747,6 +1774,10 @@ class _PinnedHeaderDelegate extends SliverPersistentHeaderDelegate {
 }
 
 class _SearchSuggestionPanel extends StatelessWidget {
+  /// Master gate dari parent — false setelah commit search supaya panel
+  /// tutup total (tidak ada vertical space taken). Kalau true, panel
+  /// boleh muncul tergantung kondisi query/history di bawah.
+  final bool open;
   final String query;
   final SearchSuggestionResult suggestions;
   final bool loading;
@@ -1759,6 +1790,7 @@ class _SearchSuggestionPanel extends StatelessWidget {
   final VoidCallback onClearHistory;
 
   const _SearchSuggestionPanel({
+    required this.open,
     required this.query,
     required this.suggestions,
     required this.loading,
@@ -1773,6 +1805,11 @@ class _SearchSuggestionPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Hard gate dari parent — kalau panel tidak open (mis. setelah
+    // commit search), langsung return shrink. Tidak ada vertical space
+    // di sliver list, grid produk muncul langsung di bawah filter chips.
+    if (!open) return const SizedBox.shrink();
+
     final keyword = query.trim();
     final showSuggest = keyword.length >= 2;
     final showHistory = keyword.isEmpty && history.isNotEmpty;
