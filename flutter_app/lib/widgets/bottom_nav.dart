@@ -89,12 +89,12 @@ class BottomNavBar extends StatelessWidget {
       ),
       child: SafeArea(
         top: false,
-        // Compact nav — match Instagram/Tokopedia pattern (49-50px content
-        // height). Safe area bottom inset di-handle Scaffold's
-        // bottomNavigationBar slot, BUKAN tambah padding lagi di sini.
-        // Sebelumnya 58 + safe area = double padding terkesan tinggi.
+        // Ultra-compact nav — 46px content. Tokopedia/Lazada exact match.
+        // Total iPhone notch: 46 + 34 safe = 80px. Android gesture:
+        // 46 + ~20 = 66px. Lebih kecil dari 50px sebelumnya, masih
+        // accommodate icon 24 + label 11.5 dengan padding tight.
         child: SizedBox(
-          height: 50,
+          height: 46,
           child: Row(
             children: [
               _BottomNavItem(
@@ -189,7 +189,7 @@ class _BottomNavItem extends StatelessWidget {
             highlightColor: activeColor.withValues(alpha: 0.06),
             child: Center(
               child: Padding(
-                padding: const EdgeInsets.only(top: 4, bottom: 2),
+                padding: const EdgeInsets.only(top: 3, bottom: 1),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -201,10 +201,10 @@ class _BottomNavItem extends StatelessWidget {
                       child: Icon(
                         selected ? selectedIcon : icon,
                         color: color,
-                        size: selected ? 25 : 24,
+                        size: selected ? 24 : 23,
                       ),
                     ),
-                    const SizedBox(height: 3),
+                    const SizedBox(height: 2),
                     AnimatedDefaultTextStyle(
                       duration: const Duration(milliseconds: 160),
                       curve: Curves.easeOutCubic,
