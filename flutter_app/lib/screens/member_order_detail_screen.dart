@@ -13,7 +13,6 @@ import '../utils/haptics.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
-import '../widgets/glass_surface.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/order_tracking_timeline.dart';
 
@@ -418,9 +417,20 @@ class _PaymentActionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (order.paymentProvider.toUpperCase() == 'MIDTRANS') {
-      return GlassSurface(
+      return Container(
         padding: const EdgeInsets.all(18),
-        radius: 26,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: const Color(0xFFE5E7EB)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -454,9 +464,20 @@ class _PaymentActionCard extends StatelessWidget {
         _bankAccounts['BCA_NATASHA']!;
     final totalTransfer = order.total + (order.uniqueCode ?? 0);
 
-    return GlassSurface(
+    return Container(
       padding: const EdgeInsets.all(18),
-      radius: 26,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -569,9 +590,20 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
     final statusColor =
         _hasProof ? const Color(0xFF16A34A) : const Color(0xFFF59E0B);
 
-    return GlassSurface(
+    return Container(
       padding: const EdgeInsets.all(18),
-      radius: 26,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -695,9 +727,20 @@ class _PickupInfoCard extends StatelessWidget {
         ? order.pickupHours!.trim()
         : PickupStoreInfo.hours;
 
-    return GlassSurface(
+    return Container(
       padding: const EdgeInsets.all(18),
-      radius: 26,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1377,9 +1420,20 @@ class _OrderItemsCard extends StatelessWidget {
     final items = order.items;
     final canReviewOrder = order.status.toUpperCase() == 'DELIVERED';
 
-    return GlassSurface(
+    return Container(
       padding: const EdgeInsets.all(18),
-      radius: 26,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1648,9 +1702,20 @@ class _PaymentSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final subtotal = order.subtotal > 0 ? order.subtotal : order.total;
-    return GlassSurface(
+    return Container(
       padding: const EdgeInsets.all(18),
-      radius: 26,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1894,10 +1959,13 @@ class _CancelOrderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GlassSurface(
-      radius: 20,
+    return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-      tint: Colors.white,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
       child: Row(
         children: [
           Container(
