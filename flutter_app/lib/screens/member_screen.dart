@@ -183,9 +183,7 @@ class _MemberDashboard extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 24),
-        const _SectionTitle('Postingan Saya'),
-        const SizedBox(height: 12),
-        const _MyPostsEmptyState(),
+        const _MyPostsCard(),
       ],
     );
   }
@@ -819,117 +817,125 @@ class _MenuCard extends StatelessWidget {
   }
 }
 
-/// Empty state "Postingan Saya" — card putih dengan ilustrasi soft +
-/// copy + CTA "Buat Postingan". Per spec: jangan card kosong besar
-/// hanya dengan icon kecil; CTA mengarah ke flow create post existing
-/// (untuk sekarang: navigate ke /feed dengan flag openUpload).
+/// Section "Postingan Saya" — card compact yang mengarah ke halaman
+/// daftar postingan user sendiri (BUKAN feed publik). Per user spec:
+/// jangan empty state besar dengan "Belum ada postingan" + CTA "Buat
+/// Postingan". Fokus utama section ini = arahkan user ke halaman miliknya.
 ///
-/// Future improvement: kalau user sudah punya postingan, ganti widget
-/// ini dengan list horizontal terakhir + "Lihat semua" → /member/posts.
-class _MyPostsEmptyState extends StatelessWidget {
-  const _MyPostsEmptyState();
+/// Tap CTA → /member/posts → MemberPostsScreen yang punya tab/filter
+/// untuk: tayang, menunggu review, ditolak, dll. Kondisi kosong di-handle
+/// di halaman tujuan, BUKAN di section ini.
+class _MyPostsCard extends StatelessWidget {
+  const _MyPostsCard();
+
+  static const _brandSoft = Color(0xFFDDEBFF); // border soft blue
+  static const _ctaTextSize = 15.5;
+
+  void _openMyPosts(BuildContext context) {
+    AppHaptics.tap();
+    Navigator.pushNamed(context, '/member/posts');
+  }
 
   @override
   Widget build(BuildContext context) {
-    return GlassSurface(
-      radius: 22,
-      padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
-      tint: Colors.white,
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _brandSoft, width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: _brandBlue.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 84,
-            height: 84,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFFEAF5FF), Color(0xFFF5EEFF)],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: _brandBlue.withValues(alpha: 0.10),
-                  blurRadius: 16,
-                  offset: const Offset(0, 6),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Icon ilustrasi kecil — soft blue tile dengan grid/list icon.
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEAF3FF),
+                  borderRadius: BorderRadius.circular(13),
                 ),
-              ],
-            ),
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                const Positioned(
-                  left: 18,
-                  top: 22,
-                  child: Icon(
-                    Icons.pets_rounded,
-                    color: Color(0xFFFBBF24),
-                    size: 28,
-                  ),
-                ),
-                Positioned(
-                  right: 16,
-                  bottom: 18,
-                  child: Icon(
-                    Icons.favorite_rounded,
-                    color: const Color(0xFFEF4444).withValues(alpha: 0.85),
-                    size: 22,
-                  ),
-                ),
-                const Icon(
-                  Icons.photo_camera_rounded,
+                child: const Icon(
+                  Icons.dynamic_feed_rounded,
                   color: _brandBlue,
-                  size: 30,
+                  size: 22,
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Postingan Saya',
+                      style: TextStyle(
+                        color: Color(0xFF17202A),
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        height: 1.2,
+                      ),
+                    ),
+                    SizedBox(height: 3),
+                    Text(
+                      'Lihat semua postingan feed yang pernah kamu bagikan',
+                      style: TextStyle(
+                        color: Color(0xFF64748B),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 14),
-          const Text(
-            'Belum ada postingan',
-            style: TextStyle(
-              color: Color(0xFF17202A),
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Bagikan momen seru hewan peliharaanmu di Natalo Feed.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Color(0xFF64748B),
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              height: 1.45,
-            ),
-          ),
-          const SizedBox(height: 16),
+          // CTA outlined button — soft block tipis, BUKAN tombol biru
+          // primary penuh. Text sedikit lebih besar 15.5px supaya readable
+          // dan obvious sebagai action utama section ini.
           SizedBox(
             width: double.infinity,
-            height: 46,
-            child: ElevatedButton.icon(
-              onPressed: () {
-                AppHaptics.tap();
-                Navigator.pushNamed(
-                  context,
-                  '/feed',
-                  arguments: {'openUpload': true},
-                );
-              },
-              icon: const Icon(Icons.add_rounded, size: 20),
-              label: const Text('Buat Postingan'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _brandBlue,
-                foregroundColor: Colors.white,
-                elevation: 0,
+            height: 44,
+            child: OutlinedButton(
+              onPressed: () => _openMyPosts(context),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _brandBlue,
+                backgroundColor: const Color(0xFFF6FAFF),
+                side: const BorderSide(color: _brandBlue, width: 1.3),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: BorderRadius.circular(14),
                 ),
-                textStyle: const TextStyle(
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.w900,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.format_list_bulleted_rounded, size: 18),
+                  SizedBox(width: 8),
+                  Text(
+                    'Lihat Postingan Saya',
+                    style: TextStyle(
+                      fontSize: _ctaTextSize,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  SizedBox(width: 6),
+                  Icon(Icons.chevron_right_rounded, size: 20),
+                ],
               ),
             ),
           ),
