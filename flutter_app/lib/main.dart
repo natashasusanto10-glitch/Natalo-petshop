@@ -169,9 +169,9 @@ class NataloPetshopApp extends StatelessWidget {
           themeMode: appSettingsStore.themeMode,
           builder: (context, child) {
             // Solid background dari ThemeData.scaffoldBackgroundColor —
-            // no AppBackdrop gradient. Faster rendering di HP murah,
-            // better readability outdoor, familiar pattern untuk user
-            // Indonesia (Tokopedia/Shopee style).
+            // no gradient overlay. Faster rendering di HP murah, better
+            // readability outdoor, familiar pattern untuk user Indonesia
+            // (Tokopedia/Shopee style).
             return AppLockGate(
               child: ReadOnlyWelcomeGate(
                 // ColoredBox provides bg behind transparent Scaffolds —
