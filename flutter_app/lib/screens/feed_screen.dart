@@ -19,8 +19,10 @@ import '../models/feed_post.dart';
 import '../models/product.dart';
 import '../screens/checkout_screen.dart';
 import '../services/api_client.dart';
+import '../services/block_service.dart';
 import '../services/feed_service.dart';
 import '../services/product_service.dart';
+import '../services/report_service.dart';
 import '../services/video_quality_service.dart';
 import '../state/cart_store.dart';
 import '../state/feed_local_store.dart';
@@ -30,6 +32,7 @@ import '../utils/haptics.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/feed_comment_sheet.dart';
+import '../widgets/moderation_action_sheet.dart';
 import 'feed_video_upload_flow.dart';
 
 const _officialGold = Color(0xFFF4D47C);
@@ -83,6 +86,11 @@ class _FeedScreenState extends State<FeedScreen> {
     // real-time match dengan keranjang. Listener di-detach di dispose().
     _cartCount = cartStore.totalQuantity;
     cartStore.addListener(_syncTopCartCount);
+    // UGC moderation — saat user block creator, refresh feed supaya
+    // post-post dari creator itu langsung hilang dari view. blockService
+    // notifyListeners() di-dispatch dari [moderation_action_sheet.dart].
+    blockService.addListener(_onBlocklistChanged);
+    blockService.load();
     // Auto-trigger upload kalau dipush dari UploadVideoCta (Account screen
     // "Upload Video" button) yang kirim arguments `{openUpload: true}`.
     // Pakai post-frame callback supaya context.modalRoute settled.
@@ -98,12 +106,37 @@ class _FeedScreenState extends State<FeedScreen> {
   @override
   void dispose() {
     cartStore.removeListener(_syncTopCartCount);
+    blockService.removeListener(_onBlocklistChanged);
     for (final controller in _preloadedControllers.values) {
       controller.dispose();
     }
     _preloadedControllers.clear();
     _pageController.dispose();
     super.dispose();
+  }
+
+  /// Re-filter _posts setelah user block creator. Dipanggil oleh
+  /// [blockService.notifyListeners] dari [moderation_action_sheet.dart].
+  void _onBlocklistChanged() {
+    if (!mounted) return;
+    setState(() {
+      // Re-filter list — _visiblePosts getter yang dipakai PageView akan
+      // otomatis exclude blocked. Trigger setState supaya rebuild.
+    });
+  }
+
+  /// Filter posts dari user yang di-block (UGC policy requirement).
+  ///
+  /// Dipakai PageView builder & item count. Source [_posts] tetap utuh
+  /// supaya kalau user unblock, post langsung muncul lagi tanpa refetch.
+  List<FeedPost> get _visiblePosts {
+    if (!blockService.isLoaded || blockService.count == 0) return _posts;
+    return _posts.where((p) {
+      return !blockService.isUserBlocked(
+        userId: p.author.id,
+        userName: p.author.name,
+      );
+    }).toList(growable: false);
   }
 
   void _syncTopCartCount() {
@@ -393,24 +426,30 @@ class _FeedScreenState extends State<FeedScreen> {
                   return canRefresh && notification.depth == 0;
                 },
                 onRefresh: _loadInitial,
-                child: PageView.builder(
-                  controller: _pageController,
-                  scrollDirection: Axis.vertical,
-                  physics: _interactionLocked
-                      ? const NeverScrollableScrollPhysics()
-                      : const PageScrollPhysics(),
-                  itemCount: _posts.length,
-                  onPageChanged: _onPageChanged,
-                  itemBuilder: (context, index) {
-                    return _FeedPostView(
-                      post: _posts[index],
-                      isActive: index == _activeIndex,
-                      preloadedController:
-                          _preloadedControllers.remove(_posts[index].id),
-                      onOverlayStateChanged: _setFeedInteractionLocked,
-                    );
-                  },
-                ),
+                child: Builder(builder: (context) {
+                  // Filter post dari blocked users sebelum render. Re-compute
+                  // setiap rebuild — cheap karena blockService.isLoaded check
+                  // + Set lookup O(1) per post.
+                  final visible = _visiblePosts;
+                  return PageView.builder(
+                    controller: _pageController,
+                    scrollDirection: Axis.vertical,
+                    physics: _interactionLocked
+                        ? const NeverScrollableScrollPhysics()
+                        : const PageScrollPhysics(),
+                    itemCount: visible.length,
+                    onPageChanged: _onPageChanged,
+                    itemBuilder: (context, index) {
+                      return _FeedPostView(
+                        post: visible[index],
+                        isActive: index == _activeIndex,
+                        preloadedController:
+                            _preloadedControllers.remove(visible[index].id),
+                        onOverlayStateChanged: _setFeedInteractionLocked,
+                      );
+                    },
+                  );
+                }),
               ),
             // Top overlay — `+` upload (kiri) + cart icon dengan badge (kanan).
             // Plain icons (no glass/blur pill) per mockup TikTok-style. Safe
@@ -1305,6 +1344,27 @@ class _FeedPostViewState extends State<_FeedPostView>
     setState(() => _commentDragOffset = 0);
   }
 
+  /// Open moderation actions sheet (Report / Block).
+  ///
+  /// Wajib ada per Google Play UGC policy — see [moderation_action_sheet.dart]
+  /// untuk rasionalnya. Setelah block, kirim signal ke parent supaya
+  /// post dari user yang baru di-block langsung hilang dari feed (pakai
+  /// notifyListeners dari [blockService] yang di-listen di FeedScreen).
+  Future<void> _onMoreActions() async {
+    AppHaptics.tap();
+    widget.onOverlayStateChanged(true);
+    final post = widget.post;
+    await showModerationActions(
+      context,
+      targetKind: ReportTargetKind.feedPost,
+      targetId: post.id,
+      authorId: post.author.id,
+      authorName: post.author.isAdmin ? null : post.author.name,
+      allowBlock: !post.author.isAdmin,
+    );
+    if (mounted) widget.onOverlayStateChanged(false);
+  }
+
   Future<void> _onShare() async {
     AppHaptics.tap();
     final url =
@@ -1910,6 +1970,17 @@ class _FeedPostViewState extends State<_FeedPostView>
                                   count: _shareCount,
                                   onTap: _onShare,
                                 ),
+                                const SizedBox(height: _feedActionItemSpacing),
+                                // ── More actions (Report / Block) ──
+                                // Google Play UGC policy requirement: setiap
+                                // post UGC harus ada cara user laporkan +
+                                // blokir kreator. Tanpa button ini, app
+                                // ditolak Google saat submit Production.
+                                _ReelsAction(
+                                  icon: Icons.more_horiz_rounded,
+                                  color: Colors.white,
+                                  onTap: _onMoreActions,
+                                ),
                               ],
                             ),
                           ),
@@ -2045,11 +2116,30 @@ class _CommentVideoFrame extends StatelessWidget {
                     .clamp(104.0, width - 28)
                     .toDouble();
             final previewHeight = previewWidth * 16 / 9;
-            final previewTop = ui.lerpDouble(
-              safeTop + 26,
-              safeTop + 12,
+            // Dynamic preview position — track drawer top edge supaya
+            // video preview tetap muat di area ABOVE drawer, tidak overlap
+            // dengan "Komentar" header saat user drag drawer ke max
+            // extent. Drawer extent linear interpolation: 0.60 (initial)
+            // → 0.90 (max) sebagai progress 0..1. Drawer top edge =
+            // height * (1 - extent). Preview bottom = drawerTop - 12px
+            // gap. Preview top = bottom - height.
+            const drawerInitialExtent = 0.60;
+            const drawerMaxExtent = 0.90;
+            final drawerExtent = ui.lerpDouble(
+              drawerInitialExtent,
+              drawerMaxExtent,
               clampedProgress,
             )!;
+            final drawerTopY = height * (1 - drawerExtent);
+            final previewTopRaw = drawerTopY - previewHeight - 12;
+            final previewTop =
+                previewTopRaw.clamp(safeTop + 8, drawerTopY).toDouble();
+            // Fade out preview as drawer mendekati max extent — Instagram
+            // pattern: drag drawer ke atas = focus to comments, video
+            // preview menghilang. Fade window 0.5..0.85.
+            final fadeProgress =
+                ((clampedProgress - 0.5) / (0.85 - 0.5)).clamp(0.0, 1.0);
+            final previewOpacity = 1.0 - fadeProgress;
             final fullRect = Rect.fromLTWH(0, 0, width, height);
             final previewRect = Rect.fromLTWH(
               (width - previewWidth) / 2,
@@ -2064,36 +2154,51 @@ class _CommentVideoFrame extends StatelessWidget {
               clampedProgress,
             )!;
             final radius = ui.lerpDouble(0, previewRadius, openProgress)!;
-            final shadowOpacity = ui.lerpDouble(0, 0.44, openProgress)!;
+            final shadowOpacity =
+                ui.lerpDouble(0, 0.44, openProgress)! * previewOpacity;
+            // Combined opacity: openProgress (1 = open) × previewOpacity
+            // (fade out near max). Saat closed → openProgress=0 → full
+            // rect, opacity should jadi 1 (kembali ke fullscreen). Trick:
+            // hanya apply previewOpacity saat openProgress mendekati 1.
+            final finalOpacity =
+                ui.lerpDouble(1.0, previewOpacity, openProgress)!;
 
             return Positioned.fromRect(
               rect: rect,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Colors.black,
-                  borderRadius: BorderRadius.circular(radius),
-                  boxShadow: shadowOpacity <= 0
-                      ? const []
-                      : [
-                          BoxShadow(
-                            color: Colors.black.withValues(
-                              alpha: shadowOpacity,
-                            ),
-                            blurRadius: ui.lerpDouble(
-                              0,
-                              22,
-                              openProgress,
-                            )!,
-                            offset: Offset(
-                              0,
-                              ui.lerpDouble(0, 12, openProgress)!,
-                            ),
-                          ),
-                        ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(radius),
-                  child: child,
+              child: IgnorePointer(
+                // Saat preview sudah fade nearly invisible, jangan block
+                // tap ke drawer di belakang.
+                ignoring: previewOpacity < 0.05,
+                child: Opacity(
+                  opacity: finalOpacity.clamp(0.0, 1.0),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.black,
+                      borderRadius: BorderRadius.circular(radius),
+                      boxShadow: shadowOpacity <= 0
+                          ? const []
+                          : [
+                              BoxShadow(
+                                color: Colors.black.withValues(
+                                  alpha: shadowOpacity,
+                                ),
+                                blurRadius: ui.lerpDouble(
+                                  0,
+                                  22,
+                                  openProgress,
+                                )!,
+                                offset: Offset(
+                                  0,
+                                  ui.lerpDouble(0, 12, openProgress)!,
+                                ),
+                              ),
+                            ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(radius),
+                      child: child,
+                    ),
+                  ),
                 ),
               ),
             );
@@ -2777,7 +2882,7 @@ class _ReelsAction extends StatelessWidget {
     this.icon,
     this.iconChild,
     required this.color,
-    required this.count,
+    this.count,
     required this.onTap,
   });
 
