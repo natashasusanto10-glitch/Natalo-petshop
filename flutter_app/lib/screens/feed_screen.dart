@@ -879,6 +879,15 @@ class _FeedPostViewState extends State<_FeedPostView>
   bool _endOfVideoCtaVisible = false;
   bool _endOfVideoCtaDismissed = false;
 
+  // Delayed loading spinner — sebagian besar video load <1s (preloaded
+  // controller siap instan, fresh init biasanya 400-900ms). Spinner yang
+  // muncul instant bikin user anxiety ("kok lama?"). Delay 800ms supaya
+  // kalau video keburu ready, spinner gak pernah muncul = perceived
+  // instant. Kalau lewat 800ms baru spinner muncul (genuine slow load,
+  // butuh feedback visual).
+  Timer? _loadingSpinnerDelay;
+  bool _showLoadingSpinner = false;
+
   // Animation untuk heart burst di tengah saat double-tap.
   late final AnimationController _heartBurstController;
   late final Animation<double> _heartScale;
@@ -959,6 +968,10 @@ class _FeedPostViewState extends State<_FeedPostView>
     if (controller == null) return;
     _videoController = controller;
     controller.addListener(_handleVideoPositionForCta);
+    // Preloaded controller selalu sudah initialize() — timer reset di sini
+    // cuma untuk kasus defensif (controller mungkin dispose dari luar). Kalau
+    // sudah initialized, helper-nya early-return tanpa schedule spinner.
+    _resetLoadingSpinnerTimer();
     await controller.setVolume(appSettingsStore.feedMuted ? 0 : 1);
     if (widget.isActive && _shouldAutoplay) {
       await controller.play();
@@ -1005,6 +1018,35 @@ class _FeedPostViewState extends State<_FeedPostView>
       _endOfVideoCtaVisible = false;
       _endOfVideoCtaDismissed = true;
     });
+  }
+
+  /// Reset spinner-delay timer setelah controller di-set atau di-swap. Kalau
+  /// controller sudah initialized (preload sukses), spinner tidak diperlukan
+  /// sama sekali — early return. Kalau belum, schedule spinner muncul 800ms
+  /// kemudian — kalau initialize keburu selesai sebelum timer fire,
+  /// _cancelLoadingSpinnerDelay dipanggil dan spinner tidak pernah render.
+  void _resetLoadingSpinnerTimer() {
+    _loadingSpinnerDelay?.cancel();
+    _loadingSpinnerDelay = null;
+    if (_showLoadingSpinner) {
+      _showLoadingSpinner = false;
+    }
+    final ctrl = _videoController;
+    if (ctrl == null || ctrl.value.isInitialized || _videoLoadFailed) return;
+    _loadingSpinnerDelay = Timer(const Duration(milliseconds: 800), () {
+      if (!mounted) return;
+      final c = _videoController;
+      if (c == null || c.value.isInitialized || _videoLoadFailed) return;
+      setState(() => _showLoadingSpinner = true);
+    });
+  }
+
+  void _cancelLoadingSpinnerDelay() {
+    _loadingSpinnerDelay?.cancel();
+    _loadingSpinnerDelay = null;
+    if (_showLoadingSpinner && mounted) {
+      setState(() => _showLoadingSpinner = false);
+    }
   }
 
   @override
@@ -1058,12 +1100,17 @@ class _FeedPostViewState extends State<_FeedPostView>
           VideoPlayerController.networkUrl(Uri.parse(resolvedUrl));
       _videoController = controller;
       controller.addListener(_handleVideoPositionForCta);
+      // Schedule spinner muncul 800ms dari sekarang. Kalau initialize keburu
+      // selesai dalam window itu, _cancelLoadingSpinnerDelay() bawah cancel
+      // timer → spinner tidak pernah render = perceived instant.
+      _resetLoadingSpinnerTimer();
       if (mounted) setState(() {});
       await controller.initialize();
       if (!mounted) {
         controller.dispose();
         return;
       }
+      _cancelLoadingSpinnerDelay();
       controller.setLooping(true);
       await controller.setVolume(appSettingsStore.feedMuted ? 0 : 1);
       if (widget.isActive && (_shouldAutoplay || userInitiated)) {
@@ -1072,6 +1119,7 @@ class _FeedPostViewState extends State<_FeedPostView>
       _isPaused = !controller.value.isPlaying;
       setState(() {});
     } catch (_) {
+      _cancelLoadingSpinnerDelay();
       await _videoController?.dispose();
       _videoController = null;
       if (!mounted) return;
@@ -1081,6 +1129,7 @@ class _FeedPostViewState extends State<_FeedPostView>
 
   @override
   void dispose() {
+    _loadingSpinnerDelay?.cancel();
     _stopProductRotation();
     cartStore.removeListener(_syncCartCount);
     _commentSheetController.removeListener(_syncCommentSheetProgress);
@@ -1722,7 +1771,14 @@ class _FeedPostViewState extends State<_FeedPostView>
                             child: _VideoRetryButton(onRetry: _maybeInitVideo),
                           ),
                         ),
-                      if (_videoController != null &&
+                      // Spinner hanya muncul kalau video belum ready DAN
+                      // sudah lewat 800ms grace period (lihat
+                      // _resetLoadingSpinnerTimer). Kalau initialize selesai
+                      // < 800ms, spinner tidak pernah render → perceived
+                      // instant. Blurhash + thumbnail dari _MediaBackground
+                      // tetap visible selama itu.
+                      if (_showLoadingSpinner &&
+                          _videoController != null &&
                           !_videoController!.value.isInitialized &&
                           !_videoLoadFailed)
                         Positioned.fill(
