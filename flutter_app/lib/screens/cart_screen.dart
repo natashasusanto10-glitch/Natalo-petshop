@@ -353,7 +353,11 @@ class _CartScreenState extends State<CartScreen> {
 
   void _scheduleShowVoucherBar() {
     _voucherBarTimer?.cancel();
-    _voucherBarTimer = Timer(const Duration(milliseconds: 600), () {
+    // 140ms — spec: muncul kembali "langsung" saat scroll berhenti.
+    // Sebelumnya 600ms terasa delayed, user kira voucher bar hilang
+    // permanen. 120-180ms = idle threshold yang masih natural (avoid
+    // flicker dari momentum scroll fling yang berhenti sebentar).
+    _voucherBarTimer = Timer(const Duration(milliseconds: 140), () {
       if (!mounted || _voucherBarVisible) return;
       setState(() => _voucherBarVisible = true);
     });
@@ -504,13 +508,23 @@ class _CartScreenState extends State<CartScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      // Solid surface bg — override theme transparency yang bikin header
+      // & content nampak semi-transparent / kurang sharp (spec: header
+      // harus solid, tidak terkena efek glass/blur dari layer lain).
+      backgroundColor: NataloColors.surface,
       // Custom title dengan count subtitle — match PWA cart header
       // "Keranjang\n0 jenis produk (0 item)".
-      // AppBar simplified per reference pattern — title "Keranjang" pakai
-      // theme default (18/w700). Subtitle count diturunkan jadi inline
-      // bawah list, bukan di header. Action cuma "Kosongkan" saat ada item.
+      // AppBar override eksplisit ke putih solid (theme global pakai
+      // surface 0.90 = semi-transparent yang inherit ke cart → header
+      // jadi kurang tajam). Border bawah tipis untuk crisp visual edge.
       appBar: AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        shape: const Border(
+          bottom: BorderSide(color: Color(0xFFE5EAF2), width: 1),
+        ),
         title: const Text('Keranjang'),
         actions: [
           AnimatedBuilder(
