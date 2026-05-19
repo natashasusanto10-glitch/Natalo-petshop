@@ -1087,6 +1087,7 @@ class _FeedPostViewState extends State<_FeedPostView>
   /// iOS: AVPlayer di-render native via video_player package — sudah
   /// support gesture native, scrubbing, AirPlay button (kalau enabled
   /// di Info.plist).
+  // ignore: unused_element
   Future<void> _openCinemaMode() async {
     final ctrl = _videoController;
     if (ctrl == null || !ctrl.value.isInitialized) return;
@@ -1561,16 +1562,14 @@ class _FeedPostViewState extends State<_FeedPostView>
                           ),
                         ),
                       if (!minimized) ...[
-                        if (_isPaused &&
-                            _videoController != null &&
-                            _videoController!.value.isInitialized)
-                          Positioned(
-                            top: safeTop + 12,
-                            right: 12,
-                            child: _PausedFullscreenButton(
-                              onTap: _openCinemaMode,
-                            ),
-                          ),
+                        // Fullscreen button di-hapus per user spec — tidak
+                        // perlu, bikin UI Reels feels cluttered. Video
+                        // tetap fullscreen vertical default. Cinema mode
+                        // (kalau perlu nanti) bisa di-trigger lewat
+                        // long-press atau gesture, bukan dedicated button.
+                        // _openCinemaMode + _PausedFullscreenButton tetap
+                        // available di codebase untuk re-enable kalau
+                        // diperlukan via flag/setting.
                         // ── Bottom gradient untuk text readability ──
                         Positioned(
                           left: 0,
@@ -2590,6 +2589,7 @@ class _PausedVideoControls extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _PausedFullscreenButton extends StatelessWidget {
   final VoidCallback onTap;
 

@@ -73,6 +73,50 @@ class MemberService {
     }
   }
 
+  /// Upload foto profil ke backend (UploadThing CDN) + auto-save URL ke
+  /// User.profilePhotoUrl. Return updated MemberProfile dengan URL CDN —
+  /// caller bisa langsung pakai sebagai source of truth.
+  ///
+  /// Endpoint: POST /api/auth/me/photo (multipart, field "file").
+  /// Max 5 MB, format JPG/PNG/WebP.
+  Future<MemberProfile?> uploadProfilePhoto(String filePath) async {
+    readOnlyMode.assertWritable('profile_photo_upload');
+    try {
+      final data = await apiClient.postMultipartFile(
+        '/api/auth/me/photo',
+        fieldName: 'file',
+        filePath: filePath,
+        filename: 'avatar.jpg',
+        contentType: filePath.toLowerCase().endsWith('.png')
+            ? 'image/png'
+            : filePath.toLowerCase().endsWith('.webp')
+                ? 'image/webp'
+                : 'image/jpeg',
+      );
+      if (data is Map<String, dynamic>) {
+        final user = data['user'];
+        if (user is Map<String, dynamic>) {
+          return MemberProfile.fromJson(user);
+        }
+      }
+      return null;
+    } catch (e) {
+      if (kDebugMode) debugPrint('[memberService.uploadProfilePhoto] $e');
+      rethrow;
+    }
+  }
+
+  /// Hapus foto profil di backend — set profilePhotoUrl ke null.
+  Future<void> deleteProfilePhoto() async {
+    readOnlyMode.assertWritable('profile_photo_delete');
+    try {
+      await apiClient.deleteJson('/api/auth/me/photo');
+    } catch (e) {
+      if (kDebugMode) debugPrint('[memberService.deleteProfilePhoto] $e');
+      rethrow;
+    }
+  }
+
   Future<MemberProfile?> fetchProfile() async {
     try {
       final uri = ApiConfig.uri('/api/auth/me');

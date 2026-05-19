@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../services/api_client.dart';
+import '../services/member_service.dart';
 import '../state/member_store.dart';
 import '../utils/haptics.dart';
 import 'app_toast.dart';
@@ -72,7 +74,23 @@ class _UpdateProfilePhotoSheetState extends State<_UpdateProfilePhotoSheet> {
         if (mounted) Navigator.of(context).maybePop();
         return;
       }
-      await _applyLocalPhoto(picked.path);
+      // Upload ke backend (UploadThing CDN) + auto-save URL ke
+      // User.profilePhotoUrl. Backend return updated profile, langsung
+      // sync ke memberStore supaya UI lain (Akun page, feed, comment)
+      // refresh otomatis lewat AnimatedBuilder.
+      final updated = await memberService.uploadProfilePhoto(picked.path);
+      if (updated != null) {
+        await memberStore.persistProfileUpdate(updated);
+      } else {
+        // Fallback ke local path kalau backend tidak return profile
+        // (rare — biasanya backend error → throw exception).
+        final current = memberStore.profile;
+        if (current != null) {
+          await memberStore.persistProfileUpdate(
+            current.copyWith(profilePhotoUrl: picked.path),
+          );
+        }
+      }
       if (!mounted) return;
       AppHaptics.success();
       Navigator.of(context).maybePop();
@@ -81,12 +99,20 @@ class _UpdateProfilePhotoSheetState extends State<_UpdateProfilePhotoSheet> {
         'Foto profil berhasil diperbarui.',
         kind: ToastKind.success,
       );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      AppHaptics.warning();
+      AppToast.show(
+        context,
+        'Upload foto gagal: ${error.message}',
+        kind: ToastKind.error,
+      );
     } catch (error) {
       if (!mounted) return;
       AppHaptics.warning();
       AppToast.show(
         context,
-        'Gagal memilih foto: $error',
+        'Gagal upload foto: $error',
         kind: ToastKind.error,
       );
     } finally {
@@ -94,18 +120,14 @@ class _UpdateProfilePhotoSheetState extends State<_UpdateProfilePhotoSheet> {
     }
   }
 
-  Future<void> _applyLocalPhoto(String path) async {
-    final current = memberStore.profile;
-    if (current == null) return;
-    final updated = current.copyWith(profilePhotoUrl: path);
-    await memberStore.persistProfileUpdate(updated);
-  }
-
   Future<void> _removePhoto() async {
     if (_busy) return;
     AppHaptics.warning();
     setState(() => _busy = true);
     try {
+      // Hapus di backend dulu — set User.profilePhotoUrl ke null.
+      await memberService.deleteProfilePhoto();
+      // Sync ke local memberStore.
       final current = memberStore.profile;
       if (current != null) {
         final updated = current.copyWith(clearProfilePhoto: true);
@@ -117,6 +139,14 @@ class _UpdateProfilePhotoSheetState extends State<_UpdateProfilePhotoSheet> {
         context,
         'Foto profil dihapus.',
         kind: ToastKind.success,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      AppHaptics.warning();
+      AppToast.show(
+        context,
+        'Gagal hapus foto: $error',
+        kind: ToastKind.error,
       );
     } finally {
       if (mounted) setState(() => _busy = false);

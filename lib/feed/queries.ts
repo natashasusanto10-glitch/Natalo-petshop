@@ -97,7 +97,7 @@ export async function listFeedPosts({
         }
       : {}),
     include: {
-      author: { select: { id: true, name: true, role: true } },
+      author: { select: { id: true, name: true, role: true, profilePhotoUrl: true } },
       product: {
         select: {
           id: true,
@@ -218,6 +218,7 @@ export async function listFeedPosts({
       id: p.author.id,
       name: p.author.name,
       role: (p.authorRole === "ADMIN" ? "ADMIN" : "CUSTOMER") as "ADMIN" | "CUSTOMER",
+      profilePhotoUrl: p.author.profilePhotoUrl ?? null,
     },
     publishedAt: p.publishedAt?.toISOString() ?? null,
     createdAt: p.createdAt.toISOString(),
@@ -246,7 +247,7 @@ function mapFeedComment(
     isHidden: boolean;
     likeCount: number;
     createdAt: Date;
-    author: { id: string; name: string; role: string };
+    author: { id: string; name: string; role: string; profilePhotoUrl: string | null };
     replies?: Array<{
       id: string;
       postId: string;
@@ -256,7 +257,7 @@ function mapFeedComment(
       isHidden: boolean;
       likeCount: number;
       createdAt: Date;
-      author: { id: string; name: string; role: string };
+      author: { id: string; name: string; role: string; profilePhotoUrl: string | null };
     }>;
   },
   viewerLikedIds: Set<string>,
@@ -274,6 +275,7 @@ function mapFeedComment(
       id: c.author.id,
       name: c.author.name,
       role: (c.author.role === "ADMIN" ? "ADMIN" : "CUSTOMER") as "ADMIN" | "CUSTOMER",
+      profilePhotoUrl: c.author.profilePhotoUrl ?? null,
     },
     viewerLiked: viewerLikedIds.has(c.id),
     replies: c.replies?.map((reply) => mapFeedComment(reply, viewerLikedIds)) ?? [],
@@ -300,12 +302,12 @@ export async function listFeedComments({
     take: COMMENT_PAGE_SIZE + 1,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     include: {
-      author: { select: { id: true, name: true, role: true } },
+      author: { select: { id: true, name: true, role: true, profilePhotoUrl: true } },
       replies: {
         where: { isHidden: false },
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
         include: {
-          author: { select: { id: true, name: true, role: true } },
+          author: { select: { id: true, name: true, role: true, profilePhotoUrl: true } },
         },
       },
     },
