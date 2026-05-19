@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart' show XFile;
+import 'package:path_provider/path_provider.dart';
 import 'package:tus_client_dart/tus_client_dart.dart';
 
 import 'api_client.dart';
@@ -135,9 +136,22 @@ class BunnyUploadService {
     int chunkSize = 5 * 1024 * 1024,
     void Function(int percent, int loaded, int total)? onProgress,
   }) async {
+    // Gap #8 fix: pakai TusFileStore (persist progress ke disk) supaya
+    // upload resumable after app restart. Sebelumnya TusMemoryStore →
+    // hilang saat app killed mid-upload, user harus restart dari 0%.
+    //
+    // Directory: <ApplicationDocumentsDirectory>/feed_uploads/ — auto
+    // create kalau belum ada. Cleanup happen di TusClient.upload
+    // onComplete (library handle automatically).
+    final docsDir = await getApplicationDocumentsDirectory();
+    final uploadsDir = Directory('${docsDir.path}/feed_uploads');
+    if (!uploadsDir.existsSync()) {
+      uploadsDir.createSync(recursive: true);
+    }
+
     final client = TusClient(
       XFile(videoFile.path),
-      store: TusMemoryStore(), // In-memory store — cukup untuk single session
+      store: TusFileStore(uploadsDir),
       maxChunkSize: chunkSize,
     );
 

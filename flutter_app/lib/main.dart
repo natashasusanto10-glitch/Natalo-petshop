@@ -35,6 +35,7 @@ import 'screens/onboarding_screen.dart';
 import 'screens/product_detail_screen.dart';
 import 'screens/register_screen.dart';
 import 'state/cart_store.dart';
+import 'state/feed_local_store.dart';
 import 'state/member_store.dart';
 import 'state/recently_viewed_store.dart';
 import 'state/settings_store.dart';
@@ -119,6 +120,9 @@ Future<void> main() async {
   // Recently viewed — load history dari disk supaya Home carousel
   // langsung populated saat user buka app.
   recentlyViewedStore.loadFromDisk();
+  // Feed local store — liked posts cache (#7) + offline feed cache (#11).
+  // Fire-and-forget; feed_screen also re-init defensively saat first open.
+  feedLocalStore.initialize();
   // Initialize deep link listener — handle URI yang buka app + URI yang
   // datang saat app sudah running. Idempotent kalau dipanggil ulang.
   deepLinkService.initialize(rootNavigatorKey);

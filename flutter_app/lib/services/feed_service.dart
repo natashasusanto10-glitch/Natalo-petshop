@@ -30,6 +30,13 @@ class FeedService {
     };
   }
 
+  /// Fetch feed posts cursor-paginated.
+  ///
+  /// Gap #9 fix: tidak lagi silent-swallow non-ApiException errors.
+  /// Network timeout / DNS fail / parse error → throw ApiException
+  /// supaya caller bisa show retry UI (sebelumnya return empty page
+  /// yang misleading: user lihat "Belum ada postingan" padahal error).
+  /// Gap #10 fix: timeout 8s → 15s (Indonesia 3G/slow 4G area).
   Future<FeedPage> fetchPublicFeed({String? cursor, int limit = 10}) async {
     try {
       final uri = ApiConfig.uri('/api/feed/posts', {
@@ -38,7 +45,7 @@ class FeedService {
       });
       final res = await http
           .get(uri, headers: _headers)
-          .timeout(const Duration(seconds: 8));
+          .timeout(const Duration(seconds: 15));
       if (res.statusCode != 200) {
         throw ApiException('feed fetch failed', statusCode: res.statusCode);
       }
@@ -46,7 +53,8 @@ class FeedService {
       if (body is! Map<String, dynamic>) {
         return const FeedPage();
       }
-      final itemsJson = (body['items'] ?? body['posts'] ?? body['data']) as List?;
+      final itemsJson =
+          (body['items'] ?? body['posts'] ?? body['data']) as List?;
       final items = (itemsJson ?? const [])
           .whereType<Map<String, dynamic>>()
           .map(FeedPost.fromJson)
@@ -58,7 +66,26 @@ class FeedService {
     } catch (e) {
       if (kDebugMode) debugPrint('[feedService.fetchPublicFeed] $e');
       if (e is ApiException) rethrow;
-      return const FeedPage();
+      // Wrap network/timeout/parse errors sebagai ApiException supaya
+      // caller bisa distinguish "error" vs "empty result".
+      throw ApiException(e.toString(), cause: e);
+    }
+  }
+
+  /// Track view event — fire-and-forget. Backend increment viewCount
+  /// + record analytics event. Client debounce sendiri (avoid
+  /// double-count) via FeedLocalStore.hasViewedThisSession.
+  ///
+  /// Gap #3 fix: previously no client send view event → analytics
+  /// under-report views untuk Flutter users.
+  Future<void> trackView(String postId) async {
+    try {
+      final uri = ApiConfig.uri('/api/feed/posts/$postId/view');
+      await http
+          .post(uri, headers: _headers)
+          .timeout(const Duration(seconds: 4));
+    } catch (_) {
+      // Silent — non-critical analytics, jangan ganggu UX.
     }
   }
 

@@ -22,6 +22,7 @@ import '../services/feed_service.dart';
 import '../services/product_service.dart';
 import '../services/video_quality_service.dart';
 import '../state/cart_store.dart';
+import '../state/feed_local_store.dart';
 import '../state/settings_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
@@ -64,10 +65,15 @@ class _FeedScreenState extends State<FeedScreen> {
   bool _loadingMore = false;
   bool _interactionLocked = false;
   int _activeIndex = 0;
+  /// Gap #9: distinguish "no posts" vs "fetch error" — UI bisa show retry.
+  String? _loadError;
 
   @override
   void initState() {
     super.initState();
+    // Gap #11: load offline cache first untuk show stale data instantly
+    // sambil network fetch jalan. Plus #7: hydrate likedStore.
+    _bootstrapFromCache();
     _loadInitial();
     // Auto-trigger upload kalau dipush dari UploadVideoCta (Account screen
     // "Upload Video" button) yang kirim arguments `{openUpload: true}`.
@@ -91,32 +97,79 @@ class _FeedScreenState extends State<FeedScreen> {
     super.dispose();
   }
 
-  Future<void> _loadInitial() async {
-    setState(() => _loading = true);
-    final page = await feedService.fetchPublicFeed();
+  /// Gap #11: hydrate dari offline cache supaya feed tidak blank saat
+  /// network slow. Cache otomatis di-replace saat fetch sukses.
+  Future<void> _bootstrapFromCache() async {
+    await feedLocalStore.initialize();
     if (!mounted) return;
+    final cached = feedLocalStore.cachedPosts;
+    if (cached.isNotEmpty && _posts.isEmpty) {
+      setState(() {
+        _posts = List<FeedPost>.from(cached);
+        // Tetap _loading=true sampai fetch network done — supaya kalau
+        // network sukses, cache di-replace tanpa flicker UX.
+      });
+    }
+  }
+
+  /// Gap #9: error-aware loader. Sebelumnya error di-swallow → user
+  /// lihat empty state misleading. Sekarang catch + set _loadError +
+  /// fall back ke cache kalau ada.
+  Future<void> _loadInitial() async {
     setState(() {
-      _posts = page.items;
-      _nextCursor = page.nextCursor;
-      _loading = false;
+      _loading = true;
+      _loadError = null;
     });
-    _preloadNext(_activeIndex);
+    try {
+      final page = await feedService.fetchPublicFeed();
+      if (!mounted) return;
+      // Gap #7: merge backend viewerLiked dengan local cache.
+      feedLocalStore.mergeBackendLiked(page.items);
+      // Gap #11: persist fresh fetch ke offline cache.
+      await feedLocalStore.cachePosts(page.items);
+      if (!mounted) return;
+      setState(() {
+        _posts = page.items;
+        _nextCursor = page.nextCursor;
+        _loading = false;
+      });
+      _preloadNext(_activeIndex);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        // Kalau ada stale cache, keep showing it dengan banner.
+        // Kalau tidak, _loadError biar UI show error state.
+        _loadError = _posts.isEmpty
+            ? (e.statusCode != null
+                ? 'Feed tidak bisa dimuat (${e.statusCode}).'
+                : 'Periksa koneksi internet lalu coba lagi.')
+            : null;
+      });
+    }
   }
 
   Future<void> _loadMore() async {
     if (_loadingMore || _nextCursor == null) return;
     _loadingMore = true;
-    final page = await feedService.fetchPublicFeed(cursor: _nextCursor);
-    if (!mounted) {
-      _loadingMore = false;
-      return;
+    try {
+      final page = await feedService.fetchPublicFeed(cursor: _nextCursor);
+      if (!mounted) {
+        _loadingMore = false;
+        return;
+      }
+      feedLocalStore.mergeBackendLiked(page.items);
+      setState(() {
+        _posts.addAll(page.items);
+        _nextCursor = page.nextCursor;
+        _loadingMore = false;
+      });
+      _preloadNext(_activeIndex);
+    } on ApiException catch (_) {
+      // Pagination error — silent. User tetap bisa lihat existing posts.
+      if (!mounted) return;
+      setState(() => _loadingMore = false);
     }
-    setState(() {
-      _posts.addAll(page.items);
-      _nextCursor = page.nextCursor;
-      _loadingMore = false;
-    });
-    _preloadNext(_activeIndex);
   }
 
   void _onPageChanged(int index) {
@@ -257,9 +310,14 @@ class _FeedScreenState extends State<FeedScreen> {
         // siap untuk create post flow.
         child: Stack(
           children: [
-            // Body content per state
-            if (_loading)
+            // Body content per state.
+            // Gap #9: kalau load error + tidak ada cached posts → tampil
+            // _ErrorState dengan retry button (bukan _EmptyState yang
+            // misleading "belum ada postingan").
+            if (_loading && _posts.isEmpty)
               const _LoadingState()
+            else if (_loadError != null && _posts.isEmpty)
+              _FeedErrorState(message: _loadError!, onRetry: _loadInitial)
             else if (_posts.isEmpty)
               const _EmptyState()
             else
@@ -520,6 +578,88 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
+/// Gap #9 — feed error state dengan retry button.
+/// Tampil ketika fetchPublicFeed throw + tidak ada cached posts.
+class _FeedErrorState extends StatelessWidget {
+  final String message;
+  final Future<void> Function() onRetry;
+
+  const _FeedErrorState({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              height: 72,
+              width: 72,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.08),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.wifi_off_rounded,
+                color: Colors.white60,
+                size: 36,
+              ),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Feed tidak bisa dimuat',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 20),
+            OutlinedButton.icon(
+              onPressed: () {
+                AppHaptics.tap();
+                onRetry();
+              },
+              icon: const Icon(Icons.refresh_rounded, color: Colors.white),
+              label: const Text(
+                'Coba lagi',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Colors.white54),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 22,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(28),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Satu fullscreen page Reels-style — video/thumbnail + Reels overlay.
 class _FeedPostView extends StatefulWidget {
   final FeedPost post;
@@ -572,7 +712,12 @@ class _FeedPostViewState extends State<_FeedPostView>
   @override
   void initState() {
     super.initState();
-    _liked = widget.post.viewerLiked;
+    // Gap #7: initialize _liked dari union backend + local cache.
+    // Backend `viewerLiked` win kalau ada (true source), tapi kalau
+    // backend false + local cache true → trust local (just-liked
+    // optimistic update yang belum di-flush ke backend).
+    _liked = widget.post.viewerLiked ||
+        feedLocalStore.isLiked(widget.post.id);
     _likeCount = widget.post.likeCount;
     _commentCount = widget.post.commentCount;
     _shareCount = widget.post.shareCount;
@@ -777,6 +922,10 @@ class _FeedPostViewState extends State<_FeedPostView>
       _likeCount =
           wasLiked ? (_likeCount > 0 ? _likeCount - 1 : 0) : _likeCount + 1;
     });
+    // Gap #7: persist liked state local (SharedPreferences). Survives
+    // app restart, instant reflection saat next launch sebelum API
+    // fetch. Backend tetap source of truth — local hanya fast-path.
+    feedLocalStore.setLiked(widget.post.id, !wasLiked);
     try {
       final result = await feedService.toggleLike(widget.post.id,
           currentlyLiked: wasLiked);
@@ -785,12 +934,16 @@ class _FeedPostViewState extends State<_FeedPostView>
         _liked = result.liked;
         _likeCount = result.likeCount;
       });
+      // Reconcile local cache dengan backend truth.
+      feedLocalStore.setLiked(widget.post.id, result.liked);
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _liked = wasLiked;
         _likeCount = previousCount;
       });
+      // Rollback local cache juga.
+      feedLocalStore.setLiked(widget.post.id, wasLiked);
       if (error is ApiException && error.statusCode == 401) {
         Navigator.pushNamed(context, '/member/login');
       } else {
@@ -1216,7 +1369,18 @@ class _FeedPostViewState extends State<_FeedPostView>
       key: ValueKey('feed-post-${post.id}'),
       onVisibilityChanged: (info) {
         final ctrl = _videoController;
-        if (ctrl == null || !mounted) return;
+        if (!mounted) return;
+        // Gap #3: track view event saat post >50% visible + active.
+        // Debounced via FeedLocalStore.hasViewedThisSession — no
+        // double-count saat user swipe back/forth ke post sama.
+        if (info.visibleFraction > 0.5 &&
+            widget.isActive &&
+            !feedLocalStore.hasViewedThisSession(post.id)) {
+          feedLocalStore.markViewedThisSession(post.id);
+          // Fire-and-forget — analytics non-critical, jangan await.
+          feedService.trackView(post.id);
+        }
+        if (ctrl == null) return;
         if (info.visibleFraction > 0.7 && widget.isActive && _shouldAutoplay) {
           if (!ctrl.value.isPlaying && !_isPaused) ctrl.play();
         } else {
