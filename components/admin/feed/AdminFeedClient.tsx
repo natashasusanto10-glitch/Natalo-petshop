@@ -20,6 +20,7 @@ import {
   FiEdit2,
   FiExternalLink,
   FiPlus,
+  FiRefreshCw,
   FiSquare,
   FiTrash2,
   FiX,
@@ -37,6 +38,10 @@ type AdminFilter =
 type AdminFeedItem = {
   id: string;
   status: string;
+  // Bunny encoding lifecycle. Approve di-block selama ini ≠ "ready" —
+  // listFeedPosts filter encodingStatus="ready" untuk public feed, jadi
+  // approve pre-ready bikin post "approved tapi invisible".
+  encodingStatus: string;
   kind: string;
   tab: string;
   title: string;
@@ -88,6 +93,7 @@ export function AdminFeedClient() {
   const [error, setError] = useState<string | null>(null);
   const [counts, setCounts] = useState({ pending: 0, total: 0, deleted: 0 });
   const [actionBusy, setActionBusy] = useState<string | null>(null); // post id
+  const [syncBusy, setSyncBusy] = useState(false);
 
   // Bulk selection — set of postId yang user centang. Floating action bar
   // muncul saat ≥1 row selected. Reset saat filter berubah (post mungkin
@@ -308,6 +314,50 @@ export function AdminFeedClient() {
     }
   }
 
+  // Manual Bunny reconcile — polling Bunny untuk semua post yang masih
+  // "uploading" / "processing". Dipakai admin kalau ada post nyangkut karena
+  // webhook miss. Auto-reconcile di GET handler juga jalan, tapi tombol ini
+  // bikin user-flow eksplisit + ngasih feedback summary.
+  async function syncBunny() {
+    if (syncBusy) return;
+    setSyncBusy(true);
+    try {
+      const res = await fetch("/api/admin/feed/bunny-reconcile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = (await res.json()) as {
+        ok?: boolean;
+        scanned?: number;
+        results?: Array<{ action: string }>;
+        error?: string;
+      };
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error ?? "Sync gagal");
+      }
+      const ready = data.results?.filter((r) => r.action === "ready").length ?? 0;
+      const failed = data.results?.filter((r) => r.action === "failed").length ?? 0;
+      const skipped =
+        data.results?.filter((r) => r.action === "skipped").length ?? 0;
+      const scanned = data.scanned ?? 0;
+      const parts: string[] = [];
+      if (scanned === 0) parts.push("Tidak ada post yang stuck.");
+      else {
+        parts.push(`Scan ${scanned} post.`);
+        if (ready > 0) parts.push(`${ready} siap tayang`);
+        if (failed > 0) parts.push(`${failed} gagal encoding`);
+        if (skipped > 0) parts.push(`${skipped} masih diproses`);
+      }
+      window.alert(parts.join(" · "));
+      refetchCurrent();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Sync gagal");
+    } finally {
+      setSyncBusy(false);
+    }
+  }
+
   function toggleSelected(postId: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -341,13 +391,25 @@ export function AdminFeedClient() {
             Total {counts.total} post · {counts.pending} menunggu review
           </p>
         </div>
-        <Link
-          href="/admin/feed/new"
-          className="inline-flex items-center gap-1.5 rounded-full bg-natalo-600 px-4 py-2 text-xs font-extrabold text-white shadow-sm transition active:scale-95"
-        >
-          <FiPlus className="h-4 w-4" />
-          Buat Post
-        </Link>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={syncBunny}
+            disabled={syncBusy}
+            title="Polling Bunny untuk post yang nyangkut encoding (webhook miss)"
+            className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-2 text-[11px] font-extrabold text-gray-700 shadow-sm transition active:bg-gray-50 disabled:opacity-50"
+          >
+            <FiRefreshCw className={`h-3.5 w-3.5 ${syncBusy ? "animate-spin" : ""}`} />
+            {syncBusy ? "Sync…" : "Sync Bunny"}
+          </button>
+          <Link
+            href="/admin/feed/new"
+            className="inline-flex items-center gap-1.5 rounded-full bg-natalo-600 px-4 py-2 text-xs font-extrabold text-white shadow-sm transition active:scale-95"
+          >
+            <FiPlus className="h-4 w-4" />
+            Buat Post
+          </Link>
+        </div>
       </header>
 
       {/* Filter tabs */}
@@ -595,6 +657,17 @@ function AdminFeedRow({
     cls: "bg-gray-100 text-gray-700",
   };
 
+  // Encoding badge — sembunyi kalau sudah "ready" (90% kasus). Yang penting
+  // ditampilkan adalah state non-terminal/error supaya admin tahu kenapa
+  // tombol Approve disabled atau kenapa post tidak muncul di feed.
+  const encodingMeta: Record<string, { text: string; cls: string }> = {
+    uploading: { text: "Upload…", cls: "bg-sky-100 text-sky-800" },
+    processing: { text: "Encoding…", cls: "bg-sky-100 text-sky-800" },
+    failed: { text: "Encoding gagal", cls: "bg-red-100 text-red-800" },
+  };
+  const encoding = encodingMeta[post.encodingStatus];
+  const isApprovable = post.encodingStatus === "ready";
+
   return (
     <article
       className={`overflow-hidden rounded-2xl border bg-white transition ${
@@ -645,11 +718,20 @@ function AdminFeedRow({
             <h3 className="line-clamp-2 text-sm font-extrabold text-gray-900">
               {post.title}
             </h3>
-            <span
-              className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${meta.cls}`}
-            >
-              {meta.text}
-            </span>
+            <div className="flex shrink-0 flex-col items-end gap-1">
+              <span
+                className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${meta.cls}`}
+              >
+                {meta.text}
+              </span>
+              {encoding && (
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${encoding.cls}`}
+                >
+                  {encoding.text}
+                </span>
+              )}
+            </div>
           </div>
           <p className="mt-1 truncate text-[11px] font-semibold text-gray-500">
             {post.kind} · {post.author.role === "ADMIN" ? "Admin" : "User"} {post.author.name} ·{" "}
@@ -683,6 +765,14 @@ function AdminFeedRow({
               tone="green"
               onClick={() => onModerate("approve")}
               busy={busy}
+              disabled={!isApprovable}
+              title={
+                isApprovable
+                  ? undefined
+                  : post.encodingStatus === "failed"
+                    ? "Video gagal di-encode — tolak / hapus saja"
+                    : "Tunggu sampai encoding selesai"
+              }
             />
             <ActionButton
               label="Tolak"
@@ -752,11 +842,15 @@ function ActionButton({
   tone,
   onClick,
   busy,
+  disabled,
+  title,
 }: {
   label: string;
   tone: "green" | "red" | "gray";
   onClick: () => void;
   busy: boolean;
+  disabled?: boolean;
+  title?: string;
 }) {
   const cls = {
     green: "bg-green-600 text-white active:bg-green-700",
@@ -767,8 +861,9 @@ function ActionButton({
     <button
       type="button"
       onClick={onClick}
-      disabled={busy}
-      className={`rounded-full px-3 py-1.5 text-[11px] font-extrabold transition disabled:opacity-50 ${cls}`}
+      disabled={busy || disabled}
+      title={title}
+      className={`rounded-full px-3 py-1.5 text-[11px] font-extrabold transition disabled:cursor-not-allowed disabled:opacity-50 ${cls}`}
     >
       {label}
     </button>

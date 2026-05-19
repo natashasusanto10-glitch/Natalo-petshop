@@ -144,6 +144,10 @@ export async function POST(request: NextRequest) {
       videoUrl: true,
       thumbnailUrl: true,
       videoGuid: true,
+      // Dipakai untuk skip approve atas video yang belum playable —
+      // listFeedPosts filter encodingStatus="ready", jadi approve sebelum
+      // encoding kelar bikin post "approved tapi invisible".
+      encodingStatus: true,
     },
   });
   const postMap = new Map(posts.map((p) => [p.id, p]));
@@ -285,6 +289,20 @@ export async function POST(request: NextRequest) {
           status: "skipped",
           reason: `Status ${post.status} tidak bisa ${action}`,
         });
+        continue;
+      }
+
+      // Skip approve untuk video yang belum playable. Bulk path TIDAK
+      // auto-reconcile (single endpoint sudah cover itu) — admin yang
+      // bulk-approve diasumsikan sudah lihat encoding badge di UI.
+      if (action === "approve" && post.encodingStatus !== "ready") {
+        const reason =
+          post.encodingStatus === "failed"
+            ? "Video encoding gagal"
+            : post.encodingStatus === "uploading"
+              ? "Upload belum selesai"
+              : "Video masih di-encode";
+        results.push({ postId, status: "skipped", reason });
         continue;
       }
 

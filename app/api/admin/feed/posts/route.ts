@@ -21,6 +21,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { FeedPostKind, FeedPostStatus, Prisma } from "@prisma/client";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { reconcileFeedPost } from "@/lib/feed/reconcile";
 
 const PAGE_SIZE = 20;
 
@@ -108,9 +109,39 @@ export async function GET(request: NextRequest) {
   const hasMore = posts.length > PAGE_SIZE;
   const sliced = hasMore ? posts.slice(0, PAGE_SIZE) : posts;
 
+  // Self-heal: kalau ada post yang nyangkut di "uploading" / "processing"
+  // padahal Bunny webhook seharusnya udah firing, polling Bunny secara
+  // background. Fire-and-forget (tidak await) supaya admin list response
+  // tetap cepat. Cap 10 row per request supaya tidak abuse Bunny API
+  // bahkan saat ada banyak post stuck. Admin refresh halaman → row yang
+  // udah selesai re-render sebagai "ready".
+  // Hanya di-trigger untuk first page (cursor null) supaya pagination tidak
+  // re-trigger reconcile setiap scroll.
+  if (!cursor) {
+    const stuck = sliced.filter(
+      (p) =>
+        p.videoGuid &&
+        (p.encodingStatus === "uploading" || p.encodingStatus === "processing"),
+    );
+    if (stuck.length > 0) {
+      for (const p of stuck.slice(0, 10)) {
+        void reconcileFeedPost(p.id).catch((err) => {
+          console.warn("[admin-list] reconcile failed:", p.id, err);
+        });
+      }
+    }
+  }
+
   type Item = {
     id: string;
     status: FeedPostStatus;
+    // Bunny encoding lifecycle ("uploading" | "processing" | "ready" |
+    // "failed"). Admin UI pakai field ini untuk disable tombol Approve
+    // selama video belum siap — kalau di-approve saat encodingStatus ≠
+    // "ready", post di-set ACTIVE tapi feed query tetap exclude (lihat
+    // lib/feed/queries.ts encodingStatus filter), jadi admin lihat
+    // "sudah approve" tapi post tidak muncul di feed.
+    encodingStatus: string;
     kind: FeedPostKind;
     tab: string;
     title: string;
@@ -139,6 +170,7 @@ export async function GET(request: NextRequest) {
   const items: Item[] = sliced.map((p) => ({
     id: p.id,
     status: p.status,
+    encodingStatus: p.encodingStatus,
     kind: p.kind,
     tab: p.tab,
     title: p.title,

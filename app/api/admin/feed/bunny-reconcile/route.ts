@@ -104,10 +104,13 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  // Scan SEMUA state non-terminal — bukan cuma "uploading". Banyak post
+  // nyangkut di "processing" karena Bunny webhook miss callback FINISHED;
+  // kalau cuma scan "uploading", post-post itu tetap invisible.
   const posts = await prisma.feedPost.findMany({
     where: {
       ...(body.postId ? { id: body.postId } : {}),
-      encodingStatus: "uploading",
+      encodingStatus: { in: ["uploading", "processing"] },
       videoGuid: { not: null },
     },
     select: { id: true, videoGuid: true },

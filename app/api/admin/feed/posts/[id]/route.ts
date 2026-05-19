@@ -134,6 +134,31 @@ export async function PATCH(
     }
   }
 
+  // Guard: tolak approve kalau video belum playable. Tanpa guard, post di-set
+  // ACTIVE tapi listFeedPosts filter encodingStatus="ready" tetap exclude →
+  // admin lihat "sudah approve" tapi video tidak muncul di feed. Compute final
+  // encoding state pasca-reconcile (reconcile mungkin flip processing → ready).
+  if (action === "approve") {
+    const finalEncoding: string =
+      reconcileResult?.action === "ready"
+        ? "ready"
+        : reconcileResult?.action === "failed"
+          ? "failed"
+          : post.encodingStatus;
+    if (finalEncoding !== "ready") {
+      const reason =
+        finalEncoding === "failed"
+          ? "Video gagal di-encode oleh Bunny — tolak atau hapus post ini, bukan approve."
+          : finalEncoding === "uploading"
+            ? "Upload video belum selesai. Tunggu sampai upload kelar lalu coba lagi."
+            : "Video masih di-encode oleh Bunny. Coba lagi sebentar setelah encoding selesai.";
+      return NextResponse.json(
+        { error: reason, encodingStatus: finalEncoding },
+        { status: 409 },
+      );
+    }
+  }
+
   const now = new Date();
   const [updated] = await prisma.$transaction([
     prisma.feedPost.update({
