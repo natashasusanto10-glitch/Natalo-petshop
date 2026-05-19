@@ -10,6 +10,7 @@ import '../theme/natalo_colors.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/bottom_nav.dart';
+import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/product_card.dart';
 import '../widgets/skeleton_product_card.dart';
 
@@ -315,7 +316,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
           final lookAgain = _lookAgainProducts
               .where((product) => !wishlistIds.contains(product.id))
               .toList();
-          return RefreshIndicator(
+          return NataloPawRefreshIndicator(
             onRefresh: _refresh,
             child: CustomScrollView(
               controller: _scrollController,

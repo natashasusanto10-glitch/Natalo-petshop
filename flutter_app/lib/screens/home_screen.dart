@@ -6,7 +6,7 @@ import '../state/member_store.dart';
 import '../theme/natalo_colors.dart';
 import '../widgets/app_cart_button.dart';
 import '../widgets/bottom_nav.dart';
-import '../widgets/haptic_refresh_indicator.dart';
+import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/product_card.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -61,110 +61,88 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: SafeArea(
         bottom: false,
-        child: HapticRefreshIndicator(
+        child: NataloPawRefreshIndicator(
           onRefresh: _refresh,
-          child: FutureBuilder<List<Product>>(
-            future: _productsFuture,
-            builder: (context, snapshot) {
-              final products = snapshot.data ?? const <Product>[];
-              final promo =
-                  products.where((product) => product.hasDiscount).toList();
-              final popular = [...products]
-                ..sort((a, b) => b.soldCount.compareTo(a.soldCount));
-
-              return CustomScrollView(
-                key: const PageStorageKey('home-scroll'),
-                primary: false,
-                physics: const AlwaysScrollableScrollPhysics(),
-                slivers: [
-                  SliverToBoxAdapter(
-                    child: Column(
-                      children: [
-                        const SizedBox(height: 12),
-                        const _TrustMarquee(),
-                        const SizedBox(height: 14),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: _HeroBannerCard(
-                            onTap: () => _openProducts(),
-                          ),
-                        ),
-                        const SizedBox(height: 18),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Column(
-                            children: [
-                              _HomeGreeting(
-                                onOpenProducts: () => _openProducts(),
-                              ),
-                              const SizedBox(height: 18),
-                              _CategoryGrid(
-                                onOpenCategory: (category) =>
-                                    _openProducts(category: category),
-                                onOpenVoucher: () => Navigator.pushNamed(
-                                  context,
-                                  '/member/vouchers',
-                                ),
-                                onOpenLoyalty: () => Navigator.pushNamed(
-                                  context,
-                                  '/member/loyalty',
-                                ),
-                                onOpenGrooming: () =>
-                                    _openProducts(category: 'Grooming'),
-                                onOpenBlog: () =>
-                                    Navigator.pushNamed(context, '/help'),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 18),
-                      ],
-                    ),
-                  ),
-                  if (snapshot.connectionState == ConnectionState.waiting &&
-                      products.isEmpty)
-                    const SliverToBoxAdapter(
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 48),
-                        child: Center(child: CircularProgressIndicator()),
-                      ),
-                    )
-                  else if (products.isEmpty)
-                    SliverToBoxAdapter(
-                      child: _EmptyHomeProducts(onRetry: _refresh),
-                    )
-                  else ...[
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Column(
-                          children: [
-                            if (promo.isNotEmpty)
-                              _HomeProductSection(
-                                title: 'Promo Natalo',
-                                subtitle: 'Produk hemat yang sedang aktif',
-                                products: promo.take(6).toList(),
-                                onTap: _openProduct,
-                                onSeeAll: () => _openProducts(),
-                              ),
-                            const SizedBox(height: 20),
-                            _HomeProductSection(
-                              title: 'Jelajahi Produk Natalo',
-                              subtitle:
-                                  'Temukan berbagai kebutuhan hewan kesayanganmu',
-                              products: popular.take(8).toList(),
-                              onTap: _openProduct,
-                              onSeeAll: () => _openProducts(),
-                            ),
-                            const SizedBox(height: 120),
-                          ],
-                        ),
-                      ),
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(0, 12, 0, 120),
+            children: [
+              const _TrustMarquee(),
+              const SizedBox(height: 14),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _HeroBannerCard(onTap: () => _openProducts()),
+              ),
+              const SizedBox(height: 18),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children: [
+                    _HomeGreeting(onOpenProducts: () => _openProducts()),
+                    const SizedBox(height: 18),
+                    _CategoryGrid(
+                      onOpenCategory: (category) =>
+                          _openProducts(category: category),
+                      onOpenVoucher: () =>
+                          Navigator.pushNamed(context, '/member/vouchers'),
+                      onOpenLoyalty: () =>
+                          Navigator.pushNamed(context, '/member/loyalty'),
+                      onOpenGrooming: () => _openProducts(category: 'Grooming'),
+                      onOpenBlog: () => Navigator.pushNamed(context, '/help'),
                     ),
                   ],
-                ],
-              );
-            },
+                ),
+              ),
+              const SizedBox(height: 18),
+              FutureBuilder<List<Product>>(
+                future: _productsFuture,
+                builder: (context, snapshot) {
+                  final products = snapshot.data ?? const <Product>[];
+                  final promo =
+                      products.where((product) => product.hasDiscount).toList();
+                  final popular = [...products]
+                    ..sort((a, b) => b.soldCount.compareTo(a.soldCount));
+
+                  if (snapshot.connectionState == ConnectionState.waiting &&
+                      products.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 48),
+                      child: Center(child: CircularProgressIndicator()),
+                    );
+                  }
+
+                  if (products.isEmpty) {
+                    return _EmptyHomeProducts(onRetry: _refresh);
+                  }
+
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      children: [
+                        if (promo.isNotEmpty) ...[
+                          _HomeProductSection(
+                            title: 'Promo Natalo',
+                            subtitle: 'Produk hemat yang sedang aktif',
+                            products: promo.take(6).toList(),
+                            onTap: _openProduct,
+                            onSeeAll: () => _openProducts(),
+                          ),
+                          const SizedBox(height: 20),
+                        ],
+                        _HomeProductSection(
+                          title: 'Jelajahi Produk Natalo',
+                          subtitle:
+                              'Temukan berbagai kebutuhan hewan kesayanganmu',
+                          products: popular.take(8).toList(),
+                          onTap: _openProduct,
+                          onSeeAll: () => _openProducts(),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ],
           ),
         ),
       ),

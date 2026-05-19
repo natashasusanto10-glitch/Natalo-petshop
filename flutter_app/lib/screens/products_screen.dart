@@ -6,7 +6,7 @@ import '../state/search_history_store.dart';
 import '../widgets/app_cart_button.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/bottom_nav.dart';
-import '../widgets/haptic_refresh_indicator.dart';
+import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/product_card.dart';
 import '../widgets/skeleton_product_card.dart';
 
@@ -97,7 +97,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
       ),
       body: SafeArea(
         bottom: false,
-        child: HapticRefreshIndicator(
+        child: NataloPawRefreshIndicator(
           onRefresh: _refresh,
           child: CustomScrollView(
             slivers: [
@@ -188,7 +188,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                           return ProductCard(
                             product: product,
                             onTap: () => _openProduct(product),
-                            showAddToCart: true,
+                            showAddToCart: false,
                             showWishlistButton: false,
                           );
                         },

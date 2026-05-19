@@ -7,6 +7,7 @@ import '../services/notification_service.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_ui.dart';
+import '../widgets/natalo_paw_refresh_indicator.dart';
 import 'announcement_detail_screen.dart';
 import 'in_app_browser_screen.dart';
 
@@ -216,7 +217,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
     final items = _visibleItems;
     if (items.isEmpty) {
-      return RefreshIndicator(
+      return NataloPawRefreshIndicator(
         onRefresh: _refresh,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -228,7 +229,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       );
     }
 
-    return RefreshIndicator(
+    return NataloPawRefreshIndicator(
       onRefresh: _refresh,
       child: ListView.separated(
         physics: const AlwaysScrollableScrollPhysics(),

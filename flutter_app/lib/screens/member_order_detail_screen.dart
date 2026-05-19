@@ -14,6 +14,7 @@ import '../widgets/app_product_image.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/glass_surface.dart';
+import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/order_tracking_timeline.dart';
 
 const _brandBlue = Color(0xFF0B7FEA);
@@ -192,7 +193,7 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
               ),
             ],
           ),
-          body: RefreshIndicator(
+          body: NataloPawRefreshIndicator(
             onRefresh: _refreshOrder,
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),

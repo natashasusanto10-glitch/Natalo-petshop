@@ -6,6 +6,7 @@ import '../state/member_store.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/natalo_paw_refresh_indicator.dart';
 
 /// Member Addresses — list saved addresses, kalau ada empty state CTA add.
 /// Edit/delete operations stub via toast (sementara pakai PWA web).
@@ -53,7 +54,7 @@ class _MemberAddressesScreenState extends State<MemberAddressesScreen> {
         backgroundColor: const Color(0xFFF7FAFF),
         elevation: 0,
       ),
-      body: RefreshIndicator(
+      body: NataloPawRefreshIndicator(
         onRefresh: _refresh,
         child: FutureBuilder<List<MemberAddress>>(
           future: _addressesFuture,

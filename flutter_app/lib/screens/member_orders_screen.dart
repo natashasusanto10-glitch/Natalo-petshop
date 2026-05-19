@@ -11,6 +11,7 @@ import '../utils/formatters.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
+import '../widgets/natalo_paw_refresh_indicator.dart';
 
 const _brandBlue = Color(0xFF0B7FEA);
 
@@ -135,7 +136,7 @@ class _MemberOrdersScreenState extends State<MemberOrdersScreen> {
                       filter: _selectedFilter,
                       onRefresh: _refresh,
                     )
-                  : RefreshIndicator(
+                  : NataloPawRefreshIndicator(
                       onRefresh: _refresh,
                       child: ListView.separated(
                         padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
@@ -730,7 +731,7 @@ class _EmptyOrdersState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return RefreshIndicator(
+    return NataloPawRefreshIndicator(
       onRefresh: onRefresh,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -809,7 +810,7 @@ class _FilteredOrdersEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return RefreshIndicator(
+    return NataloPawRefreshIndicator(
       onRefresh: onRefresh,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
