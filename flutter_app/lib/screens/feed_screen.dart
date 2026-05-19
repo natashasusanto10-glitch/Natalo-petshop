@@ -303,7 +303,12 @@ class _FeedScreenState extends State<FeedScreen> {
       backgroundColor: Colors.black,
       resizeToAvoidBottomInset: false,
       extendBodyBehindAppBar: true,
-      extendBody: true,
+      // extendBody: false — media (video/foto) berhenti di atas bottom nav,
+      // TIDAK extend ke belakang nav. Per spec: "Media tidak masuk ke
+      // bawah bottom navigation". Scaffold sizing body = screenHeight -
+      // bottomNavHeight - safeBottom (otomatis), jadi overlay insets di
+      // bawah cukup relatif ke body bottom tanpa manual safeBottom add.
+      extendBody: false,
       body: AnnotatedRegion<SystemUiOverlayStyle>(
         value: SystemUiOverlayStyle.light,
         // Outer Stack — feed content only. Upload entry tetap tersedia via
@@ -1391,16 +1396,18 @@ class _FeedPostViewState extends State<_FeedPostView>
       child: LayoutBuilder(
         builder: (context, constraints) {
           final safeTop = MediaQuery.paddingOf(context).top;
-          final safeBottom = MediaQuery.paddingOf(context).bottom;
           final keyboard = MediaQuery.viewInsetsOf(context).bottom;
           final screenHeight = MediaQuery.sizeOf(context).height;
-          // feedInfoInset + actionRailInset harus kompensasi tinggi nav
-          // (58px + safeBottom) supaya icon + caption tidak ketutup nav
-          // yang translucent. Sebelumnya inset relatif ke video bottom;
-          // sekarang relatif ke screen bottom karena video edge-to-edge.
-          final feedInfoInset = safeBottom + 78.0;
-          final actionRailInset =
-              safeBottom + (screenHeight < 760 ? 126.0 : 136.0);
+          // extendBody: false di Scaffold → body bottom = top edge bottom
+          // nav (safeBottom sudah di-consume nav widget). Insets di sini
+          // relatif ke body bottom, BUKAN screen bottom. Tidak perlu
+          // tambah safeBottom — sudah otomatis di-handle Scaffold.
+          //
+          // Per spec safe area: bottom nav height + safeBottom otomatis
+          // consumed via Scaffold. Yang perlu di sini cuma offset visual
+          // antara overlay dengan top edge bottom nav.
+          const feedInfoInset = 24.0;
+          final actionRailInset = screenHeight < 760 ? 88.0 : 100.0;
           final minimized = _commentSheetOpen;
 
           return ColoredBox(
