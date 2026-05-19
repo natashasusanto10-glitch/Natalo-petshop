@@ -119,7 +119,15 @@ class VideoQualityService {
 
   /// Rewrite Bunny URL berdasarkan network tier.
   ///
-  /// Pattern matching same dengan helper di Capacitor:
+  /// IMPORTANT: Saat URL sudah mengandung signed token (`token=...&expires=...`)
+  /// dari server, **rewrite di-skip** karena token Bunny CDN signature
+  /// terikat ke path SPESIFIK (mis. `/play_720p.mp4`). Rewrite path ke
+  /// `/playlist.m3u8` atau quality lain bikin signature gak match path baru →
+  /// CDN 403. Server sudah sign path 720p MP4 — pakai apa adanya.
+  ///
+  /// Untuk legacy URL (tidak signed): rewrite sesuai network tier.
+  ///
+  /// Pattern matching:
   ///   - HLS playlist `<origin>/<guid>/playlist.m3u8` → keep as is (WiFi)
   ///     atau rewrite ke MP4 `play_<NNN>p.mp4` (mobile)
   ///   - MP4 `<origin>/<guid>/play_<NNN>p.mp4` → rewrite quality digit
@@ -129,6 +137,13 @@ class VideoQualityService {
   /// quality network-appropriate untuk minimize manifest overhead.
   String resolvePlaybackUrl(String url) {
     if (url.isEmpty) return url;
+
+    // Signed URL — server sudah pre-sign path SPECIFIC. Rewrite path bikin
+    // signature gak match → CDN reject 403. Skip rewrite, pakai apa adanya.
+    if (url.contains('token=') && url.contains('expires=')) {
+      return url;
+    }
+
     final tier = _currentTier;
     final quality = recommendedQuality();
 
