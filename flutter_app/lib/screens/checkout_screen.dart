@@ -934,9 +934,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       builder: (context) => _BackToCartDialog(
         showBenefits: hasActiveBenefit,
         voucherDiscount: voucherDiscount,
-        shippingCost: _shippingCost,
-        // Poin yang didapat = 1% dari subtotal (estimasi UX — match PWA pattern).
-        estimatedPoints: (_itemsSubtotal / 1000).floor(),
       ),
     );
     return result == true;
@@ -949,14 +946,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 class _BackToCartDialog extends StatelessWidget {
   final bool showBenefits;
   final double voucherDiscount;
-  final double shippingCost;
-  final int estimatedPoints;
 
   const _BackToCartDialog({
     required this.showBenefits,
     required this.voucherDiscount,
-    required this.shippingCost,
-    required this.estimatedPoints,
   });
 
   @override
@@ -979,7 +972,11 @@ class _BackToCartDialog extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
                 alignment: Alignment.center,
-                child: const Text('🎟️', style: TextStyle(fontSize: 36)),
+                child: const Icon(
+                  Icons.confirmation_number_rounded,
+                  color: _brandBlue,
+                  size: 34,
+                ),
               )
             else
               Container(
@@ -1035,7 +1032,6 @@ class _BackToCartDialog extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 14),
-              // Benefits list — match screenshot persis
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(14),
@@ -1047,29 +1043,12 @@ class _BackToCartDialog extends StatelessWidget {
                   children: [
                     if (voucherDiscount > 0)
                       _BenefitRow(
-                        emoji: '🎫',
-                        label: 'Hemat Voucher',
+                        icon: Icons.local_offer_rounded,
+                        iconColor: NataloColors.discountRed,
+                        label: 'Total Hemat',
                         value: formatRupiah(voucherDiscount),
                         valueColor: NataloColors.discountRed,
                       ),
-                    if (shippingCost > 0) ...[
-                      const SizedBox(height: 10),
-                      _BenefitRow(
-                        emoji: '🚚',
-                        label: 'Ongkir',
-                        value: formatRupiah(shippingCost),
-                        valueColor: NataloColors.priceText,
-                      ),
-                    ],
-                    if (estimatedPoints > 0) ...[
-                      const SizedBox(height: 10),
-                      _BenefitRow(
-                        emoji: '🪙',
-                        label: 'Poin yang didapat',
-                        value: '$estimatedPoints poin',
-                        valueColor: const Color(0xFFF59E0B),
-                      ),
-                    ],
                   ],
                 ),
               ),
@@ -1135,13 +1114,15 @@ class _BackToCartDialog extends StatelessWidget {
 }
 
 class _BenefitRow extends StatelessWidget {
-  final String emoji;
+  final IconData icon;
+  final Color iconColor;
   final String label;
   final String value;
   final Color valueColor;
 
   const _BenefitRow({
-    required this.emoji,
+    required this.icon,
+    required this.iconColor,
     required this.label,
     required this.value,
     required this.valueColor,
@@ -1151,7 +1132,15 @@ class _BenefitRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Text(emoji, style: const TextStyle(fontSize: 20)),
+        Container(
+          height: 32,
+          width: 32,
+          decoration: BoxDecoration(
+            color: iconColor.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: iconColor, size: 18),
+        ),
         const SizedBox(width: 10),
         Expanded(
           child: Text(
@@ -2178,15 +2167,18 @@ class _CheckoutShippingMethodCard extends StatelessWidget {
                         fontWeight: FontWeight.w900,
                       ),
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      selected.duration,
-                      style: const TextStyle(
-                        color: Color(0xFF667085),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
+                    if (!selected.isSelfPickup &&
+                        selected.duration.trim().isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        selected.duration,
+                        style: const TextStyle(
+                          color: Color(0xFF667085),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),

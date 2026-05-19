@@ -16,14 +16,29 @@ class NotificationResult {
 
 class NotificationService {
   Future<NotificationResult> fetchMine() async {
-    final data = await apiClient.getJson('/api/notifications/me');
-    if (data is! Map<String, dynamic>) {
-      final text = data?.toString().trim() ?? '';
-      final looksLikeHtml =
-          text.startsWith('<!DOCTYPE html') || text.startsWith('<html');
+    final dynamic data;
+    try {
+      data = await apiClient.getJson('/api/notifications/me');
+    } on ApiException catch (error) {
+      if (_looksLikeHtml(error.message) ||
+          error.message.contains('FormatException')) {
+        throw const ApiException(
+          'Server membalas halaman web, bukan data notifikasi. Cek API_BASE_URL atau endpoint notifikasi.',
+        );
+      }
+      rethrow;
+    } on FormatException catch (error) {
       throw ApiException(
-        looksLikeHtml
-            ? 'Server membalas halaman web, bukan data notifikasi.'
+        'Server membalas data notifikasi yang belum valid.',
+        cause: error,
+      );
+    }
+
+    if (data is! Map<String, dynamic>) {
+      final text = data?.toString() ?? '';
+      throw ApiException(
+        _looksLikeHtml(text)
+            ? 'Server membalas halaman web, bukan data notifikasi. Cek API_BASE_URL atau endpoint notifikasi.'
             : 'Response notifikasi tidak sesuai format aplikasi.',
       );
     }
@@ -118,8 +133,20 @@ class NotificationService {
     'order': true,
     'promo': true,
     'voucher': true,
+    'loyalty_points': true,
+    'chat': true,
+    'product': false,
+    'feed': false,
     'newsletter': false,
   };
+}
+
+bool _looksLikeHtml(String value) {
+  final text = value.trimLeft().toLowerCase();
+  return text.startsWith('<!doctype html') ||
+      text.startsWith('<html') ||
+      text.contains('<!doctype html') ||
+      text.contains('<html');
 }
 
 int _asInt(Object? value) {

@@ -2,9 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/auth_service.dart';
-import '../state/cart_store.dart';
-import '../state/favorite_store.dart';
-import '../state/member_store.dart';
 import '../utils/haptics.dart';
 import '../utils/phone_formatter.dart';
 import '../widgets/loading_button.dart';
@@ -82,15 +79,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
         return;
       }
 
-      // Step 2 sukses — user created → auto login
-      await memberStore.setSession(profile: result);
-      await favoriteStore.refresh();
-      try {
-        await cartStore.syncToServer();
-      } catch (_) {}
+      // Step 2 sukses — user dibuat. User tetap login manual supaya session
+      // dan cart sync memakai flow login member yang sama.
       AppHaptics.success();
       if (!mounted) return;
-      Navigator.pushNamedAndRemoveUntil(context, '/member', (route) => false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Akun berhasil dibuat. Silakan login.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      Navigator.pushReplacementNamed(context, '/member/login');
     } catch (error) {
       if (!mounted) return;
       AppHaptics.warning();
@@ -155,10 +154,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
         surfaceTintColor: const Color(0xFFF7FAFF),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF17202A)),
-          onPressed: () => Navigator.pushNamedAndRemoveUntil(
+          onPressed: () => Navigator.pushReplacementNamed(
             context,
-            '/',
-            (_) => false,
+            '/member/login',
           ),
         ),
         title: const Text(

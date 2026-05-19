@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Read-only mode — flag global yang membungkus semua endpoint mutation
@@ -26,6 +27,7 @@ class ReadOnlyMode extends ChangeNotifier {
   bool _initialized = false;
 
   bool get enabled => _enabled;
+
   /// Alias `enabled` — beberapa code pakai `isReadOnly`.
   bool get isReadOnly => _enabled;
   bool get initialized => _initialized;
@@ -69,6 +71,21 @@ class ReadOnlyModeException implements Exception {
   @override
   String toString() =>
       'ReadOnlyModeException: ${operation ?? 'mutation'} blocked (read-only mode active)';
+}
+
+void showReadOnlySnackbar(BuildContext context, ReadOnlyModeException error) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: const Text(
+        'Mode aman aktif. Aksi ini tidak mengubah data server.',
+      ),
+      behavior: SnackBarBehavior.floating,
+      action: SnackBarAction(
+        label: 'OK',
+        onPressed: () {},
+      ),
+    ),
+  );
 }
 
 /// Singleton.

@@ -86,6 +86,14 @@ class MemberStore extends ChangeNotifier {
     }
   }
 
+  void setProfile(MemberProfile profile) {
+    _profile = profile;
+    _initialized = true;
+    _initializing = false;
+    notifyListeners();
+    hydrateFromApi();
+  }
+
   Future<void> setSession({
     required MemberProfile profile,
     String? token,

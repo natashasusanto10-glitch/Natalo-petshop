@@ -71,10 +71,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         surfaceTintColor: const Color(0xFFF7FAFF),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF17202A)),
-          onPressed: () => Navigator.pushNamedAndRemoveUntil(
+          onPressed: () => Navigator.pushReplacementNamed(
             context,
-            '/',
-            (_) => false,
+            '/member/login',
           ),
         ),
         title: const Text(

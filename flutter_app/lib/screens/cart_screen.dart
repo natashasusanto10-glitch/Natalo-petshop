@@ -2,65 +2,39 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/cart_item.dart';
+import '../models/member_profile.dart';
 import '../models/product.dart';
-import '../screens/checkout_screen.dart';
+import '../services/member_service.dart';
 import '../services/product_service.dart';
 import '../state/cart_store.dart';
+import '../state/member_store.dart';
 import '../state/recently_viewed_store.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
-import '../widgets/app_product_image.dart';
+import '../widgets/animated_counter.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/app_product_image.dart';
+import '../widgets/glass_surface.dart';
 import '../widgets/product_card.dart';
 import '../widgets/skeleton_product_card.dart';
 
-// ── Private color tokens ──
-// Sebelumnya inline literal — extract jadi const supaya konsisten antar widget
-// di file ini. Selaras dengan NataloColors palette.
-const _brandBlue = NataloColors.primary;
+const _brandBlue = NataloColors.nataloBlue;
+const _discountRed = Color(0xFFE53958);
+const _discountRedSoft = Color(0xFFFFF1F4);
+const _discountRedBorder = Color(0xFFFFB8C8);
+const _shippingGreen = Color(0xFF12A66A);
+const _shippingGreenSoft = Color(0xFFECFDF3);
+const _shippingGreenBorder = Color(0xFFA6F4C5);
+const _checkoutBarHeight = 74.0;
+const _voucherBarHeight = 64.0;
+const _cartBossOpenCountKey = 'natalo_cart_boss_open_count_v1';
+const _cartBossRefreshEvery = 3;
+const _shippingVoucherCode = '__shipping_free__';
 
-/// Animated Rupiah display — angka berubah dengan smooth transition.
-/// Dipakai di sticky bottom bar checkout supaya update total feel responsive.
-class AnimatedRupiah extends StatelessWidget {
-  final int amount;
-  final TextStyle? style;
-  final Duration duration;
-
-  const AnimatedRupiah({
-    super.key,
-    required this.amount,
-    this.style,
-    this.duration = const Duration(milliseconds: 220),
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedSwitcher(
-      duration: duration,
-      transitionBuilder: (child, animation) => FadeTransition(
-        opacity: animation,
-        child: SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0, 0.18),
-            end: Offset.zero,
-          ).animate(animation),
-          child: child,
-        ),
-      ),
-      child: Text(
-        formatRupiah(amount),
-        key: ValueKey(amount),
-        style: style,
-      ),
-    );
-  }
-}
-
-/// Cart screen — premium cart list, edit qty, remove with undo, recommendations,
-/// and selected-item checkout.
 class CartScreen extends StatefulWidget {
   const CartScreen({super.key});
 
@@ -70,301 +44,634 @@ class CartScreen extends StatefulWidget {
 
 class _CartScreenState extends State<CartScreen> {
   final ScrollController _scrollController = ScrollController();
-  final Set<String> _selectedKeys = <String>{};
-  final Set<String> _knownCartKeys = <String>{};
-
+  List<Product> _recentlyViewed = const [];
   List<Product> _bossProducts = const [];
-  bool _loadingBossProducts = true;
+  bool _loadingRecentlyViewed = false;
+  bool _loadingBossProducts = false;
   bool _loadingMoreBossProducts = false;
-  int _bossProductLimit = 12;
-
-  late final Listenable _pageListenable;
+  bool _bossProductsHasMore = true;
+  String? _bossProductsCursor;
+  Timer? _voucherBarTimer;
+  bool _voucherBarVisible = true;
+  List<MemberVoucher> _availableDiscountVouchers = const [];
+  List<MemberVoucher> _unavailableDiscountVouchers = const [];
+  MemberVoucher? _appliedDiscountVoucher;
+  bool _appliedShippingVoucher = false;
+  bool _isManualVoucherSelected = false;
+  String? _manualVoucherCode;
+  int _lastVoucherSubtotal = -1;
+  bool _loadingVouchers = false;
+  // Multi-select state lokal — track key item yang user pilih untuk checkout.
+  // Default semua item ter-select saat first load (backward compatible). User
+  // bisa toggle individual atau select all/none. Tidak persist disk — reset
+  // saat keluar screen.
+  Set<String> _selectedIds = <String>{};
 
   @override
   void initState() {
     super.initState();
-    _pageListenable = Listenable.merge([cartStore, recentlyViewedStore]);
-    cartStore.addListener(_handleCartChanged);
-    _scrollController.addListener(_handleScroll);
-    _syncSelectedKeys(selectNewItems: true);
+    _loadRecentlyViewed();
     _loadBossProducts();
+    _scrollController.addListener(_onCartScroll);
+    // Default select semua cart items yang ada saat first build.
+    _selectedIds = cartStore.items.map((i) => i.key).toSet();
+    cartStore.addListener(_onCartChanged);
+    memberStore.addListener(_onMemberChanged);
+    recentlyViewedStore.addListener(_loadRecentlyViewed);
+    _syncVouchersForSelection();
+  }
+
+  Future<void> _loadRecentlyViewed() async {
+    if (mounted) {
+      setState(() => _loadingRecentlyViewed = true);
+    } else {
+      _loadingRecentlyViewed = true;
+    }
+    final cartProductIds =
+        cartStore.items.map((item) => item.product.id).toSet();
+    final localViewed = recentlyViewedStore.items
+        .where((product) => !cartProductIds.contains(product.id))
+        .toList();
+    final localViewedIds = localViewed.map((product) => product.id).toList();
+    List<Product> result = const [];
+    try {
+      result = await productService.fetchRecentlyViewed(
+        ids: localViewedIds,
+        excludeIds: cartProductIds.toList(),
+        limit: 8,
+      );
+    } catch (_) {
+      result = const [];
+    }
+    if (!mounted) return;
+    setState(() {
+      _recentlyViewed =
+          result.isNotEmpty ? result : localViewed.take(8).toList();
+      _loadingRecentlyViewed = false;
+    });
   }
 
   @override
   void dispose() {
-    cartStore.removeListener(_handleCartChanged);
-    _scrollController.removeListener(_handleScroll);
+    _voucherBarTimer?.cancel();
+    _scrollController.removeListener(_onCartScroll);
     _scrollController.dispose();
+    cartStore.removeListener(_onCartChanged);
+    memberStore.removeListener(_onMemberChanged);
+    recentlyViewedStore.removeListener(_loadRecentlyViewed);
     super.dispose();
   }
 
-  void _handleCartChanged() {
-    final changed = _syncSelectedKeys(selectNewItems: true);
-    if (changed && mounted) setState(() {});
-  }
-
-  bool _syncSelectedKeys({required bool selectNewItems}) {
-    final cartKeys = cartStore.items.map((item) => item.key).toSet();
-    final beforeSelected = Set<String>.of(_selectedKeys);
-    final beforeKnown = Set<String>.of(_knownCartKeys);
-
-    _selectedKeys.removeWhere((key) => !cartKeys.contains(key));
-    if (selectNewItems) {
-      for (final key in cartKeys.difference(_knownCartKeys)) {
-        _selectedKeys.add(key);
-      }
+  Future<void> _loadBossProducts() async {
+    setState(() => _loadingBossProducts = true);
+    var openCount = 1;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      openCount = (prefs.getInt(_cartBossOpenCountKey) ?? 0) + 1;
+      await prefs.setInt(_cartBossOpenCountKey, openCount);
+    } catch (_) {
+      openCount = 1;
     }
 
-    _knownCartKeys
-      ..clear()
-      ..addAll(cartKeys);
-
-    return beforeSelected.length != _selectedKeys.length ||
-        !beforeSelected.containsAll(_selectedKeys) ||
-        beforeKnown.length != _knownCartKeys.length ||
-        !beforeKnown.containsAll(_knownCartKeys);
+    final rotation = (openCount - 1) ~/ _cartBossRefreshEvery;
+    final startOffset = rotation * 8;
+    final startCursor = startOffset > 0 ? '$startOffset' : null;
+    var page = await productService.fetchProductsPage(
+      cursor: startCursor,
+      limit: 8,
+      inStock: true,
+      hasPrice: true,
+      withImage: true,
+    );
+    if (page.products.isEmpty && startCursor != null) {
+      page = await productService.fetchProductsPage(
+        limit: 8,
+        inStock: true,
+        hasPrice: true,
+        withImage: true,
+      );
+    }
+    if (!mounted) return;
+    setState(() {
+      _bossProducts = page.products;
+      _bossProductsCursor = page.nextCursor;
+      _bossProductsHasMore = page.hasMore;
+      _loadingBossProducts = false;
+    });
   }
 
-  void _handleScroll() {
+  void _onCartScroll() {
     if (!_scrollController.hasClients ||
         _loadingBossProducts ||
-        _loadingMoreBossProducts) {
+        _loadingMoreBossProducts ||
+        !_bossProductsHasMore) {
       return;
     }
     final position = _scrollController.position;
-    if (position.pixels >= position.maxScrollExtent - 420) {
-      _loadBossProducts(loadMore: true);
+    if (position.pixels >= position.maxScrollExtent - 520) {
+      _loadMoreBossProducts();
     }
   }
 
-  Future<void> _loadBossProducts({bool loadMore = false}) async {
-    if (loadMore && _loadingMoreBossProducts) return;
-    if (!loadMore &&
-        _loadingBossProducts == false &&
-        _bossProducts.isNotEmpty) {
-      return;
-    }
-
-    setState(() {
-      if (loadMore) {
-        _loadingMoreBossProducts = true;
-        _bossProductLimit += 8;
-      } else {
-        _loadingBossProducts = true;
-      }
-    });
-
-    final viewedIds = recentlyViewedStore.items.map((p) => p.id).toList();
-    final excludeIds = cartStore.items.map((item) => item.product.id).toList();
-    var products = await productService.fetchRecommendations(
-      viewedIds: viewedIds,
-      excludeIds: excludeIds,
-      limit: _bossProductLimit,
+  Future<void> _loadMoreBossProducts() async {
+    if (_loadingMoreBossProducts || !_bossProductsHasMore) return;
+    setState(() => _loadingMoreBossProducts = true);
+    final page = await productService.fetchProductsPage(
+      cursor: _bossProductsCursor,
+      limit: 8,
+      inStock: true,
+      hasPrice: true,
+      withImage: true,
     );
-    if (products.isEmpty) {
-      products = await productService.fetchAll(limit: _bossProductLimit);
-    }
-
-    final excludeSet = excludeIds.toSet();
-    final unique = <String, Product>{};
-    for (final product in products) {
-      if (product.id.isEmpty || excludeSet.contains(product.id)) continue;
-      unique.putIfAbsent(product.id, () => product);
-    }
-
     if (!mounted) return;
+    final existingIds = _bossProducts.map((product) => product.id).toSet();
+    final nextProducts = page.products
+        .where((product) => !existingIds.contains(product.id))
+        .toList();
     setState(() {
-      _bossProducts = unique.values.toList(growable: false);
-      _loadingBossProducts = false;
+      _bossProducts = [..._bossProducts, ...nextProducts];
+      _bossProductsCursor = page.nextCursor;
+      _bossProductsHasMore = page.hasMore;
       _loadingMoreBossProducts = false;
     });
   }
 
-  List<CartItem> get _selectedItems {
-    return cartStore.items
-        .where((item) => _selectedKeys.contains(item.key))
-        .toList(growable: false);
-  }
-
-  int get _selectedQuantity {
-    return _selectedItems.fold<int>(0, (sum, item) => sum + item.quantity);
-  }
-
-  double get _selectedTotal {
-    return _selectedItems.fold<double>(0, (sum, item) => sum + item.lineTotal);
-  }
-
-  void _toggleSelectAll() {
-    AppHaptics.tap();
+  void _onCartChanged() {
+    // Auto-add baru added cart items ke selection (default semua selected).
+    // Prune selected IDs yang sudah tidak di cart (saat item di-remove).
+    final cartKeys = cartStore.items.map((i) => i.key).toSet();
     setState(() {
-      final keys = cartStore.items.map((item) => item.key).toSet();
-      if (_selectedKeys.length == keys.length) {
-        _selectedKeys.clear();
+      // Add semua key yang belum di set (new items).
+      for (final key in cartKeys) {
+        _selectedIds.add(key);
+      }
+      // Prune key yang sudah tidak di cart.
+      _selectedIds.retainAll(cartKeys);
+    });
+    _syncVouchersForSelection();
+  }
+
+  void _onMemberChanged() {
+    _syncVouchersForSelection();
+  }
+
+  // ── Helper getters untuk multi-select & price summary ──
+
+  List<CartItem> get _selectedItems =>
+      cartStore.items.where((item) => _selectedIds.contains(item.key)).toList();
+
+  bool get _isAllSelected =>
+      cartStore.items.isNotEmpty &&
+      cartStore.items.every((item) => _selectedIds.contains(item.key));
+
+  int get _selectedQuantity =>
+      _selectedItems.fold<int>(0, (sum, item) => sum + item.quantity);
+
+  double get _selectedSubtotal =>
+      _selectedItems.fold<double>(0, (sum, item) => sum + item.lineTotal);
+
+  double get _shippingEstimate => _selectedItems.isEmpty ? 0 : 15000;
+
+  double get _voucherDiscount {
+    if (_selectedItems.isEmpty) return 0;
+    return _appliedDiscountVoucher?.discount.toDouble() ?? 0;
+  }
+
+  double get _shippingDiscount {
+    if (_selectedItems.isEmpty || !_appliedShippingVoucher) return 0;
+    return _shippingEstimate;
+  }
+
+  double get _totalVoucherSaving => _voucherDiscount + _shippingDiscount;
+
+  bool get _shippingVoucherEligible =>
+      _selectedItems.isNotEmpty && _selectedSubtotal >= 250000;
+
+  double get _grandTotal {
+    final total = _selectedSubtotal +
+        _shippingEstimate -
+        _voucherDiscount -
+        _shippingDiscount;
+    return total < 0 ? 0 : total;
+  }
+
+  Future<void> _syncVouchersForSelection() async {
+    final subtotal = _selectedSubtotal.round();
+    if (!memberStore.isLoggedIn || subtotal <= 0 || _selectedItems.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _availableDiscountVouchers = const [];
+        _unavailableDiscountVouchers = const [];
+        _appliedDiscountVoucher = null;
+        _appliedShippingVoucher = false;
+        _isManualVoucherSelected = false;
+        _manualVoucherCode = null;
+        _lastVoucherSubtotal = 0;
+        _loadingVouchers = false;
+      });
+      return;
+    }
+
+    var available = _availableDiscountVouchers;
+    var unavailable = _unavailableDiscountVouchers;
+    if (subtotal != _lastVoucherSubtotal) {
+      setState(() => _loadingVouchers = true);
+      try {
+        final result = await memberService.fetchCartVouchers(subtotal);
+        available = result.available;
+        unavailable = result.unavailable;
+      } catch (_) {
+        available = const [];
+        unavailable = const [];
+      }
+      if (!mounted) return;
+      setState(() {
+        _availableDiscountVouchers = available;
+        _unavailableDiscountVouchers = unavailable;
+        _lastVoucherSubtotal = subtotal;
+        _loadingVouchers = false;
+      });
+    }
+
+    final bestDiscount = _bestDiscountVoucher(available);
+    var nextDiscount = _appliedDiscountVoucher;
+    var nextShipping = _appliedShippingVoucher && _shippingVoucherEligible;
+    var manualStillEligible = false;
+
+    if (_isManualVoucherSelected && _manualVoucherCode != null) {
+      if (_manualVoucherCode == _shippingVoucherCode &&
+          _shippingVoucherEligible) {
+        manualStillEligible = true;
+        nextShipping = true;
+        nextDiscount = bestDiscount;
       } else {
-        _selectedKeys
-          ..clear()
-          ..addAll(keys);
+        final manualDiscount =
+            _findVoucherByCode(available, _manualVoucherCode!);
+        if (manualDiscount != null) {
+          manualStillEligible = true;
+          nextDiscount = manualDiscount;
+          nextShipping = _shippingVoucherEligible;
+        }
+      }
+    }
+
+    if (!_isManualVoucherSelected || !manualStillEligible) {
+      nextDiscount = bestDiscount;
+      nextShipping = _shippingVoucherEligible;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _appliedDiscountVoucher = nextDiscount;
+      _appliedShippingVoucher = nextShipping;
+      if (_isManualVoucherSelected && !manualStillEligible) {
+        _isManualVoucherSelected = false;
+        _manualVoucherCode = null;
       }
     });
+  }
+
+  MemberVoucher? _bestDiscountVoucher(List<MemberVoucher> vouchers) {
+    final eligible = vouchers.where((voucher) => voucher.discount > 0).toList();
+    if (eligible.isEmpty) return null;
+    eligible.sort((a, b) => b.discount.compareTo(a.discount));
+    return eligible.first;
+  }
+
+  MemberVoucher? _findVoucherByCode(List<MemberVoucher> vouchers, String code) {
+    for (final voucher in vouchers) {
+      if (voucher.code == code) return voucher;
+    }
+    return null;
+  }
+
+  void _hideVoucherBar() {
+    _voucherBarTimer?.cancel();
+    if (!_voucherBarVisible) return;
+    setState(() => _voucherBarVisible = false);
+  }
+
+  void _scheduleShowVoucherBar() {
+    _voucherBarTimer?.cancel();
+    _voucherBarTimer = Timer(const Duration(milliseconds: 600), () {
+      if (!mounted || _voucherBarVisible) return;
+      setState(() => _voucherBarVisible = true);
+    });
+  }
+
+  bool _handleScrollNotification(ScrollNotification notification) {
+    if (notification is ScrollStartNotification ||
+        notification is ScrollUpdateNotification ||
+        notification is UserScrollNotification) {
+      _hideVoucherBar();
+    }
+    if (notification is ScrollEndNotification) {
+      _scheduleShowVoucherBar();
+    }
+    return false;
+  }
+
+  void _toggleAll() {
+    AppHaptics.tap();
+    setState(() {
+      if (_isAllSelected) {
+        _selectedIds.clear();
+      } else {
+        _selectedIds = cartStore.items.map((i) => i.key).toSet();
+      }
+    });
+    _syncVouchersForSelection();
   }
 
   void _toggleItem(String key) {
     AppHaptics.tap();
     setState(() {
-      if (!_selectedKeys.remove(key)) {
-        _selectedKeys.add(key);
+      if (_selectedIds.contains(key)) {
+        _selectedIds.remove(key);
+      } else {
+        _selectedIds.add(key);
       }
     });
+    _syncVouchersForSelection();
   }
 
-  Future<void> _openDeleteSelectedDialog() async {
-    final items = _selectedItems.isNotEmpty ? _selectedItems : cartStore.items;
-    if (items.isEmpty) return;
-
-    final quantity = items.fold<int>(0, (sum, item) => sum + item.quantity);
+  Future<void> _confirmRemoveSelected() async {
+    if (_selectedItems.isEmpty) return;
+    AppHaptics.tap();
+    final count = _selectedItems.length;
+    final quantity = _selectedQuantity;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => _CartDeleteConfirmDialog(
-        count: items.length,
-        quantity: quantity,
-      ),
+      builder: (dialogContext) {
+        return _CartDeleteConfirmDialog(
+          count: count,
+          quantity: quantity,
+        );
+      },
     );
-    if (confirmed != true || !mounted) return;
-    _removeItemsWithUndo(items);
+    if (confirmed == true) {
+      _removeSelected();
+    }
   }
 
-  void _removeItemsWithUndo(List<CartItem> items) {
-    final currentItems = cartStore.items;
-    final removed = <({CartItem item, int index})>[];
-    for (final item in items) {
-      final index =
-          currentItems.indexWhere((cartItem) => cartItem.key == item.key);
-      removed.add((item: item, index: index < 0 ? currentItems.length : index));
-      unawaited(cartStore.remove(item.key));
+  void _removeSelected() {
+    if (_selectedItems.isEmpty) return;
+    AppHaptics.warning();
+    final removedEntries = _selectedItems.map((item) {
+      final index = cartStore.items.indexWhere((cart) => cart.key == item.key);
+      return MapEntry(index < 0 ? 0 : index, item);
+    }).toList();
+    for (final item in removedEntries.map((entry) => entry.value)) {
+      cartStore.remove(item.key);
     }
-
-    setState(() {
-      for (final item in items) {
-        _selectedKeys.remove(item.key);
-      }
-    });
-
     _showCartDeleteSnackBar(
       context,
-      message: 'Produk telah dihapus',
-      onUndo: () => unawaited(_restoreRemovedItems(removed)),
+      message: '${removedEntries.length} produk dihapus',
+      onUndo: () {
+        for (final entry in removedEntries.reversed) {
+          cartStore.restore(entry.value, index: entry.key);
+        }
+      },
     );
   }
 
-  Future<void> _restoreRemovedItems(
-      List<({CartItem item, int index})> items) async {
-    final ordered = [...items]..sort((a, b) => a.index.compareTo(b.index));
-    for (final removed in ordered) {
-      await cartStore.restore(removed.item, index: removed.index);
-    }
-  }
-
-  void _openCheckout() {
-    final items = _selectedItems;
-    if (items.isEmpty) {
-      AppHaptics.warning();
+  void _goToCheckout() {
+    if (_selectedItems.isEmpty) return;
+    AppHaptics.impact();
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    if (!memberStore.isLoggedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Masuk member dulu untuk lanjut checkout.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      Navigator.pushNamed(
+        context,
+        '/member/login',
+        arguments: {'redirect': '/checkout'},
+      );
       return;
     }
-    AppHaptics.impact();
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => CheckoutScreen(items: items),
+    Navigator.pushNamed(context, '/checkout');
+  }
+
+  Future<void> _openVoucherSheet() async {
+    if (_selectedItems.isEmpty || !memberStore.isLoggedIn) return;
+    final picked = await showModalBottomSheet<_CartVoucherChoice?>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _CartVoucherSheet(
+        availableDiscounts: _availableDiscountVouchers,
+        unavailableDiscounts: _unavailableDiscountVouchers,
+        shippingEligible: _shippingVoucherEligible,
+        shippingDiscount: _shippingEstimate.round(),
+        selectedDiscountCode: _appliedDiscountVoucher?.code,
+        shippingSelected: _appliedShippingVoucher,
+        isManual: _isManualVoucherSelected,
+        loading: _loadingVouchers,
       ),
     );
+    if (picked == null) return;
+
+    AppHaptics.success();
+    setState(() {
+      if (picked.remove) {
+        _appliedDiscountVoucher = null;
+        _appliedShippingVoucher = false;
+        _isManualVoucherSelected = false;
+        _manualVoucherCode = null;
+        return;
+      }
+
+      _isManualVoucherSelected = true;
+      _manualVoucherCode = picked.code;
+      if (picked.type == _CartVoucherType.discount) {
+        _appliedDiscountVoucher = picked.discountVoucher;
+        _appliedShippingVoucher = _shippingVoucherEligible;
+      } else {
+        _appliedShippingVoucher = _shippingVoucherEligible;
+        _appliedDiscountVoucher =
+            _bestDiscountVoucher(_availableDiscountVouchers);
+      }
+    });
   }
+
+  // _syncCart dihapus — cloud sync icon di-remove dari AppBar (per
+  // simplified design). Cart auto-sync sudah via login flow.
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F9FF),
+      backgroundColor: Colors.transparent,
+      // Custom title dengan count subtitle — match PWA cart header
+      // "Keranjang\n0 jenis produk (0 item)".
+      // AppBar simplified per reference pattern — title "Keranjang" pakai
+      // theme default (18/w700). Subtitle count diturunkan jadi inline
+      // bawah list, bukan di header. Action cuma "Kosongkan" saat ada item.
       appBar: AppBar(
         title: const Text('Keranjang'),
-        centerTitle: true,
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
         actions: [
           AnimatedBuilder(
             animation: cartStore,
             builder: (context, _) {
-              if (cartStore.isEmpty) return const SizedBox(width: 48);
-              return IconButton(
-                tooltip: 'Hapus produk',
-                onPressed: _openDeleteSelectedDialog,
-                icon: const Icon(Icons.delete_outline_rounded),
+              // Conditional action: delete saat ada selected, storefront
+              // saat cart kosong / tidak ada selection.
+              if (cartStore.items.isEmpty) {
+                return IconButton(
+                  tooltip: 'Belanja',
+                  onPressed: () => Navigator.pushNamed(context, '/products'),
+                  icon: const Icon(Icons.storefront_outlined),
+                );
+              }
+              if (_selectedItems.isNotEmpty) {
+                return IconButton(
+                  tooltip: 'Hapus terpilih',
+                  onPressed: _confirmRemoveSelected,
+                  icon: const Icon(Icons.delete_outline_rounded),
+                );
+              }
+              return TextButton(
+                onPressed: cartStore.clear,
+                child: const Text('Kosongkan'),
               );
             },
           ),
         ],
       ),
       body: AnimatedBuilder(
-        animation: _pageListenable,
+        animation: cartStore,
         builder: (context, _) {
-          if (cartStore.isEmpty) {
+          final items = cartStore.items;
+          if (items.isEmpty) {
             return _EmptyCartState(
               controller: _scrollController,
-              recentlyViewed: recentlyViewedStore.items,
+              recentlyViewed: _recentlyViewed,
               bossProducts: _bossProducts,
               loadingBossProducts: _loadingBossProducts,
               loadingMoreBossProducts: _loadingMoreBossProducts,
             );
           }
-          final items = cartStore.items;
-          final allSelected =
-              items.isNotEmpty && _selectedKeys.length == items.length;
-          return ListView(
-            controller: _scrollController,
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 118),
+
+          final bottomSafe = MediaQuery.paddingOf(context).bottom;
+          final showVoucherArea = memberStore.isLoggedIn;
+          final stickyBottomPadding = _checkoutBarHeight +
+              (showVoucherArea ? _voucherBarHeight : 0) +
+              bottomSafe +
+              36;
+
+          return Stack(
             children: [
-              _SelectAllCard(
-                selected: allSelected,
-                totalProduct: items.length,
-                selectedProduct: _selectedKeys.length,
-                onTap: _toggleSelectAll,
+              Listener(
+                onPointerDown: (_) => _hideVoucherBar(),
+                onPointerMove: (_) => _hideVoucherBar(),
+                onPointerUp: (_) => _scheduleShowVoucherBar(),
+                onPointerCancel: (_) => _scheduleShowVoucherBar(),
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: _handleScrollNotification,
+                  child: ListView(
+                    controller: _scrollController,
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      12,
+                      16,
+                      stickyBottomPadding,
+                    ),
+                    children: [
+                      // ── Select all card ──
+                      _SelectAllCard(
+                        selected: _isAllSelected,
+                        totalProduct: items.length,
+                        selectedProduct: _selectedItems.length,
+                        onTap: _toggleAll,
+                      ),
+                      const SizedBox(height: 12),
+                      // ── Cart items dengan checkbox per item ──
+                      for (var i = 0; i < items.length; i++) ...[
+                        _CartItemCard(
+                          item: items[i],
+                          index: i,
+                          selected: _selectedIds.contains(items[i].key),
+                          onToggleSelected: () => _toggleItem(items[i].key),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      _CartRecommendationsSection(
+                        title: 'Yuk dilihat lagi',
+                        products: _recentlyViewed,
+                        loading: _loadingRecentlyViewed,
+                        showLoadingPlaceholder: false,
+                      ),
+                      const SizedBox(height: 18),
+                      _CartRecommendationsSection(
+                        title: 'Ayoo diborong bossku',
+                        products: _bossProducts,
+                        loading: _loadingBossProducts,
+                        loadingMore: _loadingMoreBossProducts,
+                        showLoadingPlaceholder: false,
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              const SizedBox(height: 12),
-              for (var i = 0; i < items.length; i++) ...[
-                _CartItemCard(
-                  item: items[i],
-                  index: i,
-                  selected: _selectedKeys.contains(items[i].key),
-                  onToggleSelected: () => _toggleItem(items[i].key),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: Material(
+                  color: NataloColors.surface,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (showVoucherArea)
+                        ClipRect(
+                          child: AnimatedContainer(
+                            height: _voucherBarVisible ? _voucherBarHeight : 0,
+                            duration: const Duration(milliseconds: 220),
+                            curve: Curves.easeOutCubic,
+                            child: AnimatedSlide(
+                              offset: _voucherBarVisible
+                                  ? Offset.zero
+                                  : const Offset(0, 1),
+                              duration: const Duration(milliseconds: 220),
+                              curve: Curves.easeOutCubic,
+                              child: AnimatedOpacity(
+                                opacity: _voucherBarVisible ? 1 : 0,
+                                duration: const Duration(milliseconds: 180),
+                                child: IgnorePointer(
+                                  ignoring: !_voucherBarVisible,
+                                  child: _StickyVoucherBar(
+                                    hasSelection: _selectedItems.isNotEmpty,
+                                    loading: _loadingVouchers,
+                                    discountVoucher: _appliedDiscountVoucher,
+                                    discountAmount: _voucherDiscount,
+                                    shippingSelected: _appliedShippingVoucher,
+                                    shippingDiscount: _shippingDiscount,
+                                    totalSaving: _totalVoucherSaving,
+                                    onTap: _selectedItems.isEmpty
+                                        ? null
+                                        : () {
+                                            AppHaptics.tap();
+                                            _openVoucherSheet();
+                                          },
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      _CartSummaryBar(
+                        grandTotal: _grandTotal,
+                        selectedQuantity: _selectedQuantity,
+                        disabled: _selectedItems.isEmpty,
+                        onCheckout: _goToCheckout,
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 12),
-              ],
-              if (recentlyViewedStore.items.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                _CartRecommendationsSection(
-                  title: 'Ayo dilihat lagi',
-                  products: recentlyViewedStore.items.take(6).toList(),
-                  loading: false,
-                  showLoadingPlaceholder: false,
-                ),
-              ],
-              const SizedBox(height: 22),
-              _CartRecommendationsSection(
-                title: 'Ayoo diborong bossku',
-                products: _bossProducts,
-                loading: _loadingBossProducts,
-                loadingMore: _loadingMoreBossProducts,
               ),
             ],
-          );
-        },
-      ),
-      bottomNavigationBar: AnimatedBuilder(
-        animation: cartStore,
-        builder: (context, _) {
-          if (cartStore.isEmpty) return const SizedBox.shrink();
-          return _CartSummaryBar(
-            grandTotal: _selectedTotal,
-            selectedQuantity: _selectedQuantity,
-            disabled: _selectedItems.isEmpty,
-            onCheckout: _openCheckout,
           );
         },
       ),
@@ -1005,6 +1312,633 @@ void _showCartDeleteSnackBar(
   );
 }
 
+enum _CartVoucherType { discount, shipping }
+
+class _CartVoucherChoice {
+  final _CartVoucherType? type;
+  final String? code;
+  final MemberVoucher? discountVoucher;
+  final bool remove;
+
+  const _CartVoucherChoice._({
+    this.type,
+    this.code,
+    this.discountVoucher,
+    this.remove = false,
+  });
+
+  factory _CartVoucherChoice.discount(MemberVoucher voucher) {
+    return _CartVoucherChoice._(
+      type: _CartVoucherType.discount,
+      code: voucher.code,
+      discountVoucher: voucher,
+    );
+  }
+
+  factory _CartVoucherChoice.shipping() {
+    return const _CartVoucherChoice._(
+      type: _CartVoucherType.shipping,
+      code: _shippingVoucherCode,
+    );
+  }
+
+  factory _CartVoucherChoice.removeAll() {
+    return const _CartVoucherChoice._(remove: true);
+  }
+}
+
+class _StickyVoucherBar extends StatelessWidget {
+  final bool hasSelection;
+  final bool loading;
+  final MemberVoucher? discountVoucher;
+  final double discountAmount;
+  final bool shippingSelected;
+  final double shippingDiscount;
+  final double totalSaving;
+  final VoidCallback? onTap;
+
+  const _StickyVoucherBar({
+    required this.hasSelection,
+    required this.loading,
+    required this.discountVoucher,
+    required this.discountAmount,
+    required this.shippingSelected,
+    required this.shippingDiscount,
+    required this.totalSaving,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasDiscount = discountVoucher != null && discountAmount > 0;
+    final hasShipping = shippingSelected && shippingDiscount > 0;
+    final hasSaving = hasSelection && totalSaving > 0;
+    final chipText = hasDiscount
+        ? 'Diskon ${formatRupiah(discountAmount)}'
+        : hasShipping
+            ? 'Gratis Ongkir'
+            : loading
+                ? 'Cek...'
+                : 'Pilih';
+    final chipColor = hasDiscount
+        ? _discountRed
+        : hasShipping
+            ? _shippingGreen
+            : _brandBlue;
+    final chipBackground = hasDiscount
+        ? _discountRedSoft
+        : hasShipping
+            ? _shippingGreenSoft
+            : const Color(0xFFEAF5FF);
+    final chipBorder = hasDiscount
+        ? _discountRedBorder
+        : hasShipping
+            ? _shippingGreenBorder
+            : const Color(0xFFBFDBFE);
+    final chipIcon = hasShipping && !hasDiscount
+        ? Icons.local_shipping_outlined
+        : Icons.local_offer_rounded;
+    final subtitle = !hasSelection
+        ? 'Pilih produk untuk cek promo'
+        : loading
+            ? 'Mencari promo yang cocok'
+            : hasSaving
+                ? 'Hemat ${formatRupiah(totalSaving)}'
+                : 'Tap untuk cek voucher';
+
+    return Material(
+      color: NataloColors.surface,
+      child: Container(
+        height: _voucherBarHeight,
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: Color(0xFFE5EAF1))),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: chipBackground,
+                    borderRadius: BorderRadius.circular(13),
+                    border: Border.all(color: chipBorder),
+                  ),
+                  child: Icon(
+                    Icons.confirmation_number_outlined,
+                    color: chipColor,
+                    size: 19,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Voucher untukmu',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Color(0xFF334155),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF64748B),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _VoucherMiniChip(
+                  text: chipText,
+                  color: chipColor,
+                  background: chipBackground,
+                  border: chipBorder,
+                  icon: chipIcon,
+                ),
+                const SizedBox(width: 2),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: hasSelection
+                      ? const Color(0xFF64748B)
+                      : const Color(0xFFCBD5E1),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _VoucherMiniChip extends StatelessWidget {
+  final String text;
+  final Color color;
+  final Color background;
+  final Color border;
+  final IconData icon;
+
+  const _VoucherMiniChip({
+    required this.text,
+    required this.color,
+    required this.background,
+    required this.border,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 4),
+          Text(
+            text,
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CartVoucherSheet extends StatefulWidget {
+  final List<MemberVoucher> availableDiscounts;
+  final List<MemberVoucher> unavailableDiscounts;
+  final bool shippingEligible;
+  final int shippingDiscount;
+  final String? selectedDiscountCode;
+  final bool shippingSelected;
+  final bool isManual;
+  final bool loading;
+
+  const _CartVoucherSheet({
+    required this.availableDiscounts,
+    required this.unavailableDiscounts,
+    required this.shippingEligible,
+    required this.shippingDiscount,
+    required this.selectedDiscountCode,
+    required this.shippingSelected,
+    required this.isManual,
+    required this.loading,
+  });
+
+  @override
+  State<_CartVoucherSheet> createState() => _CartVoucherSheetState();
+}
+
+class _CartVoucherSheetState extends State<_CartVoucherSheet> {
+  _CartVoucherType? _selectedType;
+  String? _selectedCode;
+  MemberVoucher? _selectedDiscount;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.selectedDiscountCode != null) {
+      _selectedType = _CartVoucherType.discount;
+      _selectedCode = widget.selectedDiscountCode;
+      for (final voucher in widget.availableDiscounts) {
+        if (voucher.code == widget.selectedDiscountCode) {
+          _selectedDiscount = voucher;
+          break;
+        }
+      }
+    } else if (widget.shippingSelected) {
+      _selectedType = _CartVoucherType.shipping;
+      _selectedCode = _shippingVoucherCode;
+    }
+  }
+
+  void _pickDiscount(MemberVoucher voucher) {
+    setState(() {
+      _selectedType = _CartVoucherType.discount;
+      _selectedCode = voucher.code;
+      _selectedDiscount = voucher;
+    });
+  }
+
+  void _pickShipping() {
+    setState(() {
+      _selectedType = _CartVoucherType.shipping;
+      _selectedCode = _shippingVoucherCode;
+      _selectedDiscount = null;
+    });
+  }
+
+  void _applySelection() {
+    if (_selectedType == _CartVoucherType.discount &&
+        _selectedDiscount != null) {
+      Navigator.pop(context, _CartVoucherChoice.discount(_selectedDiscount!));
+      return;
+    }
+    if (_selectedType == _CartVoucherType.shipping && widget.shippingEligible) {
+      Navigator.pop(context, _CartVoucherChoice.shipping());
+      return;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+    final hasAnyVoucher =
+        widget.shippingEligible || widget.availableDiscounts.isNotEmpty;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.72,
+      minChildSize: 0.42,
+      maxChildSize: 0.92,
+      builder: (context, controller) {
+        return GlassSurface(
+          radius: 28,
+          tint: Colors.white,
+          padding: EdgeInsets.fromLTRB(18, 14, 18, 14 + bottomInset),
+          child: Column(
+            children: [
+              Container(
+                width: 44,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE2E8F0),
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Pilih voucher atau promo',
+                      style: TextStyle(
+                        color: Color(0xFF102033),
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+              if (widget.isManual) ...[
+                const SizedBox(height: 4),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Voucher untukmu sudah diterapkan',
+                    style: TextStyle(
+                      color: _brandBlue,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              Expanded(
+                child: ListView(
+                  controller: controller,
+                  children: [
+                    if (widget.loading)
+                      const LinearProgressIndicator(minHeight: 3),
+                    if (widget.shippingEligible) ...[
+                      _CartVoucherCard(
+                        title: 'Gratis Ongkir',
+                        subtitle:
+                            'Potongan ongkir ${formatRupiah(widget.shippingDiscount)}',
+                        badge: 'Ongkir',
+                        icon: Icons.local_shipping_outlined,
+                        accent: _shippingGreen,
+                        background: _shippingGreenSoft,
+                        border: _shippingGreenBorder,
+                        selected: _selectedCode == _shippingVoucherCode,
+                        enabled: true,
+                        onTap: _pickShipping,
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    for (final voucher in widget.availableDiscounts) ...[
+                      _CartVoucherCard(
+                        title: voucher.title,
+                        subtitle: voucher.description,
+                        badge: 'Diskon',
+                        trailing: formatRupiah(voucher.discount),
+                        icon: Icons.local_offer_rounded,
+                        accent: _discountRed,
+                        background: _discountRedSoft,
+                        border: _discountRedBorder,
+                        selected: _selectedCode == voucher.code,
+                        enabled: true,
+                        onTap: () => _pickDiscount(voucher),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    if (!hasAnyVoucher && !widget.loading)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 36),
+                        child: Text(
+                          'Belum ada voucher yang cocok',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Color(0xFF64748B),
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    if (widget.unavailableDiscounts.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Belum bisa dipakai',
+                        style: TextStyle(
+                          color: Color(0xFF64748B),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      for (final voucher in widget.unavailableDiscounts) ...[
+                        _CartVoucherCard(
+                          title: voucher.title,
+                          subtitle: voucher.disabledReason ??
+                              'Voucher belum memenuhi syarat.',
+                          badge: 'Diskon',
+                          trailing: voucher.discount > 0
+                              ? formatRupiah(voucher.discount)
+                              : null,
+                          icon: Icons.local_offer_outlined,
+                          accent: _discountRed,
+                          background: const Color(0xFFF8FAFC),
+                          border: const Color(0xFFE2E8F0),
+                          selected: false,
+                          enabled: false,
+                          onTap: null,
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  TextButton(
+                    onPressed: () =>
+                        Navigator.pop(context, _CartVoucherChoice.removeAll()),
+                    child: const Text('Hapus Voucher'),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: _selectedCode == null ? null : _applySelection,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _brandBlue,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size.fromHeight(48),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: const Text(
+                        'Pakai Voucher',
+                        style: TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _CartVoucherCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final String badge;
+  final String? trailing;
+  final IconData icon;
+  final Color accent;
+  final Color background;
+  final Color border;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback? onTap;
+
+  const _CartVoucherCard({
+    required this.title,
+    required this.subtitle,
+    required this.badge,
+    required this.icon,
+    required this.accent,
+    required this.background,
+    required this.border,
+    required this.selected,
+    required this.enabled,
+    required this.onTap,
+    this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveAccent = enabled ? accent : const Color(0xFF94A3B8);
+    return InkWell(
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(20),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? accent : border,
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: enabled ? 0.9 : 0.6),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(icon, color: effectiveAccent, size: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.82),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          badge,
+                          style: TextStyle(
+                            color: effectiveAccent,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      if (selected) ...[
+                        const SizedBox(width: 6),
+                        Text(
+                          'Terpilih',
+                          style: TextStyle(
+                            color: accent,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 7),
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: enabled
+                          ? const Color(0xFF102033)
+                          : const Color(0xFF94A3B8),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: enabled
+                          ? const Color(0xFF64748B)
+                          : const Color(0xFF94A3B8),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (trailing != null) ...[
+              const SizedBox(width: 8),
+              Text(
+                trailing!,
+                style: TextStyle(
+                  color: effectiveAccent,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+            const SizedBox(width: 8),
+            Icon(
+              selected
+                  ? Icons.check_circle_rounded
+                  : Icons.radio_button_unchecked_rounded,
+              color: selected
+                  ? accent
+                  : enabled
+                      ? const Color(0xFFCBD5E1)
+                      : const Color(0xFFE2E8F0),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Section produk bawah cart. Untuk cart aktif dipakai sebagai "Yuk dilihat
 /// lagi" dari riwayat produk terakhir yang user buka.
 // _SavedForLaterSection removed — multi-select checkbox sudah cover
@@ -1020,7 +1954,7 @@ class _CartRecommendationsSection extends StatelessWidget {
   final bool showLoadingPlaceholder;
 
   const _CartRecommendationsSection({
-    this.title = 'Ayo dilihat lagi',
+    this.title = 'Yuk dilihat lagi',
     required this.products,
     required this.loading,
     this.loadingMore = false,
@@ -1159,7 +2093,7 @@ class _CartSummaryBar extends StatelessWidget {
                       )
                     else
                       AnimatedRupiah(
-                        amount: grandTotal.round(),
+                        value: grandTotal,
                         style: NataloTextStyles.totalPaymentPrice.copyWith(
                           fontSize: 18,
                           fontWeight: FontWeight.w900,
@@ -1358,7 +2292,7 @@ class _EmptyCartState extends StatelessWidget {
         if (recentlyViewed.isNotEmpty) ...[
           const SizedBox(height: 22),
           const _SectionHeader(
-            title: 'Ayo dilihat lagi',
+            title: 'Yuk dilihat lagi',
             actionLabel: 'Lihat semua',
             actionRoute: '/products',
           ),

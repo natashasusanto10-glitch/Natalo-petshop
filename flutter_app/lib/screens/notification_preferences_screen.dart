@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/notification_service.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/haptics.dart';
 
-/// Preferensi Notifikasi — toggle push notification per kategori, persist
-/// ke SharedPreferences supaya survive app restart.
-///
-/// TODO future: sync ke FCM topic subscribe/unsubscribe + backend
-/// `PATCH /api/member/notification-preferences` saat endpoint ready.
+/// Preferensi Notifikasi — toggle push notification per kategori.
+/// Key lokal sengaja sama dengan `push_notification_service` agar filter push
+/// benar-benar mengikuti preferensi user.
 class NotificationPreferencesScreen extends StatefulWidget {
   const NotificationPreferencesScreen({super.key});
 
@@ -19,14 +18,14 @@ class NotificationPreferencesScreen extends StatefulWidget {
 
 class _NotificationPreferencesScreenState
     extends State<NotificationPreferencesScreen> {
-  // Pref keys — versioned supaya safe untuk schema migration nanti.
-  static const _kPrefix = 'notif_pref_v1_';
-  static const _kOrderUpdates = '${_kPrefix}order_updates';
-  static const _kPromoVoucher = '${_kPrefix}promo_voucher';
-  static const _kNewProduct = '${_kPrefix}new_product';
-  static const _kLoyaltyPoints = '${_kPrefix}loyalty_points';
-  static const _kChatMessages = '${_kPrefix}chat_messages';
-  static const _kFeedActivity = '${_kPrefix}feed_activity';
+  static const _kPrefix = 'natalo_notif_pref_';
+  static const _catOrder = 'order';
+  static const _catPromo = 'promo';
+  static const _catVoucher = 'voucher';
+  static const _catProduct = 'product';
+  static const _catLoyalty = 'loyalty_points';
+  static const _catChat = 'chat';
+  static const _catFeed = 'feed';
 
   bool _orderUpdates = true;
   bool _promoVoucher = true;
@@ -45,28 +44,66 @@ class _NotificationPreferencesScreenState
     try {
       final prefs = await SharedPreferences.getInstance();
       if (!mounted) return;
-      setState(() {
-        // Default true untuk notif penting (order, voucher, loyalty, chat).
-        // Default false untuk discoverable (new product, feed activity).
-        _orderUpdates = prefs.getBool(_kOrderUpdates) ?? true;
-        _promoVoucher = prefs.getBool(_kPromoVoucher) ?? true;
-        _newProduct = prefs.getBool(_kNewProduct) ?? false;
-        _loyaltyPoints = prefs.getBool(_kLoyaltyPoints) ?? true;
-        _chatMessages = prefs.getBool(_kChatMessages) ?? true;
-        _feedActivity = prefs.getBool(_kFeedActivity) ?? false;
-      });
+      setState(() => _applyPreferencesFromLocal(prefs));
+
+      final serverPrefs = await notificationService.fetchPreferences();
+      if (!mounted || serverPrefs.isEmpty) return;
+      setState(() => _applyPreferences(serverPrefs));
+      await _persistAll(prefs);
     } catch (_) {
       // Disk error — pakai default, lanjut tetap render.
     }
   }
 
-  Future<void> _savePref(String key, bool value) async {
+  Future<void> _savePref(String category, bool value) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(key, value);
+      await prefs.setBool(_prefKey(category), value);
+      await notificationService.updatePreferences(_currentPreferences());
     } catch (_) {
       // Silent. UI state sudah update via setState — disk fail nanti hilang
       // saat restart, user bisa toggle ulang. Tidak block flow.
+    }
+  }
+
+  String _prefKey(String category) => '$_kPrefix$category';
+
+  Map<String, bool> _currentPreferences() {
+    return {
+      _catOrder: _orderUpdates,
+      _catPromo: _promoVoucher,
+      _catVoucher: _promoVoucher,
+      _catProduct: _newProduct,
+      _catLoyalty: _loyaltyPoints,
+      _catChat: _chatMessages,
+      _catFeed: _feedActivity,
+    };
+  }
+
+  void _applyPreferencesFromLocal(SharedPreferences prefs) {
+    _applyPreferences({
+      _catOrder: prefs.getBool(_prefKey(_catOrder)) ?? true,
+      _catPromo: prefs.getBool(_prefKey(_catPromo)) ?? true,
+      _catVoucher: prefs.getBool(_prefKey(_catVoucher)) ?? true,
+      _catProduct: prefs.getBool(_prefKey(_catProduct)) ?? false,
+      _catLoyalty: prefs.getBool(_prefKey(_catLoyalty)) ?? true,
+      _catChat: prefs.getBool(_prefKey(_catChat)) ?? true,
+      _catFeed: prefs.getBool(_prefKey(_catFeed)) ?? false,
+    });
+  }
+
+  void _applyPreferences(Map<String, bool> values) {
+    _orderUpdates = values[_catOrder] ?? _orderUpdates;
+    _promoVoucher = values[_catVoucher] ?? values[_catPromo] ?? _promoVoucher;
+    _newProduct = values[_catProduct] ?? _newProduct;
+    _loyaltyPoints = values[_catLoyalty] ?? _loyaltyPoints;
+    _chatMessages = values[_catChat] ?? _chatMessages;
+    _feedActivity = values[_catFeed] ?? _feedActivity;
+  }
+
+  Future<void> _persistAll(SharedPreferences prefs) async {
+    for (final entry in _currentPreferences().entries) {
+      await prefs.setBool(_prefKey(entry.key), entry.value);
     }
   }
 
@@ -91,7 +128,7 @@ class _NotificationPreferencesScreenState
             value: _orderUpdates,
             onChanged: (v) {
               setState(() => _orderUpdates = v);
-              _savePref(_kOrderUpdates, v);
+              _savePref(_catOrder, v);
             },
           ),
           _ToggleTile(
@@ -102,7 +139,7 @@ class _NotificationPreferencesScreenState
             value: _chatMessages,
             onChanged: (v) {
               setState(() => _chatMessages = v);
-              _savePref(_kChatMessages, v);
+              _savePref(_catChat, v);
             },
           ),
           const SizedBox(height: 16),
@@ -115,7 +152,7 @@ class _NotificationPreferencesScreenState
             value: _promoVoucher,
             onChanged: (v) {
               setState(() => _promoVoucher = v);
-              _savePref(_kPromoVoucher, v);
+              _savePref(_catPromo, v);
             },
           ),
           _ToggleTile(
@@ -126,7 +163,7 @@ class _NotificationPreferencesScreenState
             value: _loyaltyPoints,
             onChanged: (v) {
               setState(() => _loyaltyPoints = v);
-              _savePref(_kLoyaltyPoints, v);
+              _savePref(_catLoyalty, v);
             },
           ),
           const SizedBox(height: 16),
@@ -139,7 +176,7 @@ class _NotificationPreferencesScreenState
             value: _newProduct,
             onChanged: (v) {
               setState(() => _newProduct = v);
-              _savePref(_kNewProduct, v);
+              _savePref(_catProduct, v);
             },
           ),
           _ToggleTile(
@@ -150,7 +187,7 @@ class _NotificationPreferencesScreenState
             value: _feedActivity,
             onChanged: (v) {
               setState(() => _feedActivity = v);
-              _savePref(_kFeedActivity, v);
+              _savePref(_catFeed, v);
             },
           ),
           const SizedBox(height: 16),

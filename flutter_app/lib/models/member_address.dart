@@ -32,12 +32,13 @@ class MemberAddress {
     this.provinceName,
     this.cityName,
     this.districtName,
-    this.isMain = false,
+    bool isMain = false,
+    bool? isPrimary,
     this.latitude,
     this.longitude,
     this.pinpointAddress,
     this.streetName,
-  });
+  }) : isMain = isPrimary ?? isMain;
 
   factory MemberAddress.fromJson(Map<String, dynamic> json) {
     return MemberAddress(
@@ -66,4 +67,25 @@ class MemberAddress {
 
   /// Alias `isMain` — beberapa code pakai `isPrimary` literal.
   bool get isPrimary => isMain;
+
+  Map<String, dynamic> toApiJson() {
+    return {
+      'label': label,
+      'recipient': recipient,
+      'phone': phone,
+      'address': address,
+      'city': city ?? cityName,
+      'postalCode': postalCode,
+      'areaId': areaId,
+      'areaLabel': areaLabel,
+      'provinceName': provinceName,
+      'districtName': districtName,
+      'isMain': isMain,
+      'isPrimary': isMain,
+      'latitude': latitude,
+      'longitude': longitude,
+      'pinpointAddress': pinpointAddress,
+      'streetName': streetName,
+    };
+  }
 }

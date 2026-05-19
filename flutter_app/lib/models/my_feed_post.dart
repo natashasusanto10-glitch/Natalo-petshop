@@ -1,3 +1,25 @@
+enum MyFeedPostStatus { pending, active, rejected, unknown }
+
+extension MyFeedPostStatusX on MyFeedPostStatus {
+  String get label {
+    return switch (this) {
+      MyFeedPostStatus.active => 'Tayang',
+      MyFeedPostStatus.rejected => 'Ditolak',
+      MyFeedPostStatus.pending => 'Menunggu Review',
+      MyFeedPostStatus.unknown => '-',
+    };
+  }
+
+  String get description {
+    return switch (this) {
+      MyFeedPostStatus.active => 'Sudah tayang di Feed',
+      MyFeedPostStatus.rejected => 'Ditolak oleh admin',
+      MyFeedPostStatus.pending => 'Sedang menunggu review admin',
+      MyFeedPostStatus.unknown => '',
+    };
+  }
+}
+
 /// Feed post yang dipost user — dipakai di Member > Postingan + detail + edit.
 class MyFeedPost {
   final String id;
@@ -41,13 +63,32 @@ class MyFeedPost {
   bool get isApproved => status.toUpperCase() == 'PUBLISHED';
   bool get isPending => status.toUpperCase() == 'PENDING_REVIEW';
   bool get isRejected => status.toUpperCase() == 'REJECTED';
+  String? get title => caption;
+  String? get description => caption;
+  int get shareCount => 0;
+  String get durationLabel {
+    final total = durationSec.clamp(0, 999999);
+    final minutes = total ~/ 60;
+    final rest = total % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${rest.toString().padLeft(2, '0')}';
+  }
+
+  MyFeedPostStatus get statusInfo {
+    return switch (status.toUpperCase()) {
+      'ACTIVE' || 'PUBLISHED' => MyFeedPostStatus.active,
+      'REJECTED' => MyFeedPostStatus.rejected,
+      'PENDING_REVIEW' || 'PENDING' => MyFeedPostStatus.pending,
+      _ => MyFeedPostStatus.unknown,
+    };
+  }
 
   factory MyFeedPost.fromJson(Map<String, dynamic> json) {
     return MyFeedPost(
       id: json['id'] as String,
       slug: json['slug'] as String? ?? json['id'] as String,
       caption: json['caption'] as String?,
-      mediaUrl: json['mediaUrl'] as String? ?? json['videoUrl'] as String? ?? '',
+      mediaUrl:
+          json['mediaUrl'] as String? ?? json['videoUrl'] as String? ?? '',
       thumbnailUrl: json['thumbnailUrl'] as String?,
       blurhash: json['blurhash'] as String?,
       durationSec: (json['durationSec'] as num?)?.toInt() ?? 0,
@@ -64,4 +105,7 @@ class MyFeedPost {
       approvedAt: DateTime.tryParse(json['approvedAt']?.toString() ?? ''),
     );
   }
+
+  factory MyFeedPost.fromApiJson(Map<String, dynamic> json) =>
+      MyFeedPost.fromJson(json);
 }

@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import '../models/feed_comment.dart';
 import '../models/feed_post.dart';
+import '../models/my_feed_post.dart';
 import '../state/member_store.dart';
 import 'api_client.dart';
 
@@ -70,6 +71,20 @@ class FeedService {
       // caller bisa distinguish "error" vs "empty result".
       throw ApiException(e.toString(), cause: e);
     }
+  }
+
+  Future<List<MyFeedPost>> fetchMyPosts({String filter = 'all'}) async {
+    final data = await apiClient.getJson(
+      '/api/feed/my-posts',
+      query: {'status': filter},
+    );
+    final raw =
+        data is Map ? (data['posts'] ?? data['items'] ?? data['data']) : data;
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map<String, dynamic>>()
+        .map(MyFeedPost.fromApiJson)
+        .toList();
   }
 
   /// Track view event — fire-and-forget. Backend increment viewCount

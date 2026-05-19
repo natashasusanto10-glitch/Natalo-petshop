@@ -29,6 +29,15 @@ class AppSettingsStore extends ChangeNotifier {
   bool get hapticsEnabled => _hapticsEnabled;
   bool get feedAutoplay => _feedAutoplay;
   String get feedVideoQuality => _feedVideoQuality;
+  String get feedVideoQualityLabel {
+    return switch (_feedVideoQuality) {
+      'high' => 'Tinggi',
+      'medium' => 'Sedang',
+      'low' => 'Hemat data',
+      _ => 'Otomatis',
+    };
+  }
+
   bool get feedMuted => _feedMuted;
   bool get initialized => _initialized;
 
