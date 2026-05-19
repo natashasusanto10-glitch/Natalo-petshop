@@ -320,10 +320,8 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
                       : OrderTimelineType.delivery,
                 ),
                 const SizedBox(height: 12),
-                if (order.isSelfPickup) ...[
-                  _PickupInfoCard(order: order),
-                  const SizedBox(height: 12),
-                ],
+                // Payment action / proof / cancel — muncul di atas konten
+                // utama supaya CTA bayar/upload bukti/batal lebih obvious.
                 if (_shouldShowPaymentAction(order)) ...[
                   _PaymentActionCard(order: order),
                   const SizedBox(height: 12),
@@ -339,9 +337,28 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
                   ),
                   const SizedBox(height: 12),
                 ],
+                // Self-pickup layout: Items → Pickup info → Pickup code →
+                // Google Maps button → Payment summary → Ready notice.
+                // Setiap konsep = 1 card terpisah supaya tidak ada blank
+                // space besar dari card raksasa yang menampung semuanya.
                 _OrderItemsCard(order: order),
                 const SizedBox(height: 12),
+                if (order.isSelfPickup) ...[
+                  _PickupInfoCard(order: order),
+                  const SizedBox(height: 12),
+                  _PickupCodeBox(
+                    pickupCode: order.pickupCode,
+                    orderStatus: order.status,
+                  ),
+                  const SizedBox(height: 12),
+                  _PickupGoogleMapsButton(order: order),
+                  const SizedBox(height: 12),
+                ],
                 _PaymentSummary(order: order),
+                if (order.isSelfPickup && _isReadyForPickup(order)) ...[
+                  const SizedBox(height: 12),
+                  const _ReadyPickupNoticeCard(),
+                ],
               ],
             ),
           ),
@@ -687,33 +704,14 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
   }
 }
 
+/// Pickup store info card — ONLY store info (location + hours). Pickup
+/// code dan Google Maps button di-extract ke widget terpisah supaya tidak
+/// nge-bloat satu card jadi sepertiga layar dengan blank space besar.
+/// Pattern: satu konsep = satu card.
 class _PickupInfoCard extends StatelessWidget {
   final OrderSummary order;
 
   const _PickupInfoCard({required this.order});
-
-  Future<void> _openMaps(BuildContext context) async {
-    AppHaptics.tap();
-    final lat = order.pickupLatitude;
-    final lng = order.pickupLongitude;
-    final fallbackQuery = Uri.encodeComponent(
-      '${order.pickupLocationName ?? PickupStoreInfo.name} '
-      '${order.pickupAddress ?? PickupStoreInfo.address}',
-    );
-    final url = lat != null && lng != null
-        ? 'https://www.google.com/maps/search/?api=1&query=$lat,$lng'
-        : (order.pickupMapsUrl?.trim().isNotEmpty == true
-            ? order.pickupMapsUrl!.trim()
-            : 'https://www.google.com/maps/search/?api=1&query=$fallbackQuery');
-    final uri = Uri.tryParse(url);
-    if (uri == null) {
-      _showSnack(context, 'Link Google Maps tidak valid.');
-      return;
-    }
-    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!context.mounted || opened) return;
-    _showSnack(context, 'Tidak bisa membuka Google Maps.');
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -728,11 +726,12 @@ class _PickupInfoCard extends StatelessWidget {
         : PickupStoreInfo.hours;
 
     return Container(
-      padding: const EdgeInsets.all(18),
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE5EAF2)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
@@ -742,45 +741,25 @@ class _PickupInfoCard extends StatelessWidget {
         ],
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionTitle(
-            icon: Icons.storefront_rounded,
-            title: 'Metode Pengambilan',
-            subtitle: 'Ambil pesanan langsung di toko.',
-          ),
-          const SizedBox(height: 18),
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Ambil Sendiri di Toko',
-                      style: TextStyle(
-                        color: Color(0xFF17202A),
-                        fontSize: 17,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Self Pick Up - Gratis Ongkir',
-                      style: TextStyle(
-                        color: _brandBlue,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  'Ambil Sendiri di Toko',
+                  style: TextStyle(
+                    color: Color(0xFF111827),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12,
-                  vertical: 6,
+                  vertical: 7,
                 ),
                 decoration: BoxDecoration(
                   color: const Color(0xFFE8F8EF),
@@ -789,13 +768,22 @@ class _PickupInfoCard extends StatelessWidget {
                 child: const Text(
                   'Gratis ongkir',
                   style: TextStyle(
-                    color: Color(0xFF087A3A),
+                    color: Color(0xFF108A43),
                     fontSize: 12,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Self Pick Up - Gratis Ongkir',
+            style: TextStyle(
+              color: Color(0xFF0B83E6),
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+            ),
           ),
           const SizedBox(height: 20),
           _PickupInfoRow(
@@ -803,36 +791,129 @@ class _PickupInfoCard extends StatelessWidget {
             title: 'Lokasi Toko',
             content: '$locationName\n$address',
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
           _PickupInfoRow(
             icon: Icons.access_time_rounded,
             title: 'Jam Ambil',
             content: hours,
           ),
-          const SizedBox(height: 18),
-          _PickupCodeBox(
-            pickupCode: order.pickupCode,
-            orderStatus: order.status,
+        ],
+      ),
+    );
+  }
+}
+
+/// Standalone "Buka di Google Maps" button — extracted dari _PickupInfoCard
+/// supaya bukan card di dalam card. Url dari order.pickupMapsUrl atau
+/// fallback ke PickupStoreInfo.mapsUrl (share.google direct link).
+class _PickupGoogleMapsButton extends StatelessWidget {
+  final OrderSummary order;
+
+  const _PickupGoogleMapsButton({required this.order});
+
+  Future<void> _openMaps(BuildContext context) async {
+    AppHaptics.tap();
+    final lat = order.pickupLatitude;
+    final lng = order.pickupLongitude;
+    final fallbackQuery = Uri.encodeComponent(
+      '${order.pickupLocationName ?? PickupStoreInfo.name} '
+      '${order.pickupAddress ?? PickupStoreInfo.address}',
+    );
+    // Priority: explicit order.pickupMapsUrl → coordinates → default
+    // PickupStoreInfo.mapsUrl (share.google) → search query fallback.
+    final url = order.pickupMapsUrl?.trim().isNotEmpty == true
+        ? order.pickupMapsUrl!.trim()
+        : (lat != null && lng != null
+            ? 'https://www.google.com/maps/search/?api=1&query=$lat,$lng'
+            : PickupStoreInfo.mapsUrl.isNotEmpty
+                ? PickupStoreInfo.mapsUrl
+                : 'https://www.google.com/maps/search/?api=1&query=$fallbackQuery');
+    final uri = Uri.tryParse(url);
+    if (uri == null) {
+      _showSnack(context, 'Link Google Maps tidak valid.');
+      return;
+    }
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!context.mounted || opened) return;
+    _showSnack(context, 'Tidak bisa membuka Google Maps.');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: () => _openMaps(context),
+      icon: const Icon(Icons.location_on_outlined),
+      label: const Text('Buka di Google Maps'),
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size.fromHeight(56),
+        side: const BorderSide(color: Color(0xFF0B83E6), width: 1.5),
+        foregroundColor: const Color(0xFF0B83E6),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        textStyle: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+/// Notice "Pesanan Anda sudah siap diambil" — muncul setelah Payment
+/// Summary untuk status READY_FOR_PICKUP. Soft blue tile + helper text.
+class _ReadyPickupNoticeCard extends StatelessWidget {
+  const _ReadyPickupNoticeCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE5EAF2)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE8F4FF),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              Icons.verified_user_outlined,
+              color: Color(0xFF0B83E6),
+            ),
           ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: OutlinedButton.icon(
-              onPressed: () => _openMaps(context),
-              icon: const Icon(Icons.location_on_outlined, size: 20),
-              label: const Text('Buka di Google Maps'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: _brandBlue,
-                side: const BorderSide(color: _brandBlue, width: 1.4),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Pesanan Anda sudah siap diambil.',
+                  style: TextStyle(
+                    color: Color(0xFF111827),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-                textStyle: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w900,
+                SizedBox(height: 4),
+                Text(
+                  'Harap ambil pesanan sesuai jam operasional toko.',
+                  style: TextStyle(
+                    color: Color(0xFF64748B),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
         ],
@@ -1945,6 +2026,16 @@ bool _canCancelOrder(OrderSummary order) {
   final status = order.status.toUpperCase();
   final paymentStatus = order.paymentStatus.toUpperCase();
   return status == 'PENDING' && paymentStatus != 'PAID';
+}
+
+/// Pesanan siap diambil — toko sudah konfirmasi item ready, tinggal
+/// customer datang. Status READY_FOR_PICKUP / READY_TO_PICKUP / READY_PICKUP
+/// (backend variasi naming).
+bool _isReadyForPickup(OrderSummary order) {
+  final status = order.status.toUpperCase();
+  return status == 'READY_FOR_PICKUP' ||
+      status == 'READY_TO_PICKUP' ||
+      status == 'READY_PICKUP';
 }
 
 /// Card "Batalkan Pesanan" — muncul kalau order masih PENDING + belum dibayar.

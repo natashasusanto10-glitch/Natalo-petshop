@@ -65,8 +65,9 @@ class PickupStoreInfo {
   static const address =
       'Jln MT. Haryono No 103 B C D, Pusat Pasar, Medan Kota';
   static const hours = '09.00 - 17.00 WIB';
-  static const mapsUrl =
-      'https://www.google.com/maps/search/?api=1&query=Natalo%20Petshop%20Sinar%20Petstore%20Jln%20MT%20Haryono%20No%20103%20B%20C%20D%20Pusat%20Pasar%20Medan%20Kota';
+  // Direct share link toko Natalo Petshop / Sinar Petstore — lebih cepat
+  // open di Google Maps app (versus search query yang kadang ambiguous).
+  static const mapsUrl = 'https://share.google/prsdmmPYZ6XYGyQV2';
 }
 
 int _asInt(Object? value) {
