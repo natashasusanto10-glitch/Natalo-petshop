@@ -105,7 +105,10 @@ class _ProductsScreenState extends State<ProductsScreen> {
   bool _hasMore = true;
   int _catalogGeneration = 0;
   int _productReturnCount = 0;
-  int _nextCatalogRegenerateAt = 2;
+  // Alternate 3 ↔ 4 (per user spec) — regenerate ordering setiap user
+  // tap dan kembali 3-4 produk. Variable threshold supaya user tidak
+  // bisa predict timing (always "feels fresh").
+  int _nextCatalogRegenerateAt = 3;
 
   bool get _shouldGenerateAllProducts {
     return widget.selectedBrand == null &&
@@ -555,7 +558,10 @@ class _ProductsScreenState extends State<ProductsScreen> {
     setState(() {
       _catalogGeneration += 1;
       _productReturnCount = 0;
-      _nextCatalogRegenerateAt = _nextCatalogRegenerateAt == 2 ? 3 : 2;
+      // Alternate 3 ↔ 4 per user spec — variable threshold supaya feel
+      // fresh + unpredictable. Pakai 3 vs 4 (was 2 vs 3) supaya user
+      // bisa scroll lebih lama tanpa shuffle terlalu sering.
+      _nextCatalogRegenerateAt = _nextCatalogRegenerateAt == 3 ? 4 : 3;
     });
   }
 
