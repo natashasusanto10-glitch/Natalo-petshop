@@ -59,9 +59,10 @@ class ApiClient {
   Future<dynamic> deleteJson(
     String path, {
     Object? body,
+    Map<String, dynamic>? query,
     Duration timeout = const Duration(seconds: 8),
   }) async {
-    final uri = ApiConfig.uri(path);
+    final uri = ApiConfig.uri(path, query);
     try {
       final req = http.Request('DELETE', uri)
         ..headers.addAll(_headers(json: body != null))

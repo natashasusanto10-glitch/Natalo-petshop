@@ -6,12 +6,15 @@ import '../config/api_config.dart';
 import '../models/cart_item.dart';
 import '../models/product.dart';
 import '../models/review.dart';
+import '../services/api_client.dart';
 import '../services/app_analytics.dart';
 import '../services/app_crashlytics.dart';
 import '../services/product_service.dart';
 import '../services/report_service.dart';
 import '../services/review_service.dart';
+import '../services/stock_notification_service.dart';
 import '../state/cart_store.dart';
+import '../state/member_store.dart';
 import '../state/recently_viewed_store.dart';
 import 'checkout_screen.dart';
 import '../utils/formatters.dart';
@@ -1865,11 +1868,44 @@ class _StickyPurchaseBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final outOfStock = displayStock <= 0;
     final disabled = outOfStock || needsVariantSelection;
-    final buyLabel = outOfStock
-        ? 'Stok Habis'
-        : needsVariantSelection
-            ? 'Pilih Varian'
-            : 'Beli Sekarang';
+    // Saat out-of-stock, ganti tombol Beli + Keranjang dengan "Beri tahu
+    // saya saat tersedia" — pre-order notification subscription. User
+    // tetap bisa chat WA admin via tombol kiri.
+    if (outOfStock) {
+      return AppGlassBottomBar(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 56,
+              height: 50,
+              child: OutlinedButton(
+                onPressed: () => _onChatWa(context),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _brandBlue,
+                  minimumSize: const Size(56, 50),
+                  side: const BorderSide(color: _brandBlue, width: 1.2),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  padding: EdgeInsets.zero,
+                ),
+                child: const _WhatsAppIcon(),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              flex: 4,
+              child: _NotifyWhenAvailableButton(
+                productId: product.id,
+                variantId: selectedVariant?.id,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    final buyLabel = needsVariantSelection ? 'Pilih Varian' : 'Beli Sekarang';
     return AppGlassBottomBar(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
       child: Row(
@@ -1949,6 +1985,230 @@ class _StickyPurchaseBar extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Pre-Order Out-of-Stock — tombol subscribe restock notification.
+///
+/// Tap → POST /api/products/{id}/stock-notification → backend record
+/// StockNotification subscription. Saat admin update stock 0 → >0,
+/// backend fire FCM/APNs push ke user → tap notif → deep link buka
+/// product detail.
+///
+/// State:
+/// - loading: fetch initial subscription status (didChangeDependencies)
+/// - subscribed: kalau true, tampil "Sudah didaftarkan" + tap untuk
+///   unsubscribe. Kalau false, tampil "Beri tahu saat tersedia".
+/// - busy: saat API call in progress (subscribe/unsubscribe), tombol
+///   disabled + spinner.
+class _NotifyWhenAvailableButton extends StatefulWidget {
+  final String productId;
+  final String? variantId;
+
+  const _NotifyWhenAvailableButton({
+    required this.productId,
+    required this.variantId,
+  });
+
+  @override
+  State<_NotifyWhenAvailableButton> createState() =>
+      _NotifyWhenAvailableButtonState();
+}
+
+class _NotifyWhenAvailableButtonState
+    extends State<_NotifyWhenAvailableButton> {
+  bool _loading = true;
+  bool _busy = false;
+  bool _subscribed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchStatus();
+  }
+
+  @override
+  void didUpdateWidget(covariant _NotifyWhenAvailableButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Variant berubah → re-check subscription status untuk varian baru.
+    if (oldWidget.variantId != widget.variantId ||
+        oldWidget.productId != widget.productId) {
+      _fetchStatus();
+    }
+  }
+
+  Future<void> _fetchStatus() async {
+    if (!memberStore.isLoggedIn) {
+      // Guest user — tidak fetch status (belum bisa subscribe), tampil
+      // sebagai "Beri tahu saat tersedia" → tap trigger login flow.
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _subscribed = false;
+        });
+      }
+      return;
+    }
+    setState(() => _loading = true);
+    final result = await stockNotificationService.isSubscribed(
+      productId: widget.productId,
+      variantId: widget.variantId,
+    );
+    if (!mounted) return;
+    setState(() {
+      _loading = false;
+      _subscribed = result == true;
+    });
+  }
+
+  Future<void> _toggle() async {
+    if (_busy) return;
+    if (!memberStore.isLoggedIn) {
+      AppHaptics.tap();
+      Navigator.pushNamed(context, '/member/login');
+      return;
+    }
+    AppHaptics.tap();
+    setState(() => _busy = true);
+    try {
+      if (_subscribed) {
+        final res = await stockNotificationService.unsubscribe(
+          productId: widget.productId,
+          variantId: widget.variantId,
+        );
+        if (!mounted) return;
+        if (res.ok) {
+          setState(() => _subscribed = false);
+          if (res.message.isNotEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(res.message),
+                behavior: SnackBarBehavior.floating,
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          }
+        }
+      } else {
+        final res = await stockNotificationService.subscribe(
+          productId: widget.productId,
+          variantId: widget.variantId,
+        );
+        if (!mounted) return;
+        if (res.ok) {
+          setState(() => _subscribed = true);
+          AppHaptics.success();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                res.message.isNotEmpty
+                    ? res.message
+                    : 'Kamu akan dapat notifikasi saat produk tersedia.',
+              ),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                res.message.isNotEmpty
+                    ? res.message
+                    : 'Gagal subscribe notifikasi.',
+              ),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      if (e.statusCode == 401) {
+        Navigator.pushNamed(context, '/member/login');
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return SizedBox(
+        height: 50,
+        child: OutlinedButton(
+          onPressed: null,
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size.fromHeight(50),
+            side: BorderSide(color: _brandBlue.withValues(alpha: 0.3)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+          child: const SizedBox(
+            height: 18,
+            width: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: _brandBlue,
+            ),
+          ),
+        ),
+      );
+    }
+    final label = _subscribed
+        ? 'Sudah Didaftarkan • Tap untuk batal'
+        : 'Beri Tahu Saya Saat Tersedia';
+    final icon = _subscribed
+        ? Icons.notifications_active_rounded
+        : Icons.notifications_outlined;
+    final bgColor =
+        _subscribed ? const Color(0xFFE8F4FF) : _brandBlue;
+    final fgColor = _subscribed ? _brandBlue : Colors.white;
+    return SizedBox(
+      height: 50,
+      child: ElevatedButton.icon(
+        onPressed: _busy ? null : _toggle,
+        icon: _busy
+            ? SizedBox(
+                height: 16,
+                width: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: fgColor,
+                ),
+              )
+            : Icon(icon, size: 18, color: fgColor),
+        label: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            label,
+            maxLines: 1,
+            softWrap: false,
+            style: TextStyle(
+              color: fgColor,
+              fontWeight: FontWeight.w900,
+              fontSize: 14,
+            ),
+          ),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: bgColor,
+          foregroundColor: fgColor,
+          elevation: 0,
+          minimumSize: const Size.fromHeight(50),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: _subscribed
+                ? const BorderSide(color: _brandBlue, width: 1.2)
+                : BorderSide.none,
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+        ),
       ),
     );
   }
