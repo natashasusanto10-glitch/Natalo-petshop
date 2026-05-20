@@ -375,10 +375,10 @@ class _ForgotPasswordCopy extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(28, 6, 28, 0),
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(28, 6, 28, 0),
       child: Column(
-        children: const [
+        children: [
           Text(
             'Reset Password Akun Natalo',
             textAlign: TextAlign.center,
