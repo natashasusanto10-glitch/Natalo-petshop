@@ -40,6 +40,7 @@ const _officialGold = Color(0xFFF4D47C);
 const _officialGoldMuted = Color(0xFFD7B55B);
 const _feedBlue = Color(0xFF0B7FEA);
 const _feedActionIconSize = 32.0;
+const _feedActionStrokeWidth = 2.45;
 const _feedActionCountFontSize = 12.0;
 const _feedActionItemSpacing = 18.0;
 const _feedActionBottomInset = 24.0;
@@ -262,7 +263,6 @@ class _FeedScreenState extends State<FeedScreen> {
   }
 
   void _onPageChanged(int index) {
-    AppHaptics.tap();
     setState(() => _activeIndex = index);
     _preloadNext(index);
     if (index >= _posts.length - 2 && _nextCursor != null) {
@@ -2008,26 +2008,19 @@ class _FeedPostViewState extends State<_FeedPostView>
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 _ReelsAction(
-                                  icon: _liked
-                                      ? Icons.favorite_rounded
-                                      : Icons.favorite_border_rounded,
-                                  color: _liked
-                                      ? const Color(0xFFEF4444)
-                                      : Colors.white,
+                                  iconChild: _ReelsHeartGlyph(liked: _liked),
                                   count: _likeCount,
                                   onTap: _onLikePressed,
                                 ),
                                 const SizedBox(height: _feedActionItemSpacing),
                                 _ReelsAction(
                                   iconChild: const _ReelsCommentGlyph(),
-                                  color: Colors.white,
                                   count: _commentCount,
                                   onTap: _onComment,
                                 ),
                                 const SizedBox(height: _feedActionItemSpacing),
                                 _ReelsAction(
                                   iconChild: const _ReelsShareGlyph(),
-                                  color: Colors.white,
                                   count: _shareCount,
                                   onTap: _onShare,
                                 ),
@@ -2038,8 +2031,7 @@ class _FeedPostViewState extends State<_FeedPostView>
                                 // blokir kreator. Tanpa button ini, app
                                 // ditolak Google saat submit Production.
                                 _ReelsAction(
-                                  icon: Icons.more_horiz_rounded,
-                                  color: Colors.white,
+                                  iconChild: const _ReelsMoreGlyph(),
                                   onTap: _onMoreActions,
                                 ),
                               ],
@@ -2888,32 +2880,18 @@ class _PausedVideoControls extends StatelessWidget {
 }
 
 class _ReelsAction extends StatelessWidget {
-  final IconData? icon;
-  final Widget? iconChild;
-  final Color color;
+  final Widget iconChild;
   final int? count;
   final VoidCallback onTap;
 
   const _ReelsAction({
-    this.icon,
-    this.iconChild,
-    required this.color,
+    required this.iconChild,
     this.count,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final actionIcon = iconChild ??
-        Icon(
-          icon,
-          color: color,
-          size: _feedActionIconSize,
-          shadows: const [
-            Shadow(color: Colors.black87, blurRadius: 8),
-          ],
-        );
-
     return SizedBox(
       width: 54,
       child: Material(
@@ -2926,7 +2904,7 @@ class _ReelsAction extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                actionIcon,
+                iconChild,
                 if (count != null) ...[
                   const SizedBox(height: 2),
                   Text(
@@ -2961,6 +2939,113 @@ class _ReelsAction extends StatelessWidget {
   }
 }
 
+class _ReelsHeartGlyph extends StatelessWidget {
+  final bool liked;
+
+  const _ReelsHeartGlyph({
+    required this.liked,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: _feedActionIconSize,
+      width: _feedActionIconSize,
+      child: CustomPaint(painter: _HeartGlyphPainter(liked: liked)),
+    );
+  }
+}
+
+class _HeartGlyphPainter extends CustomPainter {
+  final bool liked;
+
+  const _HeartGlyphPainter({
+    required this.liked,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = _buildHeartPath(size);
+    final shadowPaint = Paint()
+      ..color = const Color(0x99000000)
+      ..style = liked ? PaintingStyle.fill : PaintingStyle.stroke
+      ..strokeWidth = _feedActionStrokeWidth
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+
+    canvas.drawPath(path.shift(const Offset(0, 1.2)), shadowPaint);
+
+    final paint = Paint()
+      ..color = liked ? const Color(0xFFEF4444) : Colors.white
+      ..style = liked ? PaintingStyle.fill : PaintingStyle.stroke
+      ..strokeWidth = _feedActionStrokeWidth
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    canvas.drawPath(path, paint);
+  }
+
+  Path _buildHeartPath(Size size) {
+    return Path()
+      ..moveTo(size.width * 0.50, size.height * 0.84)
+      ..cubicTo(
+        size.width * 0.41,
+        size.height * 0.75,
+        size.width * 0.16,
+        size.height * 0.57,
+        size.width * 0.12,
+        size.height * 0.34,
+      )
+      ..cubicTo(
+        size.width * 0.08,
+        size.height * 0.14,
+        size.width * 0.30,
+        size.height * 0.05,
+        size.width * 0.43,
+        size.height * 0.20,
+      )
+      ..cubicTo(
+        size.width * 0.46,
+        size.height * 0.24,
+        size.width * 0.48,
+        size.height * 0.27,
+        size.width * 0.50,
+        size.height * 0.31,
+      )
+      ..cubicTo(
+        size.width * 0.52,
+        size.height * 0.27,
+        size.width * 0.54,
+        size.height * 0.24,
+        size.width * 0.57,
+        size.height * 0.20,
+      )
+      ..cubicTo(
+        size.width * 0.70,
+        size.height * 0.05,
+        size.width * 0.92,
+        size.height * 0.14,
+        size.width * 0.88,
+        size.height * 0.34,
+      )
+      ..cubicTo(
+        size.width * 0.84,
+        size.height * 0.57,
+        size.width * 0.59,
+        size.height * 0.75,
+        size.width * 0.50,
+        size.height * 0.84,
+      )
+      ..close();
+  }
+
+  @override
+  bool shouldRepaint(covariant _HeartGlyphPainter oldDelegate) {
+    return oldDelegate.liked != liked;
+  }
+}
+
 class _ReelsCommentGlyph extends StatelessWidget {
   const _ReelsCommentGlyph();
 
@@ -2979,10 +3064,17 @@ class _CommentGlyphPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final shadowPaint = Paint()
+      ..color = const Color(0x99000000)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _feedActionStrokeWidth
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
     final paint = Paint()
       ..color = Colors.white
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.35
+      ..strokeWidth = _feedActionStrokeWidth
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
 
@@ -3024,6 +3116,7 @@ class _CommentGlyphPainter extends CustomPainter {
       ..lineTo(size.width * 0.86, size.height * 0.82)
       ..close();
 
+    canvas.drawPath(path.shift(const Offset(0, 1.2)), shadowPaint);
     canvas.drawPath(path, paint);
   }
 
@@ -3049,10 +3142,17 @@ class _ShareGlyphPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final shadowPaint = Paint()
+      ..color = const Color(0x99000000)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _feedActionStrokeWidth
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
     final paint = Paint()
       ..color = Colors.white
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.35
+      ..strokeWidth = _feedActionStrokeWidth
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
 
@@ -3065,7 +3165,50 @@ class _ShareGlyphPainter extends CustomPainter {
       ..moveTo(size.width * 0.30, size.height * 0.48)
       ..lineTo(size.width * 0.10, size.height * 0.14);
 
+    canvas.drawPath(path.shift(const Offset(0, 1.2)), shadowPaint);
     canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _ReelsMoreGlyph extends StatelessWidget {
+  const _ReelsMoreGlyph();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox(
+      height: _feedActionIconSize,
+      width: _feedActionIconSize,
+      child: CustomPaint(painter: _MoreGlyphPainter()),
+    );
+  }
+}
+
+class _MoreGlyphPainter extends CustomPainter {
+  const _MoreGlyphPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final radius = size.width * 0.067;
+    final centers = [
+      Offset(size.width * 0.30, size.height * 0.50),
+      Offset(size.width * 0.50, size.height * 0.50),
+      Offset(size.width * 0.70, size.height * 0.50),
+    ];
+    final shadowPaint = Paint()
+      ..color = const Color(0x99000000)
+      ..style = PaintingStyle.fill
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+    final paint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+
+    for (final center in centers) {
+      canvas.drawCircle(center.translate(0, 1.2), radius, shadowPaint);
+      canvas.drawCircle(center, radius, paint);
+    }
   }
 
   @override
@@ -4840,8 +4983,7 @@ class _UploadChoiceSheet extends StatelessWidget {
               iconColor: const Color(0xFFEC4899),
               title: 'Upload Video',
               subtitle: '8-45 detik, format MP4 / MOV',
-              onTap: () =>
-                  Navigator.pop(context, _UploadChoice.video),
+              onTap: () => Navigator.pop(context, _UploadChoice.video),
             ),
             const SizedBox(height: 10),
             _UploadChoiceTile(
@@ -4849,8 +4991,7 @@ class _UploadChoiceSheet extends StatelessWidget {
               iconColor: const Color(0xFF0B7FEA),
               title: 'Upload Foto',
               subtitle: '1-8 foto carousel, JPG / PNG / WebP',
-              onTap: () =>
-                  Navigator.pop(context, _UploadChoice.photo),
+              onTap: () => Navigator.pop(context, _UploadChoice.photo),
             ),
             const SizedBox(height: 8),
           ],

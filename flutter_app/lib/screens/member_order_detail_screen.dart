@@ -628,7 +628,7 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
         children: [
           Row(
             children: [
-              SoftIconTile(
+              _OrderDetailIconTile(
                 icon: _hasProof
                     ? Icons.verified_outlined
                     : Icons.receipt_long_outlined,
@@ -952,9 +952,7 @@ class _PickupCodeBox extends StatelessWidget {
         icon: Icons.task_alt_rounded,
       );
     }
-    if (status == 'PROCESSING' ||
-        status == 'PAID' ||
-        status == 'PENDING') {
+    if (status == 'PROCESSING' || status == 'PAID' || status == 'PENDING') {
       return (
         label: 'Sedang disiapkan',
         bg: const Color(0xFFFFF7E0),
@@ -1146,7 +1144,7 @@ class _SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        SoftIconTile(icon: icon, color: _brandBlue, size: 42),
+        _OrderDetailIconTile(icon: icon, color: _brandBlue, size: 42),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
@@ -1523,7 +1521,7 @@ class _OrderItemsCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const SoftIconTile(
+              const _OrderDetailIconTile(
                 icon: Icons.inventory_2_outlined,
                 color: _brandBlue,
                 size: 42,
@@ -1735,6 +1733,35 @@ class _OrderProductTile extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _OrderDetailIconTile extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final double size;
+
+  const _OrderDetailIconTile({
+    required this.icon,
+    required this.color,
+    this.size = 42,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(size * 0.32),
+      ),
+      child: Icon(
+        icon,
+        color: color,
+        size: size * 0.52,
       ),
     );
   }

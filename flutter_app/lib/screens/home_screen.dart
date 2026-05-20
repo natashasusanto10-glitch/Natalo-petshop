@@ -2715,8 +2715,6 @@ class _HomeProductRatingSoldRow extends StatelessWidget {
 String? _homeProductPromoLabel(Product product) {
   final percent = product.discountPercent;
   if (percent != null && percent > 0) return 'Diskon $percent%';
-  if (product.voucherPreview != null) return 'Promo';
-  if (product.shippingVoucherPreview != null) return 'Ongkir';
   return null;
 }
 

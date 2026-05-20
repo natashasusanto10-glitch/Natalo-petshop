@@ -171,8 +171,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
       // multi-brand, price range, rating. Cek pakai finalPrice
       // (consider discount) supaya user yang filter "<50rb" tetap
       // dapat produk normal Rp80rb yang lagi diskon ke Rp40rb.
-      final multiBrandMatch = _filter.brands.isEmpty ||
-          _filter.brands.contains(product.brand);
+      final multiBrandMatch =
+          _filter.brands.isEmpty || _filter.brands.contains(product.brand);
       final priceForFilter = product.finalPrice;
       final minPriceMatch =
           _filter.minPrice == null || priceForFilter >= _filter.minPrice!;
@@ -588,9 +588,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
     // smooth slider.
     final maxProductPrice = _result.products.isEmpty
         ? 1000000.0
-        : _result.products
-            .map((p) => p.price)
-            .reduce((a, b) => a > b ? a : b);
+        : _result.products.map((p) => p.price).reduce((a, b) => a > b ? a : b);
     final priceMaxBound = ((maxProductPrice / 100000).ceil() * 100000)
         .clamp(100000, 10000000)
         .toDouble();
@@ -605,8 +603,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
         priceMaxBound: priceMaxBound,
         // Live preview count — closure ke parent state supaya tetap
         // hitung filter result terbaru tiap toggle di sheet.
-        previewCountForFilter: (filter) =>
-            _previewFilterMatchCount(filter),
+        previewCountForFilter: (filter) => _previewFilterMatchCount(filter),
       ),
     );
     if (result == null) return;
@@ -621,8 +618,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
     final keyword = _query.trim().toLowerCase();
     var count = 0;
     for (final product in _result.products) {
-      final brandMatch = widget.selectedBrand == null ||
-          product.brand == widget.selectedBrand;
+      final brandMatch =
+          widget.selectedBrand == null || product.brand == widget.selectedBrand;
       final filterBrandMatch =
           filter.brand == null || product.brand == filter.brand;
       final categoryMatch =
@@ -1012,8 +1009,10 @@ class _CatalogHeader extends StatelessWidget {
   final ValueChanged<String> onSubmitQuery;
   final ValueChanged<_ProductFilterMode> onFilterModeChanged;
   final VoidCallback onOpenSort;
+
   /// NEW — buka advanced filter sheet (price, multi-brand, rating).
   final VoidCallback onOpenFilterSheet;
+
   /// NEW — badge count untuk Filter button icon.
   final int activeAdvancedFilterCount;
 
@@ -2012,8 +2011,6 @@ class _ProductRatingSoldRow extends StatelessWidget {
 String? _productPromoLabel(Product product) {
   final percent = product.discountPercent;
   if (percent != null && percent > 0) return 'Diskon $percent%';
-  if (product.voucherPreview != null) return 'Promo';
-  if (product.shippingVoucherPreview != null) return 'Ongkir';
   return null;
 }
 
@@ -2376,12 +2373,15 @@ class ProductCatalogFilter {
   // products_screen `.where()` filter chain bersama dengan field lain.
   /// Min harga inclusive (Rp). null = no lower bound.
   final double? minPrice;
+
   /// Max harga inclusive (Rp). null = no upper bound.
   final double? maxPrice;
+
   /// Multi-select brand names. Empty = all brands allowed.
   /// Berbeda dengan `brand` (single) yang dipakai filter chip atas.
   /// Kalau ada `brand` di-set, juga harus match dengan brands kalau set.
   final Set<String> brands;
+
   /// Minimum rating (1-5). 0 = no rating filter.
   final int minRating;
 
@@ -2711,6 +2711,7 @@ class _FilterSheet extends StatefulWidget {
   final ProductCatalogFilter currentFilter;
   final List<String> allBrands;
   final double priceMaxBound;
+
   /// Closure dari parent — compute count match untuk filter candidate.
   /// Update live saat user toggle, displayed di apply button label.
   final int Function(ProductCatalogFilter) previewCountForFilter;
@@ -2752,8 +2753,7 @@ class _FilterSheetState extends State<_FilterSheet> {
     return widget.currentFilter.copyWith(
       minPrice: _priceRange.start > 0 ? _priceRange.start : null,
       clearMinPrice: _priceRange.start <= 0,
-      maxPrice:
-          _priceRange.end < widget.priceMaxBound ? _priceRange.end : null,
+      maxPrice: _priceRange.end < widget.priceMaxBound ? _priceRange.end : null,
       clearMaxPrice: _priceRange.end >= widget.priceMaxBound,
       brands: _selectedBrands,
       minRating: _minRating,
@@ -2878,8 +2878,7 @@ class _FilterSheetState extends State<_FilterSheet> {
                         _formatPriceShort(_priceRange.start),
                         _formatPriceShort(_priceRange.end),
                       ),
-                      onChanged: (range) =>
-                          setState(() => _priceRange = range),
+                      onChanged: (range) => setState(() => _priceRange = range),
                     ),
                     const SizedBox(height: 24),
                     Row(

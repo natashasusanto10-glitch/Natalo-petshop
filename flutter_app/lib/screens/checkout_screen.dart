@@ -45,6 +45,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   MemberAddress? _selectedAddress;
   List<ShippingRate> _shippingRates = const [ShippingRate.selfPickup];
   ShippingRate _selectedRate = ShippingRate.selfPickup;
+  bool _shippingRateSelectedByUser = false;
   // Voucher state — server auto-applies best voucher; UI only shows summary
   // chips plus one manual-code field.
   MemberVoucher? _selectedFreeShippingVoucher;
@@ -186,6 +187,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       (_itemsSubtotal + _shippingCost - _voucherDiscount)
           .clamp(0, double.infinity);
 
+  String? get _freeShippingVoucherCodeForRequest =>
+      _selectedRate.isSelfPickup ? null : _selectedFreeShippingVoucher?.code;
+
   @override
   void dispose() {
     _scrollController.removeListener(_handleCheckoutScroll);
@@ -237,18 +241,46 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final courierRates =
         result.rates.where((rate) => !rate.isSelfPickup).toList();
     final rates = [ShippingRate.selfPickup, ...courierRates];
-    final previousRate = _selectedRate;
-    final selectedRate = rates.firstWhere(
-      (rate) =>
-          rate.courierCode == previousRate.courierCode &&
-          rate.serviceCode == previousRate.serviceCode,
-      orElse: () => rates.first,
-    );
+    final selectedRate = _resolveSelectedShippingRate(rates, courierRates);
     setState(() {
       _shippingRates = rates;
       _selectedRate = selectedRate;
+      if (selectedRate.isSelfPickup) {
+        _selectedFreeShippingVoucher = null;
+      }
       _shippingMessage = result.instantUnavailableReason ?? result.message;
     });
+  }
+
+  ShippingRate _resolveSelectedShippingRate(
+    List<ShippingRate> rates,
+    List<ShippingRate> courierRates,
+  ) {
+    final previousRate = _selectedRate;
+    final previousMatch = _findMatchingShippingRate(rates, previousRate);
+
+    if (_shippingRateSelectedByUser) {
+      if (previousMatch != null) return previousMatch;
+      if (previousRate.isSelfPickup) return ShippingRate.selfPickup;
+      return courierRates.isNotEmpty ? courierRates.first : rates.first;
+    }
+
+    // Default checkout memilih kurir delivery saat tersedia supaya voucher
+    // gratis ongkir member bisa auto-apply tanpa user membuka sheet pengiriman.
+    return courierRates.isNotEmpty ? courierRates.first : rates.first;
+  }
+
+  ShippingRate? _findMatchingShippingRate(
+    List<ShippingRate> rates,
+    ShippingRate target,
+  ) {
+    for (final rate in rates) {
+      if (rate.courierCode == target.courierCode &&
+          rate.serviceCode == target.serviceCode) {
+        return rate;
+      }
+    }
+    return null;
   }
 
   void _selectAddress(MemberAddress address) {
@@ -299,6 +331,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     setState(() {
       _syncingPricing = true;
       _loadingVouchers = true;
+      if (_selectedRate.isSelfPickup) {
+        _selectedFreeShippingVoucher = null;
+      }
     });
     try {
       final recalc = await checkoutService.recalculate(
@@ -307,7 +342,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         voucherCode: _selectedProductVoucher?.code,
         customerVoucherCode: _selectedProductVoucher?.code,
         manualVoucherCode: _selectedManualVoucher?.code,
-        freeShippingVoucherCode: _selectedFreeShippingVoucher?.code,
+        freeShippingVoucherCode: _freeShippingVoucherCodeForRequest,
         productVoucherCode: _selectedProductVoucher?.code,
         loyaltyVoucherCode: _selectedLoyaltyVoucher?.code,
         privateVoucherCode: _selectedManualVoucher?.code,
@@ -494,7 +529,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       ),
     );
     if (!mounted || picked == null) return;
-    setState(() => _selectedRate = picked);
+    setState(() {
+      _shippingRateSelectedByUser = true;
+      _selectedRate = picked;
+      if (picked.isSelfPickup) {
+        _selectedFreeShippingVoucher = null;
+      }
+    });
     await _syncCheckoutPricing(autoApply: !_autoVoucherSuppressed);
   }
 
@@ -560,7 +601,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         voucherCode: _selectedProductVoucher?.code,
         customerVoucherCode: _selectedProductVoucher?.code,
         manualVoucherCode: _selectedManualVoucher?.code,
-        freeShippingVoucherCode: _selectedFreeShippingVoucher?.code,
+        freeShippingVoucherCode: _freeShippingVoucherCodeForRequest,
         productVoucherCode: _selectedProductVoucher?.code,
         loyaltyVoucherCode: _selectedLoyaltyVoucher?.code,
         privateVoucherCode: _selectedManualVoucher?.code,
@@ -621,7 +662,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         paymentProvider: _paymentProvider,
         voucherCode: _selectedProductVoucher?.code,
         manualVoucherCode: _selectedManualVoucher?.code,
-        freeShippingVoucherCode: _selectedFreeShippingVoucher?.code,
+        freeShippingVoucherCode: _freeShippingVoucherCodeForRequest,
         productVoucherCode: _selectedProductVoucher?.code,
         loyaltyVoucherCode: _selectedLoyaltyVoucher?.code,
         privateVoucherCode: _selectedManualVoucher?.code,
