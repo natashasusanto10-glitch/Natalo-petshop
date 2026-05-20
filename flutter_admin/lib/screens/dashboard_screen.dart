@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
 import '../theme/admin_theme.dart';
+import 'add_product_screen.dart';
+import 'broadcast_screen.dart';
+import 'vouchers_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -189,22 +192,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
               icon: Icons.add_box_outlined,
               label: 'Tambah Produk Baru',
               subtitle: 'Daftar produk + foto + varian',
-              onTap: () {
-                // TODO: navigate to add product screen
-                _showComingSoon(context);
-              },
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AddProductScreen()),
+              ),
             ),
             _QuickActionTile(
               icon: Icons.campaign_outlined,
               label: 'Broadcast Notifikasi',
               subtitle: 'Push notif ke semua customer',
-              onTap: () => _showComingSoon(context),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const BroadcastScreen()),
+              ),
             ),
             _QuickActionTile(
               icon: Icons.local_offer_outlined,
               label: 'Kelola Voucher',
               subtitle: 'Tambah promo & diskon baru',
-              onTap: () => _showComingSoon(context),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const VouchersScreen()),
+              ),
             ),
             _QuickActionTile(
               icon: Icons.feed_outlined,

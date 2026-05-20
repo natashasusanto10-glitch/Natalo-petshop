@@ -3,7 +3,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/api_client.dart';
 import '../theme/admin_theme.dart';
+import 'broadcast_screen.dart';
 import 'login_screen.dart';
+import 'vouchers_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -94,12 +96,16 @@ class SettingsScreen extends StatelessWidget {
           _SettingsTile(
             icon: Icons.campaign_outlined,
             label: 'Broadcast Notifikasi',
-            onTap: () => _comingSoon(context),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const BroadcastScreen()),
+            ),
           ),
           _SettingsTile(
             icon: Icons.local_offer_outlined,
             label: 'Voucher & Promo',
-            onTap: () => _comingSoon(context),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const VouchersScreen()),
+            ),
           ),
           _SettingsTile(
             icon: Icons.category_outlined,
