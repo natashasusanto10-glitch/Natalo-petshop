@@ -97,17 +97,10 @@ export function PromoTokoForm({ initial, excludeId }: Props) {
 
   // ── Form state ──────────────────────────────────────────────
   const [name, setName] = useState(data.name);
-  // Default startsAt = sekarang (untuk mode create). Format
-  // datetime-local: YYYY-MM-DDTHH:MM (local time, no TZ suffix).
-  // Tanpa default, admin sering set startsAt future tanpa sadar →
-  // promo "Akan Datang" → tidak tampil sebagai diskon aktif.
-  const [startsAt, setStartsAt] = useState(
-    data.startsAt || (isEdit ? "" : nowDateTimeLocal()),
-  );
-  // Default endsAt = 7 hari dari sekarang (typical mid-term campaign).
-  const [endsAt, setEndsAt] = useState(
-    data.endsAt || (isEdit ? "" : sevenDaysFromNowDateTimeLocal()),
-  );
+  // Empty default supaya admin sadar perlu isi (no auto-fill). Pakai
+  // tombol "Mulai sekarang" + "7 hari" sebagai quick fill.
+  const [startsAt, setStartsAt] = useState(data.startsAt);
+  const [endsAt, setEndsAt] = useState(data.endsAt);
   const [items, setItems] = useState<PromoItem[]>(data.items);
 
   // Product picker modal state
@@ -341,6 +334,58 @@ export function PromoTokoForm({ initial, excludeId }: Props) {
               <p className="mt-1 text-xs text-amber-600">
                 Periode Promo harus kurang dari 90 hari.
               </p>
+              {/* Quick-fill preset buttons — bantu admin set periode
+                  tanpa harus type manual. Edit tetap manual via input
+                  datetime-local di atas. */}
+              {!isEdit && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <span className="text-xs font-semibold text-zinc-500">
+                    Quick:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStartsAt(nowDateTimeLocal());
+                      if (!endsAt) setEndsAt(daysFromNowDateTimeLocal(7));
+                    }}
+                    className="rounded-full bg-natalo-50 px-3 py-1 text-xs font-bold text-natalo-700 hover:bg-natalo-100"
+                  >
+                    Mulai sekarang
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const now = new Date();
+                      setStartsAt(nowDateTimeLocal());
+                      setEndsAt(daysFromNowDateTimeLocal(7));
+                      void now;
+                    }}
+                    className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold text-zinc-700 hover:bg-zinc-200"
+                  >
+                    7 hari
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStartsAt(nowDateTimeLocal());
+                      setEndsAt(daysFromNowDateTimeLocal(30));
+                    }}
+                    className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold text-zinc-700 hover:bg-zinc-200"
+                  >
+                    30 hari
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStartsAt(nowDateTimeLocal());
+                      setEndsAt(daysFromNowDateTimeLocal(90));
+                    }}
+                    className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold text-zinc-700 hover:bg-zinc-200"
+                  >
+                    90 hari (max)
+                  </button>
+                </div>
+              )}
               {showFieldErrors && (errors.startsAt || errors.endsAt) && (
                 <p className="mt-1 text-xs text-red-500">
                   {errors.startsAt || errors.endsAt}
@@ -1009,8 +1054,8 @@ function nowDateTimeLocal(): string {
   return toDateTimeLocalString(new Date());
 }
 
-function sevenDaysFromNowDateTimeLocal(): string {
+function daysFromNowDateTimeLocal(days: number): string {
   const d = new Date();
-  d.setDate(d.getDate() + 7);
+  d.setDate(d.getDate() + days);
   return toDateTimeLocalString(d);
 }

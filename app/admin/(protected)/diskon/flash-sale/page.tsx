@@ -12,6 +12,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
+import { EndFlashSaleButton } from "@/components/admin/EndFlashSaleButton";
 
 export const dynamic = "force-dynamic";
 
@@ -233,12 +234,20 @@ export default async function FlashSaleListPage({
                     <p className="font-semibold text-zinc-900">
                       {formatDateTime(p.flashSaleEndsAt)}
                     </p>
-                    <Link
-                      href={`/admin/products/${p.id}/edit`}
-                      className="mt-2 inline-block text-sm font-semibold text-natalo-600 hover:text-natalo-700"
-                    >
-                      {promoStatus === "expired" ? "Lihat" : "Ubah"}
-                    </Link>
+                    <div className="mt-2 flex items-center justify-end gap-3">
+                      <Link
+                        href={`/admin/products/${p.id}/edit`}
+                        className="text-sm font-semibold text-natalo-600 hover:text-natalo-700"
+                      >
+                        Lihat
+                      </Link>
+                      {promoStatus === "ongoing" && (
+                        <EndFlashSaleButton
+                          productId={p.id}
+                          productName={p.name}
+                        />
+                      )}
+                    </div>
                   </div>
                 </div>
               );

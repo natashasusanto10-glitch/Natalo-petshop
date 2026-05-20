@@ -6,6 +6,7 @@
  */
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { DeletePromoTokoButton } from "@/components/admin/DeletePromoTokoButton";
 
 export const dynamic = "force-dynamic";
 
@@ -249,13 +250,17 @@ export default async function PromoTokoListPage({
                   <div className="text-right text-xs text-zinc-600">
                     <p>{formatDateTime(promo.startsAt)}</p>
                     <p>→ {formatDateTime(promo.endsAt)}</p>
-                    <div className="mt-2 flex justify-end gap-2">
+                    <div className="mt-2 flex justify-end gap-3">
                       <Link
                         href={`/admin/diskon/promo-toko/${promo.id}/edit`}
                         className="text-sm font-semibold text-natalo-600 hover:text-natalo-700"
                       >
                         {promoStatus === "expired" ? "Lihat" : "Ubah"}
                       </Link>
+                      <DeletePromoTokoButton
+                        promoId={promo.id}
+                        promoName={promo.name}
+                      />
                     </div>
                   </div>
                 </div>
