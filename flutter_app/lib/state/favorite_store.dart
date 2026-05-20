@@ -36,6 +36,14 @@ class FavoriteStore extends ChangeNotifier {
         ..clear()
         ..addAll(ids);
       _loaded = true;
+    } catch (e) {
+      // Catch + log instead of bubble up — sebelumnya unhandled
+      // exception saat parse response bikin _loaded stuck false
+      // tanpa user tahu kenapa wishlist gagal sync. Sekarang error
+      // tertangkap, _loaded tetap false sampai next successful refresh.
+      if (kDebugMode) {
+        debugPrint('[favoriteStore.refresh] $e');
+      }
     } finally {
       _loading = false;
       notifyListeners();
