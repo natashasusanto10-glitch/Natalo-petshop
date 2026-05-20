@@ -33,6 +33,7 @@ import '../widgets/app_toast.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/feed_comment_sheet.dart';
 import '../widgets/moderation_action_sheet.dart';
+import 'feed_photo_upload_flow.dart';
 import 'feed_video_upload_flow.dart';
 
 const _officialGold = Color(0xFFF4D47C);
@@ -377,12 +378,26 @@ class _FeedScreenState extends State<FeedScreen> {
   Future<void> _onUpload() async {
     AppHaptics.tap();
     _setFeedInteractionLocked(true);
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const FeedVideoStartScreen()),
-    ).whenComplete(() {
-      if (mounted) _setFeedInteractionLocked(false);
-    });
+    // Show choice sheet first — Video vs Foto. User pilih salah satu,
+    // lalu route ke flow yang tepat. Video pakai existing flow tanpa
+    // perubahan, Foto ke flow baru (Phase 3 Posting Foto).
+    final choice = await showModalBottomSheet<_UploadChoice>(
+      context: context,
+      isScrollControlled: false,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => const _UploadChoiceSheet(),
+    );
+    if (choice != null && mounted) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => choice == _UploadChoice.video
+              ? const FeedVideoStartScreen()
+              : const FeedPhotoPickerScreen(),
+        ),
+      );
+    }
+    if (mounted) _setFeedInteractionLocked(false);
     if (!mounted) return;
     await _loadInitial();
   }
@@ -4765,3 +4780,159 @@ class _CtaBuyButton extends StatelessWidget {
 /// Keep Product import referenced (untuk type-safety navigation arguments).
 // ignore: unused_element
 Product? _typeHint() => null;
+
+// ════════════════════════════════════════════════════════════════
+// Upload choice sheet — Video / Foto pilihan saat user tap "+"
+// ════════════════════════════════════════════════════════════════
+
+enum _UploadChoice { video, photo }
+
+/// Bottom sheet untuk pilih jenis post (Video atau Foto). Dark theme
+/// match dengan upload flow screens. User pilih → Navigator.pop dengan
+/// _UploadChoice enum, parent route ke screen yang sesuai.
+class _UploadChoiceSheet extends StatelessWidget {
+  const _UploadChoiceSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Container(
+        margin: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1F2E),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: const Color(0xFF2A3041)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Drag handle.
+            Container(
+              width: 42,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFF94A3B8).withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(99),
+              ),
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              'Buat Postingan',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Pilih tipe konten yang mau kamu bagikan',
+              style: TextStyle(
+                color: Color(0xFF94A3B8),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 22),
+            _UploadChoiceTile(
+              icon: Icons.videocam_rounded,
+              iconColor: const Color(0xFFEC4899),
+              title: 'Upload Video',
+              subtitle: '8-45 detik, format MP4 / MOV',
+              onTap: () =>
+                  Navigator.pop(context, _UploadChoice.video),
+            ),
+            const SizedBox(height: 10),
+            _UploadChoiceTile(
+              icon: Icons.photo_library_rounded,
+              iconColor: const Color(0xFF0B7FEA),
+              title: 'Upload Foto',
+              subtitle: '1-8 foto carousel, JPG / PNG / WebP',
+              onTap: () =>
+                  Navigator.pop(context, _UploadChoice.photo),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _UploadChoiceTile extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _UploadChoiceTile({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F1419),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFF2A3041)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: iconColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: iconColor, size: 26),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: Color(0xFF94A3B8),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: Color(0xFF94A3B8),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
