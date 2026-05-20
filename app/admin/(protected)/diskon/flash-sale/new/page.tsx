@@ -19,6 +19,9 @@ export default async function FlashSaleNewPage() {
   // + tidak sedang di flash sale lain (flashSaleEndsAt null atau expired).
   // Take 500 supaya client-side search bisa filter banyak produk.
   const now = new Date();
+  // Bump take 500 → 2000 supaya semua produk eligible muat di picker
+  // (limit teknis: client-side filter handle banyak data dengan baik).
+  // Kalau di masa depan produk > 2000, perlu pagination + server-search.
   const products = await prisma.product.findMany({
     where: {
       isActive: true,
@@ -28,7 +31,7 @@ export default async function FlashSaleNewPage() {
       ],
     },
     orderBy: { name: "asc" },
-    take: 500,
+    take: 2000,
     select: {
       id: true,
       name: true,
