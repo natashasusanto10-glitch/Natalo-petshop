@@ -702,7 +702,6 @@ class _CartScreenState extends State<CartScreen> {
                             discountAmount: _voucherDiscount,
                             shippingSelected: _appliedShippingVoucher,
                             shippingDiscount: _shippingDiscount,
-                            totalSaving: _totalVoucherSaving,
                             onTap: _selectedItems.isEmpty
                                 ? null
                                 : () {
@@ -1892,7 +1891,6 @@ class _StickyVoucherBar extends StatelessWidget {
   final double discountAmount;
   final bool shippingSelected;
   final double shippingDiscount;
-  final double totalSaving;
   final VoidCallback? onTap;
 
   const _StickyVoucherBar({
@@ -1902,7 +1900,6 @@ class _StickyVoucherBar extends StatelessWidget {
     required this.discountAmount,
     required this.shippingSelected,
     required this.shippingDiscount,
-    required this.totalSaving,
     required this.onTap,
   });
 
@@ -1910,34 +1907,11 @@ class _StickyVoucherBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasDiscount = discountVoucher != null && discountAmount > 0;
     final hasShipping = shippingSelected && shippingDiscount > 0;
-    final hasSaving = hasSelection && totalSaving > 0;
-    final leadingColor = hasShipping
-        ? _shippingGreen
-        : hasDiscount
-            ? _discountRed
-            : _brandBlue;
-    final leadingBackground = hasShipping
-        ? _shippingGreenSoft
-        : hasDiscount
-            ? _discountRedSoft
-            : const Color(0xFFEAF5FF);
-    final leadingBorder = hasShipping
-        ? _shippingGreenBorder
-        : hasDiscount
-            ? _discountRedBorder
-            : const Color(0xFFBFDBFE);
-    final leadingIcon = hasShipping
-        ? Icons.local_shipping_outlined
-        : hasDiscount
-            ? Icons.local_offer_rounded
-            : Icons.confirmation_number_rounded;
-    final subtitle = !hasSelection
-        ? 'Pilih produk untuk cek promo'
-        : loading
-            ? 'Mencari promo yang cocok'
-            : hasSaving
-                ? 'Hemat ${formatRupiah(totalSaving)}'
-                : 'Tap untuk cek voucher';
+    final leadingColor = hasSelection ? _brandBlue : const Color(0xFF94A3B8);
+    final leadingBackground =
+        hasSelection ? const Color(0xFFEAF5FF) : const Color(0xFFF8FAFC);
+    final leadingBorder =
+        hasSelection ? const Color(0xFFBFDBFE) : const Color(0xFFE2E8F0);
 
     return Material(
       color: NataloColors.surface,
@@ -1964,48 +1938,34 @@ class _StickyVoucherBar extends StatelessWidget {
                     border: Border.all(color: leadingBorder),
                   ),
                   child: Icon(
-                    leadingIcon,
+                    Icons.confirmation_number_rounded,
                     color: leadingColor,
                     size: 19,
                   ),
                 ),
                 const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Voucher untukmu',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Color(0xFF334155),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF64748B),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
+                const Text(
+                  'Voucher',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Color(0xFF334155),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
                 const SizedBox(width: 8),
-                _VoucherBenefitChips(
-                  hasShipping: hasShipping,
-                  shippingText: 'Gratis Ongkir',
-                  hasDiscount: hasDiscount,
-                  discountText: '-${formatRupiah(discountAmount)}',
-                  loading: loading,
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: _VoucherBenefitChips(
+                      hasShipping: hasShipping,
+                      shippingText: 'Gratis Ongkir',
+                      hasDiscount: hasDiscount,
+                      discountText: '-${formatRupiah(discountAmount)}',
+                      loading: loading,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 2),
                 Icon(
@@ -2048,7 +2008,6 @@ class _VoucherBenefitChips extends StatelessWidget {
           color: _shippingGreen,
           background: _shippingGreenSoft,
           border: _shippingGreenBorder,
-          icon: Icons.local_shipping_outlined,
         ),
       );
     }
@@ -2060,7 +2019,6 @@ class _VoucherBenefitChips extends StatelessWidget {
           color: _discountRed,
           background: _discountRedSoft,
           border: _discountRedBorder,
-          icon: Icons.local_offer_rounded,
         ),
       );
     }
@@ -2071,17 +2029,16 @@ class _VoucherBenefitChips extends StatelessWidget {
           color: _brandBlue,
           background: const Color(0xFFEAF5FF),
           border: const Color(0xFFBFDBFE),
-          icon: Icons.confirmation_number_rounded,
         ),
       );
     }
 
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 178),
+      constraints: const BoxConstraints(maxWidth: 186),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         reverse: true,
-        physics: const NeverScrollableScrollPhysics(),
+        physics: const BouncingScrollPhysics(),
         child: Row(mainAxisSize: MainAxisSize.min, children: chips),
       ),
     );
@@ -2093,14 +2050,12 @@ class _VoucherMiniChip extends StatelessWidget {
   final Color color;
   final Color background;
   final Color border;
-  final IconData icon;
 
   const _VoucherMiniChip({
     required this.text,
     required this.color,
     required this.background,
     required this.border,
-    required this.icon,
   });
 
   @override
@@ -2115,8 +2070,6 @@ class _VoucherMiniChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 13, color: color),
-          const SizedBox(width: 4),
           Text(
             text,
             style: TextStyle(

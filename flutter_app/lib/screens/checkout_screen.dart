@@ -3196,21 +3196,21 @@ String _savingsTitle(double productDiscount, double shippingDiscount) {
   final totalSavings = productDiscount + shippingDiscount;
   if (totalSavings <= 0) return '';
   if (productDiscount > 0 && shippingDiscount > 0) {
-    return 'Kamu hemat ${formatRupiah(totalSavings)} di pesanan ini';
+    return 'Total Hemat ${formatRupiah(totalSavings)} di pesanan ini';
   }
   if (productDiscount > 0) {
-    return 'Kamu hemat ${formatRupiah(productDiscount)} di pesanan ini';
+    return 'Total Hemat ${formatRupiah(productDiscount)} di pesanan ini';
   }
-  return 'Kamu hemat ongkir ${formatRupiah(shippingDiscount)} di pesanan ini';
+  return 'Total Hemat Ongkir ${formatRupiah(shippingDiscount)} di pesanan ini';
 }
 
 String _savingsCompactLabel(double productDiscount, double shippingDiscount) {
   final totalSavings = productDiscount + shippingDiscount;
   if (totalSavings <= 0) return '';
   if (productDiscount <= 0 && shippingDiscount > 0) {
-    return 'Hemat ongkir ${formatRupiah(shippingDiscount)}';
+    return 'Total Hemat Ongkir ${formatRupiah(shippingDiscount)}';
   }
-  return 'Kamu hemat ${formatRupiah(totalSavings)}';
+  return 'Total Hemat ${formatRupiah(totalSavings)}';
 }
 
 class _SummaryLine extends StatelessWidget {
