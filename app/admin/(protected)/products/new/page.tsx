@@ -67,7 +67,14 @@ export default async function AdminProductNewPage() {
     const { syncProduct } = await import("@/lib/search");
     await syncProduct(created.id).catch(() => {});
 
-    redirect("/admin/products");
+    // Redirect ke edit page bukan ke list, supaya admin bisa langsung
+    // tambah variasi produk (size/warna/dll) tanpa harus cari produk
+    // yang baru saja dibuat. VariantEditor component (client) butuh
+    // productId yang sudah exist di DB — itu sebab kenapa di halaman
+    // /new ini tidak bisa langsung render variant editor.
+    // ?from=new + #variants → edit page bisa show success banner +
+    // auto-scroll ke bagian variant editor.
+    redirect(`/admin/products/${created.id}/edit?from=new#variants`);
   }
 
   return (

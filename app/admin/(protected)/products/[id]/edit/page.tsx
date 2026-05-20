@@ -6,10 +6,15 @@ import { VariantEditor } from "@/components/admin/VariantEditor";
 
 export default async function AdminProductEditPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ from?: string }>;
 }) {
   const { id } = await params;
+  const { from } = await searchParams;
+  // Hint dari /new redirect — show success banner + nudge ke variant editor.
+  const justCreated = from === "new";
 
   const [product, categories, brands] = await Promise.all([
     prisma.product.findUnique({
@@ -103,6 +108,30 @@ export default async function AdminProductEditPage({
       </Link>
       <h1 className="mt-2 text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">Edit Produk</h1>
       <p className="mt-1 truncate text-sm text-zinc-500">{product.slug}</p>
+
+      {justCreated && (
+        <div className="mt-4 flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
+            ✓
+          </div>
+          <div className="flex-1 text-sm">
+            <p className="font-bold text-emerald-900">
+              Produk berhasil dibuat
+            </p>
+            <p className="mt-0.5 text-emerald-800">
+              Tambah variasi produk (warna, ukuran, dsb.) di bagian{" "}
+              <a
+                href="#variants"
+                className="font-bold underline underline-offset-2 hover:text-emerald-700"
+              >
+                Variasi Produk ↓
+              </a>{" "}
+              di bawah, atau klik <strong>Simpan perubahan</strong> kalau
+              produk ini tidak punya varian.
+            </p>
+          </div>
+        </div>
+      )}
 
       <form action={updateProduct} className="mt-5 space-y-5 md:mt-8">
         <Field label="Nama produk" name="name" required defaultValue={product.name} />
@@ -225,7 +254,11 @@ export default async function AdminProductEditPage({
         </div>
       </form>
 
-      {/* ── Variant Editor (client component) ── */}
+      {/* ── Variant Editor (client component) ──
+          Anchor `id="variants"` di-target dari /admin/products/new redirect
+          (?from=new#variants) supaya browser scroll otomatis ke editor
+          variasi setelah produk baru dibuat. */}
+      <div id="variants" className="scroll-mt-6">
       <VariantEditor
         productId={id}
         initialHasVariants={product.hasVariants}
@@ -250,6 +283,7 @@ export default async function AdminProductEditPage({
           options: v.options,
         }))}
       />
+      </div>
     </div>
   );
 }
