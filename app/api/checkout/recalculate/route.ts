@@ -221,11 +221,29 @@ export async function POST(request: NextRequest) {
         name: true,
         price: true,
         discountPrice: true,
+        flashSaleEndsAt: true,
         stock: true,
         categoryId: true,
         weightGram: true,
         isActive: true,
         hasVariants: true,
+        // Active Promo Toko items untuk apply diskon di checkout.
+        // Filter inline pakai now() saat query — fresh per request.
+        discountItems: {
+          where: {
+            isItemActive: true,
+            discount: {
+              isActive: true,
+              startsAt: { lte: new Date() },
+              endsAt: { gt: new Date() },
+            },
+          },
+          select: {
+            variantId: true,
+            discountedPrice: true,
+            discount: { select: { endsAt: true } },
+          },
+        },
       },
     }),
     variantIds.length
