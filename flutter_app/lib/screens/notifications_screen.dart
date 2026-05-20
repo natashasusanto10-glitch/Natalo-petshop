@@ -116,6 +116,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final url = item.url?.trim() ?? '';
     final haystack = _notificationHaystack(item);
 
+    if (_isAnnouncementNotification(item)) {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => AnnouncementDetailScreen(notification: item),
+        ),
+      );
+      return;
+    }
+
     if (url.contains('/member/orders') ||
         url.contains('/orders') ||
         haystack.contains('pesanan') ||
@@ -709,12 +718,7 @@ enum _NotificationFilter {
           text.contains('share') ||
           text.contains('approved') ||
           text.contains('rejected'),
-      _NotificationFilter.announcement => text.contains('announcement') ||
-          text.contains('pengumuman') ||
-          text.contains('newsletter') ||
-          text.contains('broadcast') ||
-          text.contains('campaign') ||
-          text.contains('info'),
+      _NotificationFilter.announcement => _isAnnouncementNotification(item),
       _NotificationFilter.all => true,
     };
   }
@@ -771,7 +775,58 @@ String _notificationHaystack(AppNotification item) {
     item.url,
     item.title,
     item.body,
+    item.shortDescription,
+    item.ctaLabel,
   ].whereType<String>().join(' ').toLowerCase();
+}
+
+bool _isAnnouncementNotification(AppNotification item) {
+  final explicit = [
+    item.type,
+    item.category,
+    item.source,
+    item.eventType,
+    item.status,
+  ].whereType<String>().join(' ').toLowerCase();
+
+  if (explicit.contains('announcement') ||
+      explicit.contains('pengumuman') ||
+      explicit.contains('broadcast') ||
+      explicit.contains('newsletter')) {
+    return true;
+  }
+
+  final url = item.url?.toLowerCase() ?? '';
+  if (url.contains('/pengumuman') ||
+      url.contains('/announcement') ||
+      url.contains('/announcements')) {
+    return true;
+  }
+
+  final text = [
+    item.title,
+    item.shortDescription,
+    item.body,
+    item.ctaLabel,
+  ].whereType<String>().join(' ').toLowerCase();
+
+  final looksLikeAnnouncement = text.contains('pengumuman') ||
+      text.contains('perubahan jam operasional') ||
+      text.contains('jam operasional');
+  final announcementCta = text.contains('perbarui sekarang') ||
+      text.contains('cek info') ||
+      text.contains('lihat detail');
+  final looksLikeOtherFlow = text.contains('pesanan') ||
+      text.contains('order') ||
+      text.contains('keranjang') ||
+      text.contains('checkout') ||
+      text.contains('feed') ||
+      text.contains('komentar') ||
+      text.contains('produk') ||
+      text.contains('voucher') ||
+      text.contains('promo');
+
+  return looksLikeAnnouncement || (announcementCta && !looksLikeOtherFlow);
 }
 
 String? _toAbsoluteUrl(String url) {

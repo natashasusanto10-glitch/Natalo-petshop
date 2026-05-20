@@ -2,6 +2,7 @@ class AppNotification {
   final String id;
   final String title;
   final String body;
+  final String? shortDescription;
   final String? url;
   final String type;
   final String? category;
@@ -10,6 +11,10 @@ class AppNotification {
   final String? feedPostId;
   final String? status;
   final String? ctaLabel;
+  final String? importantTitle;
+  final String? importantValue;
+  final String? importantDescription;
+  final String? infoNote;
   final DateTime createdAt;
   final bool read;
 
@@ -17,6 +22,7 @@ class AppNotification {
     required this.id,
     required this.title,
     required this.body,
+    this.shortDescription,
     this.url,
     required this.type,
     this.category,
@@ -25,6 +31,10 @@ class AppNotification {
     this.feedPostId,
     this.status,
     this.ctaLabel,
+    this.importantTitle,
+    this.importantValue,
+    this.importantDescription,
+    this.infoNote,
     required this.createdAt,
     required this.read,
   });
@@ -33,7 +43,14 @@ class AppNotification {
     return AppNotification(
       id: (json['id'] ?? '').toString(),
       title: (json['title'] ?? 'Notifikasi').toString(),
-      body: (json['body'] ?? '').toString(),
+      body: (json['body'] ??
+              json['content'] ??
+              json['message'] ??
+              json['description'] ??
+              '')
+          .toString(),
+      shortDescription:
+          (json['shortDescription'] ?? json['short_description'])?.toString(),
       url: json['url']?.toString(),
       type: (json['type'] ?? json['segment'] ?? 'info').toString(),
       category: json['category']?.toString(),
@@ -41,10 +58,43 @@ class AppNotification {
       eventType: json['eventType']?.toString(),
       feedPostId: (json['feedPostId'] ?? json['videoId'])?.toString(),
       status: json['status']?.toString(),
-      ctaLabel: json['ctaLabel']?.toString(),
+      ctaLabel: (json['ctaLabel'] ?? json['cta_label'])?.toString(),
+      importantTitle:
+          (json['importantTitle'] ?? json['important_title'])?.toString(),
+      importantValue:
+          (json['importantValue'] ?? json['important_value'])?.toString(),
+      importantDescription:
+          (json['importantDescription'] ?? json['important_description'])
+              ?.toString(),
+      infoNote: (json['infoNote'] ?? json['info_note'])?.toString(),
       createdAt: DateTime.tryParse((json['createdAt'] ?? '').toString()) ??
           DateTime.now(),
       read: json['read'] == true,
+    );
+  }
+
+  AppNotification copyWith({
+    bool? read,
+  }) {
+    return AppNotification(
+      id: id,
+      title: title,
+      body: body,
+      shortDescription: shortDescription,
+      url: url,
+      type: type,
+      category: category,
+      source: source,
+      eventType: eventType,
+      feedPostId: feedPostId,
+      status: status,
+      ctaLabel: ctaLabel,
+      importantTitle: importantTitle,
+      importantValue: importantValue,
+      importantDescription: importantDescription,
+      infoNote: infoNote,
+      createdAt: createdAt,
+      read: read ?? this.read,
     );
   }
 }

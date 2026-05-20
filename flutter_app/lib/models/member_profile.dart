@@ -377,20 +377,32 @@ class OrderSummary {
         json['pickupLocationId'] ?? json['pickup_location_id'],
       ),
       pickupLocationName: _nullableString(
-        json['pickupLocationName'] ?? json['pickup_location_name'],
+        json['pickupLocationName'] ??
+            json['pickup_location_name'] ??
+            json['pickupStoreName'] ??
+            json['pickup_store_name'],
       ),
       pickupAddress: _nullableString(
-        json['pickupAddress'] ?? json['pickup_address'],
+        json['pickupAddress'] ??
+            json['pickup_address'] ??
+            json['pickupStoreAddress'] ??
+            json['pickup_store_address'],
       ),
       pickupHours: _nullableString(json['pickupHours'] ?? json['pickup_hours']),
       pickupMapsUrl: _nullableString(
         json['pickupMapsUrl'] ?? json['pickup_maps_url'],
       ),
       pickupLatitude: _asDoubleOrNull(
-        json['pickupLatitude'] ?? json['pickup_latitude'],
+        json['pickupLatitude'] ??
+            json['pickup_latitude'] ??
+            json['pickupStoreLatitude'] ??
+            json['pickup_store_latitude'],
       ),
       pickupLongitude: _asDoubleOrNull(
-        json['pickupLongitude'] ?? json['pickup_longitude'],
+        json['pickupLongitude'] ??
+            json['pickup_longitude'] ??
+            json['pickupStoreLongitude'] ??
+            json['pickup_store_longitude'],
       ),
       paymentUrl: _nullableString(json['paymentUrl']),
       paymentProofUrl: _nullableString(json['paymentProofUrl']),
@@ -477,17 +489,22 @@ class OrderItemSummary {
         ? json['product'] as Map<String, dynamic>
         : null;
     return OrderItemSummary(
-      id: json['id'] as String,
-      productId: (json['productId'] ?? productMap?['id']) as String? ?? '',
-      productSlug: (productMap?['slug']) as String?,
-      variantId: json['variantId'] as String?,
-      variantLabel: json['variantLabel'] as String?,
-      name: (json['name'] ?? productMap?['name']) as String? ?? '',
-      imageUrl: (json['imageUrl'] ?? productMap?['imageUrl']) as String?,
-      categoryName: (json['categoryName'] ??
-          (productMap?['category'] is Map
-              ? productMap!['category']['name']
-              : productMap?['category'])) as String?,
+      id: (json['id'] ?? json['productId'] ?? productMap?['id'] ?? '')
+          .toString(),
+      productId: (json['productId'] ?? productMap?['id'] ?? '').toString(),
+      productSlug: _nullableString(json['productSlug'] ?? productMap?['slug']),
+      variantId: _nullableString(json['variantId']),
+      variantLabel: _nullableString(json['variantLabel']),
+      name: (json['name'] ?? productMap?['name'] ?? '').toString(),
+      imageUrl: _nullableString(
+        json['imageUrl'] ?? json['productImage'] ?? productMap?['imageUrl'],
+      ),
+      categoryName: _nullableString(
+        json['categoryName'] ??
+            (productMap?['category'] is Map
+                ? productMap!['category']['name']
+                : productMap?['category']),
+      ),
       price: (json['price'] as num?)?.toInt() ?? 0,
       quantity: (json['quantity'] as num?)?.toInt() ?? 1,
       weightGram: (json['weightGram'] as num?)?.toInt() ?? 500,

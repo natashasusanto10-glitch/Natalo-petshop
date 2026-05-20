@@ -1,252 +1,490 @@
 import 'package:flutter/material.dart';
 
 import '../models/app_notification.dart';
+import '../services/notification_service.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 
-const _brandBlue = Color(0xFF0B7FEA);
-const _primaryDark = Color(0xFF075CB5);
-const _primaryLight = Color(0xFFEAF5FF);
+const _brandBlue = Color(0xFF1677FF);
+const _announcementGreen = Color(0xFF20B26B);
+const _pageBg = Color(0xFFF7F9FC);
+const _textPrimary = Color(0xFF101828);
+const _textSecondary = Color(0xFF667085);
+const _border = Color(0xFFE5EAF2);
 
-/// **Detail Pengumuman** screen — match Capacitor pattern:
-/// - AppBar back arrow + "Detail Pengumuman" w900 left-aligned (no centerTitle)
-/// - Card radius 18: megaphone icon dalam rounded-square light-blue + title
-///   besar w900 (wrap 2 lines) + decorative dots di pojok atas + meta row
-///   primary (jam relative + date absolute) + info box light-blue + divider
-///   center paw icon + body + signature "Natalo Petshop" w800
-/// - Bottom solid pill button "✓ Mengerti" (close screen)
-class AnnouncementDetailScreen extends StatelessWidget {
+class AnnouncementDetailScreen extends StatefulWidget {
   final AppNotification notification;
 
-  const AnnouncementDetailScreen({super.key, required this.notification});
+  const AnnouncementDetailScreen({
+    super.key,
+    required this.notification,
+  });
 
-  // Date helpers ada di utils/formatters.dart (single source untuk semua
-  // date display di app). Sebelumnya inline di sini, sekarang centralized.
+  @override
+  State<AnnouncementDetailScreen> createState() =>
+      _AnnouncementDetailScreenState();
+}
+
+class _AnnouncementDetailScreenState extends State<AnnouncementDetailScreen> {
+  bool _markingRead = false;
+
+  AppNotification get _notification => widget.notification;
+
+  @override
+  void initState() {
+    super.initState();
+    _markAsRead();
+  }
+
+  Future<void> _markAsRead() async {
+    if (_notification.read || _markingRead) return;
+    _markingRead = true;
+    try {
+      await notificationService.markRead(_notification.id);
+    } catch (_) {
+      // Best-effort. Notification Center reload akan sinkron saat kembali.
+    } finally {
+      _markingRead = false;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final notification = _notification;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFFF8FAFC),
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        surfaceTintColor: const Color(0xFFF8FAFC),
-        leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_rounded,
-            color: Color(0xFF17202A),
-          ),
-          onPressed: () => Navigator.maybePop(context),
-        ),
-        // Left-aligned w900 title (NOT centered) — match Capacitor pattern
-        // untuk content screens (beda dari auth screens yang centered).
-        title: const Text(
-          'Detail Pengumuman',
-          style: TextStyle(
-            color: Color(0xFF17202A),
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        centerTitle: false,
-        titleSpacing: 0,
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-        children: [
-          // ── Main announcement card ──
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ── Top section: icon + title + decorative dots ──
-                  Stack(
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Megaphone icon dalam rounded-square light-blue
-                          Container(
-                            width: 52,
-                            height: 52,
-                            decoration: BoxDecoration(
-                              color: _primaryLight,
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: const Icon(
-                              Icons.campaign_rounded,
-                              color: _brandBlue,
-                              size: 26,
-                            ),
-                          ),
-                          const SizedBox(width: 14),
-                          // Title w900 ~22 (2 lines max)
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.only(top: 2, right: 28),
-                              child: Text(
-                                notification.title,
-                                maxLines: 3,
-                                style: const TextStyle(
-                                  color: Color(0xFF111111),
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w900,
-                                  height: 1.15,
-                                  letterSpacing: -0.3,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      // Decorative dots di pojok kanan atas
-                      const Positioned(
-                        top: 4,
-                        right: 0,
-                        child: _DecorativeDots(),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 18),
-                  // ── Meta row: relative time + absolute date ──
-                  Wrap(
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    spacing: 10,
-                    runSpacing: 6,
-                    children: [
-                      _MetaItem(
-                        icon: Icons.access_time_rounded,
-                        text: formatRelativeTime(notification.createdAt),
-                      ),
-                      Container(
-                        height: 12,
-                        width: 1,
-                        color: const Color(0xFFE5E7EB),
-                      ),
-                      _MetaItem(
-                        icon: Icons.calendar_today_outlined,
-                        text: formatDateTime(notification.createdAt),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  // ── Info box light-blue dengan info icon + body ──
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: _primaryLight,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          width: 28,
-                          height: 28,
-                          decoration: const BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.info_outline_rounded,
-                            color: _brandBlue,
-                            size: 16,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            notification.body,
-                            style: const TextStyle(
-                              color: Color(0xFF334155),
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              height: 1.55,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  // ── Divider dengan center paw icon ──
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Divider(color: Color(0xFFE5E7EB), height: 1),
-                      ),
-                      Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 10),
-                        width: 32,
-                        height: 32,
-                        decoration: const BoxDecoration(
-                          color: _primaryLight,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.pets_rounded,
-                          color: _brandBlue,
-                          size: 16,
-                        ),
-                      ),
-                      const Expanded(
-                        child: Divider(color: Color(0xFFE5E7EB), height: 1),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  // ── Closing message + signature ──
-                  const Text(
-                    'Terima kasih atas perhatian dan kerjasamanya.',
-                    style: TextStyle(
-                      color: Color(0xFF6B7280),
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w600,
-                      height: 1.5,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Natalo Petshop',
-                    style: TextStyle(
-                      color: Color(0xFF111111),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ],
+      backgroundColor: _pageBg,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _AnnouncementHeader(onBack: () => Navigator.maybePop(context)),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                child: _AnnouncementCard(notification: notification),
               ),
             ),
-          ),
-          const SizedBox(height: 20),
-          // ── Solid pill button "Mengerti" ──
-          SizedBox(
-            height: 54,
-            child: ElevatedButton.icon(
-              onPressed: () {
+            _AnnouncementBottomActions(
+              onPrimary: () async {
+                AppHaptics.tap();
+                await _markAsRead();
+                if (context.mounted) Navigator.maybePop(context);
+              },
+              onSecondary: () {
                 AppHaptics.tap();
                 Navigator.maybePop(context);
               },
-              icon: const Icon(Icons.check_rounded, size: 20),
-              label: const Text(
-                'Mengerti',
-                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AnnouncementHeader extends StatelessWidget {
+  final VoidCallback onBack;
+
+  const _AnnouncementHeader({required this.onBack});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 64,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: _border)),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: onBack,
+            icon: const Icon(
+              Icons.arrow_back_rounded,
+              color: _textPrimary,
+              size: 27,
+            ),
+          ),
+          const SizedBox(width: 4),
+          const Expanded(
+            child: Text(
+              'Detail Pengumuman',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: _textPrimary,
+                fontSize: 21,
+                fontWeight: FontWeight.w900,
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AnnouncementCard extends StatelessWidget {
+  final AppNotification notification;
+
+  const _AnnouncementCard({required this.notification});
+
+  @override
+  Widget build(BuildContext context) {
+    final body = notification.body.trim().isEmpty
+        ? (notification.shortDescription ?? '').trim()
+        : notification.body.trim();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: _border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _AnnouncementTitleSection(notification: notification),
+          const SizedBox(height: 20),
+          const Divider(color: _border),
+          const SizedBox(height: 20),
+          Text(
+            body.isEmpty
+                ? 'Pengumuman dari Natalo Petshop belum memiliki isi lengkap.'
+                : body,
+            style: const TextStyle(
+              color: Color(0xFF1D2939),
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+              height: 1.58,
+            ),
+          ),
+          _ImportantInfo(notification: notification),
+          const SizedBox(height: 22),
+          const Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(text: 'Salam hangat,\n'),
+                TextSpan(
+                  text: 'Natalo Petshop',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
+              ],
+            ),
+            style: TextStyle(
+              color: Color(0xFF1D2939),
+              fontSize: 16,
+              height: 1.5,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          _InfoNote(notification: notification),
+        ],
+      ),
+    );
+  }
+}
+
+class _AnnouncementTitleSection extends StatelessWidget {
+  final AppNotification notification;
+
+  const _AnnouncementTitleSection({required this.notification});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 68,
+          height: 68,
+          decoration: BoxDecoration(
+            color: const Color(0xFFE8F8F0),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: const Icon(
+            Icons.campaign_rounded,
+            color: _announcementGreen,
+            size: 34,
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8F8F0),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  _categoryLabel(notification),
+                  style: const TextStyle(
+                    color: _announcementGreen,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                notification.title,
+                style: const TextStyle(
+                  color: _textPrimary,
+                  fontSize: 23,
+                  fontWeight: FontWeight.w900,
+                  height: 1.18,
+                  letterSpacing: -0.35,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 9,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  _MetaChip(
+                    icon: Icons.calendar_today_rounded,
+                    text: formatTanggal(notification.createdAt),
+                  ),
+                  const Text(
+                    '•',
+                    style: TextStyle(
+                      color: Color(0xFF98A2B3),
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  _MetaChip(
+                    icon: Icons.access_time_rounded,
+                    text: _formatClock(notification.createdAt),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MetaChip extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _MetaChip({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 15, color: _textSecondary),
+        const SizedBox(width: 5),
+        Text(
+          text,
+          style: const TextStyle(
+            color: _textSecondary,
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ImportantInfo extends StatelessWidget {
+  final AppNotification notification;
+
+  const _ImportantInfo({required this.notification});
+
+  @override
+  Widget build(BuildContext context) {
+    final title = notification.importantTitle?.trim();
+    final value = notification.importantValue?.trim();
+    final description = notification.importantDescription?.trim();
+
+    if ((title == null || title.isEmpty) &&
+        (value == null || value.isEmpty) &&
+        (description == null || description.isEmpty)) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 22),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF0FAF5),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: const Color(0xFFDDF7EA)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 46,
+              height: 46,
+              decoration: const BoxDecoration(
+                color: Color(0xFFDDF7EA),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.info_rounded,
+                color: _announcementGreen,
+                size: 25,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (title != null && title.isNotEmpty)
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: _announcementGreen,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  if (value != null && value.isNotEmpty) ...[
+                    const SizedBox(height: 7),
+                    Text(
+                      value,
+                      style: const TextStyle(
+                        color: _textPrimary,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                  if (description != null && description.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      description,
+                      style: const TextStyle(
+                        color: _textSecondary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoNote extends StatelessWidget {
+  final AppNotification notification;
+
+  const _InfoNote({required this.notification});
+
+  @override
+  Widget build(BuildContext context) {
+    final note = notification.infoNote?.trim();
+    if (note == null || note.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 20),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEFF6FF),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFDCEBFF)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: const BoxDecoration(
+                color: Color(0xFFDCEBFF),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.info_outline_rounded,
+                color: _brandBlue,
+                size: 21,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                note,
+                style: const TextStyle(
+                  color: Color(0xFF0B4DBA),
+                  fontSize: 14,
+                  height: 1.45,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AnnouncementBottomActions extends StatelessWidget {
+  final VoidCallback onPrimary;
+  final VoidCallback onSecondary;
+
+  const _AnnouncementBottomActions({
+    required this.onPrimary,
+    required this.onSecondary,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.paddingOf(context).bottom;
+    return Container(
+      padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + bottom),
+      decoration: BoxDecoration(
+        color: _pageBg,
+        border: const Border(top: BorderSide(color: _border)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 18,
+            offset: const Offset(0, -6),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: double.infinity,
+            height: 54,
+            child: ElevatedButton(
+              onPressed: onPrimary,
               style: ElevatedButton.styleFrom(
                 backgroundColor: _brandBlue,
                 foregroundColor: Colors.white,
@@ -255,6 +493,35 @@ class AnnouncementDetailScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
+              child: const Text(
+                'Mengerti',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: OutlinedButton(
+              onPressed: onSecondary,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _brandBlue,
+                side: const BorderSide(color: _brandBlue, width: 1.2),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              child: const Text(
+                'Cek Info Lainnya',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
             ),
           ),
         ],
@@ -263,82 +530,14 @@ class AnnouncementDetailScreen extends StatelessWidget {
   }
 }
 
-/// Decorative dots di pojok kanan atas card — visual flair match Capacitor.
-class _DecorativeDots extends StatelessWidget {
-  const _DecorativeDots();
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 50,
-      height: 50,
-      child: Stack(
-        children: [
-          Positioned(
-            top: 6,
-            right: 4,
-            child: _Dot(size: 6, color: _brandBlue.withValues(alpha: 0.18)),
-          ),
-          Positioned(
-            top: 18,
-            right: 18,
-            child: _Dot(
-              size: 4,
-              color: const Color(0xFFF59E0B).withValues(alpha: 0.65),
-            ),
-          ),
-          Positioned(
-            top: 2,
-            right: 22,
-            child: _Dot(size: 3, color: _primaryDark.withValues(alpha: 0.4)),
-          ),
-          Positioned(
-            top: 28,
-            right: 8,
-            child: _Dot(size: 5, color: _brandBlue.withValues(alpha: 0.10)),
-          ),
-        ],
-      ),
-    );
-  }
+String _categoryLabel(AppNotification notification) {
+  final category = notification.category?.trim();
+  if (category != null && category.isNotEmpty) return category;
+  return 'Pengumuman';
 }
 
-class _Dot extends StatelessWidget {
-  final double size;
-  final Color color;
-  const _Dot({required this.size, required this.color});
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-    );
-  }
-}
-
-/// Meta item icon + text (jam relative / date absolute) — pakai primary color.
-class _MetaItem extends StatelessWidget {
-  final IconData icon;
-  final String text;
-
-  const _MetaItem({required this.icon, required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, color: _brandBlue, size: 14),
-        const SizedBox(width: 6),
-        Text(
-          text,
-          style: const TextStyle(
-            color: _brandBlue,
-            fontSize: 12.5,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ],
-    );
-  }
+String _formatClock(DateTime date) {
+  final hh = date.hour.toString().padLeft(2, '0');
+  final mm = date.minute.toString().padLeft(2, '0');
+  return '$hh:$mm';
 }

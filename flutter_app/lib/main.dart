@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'firebase_options.dart';
+import 'models/app_notification.dart';
 import 'models/cart_item.dart';
 import 'models/member_profile.dart';
 import 'models/product.dart';
 import 'screens/account_security_screen.dart';
 import 'screens/account_settings_screen.dart';
 import 'screens/all_brands_screen.dart';
+import 'screens/announcement_detail_screen.dart';
 import 'screens/cart_screen.dart';
 import 'screens/checkout_screen.dart';
 import 'screens/feed_screen.dart';
@@ -36,6 +38,7 @@ import 'screens/notifications_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/product_detail_screen.dart';
 import 'screens/register_screen.dart';
+import 'screens/static_info_screen.dart';
 import 'state/cart_store.dart';
 import 'state/feed_local_store.dart';
 import 'state/member_store.dart';
@@ -232,6 +235,11 @@ class NataloPetshopApp extends StatelessWidget {
                 CheckoutScreen(items: settings.arguments as List<CartItem>),
               '/checkout' => const CheckoutScreen(),
               '/notifications' => const NotificationsScreen(),
+              '/announcement-detail'
+                  when settings.arguments is AppNotification =>
+                AnnouncementDetailScreen(
+                  notification: settings.arguments as AppNotification,
+                ),
               '/settings/notifications' =>
                 const NotificationPreferencesScreen(),
               // Alias — beberapa caller pakai path baru, keep both untuk
@@ -239,9 +247,23 @@ class NataloPetshopApp extends StatelessWidget {
               '/notifications/preferences' =>
                 const NotificationPreferencesScreen(),
               '/account/settings' => const AccountSettingsScreen(),
+              '/account/privacy' => const StaticInfoScreen.accountPrivacy(),
               '/account/security' => const AccountSecurityScreen(),
               '/wishlist' => const WishlistScreen(),
+              '/bantuan' => const HelpCenterScreen(),
               '/help' => const HelpCenterScreen(),
+              '/tentang-kami' => const StaticInfoScreen.about(),
+              '/tentang-natalo' => const StaticInfoScreen.about(),
+              '/about' => const StaticInfoScreen.about(),
+              '/cara-pemesanan' => const StaticInfoScreen.orderGuide(),
+              '/order-guide' => const StaticInfoScreen.orderGuide(),
+              '/syarat-ketentuan' => const StaticInfoScreen.terms(),
+              '/terms' => const StaticInfoScreen.terms(),
+              '/kebijakan-privasi' => const StaticInfoScreen.privacyPolicy(),
+              '/privacy-policy' => const StaticInfoScreen.privacyPolicy(),
+              '/kebijakan-pengembalian' =>
+                const StaticInfoScreen.returnPolicy(),
+              '/return-policy' => const StaticInfoScreen.returnPolicy(),
               '/feed' => const FeedScreen(),
               '/member' => const MemberScreen(),
               '/member/login' => const LoginScreen(),

@@ -12,7 +12,6 @@ import '../state/member_store.dart';
 import '../state/settings_store.dart';
 import '../utils/app_review.dart';
 import '../utils/haptics.dart';
-import '../utils/in_app_browser.dart';
 import '../widgets/app_toast.dart';
 
 const _brandBlue = Color(0xFF0B7FEA);
@@ -87,7 +86,7 @@ class _SettingsContent extends StatelessWidget {
               icon: Icons.privacy_tip_outlined,
               title: 'Privasi Akun',
               subtitle: 'Pengaturan data dan privasi akun',
-              onTap: () => AppInAppBrowser.openKebijakanPrivasi(context),
+              onTap: () => Navigator.pushNamed(context, '/account/privacy'),
             ),
           ],
         ),
@@ -157,41 +156,37 @@ class _SettingsContent extends StatelessWidget {
               icon: Icons.pets_rounded,
               title: 'Tentang Natalo',
               subtitle: 'Kenali Natalo Petshop',
-              onTap: () => AppInAppBrowser.openTentangNatalo(context),
+              onTap: () => Navigator.pushNamed(context, '/about'),
             ),
             SettingsListItem(
               icon: Icons.help_outline_rounded,
               title: 'Pusat Bantuan',
               subtitle: 'FAQ, cara order, dan kontak toko',
-              onTap: () => AppInAppBrowser.openBantuan(context),
+              onTap: () => Navigator.pushNamed(context, '/help'),
             ),
             SettingsListItem(
               icon: Icons.checklist_rounded,
               title: 'Cara Pemesanan',
               subtitle: 'Panduan order step-by-step',
-              onTap: () => AppInAppBrowser.openCaraPemesanan(context),
+              onTap: () => Navigator.pushNamed(context, '/order-guide'),
             ),
             SettingsListItem(
               icon: Icons.description_outlined,
               title: 'Syarat & Ketentuan',
               subtitle: 'Ketentuan penggunaan layanan',
-              onTap: () => AppInAppBrowser.open(
-                context,
-                url: '/syarat-ketentuan',
-                title: 'Syarat & Ketentuan',
-              ),
+              onTap: () => Navigator.pushNamed(context, '/terms'),
             ),
             SettingsListItem(
               icon: Icons.privacy_tip_outlined,
               title: 'Kebijakan Privasi',
               subtitle: 'Cara kami menjaga data kamu',
-              onTap: () => AppInAppBrowser.openKebijakanPrivasi(context),
+              onTap: () => Navigator.pushNamed(context, '/privacy-policy'),
             ),
             SettingsListItem(
               icon: Icons.assignment_return_outlined,
               title: 'Kebijakan Pengembalian',
               subtitle: 'Syarat retur dan refund',
-              onTap: () => AppInAppBrowser.openKebijakanPengembalian(context),
+              onTap: () => Navigator.pushNamed(context, '/return-policy'),
             ),
             SettingsListItem(
               icon: Icons.star_border_rounded,

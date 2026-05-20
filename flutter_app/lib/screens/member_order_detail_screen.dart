@@ -320,8 +320,13 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
                       : OrderTimelineType.delivery,
                 ),
                 const SizedBox(height: 12),
-                // Payment action / proof / cancel — muncul di atas konten
-                // utama supaya CTA bayar/upload bukti/batal lebih obvious.
+                // Core order detail first. Ini mencegah layar terlihat seperti
+                // blank card besar ketika payment/proof section gagal memuat
+                // atau belum diperlukan oleh status order tertentu.
+                _OrderItemsCard(order: order),
+                const SizedBox(height: 12),
+                _PaymentSummary(order: order),
+                const SizedBox(height: 12),
                 if (_shouldShowPaymentAction(order)) ...[
                   _PaymentActionCard(order: order),
                   const SizedBox(height: 12),
@@ -337,12 +342,9 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
                   ),
                   const SizedBox(height: 12),
                 ],
-                // Self-pickup layout: Items → Pickup info → Pickup code →
-                // Google Maps button → Payment summary → Ready notice.
-                // Setiap konsep = 1 card terpisah supaya tidak ada blank
-                // space besar dari card raksasa yang menampung semuanya.
-                _OrderItemsCard(order: order),
-                const SizedBox(height: 12),
+                // Self-pickup layout: Pickup info → Pickup code →
+                // Google Maps button → Ready notice. Produk + payment summary
+                // sudah muncul di atas supaya detail utama selalu terlihat.
                 if (order.isSelfPickup) ...[
                   _PickupInfoCard(order: order),
                   const SizedBox(height: 12),
@@ -354,9 +356,7 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
                   _PickupGoogleMapsButton(order: order),
                   const SizedBox(height: 12),
                 ],
-                _PaymentSummary(order: order),
                 if (order.isSelfPickup && _isReadyForPickup(order)) ...[
-                  const SizedBox(height: 12),
                   const _ReadyPickupNoticeCard(),
                 ],
               ],
