@@ -97,8 +97,17 @@ export function PromoTokoForm({ initial, excludeId }: Props) {
 
   // ── Form state ──────────────────────────────────────────────
   const [name, setName] = useState(data.name);
-  const [startsAt, setStartsAt] = useState(data.startsAt);
-  const [endsAt, setEndsAt] = useState(data.endsAt);
+  // Default startsAt = sekarang (untuk mode create). Format
+  // datetime-local: YYYY-MM-DDTHH:MM (local time, no TZ suffix).
+  // Tanpa default, admin sering set startsAt future tanpa sadar →
+  // promo "Akan Datang" → tidak tampil sebagai diskon aktif.
+  const [startsAt, setStartsAt] = useState(
+    data.startsAt || (isEdit ? "" : nowDateTimeLocal()),
+  );
+  // Default endsAt = 7 hari dari sekarang (typical mid-term campaign).
+  const [endsAt, setEndsAt] = useState(
+    data.endsAt || (isEdit ? "" : sevenDaysFromNowDateTimeLocal()),
+  );
   const [items, setItems] = useState<PromoItem[]>(data.items);
 
   // Product picker modal state
@@ -985,4 +994,23 @@ function ProductPickerModal({
       </div>
     </div>
   );
+}
+
+// ── Helpers ──────────────────────────────────────────────────────
+
+/** Convert Date ke string format datetime-local input (YYYY-MM-DDTHH:MM
+ *  in LOCAL time, no timezone suffix). Pakai untuk default value form. */
+function toDateTimeLocalString(d: Date): string {
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+function nowDateTimeLocal(): string {
+  return toDateTimeLocalString(new Date());
+}
+
+function sevenDaysFromNowDateTimeLocal(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 7);
+  return toDateTimeLocalString(d);
 }
