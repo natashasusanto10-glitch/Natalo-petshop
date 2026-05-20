@@ -50,10 +50,28 @@ export type StoreProduct = {
   categoryId?: string | null;
   categorySlug?: string | null;
   voucherPreview?: ProductVoucherPreview | null;
+  /** ISO timestamp — kalau di-set, admin explicit tag produk ini Flash
+   *  Sale sampai waktu ini. SELALU masuk Flash Sale section apapun
+   *  discount %-nya, dengan countdown. Kalau null, masuk Flash Sale
+   *  hanya kalau discount >= FLASH_SALE_MIN_DISCOUNT_PERCENT (auto). */
+  flashSaleEndsAt?: string | null;
   // hanya diisi oleh getProductBySlug
   variantAttrs?: StoreVariantAttribute[];
   variants?: StoreProductVariant[];
 };
+
+/**
+ * Threshold minimum discount % untuk auto-include produk ke Flash Sale
+ * section di home (tanpa admin explicit tag). Default 20% — match
+ * konvensi Tokopedia/Shopee Flash Sale. Override via env atau bump
+ * constant kalau perlu.
+ *
+ * Logic 3-tier:
+ *   1. flashSaleEndsAt IS NOT NULL AND > now() → SELALU masuk (countdown)
+ *   2. flashSaleEndsAt IS NULL AND discount >= threshold → masuk (no countdown)
+ *   3. flashSaleEndsAt expired (< now) → auto-exclude
+ */
+export const FLASH_SALE_MIN_DISCOUNT_PERCENT = 20;
 
 function normalizeProductWeight(name: string, slug: string, weightGram: number) {
   const text = `${name} ${slug}`.toLowerCase();
@@ -105,6 +123,7 @@ function mapProductListRecord(p: ProductListRecord): StoreProduct {
       categoryId: p.category?.id ?? null,
       categorySlug: p.category?.slug ?? null,
       voucherPreview: null,
+      flashSaleEndsAt: p.flashSaleEndsAt?.toISOString() ?? null,
     };
   }
 
@@ -126,6 +145,7 @@ function mapProductListRecord(p: ProductListRecord): StoreProduct {
     categoryId: p.category?.id ?? null,
     categorySlug: p.category?.slug ?? null,
     voucherPreview: null,
+    flashSaleEndsAt: p.flashSaleEndsAt?.toISOString() ?? null,
   };
 }
 

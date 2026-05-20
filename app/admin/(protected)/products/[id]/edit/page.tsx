@@ -44,6 +44,13 @@ export default async function AdminProductEditPage({
     const stock = parseInt(String(formData.get("stock") || "0"), 10);
     const weightGram = parseInt(String(formData.get("weightGram") || "500"), 10);
 
+    // Flash Sale explicit end time. Input HTML datetime-local return
+    // string format "YYYY-MM-DDTHH:MM" tanpa timezone — interpret as
+    // local time, serialize ke UTC saat save. Empty string = NULL
+    // (admin tidak set / clear field) → auto-include via threshold.
+    const flashSaleEndsAtRaw = String(formData.get("flashSaleEndsAt") || "").trim();
+    const flashSaleEndsAt = flashSaleEndsAtRaw ? new Date(flashSaleEndsAtRaw) : null;
+
     const images = formData
       .getAll("images")
       .map((v) => String(v).trim())
@@ -65,6 +72,7 @@ export default async function AdminProductEditPage({
       data: {
         name, description, price, discountPrice, stock, weightGram, imageUrl, gallery, categoryId,
         brandId,
+        flashSaleEndsAt,
         // User assign manual = bukan auto lagi
         brandAutoAssigned: false,
       },
@@ -119,6 +127,37 @@ export default async function AdminProductEditPage({
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Stok" name="stock" type="number" defaultValue={String(product.stock)} />
           <Field label="Berat (gram)" name="weightGram" type="number" defaultValue={String(product.weightGram)} />
+        </div>
+
+        {/* Flash Sale explicit end time. Kalau di-set, produk ini SELALU
+            masuk Flash Sale section di home apapun discount %-nya, dengan
+            countdown timer. Kalau kosong, produk masuk Flash Sale section
+            hanya kalau discount >= 20% (auto-include). */}
+        <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+          <label className="block text-sm font-bold text-amber-900">
+            ⚡ Flash Sale berakhir (opsional)
+          </label>
+          <p className="mt-1 text-xs text-amber-800">
+            Set kalau ini produk Flash Sale dengan countdown timer. Setelah
+            waktu ini, produk otomatis keluar dari Flash Sale section.
+            Kosongkan kalau produk tidak Flash Sale (diskon ≥20% tetap
+            otomatis masuk).
+          </p>
+          <input
+            type="datetime-local"
+            name="flashSaleEndsAt"
+            defaultValue={
+              product.flashSaleEndsAt
+                ? new Date(
+                    product.flashSaleEndsAt.getTime() -
+                      product.flashSaleEndsAt.getTimezoneOffset() * 60000,
+                  )
+                    .toISOString()
+                    .slice(0, 16)
+                : ""
+            }
+            className="mt-2 block w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-sm outline-none focus:border-amber-600"
+          />
         </div>
 
         <MultiImageUpload

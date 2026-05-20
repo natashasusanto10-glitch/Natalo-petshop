@@ -4,7 +4,12 @@ import Link from "next/link";
 import Image from "next/image";
 import type { OrderStatus } from "@prisma/client";
 import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
-import { getProducts, getProductsCount, type StoreProduct } from "@/lib/products";
+import {
+  FLASH_SALE_MIN_DISCOUNT_PERCENT,
+  getProducts,
+  getProductsCount,
+  type StoreProduct,
+} from "@/lib/products";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
 import { BrandChoiceSection } from "@/components/home/BrandChoiceSection";
@@ -495,21 +500,54 @@ function discountPercent(price: number, discountPrice: number | null) {
 
 async function getFlashSaleProducts(limit = 7): Promise<StoreProduct[]> {
   try {
+    const now = new Date();
     const products = await prisma.product.findMany({
       where: {
         isActive: true,
         price: { gt: 0 },
         discountPrice: { not: null },
+        // 3-tier eligibility:
+        // - flashSaleEndsAt > now() → explicit Flash Sale (any discount %)
+        // - flashSaleEndsAt IS NULL → auto-include (filter by % di .filter())
+        // - flashSaleEndsAt expired → exclude (SQL filter di sini)
+        OR: [
+          { flashSaleEndsAt: null },
+          { flashSaleEndsAt: { gt: now } },
+        ],
       },
-      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+      orderBy: [
+        { flashSaleEndsAt: { sort: "asc", nulls: "last" } }, // expiring first
+        { updatedAt: "desc" },
+        { createdAt: "desc" },
+      ],
       include: {
         category: { select: { slug: true } },
       },
     });
 
     return products
-      .filter((product) => discountPercent(product.price, product.discountPrice) > 20)
+      .filter((product) => {
+        // Tier 1: explicit admin tag → always include (any discount %)
+        if (product.flashSaleEndsAt && product.flashSaleEndsAt > now) {
+          return true;
+        }
+        // Tier 2: auto-include kalau discount memenuhi threshold
+        return (
+          discountPercent(product.price, product.discountPrice) >=
+          FLASH_SALE_MIN_DISCOUNT_PERCENT
+        );
+      })
       .sort((a, b) => {
+        // Explicit Flash Sale (punya endsAt) di-prioritize ke depan,
+        // sorted by earliest endsAt (urgent first).
+        const aExplicit = a.flashSaleEndsAt;
+        const bExplicit = b.flashSaleEndsAt;
+        if (aExplicit && bExplicit) {
+          return aExplicit.getTime() - bExplicit.getTime();
+        }
+        if (aExplicit) return -1;
+        if (bExplicit) return 1;
+        // Auto-included produk sorted by discount % desc.
         const discountDiff =
           discountPercent(b.price, b.discountPrice) -
           discountPercent(a.price, a.discountPrice);
@@ -533,6 +571,7 @@ async function getFlashSaleProducts(limit = 7): Promise<StoreProduct[]> {
         avgRating: product.avgRating,
         reviewCount: product.reviewCount,
         categorySlug: product.category?.slug ?? null,
+        flashSaleEndsAt: product.flashSaleEndsAt?.toISOString() ?? null,
       }));
   } catch {
     return [];

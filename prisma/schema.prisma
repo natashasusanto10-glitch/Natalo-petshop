@@ -188,6 +188,12 @@ model Product {
   price             Int
   memberPrice       Int?
   discountPrice     Int?
+  // Flash Sale explicit timing — kalau di-set, produk ini WAJIB masuk
+  // Flash Sale section di home apapun discount %-nya (admin explicit tag).
+  // Kalau null, produk masuk Flash Sale section HANYA kalau discount >=
+  // FLASH_SALE_MIN_DISCOUNT_PERCENT (default 20%). Saat flashSaleEndsAt <
+  // now, query otomatis exclude produk dari section (auto-cleanup).
+  flashSaleEndsAt   DateTime?
   stock             Int                @default(0)
   weightGram        Int                @default(500)
   imageUrl          String?
