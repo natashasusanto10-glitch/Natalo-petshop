@@ -116,7 +116,20 @@ export async function POST(
         isAdminOfficial: isAdmin,
       },
       include: {
-        author: { select: { id: true, name: true, role: true } },
+        // BUG FIX: tambah profilePhotoUrl ke author select. Sebelumnya
+        // POST response author hanya {id, name, role} → Flutter parse
+        // author dengan profilePhotoUrl=null → avatar fallback ke
+        // initial saat user post komentar baru. GET listing sudah benar
+        // (lihat lib/feed/queries.ts mapFeedComment), bug cuma di
+        // create-then-return path.
+        author: {
+          select: {
+            id: true,
+            name: true,
+            role: true,
+            profilePhotoUrl: true,
+          },
+        },
       },
     });
     // Count both top-level comments and replies so the drawer/action rail
@@ -163,6 +176,10 @@ export async function POST(
         id: result.author.id,
         name: result.author.name,
         role: (result.author.role === "ADMIN" ? "ADMIN" : "CUSTOMER") as "ADMIN" | "CUSTOMER",
+        // Include profilePhotoUrl di response — match shape dengan GET
+        // listing supaya Flutter dapat tampil avatar foto user yang
+        // benar saat comment baru pertama kali muncul di drawer.
+        profilePhotoUrl: result.author.profilePhotoUrl ?? null,
       },
       viewerLiked: false,
     },
