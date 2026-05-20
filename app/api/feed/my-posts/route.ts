@@ -1,7 +1,8 @@
 /**
  * GET /api/feed/my-posts?status=all|pending|active|rejected
  *
- * Return list postingan video user yang sedang login (kind=COMMUNITY).
+ * Return list postingan user yang sedang login (video COMMUNITY + foto
+ * PHOTO_CAROUSEL).
  * Match perilaku PWA `app/akun/postingan-saya/page.tsx` — dipakai oleh
  * Flutter mobile app untuk render screen "Postingan Saya".
  *
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
   const baseWhere: Prisma.FeedPostWhereInput = {
     authorId: session.sub,
     authorRole: "CUSTOMER",
-    kind: "COMMUNITY",
+    kind: { in: ["COMMUNITY", "PHOTO_CAROUSEL"] },
     deletedAt: null,
     status: { in: [...MY_FEED_VISIBLE_STATUSES] },
   };
@@ -55,44 +56,113 @@ export async function GET(request: NextRequest) {
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       select: {
         id: true,
+        kind: true,
         title: true,
         description: true,
         thumbnailUrl: true,
         videoGuid: true,
         videoUrl: true,
         videoDurationSec: true,
+        videoWidth: true,
+        videoHeight: true,
         createdAt: true,
         status: true,
         moderationNote: true,
         likeCount: true,
         commentCount: true,
         shareCount: true,
+        viewCount: true,
+        media: {
+          orderBy: { sortOrder: "asc" },
+          select: {
+            id: true,
+            mediaType: true,
+            url: true,
+            thumbnailUrl: true,
+            width: true,
+            height: true,
+            sortOrder: true,
+          },
+        },
       },
     }),
     prisma.feedPost.count({ where: baseWhere }),
   ]);
 
   return NextResponse.json({
-    posts: rawPosts.map((post) => ({
-      id: post.id,
-      title: post.title,
-      description: post.description,
-      // Sign Bunny CDN URLs supaya kompatibel dengan token authentication
-      // (kalau diaktifkan). Tanpa env var, signBunnyUrl return URL apa adanya.
-      thumbnailUrl:
+    posts: rawPosts.map((post) => {
+      const signedMedia = post.media.map((item) => ({
+        id: item.id,
+        mediaType: item.mediaType,
+        mediaUrl: signBunnyUrl(item.url) ?? item.url,
+        thumbnailUrl:
+          signBunnyUrl(item.thumbnailUrl ?? item.url) ??
+          item.thumbnailUrl ??
+          item.url,
+        width: item.width,
+        height: item.height,
+        sortOrder: item.sortOrder,
+      }));
+      const isPhotoPost = post.kind === "PHOTO_CAROUSEL";
+      const firstMedia = signedMedia[0] ?? null;
+      const videoUrl = signBunnyUrl(post.videoUrl) ?? null;
+      const videoThumbnailUrl =
         signBunnyUrl(
           post.thumbnailUrl ??
             (post.videoGuid ? bunnyThumbnailUrl(post.videoGuid) || null : null),
-        ) ?? null,
-      videoUrl: signBunnyUrl(post.videoUrl) ?? null,
-      videoDurationSec: post.videoDurationSec,
-      createdAt: post.createdAt.toISOString(),
-      status: post.status,
-      moderationNote: post.moderationNote,
-      likeCount: post.likeCount,
-      commentCount: post.commentCount,
-      shareCount: post.shareCount,
-    })),
+        ) ?? null;
+      const mediaItems = isPhotoPost
+        ? signedMedia
+        : videoUrl
+          ? [
+              {
+                id: `${post.id}-video`,
+                mediaType: "video",
+                mediaUrl: videoUrl,
+                thumbnailUrl: videoThumbnailUrl,
+                durationSeconds: post.videoDurationSec,
+                width: post.videoWidth,
+                height: post.videoHeight,
+                sortOrder: 0,
+              },
+            ]
+          : [];
+      const type = isPhotoPost
+        ? signedMedia.length > 1
+          ? "carousel"
+          : "photo"
+        : "video";
+
+      return {
+        id: post.id,
+        kind: post.kind,
+        type,
+        title: post.title,
+        description: post.description,
+        // Thumbnail adalah cover grid, bukan sumber deteksi tipe media.
+        thumbnailUrl: isPhotoPost
+          ? firstMedia?.thumbnailUrl ?? firstMedia?.mediaUrl ?? null
+          : videoThumbnailUrl,
+        mediaUrl: isPhotoPost ? firstMedia?.mediaUrl ?? "" : videoUrl ?? "",
+        videoUrl,
+        mediaItems,
+        videoDurationSec: post.videoDurationSec,
+        durationSec: post.videoDurationSec,
+        aspectWidth: isPhotoPost
+          ? firstMedia?.width ?? 1
+          : post.videoWidth ?? 9,
+        aspectHeight: isPhotoPost
+          ? firstMedia?.height ?? 1
+          : post.videoHeight ?? 16,
+        createdAt: post.createdAt.toISOString(),
+        status: post.status,
+        moderationNote: post.moderationNote,
+        likeCount: post.likeCount,
+        commentCount: post.commentCount,
+        shareCount: post.shareCount,
+        viewCount: post.viewCount,
+      };
+    }),
     filter,
     totalCount,
   });

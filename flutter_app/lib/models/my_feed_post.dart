@@ -1,5 +1,47 @@
 enum MyFeedPostStatus { pending, active, rejected, unknown }
 
+enum MyFeedPostType { photo, carousel, video }
+
+enum MyFeedMediaType { image, video }
+
+class MyFeedMediaItem {
+  final String id;
+  final String mediaUrl;
+  final String? thumbnailUrl;
+  final MyFeedMediaType mediaType;
+  final int? durationSeconds;
+
+  const MyFeedMediaItem({
+    required this.id,
+    required this.mediaUrl,
+    this.thumbnailUrl,
+    required this.mediaType,
+    this.durationSeconds,
+  });
+
+  factory MyFeedMediaItem.fromJson(Map<String, dynamic> json, int index) {
+    final mediaUrl = _string(json['mediaUrl']) ??
+        _string(json['url']) ??
+        _string(json['videoUrl']) ??
+        '';
+    final rawType = (_string(json['mediaType']) ?? '').toLowerCase();
+    final mediaType = rawType == 'video' || _looksLikeVideoUrl(mediaUrl)
+        ? MyFeedMediaType.video
+        : MyFeedMediaType.image;
+    return MyFeedMediaItem(
+      id: _string(json['id']) ?? 'media-$index',
+      mediaUrl: mediaUrl,
+      thumbnailUrl: _string(json['thumbnailUrl']),
+      mediaType: mediaType,
+      durationSeconds: _int(
+        json['durationSeconds'] ??
+            json['durationSec'] ??
+            json['videoDurationSec'],
+      ),
+    );
+  }
+}
+
 extension MyFeedPostStatusX on MyFeedPostStatus {
   String get label {
     return switch (this) {
@@ -27,6 +69,8 @@ class MyFeedPost {
   final String? caption;
   final String mediaUrl;
   final String? thumbnailUrl;
+  final MyFeedPostType type;
+  final List<MyFeedMediaItem> mediaItems;
   final String? blurhash;
   final int durationSec;
   final int aspectWidth;
@@ -46,6 +90,8 @@ class MyFeedPost {
     this.caption,
     required this.mediaUrl,
     this.thumbnailUrl,
+    this.type = MyFeedPostType.video,
+    this.mediaItems = const [],
     this.blurhash,
     this.durationSec = 0,
     this.aspectWidth = 9,
@@ -66,6 +112,17 @@ class MyFeedPost {
   String? get title => caption;
   String? get description => caption;
   int get shareCount => 0;
+  bool get isVideo => type == MyFeedPostType.video;
+  bool get isCarousel => type == MyFeedPostType.carousel;
+  bool get isPhoto => type == MyFeedPostType.photo;
+  String get previewMediaUrl {
+    if (mediaUrl.trim().isNotEmpty) return mediaUrl;
+    for (final item in mediaItems) {
+      if (item.mediaUrl.isNotEmpty) return item.mediaUrl;
+    }
+    return '';
+  }
+
   String get durationLabel {
     final total = durationSec.clamp(0, 999999);
     final minutes = total ~/ 60;
@@ -83,19 +140,44 @@ class MyFeedPost {
   }
 
   factory MyFeedPost.fromJson(Map<String, dynamic> json) {
+    final rawMediaItems = json['mediaItems'] ?? json['media'];
+    final mediaItems = rawMediaItems is List
+        ? rawMediaItems
+            .asMap()
+            .entries
+            .where((entry) => entry.value is Map<String, dynamic>)
+            .map(
+              (entry) => MyFeedMediaItem.fromJson(
+                entry.value as Map<String, dynamic>,
+                entry.key,
+              ),
+            )
+            .where((item) => item.mediaUrl.isNotEmpty)
+            .toList()
+        : <MyFeedMediaItem>[];
+    final mediaUrl = _string(json['mediaUrl']) ??
+        _string(json['videoUrl']) ??
+        (mediaItems.isNotEmpty ? mediaItems.first.mediaUrl : '');
+    final durationSec =
+        _int(json['durationSec'] ?? json['videoDurationSec']) ?? 0;
+    final type = _resolvePostType(json, mediaUrl, mediaItems, durationSec);
     return MyFeedPost(
       id: json['id'] as String,
       slug: json['slug'] as String? ?? json['id'] as String,
-      caption: json['caption'] as String?,
-      mediaUrl:
-          json['mediaUrl'] as String? ?? json['videoUrl'] as String? ?? '',
-      thumbnailUrl: json['thumbnailUrl'] as String?,
+      caption: _string(json['caption']) ??
+          _string(json['title']) ??
+          _string(json['description']),
+      mediaUrl: mediaUrl,
+      thumbnailUrl: _string(json['thumbnailUrl']),
+      type: type,
+      mediaItems: mediaItems,
       blurhash: json['blurhash'] as String?,
-      durationSec: (json['durationSec'] as num?)?.toInt() ?? 0,
+      durationSec: durationSec,
       aspectWidth: (json['aspectWidth'] as num?)?.toInt() ?? 9,
       aspectHeight: (json['aspectHeight'] as num?)?.toInt() ?? 16,
       status: json['status'] as String? ?? 'PENDING_REVIEW',
-      rejectionReason: json['rejectionReason'] as String?,
+      rejectionReason:
+          _string(json['rejectionReason'] ?? json['moderationNote']),
       likeCount: (json['likeCount'] as num?)?.toInt() ?? 0,
       commentCount: (json['commentCount'] as num?)?.toInt() ?? 0,
       viewCount: (json['viewCount'] as num?)?.toInt() ?? 0,
@@ -108,4 +190,61 @@ class MyFeedPost {
 
   factory MyFeedPost.fromApiJson(Map<String, dynamic> json) =>
       MyFeedPost.fromJson(json);
+}
+
+MyFeedPostType _resolvePostType(
+  Map<String, dynamic> json,
+  String mediaUrl,
+  List<MyFeedMediaItem> mediaItems,
+  int durationSec,
+) {
+  final raw = (_string(json['type']) ??
+          _string(json['postType']) ??
+          _string(json['kind']) ??
+          _string(json['mediaType']) ??
+          '')
+      .toUpperCase();
+  if (raw == 'VIDEO' ||
+      raw == 'COMMUNITY' ||
+      raw == 'VIDEO_ONLY' ||
+      raw == 'VIDEO_PRODUCT' ||
+      raw == 'PROMO') {
+    return MyFeedPostType.video;
+  }
+  if (raw == 'CAROUSEL' || raw == 'PHOTO_CAROUSEL') {
+    return mediaItems.length > 1
+        ? MyFeedPostType.carousel
+        : MyFeedPostType.photo;
+  }
+  if (raw == 'PHOTO' || raw == 'IMAGE') return MyFeedPostType.photo;
+
+  if (mediaItems.any((item) => item.mediaType == MyFeedMediaType.video)) {
+    return MyFeedPostType.video;
+  }
+  if (mediaItems.length > 1) return MyFeedPostType.carousel;
+  if (durationSec > 0 || _looksLikeVideoUrl(mediaUrl)) {
+    return MyFeedPostType.video;
+  }
+  return MyFeedPostType.photo;
+}
+
+String? _string(dynamic value) {
+  if (value is String && value.trim().isNotEmpty) return value.trim();
+  return null;
+}
+
+int? _int(dynamic value) {
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value);
+  return null;
+}
+
+bool _looksLikeVideoUrl(String url) {
+  final lower = url.toLowerCase();
+  return lower.endsWith('.mp4') ||
+      lower.endsWith('.mov') ||
+      lower.endsWith('.m4v') ||
+      lower.endsWith('.webm') ||
+      lower.endsWith('.m3u8') ||
+      lower.contains('/video/');
 }

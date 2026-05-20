@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:video_player/video_player.dart';
 
 import '../models/my_feed_post.dart';
 import '../theme/natalo_colors.dart';
@@ -8,8 +9,7 @@ import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_toast.dart';
 
-/// Member Post Detail — preview video thumbnail + caption + stats.
-/// Full video playback masuk ke /feed dengan post highlighted.
+/// Member Post Detail — preview media asli sesuai tipe postingan.
 class MemberPostDetailScreen extends StatelessWidget {
   final MyFeedPost post;
 
@@ -40,47 +40,7 @@ class MemberPostDetailScreen extends StatelessWidget {
       ),
       body: ListView(
         children: [
-          // Video thumbnail / preview
-          AspectRatio(
-            aspectRatio: post.aspectWidth / post.aspectHeight,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                if (post.thumbnailUrl != null && post.thumbnailUrl!.isNotEmpty)
-                  CachedNetworkImage(
-                    imageUrl: post.thumbnailUrl!,
-                    fit: BoxFit.cover,
-                    fadeInDuration: const Duration(milliseconds: 220),
-                    fadeOutDuration: const Duration(milliseconds: 120),
-                    fadeInCurve: Curves.easeOut,
-                    placeholder: (_, __) => Shimmer.fromColors(
-                      baseColor: const Color(0xFF1F2937),
-                      highlightColor: const Color(0xFF374151),
-                      child: Container(color: const Color(0xFF1F2937)),
-                    ),
-                    errorWidget: (_, __, ___) => _placeholderThumb(),
-                  )
-                else
-                  _placeholderThumb(),
-                // Play overlay
-                Center(
-                  child: Container(
-                    width: 64,
-                    height: 64,
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.45),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.play_arrow_rounded,
-                      color: Colors.white,
-                      size: 40,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          _PostMediaPreview(post: post),
           Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -233,8 +193,7 @@ class MemberPostDetailScreen extends StatelessWidget {
                           style: TextStyle(color: NataloColors.danger),
                         ),
                         style: OutlinedButton.styleFrom(
-                          side:
-                              const BorderSide(color: NataloColors.danger),
+                          side: const BorderSide(color: NataloColors.danger),
                         ),
                       ),
                     ),
@@ -258,19 +217,358 @@ class MemberPostDetailScreen extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _placeholderThumb() {
+class _PostMediaPreview extends StatelessWidget {
+  final MyFeedPost post;
+
+  const _PostMediaPreview({required this.post});
+
+  @override
+  Widget build(BuildContext context) {
+    final aspectRatio = _safeAspectRatio(post.aspectWidth, post.aspectHeight);
+
+    return AspectRatio(
+      aspectRatio: aspectRatio,
+      child: switch (post.type) {
+        MyFeedPostType.video => _VideoPreviewSurface(
+            mediaUrl: post.previewMediaUrl,
+            thumbnailUrl: post.thumbnailUrl,
+            aspectRatio: aspectRatio,
+          ),
+        MyFeedPostType.carousel => _CarouselPreviewSurface(
+            post: post,
+            aspectRatio: aspectRatio,
+          ),
+        MyFeedPostType.photo => _ImagePreviewSurface(
+            imageUrl: post.previewMediaUrl,
+            placeholderIcon: Icons.image_outlined,
+          ),
+      },
+    );
+  }
+}
+
+class _CarouselPreviewSurface extends StatefulWidget {
+  final MyFeedPost post;
+  final double aspectRatio;
+
+  const _CarouselPreviewSurface({
+    required this.post,
+    required this.aspectRatio,
+  });
+
+  @override
+  State<_CarouselPreviewSurface> createState() =>
+      _CarouselPreviewSurfaceState();
+}
+
+class _CarouselPreviewSurfaceState extends State<_CarouselPreviewSurface> {
+  int _index = 0;
+
+  List<MyFeedMediaItem> get _items {
+    if (widget.post.mediaItems.isNotEmpty) return widget.post.mediaItems;
+    if (widget.post.previewMediaUrl.isEmpty) return const [];
+    return [
+      MyFeedMediaItem(
+        id: '${widget.post.id}-fallback',
+        mediaUrl: widget.post.previewMediaUrl,
+        thumbnailUrl: widget.post.thumbnailUrl,
+        mediaType:
+            widget.post.isVideo ? MyFeedMediaType.video : MyFeedMediaType.image,
+        durationSeconds: widget.post.durationSec,
+      ),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final items = _items;
+    if (items.isEmpty) {
+      return const _MediaPlaceholder(icon: Icons.collections_outlined);
+    }
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        PageView.builder(
+          itemCount: items.length,
+          onPageChanged: (index) => setState(() => _index = index),
+          itemBuilder: (context, index) {
+            final item = items[index];
+            if (item.mediaType == MyFeedMediaType.video) {
+              return _VideoPreviewSurface(
+                mediaUrl: item.mediaUrl,
+                thumbnailUrl: item.thumbnailUrl,
+                aspectRatio: widget.aspectRatio,
+              );
+            }
+            return _ImagePreviewSurface(
+              imageUrl: item.mediaUrl,
+              placeholderIcon: Icons.image_outlined,
+            );
+          },
+        ),
+        Positioned(
+          top: 12,
+          right: 12,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.46),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              '${_index + 1}/${items.length}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _VideoPreviewSurface extends StatefulWidget {
+  final String mediaUrl;
+  final String? thumbnailUrl;
+  final double aspectRatio;
+
+  const _VideoPreviewSurface({
+    required this.mediaUrl,
+    required this.thumbnailUrl,
+    required this.aspectRatio,
+  });
+
+  @override
+  State<_VideoPreviewSurface> createState() => _VideoPreviewSurfaceState();
+}
+
+class _VideoPreviewSurfaceState extends State<_VideoPreviewSurface> {
+  VideoPlayerController? _controller;
+  bool _initializing = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _initialize();
+  }
+
+  @override
+  void didUpdateWidget(covariant _VideoPreviewSurface oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.mediaUrl != widget.mediaUrl) {
+      _disposeController();
+      _initialize();
+    }
+  }
+
+  Future<void> _initialize() async {
+    if (widget.mediaUrl.trim().isEmpty) {
+      setState(() => _error = 'Video tidak tersedia');
+      return;
+    }
+
+    setState(() {
+      _initializing = true;
+      _error = null;
+    });
+
+    final controller = VideoPlayerController.networkUrl(
+      Uri.parse(widget.mediaUrl),
+    );
+    _controller = controller;
+
+    try {
+      await controller.initialize();
+      if (!mounted || _controller != controller) return;
+      setState(() {
+        _initializing = false;
+      });
+    } catch (_) {
+      await controller.dispose();
+      if (!mounted || _controller != controller) return;
+      setState(() {
+        _controller = null;
+        _initializing = false;
+        _error = 'Video belum bisa diputar';
+      });
+    }
+  }
+
+  Future<void> _disposeController() async {
+    final controller = _controller;
+    _controller = null;
+    await controller?.dispose();
+  }
+
+  void _togglePlay() {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+
+    if (controller.value.isPlaying) {
+      controller.pause();
+    } else {
+      controller.play();
+    }
+    setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _disposeController();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    final ready = controller != null && controller.value.isInitialized;
+    final isPlaying = ready && controller.value.isPlaying;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _togglePlay,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Container(color: Colors.black),
+          if (ready)
+            Center(
+              child: AspectRatio(
+                aspectRatio: controller.value.aspectRatio > 0
+                    ? controller.value.aspectRatio
+                    : widget.aspectRatio,
+                child: VideoPlayer(controller),
+              ),
+            )
+          else if (widget.thumbnailUrl != null &&
+              widget.thumbnailUrl!.trim().isNotEmpty)
+            _ImagePreviewSurface(
+              imageUrl: widget.thumbnailUrl!,
+              placeholderIcon: Icons.video_collection_outlined,
+            )
+          else
+            const _MediaPlaceholder(icon: Icons.video_collection_outlined),
+          if (_initializing)
+            const Center(
+              child: SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.4,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          if (_error != null)
+            Center(
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  _error!,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          if (!isPlaying && _error == null)
+            Center(
+              child: Container(
+                width: 68,
+                height: 68,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.45),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.play_arrow_rounded,
+                  color: Colors.white,
+                  size: 44,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ImagePreviewSurface extends StatelessWidget {
+  final String imageUrl;
+  final IconData placeholderIcon;
+
+  const _ImagePreviewSurface({
+    required this.imageUrl,
+    required this.placeholderIcon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (imageUrl.trim().isEmpty) {
+      return _MediaPlaceholder(icon: placeholderIcon);
+    }
+
     return Container(
-      color: const Color(0xFF1F2937),
-      child: const Center(
+      color: Colors.black,
+      alignment: Alignment.center,
+      child: CachedNetworkImage(
+        imageUrl: imageUrl,
+        width: double.infinity,
+        height: double.infinity,
+        fit: BoxFit.contain,
+        fadeInDuration: const Duration(milliseconds: 220),
+        fadeOutDuration: const Duration(milliseconds: 120),
+        fadeInCurve: Curves.easeOut,
+        placeholder: (_, __) => Shimmer.fromColors(
+          baseColor: const Color(0xFF1F2937),
+          highlightColor: const Color(0xFF374151),
+          child: Container(color: const Color(0xFF1F2937)),
+        ),
+        errorWidget: (_, __, ___) => _MediaPlaceholder(icon: placeholderIcon),
+      ),
+    );
+  }
+}
+
+class _MediaPlaceholder extends StatelessWidget {
+  final IconData icon;
+
+  const _MediaPlaceholder({required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: const Color(0xFF111827),
+      child: Center(
         child: Icon(
-          Icons.video_collection_outlined,
+          icon,
           color: Colors.white24,
-          size: 80,
+          size: 78,
         ),
       ),
     );
   }
+}
+
+double _safeAspectRatio(int width, int height) {
+  if (width <= 0 || height <= 0) return 9 / 16;
+  final ratio = width / height;
+  if (ratio.isNaN || ratio.isInfinite || ratio <= 0) return 9 / 16;
+  return ratio.clamp(0.45, 1.8);
 }
 
 class _StatusBadge extends StatelessWidget {

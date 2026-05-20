@@ -21,7 +21,6 @@ class MemberPostsScreen extends StatefulWidget {
 }
 
 class _MemberPostsScreenState extends State<MemberPostsScreen> {
-  int _galleryTabIndex = 0;
   int _filterIndex = 0;
   List<MyFeedPost> _allPosts = const [];
   bool _loading = true;
@@ -30,7 +29,7 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     _PostsFilter(label: 'Semua', type: _PostFilterType.all),
     _PostsFilter(label: 'Foto', type: _PostFilterType.photo),
     _PostsFilter(label: 'Video', type: _PostFilterType.video),
-    _PostsFilter(label: 'Review', type: _PostFilterType.review),
+    _PostsFilter(label: 'Menunggu Review', type: _PostFilterType.review),
   ];
 
   @override
@@ -54,15 +53,15 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     return _allPosts.where((post) {
       return switch (filter) {
         _PostFilterType.all => true,
-        _PostFilterType.photo => !_isVideoPost(post),
-        _PostFilterType.video => _isVideoPost(post),
+        _PostFilterType.photo => !post.isVideo,
+        _PostFilterType.video => post.isVideo,
         _PostFilterType.review => post.statusInfo == MyFeedPostStatus.pending,
       };
     }).toList();
   }
 
   _PostStats get _stats {
-    final videos = _allPosts.where(_isVideoPost).length;
+    final videos = _allPosts.where((post) => post.isVideo).length;
     return _PostStats(
       total: _allPosts.length,
       active: _allPosts
@@ -97,31 +96,9 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     );
   }
 
-  void _onGalleryTabChanged(int index) {
-    AppHaptics.tap();
-    setState(() {
-      _galleryTabIndex = index;
-      if (index == 1) {
-        _filterIndex = 2;
-      } else if (index == 2) {
-        _filterIndex = 1;
-      } else {
-        _filterIndex = 0;
-      }
-    });
-  }
-
   void _onFilterChanged(int index) {
     AppHaptics.tap();
-    setState(() {
-      _filterIndex = index;
-      final type = _filters[index].type;
-      _galleryTabIndex = switch (type) {
-        _PostFilterType.video => 1,
-        _PostFilterType.photo => 2,
-        _ => 0,
-      };
-    });
+    setState(() => _filterIndex = index);
   }
 
   @override
@@ -167,11 +144,6 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
                     ),
                     const SizedBox(height: 14),
                     const _ApprovalInfoStrip(),
-                    const SizedBox(height: 14),
-                    _GalleryModeTabs(
-                      activeIndex: _galleryTabIndex,
-                      onTap: _onGalleryTabChanged,
-                    ),
                     const SizedBox(height: 14),
                     _FilterChips(
                       filters: _filters,
@@ -623,7 +595,7 @@ class _PostActionsRow extends StatelessWidget {
             child: ElevatedButton.icon(
               onPressed: onCreate,
               icon: const Icon(Icons.add_rounded, size: 24),
-              label: const Text('+ Buat Postingan'),
+              label: const Text('Buat Postingan'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: _brandBlue,
                 foregroundColor: Colors.white,
@@ -699,67 +671,6 @@ class _ApprovalInfoStrip extends StatelessWidget {
   }
 }
 
-class _GalleryModeTabs extends StatelessWidget {
-  final int activeIndex;
-  final ValueChanged<int> onTap;
-
-  const _GalleryModeTabs({
-    required this.activeIndex,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    const icons = [
-      Icons.grid_view_rounded,
-      Icons.play_circle_outline_rounded,
-      Icons.photo_camera_outlined,
-    ];
-
-    return Container(
-      height: 58,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _softBorder),
-      ),
-      child: Row(
-        children: List.generate(icons.length, (index) {
-          final active = index == activeIndex;
-          return Expanded(
-            child: InkWell(
-              onTap: () => onTap(index),
-              borderRadius: BorderRadius.circular(18),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Icon(
-                    icons[index],
-                    color: active ? _brandBlue : const Color(0xFF78869C),
-                    size: 28,
-                  ),
-                  if (active)
-                    Positioned(
-                      bottom: 0,
-                      child: Container(
-                        width: 46,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: _brandBlue,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          );
-        }),
-      ),
-    );
-  }
-}
-
 class _FilterChips extends StatelessWidget {
   final List<_PostsFilter> filters;
   final int activeIndex;
@@ -821,7 +732,11 @@ class _GalleryPostTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isVideo = _isVideoPost(post);
+    final typeIcon = switch (post.type) {
+      MyFeedPostType.video => Icons.play_arrow_rounded,
+      MyFeedPostType.carousel => Icons.collections_rounded,
+      MyFeedPostType.photo => Icons.image_outlined,
+    };
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -845,40 +760,13 @@ class _GalleryPostTile extends StatelessWidget {
                   ),
                 ),
               ),
-              if (isVideo)
-                Center(
-                  child: Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.52),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.play_arrow_rounded,
-                      color: Colors.white,
-                      size: 28,
-                    ),
-                  ),
-                ),
-              if (isVideo)
-                Positioned(
-                  left: 7,
-                  bottom: 8,
-                  child: _DurationBadge(text: post.durationLabel),
-                )
-              else
-                const Positioned(
-                  right: 7,
-                  top: 7,
-                  child: Icon(
-                    Icons.collections_rounded,
-                    color: Colors.white,
-                    size: 19,
-                  ),
-                ),
               Positioned(
                 right: 7,
+                top: 7,
+                child: _PostTypeIcon(icon: typeIcon),
+              ),
+              Positioned(
+                left: 7,
                 bottom: 8,
                 child: _StatusBadge(status: post.statusInfo),
               ),
@@ -938,25 +826,24 @@ class _PostThumbnailFallback extends StatelessWidget {
   }
 }
 
-class _DurationBadge extends StatelessWidget {
-  final String text;
-  const _DurationBadge({required this.text});
+class _PostTypeIcon extends StatelessWidget {
+  final IconData icon;
+  const _PostTypeIcon({required this.icon});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      width: 26,
+      height: 26,
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.66),
-        borderRadius: BorderRadius.circular(999),
+        color: Colors.black.withValues(alpha: 0.38),
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
       ),
-      child: Text(
-        text,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 11,
-          fontWeight: FontWeight.w900,
-        ),
+      child: Icon(
+        icon,
+        color: Colors.white,
+        size: 17,
       ),
     );
   }
@@ -976,7 +863,7 @@ class _StatusBadge extends StatelessWidget {
           border: Color(0xFFB7F3D0),
         ),
       MyFeedPostStatus.pending => const _StatusStyle(
-          label: 'Review',
+          label: 'Menunggu Review',
           bg: Color(0xFFFFF7E6),
           fg: Color(0xFFB45309),
           border: Color(0xFFFED7AA),
@@ -988,15 +875,20 @@ class _StatusBadge extends StatelessWidget {
           border: Color(0xFFFECACA),
         ),
       MyFeedPostStatus.unknown => const _StatusStyle(
-          label: '-',
+          label: 'Draft',
           bg: Color(0xFFEFF2F6),
           fg: Color(0xFF64748B),
           border: Color(0xFFDCE3EC),
         ),
     };
 
+    final isLong = style.label.length > 9;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      constraints: const BoxConstraints(maxWidth: 112),
+      padding: EdgeInsets.symmetric(
+        horizontal: isLong ? 7 : 9,
+        vertical: 4,
+      ),
       decoration: BoxDecoration(
         color: style.bg,
         borderRadius: BorderRadius.circular(999),
@@ -1004,9 +896,11 @@ class _StatusBadge extends StatelessWidget {
       ),
       child: Text(
         style.label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
           color: style.fg,
-          fontSize: 10.5,
+          fontSize: isLong ? 9.2 : 10.5,
           fontWeight: FontWeight.w900,
         ),
       ),
@@ -1067,7 +961,7 @@ class _EmptyPostsCard extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           const Text(
-            'Belum ada cerita di Feed kamu',
+            'Belum ada postingan',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: _deepNavy,
@@ -1077,7 +971,7 @@ class _EmptyPostsCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Bagikan foto atau video hewan peliharaanmu agar momen serunya bisa tampil di Feed Natalo.',
+            'Bagikan foto atau video hewan kesayanganmu ke Feed Natalo.',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: _mutedText,
@@ -1093,7 +987,7 @@ class _EmptyPostsCard extends StatelessWidget {
             child: ElevatedButton.icon(
               onPressed: onUpload,
               icon: const Icon(Icons.add_rounded, size: 21),
-              label: const Text('+ Buat Postingan'),
+              label: const Text('Buat Postingan'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: _brandBlue,
                 foregroundColor: Colors.white,
@@ -1138,14 +1032,4 @@ class _FilteredEmptyCard extends StatelessWidget {
       ),
     );
   }
-}
-
-bool _isVideoPost(MyFeedPost post) {
-  if (post.durationSec > 0) return true;
-  final url = post.mediaUrl.toLowerCase();
-  return url.endsWith('.mp4') ||
-      url.endsWith('.mov') ||
-      url.endsWith('.m4v') ||
-      url.endsWith('.webm') ||
-      url.contains('/video/');
 }
