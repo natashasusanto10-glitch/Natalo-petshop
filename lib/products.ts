@@ -3,6 +3,7 @@ import {
   attachPublicProductVoucherPreviews,
   type ProductVoucherPreview,
 } from "@/lib/product-vouchers";
+import { resolveActiveDiscount } from "@/lib/product-pricing";
 import { sampleProducts } from "@/lib/sample-data";
 import type { OrderStatus, Prisma } from "@prisma/client";
 
@@ -100,7 +101,25 @@ const productListInclude = {
   category: { select: { id: true, slug: true } },
   variants: {
     where: { deletedAt: null, isActive: true },
-    select: { price: true, stock: true },
+    select: { id: true, price: true, stock: true },
+  },
+  // Active Promo Toko items untuk produk ini. Filter inline supaya
+  // tidak perlu post-process di mapper. Include discount.endsAt untuk
+  // priority calculation di resolveActiveDiscount.
+  discountItems: {
+    where: {
+      isItemActive: true,
+      discount: {
+        isActive: true,
+        startsAt: { lte: new Date() },
+        endsAt: { gt: new Date() },
+      },
+    },
+    select: {
+      variantId: true,
+      discountedPrice: true,
+      discount: { select: { endsAt: true } },
+    },
   },
 } satisfies Prisma.ProductInclude;
 
@@ -110,15 +129,38 @@ type ProductListRecord = Prisma.ProductGetPayload<{
 
 function mapProductListRecord(p: ProductListRecord): StoreProduct {
   if (p.hasVariants && p.variants.length > 0) {
-    const prices = p.variants.map((v) => v.price);
+    // Untuk produk berVarian, pricing per-variant. Hitung MIN effective
+    // price dari semua varian aktif setelah apply discount item match.
+    const variantPrices = p.variants.map((v) => {
+      const variantPromoItems = p.discountItems
+        .filter((it) => it.variantId === v.id)
+        .map((it) => ({
+          discountedPrice: it.discountedPrice,
+          endsAt: it.discount.endsAt,
+        }));
+      const discount = resolveActiveDiscount(
+        v.price,
+        // Flash Sale ratio applied (untuk variant, kalau Flash Sale ada
+        // di parent, pakai ratio dari product.price ke product.discountPrice
+        // dan apply ke variant.price)
+        flashSaleForVariant(p.price, p.discountPrice, p.flashSaleEndsAt, v.price),
+        variantPromoItems,
+      );
+      return discount ? discount.effectivePrice : v.price;
+    });
+    const minPrice = Math.min(...variantPrices);
     const totalStock = p.variants.reduce((s, v) => s + v.stock, 0);
+    // discountPrice di-set ke minPrice kalau lebih rendah dari product.price
+    // (artinya ada diskon aktif di variant terendah).
+    const showDiscount = minPrice < Math.min(...p.variants.map((v) => v.price));
+
     return {
       id: p.id,
       name: p.name,
       slug: p.slug,
       description: p.description,
-      price: Math.min(...prices),
-      discountPrice: null,
+      price: Math.min(...p.variants.map((v) => v.price)),
+      discountPrice: showDiscount ? minPrice : null,
       memberPrice: p.memberPrice,
       stock: totalStock,
       weightGram: normalizeProductWeight(p.name, p.slug, p.weightGram),
@@ -135,13 +177,36 @@ function mapProductListRecord(p: ProductListRecord): StoreProduct {
     };
   }
 
+  // Produk single (no variants) — apply discount langsung.
+  const promoItems = p.discountItems
+    .filter((it) => it.variantId === null)
+    .map((it) => ({
+      discountedPrice: it.discountedPrice,
+      endsAt: it.discount.endsAt,
+    }));
+  const discount = resolveActiveDiscount(
+    p.price,
+    { discountPrice: p.discountPrice, endsAt: p.flashSaleEndsAt },
+    promoItems,
+  );
+
+  // Override discountPrice dengan effective dari resolver. Source:
+  //  - FLASH_SALE: keep flashSaleEndsAt (countdown timer di customer side)
+  //  - PROMO_TOKO: clear flashSaleEndsAt supaya tidak salah tampil
+  //    countdown (Promo Toko bukan urgency-driven).
+  const effectiveDiscountPrice = discount ? discount.effectivePrice : null;
+  const effectiveFlashSaleEndsAt =
+    discount?.source === "FLASH_SALE"
+      ? p.flashSaleEndsAt?.toISOString() ?? null
+      : null;
+
   return {
     id: p.id,
     name: p.name,
     slug: p.slug,
     description: p.description,
     price: p.price,
-    discountPrice: p.discountPrice,
+    discountPrice: effectiveDiscountPrice,
     memberPrice: p.memberPrice,
     stock: p.stock,
     weightGram: normalizeProductWeight(p.name, p.slug, p.weightGram),
@@ -154,7 +219,29 @@ function mapProductListRecord(p: ProductListRecord): StoreProduct {
     categorySlug: p.category?.slug ?? null,
     voucherPreview: null,
     shippingVoucherPreview: null,
-    flashSaleEndsAt: p.flashSaleEndsAt?.toISOString() ?? null,
+    flashSaleEndsAt: effectiveFlashSaleEndsAt,
+  };
+}
+
+/**
+ * Hitung Flash Sale price untuk variant tertentu — pakai ratio
+ * dari (product.discountPrice / product.price) × variant.price.
+ * Karena Flash Sale di-set di product level (single discountPrice),
+ * tapi setiap variant punya base price sendiri.
+ */
+function flashSaleForVariant(
+  productPrice: number,
+  productDiscountPrice: number | null,
+  flashEnd: Date | null,
+  variantPrice: number,
+): { discountPrice: number | null; endsAt: Date | null } {
+  if (!flashEnd || !productDiscountPrice || productPrice <= 0) {
+    return { discountPrice: null, endsAt: null };
+  }
+  const ratio = productDiscountPrice / productPrice;
+  return {
+    discountPrice: Math.round(variantPrice * ratio),
+    endsAt: flashEnd,
   };
 }
 
@@ -820,10 +907,29 @@ export async function getProductBySlug(
     // Cari by slug dulu — kalau tidak ada, fallback by id. Berguna untuk
     // legacy cart items yang belum punya slug (tersimpan productId only),
     // atau deep-link by id.
+    // Include active Promo Toko items untuk apply pricing.
+    const discountItemsInclude = {
+      discountItems: {
+        where: {
+          isItemActive: true,
+          discount: {
+            isActive: true,
+            startsAt: { lte: new Date() },
+            endsAt: { gt: new Date() },
+          },
+        },
+        select: {
+          variantId: true,
+          discountedPrice: true,
+          discount: { select: { endsAt: true } },
+        },
+      },
+    };
     let p = await prisma.product.findUnique({
       where: { slug },
       include: {
         ...variantInclude,
+        ...discountItemsInclude,
         category: { select: { id: true, slug: true } },
       },
     });
@@ -832,6 +938,7 @@ export async function getProductBySlug(
         where: { id: slug },
         include: {
           ...variantInclude,
+          ...discountItemsInclude,
           category: { select: { id: true, slug: true } },
         },
       });
@@ -842,13 +949,35 @@ export async function getProductBySlug(
       const activeVariants = p.variants.filter((v) => v.isActive);
       const prices = activeVariants.map((v) => v.price);
       const totalStock = activeVariants.reduce((s, v) => s + v.stock, 0);
+
+      // Apply pricing per-variant: kalau ada Promo Toko match (per variantId)
+      // atau Flash Sale (ratio dari product level), pakai harga terendah.
+      const effectiveVariantPrices = activeVariants.map((v) => {
+        const variantPromoItems = (p.discountItems ?? [])
+          .filter((it) => it.variantId === v.id)
+          .map((it) => ({
+            discountedPrice: it.discountedPrice,
+            endsAt: it.discount.endsAt,
+          }));
+        const discount = resolveActiveDiscount(
+          v.price,
+          flashSaleForVariant(p.price, p.discountPrice, p.flashSaleEndsAt, v.price),
+          variantPromoItems,
+        );
+        return discount ? discount.effectivePrice : v.price;
+      });
+      const minEffective = effectiveVariantPrices.length
+        ? Math.min(...effectiveVariantPrices)
+        : p.price;
+      const minBase = prices.length ? Math.min(...prices) : p.price;
+
       const product: StoreProduct = {
         id: p.id,
         name: p.name,
         slug: p.slug,
         description: p.description,
-        price: prices.length ? Math.min(...prices) : p.price,
-        discountPrice: null,
+        price: minBase,
+        discountPrice: minEffective < minBase ? minEffective : null,
         memberPrice: p.memberPrice,
         stock: totalStock,
         weightGram: normalizeProductWeight(p.name, p.slug, p.weightGram),
@@ -863,10 +992,29 @@ export async function getProductBySlug(
         shippingVoucherPreview: null,
         variantAttrs: p.variantAttrs as unknown as StoreVariantAttribute[],
         variants: p.variants as unknown as StoreProductVariant[],
+        flashSaleEndsAt: p.flashSaleEndsAt?.toISOString() ?? null,
       };
       const [withPreview] = await withVoucherPreviews([product], viewerId);
       return withPreview;
     }
+
+    // Single product (no variants) — apply pricing langsung.
+    const promoItems = (p.discountItems ?? [])
+      .filter((it) => it.variantId === null)
+      .map((it) => ({
+        discountedPrice: it.discountedPrice,
+        endsAt: it.discount.endsAt,
+      }));
+    const discount = resolveActiveDiscount(
+      p.price,
+      { discountPrice: p.discountPrice, endsAt: p.flashSaleEndsAt },
+      promoItems,
+    );
+    const effectiveDiscountPrice = discount ? discount.effectivePrice : null;
+    const effectiveFlashSaleEndsAt =
+      discount?.source === "FLASH_SALE"
+        ? p.flashSaleEndsAt?.toISOString() ?? null
+        : null;
 
     const product = {
       id: p.id,
@@ -874,7 +1022,7 @@ export async function getProductBySlug(
       slug: p.slug,
       description: p.description,
       price: p.price,
-      discountPrice: p.discountPrice,
+      discountPrice: effectiveDiscountPrice,
       memberPrice: p.memberPrice,
       stock: p.stock,
       weightGram: normalizeProductWeight(p.name, p.slug, p.weightGram),
@@ -885,6 +1033,7 @@ export async function getProductBySlug(
       reviewCount: p.reviewCount,
       categoryId: p.category?.id ?? null,
       categorySlug: p.category?.slug ?? null,
+      flashSaleEndsAt: effectiveFlashSaleEndsAt,
     };
     const [withPreview] = await withVoucherPreviews([product], viewerId);
     return withPreview;
