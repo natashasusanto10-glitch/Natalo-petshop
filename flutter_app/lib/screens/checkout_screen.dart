@@ -265,9 +265,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return courierRates.isNotEmpty ? courierRates.first : rates.first;
     }
 
-    // Default checkout memilih kurir delivery saat tersedia supaya voucher
-    // gratis ongkir member bisa auto-apply tanpa user membuka sheet pengiriman.
-    return courierRates.isNotEmpty ? courierRates.first : rates.first;
+    // Default checkout memilih kurir delivery termurah saat tersedia supaya
+    // voucher gratis ongkir member bisa auto-apply tanpa user membuka sheet
+    // pengiriman. Instant tetap muncul sebagai pilihan manual di sheet.
+    return _cheapestDeliveryRate(courierRates) ?? rates.first;
   }
 
   ShippingRate? _findMatchingShippingRate(
@@ -281,6 +282,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       }
     }
     return null;
+  }
+
+  ShippingRate? _cheapestDeliveryRate(List<ShippingRate> rates) {
+    final availableRates = rates.where((rate) => rate.available).toList();
+    if (availableRates.isEmpty) return null;
+    availableRates.sort((a, b) => a.price.compareTo(b.price));
+    return availableRates.first;
   }
 
   void _selectAddress(MemberAddress address) {
@@ -2360,6 +2368,7 @@ class _ShippingMethodSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final groups = _groupShippingRates(rates);
     return SafeArea(
       top: false,
       child: DraggableScrollableSheet(
@@ -2397,29 +2406,197 @@ class _ShippingMethodSheet extends StatelessWidget {
                   child: _CheckoutInlineNotice(message: message!),
                 ),
               Expanded(
-                child: ListView.separated(
+                child: ListView(
                   controller: controller,
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
-                  itemCount: rates.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
-                  itemBuilder: (context, index) {
-                    final rate = rates[index];
-                    final active = rate.courierCode == selected.courierCode &&
-                        rate.serviceCode == selected.serviceCode;
-                    return _ShippingRateTile(
-                      rate: rate,
-                      active: active,
-                      onTap: rate.available
-                          ? () => Navigator.pop(context, rate)
-                          : null,
-                    );
-                  },
+                  children: [
+                    for (final group in groups) ...[
+                      _ShippingRateGroupHeader(group: group),
+                      const SizedBox(height: 8),
+                      for (final rate in group.rates) ...[
+                        _ShippingRateTile(
+                          rate: rate,
+                          active: rate.courierCode == selected.courierCode &&
+                              rate.serviceCode == selected.serviceCode,
+                          onTap: rate.available
+                              ? () => Navigator.pop(context, rate)
+                              : null,
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                      const SizedBox(height: 6),
+                    ],
+                  ],
                 ),
               ),
             ],
           );
         },
       ),
+    );
+  }
+}
+
+class _ShippingRateGroup {
+  final String title;
+  final String hint;
+  final String badge;
+  final List<ShippingRate> rates;
+
+  const _ShippingRateGroup({
+    required this.title,
+    required this.hint,
+    required this.badge,
+    required this.rates,
+  });
+}
+
+List<_ShippingRateGroup> _groupShippingRates(List<ShippingRate> rates) {
+  final pickupRates = <ShippingRate>[];
+  final instantRates = <ShippingRate>[];
+  final regularRates = <ShippingRate>[];
+  final economyRates = <ShippingRate>[];
+  final otherRates = <ShippingRate>[];
+
+  for (final rate in rates) {
+    if (rate.isSelfPickup) {
+      pickupRates.add(rate);
+    } else if (_isInstantShippingRate(rate)) {
+      instantRates.add(rate);
+    } else if (_isEconomyShippingRate(rate)) {
+      economyRates.add(rate);
+    } else if (_isRegularShippingRate(rate)) {
+      regularRates.add(rate);
+    } else {
+      otherRates.add(rate);
+    }
+  }
+
+  return [
+    if (pickupRates.isNotEmpty)
+      _ShippingRateGroup(
+        title: 'Ambil Sendiri',
+        hint: 'Gratis ongkir',
+        badge: 'SHOP',
+        rates: pickupRates,
+      ),
+    if (instantRates.isNotEmpty)
+      _ShippingRateGroup(
+        title: 'Instant',
+        hint: 'Gojek / Grab, estimasi hari ini',
+        badge: 'INST',
+        rates: instantRates,
+      ),
+    if (regularRates.isNotEmpty)
+      _ShippingRateGroup(
+        title: 'Reguler',
+        hint: 'Estimasi 1-3 hari',
+        badge: 'REG',
+        rates: regularRates,
+      ),
+    if (economyRates.isNotEmpty)
+      _ShippingRateGroup(
+        title: 'Ekonomi',
+        hint: 'Estimasi hemat',
+        badge: 'ECO',
+        rates: economyRates,
+      ),
+    if (otherRates.isNotEmpty)
+      _ShippingRateGroup(
+        title: 'Lainnya',
+        hint: 'Pilihan pengiriman tersedia',
+        badge: 'OPS',
+        rates: otherRates,
+      ),
+  ];
+}
+
+bool _isInstantShippingRate(ShippingRate rate) {
+  final haystack = _shippingRateSearchText(rate);
+  return haystack.contains('instant') ||
+      haystack.contains('same_day') ||
+      haystack.contains('sameday') ||
+      haystack.contains('same day') ||
+      haystack.contains('gosend') ||
+      haystack.contains('go send') ||
+      haystack.contains('gojek') ||
+      haystack.contains('grab');
+}
+
+bool _isRegularShippingRate(ShippingRate rate) {
+  final haystack = _shippingRateSearchText(rate);
+  return haystack.contains('regular') ||
+      haystack.contains('reguler') ||
+      haystack.contains('next_day') ||
+      haystack.contains('next day') ||
+      haystack.contains('jne') ||
+      haystack.contains('jnt') ||
+      haystack.contains('j&t');
+}
+
+bool _isEconomyShippingRate(ShippingRate rate) {
+  final haystack = _shippingRateSearchText(rate);
+  return haystack.contains('economy') ||
+      haystack.contains('ekonomi') ||
+      haystack.contains('cargo') ||
+      haystack.contains('trucking') ||
+      haystack.contains('jtr');
+}
+
+String _shippingRateSearchText(ShippingRate rate) {
+  return '${rate.courierCode} ${rate.courierName} ${rate.serviceCode} '
+          '${rate.serviceName} ${rate.serviceType} ${rate.duration}'
+      .toLowerCase();
+}
+
+class _ShippingRateGroupHeader extends StatelessWidget {
+  final _ShippingRateGroup group;
+
+  const _ShippingRateGroupHeader({required this.group});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+          decoration: BoxDecoration(
+            color: const Color(0xFFEAF3FF),
+            borderRadius: BorderRadius.circular(7),
+          ),
+          child: Text(
+            group.badge,
+            style: const TextStyle(
+              color: _brandBlue,
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          group.title,
+          style: const TextStyle(
+            color: Color(0xFF17202A),
+            fontSize: 14,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            group.hint,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Color(0xFF98A2B3),
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
