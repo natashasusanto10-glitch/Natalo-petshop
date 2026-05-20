@@ -1,7 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { syncProduct } from "@/lib/search";
+import { putVariantsPayloadSchema } from "@/lib/validators/variant-schema";
+import { z } from "zod";
 import type { Prisma } from "@prisma/client";
+
+// Schema: Create product (extended dari POST sederhana original — sekarang
+// support gallery + opsional variants. Backwards compatible: caller lama
+// tanpa gallery / variants tetap jalan.
+const createProductSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  description: z.string().trim().max(5000).optional().default(""),
+  price: z.number().int().min(0).max(999_999_999),
+  stock: z.number().int().min(0).max(999_999).optional().default(0),
+  weightGram: z.number().int().min(1).max(999_999).optional().default(500),
+  imageUrl: z.string().trim().optional(),
+  gallery: z.array(z.string().trim()).optional().default([]),
+  categoryId: z.string().trim().optional(),
+  brandId: z.string().trim().optional(),
+  isActive: z.boolean().optional().default(true),
+  // Variant payload optional. Kalau ada + hasVariants=true, varian
+  // di-create dalam transaction yang sama. Reuse validator dari
+  // putVariantsPayloadSchema (sub-set untuk struktur attribute+variant).
+  hasVariants: z.boolean().optional().default(false),
+  attributes: z.array(z.any()).optional().default([]),
+  variants: z.array(z.any()).optional().default([]),
+});
 
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 50;
@@ -76,31 +101,35 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = (await request.json().catch(() => null)) as
-    | {
-        name?: string;
-        description?: string;
-        price?: number;
-        stock?: number;
-        weightGram?: number;
-        imageUrl?: string;
-        categoryId?: string;
-        brandId?: string;
-        isActive?: boolean;
-      }
-    | null;
-
-  if (!body || typeof body.name !== "string" || !body.name.trim()) {
+  const parsed = createProductSchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) {
     return NextResponse.json(
-      { error: "Nama produk wajib diisi" },
+      {
+        error: "Payload tidak valid",
+        fields: parsed.error.flatten().fieldErrors,
+      },
       { status: 400 },
     );
   }
-  if (typeof body.price !== "number" || body.price < 0) {
-    return NextResponse.json(
-      { error: "Harga harus angka >= 0" },
-      { status: 400 },
-    );
+  const body = parsed.data;
+
+  // Kalau hasVariants=true, validate attributes + variants pakai schema
+  // yang sama dengan PUT variants endpoint. Kalau false, skip.
+  if (body.hasVariants) {
+    const variantParsed = putVariantsPayloadSchema.safeParse({
+      hasVariants: body.hasVariants,
+      attributes: body.attributes,
+      variants: body.variants,
+    });
+    if (!variantParsed.success) {
+      return NextResponse.json(
+        {
+          error: "Payload varian tidak valid",
+          fields: variantParsed.error.flatten().fieldErrors,
+        },
+        { status: 422 },
+      );
+    }
   }
 
   // Slugify nama → lowercase, hyphen, alphanumeric only.
@@ -121,31 +150,147 @@ export async function POST(request: NextRequest) {
     slug = `${baseSlug}-${suffix}`;
   }
 
-  const product = await prisma.product.create({
-    data: {
-      name: body.name.trim(),
-      slug,
-      description: body.description?.trim() ?? "",
-      price: Math.round(body.price),
-      stock: body.stock && body.stock >= 0 ? Math.round(body.stock) : 0,
-      weightGram:
-        body.weightGram && body.weightGram > 0
-          ? Math.round(body.weightGram)
-          : 500,
-      imageUrl: body.imageUrl?.trim() || null,
-      categoryId: body.categoryId?.trim() || null,
-      brandId: body.brandId?.trim() || null,
-      isActive: body.isActive !== false,
-    },
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      price: true,
-      stock: true,
-      imageUrl: true,
-    },
+  // Atomic create — product + variants dalam satu transaction supaya
+  // kalau varian gagal di-create, product juga di-rollback (no orphan).
+  const created = await prisma.$transaction(async (tx) => {
+    const product = await tx.product.create({
+      data: {
+        name: body.name.trim(),
+        slug,
+        description: body.description.trim(),
+        price: Math.round(body.price),
+        stock: Math.round(body.stock),
+        weightGram: Math.round(body.weightGram),
+        imageUrl: body.imageUrl?.trim() || null,
+        gallery: body.gallery.map((g) => g.trim()).filter(Boolean),
+        categoryId: body.categoryId?.trim() || null,
+        brandId: body.brandId?.trim() || null,
+        isActive: body.isActive,
+        hasVariants: body.hasVariants,
+      },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        price: true,
+        stock: true,
+        imageUrl: true,
+      },
+    });
+
+    // Skip variant creation kalau hasVariants=false.
+    if (!body.hasVariants) return product;
+
+    // Build attributes + options. Map "attrPosition:optionValue" → DB id.
+    type AttrPayload = {
+      name: string;
+      position: number;
+      options: Array<{ value: string; position: number }>;
+    };
+    type VariantPayload = {
+      optionRefs: string[];
+      price: number;
+      stock: number;
+      weightGram: number;
+      sku?: string;
+      imageUrl?: string;
+      isActive: boolean;
+    };
+
+    const attributes = body.attributes as AttrPayload[];
+    const variants = body.variants as VariantPayload[];
+    const optionRefMap = new Map<string, string>();
+
+    for (const attr of attributes) {
+      const createdAttr = await tx.variantAttribute.create({
+        data: {
+          productId: product.id,
+          name: attr.name,
+          position: attr.position,
+          options: {
+            create: attr.options.map((opt) => ({
+              value: opt.value,
+              position: opt.position,
+            })),
+          },
+        },
+        include: { options: true },
+      });
+      for (const opt of createdAttr.options) {
+        optionRefMap.set(`${attr.position}:${opt.value}`, opt.id);
+      }
+    }
+
+    for (const v of variants) {
+      const optionIds = v.optionRefs
+        .map((ref) => optionRefMap.get(ref))
+        .filter((id): id is string => !!id);
+      if (optionIds.length !== v.optionRefs.length) continue;
+
+      if (v.sku) {
+        const existingSku = await tx.productVariant.findFirst({
+          where: { sku: v.sku },
+        });
+        if (existingSku) {
+          throw new Error(`SKU "${v.sku}" sudah digunakan oleh varian lain.`);
+        }
+      }
+
+      await tx.productVariant.create({
+        data: {
+          productId: product.id,
+          sku: v.sku || null,
+          price: v.price,
+          stock: v.stock,
+          weightGram: v.weightGram,
+          imageUrl: v.imageUrl || null,
+          isActive: v.isActive,
+          options: {
+            create: optionIds.map((optionId) => ({ optionId })),
+          },
+        },
+      });
+    }
+
+    // Sync aggregate field di Product dari varian aktif:
+    // - price = harga TERMURAH varian aktif
+    // - stock = TOTAL stok semua varian aktif
+    // - weightGram = berat varian termurah (representasi default)
+    const activeVariants = await tx.productVariant.findMany({
+      where: { productId: product.id, deletedAt: null, isActive: true },
+      select: { price: true, stock: true, weightGram: true },
+    });
+    if (activeVariants.length > 0) {
+      const prices = activeVariants.map((v) => v.price);
+      const minPrice = Math.min(...prices);
+      const cheapest = activeVariants.find((v) => v.price === minPrice)!;
+      const totalStock = activeVariants.reduce((s, v) => s + v.stock, 0);
+      const updated = await tx.product.update({
+        where: { id: product.id },
+        data: {
+          price: minPrice,
+          stock: totalStock,
+          weightGram: cheapest.weightGram,
+        },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          price: true,
+          stock: true,
+          imageUrl: true,
+        },
+      });
+      return updated;
+    }
+
+    return product;
   });
 
-  return NextResponse.json(product, { status: 201 });
+  // Sync search index (non-blocking).
+  syncProduct(created.id).catch((err) => {
+    console.error("[admin/products POST syncProduct]", err);
+  });
+
+  return NextResponse.json(created, { status: 201 });
 }

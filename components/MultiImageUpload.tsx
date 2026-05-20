@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface Props {
   /** Nama field hidden input untuk submit. Akan kirim 1 input per gambar. */
@@ -10,6 +10,13 @@ interface Props {
   label?: string;
   /** Maksimum jumlah gambar. Default 5. */
   max?: number;
+  /**
+   * Optional callback yang fire setiap kali list URL berubah. Dipakai
+   * client form yang submit via fetch (bukan form action) — supaya
+   * parent bisa baca state image. Tanpa ini, component tetap berfungsi
+   * via hidden inputs (dipakai oleh form server action lama).
+   */
+  onChange?: (urls: string[]) => void;
 }
 
 const MAX_SIZE_MB = 2;
@@ -25,11 +32,18 @@ export function MultiImageUpload({
   defaultValue = [],
   label = "Gambar produk",
   max = 5,
+  onChange,
 }: Props) {
   const [urls, setUrls] = useState<string[]>(defaultValue);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Fire onChange callback tiap urls berubah. Pattern aman dari render
+  // loop karena setUrls dipanggil dari event handler, bukan tiap render.
+  useEffect(() => {
+    onChange?.(urls);
+  }, [urls, onChange]);
 
   async function handleFiles(files: FileList) {
     setError("");

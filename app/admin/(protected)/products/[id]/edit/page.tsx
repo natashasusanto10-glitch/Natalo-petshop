@@ -43,11 +43,11 @@ export default async function AdminProductEditPage({
     const name = String(formData.get("name") || "").trim();
     const description = String(formData.get("description") || "").trim();
     const price = parseInt(String(formData.get("price") || "0"), 10);
-    const discountPrice = formData.get("discountPrice")
-      ? parseInt(String(formData.get("discountPrice")), 10)
-      : null;
     const stock = parseInt(String(formData.get("stock") || "0"), 10);
     const weightGram = parseInt(String(formData.get("weightGram") || "500"), 10);
+    // discountPrice tidak diambil dari form lagi — fitur diskon akan
+    // dipindah ke halaman terpisah (/admin/diskon ala Shopee Promosi).
+    // Existing discountPrice di DB di-preserve (tidak di-update).
 
     // Flash Sale explicit end time. Input HTML datetime-local return
     // string format "YYYY-MM-DDTHH:MM" tanpa timezone — interpret as
@@ -72,16 +72,38 @@ export default async function AdminProductEditPage({
     // (restock trigger). Hanya fire push kalau stock memang naik dari 0.
     const wasOutOfStock = product?.stock === 0;
 
-    await prisma.product.update({
-      where: { id },
-      data: {
-        name, description, price, discountPrice, stock, weightGram, imageUrl, gallery, categoryId,
-        brandId,
-        flashSaleEndsAt,
-        // User assign manual = bukan auto lagi
-        brandAutoAssigned: false,
-      },
-    });
+    // Kalau produk punya varian, Product.price/stock/weightGram di-sync
+    // dari aggregate varian aktif (lihat PUT variants endpoint). Admin
+    // tidak bisa override dari form ini — field-nya disabled di UI.
+    // Skip 3 field tsb dari update payload untuk preserve aggregate.
+    const baseData: {
+      name: string;
+      description: string;
+      imageUrl: string | null;
+      gallery: string[];
+      categoryId: string | null;
+      brandId: string | null;
+      flashSaleEndsAt: Date | null;
+      brandAutoAssigned: boolean;
+      price?: number;
+      stock?: number;
+      weightGram?: number;
+    } = {
+      name,
+      description,
+      imageUrl,
+      gallery,
+      categoryId,
+      brandId,
+      flashSaleEndsAt,
+      brandAutoAssigned: false,
+    };
+    if (!product?.hasVariants) {
+      baseData.price = price;
+      baseData.stock = stock;
+      baseData.weightGram = weightGram;
+    }
+    await prisma.product.update({ where: { id }, data: baseData });
 
     // Sync ke search index (non-blocking)
     const { syncProduct } = await import("@/lib/search");
@@ -134,61 +156,7 @@ export default async function AdminProductEditPage({
       )}
 
       <form action={updateProduct} className="mt-5 space-y-5 md:mt-8">
-        <Field label="Nama produk" name="name" required defaultValue={product.name} />
-        <Field
-          label="Deskripsi"
-          name="description"
-          required
-          defaultValue={product.description}
-          textarea
-        />
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Harga normal (Rp)" name="price" type="number" required defaultValue={String(product.price)} />
-          <Field
-            label="Harga diskon (Rp)"
-            name="discountPrice"
-            type="number"
-            defaultValue={product.discountPrice ? String(product.discountPrice) : ""}
-          />
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Stok" name="stock" type="number" defaultValue={String(product.stock)} />
-          <Field label="Berat (gram)" name="weightGram" type="number" defaultValue={String(product.weightGram)} />
-        </div>
-
-        {/* Flash Sale explicit end time. Kalau di-set, produk ini SELALU
-            masuk Flash Sale section di home apapun discount %-nya, dengan
-            countdown timer. Kalau kosong, produk masuk Flash Sale section
-            hanya kalau discount >= 20% (auto-include). */}
-        <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
-          <label className="block text-sm font-bold text-amber-900">
-            ⚡ Flash Sale berakhir (opsional)
-          </label>
-          <p className="mt-1 text-xs text-amber-800">
-            Set kalau ini produk Flash Sale dengan countdown timer. Setelah
-            waktu ini, produk otomatis keluar dari Flash Sale section.
-            Kosongkan kalau produk tidak Flash Sale (diskon ≥20% tetap
-            otomatis masuk).
-          </p>
-          <input
-            type="datetime-local"
-            name="flashSaleEndsAt"
-            defaultValue={
-              product.flashSaleEndsAt
-                ? new Date(
-                    product.flashSaleEndsAt.getTime() -
-                      product.flashSaleEndsAt.getTimezoneOffset() * 60000,
-                  )
-                    .toISOString()
-                    .slice(0, 16)
-                : ""
-            }
-            className="mt-2 block w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-sm outline-none focus:border-amber-600"
-          />
-        </div>
-
+        {/* ── 1. Foto Produk ─────────────────────────────────────── */}
         <MultiImageUpload
           name="images"
           max={5}
@@ -198,6 +166,10 @@ export default async function AdminProductEditPage({
           ]}
         />
 
+        {/* ── 2. Nama Produk ─────────────────────────────────────── */}
+        <Field label="Nama produk" name="name" required defaultValue={product.name} />
+
+        {/* ── 3. Kategori | Brand ────────────────────────────────── */}
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="block text-sm font-medium text-zinc-700">Kategori</label>
@@ -236,6 +208,101 @@ export default async function AdminProductEditPage({
               ))}
             </select>
           </div>
+        </div>
+
+        {/* ── 4. Deskripsi ───────────────────────────────────────── */}
+        <Field
+          label="Deskripsi"
+          name="description"
+          required
+          defaultValue={product.description}
+          textarea
+        />
+
+        {/* ── 5. Variasi — render di section dedicated di bawah form
+            (lihat <VariantEditor /> di bawah form ini). Tidak masuk
+            ke form action ini karena VariantEditor pakai API call
+            sendiri. */}
+
+        {/* ── 6. Harga Satuan ────────────────────────────────────── */}
+        {/* Conditional disable: kalau produk punya varian, Harga base
+            di-sync dari MIN(varian aktif) — admin tidak bisa override.
+            Field tetap visible supaya admin tahu value saat ini. */}
+        <Field
+          label={
+            product.hasVariants
+              ? "Harga Satuan (Rp) — diatur per varian"
+              : "Harga Satuan (Rp)"
+          }
+          name="price"
+          type="number"
+          required={!product.hasVariants}
+          defaultValue={String(product.price)}
+          disabled={product.hasVariants}
+          hint={
+            product.hasVariants
+              ? "Diatur per varian di tabel Variasi di bawah."
+              : undefined
+          }
+        />
+
+        {/* ── 7. Stok | 8. Berat ─────────────────────────────────── */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            label={product.hasVariants ? "Stok (total varian)" : "Stok"}
+            name="stock"
+            type="number"
+            defaultValue={String(product.stock)}
+            disabled={product.hasVariants}
+            hint={
+              product.hasVariants
+                ? `Total ${product.stock} dari semua varian aktif.`
+                : undefined
+            }
+          />
+          <Field
+            label="Berat (gram)"
+            name="weightGram"
+            type="number"
+            defaultValue={String(product.weightGram)}
+            disabled={product.hasVariants}
+            hint={
+              product.hasVariants
+                ? "Diatur per varian di tabel Variasi di bawah."
+                : undefined
+            }
+          />
+        </div>
+
+        {/* Flash Sale explicit end time. Kalau di-set, produk ini SELALU
+            masuk Flash Sale section di home apapun discount %-nya, dengan
+            countdown timer. Kalau kosong, produk masuk Flash Sale section
+            hanya kalau discount >= 20% (auto-include). */}
+        <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+          <label className="block text-sm font-bold text-amber-900">
+            ⚡ Flash Sale berakhir (opsional)
+          </label>
+          <p className="mt-1 text-xs text-amber-800">
+            Set kalau ini produk Flash Sale dengan countdown timer. Setelah
+            waktu ini, produk otomatis keluar dari Flash Sale section.
+            Kosongkan kalau produk tidak Flash Sale (diskon ≥20% tetap
+            otomatis masuk).
+          </p>
+          <input
+            type="datetime-local"
+            name="flashSaleEndsAt"
+            defaultValue={
+              product.flashSaleEndsAt
+                ? new Date(
+                    product.flashSaleEndsAt.getTime() -
+                      product.flashSaleEndsAt.getTimezoneOffset() * 60000,
+                  )
+                    .toISOString()
+                    .slice(0, 16)
+                : ""
+            }
+            className="mt-2 block w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-sm outline-none focus:border-amber-600"
+          />
         </div>
 
         <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row">
@@ -296,6 +363,8 @@ function Field({
   placeholder,
   textarea,
   defaultValue,
+  disabled,
+  hint,
 }: {
   label: string;
   name: string;
@@ -304,9 +373,14 @@ function Field({
   placeholder?: string;
   textarea?: boolean;
   defaultValue?: string;
+  disabled?: boolean;
+  hint?: string;
 }) {
-  const cls =
-    "mt-1 block w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-600";
+  const cls = `mt-1 block w-full rounded-xl border px-4 py-3 text-sm outline-none focus:border-zinc-600 ${
+    disabled
+      ? "cursor-not-allowed border-zinc-200 bg-zinc-50 text-zinc-400"
+      : "border-zinc-300"
+  }`;
   return (
     <div>
       <label className="block text-sm font-medium text-zinc-700">
@@ -314,7 +388,15 @@ function Field({
         {required && <span className="ml-1 text-red-500">*</span>}
       </label>
       {textarea ? (
-        <textarea name={name} required={required} placeholder={placeholder} defaultValue={defaultValue} rows={4} className={cls} />
+        <textarea
+          name={name}
+          required={required}
+          placeholder={placeholder}
+          defaultValue={defaultValue}
+          rows={4}
+          disabled={disabled}
+          className={cls}
+        />
       ) : (
         <input
           type={type}
@@ -322,9 +404,11 @@ function Field({
           required={required}
           placeholder={placeholder}
           defaultValue={defaultValue}
+          disabled={disabled}
           className={cls}
         />
       )}
+      {hint && <p className="mt-1 text-xs text-zinc-500">ⓘ {hint}</p>}
     </div>
   );
 }

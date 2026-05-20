@@ -46,8 +46,32 @@ function cartesian<T>(arrays: T[][]): T[][] {
 }
 
 // ── Props ──────────────────────────────────────────────────────
+/**
+ * Payload yang di-emit ke parent saat draft mode (onChange). Match
+ * struktur backend POST /api/admin/products & PUT variants endpoint.
+ */
+export type VariantEditorDraftPayload = {
+  hasVariants: boolean;
+  attributes: Array<{
+    name: string;
+    position: number;
+    options: Array<{ value: string; position: number }>;
+  }>;
+  variants: Array<{
+    optionRefs: string[];
+    price: number;
+    stock: number;
+    weightGram: number;
+    sku?: string;
+    imageUrl?: string;
+    isActive: boolean;
+  }>;
+};
+
 interface Props {
-  productId: string;
+  /** Required di standalone mode (call API sendiri). Optional di draft
+   *  mode (parent yang submit). */
+  productId?: string;
   initialHasVariants: boolean;
   initialAttributes: Array<{
     id: string;
@@ -65,6 +89,13 @@ interface Props {
     isActive: boolean;
     options: Array<{ optionId: string }>;
   }>;
+  /**
+   * Draft mode: callback yang dipanggil tiap state berubah. Kalau
+   * provided, component TIDAK call API saat save; parent yang
+   * collect data + submit bersama form lain. Juga auto-hide tombol
+   * "Simpan Varian" standalone.
+   */
+  onChange?: (payload: VariantEditorDraftPayload) => void;
 }
 
 export function VariantEditor({
@@ -72,7 +103,9 @@ export function VariantEditor({
   initialHasVariants,
   initialAttributes,
   initialVariants,
+  onChange,
 }: Props) {
+  const isDraftMode = typeof onChange === "function";
   const [hasVariants, setHasVariants] = useState(initialHasVariants);
   const [attrs, setAttrs] = useState<AttrDraft[]>(() =>
     initialAttributes
@@ -204,6 +237,33 @@ export function VariantEditor({
     prevAttrsKeyRef.current = key;
     setRows((prev) => buildRows(nonEmptyAttrs, prev));
   }, [nonEmptyAttrs, buildRows]);
+
+  // Draft mode: emit ke parent tiap kali state berubah, supaya parent
+  // form bisa submit semuanya bersama. Pakai useEffect dengan deps state
+  // utama untuk auto-fire saat berubah.
+  useEffect(() => {
+    if (!onChange) return;
+    onChange({
+      hasVariants,
+      attributes: nonEmptyAttrs.map((a, idx) => ({
+        name: a.name,
+        position: idx,
+        options: a.options.map((o, oIdx) => ({
+          value: o.value,
+          position: oIdx,
+        })),
+      })),
+      variants: rows.map((r) => ({
+        optionRefs: r.optionRefs,
+        price: Number(r.price) || 0,
+        stock: Number(r.stock) || 0,
+        weightGram: Number(r.weightGram) || 500,
+        sku: r.sku || undefined,
+        imageUrl: r.imageUrl || undefined,
+        isActive: r.isActive,
+      })),
+    });
+  }, [hasVariants, nonEmptyAttrs, rows, onChange]);
 
   // Auto-maintain trailing empty slot: setiap atribut harus selalu punya
   // 1 input kosong di akhir sebagai "add affordance". Begitu admin ketik
@@ -928,28 +988,30 @@ export function VariantEditor({
         </div>
       )}
 
-      {/* Save button */}
-      <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving}
-          className="w-full rounded-full bg-natalo-600 px-6 py-3 text-sm font-bold text-white transition hover:bg-natalo-700 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
-        >
-          {saving ? "Menyimpan..." : "Simpan Varian"}
-        </button>
-
-        {saveMsg && (
-          <p
-            className={`text-sm font-semibold ${
-              saveMsg.ok ? "text-green-600" : "text-red-500"
-            }`}
+      {/* Save button — hidden di draft mode (parent form punya save sendiri). */}
+      {!isDraftMode && (
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="w-full rounded-full bg-natalo-600 px-6 py-3 text-sm font-bold text-white transition hover:bg-natalo-700 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
           >
-            {saveMsg.ok ? "✓ " : "✗ "}
-            {saveMsg.text}
-          </p>
-        )}
-      </div>
+            {saving ? "Menyimpan..." : "Simpan Varian"}
+          </button>
+
+          {saveMsg && (
+            <p
+              className={`text-sm font-semibold ${
+                saveMsg.ok ? "text-green-600" : "text-red-500"
+              }`}
+            >
+              {saveMsg.ok ? "✓ " : "✗ "}
+              {saveMsg.text}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
