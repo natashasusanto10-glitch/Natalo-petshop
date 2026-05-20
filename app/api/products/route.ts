@@ -69,6 +69,11 @@ export async function GET(request: NextRequest) {
   const popularFilter = asPopularFilter(sp.get("popular"));
   const seed = (sp.get("seed") ?? "").trim().slice(0, 80);
   const excludeIds = parseIdList(sp.get("exclude"));
+  // Filter by ID list — dipakai wishlist supaya bisa fetch hanya
+  // produk yang ada di favorit user. Bypass default sort/pagination
+  // dan filter inStock supaya produk stok 0 yang di-wishlist tetap
+  // muncul (sesuai spec "wishlist boleh lihat stok 0").
+  const includeIds = parseIdList(sp.get("ids"));
   const inStockOnly = parseBooleanFlag(sp.get("inStock"));
   const withImageOnly = parseBooleanFlag(sp.get("withImage"));
   const hasPriceOnly = parseBooleanFlag(sp.get("hasPrice"));
@@ -90,8 +95,11 @@ export async function GET(request: NextRequest) {
       take: limit,
       skip: cursor,
       excludeIds,
+      includeIds: includeIds.length > 0 ? includeIds : undefined,
+      // Wishlist tidak filter stok — produk stok 0 yang sudah
+      // di-wishlist harus tetap visible (sesuai spec).
       hasPriceOnly,
-      inStockOnly,
+      inStockOnly: includeIds.length > 0 ? false : inStockOnly,
       withImageOnly,
       discountOnly,
       viewerId: session?.sub ?? null,
@@ -103,8 +111,9 @@ export async function GET(request: NextRequest) {
       newFilter,
       popularFilter,
       excludeIds,
+      includeIds: includeIds.length > 0 ? includeIds : undefined,
       hasPriceOnly,
-      inStockOnly,
+      inStockOnly: includeIds.length > 0 ? false : inStockOnly,
       withImageOnly,
       discountOnly,
     }),

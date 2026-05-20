@@ -86,10 +86,17 @@ class FavoriteStore extends ChangeNotifier {
     await ensureLoaded();
     if (_ids.isEmpty) return [];
 
-    final result = await productService.fetchProducts(limit: 240);
-    return result.products
-        .where((product) => _ids.contains(product.id))
-        .toList();
+    // Fetch HANYA produk yang ada di wishlist via ?ids=...
+    // Backend auto-bypass inStockOnly filter untuk request dengan ids
+    // → produk stok 0 yang di-wishlist tetap muncul (sesuai spec).
+    // Sebelumnya: fetch all 240 produk lalu filter ke ids. Produk yang
+    // posisi >240 di list backend tidak ke-include. Sekarang fetch
+    // langsung by ID — accurate + ringan.
+    final result = await productService.fetchProducts(
+      limit: 500,
+      ids: _ids.toList(),
+    );
+    return result.products;
   }
 
   void clear() {

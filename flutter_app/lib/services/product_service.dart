@@ -157,6 +157,10 @@ class ProductService {
     /// Toko aktif). Server-side filter — lebih akurat dari client-side
     /// karena tidak terkubur di limit pagination.
     bool discountOnly = false,
+    /// Filter HANYA produk dengan ID dalam list. Dipakai wishlist.
+    /// Backend auto-bypass inStockOnly supaya produk stok 0 yang
+    /// di-wishlist tetap muncul.
+    List<String>? ids,
   }) async {
     try {
       final keyword = query?.trim() ?? '';
@@ -174,6 +178,7 @@ class ProductService {
           if (hasPrice) 'hasPrice': 'true',
           if (withImage) 'withImage': 'true',
           if (discountOnly) 'discountOnly': 'true',
+          if (ids != null && ids.isNotEmpty) 'ids': ids.join(','),
         },
       );
       final map = _asMap(data);

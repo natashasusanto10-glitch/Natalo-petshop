@@ -649,6 +649,10 @@ export async function getProducts(opts?: {
   popularFilter?: PopularFilter;
   randomSeed?: string;
   excludeIds?: string[];
+  /** Filter HANYA produk dengan ID dalam list ini. Dipakai wishlist
+   *  untuk fetch produk yang specific di-favorit (bypass pagination
+   *  + inStock filter standar). */
+  includeIds?: string[];
   hasPriceOnly?: boolean;
   inStockOnly?: boolean;
   withImageOnly?: boolean;
@@ -666,6 +670,7 @@ export async function getProducts(opts?: {
     popularFilter,
     randomSeed,
     excludeIds,
+    includeIds,
     hasPriceOnly,
     inStockOnly,
     withImageOnly,
@@ -679,6 +684,7 @@ export async function getProducts(opts?: {
     search,
     createdAtCutoff,
     excludeIds,
+    includeIds,
     hasPriceOnly,
     inStockOnly,
     withImageOnly,
@@ -800,6 +806,7 @@ export async function getProductsCount(opts?: {
   newFilter?: NewProductFilter;
   popularFilter?: PopularFilter;
   excludeIds?: string[];
+  includeIds?: string[];
   hasPriceOnly?: boolean;
   inStockOnly?: boolean;
   withImageOnly?: boolean;
@@ -812,6 +819,7 @@ export async function getProductsCount(opts?: {
     newFilter,
     popularFilter,
     excludeIds,
+    includeIds,
     hasPriceOnly,
     inStockOnly,
     withImageOnly,
@@ -824,6 +832,7 @@ export async function getProductsCount(opts?: {
     search,
     createdAtCutoff,
     excludeIds,
+    includeIds,
     hasPriceOnly,
     inStockOnly,
     withImageOnly,
@@ -865,6 +874,7 @@ function buildProductWhere({
   search,
   createdAtCutoff,
   excludeIds,
+  includeIds,
   hasPriceOnly,
   inStockOnly,
   withImageOnly,
@@ -875,6 +885,7 @@ function buildProductWhere({
   search?: string;
   createdAtCutoff?: Date | null;
   excludeIds?: string[];
+  includeIds?: string[];
   hasPriceOnly?: boolean;
   inStockOnly?: boolean;
   withImageOnly?: boolean;
@@ -953,6 +964,8 @@ function buildProductWhere({
       ? { createdAt: { gte: createdAtCutoff, lte: new Date() } }
       : {}),
     ...(excludeIds?.length ? { id: { notIn: excludeIds } } : {}),
+    // Filter HANYA produk dengan ID dalam list (wishlist mode).
+    ...(includeIds?.length ? { id: { in: includeIds } } : {}),
     ...(and.length ? { AND: and } : {}),
   };
 }
