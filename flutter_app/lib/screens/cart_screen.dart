@@ -30,9 +30,13 @@ const _discountRedBorder = Color(0xFFFFB8C8);
 const _shippingGreen = Color(0xFF12A66A);
 const _shippingGreenSoft = Color(0xFFECFDF3);
 const _shippingGreenBorder = Color(0xFFA6F4C5);
-const _checkoutBarHeight = 74.0;
 const _voucherBarHeight = 64.0;
-const _voucherBarIdleDelay = Duration(milliseconds: 180);
+const _selectionRowHeight = 50.0;
+// Shared cart chrome auto-hide config — selection row atas + voucher bar
+// bawah pakai SAME duration + curve + state untuk gerakan 1:1 sinkron.
+const _cartChromeIdleDelay = Duration(milliseconds: 180);
+const _cartChromeAnimDuration = Duration(milliseconds: 220);
+const _cartChromeAnimCurve = Curves.easeOutCubic;
 const _cartBossOpenCountKey = 'natalo_cart_boss_open_count_v1';
 const _cartBossRefreshEvery = 3;
 const _shippingVoucherCode = '__shipping_free__';
@@ -53,8 +57,12 @@ class _CartScreenState extends State<CartScreen> {
   bool _loadingMoreBossProducts = false;
   bool _bossProductsHasMore = true;
   String? _bossProductsCursor;
-  Timer? _voucherBarTimer;
-  bool _voucherBarVisible = true;
+  // Shared "cart chrome" state — controls BOTH selection row (top) +
+  // voucher bar (bottom). Single state guarantees 1:1 synced animation:
+  // saat user scroll, keduanya hide bareng; saat scroll stop, keduanya
+  // muncul bareng dengan same duration + curve.
+  Timer? _cartChromeTimer;
+  bool _showCartChrome = true;
   List<MemberVoucher> _availableDiscountVouchers = const [];
   List<MemberVoucher> _unavailableDiscountVouchers = const [];
   MemberVoucher? _appliedDiscountVoucher;
@@ -115,7 +123,7 @@ class _CartScreenState extends State<CartScreen> {
 
   @override
   void dispose() {
-    _voucherBarTimer?.cancel();
+    _cartChromeTimer?.cancel();
     _scrollController.removeListener(_onCartScroll);
     _scrollController.dispose();
     cartStore.removeListener(_onCartChanged);
@@ -169,8 +177,8 @@ class _CartScreenState extends State<CartScreen> {
     final position = _scrollController.position;
 
     if (cartStore.items.isNotEmpty && memberStore.isLoggedIn) {
-      _hideVoucherBar();
-      _scheduleShowVoucherBar();
+      _hideCartChrome();
+      _showCartChromeAfterStop();
     }
 
     if (_loadingBossProducts ||
@@ -230,10 +238,6 @@ class _CartScreenState extends State<CartScreen> {
 
   List<CartItem> get _selectedItems =>
       cartStore.items.where((item) => _selectedIds.contains(item.key)).toList();
-
-  bool get _isAllSelected =>
-      cartStore.items.isNotEmpty &&
-      cartStore.items.every((item) => _selectedIds.contains(item.key));
 
   int get _selectedQuantity =>
       _selectedItems.fold<int>(0, (sum, item) => sum + item.quantity);
@@ -356,60 +360,48 @@ class _CartScreenState extends State<CartScreen> {
     return null;
   }
 
-  void _hideVoucherBar() {
-    _voucherBarTimer?.cancel();
-    if (!_voucherBarVisible) return;
-    setState(() => _voucherBarVisible = false);
+  void _hideCartChrome() {
+    _cartChromeTimer?.cancel();
+    if (!_showCartChrome) return;
+    setState(() => _showCartChrome = false);
   }
 
-  void _scheduleShowVoucherBar() {
-    _voucherBarTimer?.cancel();
-    _voucherBarTimer = Timer(_voucherBarIdleDelay, () {
-      if (!mounted || _voucherBarVisible) return;
-      setState(() => _voucherBarVisible = true);
+  void _showCartChromeAfterStop() {
+    _cartChromeTimer?.cancel();
+    _cartChromeTimer = Timer(_cartChromeIdleDelay, () {
+      if (!mounted || _showCartChrome) return;
+      setState(() => _showCartChrome = true);
     });
   }
 
   bool _handleScrollNotification(ScrollNotification notification) {
     if (notification is ScrollStartNotification) {
-      _hideVoucherBar();
+      _hideCartChrome();
       return false;
     }
 
     if (notification is ScrollUpdateNotification ||
         notification is OverscrollNotification) {
-      _hideVoucherBar();
+      _hideCartChrome();
       // Tokopedia-like: reset timer setiap frame scroll. Bar muncul sendiri
       // setelah list benar-benar idle, tanpa user perlu tap layar lagi.
-      _scheduleShowVoucherBar();
+      _showCartChromeAfterStop();
       return false;
     }
 
     if (notification is UserScrollNotification) {
       if (notification.direction == ScrollDirection.idle) {
-        _scheduleShowVoucherBar();
+        _showCartChromeAfterStop();
       } else {
-        _hideVoucherBar();
+        _hideCartChrome();
       }
       return false;
     }
 
     if (notification is ScrollEndNotification) {
-      _scheduleShowVoucherBar();
+      _showCartChromeAfterStop();
     }
     return false;
-  }
-
-  void _toggleAll() {
-    AppHaptics.tap();
-    setState(() {
-      if (_isAllSelected) {
-        _selectedIds.clear();
-      } else {
-        _selectedIds = cartStore.items.map((i) => i.key).toSet();
-      }
-    });
-    _syncVouchersForSelection();
   }
 
   void _toggleItem(String key) {
@@ -552,26 +544,13 @@ class _CartScreenState extends State<CartScreen> {
         ),
         title: const Text('Keranjang'),
         actions: [
-          AnimatedBuilder(
-            animation: cartStore,
-            builder: (context, _) {
-              // Conditional action: delete saat ada selected, storefront
-              // saat cart kosong / tidak ada selection.
-              if (cartStore.items.isEmpty) {
-                return const SizedBox.shrink();
-              }
-              if (_selectedItems.isNotEmpty) {
-                return IconButton(
-                  tooltip: 'Hapus terpilih',
-                  onPressed: _confirmRemoveSelected,
-                  icon: const Icon(Icons.delete_outline_rounded),
-                );
-              }
-              return TextButton(
-                onPressed: cartStore.clear,
-                child: const Text('Kosongkan'),
-              );
-            },
+          // Wishlist heart icon — replace dari trash/kosongkan action lama.
+          // Trash icon sekarang muncul di selection row di bawah header,
+          // bukan di AppBar. Pattern match Tokopedia / e-commerce modern.
+          IconButton(
+            tooltip: 'Wishlist',
+            onPressed: () => Navigator.pushNamed(context, '/wishlist'),
+            icon: const Icon(Icons.favorite_border_rounded),
           ),
         ],
       ),
@@ -589,126 +568,203 @@ class _CartScreenState extends State<CartScreen> {
             );
           }
 
-          final bottomSafe = MediaQuery.paddingOf(context).bottom;
           final showVoucherArea = memberStore.isLoggedIn;
-          final stickyBottomPadding = _checkoutBarHeight +
-              (showVoucherArea ? _voucherBarHeight : 0) +
-              bottomSafe +
-              36;
 
-          return Stack(
+          // Column body — auto-hide chrome (top + bottom) sandwich main
+          // ListView. Selection row + voucher bar share `_showCartChrome`
+          // state untuk gerakan 1:1 sinkron saat user scroll. Checkout
+          // bar di paling bawah, SELALU visible (tidak ikut auto-hide).
+          return Column(
             children: [
-              Listener(
-                onPointerDown: (_) => _hideVoucherBar(),
-                onPointerMove: (_) => _hideVoucherBar(),
-                onPointerUp: (_) => _scheduleShowVoucherBar(),
-                onPointerCancel: (_) => _scheduleShowVoucherBar(),
-                child: NotificationListener<ScrollNotification>(
-                  onNotification: _handleScrollNotification,
-                  child: ListView(
-                    controller: _scrollController,
-                    padding: EdgeInsets.fromLTRB(
-                      16,
-                      12,
-                      16,
-                      stickyBottomPadding,
-                    ),
-                    children: [
-                      // ── Select all card ──
-                      _SelectAllCard(
-                        selected: _isAllSelected,
-                        totalProduct: items.length,
-                        selectedProduct: _selectedItems.length,
-                        onTap: _toggleAll,
-                      ),
-                      const SizedBox(height: 12),
-                      // ── Cart items dengan checkbox per item ──
-                      for (var i = 0; i < items.length; i++) ...[
-                        _CartItemCard(
-                          item: items[i],
-                          index: i,
-                          selected: _selectedIds.contains(items[i].key),
-                          onToggleSelected: () => _toggleItem(items[i].key),
+              // ── Auto-hide top: selection row compact ──
+              ClipRect(
+                child: AnimatedContainer(
+                  height: _showCartChrome ? _selectionRowHeight : 0,
+                  duration: _cartChromeAnimDuration,
+                  curve: _cartChromeAnimCurve,
+                  child: AnimatedSlide(
+                    offset: _showCartChrome
+                        ? Offset.zero
+                        : const Offset(0, -1),
+                    duration: _cartChromeAnimDuration,
+                    curve: _cartChromeAnimCurve,
+                    child: AnimatedOpacity(
+                      opacity: _showCartChrome ? 1 : 0,
+                      duration: _cartChromeAnimDuration,
+                      curve: _cartChromeAnimCurve,
+                      child: IgnorePointer(
+                        ignoring: !_showCartChrome,
+                        child: _CartSelectedRow(
+                          selectedCount: _selectedItems.length,
+                          onDeleteSelected: _selectedItems.isEmpty
+                              ? null
+                              : _confirmRemoveSelected,
                         ),
-                        const SizedBox(height: 12),
-                      ],
-                      _CartRecommendationsSection(
-                        title: 'Yuk dilihat lagi',
-                        products: _recentlyViewed,
-                        loading: _loadingRecentlyViewed,
-                        showLoadingPlaceholder: false,
                       ),
-                      const SizedBox(height: 18),
-                      _CartRecommendationsSection(
-                        title: 'Ayoo diborong bossku',
-                        products: _bossProducts,
-                        loading: _loadingBossProducts,
-                        loadingMore: _loadingMoreBossProducts,
-                        showLoadingPlaceholder: false,
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: Material(
-                  color: NataloColors.surface,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (showVoucherArea)
-                        ClipRect(
-                          child: AnimatedContainer(
-                            height: _voucherBarVisible ? _voucherBarHeight : 0,
-                            duration: const Duration(milliseconds: 220),
-                            curve: Curves.easeOutCubic,
-                            child: AnimatedSlide(
-                              offset: _voucherBarVisible
-                                  ? Offset.zero
-                                  : const Offset(0, 1),
-                              duration: const Duration(milliseconds: 220),
-                              curve: Curves.easeOutCubic,
-                              child: AnimatedOpacity(
-                                opacity: _voucherBarVisible ? 1 : 0,
-                                duration: const Duration(milliseconds: 180),
-                                child: IgnorePointer(
-                                  ignoring: !_voucherBarVisible,
-                                  child: _StickyVoucherBar(
-                                    hasSelection: _selectedItems.isNotEmpty,
-                                    loading: _loadingVouchers,
-                                    discountVoucher: _appliedDiscountVoucher,
-                                    discountAmount: _voucherDiscount,
-                                    shippingSelected: _appliedShippingVoucher,
-                                    shippingDiscount: _shippingDiscount,
-                                    totalSaving: _totalVoucherSaving,
-                                    onTap: _selectedItems.isEmpty
-                                        ? null
-                                        : () {
-                                            AppHaptics.tap();
-                                            _openVoucherSheet();
-                                          },
-                                  ),
-                                ),
-                              ),
-                            ),
+              // ── Scrollable content (cart items + recommendations) ──
+              Expanded(
+                child: Listener(
+                  onPointerDown: (_) => _hideCartChrome(),
+                  onPointerMove: (_) => _hideCartChrome(),
+                  onPointerUp: (_) => _showCartChromeAfterStop(),
+                  onPointerCancel: (_) => _showCartChromeAfterStop(),
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: _handleScrollNotification,
+                    child: ListView(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                      children: [
+                        // Cart items dengan checkbox per item.
+                        for (var i = 0; i < items.length; i++) ...[
+                          _CartItemCard(
+                            item: items[i],
+                            index: i,
+                            selected: _selectedIds.contains(items[i].key),
+                            onToggleSelected: () =>
+                                _toggleItem(items[i].key),
                           ),
+                          const SizedBox(height: 12),
+                        ],
+                        _CartRecommendationsSection(
+                          title: 'Yuk dilihat lagi',
+                          products: _recentlyViewed,
+                          loading: _loadingRecentlyViewed,
+                          showLoadingPlaceholder: false,
                         ),
-                      _CartSummaryBar(
-                        grandTotal: _grandTotal,
-                        selectedQuantity: _selectedQuantity,
-                        disabled: _selectedItems.isEmpty,
-                        onCheckout: _goToCheckout,
-                      ),
-                    ],
+                        const SizedBox(height: 18),
+                        _CartRecommendationsSection(
+                          title: 'Ayoo diborong bossku',
+                          products: _bossProducts,
+                          loading: _loadingBossProducts,
+                          loadingMore: _loadingMoreBossProducts,
+                          showLoadingPlaceholder: false,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
+              ),
+              // ── Auto-hide bottom: voucher bar ──
+              if (showVoucherArea)
+                ClipRect(
+                  child: AnimatedContainer(
+                    height: _showCartChrome ? _voucherBarHeight : 0,
+                    duration: _cartChromeAnimDuration,
+                    curve: _cartChromeAnimCurve,
+                    child: AnimatedSlide(
+                      offset: _showCartChrome
+                          ? Offset.zero
+                          : const Offset(0, 1),
+                      duration: _cartChromeAnimDuration,
+                      curve: _cartChromeAnimCurve,
+                      child: AnimatedOpacity(
+                        opacity: _showCartChrome ? 1 : 0,
+                        duration: _cartChromeAnimDuration,
+                        curve: _cartChromeAnimCurve,
+                        child: IgnorePointer(
+                          ignoring: !_showCartChrome,
+                          child: _StickyVoucherBar(
+                            hasSelection: _selectedItems.isNotEmpty,
+                            loading: _loadingVouchers,
+                            discountVoucher: _appliedDiscountVoucher,
+                            discountAmount: _voucherDiscount,
+                            shippingSelected: _appliedShippingVoucher,
+                            shippingDiscount: _shippingDiscount,
+                            totalSaving: _totalVoucherSaving,
+                            onTap: _selectedItems.isEmpty
+                                ? null
+                                : () {
+                                    AppHaptics.tap();
+                                    _openVoucherSheet();
+                                  },
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              // ── Checkout bar SELALU visible (tidak ikut auto-hide) ──
+              _CartSummaryBar(
+                grandTotal: _grandTotal,
+                selectedQuantity: _selectedQuantity,
+                disabled: _selectedItems.isEmpty,
+                onCheckout: _goToCheckout,
               ),
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// Compact selection row di atas list — replace _SelectAllCard yang besar.
+/// Layout: "1 produk terpilih" di kiri, trash icon di kanan.
+/// Height 50, padding horizontal 20, border bottom tipis untuk crisp edge.
+/// Trash icon disabled saat selectedCount = 0. Tap trash → confirm dialog.
+class _CartSelectedRow extends StatelessWidget {
+  final int selectedCount;
+  final VoidCallback? onDeleteSelected;
+
+  const _CartSelectedRow({
+    required this.selectedCount,
+    required this.onDeleteSelected,
+  });
+
+  String _selectedText(int count) {
+    if (count <= 0) return 'Belum ada produk terpilih';
+    if (count == 1) return '1 produk terpilih';
+    return '$count produk terpilih';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasSelection = selectedCount > 0;
+    return Container(
+      height: _selectionRowHeight,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          bottom: BorderSide(color: Color(0xFFE8EDF5), width: 1),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              _selectedText(selectedCount),
+              style: TextStyle(
+                fontSize: 14.5,
+                fontWeight: FontWeight.w700,
+                color: hasSelection
+                    ? const Color(0xFF101828)
+                    : const Color(0xFF6B7280),
+              ),
+            ),
+          ),
+          IconButton(
+            onPressed: hasSelection ? onDeleteSelected : null,
+            tooltip: 'Hapus terpilih',
+            icon: Icon(
+              Icons.delete_outline_rounded,
+              size: 22,
+              color: hasSelection
+                  ? const Color(0xFF101828)
+                  : const Color(0xFFB8C0CC),
+            ),
+            splashRadius: 22,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(
+              minWidth: 40,
+              minHeight: 40,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2147,68 +2203,6 @@ class _CartSummaryBar extends StatelessWidget {
                     fit: BoxFit.scaleDown,
                     child: Text(checkoutLabel),
                   ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// ── Select all card ──
-/// Checkbox + label + counter X/Y di kanan.
-class _SelectAllCard extends StatelessWidget {
-  final bool selected;
-  final int totalProduct;
-  final int selectedProduct;
-  final VoidCallback onTap;
-
-  const _SelectAllCard({
-    required this.selected,
-    required this.totalProduct,
-    required this.selectedProduct,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: NataloColors.surface,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(10, 10, 14, 10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: NataloColors.border),
-          ),
-          child: Row(
-            children: [
-              Checkbox(
-                value: selected,
-                activeColor: _brandBlue,
-                onChanged: (_) => onTap(),
-              ),
-              Expanded(
-                child: Text(
-                  selected ? 'Semua produk dipilih' : 'Pilih semua produk',
-                  style: const TextStyle(
-                    color: NataloColors.textPrimary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-              Text(
-                '$selectedProduct/$totalProduct',
-                style: const TextStyle(
-                  color: NataloColors.textSecondary,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
                 ),
               ),
             ],
