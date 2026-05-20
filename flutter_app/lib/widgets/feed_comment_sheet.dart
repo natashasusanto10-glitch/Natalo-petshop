@@ -577,25 +577,16 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            // Avatar user current (initial fallback) — soft blue tile.
+            // Avatar user current — pakai foto profil kalau ada,
+            // fallback ke initial bubble. Re-use _CommentAvatar yang
+            // sudah handle Image.network + errorBuilder fallback ke
+            // initial supaya konsisten dengan avatar di comment list.
             Padding(
               padding: const EdgeInsets.only(bottom: 2),
-              child: Container(
-                width: 34,
-                height: 34,
-                alignment: Alignment.center,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFEAF3FF),
-                  shape: BoxShape.circle,
-                ),
-                child: Text(
-                  initial,
-                  style: const TextStyle(
-                    color: NataloColors.primary,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 13,
-                  ),
-                ),
+              child: _CommentAvatar(
+                size: 34,
+                initial: initial,
+                imageUrl: profile?.profilePhotoUrl,
               ),
             ),
             const SizedBox(width: 10),
