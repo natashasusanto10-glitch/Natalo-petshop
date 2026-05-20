@@ -1848,10 +1848,19 @@ class _HeroBannerState extends State<_HeroBanner> {
 
   @override
   Widget build(BuildContext context) {
+    // Banner spec revisi:
+    // - Horizontal padding 8 (sebelumnya 16 → bikin banner terlihat
+    //   seperti card kecil di tengah)
+    // - AspectRatio 16:7 responsive (sebelumnya fixed height 184px
+    //   yang tidak adaptive ke screen width)
+    // - Border radius 12 (sebelumnya 26 → terlalu rounded, looks
+    //   card-y. Spec rekomendasi 10-14)
+    // - Hapus white border + soften shadow (sebelumnya tampak card)
+    // - viewportFraction default 1.0 (PageController tanpa argumen)
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-      child: SizedBox(
-        height: 184,
+      padding: const EdgeInsets.fromLTRB(8, 14, 8, 0),
+      child: AspectRatio(
+        aspectRatio: 16 / 7,
         child: Stack(
           children: [
             PageView.builder(
@@ -1922,64 +1931,61 @@ class _BannerSlide extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Banner slide revisi — clean rounded image tanpa card styling:
+    // - Margin antar-slide DIHAPUS (sebelumnya 1px bikin sliver gap)
+    // - White border DIHAPUS (bikin tampak card)
+    // - Heavy shadow REDUCED (subtle hint depth, bukan card-y)
+    // - Border radius 12 (match parent AspectRatio shape, kecil/halus)
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 1),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(26),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.56)),
-          boxShadow: [
-            BoxShadow(
-              color: _brandBlue.withValues(alpha: 0.18),
-              blurRadius: 24,
-              offset: const Offset(0, 12),
-            ),
-          ],
-          color: const Color(0xFFEAF5FF),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFFEAF5FF),
+          ),
+          child: isNetwork
+              ? CachedNetworkImage(
+                  imageUrl: imageUrl,
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  height: double.infinity,
+                  fadeInDuration: const Duration(milliseconds: 220),
+                  placeholder: (context, url) => Container(
+                    color: const Color(0xFFEAF5FF),
+                    alignment: Alignment.center,
+                    child: const SizedBox(
+                      height: 24,
+                      width: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                  errorWidget: (_, __, ___) => Container(
+                    color: const Color(0xFFEAF5FF),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.image_outlined,
+                      color: Color(0xFF93C5FD),
+                      size: 48,
+                    ),
+                  ),
+                )
+              : Image.asset(
+                  imageUrl,
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  height: double.infinity,
+                  errorBuilder: (_, __, ___) => Container(
+                    color: const Color(0xFFEAF5FF),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.image_outlined,
+                      color: Color(0xFF93C5FD),
+                      size: 48,
+                    ),
+                  ),
+                ),
         ),
-        clipBehavior: Clip.antiAlias,
-        child: isNetwork
-            ? CachedNetworkImage(
-                imageUrl: imageUrl,
-                fit: BoxFit.cover,
-                width: double.infinity,
-                height: double.infinity,
-                fadeInDuration: const Duration(milliseconds: 220),
-                placeholder: (context, url) => Container(
-                  color: const Color(0xFFEAF5FF),
-                  alignment: Alignment.center,
-                  child: const SizedBox(
-                    height: 24,
-                    width: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-                errorWidget: (_, __, ___) => Container(
-                  color: const Color(0xFFEAF5FF),
-                  alignment: Alignment.center,
-                  child: const Icon(
-                    Icons.image_outlined,
-                    color: Color(0xFF93C5FD),
-                    size: 48,
-                  ),
-                ),
-              )
-            : Image.asset(
-                imageUrl,
-                fit: BoxFit.cover,
-                width: double.infinity,
-                height: double.infinity,
-                errorBuilder: (_, __, ___) => Container(
-                  color: const Color(0xFFEAF5FF),
-                  alignment: Alignment.center,
-                  child: const Icon(
-                    Icons.image_outlined,
-                    color: Color(0xFF93C5FD),
-                    size: 48,
-                  ),
-                ),
-              ),
       ),
     );
   }
