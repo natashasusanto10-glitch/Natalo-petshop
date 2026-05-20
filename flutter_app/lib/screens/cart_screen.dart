@@ -648,7 +648,20 @@ class _CartScreenState extends State<CartScreen> {
                             selected: _selectedIds.contains(items[i].key),
                             onToggleSelected: () => _toggleItem(items[i].key),
                           ),
-                          const SizedBox(height: 12),
+                          // Divider indented dari kiri checkbox — start setelah
+                          // checkbox area supaya garis tidak full-width.
+                          // Tokopedia style: divider sejajar dengan image kiri.
+                          if (i < items.length - 1)
+                            const Padding(
+                              padding: EdgeInsets.only(left: 42),
+                              child: Divider(
+                                height: 1,
+                                thickness: 1,
+                                color: Color(0xFFEEF2F6),
+                              ),
+                            )
+                          else
+                            const SizedBox(height: 8),
                         ],
                         _CartRecommendationsSection(
                           title: 'Yuk dilihat lagi',
@@ -1029,7 +1042,9 @@ class _CartItemCard extends StatelessWidget {
         // antar item (handled di parent ListView/Column).
         child: Container(
           color: Colors.white,
-          padding: const EdgeInsets.fromLTRB(8, 14, 16, 14),
+          // Padding kiri ringkas (4px) supaya checkbox nempel kiri ala
+          // Tokopedia. Vertical 12 (sedikit lebih ringkas dari 14).
+          padding: const EdgeInsets.fromLTRB(4, 12, 12, 12),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1041,17 +1056,18 @@ class _CartItemCard extends StatelessWidget {
                 visualDensity: VisualDensity.compact,
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              const SizedBox(width: 6),
-              // Product image — soft bg, no border.
+              const SizedBox(width: 4),
+              // Product image — soft bg, no border. Tokopedia size ~64px,
+              // radius kecil supaya feels marketplace native.
               InkWell(
                 onTap: () => _openProductDetail(context),
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(8),
                 child: Container(
-                  width: 78,
-                  height: 78,
+                  width: 64,
+                  height: 64,
                   decoration: BoxDecoration(
                     color: const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   clipBehavior: Clip.antiAlias,
                   child: AppProductImage(
@@ -1060,7 +1076,7 @@ class _CartItemCard extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               // Detail column kanan — name, variant chip, price + stepper row.
               Expanded(
                 child: Column(
