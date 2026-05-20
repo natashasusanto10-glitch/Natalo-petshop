@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { formatRupiah } from "@/lib/format";
@@ -103,6 +103,21 @@ export function PromoTokoForm({ initial, excludeId }: Props) {
   const [endsAt, setEndsAt] = useState(data.endsAt);
   const [items, setItems] = useState<PromoItem[]>(data.items);
 
+  // ── Promo ongoing check ─────────────────────────────────────
+  // Detect kalau promo yang lagi di-edit sudah ONGOING (start <= now
+  // < end). Kalau iya:
+  //  - startsAt input di-disable (server juga reject perubahan, UX dulu)
+  //  - Quick-fill preset hide (tidak applicable saat ongoing)
+  //  - endsAt tetap editable supaya admin bisa adjust akhir atau
+  //    "akhiri lebih awal"
+  const isOngoing = useMemo(() => {
+    if (!isEdit || !data.startsAt || !data.endsAt) return false;
+    const now = new Date();
+    const start = new Date(data.startsAt);
+    const end = new Date(data.endsAt);
+    return start <= now && end > now;
+  }, [isEdit, data.startsAt, data.endsAt]);
+
   // Product picker modal state
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -118,6 +133,16 @@ export function PromoTokoForm({ initial, excludeId }: Props) {
   if (!endsAt) errors.endsAt = "Waktu berakhir wajib diisi";
   if (startsAt && endsAt && new Date(endsAt) <= new Date(startsAt)) {
     errors.endsAt = "Waktu berakhir harus setelah waktu mulai";
+  }
+  // Max 90 hari dari startsAt — block client side supaya admin tidak
+  // terbentur server validation di-akhir. Server juga validate sama.
+  if (startsAt && endsAt) {
+    const start = new Date(startsAt);
+    const end = new Date(endsAt);
+    const ninetyDays = 90 * 24 * 60 * 60 * 1000;
+    if (end.getTime() - start.getTime() > ninetyDays) {
+      errors.endsAt = "Periode maksimal 90 hari dari waktu mulai";
+    }
   }
   if (items.length === 0) {
     errors.items = "Tambah minimal 1 produk";
@@ -313,7 +338,13 @@ export function PromoTokoForm({ initial, excludeId }: Props) {
                   type="datetime-local"
                   value={startsAt}
                   onChange={(e) => setStartsAt(e.target.value)}
-                  className={`flex-1 rounded-xl border bg-white px-4 py-3 text-sm outline-none focus:border-natalo-600 ${
+                  disabled={isOngoing}
+                  title={
+                    isOngoing
+                      ? "Promo sudah berjalan — waktu mulai tidak bisa diubah"
+                      : undefined
+                  }
+                  className={`flex-1 rounded-xl border bg-white px-4 py-3 text-sm outline-none focus:border-natalo-600 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-500 ${
                     showFieldErrors && errors.startsAt
                       ? "border-red-400"
                       : "border-zinc-300"
@@ -331,13 +362,21 @@ export function PromoTokoForm({ initial, excludeId }: Props) {
                   }`}
                 />
               </div>
+              {isOngoing && (
+                <p className="mt-1 text-xs text-amber-700">
+                  🔒 Promo sedang berjalan. Waktu mulai dikunci — hanya
+                  bisa ubah waktu berakhir (akhiri lebih awal atau
+                  perpanjang sampai maks 90 hari dari mulai).
+                </p>
+              )}
               <p className="mt-1 text-xs text-amber-600">
                 Periode Promo harus kurang dari 90 hari.
               </p>
               {/* Quick-fill preset buttons — bantu admin set periode
                   tanpa harus type manual. Edit tetap manual via input
-                  datetime-local di atas. */}
-              {!isEdit && (
+                  datetime-local di atas. Hide saat ongoing (tidak
+                  applicable karena startsAt dikunci). */}
+              {!isEdit && !isOngoing && (
                 <div className="mt-2 flex flex-wrap gap-2">
                   <span className="text-xs font-semibold text-zinc-500">
                     Quick:
