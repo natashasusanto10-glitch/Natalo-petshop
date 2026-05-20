@@ -795,32 +795,34 @@ class _HomeStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
     // easeOutCubic untuk natural deceleration — match spec.
     final t = Curves.easeOutCubic.transform(rawProgress);
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(
-          bottom: BorderSide(
-            color: Color.lerp(
-              const Color(0x00EFF4FA),
-              const Color(0xFFEFF4FA),
-              t,
-            )!,
+    return SizedBox.expand(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border(
+            bottom: BorderSide(
+              color: Color.lerp(
+                const Color(0x00EFF4FA),
+                const Color(0xFFEFF4FA),
+                t,
+              )!,
+            ),
           ),
+          boxShadow: t > 0.05
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04 + 0.04 * t),
+                    blurRadius: 12 * t,
+                    offset: Offset(0, 4 * t),
+                  ),
+                ]
+              : const [],
         ),
-        boxShadow: t > 0.05
-            ? [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04 + 0.04 * t),
-                  blurRadius: 12 * t,
-                  offset: Offset(0, 4 * t),
-                ),
-              ]
-            : const [],
-      ),
-      child: _HomeHeader(
-        onOpenProducts: onOpenProducts,
-        onOpenSearch: onOpenSearch,
-        progress: t,
+        child: _HomeHeader(
+          onOpenProducts: onOpenProducts,
+          onOpenSearch: onOpenSearch,
+          progress: t,
+        ),
       ),
     );
   }

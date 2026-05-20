@@ -496,6 +496,7 @@ class _PaymentActionCard extends StatelessWidget {
         ],
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const _SectionTitle(
@@ -622,6 +623,7 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
         ],
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -1516,6 +1518,7 @@ class _OrderItemsCard extends StatelessWidget {
         ],
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -1620,6 +1623,7 @@ class _OrderProductTile extends StatelessWidget {
         border: Border.all(color: const Color(0xFFE7EEF7)),
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1798,6 +1802,7 @@ class _PaymentSummary extends StatelessWidget {
         ],
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const _SectionTitle(

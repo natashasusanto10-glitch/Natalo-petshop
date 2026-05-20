@@ -70,8 +70,9 @@ import 'widgets/read_only_welcome_gate.dart';
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 /// Initial route resolved sebelum runApp — onboarding kalau first launch,
-/// home kalau sudah pernah lihat. Future di-await di main().
-late final String _initialRoute;
+/// home kalau sudah pernah lihat. Default "/" keeps widget tests and
+/// defensive embeds safe when [NataloPetshopApp] is mounted without main().
+String _initialRoute = '/';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
