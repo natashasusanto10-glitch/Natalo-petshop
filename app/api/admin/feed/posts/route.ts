@@ -21,6 +21,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { FeedPostKind, FeedPostStatus, Prisma } from "@prisma/client";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { bunnyThumbnailUrl, signBunnyUrl } from "@/lib/feed/bunny";
 import { reconcileFeedPost } from "@/lib/feed/reconcile";
 
 const PAGE_SIZE = 20;
@@ -175,8 +176,11 @@ export async function GET(request: NextRequest) {
     tab: p.tab,
     title: p.title,
     description: p.description,
-    videoUrl: p.videoUrl,
-    thumbnailUrl: p.thumbnailUrl,
+    videoUrl: signBunnyUrl(p.videoUrl) ?? null,
+    thumbnailUrl:
+      signBunnyUrl(
+        p.thumbnailUrl ?? (p.videoGuid ? bunnyThumbnailUrl(p.videoGuid) : null),
+      ) ?? null,
     videoDurationSec: p.videoDurationSec,
     product: p.product
       ? { id: p.product.id, slug: p.product.slug, name: p.product.name }

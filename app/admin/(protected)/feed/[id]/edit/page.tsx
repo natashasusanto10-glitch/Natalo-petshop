@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/session-guards";
+import { bunnyThumbnailUrl, signBunnyUrl } from "@/lib/feed/bunny";
 import { AdminEditFeedPostClient } from "@/components/admin/feed/AdminEditFeedPostClient";
 
 export const metadata: Metadata = {
@@ -67,7 +68,12 @@ export default async function AdminEditFeedPostPage({ params }: PageProps) {
         initialTitle={post.title}
         initialDescription={post.description ?? ""}
         initialProducts={initialProducts}
-        thumbnailUrl={post.thumbnailUrl}
+        thumbnailUrl={
+          signBunnyUrl(
+            post.thumbnailUrl ??
+              (post.videoGuid ? bunnyThumbnailUrl(post.videoGuid) : null),
+          ) ?? null
+        }
         videoDurationSec={post.videoDurationSec}
         kind={post.kind}
         tab={post.tab}
