@@ -167,6 +167,19 @@ class _ProductsScreenState extends State<ProductsScreen> {
           _filter.category == null || product.category == _filter.category;
       final stockMatch = !_filter.inStockOnly || product.stock > 0;
       final discountMatch = !_filter.discountOnly || product.hasDiscount;
+      // Search Filters extension — advanced filter from _FilterSheet:
+      // multi-brand, price range, rating. Cek pakai finalPrice
+      // (consider discount) supaya user yang filter "<50rb" tetap
+      // dapat produk normal Rp80rb yang lagi diskon ke Rp40rb.
+      final multiBrandMatch = _filter.brands.isEmpty ||
+          _filter.brands.contains(product.brand);
+      final priceForFilter = product.finalPrice;
+      final minPriceMatch =
+          _filter.minPrice == null || priceForFilter >= _filter.minPrice!;
+      final maxPriceMatch =
+          _filter.maxPrice == null || priceForFilter <= _filter.maxPrice!;
+      final ratingMatch =
+          _filter.minRating == 0 || product.rating >= _filter.minRating;
       // Smart match dengan synonym expansion — "anjing" cocok produk
       // yang title-nya "dog food", "rc" cocok "Royal Canin", dll.
       // Search di title + brand + category sekaligus.
@@ -183,6 +196,10 @@ class _ProductsScreenState extends State<ProductsScreen> {
           categoryMatch &&
           stockMatch &&
           discountMatch &&
+          multiBrandMatch &&
+          minPriceMatch &&
+          maxPriceMatch &&
+          ratingMatch &&
           keywordMatch;
     }).toList();
 
@@ -553,6 +570,139 @@ class _ProductsScreenState extends State<ProductsScreen> {
     _loadProducts();
   }
 
+  /// Open advanced Filter Sheet — price range, multi-brand, rating,
+  /// promo/in-stock toggles. Returns updated filter via Navigator.pop.
+  /// Sheet computes live preview count saat user toggle.
+  Future<void> _openFilterSheet() async {
+    FocusScope.of(context).unfocus();
+    // Get all unique brands dari current loaded products untuk multi-
+    // select brand list. Sort alphabetically untuk UX consistent.
+    final allBrands = _result.products
+        .map((p) => p.brand.trim())
+        .where((b) => b.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    // Compute price range bounds dari product data (max price untuk
+    // RangeSlider upper bound). Round up ke nearest 100k untuk UX
+    // smooth slider.
+    final maxProductPrice = _result.products.isEmpty
+        ? 1000000.0
+        : _result.products
+            .map((p) => p.price)
+            .reduce((a, b) => a > b ? a : b);
+    final priceMaxBound = ((maxProductPrice / 100000).ceil() * 100000)
+        .clamp(100000, 10000000)
+        .toDouble();
+
+    final result = await showModalBottomSheet<ProductCatalogFilter>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _FilterSheet(
+        currentFilter: _filter,
+        allBrands: allBrands,
+        priceMaxBound: priceMaxBound,
+        // Live preview count — closure ke parent state supaya tetap
+        // hitung filter result terbaru tiap toggle di sheet.
+        previewCountForFilter: (filter) =>
+            _previewFilterMatchCount(filter),
+      ),
+    );
+    if (result == null) return;
+    setState(() => _filter = result);
+    _loadProducts();
+  }
+
+  /// Hitung berapa produk yang match dengan filter candidate (untuk
+  /// live preview di apply button). Same logic dengan `_products`
+  /// getter, tapi terima filter parameter custom.
+  int _previewFilterMatchCount(ProductCatalogFilter filter) {
+    final keyword = _query.trim().toLowerCase();
+    var count = 0;
+    for (final product in _result.products) {
+      final brandMatch = widget.selectedBrand == null ||
+          product.brand == widget.selectedBrand;
+      final filterBrandMatch =
+          filter.brand == null || product.brand == filter.brand;
+      final categoryMatch =
+          filter.category == null || product.category == filter.category;
+      final stockMatch = !filter.inStockOnly || product.stock > 0;
+      final discountMatch = !filter.discountOnly || product.hasDiscount;
+      final multiBrandMatch =
+          filter.brands.isEmpty || filter.brands.contains(product.brand);
+      final priceForFilter = product.finalPrice;
+      final minPriceMatch =
+          filter.minPrice == null || priceForFilter >= filter.minPrice!;
+      final maxPriceMatch =
+          filter.maxPrice == null || priceForFilter <= filter.maxPrice!;
+      final ratingMatch =
+          filter.minRating == 0 || product.rating >= filter.minRating;
+      final searchableText = [
+        product.title,
+        product.brand,
+        product.category,
+      ].join(' ');
+      final keywordMatch =
+          keyword.isEmpty || SearchSynonyms.matches(searchableText, keyword);
+      if (brandMatch &&
+          filterBrandMatch &&
+          categoryMatch &&
+          stockMatch &&
+          discountMatch &&
+          multiBrandMatch &&
+          minPriceMatch &&
+          maxPriceMatch &&
+          ratingMatch &&
+          keywordMatch) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  /// Remove individual active filter chip — restore default for that field.
+  void _removeFilterChip({
+    bool clearMinPrice = false,
+    bool clearMaxPrice = false,
+    String? removeBrand,
+    bool clearMinRating = false,
+    bool clearDiscount = false,
+    bool restoreInStock = false,
+  }) {
+    setState(() {
+      var next = _filter;
+      if (clearMinPrice) next = next.copyWith(clearMinPrice: true);
+      if (clearMaxPrice) next = next.copyWith(clearMaxPrice: true);
+      if (removeBrand != null) {
+        next = next.copyWith(
+          brands: next.brands.where((b) => b != removeBrand).toSet(),
+        );
+      }
+      if (clearMinRating) next = next.copyWith(minRating: 0);
+      if (clearDiscount) next = next.copyWith(discountOnly: false);
+      if (restoreInStock) next = next.copyWith(inStockOnly: true);
+      _filter = next;
+    });
+    _loadProducts();
+  }
+
+  /// Clear all advanced filters back to default — but keep search query,
+  /// category, brand single chips (those are managed via _activeMode).
+  void _clearAllAdvancedFilters() {
+    setState(() {
+      _filter = _filter.copyWith(
+        clearMinPrice: true,
+        clearMaxPrice: true,
+        brands: const {},
+        minRating: 0,
+        discountOnly: false,
+        inStockOnly: true,
+      );
+    });
+    _loadProducts();
+  }
+
   List<Product> _generateAllProducts(List<Product> products) {
     if (products.length <= 1) return products;
     final viewed = recentlyViewedStore.items;
@@ -686,6 +836,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
                     onSubmitQuery: _commitSearch,
                     onFilterModeChanged: _onFilterModeChanged,
                     onOpenSort: _openSortSheet,
+                    onOpenFilterSheet: _openFilterSheet,
+                    activeAdvancedFilterCount: _filter.activeCount,
                   ),
                 ),
               ),
@@ -707,6 +859,30 @@ class _ProductsScreenState extends State<ProductsScreen> {
                   onClearHistory: _clearSearchHistory,
                 ),
               ),
+              // Active filter chips bar — horizontal scroll list dari
+              // semua filter aktif (price range, multi-brand, rating).
+              // Tap × di chip = remove individual filter. "Clear All"
+              // button di akhir kalau ada filter aktif. Auto-hide kalau
+              // tidak ada advanced filter.
+              if (_filter.hasAdvancedFilters)
+                SliverToBoxAdapter(
+                  child: _ActiveFiltersBar(
+                    filter: _filter,
+                    onRemoveMinPrice: () =>
+                        _removeFilterChip(clearMinPrice: true),
+                    onRemoveMaxPrice: () =>
+                        _removeFilterChip(clearMaxPrice: true),
+                    onRemoveBrand: (brand) =>
+                        _removeFilterChip(removeBrand: brand),
+                    onRemoveRating: () =>
+                        _removeFilterChip(clearMinRating: true),
+                    onRemoveDiscount: () =>
+                        _removeFilterChip(clearDiscount: true),
+                    onRemoveInStock: () =>
+                        _removeFilterChip(restoreInStock: true),
+                    onClearAll: _clearAllAdvancedFilters,
+                  ),
+                ),
               if (hasLoadError)
                 SliverFillRemaining(
                   hasScrollBody: false,
@@ -836,6 +1012,10 @@ class _CatalogHeader extends StatelessWidget {
   final ValueChanged<String> onSubmitQuery;
   final ValueChanged<_ProductFilterMode> onFilterModeChanged;
   final VoidCallback onOpenSort;
+  /// NEW — buka advanced filter sheet (price, multi-brand, rating).
+  final VoidCallback onOpenFilterSheet;
+  /// NEW — badge count untuk Filter button icon.
+  final int activeAdvancedFilterCount;
 
   const _CatalogHeader({
     required this.controller,
@@ -848,6 +1028,8 @@ class _CatalogHeader extends StatelessWidget {
     required this.onSubmitQuery,
     required this.onFilterModeChanged,
     required this.onOpenSort,
+    required this.onOpenFilterSheet,
+    required this.activeAdvancedFilterCount,
   });
 
   @override
@@ -876,11 +1058,13 @@ class _CatalogHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          // Product count + sort button row — di atas filter chips.
+          // Product count + filter + sort button row — di atas filter chips.
           _ProductCountAndSortRow(
             visibleCount: visibleCount,
             totalCount: totalCount,
             onOpenSort: onOpenSort,
+            onOpenFilterSheet: onOpenFilterSheet,
+            activeFilterCount: activeAdvancedFilterCount,
           ),
           const SizedBox(height: 10),
           _HorizontalProductFilterChips(
@@ -895,16 +1079,20 @@ class _CatalogHeader extends StatelessWidget {
   }
 }
 
-/// Product count text + tombol Urutkan (compact soft blue).
+/// Product count text + tombol Filter + Urutkan (compact soft blue).
 class _ProductCountAndSortRow extends StatelessWidget {
   final int visibleCount;
   final int totalCount;
   final VoidCallback onOpenSort;
+  final VoidCallback onOpenFilterSheet;
+  final int activeFilterCount;
 
   const _ProductCountAndSortRow({
     required this.visibleCount,
     required this.totalCount,
     required this.onOpenSort,
+    required this.onOpenFilterSheet,
+    required this.activeFilterCount,
   });
 
   @override
@@ -948,57 +1136,126 @@ class _ProductCountAndSortRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          // Urutkan button — glass ringan style match spec (inactive chip
-          // family). Selaras visual dengan chip "Semua" / "Produk Baru"
-          // di bawahnya supaya tidak ada inconsistency dua kotak yang
-          // serupa tapi style beda.
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: onOpenSort,
-              borderRadius: BorderRadius.circular(22),
-              child: Container(
-                height: 40,
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.72),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: const Color(0xFFD8E4F4),
-                    width: 1,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.035),
-                      blurRadius: 14,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Urutkan',
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF111827),
-                      ),
-                    ),
-                    SizedBox(width: 6),
-                    Icon(
-                      Icons.swap_vert_rounded,
-                      size: 19,
-                      color: Color(0xFF64748B),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          // Filter button — NEW, advanced filter sheet (price, multi-brand,
+          // rating). Badge merah dengan count kalau ada filter aktif.
+          _HeaderActionPill(
+            label: 'Filter',
+            icon: Icons.tune_rounded,
+            badge: activeFilterCount > 0 ? activeFilterCount : null,
+            onTap: onOpenFilterSheet,
+          ),
+          const SizedBox(width: 8),
+          // Urutkan button — glass ringan style match spec.
+          _HeaderActionPill(
+            label: 'Urutkan',
+            icon: Icons.swap_vert_rounded,
+            onTap: onOpenSort,
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Compact pill button untuk header action (Filter, Urutkan).
+/// Soft glass style — selaras dengan chip "Semua/Kategori/Baru" di bawah.
+/// Support optional `badge` count (red dot dengan number) untuk indikator
+/// filter aktif.
+class _HeaderActionPill extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final int? badge;
+  final VoidCallback onTap;
+
+  const _HeaderActionPill({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    this.badge,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final pill = Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Container(
+          height: 40,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.72),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: badge != null
+                  ? const Color(0xFF2568C7)
+                  : const Color(0xFFD8E4F4),
+              width: badge != null ? 1.4 : 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.035),
+                blurRadius: 14,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                  color: badge != null
+                      ? const Color(0xFF2568C7)
+                      : const Color(0xFF111827),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Icon(
+                icon,
+                size: 19,
+                color: badge != null
+                    ? const Color(0xFF2568C7)
+                    : const Color(0xFF64748B),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (badge == null) return pill;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        pill,
+        Positioned(
+          top: -4,
+          right: -4,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEF4444),
+              borderRadius: BorderRadius.circular(99),
+              border: Border.all(color: Colors.white, width: 1.5),
+            ),
+            constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+            alignment: Alignment.center,
+            child: Text(
+              badge! > 9 ? '9+' : '$badge',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 10,
+                fontWeight: FontWeight.w900,
+                height: 1,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1602,24 +1859,71 @@ class _ProductSavingBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = _productSavingLabel(product);
-    if (label == null) return const SizedBox.shrink();
+    final savingLabel = _productSavingLabel(product);
+    final shippingLabel = _productShippingLabel(product);
+    final badges = <Widget>[
+      if (savingLabel != null)
+        _ProductPromoBadge(
+          label: savingLabel,
+          icon: Icons.confirmation_number_rounded,
+          color: const Color(0xFFEF4444),
+          backgroundColor: const Color(0xFFFFF1F2),
+          borderColor: const Color(0xFFFCA5A5),
+        ),
+      if (shippingLabel != null)
+        _ProductPromoBadge(
+          label: shippingLabel,
+          icon: Icons.local_shipping_rounded,
+          color: const Color(0xFF16A34A),
+          backgroundColor: const Color(0xFFECFDF3),
+          borderColor: const Color(0xFFA7F3D0),
+        ),
+    ];
 
+    if (badges.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 4,
+        children: badges,
+      ),
+    );
+  }
+}
+
+class _ProductPromoBadge extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final Color backgroundColor;
+  final Color borderColor;
+
+  const _ProductPromoBadge({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.backgroundColor,
+    required this.borderColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(top: 6),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF1F2),
+        color: backgroundColor,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFFCA5A5)),
+        border: Border.all(color: borderColor),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
-            Icons.confirmation_number_rounded,
+          Icon(
+            icon,
             size: 13,
-            color: Color(0xFFEF4444),
+            color: color,
           ),
           const SizedBox(width: 4),
           Flexible(
@@ -1627,10 +1931,10 @@ class _ProductSavingBadge extends StatelessWidget {
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
-                color: Color(0xFFEF4444),
+                color: color,
                 height: 1,
               ),
             ),
@@ -1709,6 +2013,7 @@ String? _productPromoLabel(Product product) {
   final percent = product.discountPercent;
   if (percent != null && percent > 0) return 'Diskon $percent%';
   if (product.voucherPreview != null) return 'Promo';
+  if (product.shippingVoucherPreview != null) return 'Ongkir';
   return null;
 }
 
@@ -1728,6 +2033,13 @@ String? _productSavingLabel(Product product) {
   final savings = product.price - product.finalPrice;
   if (savings <= 0) return null;
   return 'Hemat s.d. ${formatRupiah(savings)}';
+}
+
+String? _productShippingLabel(Product product) {
+  final voucher = product.shippingVoucherPreview;
+  if (voucher == null) return null;
+  final label = voucher.badgeLabel.trim();
+  return label.isNotEmpty ? label : 'Gratis Ongkir';
 }
 
 String _formatProductSoldCount(int count) {
@@ -2059,6 +2371,19 @@ class ProductCatalogFilter {
   final bool inStockOnly;
   final bool discountOnly;
   final bool withImageOnly;
+  // Search Filters extension — Tokopedia-style advanced filter sheet.
+  // Default null/empty = no constraint. Set by _FilterSheet, applied di
+  // products_screen `.where()` filter chain bersama dengan field lain.
+  /// Min harga inclusive (Rp). null = no lower bound.
+  final double? minPrice;
+  /// Max harga inclusive (Rp). null = no upper bound.
+  final double? maxPrice;
+  /// Multi-select brand names. Empty = all brands allowed.
+  /// Berbeda dengan `brand` (single) yang dipakai filter chip atas.
+  /// Kalau ada `brand` di-set, juga harus match dengan brands kalau set.
+  final Set<String> brands;
+  /// Minimum rating (1-5). 0 = no rating filter.
+  final int minRating;
 
   const ProductCatalogFilter({
     this.category,
@@ -2067,6 +2392,10 @@ class ProductCatalogFilter {
     this.inStockOnly = true,
     this.discountOnly = false,
     this.withImageOnly = false,
+    this.minPrice,
+    this.maxPrice,
+    this.brands = const {},
+    this.minRating = 0,
   });
 
   String? get apiNewFilter => sort == ProductSort.newest ? 'newest' : null;
@@ -2087,8 +2416,22 @@ class ProductCatalogFilter {
     if (!inStockOnly) count++;
     if (discountOnly) count++;
     if (withImageOnly) count++;
+    if (minPrice != null) count++;
+    if (maxPrice != null) count++;
+    if (brands.isNotEmpty) count++;
+    if (minRating > 0) count++;
     return count;
   }
+
+  /// True kalau ada advanced filter aktif (price/multi-brand/rating).
+  /// Dipakai untuk show "Active Filters Bar" di atas grid.
+  bool get hasAdvancedFilters =>
+      minPrice != null ||
+      maxPrice != null ||
+      brands.isNotEmpty ||
+      minRating > 0 ||
+      discountOnly ||
+      !inStockOnly;
 
   ProductCatalogFilter copyWith({
     String? category,
@@ -2099,6 +2442,12 @@ class ProductCatalogFilter {
     bool? inStockOnly,
     bool? discountOnly,
     bool? withImageOnly,
+    double? minPrice,
+    bool clearMinPrice = false,
+    double? maxPrice,
+    bool clearMaxPrice = false,
+    Set<String>? brands,
+    int? minRating,
   }) {
     return ProductCatalogFilter(
       category: clearCategory ? null : category ?? this.category,
@@ -2107,6 +2456,10 @@ class ProductCatalogFilter {
       inStockOnly: inStockOnly ?? this.inStockOnly,
       discountOnly: discountOnly ?? this.discountOnly,
       withImageOnly: withImageOnly ?? this.withImageOnly,
+      minPrice: clearMinPrice ? null : minPrice ?? this.minPrice,
+      maxPrice: clearMaxPrice ? null : maxPrice ?? this.maxPrice,
+      brands: brands ?? this.brands,
+      minRating: minRating ?? this.minRating,
     );
   }
 }
@@ -2342,6 +2695,658 @@ class _SortBottomSheet extends StatelessWidget {
             const SizedBox(height: 8),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// Advanced Filter Sheet — Search Filters scope
+// ════════════════════════════════════════════════════════════════
+
+/// Bottom sheet untuk advanced filter (price range, multi-brand,
+/// rating, promo/in-stock toggles). 85% screen height, scrollable
+/// internal, sticky apply button di bawah dengan live preview count.
+class _FilterSheet extends StatefulWidget {
+  final ProductCatalogFilter currentFilter;
+  final List<String> allBrands;
+  final double priceMaxBound;
+  /// Closure dari parent — compute count match untuk filter candidate.
+  /// Update live saat user toggle, displayed di apply button label.
+  final int Function(ProductCatalogFilter) previewCountForFilter;
+
+  const _FilterSheet({
+    required this.currentFilter,
+    required this.allBrands,
+    required this.priceMaxBound,
+    required this.previewCountForFilter,
+  });
+
+  @override
+  State<_FilterSheet> createState() => _FilterSheetState();
+}
+
+class _FilterSheetState extends State<_FilterSheet> {
+  late RangeValues _priceRange;
+  late Set<String> _selectedBrands;
+  late int _minRating;
+  late bool _inStockOnly;
+  late bool _discountOnly;
+  late bool _brandListExpanded;
+
+  @override
+  void initState() {
+    super.initState();
+    _priceRange = RangeValues(
+      widget.currentFilter.minPrice ?? 0,
+      widget.currentFilter.maxPrice ?? widget.priceMaxBound,
+    );
+    _selectedBrands = Set<String>.from(widget.currentFilter.brands);
+    _minRating = widget.currentFilter.minRating;
+    _inStockOnly = widget.currentFilter.inStockOnly;
+    _discountOnly = widget.currentFilter.discountOnly;
+    _brandListExpanded = widget.allBrands.length <= 8;
+  }
+
+  ProductCatalogFilter get _candidateFilter {
+    return widget.currentFilter.copyWith(
+      minPrice: _priceRange.start > 0 ? _priceRange.start : null,
+      clearMinPrice: _priceRange.start <= 0,
+      maxPrice:
+          _priceRange.end < widget.priceMaxBound ? _priceRange.end : null,
+      clearMaxPrice: _priceRange.end >= widget.priceMaxBound,
+      brands: _selectedBrands,
+      minRating: _minRating,
+      inStockOnly: _inStockOnly,
+      discountOnly: _discountOnly,
+    );
+  }
+
+  void _resetAll() {
+    setState(() {
+      _priceRange = RangeValues(0, widget.priceMaxBound);
+      _selectedBrands = {};
+      _minRating = 0;
+      _inStockOnly = true;
+      _discountOnly = false;
+    });
+  }
+
+  void _apply() {
+    Navigator.of(context).pop(_candidateFilter);
+  }
+
+  String _formatPriceShort(double value) {
+    if (value >= 1000000) {
+      final v = value / 1000000;
+      return 'Rp ${v.toStringAsFixed(value % 1000000 == 0 ? 0 : 1)}jt';
+    }
+    if (value >= 1000) {
+      return 'Rp ${(value / 1000).round()}rb';
+    }
+    return 'Rp ${value.toInt()}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visibleBrands = _brandListExpanded
+        ? widget.allBrands
+        : widget.allBrands.take(8).toList();
+    final hasMoreBrands = widget.allBrands.length > 8;
+    final previewCount = widget.previewCountForFilter(_candidateFilter);
+
+    return FractionallySizedBox(
+      heightFactor: 0.85,
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        child: Container(
+          color: Colors.white,
+          child: Column(
+            children: [
+              const SizedBox(height: 10),
+              Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD1D5DB),
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 12, 12),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Filter',
+                        style: TextStyle(
+                          color: Color(0xFF111827),
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: _resetAll,
+                      child: const Text(
+                        'Reset',
+                        style: TextStyle(
+                          color: Color(0xFFEF4444),
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1, color: Color(0xFFE5E7EB)),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+                  children: [
+                    const _FilterSectionTitle('HARGA'),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          _formatPriceShort(_priceRange.start),
+                          style: const TextStyle(
+                            color: Color(0xFF2568C7),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        Text(
+                          _formatPriceShort(_priceRange.end),
+                          style: const TextStyle(
+                            color: Color(0xFF2568C7),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                    RangeSlider(
+                      values: _priceRange,
+                      min: 0,
+                      max: widget.priceMaxBound,
+                      divisions: 20,
+                      activeColor: const Color(0xFF2568C7),
+                      inactiveColor: const Color(0xFFE5E7EB),
+                      labels: RangeLabels(
+                        _formatPriceShort(_priceRange.start),
+                        _formatPriceShort(_priceRange.end),
+                      ),
+                      onChanged: (range) =>
+                          setState(() => _priceRange = range),
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        const Expanded(child: _FilterSectionTitle('BRAND')),
+                        if (_selectedBrands.isNotEmpty)
+                          Text(
+                            '${_selectedBrands.length}/${widget.allBrands.length}',
+                            style: const TextStyle(
+                              color: Color(0xFF6B7280),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    if (widget.allBrands.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                        child: Text(
+                          'Belum ada brand di katalog.',
+                          style: TextStyle(
+                            color: Color(0xFF6B7280),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      )
+                    else
+                      ...visibleBrands.map((brand) {
+                        final selected = _selectedBrands.contains(brand);
+                        return _FilterCheckRow(
+                          label: brand,
+                          selected: selected,
+                          onTap: () {
+                            setState(() {
+                              if (selected) {
+                                _selectedBrands.remove(brand);
+                              } else {
+                                _selectedBrands.add(brand);
+                              }
+                            });
+                          },
+                        );
+                      }),
+                    if (hasMoreBrands && !_brandListExpanded)
+                      TextButton(
+                        onPressed: () =>
+                            setState(() => _brandListExpanded = true),
+                        child: Text(
+                          'Lihat semua ${widget.allBrands.length} brand →',
+                          style: const TextStyle(
+                            color: Color(0xFF2568C7),
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 24),
+                    const _FilterSectionTitle('RATING MINIMUM'),
+                    const SizedBox(height: 8),
+                    for (final rating in [4, 3, 2])
+                      _FilterRadioRow(
+                        selected: _minRating == rating,
+                        onTap: () => setState(() =>
+                            _minRating = _minRating == rating ? 0 : rating),
+                        label: Row(
+                          children: [
+                            ...List.generate(
+                              rating,
+                              (_) => const Icon(
+                                Icons.star_rounded,
+                                size: 18,
+                                color: Color(0xFFFBBF24),
+                              ),
+                            ),
+                            ...List.generate(
+                              5 - rating,
+                              (_) => const Icon(
+                                Icons.star_outline_rounded,
+                                size: 18,
+                                color: Color(0xFFD1D5DB),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              '$rating ke atas',
+                              style: const TextStyle(
+                                color: Color(0xFF374151),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    const SizedBox(height: 24),
+                    const _FilterSectionTitle('TAMPILAN'),
+                    const SizedBox(height: 4),
+                    _FilterToggleRow(
+                      label: 'Hanya tampilkan tersedia',
+                      value: _inStockOnly,
+                      onChanged: (v) => setState(() => _inStockOnly = v),
+                    ),
+                    _FilterToggleRow(
+                      label: 'Sedang promo / diskon',
+                      value: _discountOnly,
+                      onChanged: (v) => setState(() => _discountOnly = v),
+                    ),
+                  ],
+                ),
+              ),
+              SafeArea(
+                top: false,
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    border: Border(
+                      top: BorderSide(color: Color(0xFFE5E7EB)),
+                    ),
+                  ),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      onPressed: previewCount > 0 ? _apply : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF2568C7),
+                        foregroundColor: Colors.white,
+                        disabledBackgroundColor: const Color(0xFFCBD5E1),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      child: Text(
+                        previewCount > 0
+                            ? 'Tampilkan $previewCount produk'
+                            : 'Tidak ada produk match',
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FilterSectionTitle extends StatelessWidget {
+  final String label;
+
+  const _FilterSectionTitle(this.label);
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      label,
+      style: const TextStyle(
+        color: Color(0xFF111827),
+        fontSize: 12,
+        fontWeight: FontWeight.w900,
+        letterSpacing: 0.4,
+      ),
+    );
+  }
+}
+
+class _FilterCheckRow extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _FilterCheckRow({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            Checkbox(
+              value: selected,
+              activeColor: const Color(0xFF2568C7),
+              onChanged: (_) => onTap(),
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+            ),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  color: Color(0xFF374151),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FilterRadioRow extends StatelessWidget {
+  final Widget label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _FilterRadioRow({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+        child: Row(
+          children: [
+            Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: selected
+                      ? const Color(0xFF2568C7)
+                      : const Color(0xFFD1D5DB),
+                  width: 2,
+                ),
+              ),
+              child: selected
+                  ? Center(
+                      child: Container(
+                        width: 10,
+                        height: 10,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Color(0xFF2568C7),
+                        ),
+                      ),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: label),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FilterToggleRow extends StatelessWidget {
+  final String label;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _FilterToggleRow({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xFF374151),
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Switch(
+            value: value,
+            activeThumbColor: const Color(0xFF2568C7),
+            onChanged: onChanged,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Horizontal scrollable bar showing active filters as chips.
+/// Tap × on chip = remove individual filter. "Hapus" button kanan
+/// kalau ada filter aktif. Parent sliver-level conditional render
+/// kalau filter.hasAdvancedFilters false.
+class _ActiveFiltersBar extends StatelessWidget {
+  final ProductCatalogFilter filter;
+  final VoidCallback onRemoveMinPrice;
+  final VoidCallback onRemoveMaxPrice;
+  final ValueChanged<String> onRemoveBrand;
+  final VoidCallback onRemoveRating;
+  final VoidCallback onRemoveDiscount;
+  final VoidCallback onRemoveInStock;
+  final VoidCallback onClearAll;
+
+  const _ActiveFiltersBar({
+    required this.filter,
+    required this.onRemoveMinPrice,
+    required this.onRemoveMaxPrice,
+    required this.onRemoveBrand,
+    required this.onRemoveRating,
+    required this.onRemoveDiscount,
+    required this.onRemoveInStock,
+    required this.onClearAll,
+  });
+
+  String _formatPriceShort(double value) {
+    if (value >= 1000000) {
+      final v = value / 1000000;
+      return 'Rp${v.toStringAsFixed(value % 1000000 == 0 ? 0 : 1)}jt';
+    }
+    if (value >= 1000) {
+      return 'Rp${(value / 1000).round()}rb';
+    }
+    return 'Rp${value.toInt()}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final chips = <Widget>[];
+    if (filter.minPrice != null) {
+      chips.add(_ActiveFilterChip(
+        label: '≥ ${_formatPriceShort(filter.minPrice!)}',
+        onRemove: onRemoveMinPrice,
+      ));
+    }
+    if (filter.maxPrice != null) {
+      chips.add(_ActiveFilterChip(
+        label: '≤ ${_formatPriceShort(filter.maxPrice!)}',
+        onRemove: onRemoveMaxPrice,
+      ));
+    }
+    for (final brand in filter.brands) {
+      chips.add(_ActiveFilterChip(
+        label: brand,
+        onRemove: () => onRemoveBrand(brand),
+      ));
+    }
+    if (filter.minRating > 0) {
+      chips.add(_ActiveFilterChip(
+        label: 'Rating ⭐${filter.minRating}+',
+        onRemove: onRemoveRating,
+      ));
+    }
+    if (filter.discountOnly) {
+      chips.add(_ActiveFilterChip(
+        label: 'Promo',
+        onRemove: onRemoveDiscount,
+      ));
+    }
+    if (!filter.inStockOnly) {
+      chips.add(_ActiveFilterChip(
+        label: 'Termasuk habis',
+        onRemove: onRemoveInStock,
+      ));
+    }
+    if (chips.isEmpty) return const SizedBox.shrink();
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      child: SizedBox(
+        height: 32,
+        child: Row(
+          children: [
+            Expanded(
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: chips.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 6),
+                itemBuilder: (_, i) => chips[i],
+              ),
+            ),
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: onClearAll,
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFFEF4444),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: const Size(48, 32),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text(
+                'Hapus',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActiveFilterChip extends StatelessWidget {
+  final String label;
+  final VoidCallback onRemove;
+
+  const _ActiveFilterChip({required this.label, required this.onRemove});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.only(left: 10, right: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEEF4FF),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFBED7FF), width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFF2568C7),
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          InkWell(
+            onTap: onRemove,
+            borderRadius: BorderRadius.circular(99),
+            child: const Padding(
+              padding: EdgeInsets.all(4),
+              child: Icon(
+                Icons.close_rounded,
+                size: 14,
+                color: Color(0xFF2568C7),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
