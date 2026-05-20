@@ -143,7 +143,10 @@ class _ProductsScreenState extends State<ProductsScreen> {
         _filter.category == null &&
         _filter.brand == null &&
         _filter.sort == ProductSort.newest &&
-        _filter.inStockOnly &&
+        // inStockOnly default sekarang `false` (lihat ProductCatalogFilter
+        // constructor) — cek `!inStockOnly` supaya "default state" ke-detect
+        // dengan benar.
+        !_filter.inStockOnly &&
         !_filter.discountOnly &&
         !_filter.withImageOnly;
   }
@@ -2419,7 +2422,12 @@ class ProductCatalogFilter {
     this.category,
     this.brand,
     this.sort = ProductSort.newest,
-    this.inStockOnly = true,
+    // BUG FIX: default `true` bikin produk stok 0 ke-hide dari customer.
+    // Newly created products sering stok 0 (admin belum isi) → tidak
+    // muncul di halaman user. Sekarang default false: tampilkan semua
+    // produk + UI handle stok 0 dengan badge "Habis". Admin/customer
+    // bisa toggle filter ini di filter sheet kalau mau hide habis.
+    this.inStockOnly = false,
     this.discountOnly = false,
     this.withImageOnly = false,
     this.minPrice,
@@ -2797,7 +2805,10 @@ class _FilterSheetState extends State<_FilterSheet> {
       _priceRange = RangeValues(0, widget.priceMaxBound);
       _selectedBrands = {};
       _minRating = 0;
-      _inStockOnly = true;
+      // Default `false` — consistent dengan ProductCatalogFilter default.
+      // Sebelumnya `true` di sini → reset bikin produk stok 0 di-hide
+      // lagi padahal default global sudah diubah ke false.
+      _inStockOnly = false;
       _discountOnly = false;
     });
   }
