@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:lottie/lottie.dart' as lottie;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/natalo_colors.dart';
 import '../utils/haptics.dart';
-import '../widgets/app_ui.dart';
 
 /// First-launch onboarding 4-slide. Cek di main() via
 /// `OnboardingScreen.hasSeen()` untuk decide initial route ('/' vs
@@ -52,10 +50,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final _controller = PageController();
   int _currentIndex = 0;
 
+  // Semua slide pakai icon Material + colored circle (2D flat, clean).
+  // User report Lottie animations di slide 1 + 4 tidak jelas — frame
+  // pertama atau frame di tengah animasi tidak communicate konsep
+  // slide dengan jelas. Pakai icon static yang universal recognizable.
   static const _slides = <_OnboardingSlide>[
     _OnboardingSlide(
-      lottiePath: AppLottiePaths.paw,
-      lottieHeight: 240,
+      icon: Icons.pets_rounded,
+      iconColor: Color(0xFF0B7FEA),
+      iconBg: Color(0xFFEAF3FF),
       title: 'Selamat datang di Natalo',
       body:
           'Belanja kebutuhan peliharaan jadi lebih mudah, semua ada dalam '
@@ -83,13 +86,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       accentColor: Color(0xFFEC4899),
     ),
     _OnboardingSlide(
-      lottiePath: AppLottiePaths.orderCreated,
-      lottieHeight: 220,
+      icon: Icons.notifications_active_rounded,
+      iconColor: Color(0xFF22C55E),
+      iconBg: Color(0xFFE8F8EF),
       title: 'Aktifkan notifikasi promo & order',
       body:
           'Dapat info promo flash sale, update status pesanan, dan reminder '
           'voucher kedaluwarsa langsung di HP.',
-      accentColor: NataloColors.primary,
+      accentColor: Color(0xFF22C55E),
     ),
   ];
 
@@ -224,32 +228,32 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 }
 
-/// Data class untuk satu slide onboarding. Pilih salah satu: lottiePath
-/// (animated, premium feel) atau icon (Material, lightweight).
+/// Data class untuk satu slide onboarding — Material icon dengan soft
+/// colored circle bg. 2D flat, clean, universal recognizable.
+///
+/// Note: sebelumnya support optional Lottie animation (lottiePath param),
+/// tapi user feedback "Lottie tidak jelas" — frame paw/box animation
+/// tidak communicate konsep slide dengan jelas. Switched ke Material
+/// icons sepenuhnya untuk semua 4 slide.
 class _OnboardingSlide {
-  final String? lottiePath;
-  final double lottieHeight;
-  final IconData? icon;
-  final Color? iconColor;
-  final Color? iconBg;
+  final IconData icon;
+  final Color iconColor;
+  final Color iconBg;
   final String title;
   final String body;
   final Color accentColor;
 
   const _OnboardingSlide({
-    this.lottiePath,
-    this.lottieHeight = 220,
-    this.icon,
-    this.iconColor,
-    this.iconBg,
+    required this.icon,
+    required this.iconColor,
+    required this.iconBg,
     required this.title,
     required this.body,
     required this.accentColor,
   });
 }
 
-/// Single slide view — Lottie/icon hero + title + body. Centered, no
-/// horizontal overflow.
+/// Single slide view — icon hero dengan soft colored circle + title + body.
 class _OnboardingSlideView extends StatelessWidget {
   final _OnboardingSlide slide;
 
@@ -262,38 +266,19 @@ class _OnboardingSlideView extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Hero visual — Lottie animation atau icon dengan soft bg circle.
-          if (slide.lottiePath != null)
-            SizedBox(
-              height: slide.lottieHeight,
-              child: lottie.Lottie.asset(
-                slide.lottiePath!,
-                fit: BoxFit.contain,
-                repeat: true,
-                frameRate: const lottie.FrameRate(30),
-                // Graceful fallback kalau Lottie asset corrupt — icon
-                // generic supaya onboarding tidak blank.
-                errorBuilder: (_, __, ___) => Icon(
-                  Icons.pets_rounded,
-                  size: 100,
-                  color: slide.accentColor,
-                ),
-              ),
-            )
-          else
-            Container(
-              width: 180,
-              height: 180,
-              decoration: BoxDecoration(
-                color: slide.iconBg ?? slide.accentColor.withValues(alpha: 0.10),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                slide.icon ?? Icons.pets_rounded,
-                size: 88,
-                color: slide.iconColor ?? slide.accentColor,
-              ),
+          Container(
+            width: 180,
+            height: 180,
+            decoration: BoxDecoration(
+              color: slide.iconBg,
+              shape: BoxShape.circle,
             ),
+            child: Icon(
+              slide.icon,
+              size: 88,
+              color: slide.iconColor,
+            ),
+          ),
           const SizedBox(height: 36),
           Text(
             slide.title,
