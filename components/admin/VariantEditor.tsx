@@ -633,10 +633,11 @@ export function VariantEditor({
             <div>
               <h3 className="text-sm font-bold text-zinc-700">Daftar Variasi</h3>
 
-              {/* Quick fill row */}
-              <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50/60 p-3">
-                <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:flex-1 sm:flex-wrap">
-                  <div className="relative">
+              {/* Quick fill row — full lebar dengan grid 4-kolom + tombol
+                  yang sticky di kanan supaya tidak wrap ke baris baru. */}
+              <div className="mt-2 flex flex-wrap items-stretch gap-2 rounded-xl border border-zinc-200 bg-zinc-50/60 p-3">
+                <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:flex-1 sm:flex-nowrap sm:items-center">
+                  <div className="relative flex-1">
                     <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-400">
                       Rp
                     </span>
@@ -645,7 +646,7 @@ export function VariantEditor({
                       value={bulkPrice}
                       onChange={(e) => setBulkPrice(e.target.value)}
                       placeholder="Harga"
-                      className="w-full rounded-lg border border-zinc-300 bg-white pl-8 pr-3 py-2 text-sm outline-none focus:border-natalo-600 sm:w-32"
+                      className="w-full rounded-lg border border-zinc-300 bg-white pl-8 pr-3 py-2 text-sm outline-none focus:border-natalo-600"
                     />
                   </div>
                   <input
@@ -653,21 +654,21 @@ export function VariantEditor({
                     value={bulkStock}
                     onChange={(e) => setBulkStock(e.target.value)}
                     placeholder="Stok"
-                    className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-natalo-600 sm:w-24"
+                    className="w-full flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-natalo-600"
                   />
                   <input
                     type="text"
                     value={bulkSku}
                     onChange={(e) => setBulkSku(e.target.value.toUpperCase())}
                     placeholder="Kode SKU"
-                    className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-natalo-600 sm:w-32"
+                    className="w-full flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-natalo-600"
                   />
                   <input
                     type="number"
                     value={bulkWeight}
                     onChange={(e) => setBulkWeight(e.target.value)}
-                    placeholder="Berat (gram)"
-                    className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-natalo-600 sm:w-32"
+                    placeholder="Berat (g)"
+                    className="w-full flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-natalo-600"
                   />
                 </div>
                 <button
@@ -885,7 +886,7 @@ export function VariantEditor({
                                 }
                                 placeholder="Input"
                                 min={0}
-                                className={`w-28 rounded-lg border bg-white pl-7 pr-2 py-1.5 text-sm outline-none focus:border-natalo-600 ${
+                                className={`w-full min-w-[120px] rounded-lg border bg-white pl-7 pr-2 py-1.5 text-sm outline-none focus:border-natalo-600 ${
                                   priceError ? "border-red-400" : "border-zinc-300"
                                 }`}
                               />
@@ -911,7 +912,7 @@ export function VariantEditor({
                                 updateRow(row.tempId, "stock", e.target.value)
                               }
                               min={0}
-                              className="w-20 rounded-lg border border-zinc-300 px-2 py-1.5 text-sm outline-none focus:border-natalo-600"
+                              className="w-full min-w-[80px] rounded-lg border border-zinc-300 px-2 py-1.5 text-sm outline-none focus:border-natalo-600"
                             />
                           </td>
 
@@ -924,7 +925,7 @@ export function VariantEditor({
                                 updateRow(row.tempId, "sku", e.target.value.toUpperCase())
                               }
                               placeholder="Opsional"
-                              className="w-28 rounded-lg border border-zinc-300 px-2 py-1.5 text-sm outline-none focus:border-natalo-600"
+                              className="w-full min-w-[110px] rounded-lg border border-zinc-300 px-2 py-1.5 text-sm outline-none focus:border-natalo-600"
                             />
                           </td>
 
@@ -937,7 +938,7 @@ export function VariantEditor({
                                 updateRow(row.tempId, "weightGram", e.target.value)
                               }
                               min={1}
-                              className="w-24 rounded-lg border border-zinc-300 px-2 py-1.5 text-sm outline-none focus:border-natalo-600"
+                              className="w-full min-w-[90px] rounded-lg border border-zinc-300 px-2 py-1.5 text-sm outline-none focus:border-natalo-600"
                             />
                           </td>
 
