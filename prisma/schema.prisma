@@ -799,6 +799,7 @@ enum FeedPostKind {
   VIDEO_PRODUCT   // Admin: video jualan dgn produk terkait
   PROMO           // Admin: banner/video promo dgn pricing diskon
   COMMUNITY       // User: video komunitas (review/pengalaman/tips)
+  PHOTO_CAROUSEL  // User/Admin: 1-8 foto, single image atau carousel
 }
 
 enum FeedPostTab {
@@ -916,6 +917,10 @@ model FeedPost {
   // FeedPost.productId tetap dipertahankan untuk legacy + primary product
   // display. taggedProducts adalah source of truth untuk multi-tag carousel.
   taggedProducts  FeedPostProduct[]
+  // PHOTO_CAROUSEL kind: 1-8 image media. Untuk video kind, field ini
+  // empty (video tetap stored di FeedPost.videoUrl / thumbnailUrl /
+  // videoGuid sebagai single-asset legacy fields).
+  media           FeedMedia[]
 
   // Index utama untuk feed listing (filter by tab + status + sorted).
   @@index([tab, status, publishedAt])
@@ -927,6 +932,41 @@ model FeedPost {
   @@index([status, createdAt])
   // Soft-deleted listing untuk admin trash view.
   @@index([deletedAt])
+}
+
+/// Generic media model untuk FeedPost — saat ini dipakai untuk
+/// PHOTO_CAROUSEL kind (1-8 image per post). Video kind tetap pakai
+/// FeedPost.videoUrl/videoGuid/thumbnailUrl direct fields (legacy
+/// single-asset model). Bisa di-extend ke video later (mis. multi-clip
+/// reels) tanpa breaking change.
+///
+/// Storage: UploadThing (sama dengan profile photo + admin uploads),
+/// uploadthingKey disimpan untuk cleanup saat post di-delete.
+model FeedMedia {
+  id              String   @id @default(cuid())
+  postId          String
+  post            FeedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  /// "image" | "video" — discriminator untuk future-proof. Sekarang
+  /// hanya "image" yang dipakai (PHOTO_CAROUSEL). Video tetap di
+  /// FeedPost.videoUrl.
+  mediaType       String   @default("image")
+  url             String
+  /// Optional — untuk image biasanya null (URL itself adalah final),
+  /// untuk video bisa dipakai sebagai poster thumbnail.
+  thumbnailUrl    String?
+  /// UploadThing file key — disimpan untuk hard-delete asset saat post
+  /// di-delete via /admin/feed/posts/[id]/cleanup.
+  uploadthingKey  String?
+  /// Order index untuk carousel display — 0 = first/cover, 1, 2, ...
+  /// User pilih foto urutan tertentu, sortOrder mempertahankan urutan.
+  sortOrder       Int      @default(0)
+  /// Optional dimensions — untuk pre-compute aspect ratio di client
+  /// sebelum image fully loaded (better UX, no layout shift).
+  width           Int?
+  height          Int?
+  createdAt       DateTime @default(now())
+
+  @@index([postId, sortOrder])
 }
 
 // Shop the Look — many-to-many ke produk yang di-tag di video.
