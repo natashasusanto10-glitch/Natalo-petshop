@@ -22,7 +22,9 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-type Params = { params: { id: string } };
+// Next.js 16: dynamic route params di-wrap dalam Promise. Harus await
+// sebelum akses property-nya.
+type Params = { params: Promise<{ id: string }> };
 
 /** GET — cek apakah user sudah subscribe untuk product/variant ini. */
 export async function GET(request: NextRequest, { params }: Params) {
@@ -33,7 +35,7 @@ export async function GET(request: NextRequest, { params }: Params) {
       { status: 401 },
     );
   }
-  const productId = params.id;
+  const { id: productId } = await params;
   const variantId = request.nextUrl.searchParams.get("variantId") || null;
 
   const sub = await prisma.stockNotification
@@ -66,7 +68,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     );
   }
 
-  const productId = params.id;
+  const { id: productId } = await params;
   const body = (await request.json().catch(() => ({}))) as {
     variantId?: string | null;
   };
@@ -164,7 +166,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "LOGIN_REQUIRED" }, { status: 401 });
   }
 
-  const productId = params.id;
+  const { id: productId } = await params;
   const variantId = request.nextUrl.searchParams.get("variantId") || null;
 
   await prisma.stockNotification.deleteMany({
