@@ -74,12 +74,29 @@ class MemberStore extends ChangeNotifier {
   Future<void> hydrateFromApi() async {
     if (_profile == null) return;
     try {
+      // Fetch profile DULU + addresses + orders parallel. Profile refresh
+      // ini critical — login endpoint kadang return user object minimal
+      // (id/name/email/phone tanpa profilePhotoUrl/birthDate). Tanpa
+      // refresh ini, foto user "hilang" balik ke initial paw icon
+      // setelah logout+login. /api/auth/me selalu return full snapshot.
       final results = await Future.wait<dynamic>([
+        memberService.fetchProfile(),
         memberService.fetchAddresses(),
         memberService.fetchOrders(),
       ]);
-      _addresses = results[0] as List<MemberAddress>;
-      _orders = results[1] as List<OrderSummary>;
+      final freshProfile = results[0] as MemberProfile?;
+      _addresses = results[1] as List<MemberAddress>;
+      _orders = results[2] as List<OrderSummary>;
+      if (freshProfile != null) {
+        // Merge: gunakan fresh data dari /api/auth/me sebagai source of
+        // truth. Persist ke disk supaya offline reload juga punya foto
+        // terbaru. Avoid drop kalau API return null (network glitch).
+        _profile = freshProfile;
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString(_profileKey, jsonEncode(freshProfile.toJson()));
+        } catch (_) {}
+      }
       notifyListeners();
     } catch (_) {
       // Screens still fetch their own fresh data; this cache is optional.

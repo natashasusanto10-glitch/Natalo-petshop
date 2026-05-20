@@ -154,6 +154,10 @@ export async function POST(request: NextRequest) {
       tv: user.tokenVersion,
     });
 
+    // Return full user profile termasuk profilePhotoUrl + birthDate +
+    // createdAt — match member-login route. BUG FIX: sebelumnya hanya
+    // 4 field → Flutter memberStore.profile.profilePhotoUrl null setelah
+    // OTP login → foto user "hilang" balik ke initial paw icon.
     const response = NextResponse.json({
       ok: true,
       role: "CUSTOMER",
@@ -163,6 +167,9 @@ export async function POST(request: NextRequest) {
         name: user.name,
         email: user.email,
         phone: user.phone,
+        profilePhotoUrl: user.profilePhotoUrl,
+        birthDate: user.birthDate?.toISOString() ?? null,
+        createdAt: user.createdAt.toISOString(),
       },
     });
     response.cookies.set(

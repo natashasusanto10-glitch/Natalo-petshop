@@ -118,6 +118,12 @@ export async function POST(request: NextRequest) {
       tv: user.tokenVersion,
     });
 
+    // Return full user profile termasuk profilePhotoUrl + birthDate +
+    // createdAt. BUG FIX: sebelumnya hanya 4 field (id/name/email/phone)
+    // → Flutter memberStore.profile.profilePhotoUrl null setelah login
+    // → avatar fallback ke initial paw icon (foto user "hilang").
+    // Client harus terima full snapshot supaya UI immediately akurat
+    // tanpa harus extra GET /api/auth/me.
     const response = NextResponse.json({
       ok: true,
       role: "CUSTOMER",
@@ -127,6 +133,9 @@ export async function POST(request: NextRequest) {
         name: user.name,
         email: user.email,
         phone: user.phone,
+        profilePhotoUrl: user.profilePhotoUrl,
+        birthDate: user.birthDate?.toISOString() ?? null,
+        createdAt: user.createdAt.toISOString(),
       },
     });
     response.cookies.set(
