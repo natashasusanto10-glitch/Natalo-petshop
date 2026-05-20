@@ -6,6 +6,7 @@ import '../models/member_profile.dart';
 import '../services/member_service.dart';
 import '../state/member_store.dart';
 import '../utils/haptics.dart';
+import '../widgets/app_notification_button.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/glass_surface.dart';
@@ -73,11 +74,7 @@ class _MemberScreenState extends State<MemberScreen> {
               style: TextStyle(fontSize: 23, fontWeight: FontWeight.w900),
             ),
             actions: [
-              AppHeaderIconButton(
-                onPressed: () => Navigator.pushNamed(context, '/notifications'),
-                tooltip: 'Notifikasi',
-                child: const Icon(Icons.notifications_none_rounded),
-              ),
+              const AppNotificationButton(),
               const SizedBox(width: 6),
               AppHeaderIconButton(
                 onPressed: () =>

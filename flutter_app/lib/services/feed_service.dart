@@ -108,10 +108,12 @@ class FeedService {
     String postId, {
     required bool currentlyLiked,
   }) async {
-    final method = currentlyLiked ? 'DELETE' : 'POST';
     final uri = ApiConfig.uri('/api/feed/posts/$postId/like');
     try {
-      final req = http.Request(method, uri)..headers.addAll(_headers);
+      // Backend endpoint POST ini bersifat toggle: kalau user sudah like,
+      // request POST akan unlike. Jangan kirim DELETE karena route Next.js
+      // tidak expose DELETE dan akan memicu "toggle like failed".
+      final req = http.Request('POST', uri)..headers.addAll(_headers);
       final streamed = await req.send().timeout(const Duration(seconds: 6));
       final res = await http.Response.fromStream(streamed);
       if (res.statusCode == 401) {
@@ -228,10 +230,10 @@ class FeedService {
     String commentId, {
     required bool currentlyLiked,
   }) async {
-    final method = currentlyLiked ? 'DELETE' : 'POST';
     final uri = ApiConfig.uri('/api/feed/comments/$commentId/like');
     try {
-      final req = http.Request(method, uri)..headers.addAll(_headers);
+      // Sama seperti post like: backend comment like memakai POST toggle.
+      final req = http.Request('POST', uri)..headers.addAll(_headers);
       final streamed = await req.send().timeout(const Duration(seconds: 6));
       final res = await http.Response.fromStream(streamed);
       if (res.statusCode == 401) {

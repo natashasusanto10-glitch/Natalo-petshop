@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../services/api_client.dart';
 import '../services/app_analytics.dart';
@@ -816,18 +817,15 @@ class _WhatsAppOtpLoginButton extends StatelessWidget {
       height: 52,
       child: OutlinedButton.icon(
         onPressed: onTap,
-        icon: Container(
+        icon: SizedBox(
           width: 26,
           height: 26,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: const Color(0xFF22C55E).withValues(alpha: 0.12),
-          ),
-          child: const Icon(
-            Icons.chat_rounded,
-            color: Color(0xFF22C55E),
-            size: 16,
+          child: Center(
+            child: SvgPicture.asset(
+              'assets/icons/whatsapp.svg',
+              width: 24,
+              height: 24,
+            ),
           ),
         ),
         label: const Text('Masuk dengan OTP WhatsApp'),

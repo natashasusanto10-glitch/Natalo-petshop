@@ -58,6 +58,10 @@ class PushNotificationService {
   static const _channelDescription =
       'Update pesanan, promo, dan pengumuman dari Natalo Petshop.';
 
+  /// Lightweight signal untuk UI badge notification center. Saat push masuk
+  /// foreground, bell di header bisa fetch ulang unread count tanpa polling.
+  final ValueNotifier<int> notificationRefreshTick = ValueNotifier<int>(0);
+
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
 
@@ -287,6 +291,7 @@ class PushNotificationService {
       ),
       payload: deepLink?.toString(),
     );
+    notificationRefreshTick.value++;
   }
 
   /// Build BigPictureStyle Android notification — download image dari URL

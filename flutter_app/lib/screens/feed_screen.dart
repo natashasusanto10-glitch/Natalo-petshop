@@ -937,6 +937,7 @@ class _FeedPostViewState extends State<_FeedPostView>
   late final AnimationController _heartBurstController;
   late final Animation<double> _heartScale;
   late final Animation<double> _heartOpacity;
+  Offset? _heartBurstPosition;
 
   @override
   void initState() {
@@ -1257,7 +1258,9 @@ class _FeedPostViewState extends State<_FeedPostView>
       } else {
         AppToast.show(
           context,
-          error is ApiException ? error.message : 'Like belum berhasil.',
+          error is ApiException && error.statusCode == 404
+              ? 'Postingan tidak tersedia.'
+              : 'Like belum tersimpan. Coba lagi.',
           kind: ToastKind.warning,
         );
       }
@@ -1266,8 +1269,12 @@ class _FeedPostViewState extends State<_FeedPostView>
     }
   }
 
-  /// Double-tap → like (kalau belum) + animasi heart burst di tengah.
+  /// Double-tap → like (kalau belum) + heart burst di posisi jari.
   /// Instagram Reels signature gesture.
+  void _rememberHeartBurstPosition(TapDownDetails details) {
+    _heartBurstPosition = details.localPosition;
+  }
+
   void _onDoubleTapLike() {
     if (!_liked) {
       _onLikePressed();
@@ -1810,6 +1817,7 @@ class _FeedPostViewState extends State<_FeedPostView>
                         bottom: 0,
                         child: GestureDetector(
                           onTap: _onTapMedia,
+                          onDoubleTapDown: _rememberHeartBurstPosition,
                           onDoubleTap: _onDoubleTapLike,
                           // Sprint 4 #1 — Long-press signature gesture.
                           onLongPressStart: _onLongPressStart,
@@ -1849,35 +1857,59 @@ class _FeedPostViewState extends State<_FeedPostView>
                           ),
                         ),
                       // ── Heart burst overlay (Reels double-tap signature) ──
-                      IgnorePointer(
-                        child: Center(
+                      Positioned.fill(
+                        child: IgnorePointer(
                           child: AnimatedBuilder(
                             animation: _heartBurstController,
                             builder: (context, _) {
                               if (_heartOpacity.value == 0) {
                                 return const SizedBox.shrink();
                               }
-                              return Opacity(
+
+                              final position = _heartBurstPosition;
+                              final progress = _heartBurstController.value;
+                              final heart = Opacity(
                                 opacity: _heartOpacity.value,
-                                child: Transform.scale(
-                                  scale: _heartScale.value,
-                                  child: Transform.rotate(
-                                    angle: -0.08,
-                                    child: const Icon(
-                                      Icons.favorite_rounded,
-                                      color: Color(0xFFEF4444),
-                                      size: 128,
-                                      shadows: [
-                                        Shadow(
+                                child: Transform.translate(
+                                  offset: Offset(0, -18 * progress),
+                                  child: Transform.scale(
+                                    scale: _heartScale.value,
+                                    child: Transform.rotate(
+                                      angle: -0.08,
+                                      child: const Icon(
+                                        Icons.favorite_rounded,
+                                        color: Color(0xFFEF4444),
+                                        size: 128,
+                                        shadows: [
+                                          Shadow(
                                             color: Colors.white54,
-                                            blurRadius: 2),
-                                        Shadow(
+                                            blurRadius: 2,
+                                          ),
+                                          Shadow(
                                             color: Colors.black54,
-                                            blurRadius: 28),
-                                      ],
+                                            blurRadius: 28,
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ),
+                              );
+
+                              if (position == null) {
+                                return Center(child: heart);
+                              }
+
+                              return Stack(
+                                children: [
+                                  Positioned(
+                                    left: position.dx - 64,
+                                    top: position.dy - 64,
+                                    width: 128,
+                                    height: 128,
+                                    child: Center(child: heart),
+                                  ),
+                                ],
                               );
                             },
                           ),

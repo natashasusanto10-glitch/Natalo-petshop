@@ -91,6 +91,7 @@ model User {
   chatThreads         ChatThread[]     @relation("CustomerChatThreads")
   chatMessages        ChatMessage[]    @relation("ChatSender")
   cartItems           CartItem[]
+  stockNotifications  StockNotification[]
   productViews        UserProductView[]
   voucherUsages       VoucherUsage[]
   announcementReads   AnnouncementRead[]
@@ -121,11 +122,41 @@ model CartItem {
   weightGram   Int      @default(500)
   imageUrl     String?
   stock        Int?
+  // Track last abandoned-cart push notification — supaya cron tidak
+  // spam user yang sama tiap jam. Set timestamp setelah push terkirim,
+  // clear (set null) saat user checkout atau update cart.
+  notifiedAbandonedAt DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   @@unique([userId, productId, variantId])
   @@index([userId])
+  // Index untuk cron query: cari CartItem yang createdAt > 4 jam lalu
+  // dan belum di-notify. WHERE notifiedAbandonedAt IS NULL AND createdAt < ...
+  @@index([notifiedAbandonedAt, createdAt])
+}
+
+/// Notifikasi restock — user subscribe ke produk/variant yang stock=0,
+/// dapat FCM saat stock kembali tersedia. Unique constraint per (user,
+/// product, variant) supaya tap "Notify me" 2x tidak duplicate row.
+/// notifiedAt di-set saat push terkirim, row di-keep untuk audit;
+/// re-subscribe = create row baru (lewat upsert) yang reset notifiedAt.
+model StockNotification {
+  id         String          @id @default(cuid())
+  userId     String
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId  String?
+  variant    ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  createdAt  DateTime        @default(now())
+  // Saat push terkirim. NULL = pending notification. Setelah notified,
+  // row dihapus oleh cron / send helper (sesuai pola lain di codebase).
+  notifiedAt DateTime?
+
+  @@unique([userId, productId, variantId])
+  @@index([productId, notifiedAt])
+  @@index([variantId, notifiedAt])
 }
 
 model Category {
@@ -182,6 +213,7 @@ model Product {
   variants          ProductVariant[]
   variantAttrs      VariantAttribute[]
   favorites         Favorite[]
+  stockNotifications StockNotification[]
   viewedBy          UserProductView[]
   recommendationSources ProductRecommendationRule[] @relation("RecommendationSource")
   recommendationTargets ProductRecommendationRule[] @relation("RecommendationTarget")
@@ -601,6 +633,7 @@ model ProductVariant {
   deletedAt  DateTime?
   options    ProductVariantOption[]
   orderItems OrderItem[]
+  stockNotifications StockNotification[]
   createdAt  DateTime               @default(now())
   updatedAt  DateTime               @updatedAt
 
