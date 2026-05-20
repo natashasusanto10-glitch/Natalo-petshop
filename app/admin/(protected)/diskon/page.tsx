@@ -90,6 +90,30 @@ export default async function AdminDiskonHub() {
     },
   });
 
+  // Promo Toko (ProductDiscount baru di Phase 1B). Include yg baru
+  // expired juga (threshold 7 hari) untuk history singkat di hub.
+  const promoTokoRecords = await prisma.productDiscount.findMany({
+    where: {
+      endsAt: { gte: sevenDaysAgo },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+  });
+  // Fetch thumbnail produk pertama dari setiap promo (max 3 untuk display)
+  const allProductIdsFromPromos = Array.from(
+    new Set(promoTokoRecords.flatMap((p) => p.productIds.slice(0, 3))),
+  );
+  const promoProductMap = new Map<string, { imageUrl: string | null }>();
+  if (allProductIdsFromPromos.length > 0) {
+    const productsForPromos = await prisma.product.findMany({
+      where: { id: { in: allProductIdsFromPromos } },
+      select: { id: true, imageUrl: true },
+    });
+    for (const p of productsForPromos) {
+      promoProductMap.set(p.id, { imageUrl: p.imageUrl });
+    }
+  }
+
   // ── Aggregate metrics (stub — placeholder data) ─────────────────
   // TODO: integrate dengan real order metrics filter promosi.
   // Untuk Phase 1, tampilkan dash supaya admin tahu widget ini akan
@@ -125,6 +149,25 @@ export default async function AdminDiskonHub() {
       endsAt: p.flashSaleEndsAt,
       editHref: `/admin/products/${p.id}/edit`,
     })),
+    ...promoTokoRecords.map<PromoRow>((promo) => {
+      const thumbnails = promo.productIds
+        .slice(0, 3)
+        .map((pid) => promoProductMap.get(pid)?.imageUrl)
+        .filter((u): u is string => !!u);
+      return {
+        id: `promo-${promo.id}`,
+        kind: "PROMO_TOKO",
+        name: promo.name,
+        status: !promo.isActive
+          ? "EXPIRED"
+          : statusOf(promo.startsAt, promo.endsAt),
+        productThumbnails: thumbnails,
+        productCount: promo.productIds.length,
+        startsAt: promo.startsAt,
+        endsAt: promo.endsAt,
+        editHref: `/admin/diskon/promo-toko/${promo.id}/edit`,
+      };
+    }),
   ].sort((a, b) => {
     // Active dulu, lalu upcoming, lalu expired. Dalam satu group urutkan
     // by endsAt desc supaya yang baru di atas.

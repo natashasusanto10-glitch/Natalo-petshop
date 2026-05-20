@@ -2208,7 +2208,7 @@ class _FlashSaleGrid extends StatelessWidget {
                     ),
                     SizedBox(height: 2),
                     Text(
-                      'Diskon spesial dari admin Natalo',
+                      'Diskon Spesial dari Natalo Petshop',
                       style: TextStyle(
                         color: Color(0xFF6B7280),
                         fontSize: 12,

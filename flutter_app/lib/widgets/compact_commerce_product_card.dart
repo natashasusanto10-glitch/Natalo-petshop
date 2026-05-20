@@ -183,14 +183,14 @@ class _DiscountBadge extends StatelessWidget {
 
 class _PromoChip extends StatelessWidget {
   final String label;
-  final IconData icon;
+  final IconData? icon;
   final Color foreground;
   final Color background;
   final Color border;
 
   const _PromoChip({
     required this.label,
-    required this.icon,
+    this.icon,
     required this.foreground,
     required this.background,
     required this.border,
@@ -210,8 +210,10 @@ class _PromoChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 12, color: foreground),
-            const SizedBox(width: 5),
+            if (icon != null) ...[
+              Icon(icon, size: 12, color: foreground),
+              const SizedBox(width: 5),
+            ],
             Flexible(
               child: Text(
                 label,
@@ -400,7 +402,6 @@ List<Widget> _promoChips(
     chips.add(
       const _PromoChip(
         label: 'Harga Diskon',
-        icon: Icons.percent_rounded,
         foreground: _discountRed,
         background: _discountSoft,
         border: Color(0xFFFFC9D0),
