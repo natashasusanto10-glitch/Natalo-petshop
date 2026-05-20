@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -31,6 +32,7 @@ const _shippingGreenSoft = Color(0xFFECFDF3);
 const _shippingGreenBorder = Color(0xFFA6F4C5);
 const _checkoutBarHeight = 74.0;
 const _voucherBarHeight = 64.0;
+const _voucherBarIdleDelay = Duration(milliseconds: 180);
 const _cartBossOpenCountKey = 'natalo_cart_boss_open_count_v1';
 const _cartBossRefreshEvery = 3;
 const _shippingVoucherCode = '__shipping_free__';
@@ -161,13 +163,22 @@ class _CartScreenState extends State<CartScreen> {
   }
 
   void _onCartScroll() {
-    if (!_scrollController.hasClients ||
-        _loadingBossProducts ||
+    if (!_scrollController.hasClients) {
+      return;
+    }
+    final position = _scrollController.position;
+
+    if (cartStore.items.isNotEmpty && memberStore.isLoggedIn) {
+      _hideVoucherBar();
+      _scheduleShowVoucherBar();
+    }
+
+    if (_loadingBossProducts ||
         _loadingMoreBossProducts ||
         !_bossProductsHasMore) {
       return;
     }
-    final position = _scrollController.position;
+
     if (position.pixels >= position.maxScrollExtent - 520) {
       _loadMoreBossProducts();
     }
@@ -353,22 +364,36 @@ class _CartScreenState extends State<CartScreen> {
 
   void _scheduleShowVoucherBar() {
     _voucherBarTimer?.cancel();
-    // 140ms — spec: muncul kembali "langsung" saat scroll berhenti.
-    // Sebelumnya 600ms terasa delayed, user kira voucher bar hilang
-    // permanen. 120-180ms = idle threshold yang masih natural (avoid
-    // flicker dari momentum scroll fling yang berhenti sebentar).
-    _voucherBarTimer = Timer(const Duration(milliseconds: 140), () {
+    _voucherBarTimer = Timer(_voucherBarIdleDelay, () {
       if (!mounted || _voucherBarVisible) return;
       setState(() => _voucherBarVisible = true);
     });
   }
 
   bool _handleScrollNotification(ScrollNotification notification) {
-    if (notification is ScrollStartNotification ||
-        notification is ScrollUpdateNotification ||
-        notification is UserScrollNotification) {
+    if (notification is ScrollStartNotification) {
       _hideVoucherBar();
+      return false;
     }
+
+    if (notification is ScrollUpdateNotification ||
+        notification is OverscrollNotification) {
+      _hideVoucherBar();
+      // Tokopedia-like: reset timer setiap frame scroll. Bar muncul sendiri
+      // setelah list benar-benar idle, tanpa user perlu tap layar lagi.
+      _scheduleShowVoucherBar();
+      return false;
+    }
+
+    if (notification is UserScrollNotification) {
+      if (notification.direction == ScrollDirection.idle) {
+        _scheduleShowVoucherBar();
+      } else {
+        _hideVoucherBar();
+      }
+      return false;
+    }
+
     if (notification is ScrollEndNotification) {
       _scheduleShowVoucherBar();
     }
