@@ -3212,6 +3212,7 @@ class _EmptyCheckoutState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AppEmptyState(
+      lottiePath: AppLottiePaths.empty,
       title: 'Checkout belum siap',
       subtitle: 'Belum ada item untuk checkout.',
       action: ElevatedButton(

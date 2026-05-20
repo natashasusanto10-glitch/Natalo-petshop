@@ -144,6 +144,7 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
       ),
       body: !memberStore.isLoggedIn
           ? AppEmptyState(
+              lottiePath: AppLottiePaths.empty,
               title: 'Login untuk memberi review',
               body: 'Review hanya tersedia untuk member yang sudah belanja.',
               buttonLabel: 'Login',

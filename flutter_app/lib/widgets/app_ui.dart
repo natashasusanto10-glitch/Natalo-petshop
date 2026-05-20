@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+// Prefix lottie supaya tidak collision dengan widget Lottie lain
+// (cuma dipakai di AppEmptyState.lottiePath via lottie.Lottie.asset).
+import 'package:lottie/lottie.dart' as lottie;
 import 'package:shimmer/shimmer.dart';
 
 import '../theme/app_radius.dart';
@@ -490,6 +493,14 @@ class AppEmptyState extends StatelessWidget {
   final Widget? action;
   final String? buttonLabel;
   final VoidCallback? onPressed;
+  /// Path ke Lottie animation asset (mis. 'assets/lottie/empty_box.json').
+  /// Kalau di-set, render Lottie animation menggantikan icon. Empty state
+  /// jadi lebih hidup + branded vs icon static abu-abu.
+  final String? lottiePath;
+  /// Tinggi Lottie animation. Default 160 — sweet spot untuk empty state
+  /// tanpa dominate viewport. Override kalau perlu (mis. 200 untuk hero
+  /// empty state, 120 untuk compact).
+  final double lottieHeight;
 
   const AppEmptyState({
     super.key,
@@ -500,6 +511,8 @@ class AppEmptyState extends StatelessWidget {
     this.action,
     this.buttonLabel,
     this.onPressed,
+    this.lottiePath,
+    this.lottieHeight = 160,
   });
 
   @override
@@ -510,7 +523,24 @@ class AppEmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 56, color: NataloColors.textTertiary),
+            if (lottiePath != null)
+              SizedBox(
+                height: lottieHeight,
+                child: lottie.Lottie.asset(
+                  lottiePath!,
+                  fit: BoxFit.contain,
+                  repeat: true,
+                  // Frame rate cap untuk hemat battery di Lottie loop.
+                  // Default 60fps di-throttle ke 30fps untuk subtle anim.
+                  frameRate: const lottie.FrameRate(30),
+                  // Error fallback: kalau asset tidak ada / corrupt,
+                  // render icon biasa supaya UI tidak crash.
+                  errorBuilder: (_, __, ___) =>
+                      Icon(icon, size: 56, color: NataloColors.textTertiary),
+                ),
+              )
+            else
+              Icon(icon, size: 56, color: NataloColors.textTertiary),
             const SizedBox(height: AppSpacing.md),
             Text(
               title,
@@ -542,4 +572,26 @@ class AppEmptyState extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Mapping konstanta untuk Lottie asset paths — single source of truth
+/// supaya rename file Lottie tidak butuh hunt semua call site.
+class AppLottiePaths {
+  AppLottiePaths._();
+
+  /// Empty state generic — kotak kosong dengan animasi subtle.
+  /// Use untuk: cart kosong, wishlist kosong, orders kosong, vouchers kosong.
+  static const empty = 'assets/lottie/empty_box.json';
+
+  /// Paw print animation — branded ke pets theme.
+  /// Use untuk: loading states, onboarding welcome, member intro.
+  static const paw = 'assets/lottie/loading_paw.json';
+
+  /// Order created success — celebratory checkmark / box icon.
+  /// Use untuk: order confirmation, registration success, notification.
+  static const orderCreated = 'assets/lottie/order_created.json';
+
+  /// Generic success checkmark — green check animation.
+  /// Use untuk: form submitted, action completed, confirmation toast.
+  static const success = 'assets/lottie/success_check.json';
 }

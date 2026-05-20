@@ -235,6 +235,8 @@ class _WishlistScreenState extends State<WishlistScreen> {
           actions: const [AppCartButton()],
         ),
         body: AppEmptyState(
+          lottiePath: AppLottiePaths.paw,
+          lottieHeight: 180,
           icon: Icons.favorite_border_rounded,
           title: 'Wishlist khusus member',
           subtitle:
