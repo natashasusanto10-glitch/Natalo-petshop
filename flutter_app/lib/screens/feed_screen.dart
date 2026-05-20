@@ -470,11 +470,12 @@ class _FeedScreenState extends State<FeedScreen> {
                 top: MediaQuery.paddingOf(context).top + 8,
                 right: 4,
                 child: _FeedTopIconButton(
-                  // Match home AppCartButton: shopping_cart_outlined +
-                  // size 24 (Material IconButton default). Konsisten antar
-                  // home header dan feed top overlay.
+                  // Icon SHAPE match home AppCartButton: shopping_cart_outlined
+                  // (sebelumnya bag, sekarang cart). Size tetap 28 (default
+                  // _FeedTopIconButton) supaya tetap prominent di atas video
+                  // — beda dari home yang 24 karena context-nya beda
+                  // (header dense dengan banyak icon).
                   icon: Icons.shopping_cart_outlined,
-                  iconSize: 24,
                   onTap: _openCartPage,
                   tooltip: 'Keranjang',
                   badgeCount: _cartCount > 0 ? _cartCount : null,
@@ -607,17 +608,12 @@ class _FeedTopIconButton extends StatelessWidget {
   final VoidCallback onTap;
   final String? tooltip;
   final int? badgeCount;
-  // Default 28 — sized untuk visibility tinggi di atas video. Cart icon
-  // di feed pakai 24 (override) supaya match dengan home cart icon
-  // (AppCartButton) yang pakai IconButton default 24px.
-  final double iconSize;
 
   const _FeedTopIconButton({
     required this.icon,
     required this.onTap,
     this.tooltip,
     this.badgeCount,
-    this.iconSize = 28,
   });
 
   @override
@@ -628,7 +624,11 @@ class _FeedTopIconButton extends StatelessWidget {
         Icon(
           icon,
           color: Colors.white,
-          size: iconSize,
+          // 28px — sized untuk visibility tinggi di atas video terang/
+          // gelap. Beda dari home AppCartButton (24px) karena context
+          // berbeda: home header dense banyak icon, feed top icon harus
+          // prominent solo dengan soft drop shadow.
+          size: 28,
           shadows: const [
             Shadow(
               color: Color(0xCC000000),
