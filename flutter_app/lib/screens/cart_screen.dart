@@ -948,6 +948,47 @@ class _CartItemCard extends StatelessWidget {
     Navigator.pushNamed(context, '/product-detail', arguments: item.product);
   }
 
+  /// Open bottom sheet variant picker — fetch full product (with all
+  /// variants), user pilih varian baru, swap di cart.
+  Future<void> _openVariantSheet(BuildContext context) async {
+    AppHaptics.tap();
+    final picked = await showModalBottomSheet<ProductVariant>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => _CartVariantPickerSheet(
+        cartItem: item,
+      ),
+    );
+    if (picked == null) return;
+    // Variant swap = remove old cart item + add product dengan variant
+    // baru, qty SAMA seperti sebelumnya. cartStore.addItem auto-merge
+    // kalau variantId sudah ada di cart (increment qty existing).
+    await cartStore.remove(item.key);
+    await cartStore.addProduct(
+      item.product,
+      variant: picked,
+      variantLabel: picked.sku ?? _composeVariantLabel(item.product, picked),
+      quantity: item.quantity,
+    );
+  }
+
+  /// Compose label varian "Hitam, S" dari variant.optionIds × product
+  /// variantAttrs. Fallback ke SKU kalau attrs tidak lengkap.
+  String _composeVariantLabel(Product product, ProductVariant variant) {
+    final labels = <String>[];
+    for (final attr in product.variantAttrs) {
+      for (final opt in attr.options) {
+        if (variant.optionIds.contains(opt.id)) {
+          labels.add(opt.value);
+          break;
+        }
+      }
+    }
+    if (labels.isEmpty) return variant.sku ?? '';
+    return labels.join(', ');
+  }
+
   @override
   Widget build(BuildContext context) {
     final price = item.effectivePrice;
@@ -955,6 +996,7 @@ class _CartItemCard extends StatelessWidget {
     final hasDiscount = regular > price;
     final discountPercent =
         hasDiscount ? (((regular - price) / regular) * 100).round() : 0;
+    final hasVariants = item.product.hasVariants;
 
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.96, end: 1),
@@ -965,7 +1007,7 @@ class _CartItemCard extends StatelessWidget {
           opacity: value.clamp(0, 1),
           child: Transform.translate(
             offset: Offset(0, (1 - value) * 24),
-            child: Transform.scale(scale: value, child: child),
+            child: child,
           ),
         );
       },
@@ -976,218 +1018,552 @@ class _CartItemCard extends StatelessWidget {
         background: Container(
           alignment: Alignment.centerRight,
           padding: const EdgeInsets.only(right: 22),
-          decoration: BoxDecoration(
-            color: const Color(0xFFEF4444),
-            borderRadius: BorderRadius.circular(20),
-          ),
+          color: const Color(0xFFEF4444),
           child: const Icon(
             Icons.delete_outline_rounded,
             color: Colors.white,
             size: 28,
           ),
         ),
-        child: Card(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(10, 12, 12, 12),
-            child: Column(
-              children: [
-                Row(
+        // Compact marketplace-style — no big rounded card, thin divider
+        // antar item (handled di parent ListView/Column).
+        child: Container(
+          color: Colors.white,
+          padding: const EdgeInsets.fromLTRB(8, 14, 16, 14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Checkbox kiri.
+              Checkbox(
+                value: selected,
+                activeColor: _brandBlue,
+                onChanged: (_) => onToggleSelected(),
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              const SizedBox(width: 6),
+              // Product image — soft bg, no border.
+              InkWell(
+                onTap: () => _openProductDetail(context),
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  width: 78,
+                  height: 78,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: AppProductImage(
+                    imageUrl: item.product.imageUrl,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Detail column kanan — name, variant chip, price + stepper row.
+              Expanded(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Checkbox(
-                      value: selected,
-                      activeColor: _brandBlue,
-                      onChanged: (_) => onToggleSelected(),
-                    ),
+                    // Nama produk only — NO brand/category. Max 2 lines.
                     InkWell(
                       onTap: () => _openProductDetail(context),
-                      borderRadius: BorderRadius.circular(16),
-                      child: Stack(
-                        children: [
-                          Container(
-                            width: 82,
-                            height: 92,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFEAF5FF),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            clipBehavior: Clip.antiAlias,
-                            child: AppProductImage(
-                              imageUrl: item.product.imageUrl,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                          if (discountPercent > 0)
-                            Positioned(
-                              left: 7,
-                              top: 7,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFEF4444),
-                                  borderRadius: BorderRadius.circular(999),
-                                ),
-                                child: Text(
-                                  '-$discountPercent%',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                              ),
-                            ),
-                        ],
+                      child: Text(
+                        item.product.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF17202A),
+                          fontSize: 14,
+                          height: 1.3,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: InkWell(
-                        onTap: () => _openProductDetail(context),
-                        borderRadius: BorderRadius.circular(12),
-                        child: SizedBox(
-                          height: 92,
+                    // Variant chip — HANYA kalau product punya variants.
+                    // Tap → buka bottom sheet variant picker untuk ganti.
+                    if (hasVariants && item.variantLabel != null) ...[
+                      const SizedBox(height: 8),
+                      _VariantChipDropdown(
+                        label: item.variantLabel!,
+                        onTap: () => _openVariantSheet(context),
+                      ),
+                    ],
+                    const SizedBox(height: 10),
+                    // Row: price + stepper sejajar horizontal.
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(
-                                item.product.title,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Color(0xFF17202A),
-                                  fontSize: 14,
-                                  height: 1.2,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                              const SizedBox(height: 5),
-                              Text(
-                                '${item.product.brand} • ${item.product.category}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Color(0xFF6B7280),
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              if (item.variantLabel != null) ...[
-                                const SizedBox(height: 4),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFEAF5FF),
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                  child: Text(
-                                    item.variantLabel!,
-                                    style: const TextStyle(
-                                      color: _brandBlue,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w800,
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      formatRupiah(price),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: hasDiscount
+                                            ? const Color(0xFFEF4444)
+                                            : const Color(0xFF111827),
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w900,
+                                      ),
                                     ),
+                                  ),
+                                  if (hasDiscount) ...[
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFFEE2E2),
+                                        borderRadius:
+                                            BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        '$discountPercent%',
+                                        style: const TextStyle(
+                                          color: Color(0xFFEF4444),
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              if (hasDiscount) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  formatRupiah(regular),
+                                  style: const TextStyle(
+                                    color: Color(0xFF9CA3AF),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    decoration: TextDecoration.lineThrough,
                                   ),
                                 ),
                               ],
-                              const Spacer(),
-                              Text(
-                                'Stok ${item.effectiveStock}',
+                            ],
+                          ),
+                        ),
+                        _QtyStepper(
+                          quantity: item.quantity,
+                          maxQty: item.effectiveStock,
+                          onSetQuantity: (quantity) {
+                            AppHaptics.tap();
+                            cartStore.updateQuantity(item.key, quantity);
+                          },
+                          onDecrement: () {
+                            AppHaptics.tap();
+                            if (item.quantity <= 1) {
+                              _removeWithUndo(context);
+                            } else {
+                              cartStore.updateQuantity(
+                                item.key,
+                                item.quantity - 1,
+                              );
+                            }
+                          },
+                          onIncrement: () {
+                            AppHaptics.tap();
+                            cartStore.updateQuantity(
+                              item.key,
+                              item.quantity + 1,
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Variant chip dengan icon ▼ — soft gray pill. Hanya muncul kalau
+/// product.hasVariants true. Tap → onTap callback (open variant picker
+/// bottom sheet di parent).
+class _VariantChipDropdown extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+
+  const _VariantChipDropdown({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 140),
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF374151),
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            const Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 18,
+              color: Color(0xFF6B7280),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Bottom sheet untuk ganti variant produk di cart. Fetch full product
+/// data (semua variants + attrs) lewat productService.fetchProductBySlug,
+/// display variant chips, user select → return ProductVariant ke parent
+/// untuk swap di cart.
+class _CartVariantPickerSheet extends StatefulWidget {
+  final CartItem cartItem;
+
+  const _CartVariantPickerSheet({required this.cartItem});
+
+  @override
+  State<_CartVariantPickerSheet> createState() =>
+      _CartVariantPickerSheetState();
+}
+
+class _CartVariantPickerSheetState extends State<_CartVariantPickerSheet> {
+  Product? _fullProduct;
+  bool _loading = true;
+  String? _error;
+  final Map<String, String> _selectedOptions = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFullProduct();
+  }
+
+  Future<void> _loadFullProduct() async {
+    try {
+      // Re-fetch product full untuk dapat variantAttrs + variants lengkap.
+      // CartItem.product mungkin partial (dari listing endpoint yang
+      // tidak include semua varian untuk hemat payload).
+      final slug = widget.cartItem.product.slug;
+      final result = await productService.fetchProductBySlug(slug);
+      if (!mounted) return;
+      if (result == null) {
+        setState(() {
+          _loading = false;
+          _error = 'Produk tidak ditemukan.';
+        });
+        return;
+      }
+      // Pre-select current variant options kalau ada.
+      final currentVariant = widget.cartItem.variant;
+      if (currentVariant != null) {
+        for (final attr in result.variantAttrs) {
+          for (final opt in attr.options) {
+            if (currentVariant.optionIds.contains(opt.id)) {
+              _selectedOptions[attr.id] = opt.id;
+              break;
+            }
+          }
+        }
+      }
+      setState(() {
+        _fullProduct = result;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'Gagal memuat varian. Coba lagi.';
+      });
+    }
+  }
+
+  /// Cari variant yang match dengan selected options. Return null kalau
+  /// belum lengkap atau combination tidak exist.
+  ProductVariant? get _matchedVariant {
+    final product = _fullProduct;
+    if (product == null) return null;
+    if (_selectedOptions.length < product.variantAttrs.length) return null;
+    for (final variant in product.variants) {
+      if (!variant.isActive) continue;
+      final matches = product.variantAttrs.every((attr) {
+        final selectedOpt = _selectedOptions[attr.id];
+        return selectedOpt != null && variant.optionIds.contains(selectedOpt);
+      });
+      if (matches) return variant;
+    }
+    return null;
+  }
+
+  bool _isOptionAvailable(String attrId, String optionId) {
+    final product = _fullProduct;
+    if (product == null) return false;
+    // Cek apakah ada minimal 1 variant active yang punya combination ini
+    // + selected options lain. Disable option yang tidak ada kombinasinya.
+    final otherSelected = Map<String, String>.from(_selectedOptions);
+    otherSelected.remove(attrId);
+    for (final variant in product.variants) {
+      if (!variant.isActive) continue;
+      if (!variant.optionIds.contains(optionId)) continue;
+      final matchesOthers = otherSelected.entries
+          .every((entry) => variant.optionIds.contains(entry.value));
+      if (matchesOthers) return true;
+    }
+    return false;
+  }
+
+  void _onSelect(String attrId, String optionId) {
+    AppHaptics.selection();
+    setState(() {
+      _selectedOptions[attrId] = optionId;
+    });
+  }
+
+  void _confirm() {
+    final variant = _matchedVariant;
+    if (variant == null) return;
+    AppHaptics.tap();
+    Navigator.pop(context, variant);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final variant = _matchedVariant;
+    return FractionallySizedBox(
+      heightFactor: 0.7,
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        child: Container(
+          color: Colors.white,
+          child: Column(
+            children: [
+              const SizedBox(height: 10),
+              Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD1D5DB),
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 12, 12),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Variasi Produk',
+                        style: TextStyle(
+                          color: Color(0xFF111827),
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded),
+                      color: const Color(0xFF6B7280),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1, color: Color(0xFFE5E7EB)),
+              Expanded(child: _buildBody()),
+              if (_fullProduct != null && _error == null)
+                SafeArea(
+                  top: false,
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      border: Border(
+                        top: BorderSide(color: Color(0xFFE5E7EB)),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text(
+                                'Harga varian',
                                 style: TextStyle(
-                                  color: item.effectiveStock <= 10
-                                      ? const Color(0xFFF59E0B)
-                                      : const Color(0xFF16A34A),
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF6B7280),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                variant != null
+                                    ? formatRupiah(variant.price.toDouble())
+                                    : '—',
+                                style: const TextStyle(
+                                  color: _brandBlue,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w900,
                                 ),
                               ),
                             ],
                           ),
                         ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Padding(
-                  padding: const EdgeInsets.only(left: 46),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              formatRupiah(price),
-                              style: NataloTextStyles.cartPrice.copyWith(
+                        SizedBox(
+                          height: 48,
+                          child: ElevatedButton(
+                            onPressed: variant != null ? _confirm : null,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _brandBlue,
+                              foregroundColor: Colors.white,
+                              disabledBackgroundColor:
+                                  const Color(0xFFCBD5E1),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 28,
+                              ),
+                              textStyle: const TextStyle(
                                 fontSize: 15,
+                                fontWeight: FontWeight.w900,
                               ),
                             ),
-                            if (hasDiscount) ...[
-                              const SizedBox(height: 3),
-                              Row(
-                                children: [
-                                  Text(
-                                    formatRupiah(regular),
-                                    style: const TextStyle(
-                                      color: Color(0xFF9CA3AF),
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      decoration: TextDecoration.lineThrough,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    '-$discountPercent%',
-                                    style: const TextStyle(
-                                      color: Color(0xFFEF4444),
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ],
+                            child: const Text('Pilih'),
+                          ),
                         ),
-                      ),
-                      _QtyStepper(
-                        quantity: item.quantity,
-                        maxQty: item.effectiveStock,
-                        onSetQuantity: (quantity) {
-                          AppHaptics.tap();
-                          cartStore.updateQuantity(item.key, quantity);
-                        },
-                        onDecrement: () {
-                          AppHaptics.tap();
-                          if (item.quantity <= 1) {
-                            _removeWithUndo(context);
-                          } else {
-                            cartStore.updateQuantity(
-                              item.key,
-                              item.quantity - 1,
-                            );
-                          }
-                        },
-                        onIncrement: () {
-                          AppHaptics.tap();
-                          cartStore.updateQuantity(
-                            item.key,
-                            item.quantity + 1,
-                          );
-                        },
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ],
-            ),
+            ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_loading) {
+      return const Center(
+        child: SizedBox(
+          width: 28,
+          height: 28,
+          child: CircularProgressIndicator(strokeWidth: 2.5),
+        ),
+      );
+    }
+    if (_error != null || _fullProduct == null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Text(
+            _error ?? 'Produk tidak ditemukan.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFF6B7280),
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      );
+    }
+    final product = _fullProduct!;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+      children: [
+        for (final attr in product.variantAttrs) ...[
+          Text(
+            attr.name,
+            style: const TextStyle(
+              color: Color(0xFF374151),
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: attr.options.map((opt) {
+              final selected = _selectedOptions[attr.id] == opt.id;
+              final available = _isOptionAvailable(attr.id, opt.id);
+              return GestureDetector(
+                onTap: available ? () => _onSelect(attr.id, opt.id) : null,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? _brandBlue.withValues(alpha: 0.10)
+                        : available
+                            ? Colors.white
+                            : const Color(0xFFF3F4F6),
+                    borderRadius: BorderRadius.circular(99),
+                    border: Border.all(
+                      color: selected
+                          ? _brandBlue
+                          : available
+                              ? const Color(0xFFD1D5DB)
+                              : const Color(0xFFE5E7EB),
+                      width: selected ? 1.4 : 1,
+                    ),
+                  ),
+                  child: Text(
+                    opt.value,
+                    style: TextStyle(
+                      color: selected
+                          ? _brandBlue
+                          : available
+                              ? const Color(0xFF374151)
+                              : const Color(0xFFB8C0CC),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 18),
+        ],
+      ],
     );
   }
 }
