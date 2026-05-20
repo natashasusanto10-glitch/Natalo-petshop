@@ -891,9 +891,10 @@ class _FeedPostView extends StatefulWidget {
 
 class _FeedPostViewState extends State<_FeedPostView>
     with TickerProviderStateMixin {
-  static const double _commentSheetMinExtent = 0.52;
+  static const double _commentSheetMinExtent = 0.36;
   static const double _commentSheetInitialExtent = 0.60;
   static const double _commentSheetMaxExtent = 0.90;
+  static const double _commentSheetDismissExtent = 0.43;
 
   VideoPlayerController? _videoController;
   final DraggableScrollableController _commentSheetController =
@@ -910,6 +911,7 @@ class _FeedPostViewState extends State<_FeedPostView>
   bool _commentSheetOpen = false;
   bool _videoLoadFailed = false;
   bool _likeBusy = false;
+  bool _commentSheetClosingFromDrag = false;
   int _commentAddedCount = 0;
   int _featuredProductIndex = 0;
   Timer? _productRotationTimer;
@@ -1108,6 +1110,7 @@ class _FeedPostViewState extends State<_FeedPostView>
         _commentSheetOpen = false;
         _commentAddedCount = 0;
         _featuredProductIndex = 0;
+        _commentSheetClosingFromDrag = false;
         _commentDragOffset = 0;
         _commentSheetExtent.value = _commentSheetInitialExtent;
         // Reset CTA: user swipe ke post lain → next visit dapat fresh
@@ -1187,11 +1190,18 @@ class _FeedPostViewState extends State<_FeedPostView>
   void _syncCommentSheetProgress() {
     if (!_commentSheetController.isAttached) return;
     final size = _commentSheetController.size;
-    final extent = size
-        .clamp(_commentSheetMinExtent, _commentSheetMaxExtent)
-        .toDouble();
+    final extent =
+        size.clamp(_commentSheetMinExtent, _commentSheetMaxExtent).toDouble();
     if ((_commentSheetExtent.value - extent).abs() > 0.002) {
       _commentSheetExtent.value = extent;
+    }
+    if (_commentSheetOpen &&
+        !_commentSheetClosingFromDrag &&
+        size <= _commentSheetDismissExtent) {
+      _commentSheetClosingFromDrag = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _closeComments();
+      });
     }
   }
 
@@ -1292,6 +1302,7 @@ class _FeedPostViewState extends State<_FeedPostView>
     setState(() {
       _commentDrawerMounted = true;
       _commentAddedCount = 0;
+      _commentSheetClosingFromDrag = false;
       _commentDragOffset = 0;
     });
     _commentSheetExtent.value = _commentSheetInitialExtent;
@@ -1309,13 +1320,6 @@ class _FeedPostViewState extends State<_FeedPostView>
     FocusScope.of(context).unfocus();
     AppHaptics.tap();
     final countDelta = math.max(addedCount, _commentAddedCount);
-    if (_commentSheetController.isAttached) {
-      _commentSheetController.animateTo(
-        _commentSheetInitialExtent,
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOutCubic,
-      );
-    }
     setState(() {
       _commentSheetOpen = false;
       _commentAddedCount = 0;
@@ -1327,6 +1331,10 @@ class _FeedPostViewState extends State<_FeedPostView>
     Future<void>.delayed(const Duration(milliseconds: 280), () {
       if (!mounted || _commentSheetOpen) return;
       _commentSheetExtent.value = _commentSheetInitialExtent;
+      _commentSheetClosingFromDrag = false;
+      if (_commentSheetController.isAttached) {
+        _commentSheetController.jumpTo(_commentSheetInitialExtent);
+      }
       setState(() => _commentDrawerMounted = false);
       widget.onOverlayStateChanged(false);
     });
@@ -1334,31 +1342,33 @@ class _FeedPostViewState extends State<_FeedPostView>
 
   void _onCommentDragUpdate(DragUpdateDetails details) {
     final delta = details.primaryDelta ?? 0;
-    if (_commentSheetController.isAttached) {
-      final screenHeight = math.max(1.0, MediaQuery.sizeOf(context).height);
-      final currentSize = _commentSheetController.size;
-      if (delta < 0 ||
-          (delta > 0 && currentSize > _commentSheetInitialExtent + 0.012)) {
-        final nextSize = (currentSize - (delta / screenHeight))
-            .clamp(_commentSheetMinExtent, _commentSheetMaxExtent)
-            .toDouble();
-        _commentSheetController.jumpTo(nextSize);
-        return;
-      }
-    }
-    if (delta <= 0) return;
-    setState(() {
-      _commentDragOffset = math.min(150, _commentDragOffset + delta);
-    });
+    if (!_commentSheetController.isAttached || delta == 0) return;
+    final screenHeight = math.max(1.0, MediaQuery.sizeOf(context).height);
+    final nextSize = (_commentSheetController.size - (delta / screenHeight))
+        .clamp(_commentSheetMinExtent, _commentSheetMaxExtent)
+        .toDouble();
+    _commentSheetController.jumpTo(nextSize);
   }
 
   void _onCommentDragEnd(DragEndDetails details) {
     final velocity = details.primaryVelocity ?? 0;
-    if (_commentDragOffset > 64 || velocity > 720) {
+    final size = _commentSheetController.isAttached
+        ? _commentSheetController.size
+        : _commentSheetInitialExtent;
+    if (velocity > 720 || size <= _commentSheetDismissExtent) {
       _closeComments();
       return;
     }
-    setState(() => _commentDragOffset = 0);
+    const expandThreshold =
+        (_commentSheetInitialExtent + _commentSheetMaxExtent) / 2;
+    final target = size >= expandThreshold
+        ? _commentSheetMaxExtent
+        : _commentSheetInitialExtent;
+    _commentSheetController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   /// Open moderation actions sheet (Report / Block).
@@ -1756,7 +1766,7 @@ class _FeedPostViewState extends State<_FeedPostView>
                           duration: const Duration(milliseconds: 240),
                           curve: Curves.easeOutCubic,
                           color: Colors.black.withValues(
-                            alpha: _commentSheetOpen ? 0.16 : 0,
+                            alpha: _commentSheetOpen ? 0.72 : 0,
                           ),
                         ),
                       ),
@@ -1777,25 +1787,18 @@ class _FeedPostViewState extends State<_FeedPostView>
                         initialChildSize: FeedCommentSheet.reelsHeightFactor,
                         minChildSize: _commentSheetMinExtent,
                         maxChildSize: _commentSheetMaxExtent,
-                        snap: true,
-                        snapSizes: const [
-                          FeedCommentSheet.reelsHeightFactor,
-                          _commentSheetMaxExtent,
-                        ],
+                        snap: false,
                         builder: (context, scrollController) {
-                          return Transform.translate(
-                            offset: Offset(0, _commentDragOffset),
-                            child: FeedCommentSheet(
-                              post: widget.post,
-                              applyKeyboardInset: false,
-                              sheetScrollController: scrollController,
-                              onClose: _closeComments,
-                              onAddedCountChanged: (count) {
-                                _commentAddedCount = count;
-                              },
-                              onDragUpdate: _onCommentDragUpdate,
-                              onDragEnd: _onCommentDragEnd,
-                            ),
+                          return FeedCommentSheet(
+                            post: widget.post,
+                            applyKeyboardInset: false,
+                            sheetScrollController: scrollController,
+                            onClose: _closeComments,
+                            onAddedCountChanged: (count) {
+                              _commentAddedCount = count;
+                            },
+                            onDragUpdate: _onCommentDragUpdate,
+                            onDragEnd: _onCommentDragEnd,
                           );
                         },
                       ),
@@ -1825,6 +1828,7 @@ class _FeedPostViewState extends State<_FeedPostView>
                           child: _MediaBackground(
                             post: post,
                             videoController: _videoController,
+                            forceBlackBackdrop: _commentDrawerMounted,
                           ),
                         ),
                       ),
@@ -2126,10 +2130,6 @@ class _FeedPostViewState extends State<_FeedPostView>
 class _CommentVideoFrame extends StatelessWidget {
   final bool open;
   final ValueListenable<double> extentListenable;
-  // Visual translate offset saat drawer di-drag down untuk dismiss
-  // gesture (drawer di-translate, bukan di-resize). Video frame harus
-  // track ini supaya bottom edge ikut drawer's visual top edge — tidak
-  // ada black gap antara video dan drawer saat dismiss gesture.
   final double dragOffsetPx;
   final Size screenSize;
   final Widget child;
@@ -2164,21 +2164,12 @@ class _CommentVideoFrame extends StatelessWidget {
             // Drawer extent berasal langsung dari DraggableScrollableSheet.
             // Ini membuat video dan drawer bergerak 1:1 saat user drag,
             // termasuk saat sheet berada di bawah initial extent.
-            //
-            // BUG FIX: dulu video tidak ikut drawer saat user drag-down
-            // untuk dismiss. Drawer di-translate via Transform.translate
-            // (BUKAN resize), tapi video frame cuma track controller.size
-            // → black gap antara video bottom dan drawer's visual top.
-            // Solusi: tambah dragOffsetPx ke drawerTopY supaya video
-            // bottom ikut drawer's visual position 1:1, real-time.
             final drawerExtent = sheetExtent.clamp(0.0, 1.0).toDouble();
             final drawerTopY = height * (1 - drawerExtent) + dragOffsetPx;
             final fullRect = Rect.fromLTWH(0, 0, width, height);
             // Video frame saat drawer open: full width, dari y=0 sampai
-            // drawer's visual top edge (extent + translate). Saat dismiss
-            // gesture, dragOffsetPx > 0 → video grow vertically follow
-            // drawer turun. Animasi rect interpolate dari fullscreen
-            // (openProgress=0) ke aboveDrawer rect (openProgress=1).
+            // drawer's top edge. Animasi rect interpolate dari fullscreen
+            // ke aboveDrawer rect.
             final aboveDrawerRect = Rect.fromLTWH(
               0,
               0,
@@ -2186,17 +2177,23 @@ class _CommentVideoFrame extends StatelessWidget {
               drawerTopY.clamp(0.0, height),
             );
             final rect = Rect.lerp(fullRect, aboveDrawerRect, openProgress)!;
-            // Tidak ada rounded corners / shadow karena video fill full
-            // width — flat edge to drawer top. Drawer punya rounded top
-            // corners-nya sendiri yang akan visible di drawer body.
+            final frameInset = 8.0 * openProgress;
+            final radius = 22.0 * openProgress;
 
             return Positioned.fromRect(
               rect: rect,
               child: DecoratedBox(
-                decoration: const BoxDecoration(
-                  color: Colors.black,
+                decoration: const BoxDecoration(color: Colors.black),
+                child: Padding(
+                  padding: EdgeInsets.all(frameInset),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(radius),
+                    child: DecoratedBox(
+                      decoration: const BoxDecoration(color: Colors.black),
+                      child: child,
+                    ),
+                  ),
                 ),
-                child: child,
               ),
             );
           },
@@ -2425,10 +2422,12 @@ class _ExpandableCaption extends StatelessWidget {
 class _MediaBackground extends StatelessWidget {
   final FeedPost post;
   final VideoPlayerController? videoController;
+  final bool forceBlackBackdrop;
 
   const _MediaBackground({
     required this.post,
     required this.videoController,
+    this.forceBlackBackdrop = false,
   });
 
   @override
@@ -2448,8 +2447,11 @@ class _MediaBackground extends StatelessWidget {
         return Stack(
           fit: StackFit.expand,
           children: [
-            blurhashLayer,
-            _BlurredFeedBackdrop(thumbnailUrl: post.thumbnailUrl),
+            forceBlackBackdrop
+                ? const ColoredBox(color: Colors.black)
+                : blurhashLayer,
+            if (!forceBlackBackdrop)
+              _BlurredFeedBackdrop(thumbnailUrl: post.thumbnailUrl),
             Center(
               child: FittedBox(
                 fit: BoxFit.contain,
@@ -2484,8 +2486,10 @@ class _MediaBackground extends StatelessWidget {
         return Stack(
           fit: StackFit.expand,
           children: [
-            blurhashLayer,
-            _BlurredFeedBackdrop(thumbnailUrl: thumb),
+            forceBlackBackdrop
+                ? const ColoredBox(color: Colors.black)
+                : blurhashLayer,
+            if (!forceBlackBackdrop) _BlurredFeedBackdrop(thumbnailUrl: thumb),
             Center(
               child: CachedNetworkImage(
                 imageUrl: thumb,
@@ -3101,8 +3105,7 @@ class _ProductLinkChip extends StatelessWidget {
                 ],
               ),
               borderRadius: BorderRadius.circular(14),
-              border:
-                  Border.all(color: Colors.white.withValues(alpha: 0.32)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.32)),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.22),
@@ -3112,160 +3115,163 @@ class _ProductLinkChip extends StatelessWidget {
               ],
             ),
             child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(
-              child: InkWell(
-                onTap: onTap,
-                borderRadius:
-                    const BorderRadius.horizontal(left: Radius.circular(14)),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(7, 7, 7, 7),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: SizedBox(
-                          height: 32,
-                          width: 32,
-                          child: product.imageUrl == null
-                              ? Container(
-                                  color: Colors.white.withValues(alpha: 0.12),
-                                  child: const Icon(
-                                    Icons.shopping_bag_outlined,
-                                    color: Colors.white,
-                                    size: 17,
-                                  ),
-                                )
-                              : product.imageUrl!.startsWith('assets/')
-                                  ? Image.asset(product.imageUrl!,
-                                      fit: BoxFit.cover)
-                                  : CachedNetworkImage(
-                                      imageUrl: product.imageUrl!,
-                                      fit: BoxFit.cover,
-                                      errorWidget: (_, __, ___) => Container(
-                                        color: Colors.white
-                                            .withValues(alpha: 0.12),
-                                        child: const Icon(
-                                          Icons.shopping_bag_outlined,
-                                          color: Colors.white,
-                                          size: 17,
-                                        ),
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: InkWell(
+                    onTap: onTap,
+                    borderRadius: const BorderRadius.horizontal(
+                        left: Radius.circular(14)),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(7, 7, 7, 7),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: SizedBox(
+                              height: 32,
+                              width: 32,
+                              child: product.imageUrl == null
+                                  ? Container(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.12),
+                                      child: const Icon(
+                                        Icons.shopping_bag_outlined,
+                                        color: Colors.white,
+                                        size: 17,
                                       ),
-                                    ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              kicker,
-                              maxLines: 1,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                                height: 1,
-                              ),
+                                    )
+                                  : product.imageUrl!.startsWith('assets/')
+                                      ? Image.asset(product.imageUrl!,
+                                          fit: BoxFit.cover)
+                                      : CachedNetworkImage(
+                                          imageUrl: product.imageUrl!,
+                                          fit: BoxFit.cover,
+                                          errorWidget: (_, __, ___) =>
+                                              Container(
+                                            color: Colors.white
+                                                .withValues(alpha: 0.12),
+                                            child: const Icon(
+                                              Icons.shopping_bag_outlined,
+                                              color: Colors.white,
+                                              size: 17,
+                                            ),
+                                          ),
+                                        ),
                             ),
-                            const SizedBox(height: 3),
-                            AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 260),
-                              switchInCurve: Curves.easeOutCubic,
-                              switchOutCurve: Curves.easeInCubic,
-                              transitionBuilder: (child, animation) {
-                                return FadeTransition(
-                                  opacity: animation,
-                                  child: SlideTransition(
-                                    position: Tween<Offset>(
-                                      begin: const Offset(0, 0.18),
-                                      end: Offset.zero,
-                                    ).animate(animation),
-                                    child: child,
+                          ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  kicker,
+                                  maxLines: 1,
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    height: 1,
                                   ),
-                                );
-                              },
+                                ),
+                                const SizedBox(height: 3),
+                                AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 260),
+                                  switchInCurve: Curves.easeOutCubic,
+                                  switchOutCurve: Curves.easeInCubic,
+                                  transitionBuilder: (child, animation) {
+                                    return FadeTransition(
+                                      opacity: animation,
+                                      child: SlideTransition(
+                                        position: Tween<Offset>(
+                                          begin: const Offset(0, 0.18),
+                                          end: Offset.zero,
+                                        ).animate(animation),
+                                        child: child,
+                                      ),
+                                    );
+                                  },
+                                  child: Text(
+                                    product.name,
+                                    key: ValueKey(product.id),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12.2,
+                                      fontWeight: FontWeight.w900,
+                                      height: 1,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (promo != null) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE94B5F)
+                                    .withValues(alpha: 0.88),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
                               child: Text(
-                                product.name,
-                                key: ValueKey(product.id),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                                'PROMO ${promo.discountPercent}%',
                                 style: const TextStyle(
                                   color: Colors.white,
-                                  fontSize: 12.2,
+                                  fontSize: 9.5,
                                   fontWeight: FontWeight.w900,
                                   height: 1,
                                 ),
                               ),
                             ),
                           ],
-                        ),
+                          const SizedBox(width: 4),
+                          const Icon(
+                            Icons.chevron_right_rounded,
+                            color: Colors.white70,
+                            size: 18,
+                          ),
+                        ],
                       ),
-                      if (promo != null) ...[
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 7,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color:
-                                const Color(0xFFE94B5F).withValues(alpha: 0.88),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            'PROMO ${promo.discountPercent}%',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 9.5,
-                              fontWeight: FontWeight.w900,
-                              height: 1,
-                            ),
-                          ),
-                        ),
-                      ],
-                      const SizedBox(width: 4),
-                      const Icon(
-                        Icons.chevron_right_rounded,
-                        color: Colors.white70,
-                        size: 18,
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
-            ),
-            Container(
-              height: 46,
-              width: 40,
-              decoration: BoxDecoration(
-                border: Border(
-                  left: BorderSide(color: Colors.white.withValues(alpha: 0.14)),
+                Container(
+                  height: 46,
+                  width: 40,
+                  decoration: BoxDecoration(
+                    border: Border(
+                      left: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.14)),
+                    ),
+                  ),
+                  child: InkResponse(
+                    onTap: quickAddEnabled ? onQuickAdd : null,
+                    radius: 22,
+                    child: Icon(
+                      product.hasVariants
+                          ? Icons.tune_rounded
+                          : Icons.add_shopping_cart_rounded,
+                      color: quickAddEnabled
+                          ? Colors.white
+                          : Colors.white.withValues(alpha: 0.28),
+                      size: product.hasVariants ? 18 : 19,
+                      shadows: const [
+                        Shadow(color: Colors.black54, blurRadius: 6),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-              child: InkResponse(
-                onTap: quickAddEnabled ? onQuickAdd : null,
-                radius: 22,
-                child: Icon(
-                  product.hasVariants
-                      ? Icons.tune_rounded
-                      : Icons.add_shopping_cart_rounded,
-                  color: quickAddEnabled
-                      ? Colors.white
-                      : Colors.white.withValues(alpha: 0.28),
-                  size: product.hasVariants ? 18 : 19,
-                  shadows: const [
-                    Shadow(color: Colors.black54, blurRadius: 6),
-                  ],
-                ),
-              ),
+              ],
             ),
-          ],
-        ),
           ),
         ),
       ),

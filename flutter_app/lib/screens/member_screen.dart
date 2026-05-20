@@ -814,7 +814,7 @@ class _MenuCard extends StatelessWidget {
   }
 }
 
-/// Section "Postingan Saya" — card compact yang mengarah ke halaman
+/// Section "Galeri Feed Saya" — card compact yang mengarah ke halaman
 /// daftar postingan user sendiri (BUKAN feed publik). Per user spec:
 /// jangan empty state besar dengan "Belum ada postingan" + CTA "Buat
 /// Postingan". Fokus utama section ini = arahkan user ke halaman miliknya.
@@ -853,31 +853,18 @@ class _MyPostsCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Icon ilustrasi kecil — soft blue tile dengan grid/list icon.
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEAF3FF),
-                  borderRadius: BorderRadius.circular(13),
-                ),
-                child: const Icon(
-                  Icons.dynamic_feed_rounded,
-                  color: _brandBlue,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Expanded(
+              _FeedGalleryIcon(),
+              SizedBox(width: 12),
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'Postingan Saya',
+                      'Galeri Feed Saya',
                       style: TextStyle(
                         color: Color(0xFF17202A),
                         fontSize: 17,
@@ -887,7 +874,9 @@ class _MyPostsCard extends StatelessWidget {
                     ),
                     SizedBox(height: 3),
                     Text(
-                      'Lihat semua postingan feed yang pernah kamu bagikan',
+                      'Koleksi foto & video Feed kamu tersimpan rapi di sini.',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: Color(0xFF64748B),
                         fontSize: 13,
@@ -924,7 +913,7 @@ class _MyPostsCard extends StatelessWidget {
                   Icon(Icons.format_list_bulleted_rounded, size: 18),
                   SizedBox(width: 8),
                   Text(
-                    'Lihat Postingan Saya',
+                    'Lihat Feed Saya',
                     style: TextStyle(
                       fontSize: _ctaTextSize,
                       fontWeight: FontWeight.w700,
@@ -933,6 +922,59 @@ class _MyPostsCard extends StatelessWidget {
                   SizedBox(width: 6),
                   Icon(Icons.chevron_right_rounded, size: 20),
                 ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FeedGalleryIcon extends StatelessWidget {
+  const _FeedGalleryIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 54,
+      height: 54,
+      decoration: BoxDecoration(
+        color: const Color(0xFFEAF3FF),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: _brandBlue, width: 2),
+            ),
+            child: const Icon(
+              Icons.image_rounded,
+              color: _brandBlue,
+              size: 22,
+            ),
+          ),
+          Positioned(
+            right: 7,
+            bottom: 7,
+            child: Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: const Color(0xFF7C3AED),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.white, width: 2),
+              ),
+              child: const Icon(
+                Icons.play_arrow_rounded,
+                color: Colors.white,
+                size: 17,
               ),
             ),
           ),

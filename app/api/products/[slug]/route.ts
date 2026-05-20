@@ -14,15 +14,19 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getProductBySlug } from "@/lib/products";
+import { getSession } from "@/lib/auth";
 
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ slug: string }> },
 ) {
   const { slug } = await params;
-  const product = await getProductBySlug(slug);
+  const session = await getSession("CUSTOMER").catch(() => null);
+  const product = await getProductBySlug(slug, {
+    viewerId: session?.sub ?? null,
+  });
 
   if (!product) {
     return NextResponse.json(
@@ -71,11 +75,6 @@ export async function GET(
         soldCount: soldSummary._sum.quantity ?? 0,
         brand: productExtras?.brand ?? null,
         category: productExtras?.category ?? null,
-      },
-    },
-    {
-      headers: {
-        "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
       },
     },
   );

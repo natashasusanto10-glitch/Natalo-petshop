@@ -35,7 +35,11 @@ function pushUnique(
   }
 }
 
-async function sampleRecommendations(excludeIds: string[], limit: number) {
+async function sampleRecommendations(
+  excludeIds: string[],
+  limit: number,
+  userId?: string | null,
+) {
   const products = sampleProducts
     .filter((product) => (product as { isActive?: boolean }).isActive !== false)
     .filter((product) => product.stock > 0 && product.imageUrl)
@@ -74,7 +78,7 @@ async function sampleRecommendations(excludeIds: string[], limit: number) {
       };
     });
 
-  return attachPublicProductVoucherPreviews(products);
+  return attachPublicProductVoucherPreviews(products, { userId });
 }
 
 async function getManualRuleIds(sourceIds: string[], limit: number) {
@@ -224,7 +228,7 @@ export async function GET(request: NextRequest) {
   const page = products.slice(0, limit);
   if (page.length === 0) {
     return NextResponse.json({
-      data: await sampleRecommendations(excludeIds, limit),
+      data: await sampleRecommendations(excludeIds, limit, session?.sub),
       next_cursor: null,
       has_more: false,
     });
@@ -232,6 +236,7 @@ export async function GET(request: NextRequest) {
 
   const data = await attachPublicProductVoucherPreviews(
     page.map(serializeCartRecommendationProduct),
+    { userId: session?.sub },
   );
 
   return NextResponse.json({

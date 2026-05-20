@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { getProductBySlug } from "@/lib/products";
 import {
   loadPublicProductVoucherPreview,
+  loadPublicShippingVoucherPreview,
   loadVisibleProductVouchers,
 } from "@/lib/product-vouchers";
 import { prisma } from "@/lib/prisma";
@@ -28,24 +29,36 @@ export async function GET(
   }
 
   const session = await getSession("CUSTOMER");
-  const [publicVoucher, memberVouchers] = await Promise.all([
-    loadPublicProductVoucherPreview({
-      id: product.id,
-      price: product.price,
-      categoryId: product.categoryId ?? null,
-      categorySlug:
-        "categorySlug" in product
-          ? product.categorySlug ?? null
-          : "category" in product
-          ? product.category?.slug ?? null
-          : null,
+  const previewInput = {
+    id: product.id,
+    price: product.price,
+    categoryId: product.categoryId ?? null,
+    categorySlug:
+      "categorySlug" in product
+        ? product.categorySlug ?? null
+        : "category" in product
+        ? product.category?.slug ?? null
+        : null,
+  };
+  const [publicVoucher, shippingVoucher, memberVouchers] = await Promise.all([
+    loadPublicProductVoucherPreview(previewInput, {
+      userId: session?.sub ?? null,
+    }),
+    loadPublicShippingVoucherPreview(previewInput, {
+      userId: session?.sub ?? null,
     }),
     session ? loadVisibleProductVouchers(session.sub) : Promise.resolve([]),
   ]);
 
   const vouchers = [
     ...(publicVoucher ? [publicVoucher] : []),
-    ...memberVouchers.filter((voucher) => voucher.id !== publicVoucher?.id),
+    ...(shippingVoucher && shippingVoucher.id !== publicVoucher?.id
+      ? [shippingVoucher]
+      : []),
+    ...memberVouchers.filter(
+      (voucher) =>
+        voucher.id !== publicVoucher?.id && voucher.id !== shippingVoucher?.id
+    ),
   ];
 
   return NextResponse.json({ vouchers });

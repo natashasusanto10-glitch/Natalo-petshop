@@ -271,8 +271,7 @@ class _CartScreenState extends State<CartScreen> {
   /// Method ini dipakai untuk pisahkan slot shipping voucher vs discount
   /// voucher di dual-slot voucher UI (1 customer + 1 shipping).
   bool _isCartShippingVoucher(MemberVoucher voucher) {
-    if (voucher.code == _shippingVoucherCode) return true;
-    return voucher.isFreeShipping || voucher.isShippingDiscount;
+    return _isCartShippingVoucherData(voucher);
   }
 
   double get _grandTotal {
@@ -510,6 +509,10 @@ class _CartScreenState extends State<CartScreen> {
         shippingEligible: _shippingVoucherEligible,
         shippingDiscount: _shippingEstimate.round(),
         selectedDiscountCode: _appliedDiscountVoucher?.code,
+        selectedShippingCode:
+            _appliedShippingVoucher && _isManualVoucherSelected
+                ? _manualVoucherCode
+                : null,
         shippingSelected: _appliedShippingVoucher,
         isManual: _isManualVoucherSelected,
         loading: _loadingVouchers,
@@ -1422,7 +1425,8 @@ void _showCartDeleteSnackBar(
 
 enum _CartVoucherType { discount, shipping }
 
-bool _isCartShippingVoucher(MemberVoucher voucher) {
+bool _isCartShippingVoucherData(MemberVoucher voucher) {
+  if (voucher.code == _shippingVoucherCode) return true;
   if (voucher.isFreeShipping || voucher.isShippingDiscount) return true;
 
   final searchableText = [
@@ -1451,6 +1455,20 @@ String _cartShippingVoucherSubtitle(
   }
 
   return 'Gratis ongkir untuk pesanan ini';
+}
+
+bool _isCartShippingVoucher(MemberVoucher voucher) {
+  return _isCartShippingVoucherData(voucher);
+}
+
+MemberVoucher? _findSheetVoucherByCode(
+  List<MemberVoucher> vouchers,
+  String code,
+) {
+  for (final voucher in vouchers) {
+    if (voucher.code == code) return voucher;
+  }
+  return null;
 }
 
 class _CartVoucherChoice {
@@ -1678,6 +1696,7 @@ class _CartVoucherSheet extends StatefulWidget {
   final bool shippingEligible;
   final int shippingDiscount;
   final String? selectedDiscountCode;
+  final String? selectedShippingCode;
   final bool shippingSelected;
   final bool isManual;
   final bool loading;
@@ -1688,6 +1707,7 @@ class _CartVoucherSheet extends StatefulWidget {
     required this.shippingEligible,
     required this.shippingDiscount,
     required this.selectedDiscountCode,
+    required this.selectedShippingCode,
     required this.shippingSelected,
     required this.isManual,
     required this.loading,
@@ -1706,6 +1726,16 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
   void initState() {
     super.initState();
     if (widget.selectedDiscountCode != null) {
+      final selectedVoucher = _findSheetVoucherByCode(
+        widget.availableDiscounts,
+        widget.selectedDiscountCode!,
+      );
+      if (selectedVoucher != null && _isCartShippingVoucher(selectedVoucher)) {
+        _selectedType = _CartVoucherType.shipping;
+        _selectedCode = selectedVoucher.code;
+        return;
+      }
+
       _selectedType = _CartVoucherType.discount;
       _selectedCode = widget.selectedDiscountCode;
       for (final voucher in widget.availableDiscounts) {
@@ -1716,7 +1746,7 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
       }
     } else if (widget.shippingSelected) {
       _selectedType = _CartVoucherType.shipping;
-      _selectedCode = _shippingVoucherCode;
+      _selectedCode = widget.selectedShippingCode ?? _shippingVoucherCode;
     }
   }
 

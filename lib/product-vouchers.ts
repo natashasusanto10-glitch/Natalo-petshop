@@ -18,8 +18,8 @@ export type ProductVoucherPreview = {
   minimumOrder: number;
   savingAmount: number | null;
   expiresAt: string | null;
-  type: "PUBLIC_PRODUCT_DISCOUNT";
-  discountScope: "PRODUCT";
+  type: "PUBLIC_PRODUCT_DISCOUNT" | "PUBLIC_FREE_SHIPPING";
+  discountScope: "PRODUCT" | "SHIPPING";
   targetUser: "ALL_MEMBERS" | "NEW_MEMBER";
   loginRequired: true;
 };
@@ -29,6 +29,10 @@ type ProductVoucherProductInput = {
   price: number;
   categoryId?: string | null;
   categorySlug?: string | null;
+};
+
+type ProductVoucherPreviewOptions = {
+  userId?: string | null;
 };
 
 export type ProductVoucherItem = {
@@ -214,11 +218,88 @@ type PublicProductVoucherRow = {
   maxUsage: number | null;
   usedCount: number;
   expiresAt: Date | null;
+  discountScope: "PRODUCT" | "SHIPPING";
   targetUser: "ALL_MEMBERS" | "NEW_MEMBER";
+  newMemberMaxAccountAgeDays: number | null;
+  newMemberRequireNoSuccessfulOrder: boolean;
+  usageLimitPeriod: VoucherUsageLimitPeriodValue;
+  usageLimitPerUser: number | null;
   eligibleUserIds: string[];
   eligibleProductIds: string[];
   eligibleCategoryIds: string[];
 };
+
+type ProductVoucherPreviewUserContext = {
+  user: {
+    isLoggedIn: true;
+    userId: string;
+    createdAt: Date | null;
+    successfulOrderCount: number;
+  };
+  usedOrders: Array<{
+    createdAt: Date;
+    voucherCode: string | null;
+    freeShippingVoucherCode: string | null;
+    productVoucherCode: string | null;
+    shippingVoucherCode: string | null;
+    loyaltyVoucherCode: string | null;
+    manualVoucherCode: string | null;
+    privateVoucherCode: string | null;
+  }>;
+};
+
+async function loadProductVoucherPreviewUserContext(
+  userId?: string | null
+): Promise<ProductVoucherPreviewUserContext | null> {
+  if (!userId) return null;
+
+  const [user, usedOrders, successfulOrderCount] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, createdAt: true },
+    }),
+    prisma.order.findMany({
+      where: {
+        userId,
+        OR: [
+          { voucherCode: { not: null } },
+          { freeShippingVoucherCode: { not: null } },
+          { productVoucherCode: { not: null } },
+          { shippingVoucherCode: { not: null } },
+          { loyaltyVoucherCode: { not: null } },
+          { manualVoucherCode: { not: null } },
+          { privateVoucherCode: { not: null } },
+        ],
+      },
+      select: {
+        createdAt: true,
+        voucherCode: true,
+        freeShippingVoucherCode: true,
+        productVoucherCode: true,
+        shippingVoucherCode: true,
+        loyaltyVoucherCode: true,
+        manualVoucherCode: true,
+        privateVoucherCode: true,
+      },
+    }),
+    prisma.order.count({
+      where: {
+        userId,
+        status: { notIn: ["CANCELLED", "REFUNDED"] },
+      },
+    }),
+  ]);
+
+  return {
+    user: {
+      isLoggedIn: true,
+      userId,
+      createdAt: user?.createdAt ?? null,
+      successfulOrderCount,
+    },
+    usedOrders,
+  };
+}
 
 function voucherAppliesToProduct(
   voucher: Pick<
@@ -264,6 +345,7 @@ function voucherPreviewLabel(
   voucher: PublicProductVoucherRow,
   savingAmount: number | null
 ) {
+  if (voucher.discountScope === "SHIPPING") return "Gratis Ongkir";
   if (savingAmount && savingAmount > 0) {
     const cappedOrMinimum =
       (voucher.maxDiscountAmount ?? 0) > 0 || voucher.minimumOrder > 0;
@@ -304,22 +386,31 @@ function buildProductVoucherPreview(
     minimumOrder: voucher.minimumOrder,
     savingAmount,
     expiresAt: voucher.expiresAt ? voucher.expiresAt.toISOString() : null,
-    type: "PUBLIC_PRODUCT_DISCOUNT",
-    discountScope: "PRODUCT",
+    type:
+      voucher.discountScope === "SHIPPING"
+        ? "PUBLIC_FREE_SHIPPING"
+        : "PUBLIC_PRODUCT_DISCOUNT",
+    discountScope: voucher.discountScope,
     targetUser: voucher.targetUser,
     loginRequired: true,
   };
 }
 
-async function loadPublicProductDiscountVouchers() {
+async function loadPublicProductDiscountVouchers(
+  discountScope: "PRODUCT" | "SHIPPING",
+  userContext: ProductVoucherPreviewUserContext | null = null
+) {
   const now = new Date();
   const vouchers = await prisma.voucher.findMany({
     where: {
       isActive: true,
       sourceType: "CUSTOMER",
-      type: "PUBLIC_PRODUCT_DISCOUNT",
+      type:
+        discountScope === "SHIPPING"
+          ? "PUBLIC_FREE_SHIPPING"
+          : "PUBLIC_PRODUCT_DISCOUNT",
       visibility: "PUBLIC",
-      discountScope: "PRODUCT",
+      discountScope,
       userId: null,
       startsAt: { lte: now },
       OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
@@ -342,7 +433,12 @@ async function loadPublicProductDiscountVouchers() {
       maxUsage: true,
       usedCount: true,
       expiresAt: true,
+      discountScope: true,
       targetUser: true,
+      newMemberMaxAccountAgeDays: true,
+      newMemberRequireNoSuccessfulOrder: true,
+      usageLimitPeriod: true,
+      usageLimitPerUser: true,
       eligibleUserIds: true,
       eligibleProductIds: true,
       eligibleCategoryIds: true,
@@ -355,6 +451,14 @@ async function loadPublicProductDiscountVouchers() {
     if (voucher.maxUsage !== null && voucher.usedCount >= voucher.maxUsage) {
       return false;
     }
+    if (userContext) {
+      if (isVoucherUsageLimitReached(voucher, userContext.usedOrders, now)) {
+        return false;
+      }
+      if (getNewMemberVoucherDisabledReason(voucher, userContext.user, now)) {
+        return false;
+      }
+    }
     return true;
   });
 }
@@ -362,17 +466,44 @@ async function loadPublicProductDiscountVouchers() {
 export async function attachPublicProductVoucherPreviews<
   T extends ProductVoucherProductInput
 >(
-  products: T[]
-): Promise<Array<T & { voucherPreview: ProductVoucherPreview | null }>> {
+  products: T[],
+  options: ProductVoucherPreviewOptions = {}
+): Promise<
+  Array<
+    T & {
+      voucherPreview: ProductVoucherPreview | null;
+      shippingVoucherPreview: ProductVoucherPreview | null;
+    }
+  >
+> {
   if (products.length === 0) return [];
   try {
-    const vouchers = await loadPublicProductDiscountVouchers();
-    if (vouchers.length === 0) {
-      return products.map((product) => ({ ...product, voucherPreview: null }));
+    const userContext = await loadProductVoucherPreviewUserContext(
+      options.userId
+    );
+    const [productVouchers, shippingVouchers] = await Promise.all([
+      loadPublicProductDiscountVouchers("PRODUCT", userContext),
+      loadPublicProductDiscountVouchers("SHIPPING", userContext),
+    ]);
+    if (productVouchers.length === 0 && shippingVouchers.length === 0) {
+      return products.map((product) => ({
+        ...product,
+        voucherPreview: null,
+        shippingVoucherPreview: null,
+      }));
     }
 
     return products.map((product) => {
-      const previews = vouchers
+      const previews = productVouchers
+        .filter((voucher) => voucherAppliesToProduct(voucher, product))
+        .map((voucher) => buildProductVoucherPreview(voucher, product))
+        .filter((preview): preview is ProductVoucherPreview => Boolean(preview))
+        .sort((a, b) => {
+          const amountDelta = (b.savingAmount ?? 0) - (a.savingAmount ?? 0);
+          if (amountDelta !== 0) return amountDelta;
+          return (b.discountPercent ?? 0) - (a.discountPercent ?? 0);
+        });
+      const shippingPreviews = shippingVouchers
         .filter((voucher) => voucherAppliesToProduct(voucher, product))
         .map((voucher) => buildProductVoucherPreview(voucher, product))
         .filter((preview): preview is ProductVoucherPreview => Boolean(preview))
@@ -385,16 +516,36 @@ export async function attachPublicProductVoucherPreviews<
       return {
         ...product,
         voucherPreview: previews[0] ?? null,
+        shippingVoucherPreview: shippingPreviews[0] ?? null,
       };
     });
   } catch {
-    return products.map((product) => ({ ...product, voucherPreview: null }));
+    return products.map((product) => ({
+      ...product,
+      voucherPreview: null,
+      shippingVoucherPreview: null,
+    }));
   }
 }
 
 export async function loadPublicProductVoucherPreview(
-  product: ProductVoucherProductInput
+  product: ProductVoucherProductInput,
+  options: ProductVoucherPreviewOptions = {}
 ) {
-  const [withPreview] = await attachPublicProductVoucherPreviews([product]);
+  const [withPreview] = await attachPublicProductVoucherPreviews(
+    [product],
+    options
+  );
   return withPreview?.voucherPreview ?? null;
+}
+
+export async function loadPublicShippingVoucherPreview(
+  product: ProductVoucherProductInput,
+  options: ProductVoucherPreviewOptions = {}
+) {
+  const [withPreview] = await attachPublicProductVoucherPreviews(
+    [product],
+    options
+  );
+  return withPreview?.shippingVoucherPreview ?? null;
 }

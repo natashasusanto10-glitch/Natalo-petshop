@@ -108,6 +108,7 @@ export async function GET(request: NextRequest) {
 
   const withVoucherPreview = await attachPublicProductVoucherPreviews(
     [...data, ...sampleData].slice(0, limit),
+    { userId: session?.sub },
   );
 
   return NextResponse.json({ data: withVoucherPreview });

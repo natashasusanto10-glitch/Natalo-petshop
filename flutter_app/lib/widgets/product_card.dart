@@ -253,11 +253,79 @@ class ProductSavingsBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final voucher = product.voucherPreview;
-    final label = voucher?.badgeLabel.trim().isNotEmpty == true
-        ? voucher!.badgeLabel
+    final shippingVoucher = product.shippingVoucherPreview;
+    final productLabel = voucher?.badgeLabel.trim().isNotEmpty == true
+        ? voucher!.badgeLabel.trim()
         : productSavingsLabel(product);
-    if (label == null) return const SizedBox.shrink();
+    final shippingLabel = shippingVoucher?.badgeLabel.trim().isNotEmpty == true
+        ? shippingVoucher!.badgeLabel.trim()
+        : shippingVoucher != null
+            ? 'Gratis Ongkir'
+            : null;
 
+    final badges = <Widget>[
+      if (productLabel != null)
+        _ProductPromoBadge(
+          label: productLabel,
+          icon: voucher == null
+              ? Icons.local_offer_rounded
+              : Icons.confirmation_number_rounded,
+          foregroundColor: NataloColors.danger,
+          backgroundColor: NataloColors.dangerSoft,
+          borderColor: NataloColors.danger.withValues(alpha: 0.28),
+          onTap: voucher == null
+              ? null
+              : () {
+                  AppHaptics.tap();
+                  _showVoucherPreviewSheet(context, product, voucher);
+                },
+        ),
+      if (shippingLabel != null)
+        _ProductPromoBadge(
+          label: shippingLabel,
+          icon: Icons.local_shipping_rounded,
+          foregroundColor: NataloColors.successDark,
+          backgroundColor: NataloColors.successSoft,
+          borderColor: NataloColors.success.withValues(alpha: 0.30),
+          onTap: () {
+            AppHaptics.tap();
+            _showVoucherPreviewSheet(context, product, shippingVoucher!);
+          },
+        ),
+    ];
+
+    if (badges.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.xs),
+      child: Wrap(
+        spacing: AppSpacing.xs,
+        runSpacing: AppSpacing.xs,
+        children: badges,
+      ),
+    );
+  }
+}
+
+class _ProductPromoBadge extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color foregroundColor;
+  final Color backgroundColor;
+  final Color borderColor;
+  final VoidCallback? onTap;
+
+  const _ProductPromoBadge({
+    required this.label,
+    required this.icon,
+    required this.foregroundColor,
+    required this.backgroundColor,
+    required this.borderColor,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     final badge = Container(
       constraints: const BoxConstraints(maxWidth: double.infinity),
       padding: const EdgeInsets.symmetric(
@@ -265,28 +333,26 @@ class ProductSavingsBadge extends StatelessWidget {
         vertical: AppSpacing.xs,
       ),
       decoration: BoxDecoration(
-        color: NataloColors.dangerSoft,
+        color: backgroundColor,
         borderRadius: AppRadius.pill,
-        border: Border.all(color: NataloColors.danger.withValues(alpha: 0.28)),
+        border: Border.all(color: borderColor),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (voucher != null) ...[
-            const Icon(
-              Icons.confirmation_number_rounded,
-              size: 11,
-              color: NataloColors.danger,
-            ),
-            const SizedBox(width: AppSpacing.xs),
-          ],
+          Icon(
+            icon,
+            size: 11,
+            color: foregroundColor,
+          ),
+          const SizedBox(width: AppSpacing.xs),
           Flexible(
             child: Text(
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: NataloColors.danger,
+              style: TextStyle(
+                color: foregroundColor,
                 fontSize: 10.8,
                 fontWeight: FontWeight.w900,
                 height: 1.05,
@@ -297,18 +363,12 @@ class ProductSavingsBadge extends StatelessWidget {
       ),
     );
 
-    return Padding(
-      padding: const EdgeInsets.only(top: AppSpacing.xs),
-      child: voucher == null
-          ? badge
-          : GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () {
-                AppHaptics.tap();
-                _showVoucherPreviewSheet(context, product, voucher);
-              },
-              child: badge,
-            ),
+    if (onTap == null) return badge;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: badge,
     );
   }
 }
@@ -325,13 +385,23 @@ Future<void> _showVoucherPreviewSheet(
     backgroundColor: Colors.transparent,
     builder: (context) {
       final isLoggedIn = memberStore.isLoggedIn;
+      final isShippingVoucher = voucher.isShippingVoucher;
       final isNewMemberVoucher = voucher.isNewMemberOnly;
-      final voucherTitle = isNewMemberVoucher
-          ? 'Voucher New Member Natalo'
-          : 'Voucher Produk Natalo';
-      final voucherNote = isNewMemberVoucher
-          ? 'Voucher khusus member baru. Guest boleh melihat promo ini, tetapi perlu daftar atau login member baru untuk memakai voucher saat checkout.'
-          : 'Voucher akan dicek ulang otomatis saat checkout. Guest boleh melihat promo ini, tetapi perlu login member untuk memakai voucher.';
+      final accentColor =
+          isShippingVoucher ? NataloColors.successDark : NataloColors.danger;
+      final accentSoft = isShippingVoucher
+          ? NataloColors.successSoft
+          : NataloColors.dangerSoft;
+      final voucherTitle = isShippingVoucher
+          ? 'Voucher Gratis Ongkir Natalo'
+          : isNewMemberVoucher
+              ? 'Voucher New Member Natalo'
+              : 'Voucher Produk Natalo';
+      final voucherNote = isShippingVoucher
+          ? 'Voucher gratis ongkir akan dicek ulang otomatis saat checkout. Guest boleh melihat promo ini, tetapi perlu login member untuk memakai voucher.'
+          : isNewMemberVoucher
+              ? 'Voucher khusus member baru. Guest boleh melihat promo ini, tetapi perlu daftar atau login member baru untuk memakai voucher saat checkout.'
+              : 'Voucher akan dicek ulang otomatis saat checkout. Guest boleh melihat promo ini, tetapi perlu login member untuk memakai voucher.';
 
       return SafeArea(
         top: false,
@@ -376,12 +446,14 @@ Future<void> _showVoucherPreviewSheet(
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(
-                      color: NataloColors.dangerSoft,
+                      color: accentSoft,
                       borderRadius: AppRadius.large,
                     ),
-                    child: const Icon(
-                      Icons.local_offer_rounded,
-                      color: NataloColors.danger,
+                    child: Icon(
+                      isShippingVoucher
+                          ? Icons.local_shipping_rounded
+                          : Icons.local_offer_rounded,
+                      color: accentColor,
                     ),
                   ),
                   const SizedBox(width: AppSpacing.md),
@@ -419,10 +491,10 @@ Future<void> _showVoucherPreviewSheet(
                 width: double.infinity,
                 padding: const EdgeInsets.all(AppSpacing.lg),
                 decoration: BoxDecoration(
-                  color: NataloColors.dangerSoft,
+                  color: accentSoft,
                   borderRadius: AppRadius.extraLarge,
                   border: Border.all(
-                    color: NataloColors.danger.withValues(alpha: 0.28),
+                    color: accentColor.withValues(alpha: 0.28),
                   ),
                 ),
                 child: Column(
@@ -430,8 +502,8 @@ Future<void> _showVoucherPreviewSheet(
                   children: [
                     Text(
                       voucher.badgeLabel,
-                      style: const TextStyle(
-                        color: NataloColors.danger,
+                      style: TextStyle(
+                        color: accentColor,
                         fontSize: 16,
                         fontWeight: FontWeight.w900,
                       ),
@@ -456,7 +528,7 @@ Future<void> _showVoucherPreviewSheet(
                           color: NataloColors.white.withValues(alpha: 0.74),
                           borderRadius: AppRadius.pill,
                           border: Border.all(
-                            color: NataloColors.danger.withValues(alpha: 0.22),
+                            color: accentColor.withValues(alpha: 0.22),
                           ),
                         ),
                         child: const Text(

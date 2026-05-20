@@ -50,6 +50,7 @@ export type StoreProduct = {
   categoryId?: string | null;
   categorySlug?: string | null;
   voucherPreview?: ProductVoucherPreview | null;
+  shippingVoucherPreview?: ProductVoucherPreview | null;
   /** ISO timestamp — kalau di-set, admin explicit tag produk ini Flash
    *  Sale sampai waktu ini. SELALU masuk Flash Sale section apapun
    *  discount %-nya, dengan countdown. Kalau null, masuk Flash Sale
@@ -73,7 +74,11 @@ export type StoreProduct = {
  */
 export const FLASH_SALE_MIN_DISCOUNT_PERCENT = 20;
 
-function normalizeProductWeight(name: string, slug: string, weightGram: number) {
+function normalizeProductWeight(
+  name: string,
+  slug: string,
+  weightGram: number
+) {
   const text = `${name} ${slug}`.toLowerCase();
   if (text.includes("maxi-cat") && text.includes("20kg")) return 20000;
   return weightGram;
@@ -99,7 +104,9 @@ const productListInclude = {
   },
 } satisfies Prisma.ProductInclude;
 
-type ProductListRecord = Prisma.ProductGetPayload<{ include: typeof productListInclude }>;
+type ProductListRecord = Prisma.ProductGetPayload<{
+  include: typeof productListInclude;
+}>;
 
 function mapProductListRecord(p: ProductListRecord): StoreProduct {
   if (p.hasVariants && p.variants.length > 0) {
@@ -123,6 +130,7 @@ function mapProductListRecord(p: ProductListRecord): StoreProduct {
       categoryId: p.category?.id ?? null,
       categorySlug: p.category?.slug ?? null,
       voucherPreview: null,
+      shippingVoucherPreview: null,
       flashSaleEndsAt: p.flashSaleEndsAt?.toISOString() ?? null,
     };
   }
@@ -145,15 +153,21 @@ function mapProductListRecord(p: ProductListRecord): StoreProduct {
     categoryId: p.category?.id ?? null,
     categorySlug: p.category?.slug ?? null,
     voucherPreview: null,
+    shippingVoucherPreview: null,
     flashSaleEndsAt: p.flashSaleEndsAt?.toISOString() ?? null,
   };
 }
 
-async function withVoucherPreviews(products: StoreProduct[]) {
-  return attachPublicProductVoucherPreviews(products);
+async function withVoucherPreviews(
+  products: StoreProduct[],
+  viewerId?: string | null
+) {
+  return attachPublicProductVoucherPreviews(products, { userId: viewerId });
 }
 
-async function withSoldCounts(products: StoreProduct[]): Promise<StoreProduct[]> {
+async function withSoldCounts(
+  products: StoreProduct[]
+): Promise<StoreProduct[]> {
   if (products.length === 0) return products;
 
   const productIds = products.map((product) => product.id);
@@ -170,7 +184,7 @@ async function withSoldCounts(products: StoreProduct[]): Promise<StoreProduct[]>
   });
 
   const soldByProductId = new Map(
-    rows.map((row) => [row.productId, row._sum.quantity ?? 0]),
+    rows.map((row) => [row.productId, row._sum.quantity ?? 0])
   );
 
   return products.map((product) => ({
@@ -179,8 +193,11 @@ async function withSoldCounts(products: StoreProduct[]): Promise<StoreProduct[]>
   }));
 }
 
-async function withProductListMeta(products: StoreProduct[]) {
-  return withVoucherPreviews(await withSoldCounts(products));
+async function withProductListMeta(
+  products: StoreProduct[],
+  viewerId?: string | null
+) {
+  return withVoucherPreviews(await withSoldCounts(products), viewerId);
 }
 
 export type NewProductFilter =
@@ -224,7 +241,7 @@ function toAndArray(and: Prisma.ProductWhereInput["AND"]) {
 
 function withAnd(
   where: Prisma.ProductWhereInput,
-  condition: Prisma.ProductWhereInput,
+  condition: Prisma.ProductWhereInput
 ): Prisma.ProductWhereInput {
   return {
     ...where,
@@ -238,8 +255,8 @@ function startOfWibDay(date = new Date()) {
     Date.UTC(
       wibDate.getUTCFullYear(),
       wibDate.getUTCMonth(),
-      wibDate.getUTCDate(),
-    ) - WIB_OFFSET_MS,
+      wibDate.getUTCDate()
+    ) - WIB_OFFSET_MS
   );
 }
 
@@ -251,8 +268,8 @@ function startOfWibWeek(date = new Date()) {
     Date.UTC(
       wibDate.getUTCFullYear(),
       wibDate.getUTCMonth(),
-      wibDate.getUTCDate(),
-    ) - WIB_OFFSET_MS,
+      wibDate.getUTCDate()
+    ) - WIB_OFFSET_MS
   );
   weekStart.setUTCDate(weekStart.getUTCDate() - daysSinceMonday);
   return weekStart;
@@ -272,7 +289,11 @@ function newProductCutoff(filter: NewProductFilter | undefined): Date | null {
   const now = new Date();
   if (filter === "today") return startOfWibDay(now);
   if (filter === "this-week") return startOfWibWeek(now);
-  if (filter === "this-month" || filter === "last-30-days" || filter === "newest") {
+  if (
+    filter === "this-month" ||
+    filter === "last-30-days" ||
+    filter === "newest"
+  ) {
     return daysAgo(now, NEW_PRODUCT_WINDOW_DAYS);
   }
   return null;
@@ -282,14 +303,21 @@ function wibDateKey(date: Date) {
   return new Date(date.getTime() + WIB_OFFSET_MS).toISOString().slice(0, 10);
 }
 
-function productRankWhere(where: Prisma.ProductWhereInput): Prisma.ProductWhereInput {
+function productRankWhere(
+  where: Prisma.ProductWhereInput
+): Prisma.ProductWhereInput {
   return withAnd(where, {
     OR: [
       { hasVariants: false, price: { gt: 0 }, stock: { gt: 0 } },
       {
         hasVariants: true,
         variants: {
-          some: { deletedAt: null, isActive: true, price: { gt: 0 }, stock: { gt: 0 } },
+          some: {
+            deletedAt: null,
+            isActive: true,
+            price: { gt: 0 },
+            stock: { gt: 0 },
+          },
         },
       },
     ],
@@ -365,15 +393,17 @@ async function getTrendingProductIds({
   >();
 
   for (const row of rows) {
-    const productStats =
-      stats.get(row.productId) ??
-      { totalSold: 0, buyerIds: new Set<string>(), purchaseDays: new Set<string>() };
+    const productStats = stats.get(row.productId) ?? {
+      totalSold: 0,
+      buyerIds: new Set<string>(),
+      purchaseDays: new Set<string>(),
+    };
     productStats.totalSold += row.quantity;
     productStats.buyerIds.add(
       row.order.userId ??
         row.order.customerEmail ??
         row.order.customerPhone ??
-        `order:${row.order.id}`,
+        `order:${row.order.id}`
     );
     productStats.purchaseDays.add(wibDateKey(row.order.createdAt));
     stats.set(row.productId, productStats);
@@ -395,7 +425,8 @@ async function getTrendingProductIds({
     })
     .filter((item) => item.totalSold > 0 && item.purchaseFrequencyDays >= 2)
     .sort((a, b) => {
-      if (b.trendingScore !== a.trendingScore) return b.trendingScore - a.trendingScore;
+      if (b.trendingScore !== a.trendingScore)
+        return b.trendingScore - a.trendingScore;
       if (b.totalSold !== a.totalSold) return b.totalSold - a.totalSold;
       return b.purchaseFrequencyDays - a.purchaseFrequencyDays;
     })
@@ -463,14 +494,17 @@ async function getMostSearchedProductIds({
             { brand: { name: { contains: keyword, mode: "insensitive" } } },
             { category: { name: { contains: keyword, mode: "insensitive" } } },
           ],
-        }),
+        })
       ),
       select: { id: true },
       take: 24,
     });
 
     for (const product of matches) {
-      scores.set(product.id, (scores.get(product.id) ?? 0) + row._count.keyword);
+      scores.set(
+        product.id,
+        (scores.get(product.id) ?? 0) + row._count.keyword
+      );
     }
   }
 
@@ -486,8 +520,10 @@ async function getMostSearchedProductIds({
 
 function buildOrderBy(
   newFilter?: NewProductFilter,
-  popularFilter?: PopularFilter,
-): Prisma.ProductOrderByWithRelationInput | Prisma.ProductOrderByWithRelationInput[] {
+  popularFilter?: PopularFilter
+):
+  | Prisma.ProductOrderByWithRelationInput
+  | Prisma.ProductOrderByWithRelationInput[] {
   // Popular filter has priority over new filter for ordering
   if (popularFilter === "highest-rating") {
     return [{ avgRating: "desc" }, { reviewCount: "desc" }];
@@ -509,6 +545,7 @@ export async function getProducts(opts?: {
   hasPriceOnly?: boolean;
   inStockOnly?: boolean;
   withImageOnly?: boolean;
+  viewerId?: string | null;
 }): Promise<StoreProduct[]> {
   const {
     category,
@@ -523,6 +560,7 @@ export async function getProducts(opts?: {
     hasPriceOnly,
     inStockOnly,
     withImageOnly,
+    viewerId,
   } = opts ?? {};
   const createdAtCutoff = newProductCutoff(newFilter);
   const where = buildProductWhere({
@@ -538,7 +576,11 @@ export async function getProducts(opts?: {
 
   try {
     if (popularFilter === "most-searched") {
-      const productIds = await getMostSearchedProductIds({ productWhere: where, take, skip });
+      const productIds = await getMostSearchedProductIds({
+        productWhere: where,
+        take,
+        skip,
+      });
       if (!productIds.length) return [];
 
       const order = new Map(productIds.map((id, index) => [id, index]));
@@ -547,9 +589,12 @@ export async function getProducts(opts?: {
         include: productListInclude,
       });
 
-      return withProductListMeta(products
-        .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
-        .map(mapProductListRecord));
+      return withProductListMeta(
+        products
+          .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
+          .map(mapProductListRecord),
+        viewerId
+      );
     }
 
     if (isOrderDrivenPopularFilter(popularFilter)) {
@@ -566,9 +611,12 @@ export async function getProducts(opts?: {
         include: productListInclude,
       });
 
-      return withProductListMeta(products
-        .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
-        .map(mapProductListRecord));
+      return withProductListMeta(
+        products
+          .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
+          .map(mapProductListRecord),
+        viewerId
+      );
     }
 
     if (
@@ -600,9 +648,12 @@ export async function getProducts(opts?: {
         include: productListInclude,
       });
 
-      return withProductListMeta(products
-        .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
-        .map(mapProductListRecord));
+      return withProductListMeta(
+        products
+          .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
+          .map(mapProductListRecord),
+        viewerId
+      );
     }
 
     const listWhere =
@@ -620,14 +671,14 @@ export async function getProducts(opts?: {
 
     if (!products.length) {
       if (category || brand || search || newFilter || popularFilter) return [];
-      return withProductListMeta(sampleProducts);
+      return withProductListMeta(sampleProducts, viewerId);
     }
 
-    return withProductListMeta(products.map(mapProductListRecord));
+    return withProductListMeta(products.map(mapProductListRecord), viewerId);
   } catch {
     if (randomSeed) return [];
     if (category || brand || search || newFilter || popularFilter) return [];
-    return withVoucherPreviews(sampleProducts);
+    return withVoucherPreviews(sampleProducts, viewerId);
   }
 }
 
@@ -667,7 +718,9 @@ export async function getProductsCount(opts?: {
 
   try {
     if (popularFilter === "most-searched") {
-      const productIds = await getMostSearchedProductIds({ productWhere: where });
+      const productIds = await getMostSearchedProductIds({
+        productWhere: where,
+      });
       return productIds.length;
     }
 
@@ -750,25 +803,37 @@ function buildProductWhere({
     ...(category ? { category: { slug: category } } : {}),
     ...(brand ? { brand: { slug: brand, isActive: true } } : {}),
     ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
-    ...(createdAtCutoff ? { createdAt: { gte: createdAtCutoff, lte: new Date() } } : {}),
+    ...(createdAtCutoff
+      ? { createdAt: { gte: createdAtCutoff, lte: new Date() } }
+      : {}),
     ...(excludeIds?.length ? { id: { notIn: excludeIds } } : {}),
     ...(and.length ? { AND: and } : {}),
   };
 }
 
-export async function getProductBySlug(slug: string): Promise<StoreProduct | null> {
+export async function getProductBySlug(
+  slug: string,
+  opts?: { viewerId?: string | null }
+): Promise<StoreProduct | null> {
+  const viewerId = opts?.viewerId;
   try {
     // Cari by slug dulu — kalau tidak ada, fallback by id. Berguna untuk
     // legacy cart items yang belum punya slug (tersimpan productId only),
     // atau deep-link by id.
     let p = await prisma.product.findUnique({
       where: { slug },
-      include: { ...variantInclude, category: { select: { id: true, slug: true } } },
+      include: {
+        ...variantInclude,
+        category: { select: { id: true, slug: true } },
+      },
     });
     if (!p) {
       p = await prisma.product.findUnique({
         where: { id: slug },
-        include: { ...variantInclude, category: { select: { id: true, slug: true } } },
+        include: {
+          ...variantInclude,
+          category: { select: { id: true, slug: true } },
+        },
       });
     }
     if (!p) return sampleProducts.find((item) => item.slug === slug) ?? null;
@@ -795,10 +860,11 @@ export async function getProductBySlug(slug: string): Promise<StoreProduct | nul
         categoryId: p.category?.id ?? null,
         categorySlug: p.category?.slug ?? null,
         voucherPreview: null,
+        shippingVoucherPreview: null,
         variantAttrs: p.variantAttrs as unknown as StoreVariantAttribute[],
         variants: p.variants as unknown as StoreProductVariant[],
       };
-      const [withPreview] = await withVoucherPreviews([product]);
+      const [withPreview] = await withVoucherPreviews([product], viewerId);
       return withPreview;
     }
 
@@ -820,12 +886,12 @@ export async function getProductBySlug(slug: string): Promise<StoreProduct | nul
       categoryId: p.category?.id ?? null,
       categorySlug: p.category?.slug ?? null,
     };
-    const [withPreview] = await withVoucherPreviews([product]);
+    const [withPreview] = await withVoucherPreviews([product], viewerId);
     return withPreview;
   } catch {
     const sample = sampleProducts.find((item) => item.slug === slug);
     if (!sample) return null;
-    const [withPreview] = await withVoucherPreviews([sample]);
+    const [withPreview] = await withVoucherPreviews([sample], viewerId);
     return withPreview;
   }
 }

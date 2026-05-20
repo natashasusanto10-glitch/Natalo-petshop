@@ -445,21 +445,20 @@ class _HomeScreenState extends State<HomeScreen> {
             //   3. flashSaleEndsAt expired → exclude
             // Sorting: explicit-tagged (Tier 1) di awal sorted by earliest
             // endsAt, lalu Tier 2 by discount % desc.
-            final flashSale = products
-                .where((p) => p.isFlashSaleEligible)
-                .toList()
-              ..sort((a, b) {
-                final aEnds = a.flashSaleEndsAt;
-                final bEnds = b.flashSaleEndsAt;
-                if (aEnds != null && bEnds != null) {
-                  return aEnds.compareTo(bEnds);
-                }
-                if (aEnds != null) return -1;
-                if (bEnds != null) return 1;
-                final aPct = a.discountPercent ?? 0;
-                final bPct = b.discountPercent ?? 0;
-                return bPct.compareTo(aPct);
-              });
+            final flashSale =
+                products.where((p) => p.isFlashSaleEligible).toList()
+                  ..sort((a, b) {
+                    final aEnds = a.flashSaleEndsAt;
+                    final bEnds = b.flashSaleEndsAt;
+                    if (aEnds != null && bEnds != null) {
+                      return aEnds.compareTo(bEnds);
+                    }
+                    if (aEnds != null) return -1;
+                    if (bEnds != null) return 1;
+                    final aPct = a.discountPercent ?? 0;
+                    final bPct = b.discountPercent ?? 0;
+                    return bPct.compareTo(aPct);
+                  });
             final flashSaleVisible = flashSale.take(8).toList();
             // Produk Terlaris — ranked by SOLD COUNT (jumlah terjual) sebagai
             // primary key. Tie-break ke reviewCount kalau soldCount sama
@@ -2541,28 +2540,79 @@ class _HomeProductSavingBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = _homeProductSavingLabel(product);
-    if (label == null) return const SizedBox.shrink();
+    final savingLabel = _homeProductSavingLabel(product);
+    final shippingLabel = _homeProductShippingLabel(product);
+    final badges = <Widget>[
+      if (savingLabel != null)
+        _HomeProductPromoBadge(
+          label: savingLabel,
+          compact: compact,
+          icon: Icons.confirmation_number_rounded,
+          color: const Color(0xFFEF4444),
+          backgroundColor: const Color(0xFFFFF1F2),
+          borderColor: const Color(0xFFFCA5A5),
+        ),
+      if (shippingLabel != null)
+        _HomeProductPromoBadge(
+          label: shippingLabel,
+          compact: compact,
+          icon: Icons.local_shipping_rounded,
+          color: const Color(0xFF16A34A),
+          backgroundColor: const Color(0xFFECFDF3),
+          borderColor: const Color(0xFFA7F3D0),
+        ),
+    ];
 
+    if (badges.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: EdgeInsets.only(top: compact ? 5 : 6),
+      child: Wrap(
+        spacing: compact ? 4 : 6,
+        runSpacing: 4,
+        children: badges,
+      ),
+    );
+  }
+}
+
+class _HomeProductPromoBadge extends StatelessWidget {
+  final String label;
+  final bool compact;
+  final IconData icon;
+  final Color color;
+  final Color backgroundColor;
+  final Color borderColor;
+
+  const _HomeProductPromoBadge({
+    required this.label,
+    required this.compact,
+    required this.icon,
+    required this.color,
+    required this.backgroundColor,
+    required this.borderColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       constraints: const BoxConstraints(maxWidth: double.infinity),
-      margin: EdgeInsets.only(top: compact ? 5 : 6),
       padding: EdgeInsets.symmetric(
         horizontal: compact ? 6 : 8,
         vertical: compact ? 3 : 4,
       ),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF1F2),
+        color: backgroundColor,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFFCA5A5)),
+        border: Border.all(color: borderColor),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            Icons.confirmation_number_rounded,
+            icon,
             size: compact ? 11 : 13,
-            color: const Color(0xFFEF4444),
+            color: color,
           ),
           const SizedBox(width: 4),
           Flexible(
@@ -2573,7 +2623,7 @@ class _HomeProductSavingBadge extends StatelessWidget {
               style: TextStyle(
                 fontSize: compact ? 9.5 : 11,
                 fontWeight: FontWeight.w700,
-                color: const Color(0xFFEF4444),
+                color: color,
                 height: 1,
               ),
             ),
@@ -2658,6 +2708,7 @@ String? _homeProductPromoLabel(Product product) {
   final percent = product.discountPercent;
   if (percent != null && percent > 0) return 'Diskon $percent%';
   if (product.voucherPreview != null) return 'Promo';
+  if (product.shippingVoucherPreview != null) return 'Ongkir';
   return null;
 }
 
@@ -2677,6 +2728,13 @@ String? _homeProductSavingLabel(Product product) {
   final savings = product.price - product.finalPrice;
   if (savings <= 0) return null;
   return 'Hemat s.d. ${formatRupiah(savings)}';
+}
+
+String? _homeProductShippingLabel(Product product) {
+  final voucher = product.shippingVoucherPreview;
+  if (voucher == null) return null;
+  final label = voucher.badgeLabel.trim();
+  return label.isNotEmpty ? label : 'Gratis Ongkir';
 }
 
 String _formatHomeProductSoldCount(int count) {

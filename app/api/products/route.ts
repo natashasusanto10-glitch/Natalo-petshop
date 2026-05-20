@@ -5,6 +5,7 @@ import {
   type NewProductFilter,
   type PopularFilter,
 } from "@/lib/products";
+import { getSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -66,6 +67,7 @@ export async function GET(request: NextRequest) {
   const inStockOnly = parseBooleanFlag(sp.get("inStock"));
   const withImageOnly = parseBooleanFlag(sp.get("withImage"));
   const hasPriceOnly = parseBooleanFlag(sp.get("hasPrice"));
+  const session = await getSession("CUSTOMER").catch(() => null);
 
   const [items, total] = await Promise.all([
     getProducts({
@@ -82,6 +84,7 @@ export async function GET(request: NextRequest) {
       hasPriceOnly,
       inStockOnly,
       withImageOnly,
+      viewerId: session?.sub ?? null,
     }),
     getProductsCount({
       category: category || undefined,

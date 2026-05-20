@@ -160,6 +160,8 @@ class ProductVoucherPreview {
   final double minimumOrder;
   final double? savingAmount;
   final String? expiresAt;
+  final String type;
+  final String discountScope;
   final String targetUser;
   final bool loginRequired;
 
@@ -176,6 +178,8 @@ class ProductVoucherPreview {
     required this.minimumOrder,
     this.savingAmount,
     this.expiresAt,
+    this.type = 'PUBLIC_PRODUCT_DISCOUNT',
+    this.discountScope = 'PRODUCT',
     this.targetUser = 'ALL_MEMBERS',
     required this.loginRequired,
   });
@@ -186,6 +190,14 @@ class ProductVoucherPreview {
     final combinedCopy = '$title ${description ?? ''}'.toLowerCase();
     return combinedCopy.contains('new member') ||
         combinedCopy.contains('member baru');
+  }
+
+  bool get isShippingVoucher {
+    final normalizedType = type.trim().toUpperCase();
+    final normalizedScope = discountScope.trim().toUpperCase();
+    return normalizedType == 'PUBLIC_FREE_SHIPPING' ||
+        normalizedType == 'FREE_SHIPPING' ||
+        normalizedScope == 'SHIPPING';
   }
 
   factory ProductVoucherPreview.fromJson(Map<String, dynamic> json) {
@@ -221,6 +233,14 @@ class ProductVoucherPreview {
         json['savingAmount'] ?? json['saving_amount'],
       ),
       expiresAt: _stringOrNull(json['expiresAt'] ?? json['expires_at']),
+      type: _string(
+        json['type'],
+        fallback: 'PUBLIC_PRODUCT_DISCOUNT',
+      ),
+      discountScope: _string(
+        json['discountScope'] ?? json['discount_scope'],
+        fallback: 'PRODUCT',
+      ),
       targetUser: _string(
         json['targetUser'] ?? json['target_user'],
         fallback: 'ALL_MEMBERS',
@@ -242,6 +262,8 @@ class ProductVoucherPreview {
         'minimumOrder': minimumOrder,
         'savingAmount': savingAmount,
         'expiresAt': expiresAt,
+        'type': type,
+        'discountScope': discountScope,
         'targetUser': targetUser,
         'loginRequired': loginRequired,
       };
@@ -265,6 +287,7 @@ class Product {
   final bool isTrending;
   final bool hasVariants;
   final ProductVoucherPreview? voucherPreview;
+  final ProductVoucherPreview? shippingVoucherPreview;
   final List<String> gallery;
   final String description;
 
@@ -300,6 +323,7 @@ class Product {
     this.isTrending = false,
     this.hasVariants = false,
     this.voucherPreview,
+    this.shippingVoucherPreview,
     this.gallery = const [],
     required this.description,
     this.variantAttrs = const [],
@@ -375,6 +399,12 @@ class Product {
             json['voucher_preview'] ??
             json['bestVoucherPreview'],
       ),
+      shippingVoucherPreview: _parseVoucherPreview(
+        json['shippingVoucherPreview'] ??
+            json['shipping_voucher_preview'] ??
+            json['freeShippingVoucherPreview'] ??
+            json['free_shipping_voucher_preview'],
+      ),
       gallery: galleryRaw is List
           ? galleryRaw.map((item) => item.toString()).toList()
           : const [],
@@ -418,6 +448,7 @@ class Product {
         'weightGram': weightGram,
         'hasVariants': hasVariants,
         'voucherPreview': voucherPreview?.toJson(),
+        'shippingVoucherPreview': shippingVoucherPreview?.toJson(),
         'gallery': gallery,
         'description': description,
         'variantAttrs': variantAttrs.map((a) => a.toJson()).toList(),
@@ -456,7 +487,8 @@ class Product {
     if (!hasDiscount) return false;
     final endsAt = flashSaleEndsAt;
     if (endsAt != null) {
-      return endsAt.isAfter(DateTime.now()); // Tier 1 (active) or Tier 3 (expired)
+      return endsAt
+          .isAfter(DateTime.now()); // Tier 1 (active) or Tier 3 (expired)
     }
     // Tier 2: tidak ada explicit endsAt, cek threshold.
     final pct = discountPercent;
