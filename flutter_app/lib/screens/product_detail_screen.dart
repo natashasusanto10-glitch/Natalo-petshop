@@ -24,7 +24,6 @@ import '../widgets/app_product_image.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/animated_price.dart';
-import '../widgets/favorite_button.dart';
 import '../widgets/flash_sale_countdown.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/moderation_action_sheet.dart';
@@ -374,7 +373,7 @@ class _ProductHeroState extends State<_ProductHero> {
       child: Stack(
         children: [
           SizedBox(
-            height: 320,
+            height: 390,
             child: Stack(
               children: [
                 Positioned.fill(
@@ -418,7 +417,7 @@ class _ProductHeroState extends State<_ProductHero> {
                                   );
                                 },
                                 child: Padding(
-                                  padding: const EdgeInsets.all(26),
+                                  padding: const EdgeInsets.all(8),
                                   child: AppProductImage(
                                     imageUrl: images[index],
                                     fit: BoxFit.contain,
@@ -503,11 +502,6 @@ class _ProductHeroState extends State<_ProductHero> {
                 ),
               ),
             ),
-          Positioned(
-            right: 16,
-            top: 16,
-            child: FavoriteButton(product: widget.product, size: 46),
-          ),
         ],
       ),
     );
