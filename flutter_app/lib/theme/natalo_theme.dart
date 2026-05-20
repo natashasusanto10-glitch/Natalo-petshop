@@ -318,7 +318,17 @@ class NataloTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          minimumSize: const Size.fromHeight(48),
+          // BUG FIX (critical): Size.fromHeight(48) = Size(infinity, 48)
+          // — bukan Size(0, 48). Per Dart UI source:
+          //   const Size.fromHeight(h) : super(double.infinity, h);
+          // Ini bikin button minimumSize.width = infinity → kalau button
+          // di-pasang INLINE di Row tanpa Expanded wrapper, button claim
+          // semua width → squeeze sibling (Text di Expanded) ke 0 width
+          // → text rendering character-per-character vertikal.
+          // Symptom user lihat: _CancelOrderCard "Mau batalkan pesanan?"
+          // rendering vertical, dan _SectionTitle text invisible.
+          // Fix: explicit min width 64 (Material default), height 48.
+          minimumSize: const Size(64, 48),
           shape: RoundedRectangleBorder(
             borderRadius: AppRadius.large,
           ),
@@ -348,7 +358,17 @@ class NataloTheme {
           backgroundColor: NataloColors.primary,
           foregroundColor: NataloColors.white,
           elevation: 0,
-          minimumSize: const Size.fromHeight(48),
+          // BUG FIX (critical): Size.fromHeight(48) = Size(infinity, 48)
+          // — bukan Size(0, 48). Per Dart UI source:
+          //   const Size.fromHeight(h) : super(double.infinity, h);
+          // Ini bikin button minimumSize.width = infinity → kalau button
+          // di-pasang INLINE di Row tanpa Expanded wrapper, button claim
+          // semua width → squeeze sibling (Text di Expanded) ke 0 width
+          // → text rendering character-per-character vertikal.
+          // Symptom user lihat: _CancelOrderCard "Mau batalkan pesanan?"
+          // rendering vertical, dan _SectionTitle text invisible.
+          // Fix: explicit min width 64 (Material default), height 48.
+          minimumSize: const Size(64, 48),
           padding: AppSpacing.buttonPadding,
           shape: RoundedRectangleBorder(
             borderRadius: AppRadius.large,
@@ -366,7 +386,17 @@ class NataloTheme {
         style: OutlinedButton.styleFrom(
           foregroundColor: NataloColors.primary,
           side: const BorderSide(color: NataloColors.primary),
-          minimumSize: const Size.fromHeight(48),
+          // BUG FIX (critical): Size.fromHeight(48) = Size(infinity, 48)
+          // — bukan Size(0, 48). Per Dart UI source:
+          //   const Size.fromHeight(h) : super(double.infinity, h);
+          // Ini bikin button minimumSize.width = infinity → kalau button
+          // di-pasang INLINE di Row tanpa Expanded wrapper, button claim
+          // semua width → squeeze sibling (Text di Expanded) ke 0 width
+          // → text rendering character-per-character vertikal.
+          // Symptom user lihat: _CancelOrderCard "Mau batalkan pesanan?"
+          // rendering vertical, dan _SectionTitle text invisible.
+          // Fix: explicit min width 64 (Material default), height 48.
+          minimumSize: const Size(64, 48),
           padding: AppSpacing.buttonPadding,
           shape: RoundedRectangleBorder(
             borderRadius: AppRadius.large,
@@ -518,7 +548,17 @@ class NataloTheme {
           backgroundColor: darkPrimary,
           foregroundColor: darkScaffold,
           elevation: 0,
-          minimumSize: const Size.fromHeight(48),
+          // BUG FIX (critical): Size.fromHeight(48) = Size(infinity, 48)
+          // — bukan Size(0, 48). Per Dart UI source:
+          //   const Size.fromHeight(h) : super(double.infinity, h);
+          // Ini bikin button minimumSize.width = infinity → kalau button
+          // di-pasang INLINE di Row tanpa Expanded wrapper, button claim
+          // semua width → squeeze sibling (Text di Expanded) ke 0 width
+          // → text rendering character-per-character vertikal.
+          // Symptom user lihat: _CancelOrderCard "Mau batalkan pesanan?"
+          // rendering vertical, dan _SectionTitle text invisible.
+          // Fix: explicit min width 64 (Material default), height 48.
+          minimumSize: const Size(64, 48),
           padding: AppSpacing.buttonPadding,
           shape: RoundedRectangleBorder(
             borderRadius: AppRadius.large,
@@ -535,7 +575,17 @@ class NataloTheme {
         style: OutlinedButton.styleFrom(
           foregroundColor: darkPrimary,
           side: const BorderSide(color: darkPrimary),
-          minimumSize: const Size.fromHeight(48),
+          // BUG FIX (critical): Size.fromHeight(48) = Size(infinity, 48)
+          // — bukan Size(0, 48). Per Dart UI source:
+          //   const Size.fromHeight(h) : super(double.infinity, h);
+          // Ini bikin button minimumSize.width = infinity → kalau button
+          // di-pasang INLINE di Row tanpa Expanded wrapper, button claim
+          // semua width → squeeze sibling (Text di Expanded) ke 0 width
+          // → text rendering character-per-character vertikal.
+          // Symptom user lihat: _CancelOrderCard "Mau batalkan pesanan?"
+          // rendering vertical, dan _SectionTitle text invisible.
+          // Fix: explicit min width 64 (Material default), height 48.
+          minimumSize: const Size(64, 48),
           padding: AppSpacing.buttonPadding,
           shape: RoundedRectangleBorder(
             borderRadius: AppRadius.large,
