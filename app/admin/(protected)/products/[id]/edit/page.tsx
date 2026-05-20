@@ -58,12 +58,8 @@ export default async function AdminProductEditPage({
     // dipindah ke halaman terpisah (/admin/diskon ala Shopee Promosi).
     // Existing discountPrice di DB di-preserve (tidak di-update).
 
-    // Flash Sale explicit end time. Input HTML datetime-local return
-    // string format "YYYY-MM-DDTHH:MM" tanpa timezone — interpret as
-    // local time, serialize ke UTC saat save. Empty string = NULL
-    // (admin tidak set / clear field) → auto-include via threshold.
-    const flashSaleEndsAtRaw = String(formData.get("flashSaleEndsAt") || "").trim();
-    const flashSaleEndsAt = flashSaleEndsAtRaw ? new Date(flashSaleEndsAtRaw) : null;
+    // Flash Sale dihapus dari form ini — dikelola di /admin/diskon/flash-sale.
+    // Existing product.flashSaleEndsAt di DB di-preserve (skip dari update).
 
     const images = formData
       .getAll("images")
@@ -92,7 +88,6 @@ export default async function AdminProductEditPage({
       gallery: string[];
       categoryId: string | null;
       brandId: string | null;
-      flashSaleEndsAt: Date | null;
       brandAutoAssigned: boolean;
       sku: string | null;
       price?: number;
@@ -105,7 +100,6 @@ export default async function AdminProductEditPage({
       gallery,
       categoryId,
       brandId,
-      flashSaleEndsAt,
       brandAutoAssigned: false,
       sku,
     };
@@ -330,36 +324,10 @@ export default async function AdminProductEditPage({
           }
         />
 
-        {/* Flash Sale explicit end time. Kalau di-set, produk ini SELALU
-            masuk Flash Sale section di home apapun discount %-nya, dengan
-            countdown timer. Kalau kosong, produk masuk Flash Sale section
-            hanya kalau discount >= 20% (auto-include). */}
-        <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
-          <label className="block text-sm font-bold text-amber-900">
-            ⚡ Flash Sale berakhir (opsional)
-          </label>
-          <p className="mt-1 text-xs text-amber-800">
-            Set kalau ini produk Flash Sale dengan countdown timer. Setelah
-            waktu ini, produk otomatis keluar dari Flash Sale section.
-            Kosongkan kalau produk tidak Flash Sale (diskon ≥20% tetap
-            otomatis masuk).
-          </p>
-          <input
-            type="datetime-local"
-            name="flashSaleEndsAt"
-            defaultValue={
-              product.flashSaleEndsAt
-                ? new Date(
-                    product.flashSaleEndsAt.getTime() -
-                      product.flashSaleEndsAt.getTimezoneOffset() * 60000,
-                  )
-                    .toISOString()
-                    .slice(0, 16)
-                : ""
-            }
-            className="mt-2 block w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-sm outline-none focus:border-amber-600"
-          />
-        </div>
+        {/* Flash Sale field dihapus dari form produk — sekarang
+            dikelola di halaman dedicated /admin/diskon/flash-sale.
+            Existing flashSaleEndsAt di DB di-preserve (tidak di-update
+            dari sini). Admin yang mau set Flash Sale buka hub Diskon. */}
 
         <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row">
           <Link
