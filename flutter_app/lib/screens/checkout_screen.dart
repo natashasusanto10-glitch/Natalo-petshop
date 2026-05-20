@@ -190,6 +190,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   String? get _freeShippingVoucherCodeForRequest =>
       _selectedRate.isSelfPickup ? null : _selectedFreeShippingVoucher?.code;
 
+  bool get _hasSelectedShippingMethod => _shippingRateSelectedByUser;
+
+  bool get _checkoutActionDisabled =>
+      _voucherSyncFailed || _syncingPricing || !_hasSelectedShippingMethod;
+
   @override
   void dispose() {
     _scrollController.removeListener(_handleCheckoutScroll);
@@ -265,9 +270,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return courierRates.isNotEmpty ? courierRates.first : rates.first;
     }
 
-    // Default checkout memilih kurir delivery termurah saat tersedia supaya
-    // voucher gratis ongkir member bisa auto-apply tanpa user membuka sheet
-    // pengiriman. Instant tetap muncul sebagai pilihan manual di sheet.
+    // Internal pricing tetap memakai estimasi kurir delivery termurah supaya
+    // voucher gratis ongkir bisa auto-apply. Namun UI tidak menandai metode
+    // pengiriman sebagai terpilih sampai user memilih sendiri di sheet.
     return _cheapestDeliveryRate(courierRates) ?? rates.first;
   }
 
@@ -292,8 +297,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   void _selectAddress(MemberAddress address) {
+    final previousAddressId = _selectedAddress?.id;
     setState(() {
       _selectedAddress = address;
+      if (previousAddressId != null && previousAddressId != address.id) {
+        _shippingRateSelectedByUser = false;
+      }
       _loadingRates = true;
     });
     _loadShippingRates().whenComplete(() {
@@ -578,6 +587,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       builder: (context) => _ShippingMethodSheet(
         rates: _shippingRates,
         selected: _selectedRate,
+        hasSelection: _hasSelectedShippingMethod,
         loading: _loadingRates,
         message: _shippingMessage,
       ),
@@ -626,6 +636,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final address = _selectedAddress;
       if (address == null) {
         throw Exception('Alamat pengiriman belum tersedia.');
+      }
+      if (!_hasSelectedShippingMethod) {
+        throw Exception('Pilih metode pengiriman terlebih dahulu.');
       }
       // Step 1 — validate cart server-side. Catch stok kurang / harga
       // berubah SEBELUM hit createOrder (server tetap validate, tapi UX
@@ -951,6 +964,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       _CheckoutShippingMethodCard(
                         rates: _shippingRates,
                         selected: _selectedRate,
+                        hasSelection: _hasSelectedShippingMethod,
                         loading: _loadingRates,
                         message: _shippingMessage,
                         onOpenMaps: _openStoreMaps,
@@ -992,7 +1006,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       _CheckoutFinalPaymentPanel(
                         total: _grandTotal,
                         submitting: _submitting,
-                        disabled: _voucherSyncFailed || _syncingPricing,
+                        disabled: _checkoutActionDisabled,
                         onPressed: _placeOrder,
                       ),
                       const SizedBox(height: 96),
@@ -1005,7 +1019,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     productDiscount: _productDiscount,
                     shippingDiscount: _shippingDiscount,
                     submitting: _submitting,
-                    disabled: _voucherSyncFailed || _syncingPricing,
+                    disabled: _checkoutActionDisabled,
                     onPressed: _placeOrder,
                     visible: !_isNearBottom,
                   ),
@@ -2153,6 +2167,7 @@ class _CheckoutNoteSheet extends StatelessWidget {
 class _CheckoutShippingMethodCard extends StatelessWidget {
   final List<ShippingRate> rates;
   final ShippingRate selected;
+  final bool hasSelection;
   final bool loading;
   final String? message;
   final VoidCallback onOpenMaps;
@@ -2161,6 +2176,7 @@ class _CheckoutShippingMethodCard extends StatelessWidget {
   const _CheckoutShippingMethodCard({
     required this.rates,
     required this.selected,
+    required this.hasSelection,
     required this.loading,
     required this.message,
     required this.onOpenMaps,
@@ -2178,14 +2194,18 @@ class _CheckoutShippingMethodCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _ShippingMethodIcon(rate: selected, size: 42),
+              hasSelection
+                  ? _ShippingMethodIcon(rate: selected, size: 42)
+                  : const _CheckoutSectionIcon(
+                      icon: Icons.local_shipping_rounded,
+                    ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      selected.isSelfPickup
+                      hasSelection && selected.isSelfPickup
                           ? 'Metode Pengambilan'
                           : 'Metode Pengiriman',
                       style: const TextStyle(
@@ -2196,7 +2216,7 @@ class _CheckoutShippingMethodCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      selected.label,
+                      hasSelection ? selected.label : 'Pilih metode pengiriman',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -2206,20 +2226,25 @@ class _CheckoutShippingMethodCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      selected.isSelfPickup
-                          ? 'Self Pick Up - Gratis Ongkir'
-                          : selected.price == 0
-                              ? 'Gratis'
-                              : formatRupiah(selected.price),
+                      !hasSelection
+                          ? 'Pilih kurir atau ambil sendiri sebelum buat pesanan'
+                          : selected.isSelfPickup
+                              ? 'Self Pick Up - Gratis Ongkir'
+                              : selected.price == 0
+                                  ? 'Gratis'
+                                  : formatRupiah(selected.price),
                       style: TextStyle(
-                        color: selected.price == 0
-                            ? const Color(0xFF16A34A)
-                            : NataloColors.priceText,
+                        color: !hasSelection
+                            ? const Color(0xFF667085)
+                            : selected.price == 0
+                                ? const Color(0xFF16A34A)
+                                : NataloColors.priceText,
                         fontSize: 13,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
-                    if (!selected.isSelfPickup &&
+                    if (hasSelection &&
+                        !selected.isSelfPickup &&
                         selected.duration.trim().isNotEmpty) ...[
                       const SizedBox(height: 3),
                       Text(
@@ -2258,13 +2283,14 @@ class _CheckoutShippingMethodCard extends StatelessWidget {
                 ),
             ],
           ),
-          if (!selected.isSelfPickup &&
+          if (hasSelection &&
+              !selected.isSelfPickup &&
               message != null &&
               message!.isNotEmpty) ...[
             const SizedBox(height: 10),
             _CheckoutInlineNotice(message: message!),
           ],
-          if (selected.isSelfPickup) ...[
+          if (hasSelection && selected.isSelfPickup) ...[
             const SizedBox(height: 14),
             Container(
               width: double.infinity,
@@ -2359,12 +2385,14 @@ class _CheckoutInlineNotice extends StatelessWidget {
 class _ShippingMethodSheet extends StatelessWidget {
   final List<ShippingRate> rates;
   final ShippingRate selected;
+  final bool hasSelection;
   final bool loading;
   final String? message;
 
   const _ShippingMethodSheet({
     required this.rates,
     required this.selected,
+    required this.hasSelection,
     required this.loading,
     required this.message,
   });
@@ -2419,7 +2447,8 @@ class _ShippingMethodSheet extends StatelessWidget {
                       for (final rate in group.rates) ...[
                         _ShippingRateTile(
                           rate: rate,
-                          active: rate.courierCode == selected.courierCode &&
+                          active: hasSelection &&
+                              rate.courierCode == selected.courierCode &&
                               rate.serviceCode == selected.serviceCode,
                           onTap: rate.available
                               ? () => Navigator.pop(context, rate)
