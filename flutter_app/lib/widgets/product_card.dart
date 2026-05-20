@@ -758,7 +758,8 @@ String formatSoldCount(int value) {
   if (value >= 1000) {
     return '${_compactDecimal(value / 1000)}rb+';
   }
-  return '$value+';
+  if (value >= 100) return '${(value ~/ 50) * 50}+';
+  return '$value';
 }
 
 String _compactDecimal(double value) {

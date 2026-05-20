@@ -464,7 +464,6 @@ String _formatSoldCount(int value) {
     return '${_compactDecimal(value / 1000)}rb+';
   }
   if (value >= 100) return '${(value ~/ 50) * 50}+';
-  if (value >= 10) return '${(value ~/ 10) * 10}+';
   return value.toString();
 }
 

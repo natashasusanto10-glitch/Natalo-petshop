@@ -491,9 +491,12 @@ class _ViewedCard extends StatelessWidget {
 
 String _formatSold(int n) {
   if (n >= 1000) {
-    final k = (n / 1000).toStringAsFixed(1).replaceAll('.0', '');
-    return '${k}rb';
+    final value = n / 1000;
+    final text =
+        value >= 10 ? value.toStringAsFixed(0) : value.toStringAsFixed(1);
+    return '${text.replaceAll('.', ',').replaceAll(',0', '')}rb+';
   }
+  if (n >= 100) return '${(n ~/ 50) * 50}+';
   return n.toString();
 }
 
@@ -669,8 +672,8 @@ class _TrendingSearchSection extends StatelessWidget {
                 onTap: () {
                   // Parent state wires this via inherited callback —
                   // ambil dari closest _HomeSearchPageState ancestor.
-                  final state = context
-                      .findAncestorStateOfType<_HomeSearchPageState>();
+                  final state =
+                      context.findAncestorStateOfType<_HomeSearchPageState>();
                   state?._tapKeyword(keyword);
                 },
               );

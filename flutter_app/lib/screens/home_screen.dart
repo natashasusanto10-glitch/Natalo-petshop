@@ -2751,7 +2751,6 @@ String _formatHomeProductSoldCount(int count) {
     return '${text.replaceAll('.', ',').replaceAll(',0', '')}rb+';
   }
   if (count >= 100) return '${(count ~/ 50) * 50}+';
-  if (count >= 10) return '${(count ~/ 10) * 10}+';
   return count.toString();
 }
 

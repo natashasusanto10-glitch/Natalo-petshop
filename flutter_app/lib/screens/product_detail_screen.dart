@@ -1262,6 +1262,7 @@ String _formatCompactCount(int value) {
         : compact.toStringAsFixed(1).replaceAll('.', ',');
     return '${text}rb+';
   }
+  if (value >= 100) return '${(value ~/ 50) * 50}+';
   return value.toString();
 }
 
@@ -2176,8 +2177,7 @@ class _NotifyWhenAvailableButtonState
     final icon = _subscribed
         ? Icons.notifications_active_rounded
         : Icons.notifications_outlined;
-    final bgColor =
-        _subscribed ? const Color(0xFFE8F4FF) : _brandBlue;
+    final bgColor = _subscribed ? const Color(0xFFE8F4FF) : _brandBlue;
     final fgColor = _subscribed ? _brandBlue : Colors.white;
     return SizedBox(
       height: 50,
