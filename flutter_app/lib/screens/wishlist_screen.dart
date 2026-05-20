@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/product.dart';
 import '../services/product_service.dart';
+import '../state/cart_store.dart';
 import '../state/favorite_store.dart';
 import '../state/member_store.dart';
 import '../state/recently_viewed_store.dart';
@@ -9,10 +10,11 @@ import '../state/search_history_store.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_cart_button.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/bottom_nav.dart';
+import '../widgets/compact_commerce_product_card.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
-import '../widgets/product_card.dart';
 import '../widgets/skeleton_product_card.dart';
 
 const _brandBlue = NataloColors.primary;
@@ -225,6 +227,15 @@ class _WishlistScreenState extends State<WishlistScreen> {
         .then((_) => _refresh());
   }
 
+  void _addToCart(Product product) {
+    AppHaptics.success();
+    cartStore.addProduct(product);
+    AppToast.showCartAdded(
+      context,
+      '${product.title} masuk keranjang',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!memberStore.isLoggedIn) {
@@ -367,10 +378,10 @@ class _WishlistScreenState extends State<WishlistScreen> {
                           final product = products[index];
                           return AppAnimatedEntrance(
                             index: index,
-                            child: ProductCard(
+                            child: CompactCommerceProductCard(
                               product: product,
                               onTap: () => _openProduct(product),
-                              showAddToCart: true,
+                              onAddToCart: () => _addToCart(product),
                             ),
                           );
                         },
@@ -407,10 +418,10 @@ class _WishlistScreenState extends State<WishlistScreen> {
                           final product = lookAgain[index];
                           return AppAnimatedEntrance(
                             index: index,
-                            child: ProductCard(
+                            child: CompactCommerceProductCard(
                               product: product,
                               onTap: () => _openProduct(product),
-                              showAddToCart: true,
+                              onAddToCart: () => _addToCart(product),
                             ),
                           );
                         },

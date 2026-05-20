@@ -20,7 +20,7 @@ import '../widgets/animated_counter.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/glass_surface.dart';
-import '../widgets/product_card.dart';
+import '../widgets/compact_commerce_product_card.dart';
 import '../widgets/skeleton_product_card.dart';
 
 const _brandBlue = NataloColors.nataloBlue;
@@ -2678,7 +2678,7 @@ class _CartRecommendationsSection extends StatelessWidget {
                 ),
                 itemBuilder: (context, index) {
                   final product = products[index];
-                  return ProductCard(
+                  return CompactCommerceProductCard(
                     product: product,
                     onTap: () {
                       AppHaptics.tap();
@@ -2688,7 +2688,14 @@ class _CartRecommendationsSection extends StatelessWidget {
                         arguments: product,
                       );
                     },
-                    showAddToCart: true,
+                    onAddToCart: () {
+                      AppHaptics.success();
+                      cartStore.addProduct(product);
+                      AppToast.showCartAdded(
+                        context,
+                        '${product.title} masuk keranjang',
+                      );
+                    },
                   );
                 },
               ),
@@ -3054,8 +3061,9 @@ class _EmptyCartProductCarouselSection extends StatelessWidget {
             separatorBuilder: (_, __) => const SizedBox(width: 12),
             itemBuilder: (context, index) {
               final product = products[index];
-              return _EmptyCartProductCard(
+              return CompactCommerceProductCard(
                 product: product,
+                width: 178,
                 onTap: () => onProductTap(product),
                 onAddToCart: () => onAddToCart(product),
               );
@@ -3065,315 +3073,4 @@ class _EmptyCartProductCarouselSection extends StatelessWidget {
       ],
     );
   }
-}
-
-class _EmptyCartProductCard extends StatelessWidget {
-  final Product product;
-  final VoidCallback onTap;
-  final VoidCallback onAddToCart;
-
-  const _EmptyCartProductCard({
-    required this.product,
-    required this.onTap,
-    required this.onAddToCart,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final discountPercent = productDiscountPercent(product);
-    final savingsLabel = _cartSavingsLabel(product);
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(22),
-        child: Container(
-          width: 178,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: const Color(0xFFE7EEF9),
-              width: 1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.045),
-                blurRadius: 18,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Stack(
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: SizedBox(
-                      height: 128,
-                      width: double.infinity,
-                      child: AppProductImage(
-                        imageUrl: product.imageUrl,
-                        fit: BoxFit.contain,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    product.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 14.5,
-                      height: 1.22,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF0F172A),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    formatRupiah(product.finalPrice),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                      color: Color(0xFF0F172A),
-                    ),
-                  ),
-                  if (product.hasDiscount)
-                    Text(
-                      formatRupiah(product.price),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF94A3B8),
-                        decoration: TextDecoration.lineThrough,
-                      ),
-                    ),
-                  const SizedBox(height: 6),
-                  _CartRatingSoldRow(product: product),
-                  const Spacer(),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Expanded(
-                        child: _CartSavingsBadge(text: savingsLabel ?? ''),
-                      ),
-                      const SizedBox(width: 8),
-                      _SmallCartButton(onTap: onAddToCart),
-                    ],
-                  ),
-                ],
-              ),
-              if (discountPercent != null)
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  child: _CartDiscountBadge(percent: discountPercent),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CartRatingSoldRow extends StatelessWidget {
-  final Product product;
-
-  const _CartRatingSoldRow({required this.product});
-
-  @override
-  Widget build(BuildContext context) {
-    final hasRating = product.rating > 0;
-    final hasSold = product.soldCount > 0;
-    if (!hasRating && !hasSold) return const SizedBox.shrink();
-
-    return Row(
-      children: [
-        if (hasRating) ...[
-          const Icon(
-            Icons.star_rounded,
-            size: 15,
-            color: Color(0xFFFBBF24),
-          ),
-          const SizedBox(width: 3),
-          Text(
-            product.rating.toStringAsFixed(1),
-            style: const TextStyle(
-              fontSize: 11.8,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF64748B),
-            ),
-          ),
-        ],
-        if (hasRating && hasSold) ...[
-          const SizedBox(width: 5),
-          const Text(
-            '|',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF94A3B8),
-            ),
-          ),
-          const SizedBox(width: 5),
-        ],
-        if (hasSold)
-          Expanded(
-            child: Text(
-              '${formatSoldCount(product.soldCount)} terjual',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 11.8,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF64748B),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class _CartDiscountBadge extends StatelessWidget {
-  final int percent;
-
-  const _CartDiscountBadge({required this.percent});
-
-  @override
-  Widget build(BuildContext context) {
-    if (percent <= 0) return const SizedBox.shrink();
-
-    return Container(
-      width: 46,
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEF4444),
-        borderRadius: BorderRadius.circular(11),
-      ),
-      child: Column(
-        children: [
-          Text(
-            '$percent%',
-            style: const TextStyle(
-              fontSize: 13,
-              height: 1,
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 2),
-          const Text(
-            'OFF',
-            style: TextStyle(
-              fontSize: 9.5,
-              height: 1,
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CartSavingsBadge extends StatelessWidget {
-  final String text;
-
-  const _CartSavingsBadge({required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    if (text.isEmpty) return const SizedBox.shrink();
-
-    return Container(
-      height: 28,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF1F2),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: const Color(0xFFFFC9D0),
-          width: 1,
-        ),
-      ),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.confirmation_number_rounded,
-            size: 14,
-            color: Color(0xFFEF4444),
-          ),
-          const SizedBox(width: 4),
-          Expanded(
-            child: Text(
-              text,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 10.8,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFFEF4444),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SmallCartButton extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _SmallCartButton({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: const Color(0xFFBFD5FF),
-              width: 1,
-            ),
-          ),
-          child: const Icon(
-            Icons.add_shopping_cart_rounded,
-            size: 21,
-            color: _brandBlue,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-String? _cartSavingsLabel(Product product) {
-  final voucherLabel = product.voucherPreview?.badgeLabel.trim();
-  if (voucherLabel != null && voucherLabel.isNotEmpty) {
-    return voucherLabel;
-  }
-
-  final label = productSavingsLabel(product);
-  if (label == null) return null;
-  return label.replaceFirst('Hemat ', 'Hemat s.d. ');
 }
