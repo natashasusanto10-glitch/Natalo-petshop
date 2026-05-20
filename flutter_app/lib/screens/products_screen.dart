@@ -1740,7 +1740,19 @@ class _ProductsPageProductCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _ProductGridImage(imageUrl: product.imageUrl),
+              Stack(
+                children: [
+                  _ProductGridImage(imageUrl: product.imageUrl),
+                  if (product.hasDiscount)
+                    Positioned(
+                      right: 8,
+                      top: 8,
+                      child: _ProductDiscountBadge(
+                        percent: product.discountPercent,
+                      ),
+                    ),
+                ],
+              ),
               const SizedBox(height: 10),
               Text(
                 product.title,
@@ -1819,44 +1831,48 @@ class _ProductPriceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final promoLabel = _productPromoLabel(product);
-    return Row(
+    if (!product.hasDiscount) {
+      return Text(
+        formatRupiah(product.finalPrice),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w900,
+          color: Color(0xFF111827),
+          height: 1.1,
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: Text(
-            formatRupiah(product.finalPrice),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: _brandBlue,
-              height: 1.1,
-            ),
+        Text(
+          formatRupiah(product.price),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF111827),
+            height: 1.05,
+            decoration: TextDecoration.lineThrough,
+            decorationThickness: 1.5,
           ),
         ),
-        if (promoLabel != null) ...[
-          const SizedBox(width: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-            decoration: BoxDecoration(
-              color: const Color(0xFFEFF6FF),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFF93C5FD)),
-            ),
-            child: Text(
-              promoLabel,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: _brandBlue,
-                height: 1,
-              ),
-            ),
+        const SizedBox(height: 3),
+        Text(
+          formatRupiah(product.finalPrice),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w900,
+            color: Color(0xFFE11D48),
+            height: 1.05,
           ),
-        ],
+        ),
       ],
     );
   }
@@ -1872,13 +1888,13 @@ class _ProductSavingBadge extends StatelessWidget {
     final savingLabel = _productSavingLabel(product);
     final shippingLabel = _productShippingLabel(product);
     final badges = <Widget>[
-      if (savingLabel != null)
-        _ProductPromoBadge(
-          label: savingLabel,
-          icon: Icons.confirmation_number_rounded,
-          color: const Color(0xFFEF4444),
-          backgroundColor: const Color(0xFFFFF1F2),
-          borderColor: const Color(0xFFFCA5A5),
+      if (product.hasDiscount)
+        const _ProductPromoBadge(
+          label: 'Harga Diskon',
+          icon: Icons.percent_rounded,
+          color: Color(0xFFEF4444),
+          backgroundColor: Color(0xFFFFF1F2),
+          borderColor: Color(0xFFFCA5A5),
         ),
       if (shippingLabel != null)
         _ProductPromoBadge(
@@ -1887,6 +1903,14 @@ class _ProductSavingBadge extends StatelessWidget {
           color: const Color(0xFF16A34A),
           backgroundColor: const Color(0xFFECFDF3),
           borderColor: const Color(0xFFA7F3D0),
+        ),
+      if (savingLabel != null)
+        _ProductPromoBadge(
+          label: savingLabel,
+          icon: Icons.confirmation_number_rounded,
+          color: const Color(0xFFEF4444),
+          backgroundColor: const Color(0xFFFFF1F2),
+          borderColor: const Color(0xFFFCA5A5),
         ),
     ];
 
@@ -2019,12 +2043,6 @@ class _ProductRatingSoldRow extends StatelessWidget {
   }
 }
 
-String? _productPromoLabel(Product product) {
-  final percent = product.discountPercent;
-  if (percent != null && percent > 0) return 'Diskon $percent%';
-  return null;
-}
-
 String? _productSavingLabel(Product product) {
   final voucher = product.voucherPreview;
   final voucherSaving = voucher?.savingAmount ?? voucher?.discountAmount;
@@ -2059,6 +2077,42 @@ String _formatProductSoldCount(int count) {
   }
   if (count >= 100) return '${(count ~/ 50) * 50}+';
   return count.toString();
+}
+
+class _ProductDiscountBadge extends StatelessWidget {
+  final int? percent;
+
+  const _ProductDiscountBadge({required this.percent});
+
+  @override
+  Widget build(BuildContext context) {
+    final value = percent;
+    if (value == null || value <= 0) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE11D48),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x22000000),
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Text(
+        '$value%',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 13,
+          fontWeight: FontWeight.w900,
+          height: 1,
+        ),
+      ),
+    );
+  }
 }
 
 /// Pinned header delegate untuk sliver yang stick di top scroll.

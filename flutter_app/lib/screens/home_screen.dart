@@ -2286,13 +2286,185 @@ class _FlashSaleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _HomeProductCard(
-      product: product,
-      onTap: onTap,
-      imageHeight: 86,
-      nameFontSize: 10.8,
-      priceFontSize: 12,
-      compact: true,
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(7),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE5E7EB)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x08000000),
+                blurRadius: 10,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Stack(
+                children: [
+                  _HomeProductImage(
+                    imageUrl: product.imageUrl,
+                    height: 76,
+                  ),
+                  if (product.hasDiscount)
+                    Positioned(
+                      right: 6,
+                      top: 6,
+                      child: _HomeProductDiscountBadge(
+                        percent: product.discountPercent,
+                        compact: true,
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 7),
+              SizedBox(
+                height: 27,
+                child: Text(
+                  product.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 10.8,
+                    height: 1.18,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF111827),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              _FlashSalePriceBlock(product: product),
+              _FlashSaleRatingSoldRow(product: product),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FlashSalePriceBlock extends StatelessWidget {
+  final Product product;
+
+  const _FlashSalePriceBlock({required this.product});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!product.hasDiscount) {
+      return Text(
+        formatRupiah(product.finalPrice),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          fontSize: 13,
+          height: 1.05,
+          fontWeight: FontWeight.w900,
+          color: Color(0xFF111827),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          formatRupiah(product.price),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 9.5,
+            height: 1,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF111827),
+            decoration: TextDecoration.lineThrough,
+            decorationThickness: 1.4,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          formatRupiah(product.finalPrice),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 13.5,
+            height: 1.05,
+            fontWeight: FontWeight.w900,
+            color: Color(0xFFE11D48),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FlashSaleRatingSoldRow extends StatelessWidget {
+  final Product product;
+
+  const _FlashSaleRatingSoldRow({required this.product});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasRating = product.rating > 0;
+    final hasSold = product.soldCount > 0;
+    if (!hasRating && !hasSold) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        children: [
+          if (hasRating) ...[
+            const Icon(
+              Icons.star_rounded,
+              size: 12,
+              color: Color(0xFFFACC15),
+            ),
+            const SizedBox(width: 3),
+            Text(
+              product.rating.toStringAsFixed(1),
+              style: const TextStyle(
+                fontSize: 10.2,
+                height: 1,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF111827),
+              ),
+            ),
+          ],
+          if (hasRating && hasSold) ...[
+            const SizedBox(width: 4),
+            const Text(
+              '•',
+              style: TextStyle(
+                fontSize: 10.2,
+                height: 1,
+                color: Color(0xFF9CA3AF),
+              ),
+            ),
+            const SizedBox(width: 4),
+          ],
+          if (hasSold)
+            Flexible(
+              child: Text(
+                '${_formatHomeProductSoldCount(product.soldCount)} terjual',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 10.2,
+                  height: 1,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF6B7280),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -2303,7 +2475,6 @@ class _HomeProductCard extends StatelessWidget {
   final int? rank;
   final double? width;
   final double imageHeight;
-  final double nameFontSize;
   final double priceFontSize;
   final bool compact;
 
@@ -2313,7 +2484,6 @@ class _HomeProductCard extends StatelessWidget {
     this.rank,
     this.width,
     this.imageHeight = 132,
-    this.nameFontSize = 13,
     this.priceFontSize = 16,
     this.compact = false,
   });
@@ -2353,6 +2523,15 @@ class _HomeProductCard extends StatelessWidget {
                       imageUrl: product.imageUrl,
                       height: imageHeight,
                     ),
+                    if (product.hasDiscount)
+                      Positioned(
+                        right: 8,
+                        top: 8,
+                        child: _HomeProductDiscountBadge(
+                          percent: product.discountPercent,
+                          compact: compact,
+                        ),
+                      ),
                     if (rank != null)
                       Positioned(
                         left: 8,
@@ -2368,11 +2547,11 @@ class _HomeProductCard extends StatelessWidget {
                     product.title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: nameFontSize,
+                    style: const TextStyle(
+                      fontSize: 13,
                       height: 1.25,
                       fontWeight: FontWeight.w600,
-                      color: const Color(0xFF111827),
+                      color: Color(0xFF111827),
                     ),
                   ),
                 ),
@@ -2490,48 +2669,48 @@ class _HomeProductPriceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final promoLabel = _homeProductPromoLabel(product);
+    if (!product.hasDiscount) {
+      return Text(
+        formatRupiah(product.finalPrice),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: fontSize,
+          fontWeight: FontWeight.w900,
+          color: const Color(0xFF111827),
+          height: 1.1,
+        ),
+      );
+    }
 
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: Text(
-            formatRupiah(product.finalPrice),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: fontSize,
-              fontWeight: FontWeight.w800,
-              color: _brandBlue,
-              height: 1.1,
-            ),
+        Text(
+          formatRupiah(product.price),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: compact ? fontSize - 2 : fontSize - 3,
+            fontWeight: FontWeight.w600,
+            color: const Color(0xFF111827),
+            height: 1.05,
+            decoration: TextDecoration.lineThrough,
+            decorationThickness: 1.5,
           ),
         ),
-        if (promoLabel != null) ...[
-          SizedBox(width: compact ? 4 : 6),
-          Container(
-            padding: EdgeInsets.symmetric(
-              horizontal: compact ? 5 : 7,
-              vertical: 3,
-            ),
-            decoration: BoxDecoration(
-              color: const Color(0xFFEFF6FF),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFF93C5FD)),
-            ),
-            child: Text(
-              promoLabel,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: compact ? 8.8 : 10,
-                fontWeight: FontWeight.w700,
-                color: _brandBlue,
-                height: 1,
-              ),
-            ),
+        SizedBox(height: compact ? 2 : 3),
+        Text(
+          formatRupiah(product.finalPrice),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: compact ? fontSize : fontSize + 1,
+            fontWeight: FontWeight.w900,
+            color: const Color(0xFFE11D48),
+            height: 1.05,
           ),
-        ],
+        ),
       ],
     );
   }
@@ -2551,11 +2730,11 @@ class _HomeProductSavingBadge extends StatelessWidget {
     final savingLabel = _homeProductSavingLabel(product);
     final shippingLabel = _homeProductShippingLabel(product);
     final badges = <Widget>[
-      if (savingLabel != null)
+      if (product.hasDiscount)
         _HomeProductPromoBadge(
-          label: savingLabel,
+          label: 'Harga Diskon',
           compact: compact,
-          icon: Icons.confirmation_number_rounded,
+          icon: Icons.percent_rounded,
           color: const Color(0xFFEF4444),
           backgroundColor: const Color(0xFFFFF1F2),
           borderColor: const Color(0xFFFCA5A5),
@@ -2568,6 +2747,15 @@ class _HomeProductSavingBadge extends StatelessWidget {
           color: const Color(0xFF16A34A),
           backgroundColor: const Color(0xFFECFDF3),
           borderColor: const Color(0xFFA7F3D0),
+        ),
+      if (savingLabel != null)
+        _HomeProductPromoBadge(
+          label: savingLabel,
+          compact: compact,
+          icon: Icons.confirmation_number_rounded,
+          color: const Color(0xFFEF4444),
+          backgroundColor: const Color(0xFFFFF1F2),
+          borderColor: const Color(0xFFFCA5A5),
         ),
     ];
 
@@ -2712,12 +2900,6 @@ class _HomeProductRatingSoldRow extends StatelessWidget {
   }
 }
 
-String? _homeProductPromoLabel(Product product) {
-  final percent = product.discountPercent;
-  if (percent != null && percent > 0) return 'Diskon $percent%';
-  return null;
-}
-
 String? _homeProductSavingLabel(Product product) {
   final voucher = product.voucherPreview;
   final voucherSaving = voucher?.savingAmount ?? voucher?.discountAmount;
@@ -2752,6 +2934,49 @@ String _formatHomeProductSoldCount(int count) {
   }
   if (count >= 100) return '${(count ~/ 50) * 50}+';
   return count.toString();
+}
+
+class _HomeProductDiscountBadge extends StatelessWidget {
+  final int? percent;
+  final bool compact;
+
+  const _HomeProductDiscountBadge({
+    required this.percent,
+    required this.compact,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final value = percent;
+    if (value == null || value <= 0) return const SizedBox.shrink();
+
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 7 : 9,
+        vertical: compact ? 5 : 7,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE11D48),
+        borderRadius: BorderRadius.circular(compact ? 10 : 12),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x22000000),
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Text(
+        '$value%',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: compact ? 11 : 13,
+          fontWeight: FontWeight.w900,
+          height: 1,
+        ),
+      ),
+    );
+  }
 }
 
 class _HorizontalProductSection extends StatelessWidget {
