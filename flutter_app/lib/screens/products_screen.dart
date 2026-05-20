@@ -15,6 +15,7 @@ import '../state/recently_viewed_store.dart';
 import '../state/search_history_store.dart';
 import '../utils/formatters.dart';
 import '../utils/search_synonyms.dart';
+import '../widgets/app_cart_button.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/skeleton_product_card.dart';
@@ -981,17 +982,27 @@ class _ProductPageHeader extends StatelessWidget {
     return const ColoredBox(
       color: Colors.white,
       child: Padding(
-        padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
-        child: Text(
-          'Produk Natalo',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: Color(0xFF111827),
-            fontSize: 22,
-            fontWeight: FontWeight.w700,
-            height: 1.2,
-          ),
+        padding: EdgeInsets.fromLTRB(16, 4, 8, 0),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Produk Natalo',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Color(0xFF111827),
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  height: 1.2,
+                ),
+              ),
+            ),
+            // Cart icon — match dengan home & wishlist header (single
+            // source of truth via AppCartButton: shopping_cart_outlined
+            // 24px, red badge live sync via cartStore).
+            AppCartButton(),
+          ],
         ),
       ),
     );
