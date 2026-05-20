@@ -239,10 +239,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         controller: _scrollController,
         slivers: [
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-              child: _ProductHero(product: product),
-            ),
+            child: _ProductHero(product: product),
           ),
           SliverToBoxAdapter(
             child: Padding(
@@ -367,143 +364,150 @@ class _ProductHeroState extends State<_ProductHero> {
     final images = _images;
     final showIndicators = images.length > 1;
 
-    return GlassSurface(
-      radius: 30,
-      padding: EdgeInsets.zero,
-      child: Stack(
-        children: [
-          SizedBox(
-            height: 390,
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: images.isEmpty
-                      ? const _ImagePlaceholder()
-                      : Hero(
-                          tag: 'product-image-${widget.product.id}',
-                          child: PageView.builder(
-                            controller: _controller,
-                            itemCount: images.length,
-                            onPageChanged: (index) =>
-                                setState(() => _activeIndex = index),
-                            itemBuilder: (context, index) {
-                              return GestureDetector(
-                                // Tap image → buka fullscreen pinch-zoom
-                                // gallery viewer dengan native Flutter
-                                // InteractiveViewer (smooth + GPU-accelerated).
-                                onTap: () {
-                                  AppHaptics.tap();
-                                  Navigator.push<void>(
-                                    context,
-                                    PageRouteBuilder<void>(
-                                      opaque: false,
-                                      barrierColor: Colors.black,
-                                      transitionDuration:
-                                          const Duration(milliseconds: 280),
-                                      reverseTransitionDuration:
-                                          const Duration(milliseconds: 220),
-                                      pageBuilder: (_, __, ___) =>
-                                          ImageViewerScreen(
-                                        images: images,
-                                        initialIndex: _activeIndex,
-                                      ),
-                                      transitionsBuilder:
-                                          (_, animation, __, child) =>
-                                              FadeTransition(
-                                        opacity: animation,
-                                        child: child,
-                                      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final heroHeight = constraints.maxWidth.isFinite
+            ? constraints.maxWidth.clamp(360.0, 430.0).toDouble()
+            : 390.0;
+
+        return ColoredBox(
+          color: Colors.white,
+          child: Stack(
+            children: [
+              SizedBox(
+                height: heroHeight,
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: images.isEmpty
+                          ? const _ImagePlaceholder()
+                          : Hero(
+                              tag: 'product-image-${widget.product.id}',
+                              child: PageView.builder(
+                                controller: _controller,
+                                itemCount: images.length,
+                                onPageChanged: (index) =>
+                                    setState(() => _activeIndex = index),
+                                itemBuilder: (context, index) {
+                                  return GestureDetector(
+                                    // Tap image → buka fullscreen pinch-zoom
+                                    // gallery viewer dengan native Flutter
+                                    // InteractiveViewer (smooth + GPU-accelerated).
+                                    onTap: () {
+                                      AppHaptics.tap();
+                                      Navigator.push<void>(
+                                        context,
+                                        PageRouteBuilder<void>(
+                                          opaque: false,
+                                          barrierColor: Colors.black,
+                                          transitionDuration:
+                                              const Duration(milliseconds: 280),
+                                          reverseTransitionDuration:
+                                              const Duration(milliseconds: 220),
+                                          pageBuilder: (_, __, ___) =>
+                                              ImageViewerScreen(
+                                            images: images,
+                                            initialIndex: _activeIndex,
+                                          ),
+                                          transitionsBuilder:
+                                              (_, animation, __, child) =>
+                                                  FadeTransition(
+                                            opacity: animation,
+                                            child: child,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    child: AppProductImage(
+                                      imageUrl: images[index],
+                                      width: double.infinity,
+                                      height: double.infinity,
+                                      fit: BoxFit.contain,
+                                      borderRadius: BorderRadius.zero,
                                     ),
                                   );
                                 },
-                                child: Padding(
-                                  padding: const EdgeInsets.all(8),
-                                  child: AppProductImage(
-                                    imageUrl: images[index],
-                                    fit: BoxFit.contain,
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
+                              ),
+                            ),
+                    ),
+                    if (showIndicators)
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 14,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: List.generate(images.length, (index) {
+                            final active = index == _activeIndex;
+                            return AnimatedContainer(
+                              duration: const Duration(milliseconds: 220),
+                              margin: const EdgeInsets.symmetric(horizontal: 3),
+                              height: 6,
+                              width: active ? 18 : 6,
+                              decoration: BoxDecoration(
+                                color: active
+                                    ? _brandBlue
+                                    : _brandBlue.withValues(alpha: 0.30),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                            );
+                          }),
                         ),
-                ),
-                if (showIndicators)
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 14,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(images.length, (index) {
-                        final active = index == _activeIndex;
-                        return AnimatedContainer(
-                          duration: const Duration(milliseconds: 220),
-                          margin: const EdgeInsets.symmetric(horizontal: 3),
-                          height: 6,
-                          width: active ? 18 : 6,
+                      ),
+                    if (showIndicators)
+                      Positioned(
+                        left: 16,
+                        bottom: 14,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
-                            color: active
-                                ? _brandBlue
-                                : _brandBlue.withValues(alpha: 0.30),
+                            color: Colors.black.withValues(alpha: 0.55),
                             borderRadius: BorderRadius.circular(999),
                           ),
-                        );
-                      }),
-                    ),
-                  ),
-                if (showIndicators)
-                  Positioned(
-                    left: 16,
-                    bottom: 14,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.55),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        '${_activeIndex + 1}/${images.length}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
+                          child: Text(
+                            '${_activeIndex + 1}/${images.length}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          if (widget.product.hasDiscount &&
-              widget.product.discountPercent != null)
-            Positioned(
-              left: 14,
-              top: 14,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 3,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFEF2F2),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  '-${widget.product.discountPercent}%',
-                  style: const TextStyle(
-                    color: Color(0xFFEF4444),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900,
-                  ),
+                  ],
                 ),
               ),
-            ),
-        ],
-      ),
+              if (widget.product.hasDiscount &&
+                  widget.product.discountPercent != null)
+                Positioned(
+                  left: 14,
+                  top: 14,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF2F2),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '-${widget.product.discountPercent}%',
+                      style: const TextStyle(
+                        color: Color(0xFFEF4444),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
