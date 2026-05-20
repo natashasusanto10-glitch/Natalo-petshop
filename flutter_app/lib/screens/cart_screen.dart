@@ -718,6 +718,7 @@ class _CartScreenState extends State<CartScreen> {
               // ── Checkout bar SELALU visible (tidak ikut auto-hide) ──
               _CartSummaryBar(
                 grandTotal: _grandTotal,
+                totalSaving: _totalVoucherSaving,
                 selectedQuantity: _selectedQuantity,
                 disabled: _selectedItems.isEmpty,
                 onCheckout: _goToCheckout,
@@ -2711,16 +2712,18 @@ class _CartRecommendationsSection extends StatelessWidget {
 }
 
 /// Sticky checkout summary — solid surface, animated rupiah ticker.
-/// Reference layout: "Total X item" + price + Checkout button 148w.
+/// Reference layout: price + total saving + Checkout button 148w.
 /// Disabled state saat tidak ada item selected.
 class _CartSummaryBar extends StatelessWidget {
   final double grandTotal;
+  final double totalSaving;
   final int selectedQuantity;
   final bool disabled;
   final VoidCallback onCheckout;
 
   const _CartSummaryBar({
     required this.grandTotal,
+    required this.totalSaving,
     required this.selectedQuantity,
     required this.disabled,
     required this.onCheckout,
@@ -2750,22 +2753,11 @@ class _CartSummaryBar extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      disabled
-                          ? 'Belum ada pilihan'
-                          : 'Total $selectedQuantity item',
-                      style: const TextStyle(
-                        color: NataloColors.textSecondary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
                     // Animated ticker untuk total — smooth tween saat
                     // user toggle selection atau update qty.
                     if (disabled)
                       const Text(
-                        '-',
+                        'Belum ada pilihan',
                         style: TextStyle(
                           color: NataloColors.textMuted,
                           fontSize: 18,
@@ -2780,6 +2772,19 @@ class _CartSummaryBar extends StatelessWidget {
                           fontWeight: FontWeight.w900,
                         ),
                       ),
+                    if (!disabled && totalSaving > 0) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        'Total Hemat ${formatRupiah(totalSaving)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: _discountRed,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
