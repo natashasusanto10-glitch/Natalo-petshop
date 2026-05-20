@@ -98,6 +98,15 @@ export function NewProductForm({ categories, brands }: Props) {
       return;
     }
 
+    // Graceful fallback: kalau hasVariants=true tapi attributes/variants
+    // kosong (admin toggle varian tapi belum isi apa-apa), treat sebagai
+    // single product. Mencegah server reject "Payload varian tidak valid"
+    // dengan auto-disable variant mode di payload.
+    const effectiveHasVariants =
+      hasVariants &&
+      variantData.attributes.length > 0 &&
+      variantData.variants.length > 0;
+
     setSubmitting(true);
     try {
       const payload = {
@@ -106,9 +115,9 @@ export function NewProductForm({ categories, brands }: Props) {
         // Saat varian aktif, server akan override price/stock/weightGram
         // dari aggregate varian aktif (min price, sum stock, default
         // weight). Kita kirim 0 / default sebagai placeholder.
-        price: hasVariants ? 0 : Math.max(0, parseInt(price || "0", 10)),
-        stock: hasVariants ? 0 : Math.max(0, parseInt(stock || "0", 10)),
-        weightGram: hasVariants ? 500 : Math.max(1, parseInt(weightGram || "500", 10)),
+        price: effectiveHasVariants ? 0 : Math.max(0, parseInt(price || "0", 10)),
+        stock: effectiveHasVariants ? 0 : Math.max(0, parseInt(stock || "0", 10)),
+        weightGram: effectiveHasVariants ? 500 : Math.max(1, parseInt(weightGram || "500", 10)),
         imageUrl: images[0] || undefined,
         gallery: images.slice(1),
         categoryId: categoryId || undefined,
@@ -116,10 +125,10 @@ export function NewProductForm({ categories, brands }: Props) {
         // SKU Induk hanya dikirim saat tidak ada varian (single product).
         // Saat varian aktif, server akan null-kan field ini supaya tidak
         // bentrok dengan SKU per-varian.
-        sku: !hasVariants && sku.trim() ? sku.trim() : undefined,
-        hasVariants,
-        attributes: hasVariants ? variantData.attributes : [],
-        variants: hasVariants ? variantData.variants : [],
+        sku: !effectiveHasVariants && sku.trim() ? sku.trim() : undefined,
+        hasVariants: effectiveHasVariants,
+        attributes: effectiveHasVariants ? variantData.attributes : [],
+        variants: effectiveHasVariants ? variantData.variants : [],
       };
 
       const res = await fetch("/api/admin/products", {
@@ -129,6 +138,22 @@ export function NewProductForm({ categories, brands }: Props) {
       });
       const data = await res.json();
       if (!res.ok) {
+        // Surface DETAIL field errors dari server ke admin supaya tahu
+        // apa yang salah. Sebelumnya cuma show "Payload varian tidak
+        // valid" yang generic.
+        if (data.fields && typeof data.fields === "object") {
+          const fieldErrors: string[] = [];
+          for (const [key, val] of Object.entries(data.fields)) {
+            if (Array.isArray(val) && val.length > 0) {
+              fieldErrors.push(`${humanizeField(key)}: ${val.join(", ")}`);
+            }
+          }
+          if (fieldErrors.length > 0) {
+            throw new Error(
+              `${data.error ?? "Validasi gagal"}\n${fieldErrors.join("\n")}`,
+            );
+          }
+        }
         throw new Error(data.error ?? "Gagal menyimpan produk");
       }
       // Sukses — redirect ke list. Pakai router.push + refresh supaya
@@ -143,6 +168,23 @@ export function NewProductForm({ categories, brands }: Props) {
       );
       setSubmitting(false);
     }
+  }
+
+  /** Translate field key (mis. "attributes", "variants.0.price") ke
+   *  label Indonesia yang lebih mudah dipahami admin. */
+  function humanizeField(key: string): string {
+    const map: Record<string, string> = {
+      name: "Nama produk",
+      description: "Deskripsi",
+      price: "Harga",
+      stock: "Stok",
+      weightGram: "Berat",
+      attributes: "Variasi (atribut)",
+      variants: "Variasi (kombinasi)",
+      sku: "SKU Induk",
+      hasVariants: "Varian aktif",
+    };
+    return map[key] ?? key;
   }
 
   return (
@@ -342,11 +384,12 @@ export function NewProductForm({ categories, brands }: Props) {
           />
         </Section>
 
-        {/* ─── Error banner ───────────────────────────────────────── */}
+        {/* ─── Error banner — support multi-line via whitespace-pre-line
+            supaya detail field errors tampil per baris. */}
         {submitError && (
           <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4">
             <span className="text-red-500">⚠</span>
-            <p className="flex-1 text-sm font-semibold text-red-700">
+            <p className="flex-1 whitespace-pre-line text-sm font-semibold text-red-700">
               {submitError}
             </p>
           </div>
