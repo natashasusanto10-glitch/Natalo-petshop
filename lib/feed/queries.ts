@@ -71,6 +71,10 @@ export async function listFeedPosts({
         { videoUrl: { not: null }, thumbnailUrl: { not: null } },
         { kind: "PRODUCT_ONLY" },
         { kind: "PROMO", productId: { not: null } },
+        // PHOTO_CAROUSEL: pass WHERE filter — media check di-handle
+        // post-query (Prisma _count workaround). Photo post tidak punya
+        // videoUrl, jadi tanpa OR ini akan filtered out di atas.
+        { kind: "PHOTO_CAROUSEL" },
       ],
       ...(tab ? { tab } : {}),
       // Shop the Look filter: match BOTH legacy productId AND multi-tag.
@@ -137,6 +141,19 @@ export async function listFeedPosts({
           },
         },
         orderBy: { position: "asc" },
+      },
+      // PHOTO_CAROUSEL media — 1-8 image rows. Empty untuk video posts.
+      media: {
+        select: {
+          id: true,
+          mediaType: true,
+          url: true,
+          thumbnailUrl: true,
+          width: true,
+          height: true,
+          sortOrder: true,
+        },
+        orderBy: { sortOrder: "asc" },
       },
     },
   });
@@ -213,6 +230,17 @@ export async function listFeedPosts({
             endsAt: p.promoEndsAt?.toISOString() ?? null,
           }
         : null,
+    // PHOTO_CAROUSEL media — 1-8 image entries ordered by sortOrder.
+    // Video posts return empty array (kind != PHOTO_CAROUSEL).
+    media: p.media.map((m) => ({
+      id: m.id,
+      mediaType: m.mediaType,
+      url: m.url,
+      thumbnailUrl: m.thumbnailUrl,
+      width: m.width,
+      height: m.height,
+      sortOrder: m.sortOrder,
+    })),
     likeCount: p.likeCount,
     commentCount: p.commentCount,
     viewCount: p.viewCount,

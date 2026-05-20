@@ -89,6 +89,15 @@ type CreatePostBody = {
   productPromos?: Record<string, number | null>;
   // Admin-only: tentukan tab tujuan (REKOMENDASI vs PROMO). User auto-KOMUNITAS.
   tab?: string;
+  // PHOTO_CAROUSEL kind: array of 1-8 image objects yang sudah ter-upload
+  // ke UploadThing via /api/feed/upload-photo. Server stores sebagai
+  // FeedMedia rows dengan sortOrder mengikuti urutan array.
+  images?: Array<{
+    url: string;
+    key?: string | null;
+    width?: number | null;
+    height?: number | null;
+  }>;
 };
 
 // PRODUCT_ONLY sengaja TIDAK termasuk — admin create sekarang video-first
@@ -96,11 +105,19 @@ type CreatePostBody = {
 // tetap render di feed untuk backward compat, tapi tidak bisa create baru
 // lewat API. Banner produk tanpa video → arahkan ke landing page produk
 // atau banner homepage.
+//
+// PHOTO_CAROUSEL ditambahkan — admin bisa create photo post (1-8 foto)
+// ke REKOMENDASI tab (sama seperti video admin post).
 const ADMIN_KINDS: ReadonlyArray<FeedPostKind> = [
   "VIDEO_ONLY",
   "VIDEO_PRODUCT",
   "PROMO",
+  "PHOTO_CAROUSEL",
 ];
+
+/// Min/max foto per PHOTO_CAROUSEL post. Enforce di POST validation.
+const PHOTO_CAROUSEL_MIN_IMAGES = 1;
+const PHOTO_CAROUSEL_MAX_IMAGES = 8;
 
 export async function POST(request: NextRequest) {
   const csrfReject = assertSameOrigin(request);
@@ -164,8 +181,14 @@ export async function POST(request: NextRequest) {
       tab = rawTab as FeedPostTab;
     }
   } else {
-    // Customer hanya bisa COMMUNITY ke KOMUNITAS.
-    kind = "COMMUNITY";
+    // Customer: default COMMUNITY (video), OR PHOTO_CAROUSEL kalau
+    // body specify. Customer-side photo posts juga masuk KOMUNITAS tab.
+    const rawKind = String(body.kind ?? "COMMUNITY");
+    if (rawKind === "PHOTO_CAROUSEL") {
+      kind = "PHOTO_CAROUSEL";
+    } else {
+      kind = "COMMUNITY";
+    }
     tab = "KOMUNITAS";
   }
 
@@ -202,6 +225,54 @@ export async function POST(request: NextRequest) {
   }
   const productIdsToStore =
     productIds.length > 0 ? productIds : productId ? [productId] : [];
+
+  // PHOTO_CAROUSEL kind validation — 1-8 image objects with valid URL.
+  // Validate sebelum video kind branch supaya tidak hit "Video wajib"
+  // false-positive untuk photo post.
+  type PhotoInput = {
+    url: string;
+    key?: string | null;
+    width?: number | null;
+    height?: number | null;
+  };
+  let photoInputs: PhotoInput[] = [];
+  if (kind === "PHOTO_CAROUSEL") {
+    const rawImages = Array.isArray(body.images) ? body.images : [];
+    photoInputs = rawImages
+      .map((item): PhotoInput | null => {
+        if (!item || typeof item !== "object") return null;
+        const url = String((item as Record<string, unknown>).url ?? "").trim();
+        if (!url) return null;
+        const key = (item as Record<string, unknown>).key;
+        const width = (item as Record<string, unknown>).width;
+        const height = (item as Record<string, unknown>).height;
+        return {
+          url,
+          key: typeof key === "string" ? key : null,
+          width:
+            typeof width === "number" && Number.isFinite(width)
+              ? Math.floor(width)
+              : null,
+          height:
+            typeof height === "number" && Number.isFinite(height)
+              ? Math.floor(height)
+              : null,
+        };
+      })
+      .filter((item): item is PhotoInput => item !== null);
+    if (photoInputs.length < PHOTO_CAROUSEL_MIN_IMAGES) {
+      return NextResponse.json(
+        { error: "Pilih minimal 1 foto untuk melanjutkan." },
+        { status: 400 },
+      );
+    }
+    if (photoInputs.length > PHOTO_CAROUSEL_MAX_IMAGES) {
+      return NextResponse.json(
+        { error: `Maksimal ${PHOTO_CAROUSEL_MAX_IMAGES} foto dalam 1 postingan.` },
+        { status: 400 },
+      );
+    }
+  }
 
   if (kind === "VIDEO_ONLY" || kind === "VIDEO_PRODUCT" || kind === "COMMUNITY") {
     if (!videoUrl || !thumbnailUrl) {
@@ -422,6 +493,23 @@ export async function POST(request: NextRequest) {
           };
         }),
         skipDuplicates: true,
+      });
+    }
+
+    // PHOTO_CAROUSEL: create 1-8 FeedMedia rows dengan sortOrder
+    // mengikuti urutan array dari client. sortOrder 0 = cover/thumbnail
+    // utama yang dipakai di my-posts list + feed loading state.
+    if (kind === "PHOTO_CAROUSEL" && photoInputs.length > 0) {
+      await tx.feedMedia.createMany({
+        data: photoInputs.map((photo, index) => ({
+          postId: created.id,
+          mediaType: "image",
+          url: photo.url,
+          uploadthingKey: photo.key,
+          width: photo.width,
+          height: photo.height,
+          sortOrder: index,
+        })),
       });
     }
 

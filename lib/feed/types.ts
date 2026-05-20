@@ -79,6 +79,17 @@ export type FeedPostListItem = {
     startsAt: string | null;
     endsAt: string | null;
   } | null;
+  /// PHOTO_CAROUSEL kind: 1-8 image media ordered by sortOrder asc.
+  /// Untuk video kind (VIDEO_*, COMMUNITY), array kosong [].
+  media: Array<{
+    id: string;
+    mediaType: string; // "image" | "video"
+    url: string;
+    thumbnailUrl: string | null;
+    width: number | null;
+    height: number | null;
+    sortOrder: number;
+  }>;
   likeCount: number;
   commentCount: number;
   viewCount: number;
