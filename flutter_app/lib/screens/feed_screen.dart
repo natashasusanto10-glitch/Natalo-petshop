@@ -1823,6 +1823,7 @@ class _FeedPostViewState extends State<_FeedPostView>
                   open: minimized,
                   extentListenable: _commentSheetExtent,
                   dragOffsetPx: _commentDragOffset,
+                  keyboardInsetPx: keyboard,
                   screenSize: constraints.biggest,
                   child: Stack(
                     fit: StackFit.expand,
@@ -2138,6 +2139,7 @@ class _CommentVideoFrame extends StatelessWidget {
   final bool open;
   final ValueListenable<double> extentListenable;
   final double dragOffsetPx;
+  final double keyboardInsetPx;
   final Size screenSize;
   final Widget child;
 
@@ -2145,6 +2147,7 @@ class _CommentVideoFrame extends StatelessWidget {
     required this.open,
     required this.extentListenable,
     required this.dragOffsetPx,
+    required this.keyboardInsetPx,
     required this.screenSize,
     required this.child,
   });
@@ -2172,7 +2175,15 @@ class _CommentVideoFrame extends StatelessWidget {
             // Ini membuat video dan drawer bergerak 1:1 saat user drag,
             // termasuk saat sheet berada di bawah initial extent.
             final drawerExtent = sheetExtent.clamp(0.0, 1.0).toDouble();
-            final drawerTopY = height * (1 - drawerExtent) + dragOffsetPx;
+            // Saat keyboard terbuka, comment drawer di-layout dalam area yang
+            // sudah dikurangi bottom inset oleh AnimatedPadding. Video frame
+            // harus memakai tinggi efektif yang sama, kalau tidak sheet naik
+            // tetapi video tetap menimpa bagian atas drawer.
+            final keyboardInset =
+                keyboardInsetPx.clamp(0.0, height - 1).toDouble();
+            final sheetHostHeight = math.max(1.0, height - keyboardInset);
+            final drawerTopY =
+                sheetHostHeight * (1 - drawerExtent) + dragOffsetPx;
             final fullRect = Rect.fromLTWH(0, 0, width, height);
             // Video frame saat drawer open: full width, dari y=0 sampai
             // drawer's top edge. Animasi rect interpolate dari fullscreen

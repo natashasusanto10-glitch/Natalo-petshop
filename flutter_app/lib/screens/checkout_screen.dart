@@ -3508,33 +3508,28 @@ class _VoucherSlotState extends State<_VoucherSlot> {
     ].whereType<MemberVoucher>().toList();
     final hasSelected = selected.isNotEmpty;
     final selectedCount = selected.length;
-    final selectedDiscount = selected
-        .fold<int>(
-          0,
-          (sum, voucher) => sum + voucher.discount,
+    final hasShippingVoucher = selected.any(
+      (voucher) => voucher.isFreeShipping || voucher.isShippingDiscount,
+    );
+    final productDiscount = selected
+        .where(
+          (voucher) => !(voucher.isFreeShipping || voucher.isShippingDiscount),
         )
-        .toDouble();
+        .fold<int>(0, (sum, voucher) => sum + voucher.discount);
+    final fallbackDiscount = selected.fold<int>(
+      0,
+      (sum, voucher) => sum + voucher.discount,
+    );
+    final discountChipAmount =
+        productDiscount > 0 ? productDiscount : fallbackDiscount;
     final totalKnownVouchers = _dedupeVouchers([
       ...selected,
       ...widget.availableVouchers,
       ...widget.unavailableVouchers,
     ]).length;
-    final chipText = selectedDiscount > 0
-        ? 'Hemat ${formatRupiah(selectedDiscount)}'
-        : selectedCount > 1
-            ? '$selectedCount voucher'
-            : selected.isNotEmpty
-                ? _voucherTypeLabel(selected.first)
-                : 'Auto';
-    final subtitle = hasSelected
-        ? '$selectedCount voucher dipakai untuk pesanan ini'
-        : totalKnownVouchers > 0
-            ? '$totalKnownVouchers voucher bisa dicek'
-            : 'Cek voucher yang bisa dipakai';
-    final chipColor =
-        hasSelected ? const Color(0xFFE91E63) : const Color(0xFF667085);
-    final chipBg =
-        hasSelected ? const Color(0xFFFFE8EF) : const Color(0xFFF2F4F7);
+    final emptyChipLabel = totalKnownVouchers > 0
+        ? '$totalKnownVouchers tersedia'
+        : 'Lihat voucher';
 
     return _CheckoutCardShell(
       onTap: null,
@@ -3553,76 +3548,90 @@ class _VoucherSlotState extends State<_VoucherSlot> {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Voucher Natalo',
-                      style: TextStyle(
-                        color: Color(0xFF17202A),
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: hasSelected
-                            ? const Color(0xFFE91E63)
-                            : const Color(0xFF667085),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              InkWell(
-                onTap: widget.onViewVouchers,
-                borderRadius: BorderRadius.circular(999),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: chipBg,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (widget.loading) ...[
-                        SizedBox(
-                          height: 14,
-                          width: 14,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: chipColor,
-                          ),
-                        ),
-                        const SizedBox(width: 7),
-                      ],
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 118),
-                        child: Text(
-                          hasSelected ? chipText : 'Lihat voucher',
+                child: InkWell(
+                  onTap: widget.onViewVouchers,
+                  borderRadius: BorderRadius.circular(14),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(
+                      children: [
+                        const Text(
+                          'Voucher',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: chipColor,
-                            fontSize: 12,
+                            color: Color(0xFF17202A),
                             fontWeight: FontWeight.w900,
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 2),
-                      Icon(
-                        Icons.chevron_right_rounded,
-                        color: chipColor,
-                        size: 18,
-                      ),
-                    ],
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            physics: const BouncingScrollPhysics(),
+                            child: Row(
+                              children: [
+                                if (widget.loading) ...[
+                                  const SizedBox(
+                                    height: 16,
+                                    width: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Color(0xFF667085),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                ],
+                                if (hasSelected) ...[
+                                  if (hasShippingVoucher)
+                                    const _VoucherSummaryChip(
+                                      label: 'Gratis Ongkir',
+                                      color: Color(0xFF12A66A),
+                                      background: Color(0xFFEAFBF2),
+                                      border: Color(0xFFB7EFD2),
+                                    ),
+                                  if (hasShippingVoucher &&
+                                      discountChipAmount > 0)
+                                    const SizedBox(width: 8),
+                                  if (discountChipAmount > 0)
+                                    _VoucherSummaryChip(
+                                      label:
+                                          '-${formatRupiah(discountChipAmount.toDouble())}',
+                                      color: const Color(0xFFE91E63),
+                                      background: const Color(0xFFFFE8EF),
+                                      border: const Color(0xFFF8BBD0),
+                                    ),
+                                  if (!hasShippingVoucher &&
+                                      discountChipAmount <= 0)
+                                    _VoucherSummaryChip(
+                                      label: selectedCount > 1
+                                          ? '$selectedCount voucher'
+                                          : _voucherTypeLabel(selected.first),
+                                      color: const Color(0xFFE91E63),
+                                      background: const Color(0xFFFFE8EF),
+                                      border: const Color(0xFFF8BBD0),
+                                    ),
+                                ] else
+                                  _VoucherSummaryChip(
+                                    label: emptyChipLabel,
+                                    color: const Color(0xFF667085),
+                                    background: const Color(0xFFF2F4F7),
+                                    border: const Color(0xFFE4E7EC),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          color: hasSelected
+                              ? const Color(0xFFE91E63)
+                              : const Color(0xFF667085),
+                          size: 22,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -3639,6 +3648,44 @@ class _VoucherSlotState extends State<_VoucherSlot> {
             },
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _VoucherSummaryChip extends StatelessWidget {
+  final String label;
+  final Color color;
+  final Color background;
+  final Color border;
+
+  const _VoucherSummaryChip({
+    required this.label,
+    required this.color,
+    required this.background,
+    required this.border,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: border),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.visible,
+        softWrap: false,
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.w900,
+          height: 1,
+        ),
       ),
     );
   }
