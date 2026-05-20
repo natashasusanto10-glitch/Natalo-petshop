@@ -18,7 +18,8 @@ import 'natalo_paw_refresh_indicator.dart';
 /// Layout:
 /// - Drag handle bar di atas (sudah expose [onDragUpdate]/[onDragEnd]
 ///   untuk feed_screen.dart untuk drive video shrink + dismiss gesture)
-/// - Header: "X komentar" + close button
+/// - Minimal top chrome: drag handle only, so the drawer feels like Reels
+///   instead of a heavy modal header.
 /// - List komentar:
 ///   * Parent: avatar + name + content + meta (waktu, like, balas)
 ///   * Reply: indented 44px, smaller avatar, sama meta
@@ -378,41 +379,6 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
               ),
             ),
 
-            // ── Header ──
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 4, 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      _comments.isEmpty
-                          ? 'Komentar'
-                          : '${_comments.length}${_nextCursor != null ? '+' : ''} komentar',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: widget.onClose,
-                    icon: Icon(
-                      Icons.close_rounded,
-                      color: Colors.white.withValues(alpha: 0.70),
-                      size: 22,
-                    ),
-                    tooltip: 'Tutup',
-                  ),
-                ],
-              ),
-            ),
-            Divider(
-              height: 1,
-              thickness: 0.5,
-              color: Colors.white.withValues(alpha: 0.08),
-            ),
-
             // ── List comments ──
             Expanded(
               child: _buildListBody(),
@@ -656,6 +622,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
                   minLines: 1,
                   textCapitalization: TextCapitalization.sentences,
                   textInputAction: TextInputAction.newline,
+                  keyboardAppearance: Brightness.dark,
                   cursorColor: Colors.white,
                   inputFormatters: [
                     LengthLimitingTextInputFormatter(500),

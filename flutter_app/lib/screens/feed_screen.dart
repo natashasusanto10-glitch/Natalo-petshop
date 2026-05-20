@@ -906,10 +906,10 @@ class _FeedPostView extends StatefulWidget {
 
 class _FeedPostViewState extends State<_FeedPostView>
     with TickerProviderStateMixin {
-  static const double _commentSheetMinExtent = 0.36;
+  static const double _commentSheetMinExtent = 0.22;
   static const double _commentSheetInitialExtent = 0.60;
   static const double _commentSheetMaxExtent = 0.90;
-  static const double _commentSheetDismissExtent = 0.43;
+  static const double _commentSheetDismissExtent = 0.30;
 
   VideoPlayerController? _videoController;
   final DraggableScrollableController _commentSheetController =
@@ -1212,7 +1212,7 @@ class _FeedPostViewState extends State<_FeedPostView>
     }
     if (_commentSheetOpen &&
         !_commentSheetClosingFromDrag &&
-        size <= _commentSheetDismissExtent) {
+        size <= _commentSheetMinExtent + 0.012) {
       _commentSheetClosingFromDrag = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _closeComments();
@@ -1370,7 +1370,7 @@ class _FeedPostViewState extends State<_FeedPostView>
     final size = _commentSheetController.isAttached
         ? _commentSheetController.size
         : _commentSheetInitialExtent;
-    if (velocity > 720 || size <= _commentSheetDismissExtent) {
+    if (velocity > 520 || size <= _commentSheetDismissExtent) {
       _closeComments();
       return;
     }
@@ -2192,8 +2192,8 @@ class _CommentVideoFrame extends StatelessWidget {
               drawerTopY.clamp(0.0, height),
             );
             final rect = Rect.lerp(fullRect, aboveDrawerRect, openProgress)!;
-            final frameInset = 8.0 * openProgress;
-            final radius = 22.0 * openProgress;
+            final frameInset = 10.0 * openProgress;
+            final radius = 28.0 * openProgress;
 
             return Positioned.fromRect(
               rect: rect,
