@@ -4,13 +4,13 @@
  * Query parameters:
  *  - q          : search string (nama produk)
  *  - categoryId : filter by category
- *  - excludeId  : ID promo yang sedang di-edit (untuk include produknya)
+ *  - excludeId  : promo yang sedang di-edit (include item-nya)
  *
- * Return produk yang ELIGIBLE untuk di-tag ke Promo Toko baru:
- *  - Aktif (isActive=true)
- *  - TIDAK sedang masuk Promo Toko lain yang aktif/upcoming
- *  - KECUALI promo yang sedang di-edit (excludeId) — produk yang sudah
- *    masuk promo itu tetap eligible supaya admin bisa lihat di edit form.
+ * Return produk eligible (TIDAK sedang di Promo Toko aktif/upcoming),
+ * include varian-nya jika ada. Variant juga di-mark blocked kalau
+ * sudah di promo lain.
+ *
+ * Refactor untuk schema ProductDiscountItem (per-variant tracking).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -27,19 +27,30 @@ export async function GET(request: NextRequest) {
   const categoryId = sp.get("categoryId")?.trim() ?? "";
   const excludeId = sp.get("excludeId")?.trim() ?? "";
 
-  // Cari semua produk yang sedang di Promo Toko aktif/upcoming.
+  // Cari semua productId/variantId yang sedang di Promo Toko aktif/upcoming.
+  // Exclude promo yang sedang di-edit (excludeId).
   const now = new Date();
-  const activePromos = await prisma.productDiscount.findMany({
+  const blockedItems = await prisma.productDiscountItem.findMany({
     where: {
-      isActive: true,
-      endsAt: { gt: now },
-      ...(excludeId ? { id: { not: excludeId } } : {}),
+      discount: {
+        isActive: true,
+        endsAt: { gt: now },
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
     },
-    select: { productIds: true },
+    select: { productId: true, variantId: true },
   });
+
+  // Block keys: productId saja (kalau variantId=null = promo apply ke
+  // seluruh produk) atau productId+variantId (kalau apply per varian).
   const blockedProductIds = new Set<string>();
-  for (const p of activePromos) {
-    for (const pid of p.productIds) blockedProductIds.add(pid);
+  const blockedVariantKeys = new Set<string>();
+  for (const item of blockedItems) {
+    if (item.variantId === null) {
+      blockedProductIds.add(item.productId);
+    } else {
+      blockedVariantKeys.add(`${item.productId}::${item.variantId}`);
+    }
   }
 
   const where: {
@@ -64,9 +75,41 @@ export async function GET(request: NextRequest) {
       imageUrl: true,
       price: true,
       stock: true,
+      hasVariants: true,
       category: { select: { name: true } },
+      variants: {
+        where: { deletedAt: null, isActive: true },
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          sku: true,
+          price: true,
+          stock: true,
+          imageUrl: true,
+          options: {
+            select: {
+              option: { select: { value: true } },
+            },
+          },
+        },
+      },
     },
   });
 
-  return NextResponse.json({ products });
+  // Mark blocked variants — kalau produk berVarian, varian individual
+  // bisa di-block walaupun produk overall masih eligible.
+  const result = products.map((p) => ({
+    ...p,
+    variants: p.variants.map((v) => ({
+      ...v,
+      // Variant label dari options.value join " / "
+      label:
+        v.options.map((o) => o.option.value).join(" / ") || v.sku || "Default",
+      isBlocked: blockedVariantKeys.has(`${p.id}::${v.id}`),
+      // Strip options dari output (sudah jadi label)
+      options: undefined,
+    })),
+  }));
+
+  return NextResponse.json({ products: result });
 }

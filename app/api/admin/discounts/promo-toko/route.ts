@@ -1,15 +1,19 @@
 /**
  * /api/admin/discounts/promo-toko
  *
- * GET  - List all ProductDiscount (admin can paginate later)
- * POST - Create new Promo Toko + assign produk
+ * GET  - List all ProductDiscount campaigns
+ * POST - Create new Promo Toko + assign produk/varian dengan
+ *        harga diskon per-item.
  *
- * Validasi:
- * - Periode: endsAt > startsAt + max 90 hari + tidak masa lalu (start)
- * - Tipe: PERCENTAGE 1-95, FIXED_AMOUNT > 0
- * - maxDiscountCap hanya untuk PERCENTAGE
- * - Multi-promo conflict (opsi 3c): produk yang sudah di promo aktif
- *   atau upcoming TIDAK BISA dipilih di promo baru
+ * Schema baru (refactor dari Phase 1B v1):
+ *   ProductDiscount { id, name, startsAt, endsAt, isActive }
+ *   ProductDiscountItem { discountId, productId, variantId?,
+ *                         discountedPrice, isItemActive }
+ *
+ * Payload POST:
+ *   { name, startsAt, endsAt, items: [
+ *       { productId, variantId?, discountedPrice, isItemActive }
+ *   ] }
  */
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -17,15 +21,19 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 
+const itemSchema = z.object({
+  productId: z.string().trim().min(1),
+  variantId: z.string().trim().min(1).optional().nullable(),
+  discountedPrice: z.number().int().min(0).max(999_999_999),
+  isItemActive: z.boolean().default(true),
+});
+
 const createSchema = z
   .object({
-    name: z.string().trim().min(1).max(200),
-    discountType: z.enum(["PERCENTAGE", "FIXED_AMOUNT"]),
-    discountValue: z.number().int().min(1).max(999_999_999),
-    maxDiscountCap: z.number().int().min(0).max(999_999_999).optional().nullable(),
-    startsAt: z.string().datetime().or(z.string()),
-    endsAt: z.string().datetime().or(z.string()),
-    productIds: z.array(z.string().trim().min(1)).min(1).max(500),
+    name: z.string().trim().min(1).max(150),
+    startsAt: z.string(),
+    endsAt: z.string(),
+    items: z.array(itemSchema).min(1).max(500),
   })
   .superRefine((data, ctx) => {
     const start = new Date(data.startsAt);
@@ -53,19 +61,19 @@ const createSchema = z
         path: ["endsAt"],
       });
     }
-    if (data.discountType === "PERCENTAGE" && data.discountValue > 95) {
-      ctx.addIssue({
-        code: "custom",
-        message: "Diskon persentase maksimal 95%",
-        path: ["discountValue"],
-      });
-    }
-    if (data.discountType === "FIXED_AMOUNT" && data.maxDiscountCap) {
-      ctx.addIssue({
-        code: "custom",
-        message: "Max discount cap hanya berlaku untuk tipe persentase",
-        path: ["maxDiscountCap"],
-      });
+    // Uniqueness — productId + variantId combo tidak boleh duplikat
+    // dalam 1 promo (per-row).
+    const seen = new Set<string>();
+    for (const [idx, item] of data.items.entries()) {
+      const key = `${item.productId}::${item.variantId ?? ""}`;
+      if (seen.has(key)) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Produk/varian duplikat dalam satu promo",
+          path: ["items", idx, "productId"],
+        });
+      }
+      seen.add(key);
     }
   });
 
@@ -74,10 +82,12 @@ export async function GET() {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-
   const discounts = await prisma.productDiscount.findMany({
     orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
     take: 100,
+    include: {
+      _count: { select: { items: true } },
+    },
   });
   return NextResponse.json({ discounts });
 }
@@ -103,61 +113,102 @@ export async function POST(request: NextRequest) {
   }
   const body = parsed.data;
 
-  // Cek konflik: produk yang sudah di promo aktif / upcoming TIDAK
-  // BISA dipilih di promo baru. Pakai array overlap query (Postgres
-  // && operator) — Prisma's `hasSome` di productIds.
+  // Conflict check: produk/varian yang sudah masuk Promo Toko aktif/
+  // upcoming lain TIDAK BISA dipilih lagi.
   const now = new Date();
-  const conflicting = await prisma.productDiscount.findMany({
+  const productKeys = body.items.map(
+    (i) => `${i.productId}::${i.variantId ?? ""}`,
+  );
+  const productIds = Array.from(new Set(body.items.map((i) => i.productId)));
+  const variantIds = body.items
+    .map((i) => i.variantId)
+    .filter((v): v is string => !!v);
+
+  const conflictingItems = await prisma.productDiscountItem.findMany({
     where: {
-      isActive: true,
-      endsAt: { gt: now }, // active atau upcoming (endsAt belum lewat)
-      productIds: { hasSome: body.productIds },
+      productId: { in: productIds },
+      OR: variantIds.length > 0
+        ? [
+            { variantId: null },
+            { variantId: { in: variantIds } },
+          ]
+        : [{ variantId: null }],
+      discount: {
+        isActive: true,
+        endsAt: { gt: now },
+      },
     },
-    select: { id: true, name: true, productIds: true },
+    include: {
+      discount: { select: { name: true } },
+    },
   });
-  if (conflicting.length > 0) {
-    // Cari produk mana yang konflik
-    const conflictingProductIds = new Set<string>();
-    for (const c of conflicting) {
-      for (const pid of c.productIds) {
-        if (body.productIds.includes(pid)) {
-          conflictingProductIds.add(pid);
-        }
-      }
-    }
+  const conflictingKeys = new Set(
+    conflictingItems.map((i) => `${i.productId}::${i.variantId ?? ""}`),
+  );
+  const conflicts = body.items.filter((i) => {
+    const key = `${i.productId}::${i.variantId ?? ""}`;
+    return conflictingKeys.has(key);
+  });
+  if (conflicts.length > 0) {
     return NextResponse.json(
       {
-        error: "Ada produk yang sudah masuk promo aktif lain",
-        conflictingProductIds: Array.from(conflictingProductIds),
-        conflictingPromoNames: conflicting.map((c) => c.name),
+        error: "Ada produk yang sudah masuk Promo Toko aktif lain",
+        conflictingProductIds: Array.from(
+          new Set(conflicts.map((c) => c.productId)),
+        ),
+        conflictingPromoNames: Array.from(
+          new Set(conflictingItems.map((i) => i.discount.name)),
+        ),
       },
       { status: 409 },
     );
   }
 
-  // Validasi produk benar-benar ada
-  const existingCount = await prisma.product.count({
-    where: { id: { in: body.productIds } },
+  // Validate productId + variantId benar-benar ada di DB.
+  const validProducts = await prisma.product.findMany({
+    where: { id: { in: productIds } },
+    select: { id: true },
   });
-  if (existingCount !== body.productIds.length) {
+  if (validProducts.length !== productIds.length) {
     return NextResponse.json(
       { error: "Sebagian produk tidak ditemukan" },
       { status: 400 },
     );
   }
+  if (variantIds.length > 0) {
+    const validVariants = await prisma.productVariant.findMany({
+      where: { id: { in: variantIds } },
+      select: { id: true },
+    });
+    if (validVariants.length !== variantIds.length) {
+      return NextResponse.json(
+        { error: "Sebagian varian tidak ditemukan" },
+        { status: 400 },
+      );
+    }
+  }
 
+  // Create discount + items atomically.
   const discount = await prisma.productDiscount.create({
     data: {
       name: body.name.trim(),
-      discountType: body.discountType,
-      discountValue: body.discountValue,
-      maxDiscountCap: body.maxDiscountCap ?? null,
       startsAt: new Date(body.startsAt),
       endsAt: new Date(body.endsAt),
-      productIds: body.productIds,
       isActive: true,
+      items: {
+        create: body.items.map((item) => ({
+          productId: item.productId,
+          variantId: item.variantId || null,
+          discountedPrice: item.discountedPrice,
+          isItemActive: item.isItemActive,
+        })),
+      },
     },
+    include: { items: true },
   });
+
+  // Suppress unused warning untuk productKeys (dipakai utk debug masa depan)
+  void productKeys;
 
   return NextResponse.json(discount, { status: 201 });
 }

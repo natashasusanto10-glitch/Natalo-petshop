@@ -6,7 +6,6 @@
  */
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { formatRupiah } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -67,22 +66,16 @@ export default async function PromoTokoListPage({
     },
     orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
     take: 100,
+    include: {
+      items: {
+        take: 3, // ambil 3 untuk thumbnail preview
+        include: {
+          product: { select: { id: true, name: true, imageUrl: true } },
+        },
+      },
+      _count: { select: { items: true } },
+    },
   });
-
-  // Fetch thumbnail produk pertama untuk display
-  const allProductIds = Array.from(
-    new Set(promos.flatMap((p) => p.productIds.slice(0, 3))),
-  );
-  const productMap = new Map<string, { name: string; imageUrl: string | null }>();
-  if (allProductIds.length > 0) {
-    const productsForPromos = await prisma.product.findMany({
-      where: { id: { in: allProductIds } },
-      select: { id: true, name: true, imageUrl: true },
-    });
-    for (const p of productsForPromos) {
-      productMap.set(p.id, { name: p.name, imageUrl: p.imageUrl });
-    }
-  }
 
   // Counts untuk tab
   const [ongoingCount, upcomingCount, expiredCount, totalCount] =
@@ -207,34 +200,28 @@ export default async function PromoTokoListPage({
                 promo.endsAt,
                 promo.isActive,
               );
-              const thumbnails = promo.productIds
-                .slice(0, 4)
-                .map((pid) => productMap.get(pid))
-                .filter((p): p is { name: string; imageUrl: string | null } => !!p);
+              const totalItems = promo._count.items;
+              const thumbnails = promo.items.map((it) => it.product);
 
               return (
                 <div
                   key={promo.id}
                   className="flex flex-wrap items-start gap-4 p-4 hover:bg-zinc-50/50 md:flex-nowrap"
                 >
-                  {/* Left: status + name + discount info */}
+                  {/* Left: status + name */}
                   <div className="min-w-0 flex-1">
                     <StatusBadge status={promoStatus} />
                     <p className="mt-1 font-semibold text-zinc-900">
                       {promo.name}
                     </p>
                     <p className="mt-0.5 text-xs text-zinc-500">
-                      {promo.discountType === "PERCENTAGE"
-                        ? `Diskon ${promo.discountValue}%`
-                        : `Diskon ${formatRupiah(promo.discountValue)}`}
-                      {promo.maxDiscountCap &&
-                        ` (max ${formatRupiah(promo.maxDiscountCap)})`}
+                      {totalItems} produk/varian dipromosikan
                     </p>
                   </div>
 
                   {/* Mid: product thumbnails */}
                   <div className="flex items-center gap-1">
-                    {thumbnails.slice(0, 3).map((p, i) =>
+                    {thumbnails.map((p, i) =>
                       p.imageUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
@@ -251,9 +238,9 @@ export default async function PromoTokoListPage({
                         />
                       ),
                     )}
-                    {promo.productIds.length > 3 && (
+                    {totalItems > thumbnails.length && (
                       <span className="ml-1 text-xs font-bold text-zinc-400">
-                        +{promo.productIds.length - 3}
+                        +{totalItems - thumbnails.length}
                       </span>
                     )}
                   </div>

@@ -1,9 +1,8 @@
 /**
  * /admin/diskon/promo-toko/[id]/edit — Edit Promo Toko
  *
- * Server wrapper: fetch existing discount, hydrate ke PromoTokoForm
- * dengan initial data + excludeId (supaya eligible-products query
- * tetap include produk yang sudah di promo ini).
+ * Server wrapper: fetch existing discount + items (with product/variant
+ * details), hydrate ke PromoTokoForm dengan initial data + excludeId.
  */
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -25,8 +24,54 @@ export default async function PromoTokoEditPage({
   const { id } = await params;
   const discount = await prisma.productDiscount.findUnique({
     where: { id },
+    include: {
+      items: {
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              imageUrl: true,
+              price: true,
+              stock: true,
+              hasVariants: true,
+            },
+          },
+          variant: {
+            select: {
+              id: true,
+              sku: true,
+              price: true,
+              stock: true,
+              imageUrl: true,
+              options: {
+                select: { option: { select: { value: true } } },
+              },
+            },
+          },
+        },
+      },
+    },
   });
   if (!discount) return notFound();
+
+  // Transform items ke struktur yang PromoTokoForm consume.
+  const initialItems = discount.items.map((it) => ({
+    productId: it.productId,
+    variantId: it.variantId,
+    discountedPrice: it.discountedPrice,
+    isItemActive: it.isItemActive,
+    product: it.product,
+    variant: it.variant
+      ? {
+          ...it.variant,
+          label:
+            it.variant.options.map((o) => o.option.value).join(" / ") ||
+            it.variant.sku ||
+            "Default",
+        }
+      : null,
+  }));
 
   return (
     <PromoTokoForm
@@ -34,14 +79,9 @@ export default async function PromoTokoEditPage({
       initial={{
         id: discount.id,
         name: discount.name,
-        discountType: discount.discountType,
-        discountValue: String(discount.discountValue),
-        maxDiscountCap: discount.maxDiscountCap
-          ? String(discount.maxDiscountCap)
-          : "",
         startsAt: toDateTimeLocal(discount.startsAt),
         endsAt: toDateTimeLocal(discount.endsAt),
-        productIds: discount.productIds,
+        items: initialItems,
         isActive: discount.isActive,
       }}
     />
