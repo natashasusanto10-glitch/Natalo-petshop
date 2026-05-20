@@ -131,9 +131,18 @@ export async function POST(request: NextRequest) {
       variants: body.variants,
     });
     if (!variantParsed.success) {
+      // Build issues[] dengan FULL PATH (mis. variants.1.sku) supaya
+      // client bisa show detail per-error. `flatten().fieldErrors` cuma
+      // capture top-level (variants, attributes) → nested errors dari
+      // superRefine custom paths jadi hilang.
+      const issues = variantParsed.error.issues.map((issue) => ({
+        path: issue.path.join("."),
+        message: issue.message,
+      }));
       return NextResponse.json(
         {
           error: "Payload varian tidak valid",
+          issues,
           fields: variantParsed.error.flatten().fieldErrors,
         },
         { status: 422 },

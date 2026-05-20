@@ -369,13 +369,24 @@ export function VariantEditor({
 
   function applyBulk() {
     setRows((prev) =>
-      prev.map((r) => ({
+      prev.map((r, idx) => ({
         ...r,
         ...(bulkPrice ? { price: bulkPrice } : {}),
         ...(bulkStock ? { stock: bulkStock } : {}),
-        ...(bulkSku ? { sku: bulkSku } : {}),
+        // BUG FIX: SKU harus unik per varian. Sebelumnya copy paste
+        // value yang sama ke semua row → "Payload varian tidak valid:
+        // SKU tidak boleh duplikat" saat save. Sekarang auto-suffix
+        // dengan index (1-based) supaya tiap row unik.
+        // Contoh: bulk "PP7KG" → row 1 "PP7KG-1", row 2 "PP7KG-2".
+        // Kalau cuma 1 row, tidak perlu suffix.
+        ...(bulkSku
+          ? {
+              sku:
+                prev.length > 1 ? `${bulkSku.trim()}-${idx + 1}` : bulkSku.trim(),
+            }
+          : {}),
         ...(bulkWeight ? { weightGram: bulkWeight } : {}),
-      }))
+      })),
     );
     setBulkPrice("");
     setBulkStock("");
@@ -660,7 +671,8 @@ export function VariantEditor({
                     type="text"
                     value={bulkSku}
                     onChange={(e) => setBulkSku(e.target.value.toUpperCase())}
-                    placeholder="Kode SKU"
+                    placeholder="Kode SKU (auto -1, -2, ...)"
+                    title="SKU harus unik per varian — auto-suffix dengan index"
                     className="w-full flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-natalo-600"
                   />
                   <input

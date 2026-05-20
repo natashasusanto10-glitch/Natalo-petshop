@@ -138,14 +138,33 @@ export function NewProductForm({ categories, brands }: Props) {
       });
       const data = await res.json();
       if (!res.ok) {
-        // Surface DETAIL field errors dari server ke admin supaya tahu
-        // apa yang salah. Sebelumnya cuma show "Payload varian tidak
-        // valid" yang generic.
+        // Surface DETAIL field errors dari server. Prioritas:
+        // 1. issues[] dengan FULL path (mis. "variants.1.sku") — paling
+        //    detail, support nested errors dari Zod superRefine
+        // 2. fields object — fallback untuk top-level errors
+        if (Array.isArray(data.issues) && data.issues.length > 0) {
+          // Deduplicate by message (mis. "SKU tidak boleh duplikat"
+          // muncul untuk 2 row → tampilkan sekali).
+          const seen = new Set<string>();
+          const lines: string[] = [];
+          for (const issue of data.issues as Array<{
+            path: string;
+            message: string;
+          }>) {
+            const key = `${issue.path}::${issue.message}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            lines.push(`• ${humanizePath(issue.path)}: ${issue.message}`);
+          }
+          throw new Error(
+            `${data.error ?? "Validasi gagal"}\n${lines.join("\n")}`,
+          );
+        }
         if (data.fields && typeof data.fields === "object") {
           const fieldErrors: string[] = [];
           for (const [key, val] of Object.entries(data.fields)) {
             if (Array.isArray(val) && val.length > 0) {
-              fieldErrors.push(`${humanizeField(key)}: ${val.join(", ")}`);
+              fieldErrors.push(`• ${humanizeField(key)}: ${val.join(", ")}`);
             }
           }
           if (fieldErrors.length > 0) {
@@ -170,8 +189,8 @@ export function NewProductForm({ categories, brands }: Props) {
     }
   }
 
-  /** Translate field key (mis. "attributes", "variants.0.price") ke
-   *  label Indonesia yang lebih mudah dipahami admin. */
+  /** Translate field key (mis. "attributes", "variants") ke label
+   *  Indonesia. Dipakai sebagai fallback dari fields object server. */
   function humanizeField(key: string): string {
     const map: Record<string, string> = {
       name: "Nama produk",
@@ -185,6 +204,23 @@ export function NewProductForm({ categories, brands }: Props) {
       hasVariants: "Varian aktif",
     };
     return map[key] ?? key;
+  }
+
+  /** Translate Zod path (mis. "variants.1.sku") ke label admin-friendly.
+   *  Dot-separated path → komponen → mapped label. Index numeric jadi
+   *  "(row #N+1)" supaya admin tahu varian mana yang bermasalah. */
+  function humanizePath(path: string): string {
+    const parts = path.split(".");
+    const segments: string[] = [];
+    for (const part of parts) {
+      if (/^\d+$/.test(part)) {
+        // Index numeric → "row #N+1" (1-indexed display)
+        segments.push(`(varian #${parseInt(part, 10) + 1})`);
+      } else {
+        segments.push(humanizeField(part));
+      }
+    }
+    return segments.join(" ");
   }
 
   return (
