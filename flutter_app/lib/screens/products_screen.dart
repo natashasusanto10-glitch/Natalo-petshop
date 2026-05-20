@@ -143,10 +143,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
         _filter.category == null &&
         _filter.brand == null &&
         _filter.sort == ProductSort.newest &&
-        // inStockOnly default sekarang `false` (lihat ProductCatalogFilter
-        // constructor) — cek `!inStockOnly` supaya "default state" ke-detect
-        // dengan benar.
-        !_filter.inStockOnly &&
+        _filter.inStockOnly &&
         !_filter.discountOnly &&
         !_filter.withImageOnly;
   }
@@ -2422,12 +2419,20 @@ class ProductCatalogFilter {
     this.category,
     this.brand,
     this.sort = ProductSort.newest,
-    // BUG FIX: default `true` bikin produk stok 0 ke-hide dari customer.
-    // Newly created products sering stok 0 (admin belum isi) → tidak
-    // muncul di halaman user. Sekarang default false: tampilkan semua
-    // produk + UI handle stok 0 dengan badge "Habis". Admin/customer
-    // bisa toggle filter ini di filter sheet kalau mau hide habis.
-    this.inStockOnly = false,
+    // Default `true` — customer tidak lihat produk stok habis di katalog.
+    // Behavior e-commerce standar (Shopee, Tokopedia): produk habis
+    // di-hide dari list/search.
+    //
+    // Exception (accessible by URL):
+    //  - Admin: dapat akses semua produk via /admin/products
+    //  - User yang pernah beli: lihat produk via daftar pesanan
+    //    (order detail page → klik produk → product detail tetap
+    //    accessible terlepas stok)
+    //
+    // Newly created products dengan stok=0 sengaja tidak tampil sampai
+    // admin isi stok. Admin perlu set stock saat create produk supaya
+    // langsung visible.
+    this.inStockOnly = true,
     this.discountOnly = false,
     this.withImageOnly = false,
     this.minPrice,
@@ -2805,10 +2810,7 @@ class _FilterSheetState extends State<_FilterSheet> {
       _priceRange = RangeValues(0, widget.priceMaxBound);
       _selectedBrands = {};
       _minRating = 0;
-      // Default `false` — consistent dengan ProductCatalogFilter default.
-      // Sebelumnya `true` di sini → reset bikin produk stok 0 di-hide
-      // lagi padahal default global sudah diubah ke false.
-      _inStockOnly = false;
+      _inStockOnly = true;
       _discountOnly = false;
     });
   }
