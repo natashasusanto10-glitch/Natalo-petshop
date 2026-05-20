@@ -58,3 +58,94 @@ export async function GET(request: NextRequest) {
     total,
   });
 }
+
+/**
+ * POST /api/admin/products
+ *
+ * Buat produk baru. Dipakai oleh flutter_admin "Tambah Produk Baru" form.
+ *
+ * Body: {name, price, stock, description?, imageUrl?, weightGram?,
+ *        categoryId?, brandId?, isActive?}
+ *
+ * Auto-generate `slug` dari nama (slugify). Kalau slug tabrakan, append
+ * suffix random 4 char.
+ */
+export async function POST(request: NextRequest) {
+  const session = await getSession("ADMIN");
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = (await request.json().catch(() => null)) as
+    | {
+        name?: string;
+        description?: string;
+        price?: number;
+        stock?: number;
+        weightGram?: number;
+        imageUrl?: string;
+        categoryId?: string;
+        brandId?: string;
+        isActive?: boolean;
+      }
+    | null;
+
+  if (!body || typeof body.name !== "string" || !body.name.trim()) {
+    return NextResponse.json(
+      { error: "Nama produk wajib diisi" },
+      { status: 400 },
+    );
+  }
+  if (typeof body.price !== "number" || body.price < 0) {
+    return NextResponse.json(
+      { error: "Harga harus angka >= 0" },
+      { status: 400 },
+    );
+  }
+
+  // Slugify nama → lowercase, hyphen, alphanumeric only.
+  const baseSlug = body.name
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+
+  // Cek konflik slug, append random 4 char kalau tabrakan.
+  let slug = baseSlug;
+  const existing = await prisma.product.findUnique({ where: { slug } });
+  if (existing) {
+    const suffix = Math.random().toString(36).slice(2, 6);
+    slug = `${baseSlug}-${suffix}`;
+  }
+
+  const product = await prisma.product.create({
+    data: {
+      name: body.name.trim(),
+      slug,
+      description: body.description?.trim() ?? "",
+      price: Math.round(body.price),
+      stock: body.stock && body.stock >= 0 ? Math.round(body.stock) : 0,
+      weightGram:
+        body.weightGram && body.weightGram > 0
+          ? Math.round(body.weightGram)
+          : 500,
+      imageUrl: body.imageUrl?.trim() || null,
+      categoryId: body.categoryId?.trim() || null,
+      brandId: body.brandId?.trim() || null,
+      isActive: body.isActive !== false,
+    },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      price: true,
+      stock: true,
+      imageUrl: true,
+    },
+  });
+
+  return NextResponse.json(product, { status: 201 });
+}

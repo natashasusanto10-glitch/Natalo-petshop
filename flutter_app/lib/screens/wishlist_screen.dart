@@ -448,75 +448,79 @@ class _WishlistEmptyCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+      padding: const EdgeInsets.fromLTRB(18, 20, 18, 22),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFDDE8F8)),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: const Color(0xFFD9E7FF),
+          width: 1.2,
+        ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF111111).withValues(alpha: 0.04),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
+            color: Colors.black.withValues(alpha: 0.045),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
       child: Column(
         children: [
           const _WishlistIllustration(),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
           const Text(
             'Wishlist kamu masih kosong',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Color(0xFF17202A),
-              fontSize: 18,
+              color: Color(0xFF0F172A),
+              fontSize: 24,
+              height: 1.18,
               fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 8),
-            child: Text(
-              'Simpan makanan, vitamin, pasir, atau perlengkapan favorit agar mudah dibeli lagi nanti.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Color(0xFF6B7280),
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                height: 1.5,
-              ),
+              letterSpacing: -0.3,
             ),
           ),
           const SizedBox(height: 10),
           const Text(
+            'Simpan makanan, vitamin, pasir, atau perlengkapan\nfavorit agar mudah dibeli lagi nanti.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Color(0xFF64748B),
+              fontSize: 16,
+              height: 1.45,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
             'Tekan ikon hati pada produk yang kamu suka.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Color(0xFF9CA3AF),
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+              color: Color(0xFF98A2B3),
+              fontSize: 15,
+              height: 1.35,
+              fontWeight: FontWeight.w500,
             ),
           ),
-          const SizedBox(height: 18),
-          ElevatedButton(
-            onPressed: onExploreProducts,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _brandBlue,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 28,
-                vertical: 14,
+          const SizedBox(height: 22),
+          SizedBox(
+            width: double.infinity,
+            height: 56,
+            child: ElevatedButton(
+              onPressed: onExploreProducts,
+              style: ElevatedButton.styleFrom(
+                elevation: 0,
+                backgroundColor: _brandBlue,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(28),
+                ),
               ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(999),
-              ),
-            ),
-            child: const Text(
-              'Jelajahi Produk',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
+              child: const Text(
+                'Jelajahi Produk',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
             ),
           ),
@@ -602,81 +606,53 @@ class _LookAgainFooter extends StatelessWidget {
   }
 }
 
-/// Wishlist illustration: heart icon dengan pet emoji di sekeliling.
+/// Wishlist illustration: same petshop family as empty cart, but with a clear
+/// wishlist heart marker on the Natalo bag.
 class _WishlistIllustration extends StatelessWidget {
   const _WishlistIllustration();
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 130,
-      child: Stack(
-        alignment: Alignment.center,
-        clipBehavior: Clip.none,
-        children: [
-          Container(
-            height: 130,
-            width: 200,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  const Color(0xFFFFE4E6).withValues(alpha: 0.50),
-                  _brandBlue.withValues(alpha: 0.06),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(28),
-            ),
-          ),
-          const Positioned(
-            left: 8,
-            top: 18,
-            child: Text('🐱', style: TextStyle(fontSize: 38)),
-          ),
-          const Positioned(
-            top: 0,
-            child: Text('🐶', style: TextStyle(fontSize: 44)),
-          ),
-          const Positioned(
-            right: 8,
-            top: 18,
-            child: Text('🐰', style: TextStyle(fontSize: 38)),
-          ),
-          const Positioned(
-            left: 30,
-            bottom: 4,
-            child: Text('🐠', style: TextStyle(fontSize: 30)),
-          ),
-          const Positioned(
-            right: 28,
-            bottom: 6,
-            child: Text('🐹', style: TextStyle(fontSize: 32)),
-          ),
-          Positioned(
-            bottom: 18,
-            child: Container(
-              height: 62,
-              width: 62,
-              decoration: BoxDecoration(
-                color: const Color(0xFFEF4444),
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFFEF4444).withValues(alpha: 0.32),
-                    blurRadius: 14,
-                    offset: const Offset(0, 6),
+      height: 245,
+      width: double.infinity,
+      child: Center(
+        child: AspectRatio(
+          aspectRatio: 640 / 335,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth;
+              final height = constraints.maxHeight;
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.asset(
+                    'assets/images/empty_wishlist_natalo.png',
+                    fit: BoxFit.contain,
+                  ),
+                  Positioned(
+                    left: width * 0.43,
+                    top: height * 0.54,
+                    child: Container(
+                      width: width * 0.15,
+                      height: width * 0.13,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0475D8).withValues(alpha: 0.88),
+                        borderRadius: BorderRadius.circular(width * 0.04),
+                      ),
+                      child: Icon(
+                        Icons.favorite_rounded,
+                        color: Colors.white,
+                        size: width * 0.13,
+                      ),
+                    ),
                   ),
                 ],
-              ),
-              child: const Icon(
-                Icons.favorite_rounded,
-                color: Colors.white,
-                size: 32,
-              ),
-            ),
+              );
+            },
           ),
-        ],
+        ),
       ),
     );
   }

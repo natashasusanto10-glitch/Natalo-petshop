@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/member_profile.dart';
@@ -81,51 +80,6 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
   Future<void> _refreshOrder() async {
     setState(() => _orderFuture = _loadOrder());
     await _orderFuture;
-  }
-
-  /// Share order via native share sheet — kirim summary order ke kontak/
-  /// app lain (mis. WhatsApp customer service untuk komplain, atau ke
-  /// keluarga buat pamer haha). PWA pakai navigator.share yang patchy
-  /// di Android WebView. Native share_plus jauh lebih reliable.
-  Future<void> _shareOrder() async {
-    AppHaptics.tap();
-    final order = _order;
-    final url = 'https://natalopetshop.com/akun/pesanan/${order.orderNumber}';
-    final summary = StringBuffer()
-      ..writeln('🐾 Pesanan Natalo Petshop')
-      ..writeln('No. ${order.orderNumber}')
-      ..writeln('Status: ${_statusReadable(order.status)}')
-      ..writeln('Total: ${formatRupiah(order.total)}')
-      ..writeln()
-      ..writeln('Track: $url');
-    try {
-      await Share.share(
-        summary.toString(),
-        subject: 'Pesanan Natalo #${order.orderNumber}',
-      );
-    } catch (_) {
-      // Silent fail — share adalah opsional, jangan blokir flow.
-    }
-  }
-
-  String _statusReadable(String status) {
-    switch (status.toUpperCase()) {
-      case 'UNPAID':
-      case 'PENDING':
-        return 'Menunggu pembayaran';
-      case 'PAID':
-        return 'Sudah dibayar';
-      case 'PROCESSING':
-        return 'Sedang diproses';
-      case 'SHIPPED':
-        return 'Dalam pengiriman';
-      case 'DELIVERED':
-        return 'Selesai';
-      case 'CANCELLED':
-        return 'Dibatalkan';
-      default:
-        return status;
-    }
   }
 
   Future<void> _confirmCancel(BuildContext context, OrderSummary order) async {
@@ -284,15 +238,6 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
         return Scaffold(
           appBar: AppBar(
             title: const Text('Detail Pesanan'),
-            actions: [
-              // Native share — kirim ringkasan pesanan via WhatsApp/Telegram/
-              // dll. PWA tidak punya akses share sheet yang reliable.
-              IconButton(
-                onPressed: _shareOrder,
-                tooltip: 'Bagikan pesanan',
-                icon: const Icon(Icons.ios_share_rounded),
-              ),
-            ],
           ),
           body: NataloPawRefreshIndicator(
             onRefresh: _refreshOrder,

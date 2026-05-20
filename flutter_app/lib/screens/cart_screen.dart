@@ -531,15 +531,10 @@ class _CartScreenState extends State<CartScreen> {
       }
 
       _isManualVoucherSelected = true;
-      _manualVoucherCode = picked.code;
-      if (picked.type == _CartVoucherType.discount) {
-        _appliedDiscountVoucher = picked.discountVoucher;
-        _appliedShippingVoucher = _shippingVoucherEligible;
-      } else {
-        _appliedShippingVoucher = true;
-        _appliedDiscountVoucher =
-            _bestDiscountVoucher(_availableDiscountVouchers);
-      }
+      _manualVoucherCode = picked.discountVoucher?.code ?? picked.shippingCode;
+      _appliedDiscountVoucher = picked.discountVoucher;
+      _appliedShippingVoucher =
+          picked.shippingSelected && _shippingVoucherEligible;
     });
   }
 
@@ -1141,8 +1136,7 @@ class _CartItemCard extends StatelessWidget {
                                       ),
                                       decoration: BoxDecoration(
                                         color: const Color(0xFFFEE2E2),
-                                        borderRadius:
-                                            BorderRadius.circular(6),
+                                        borderRadius: BorderRadius.circular(6),
                                       ),
                                       child: Text(
                                         '$discountPercent%',
@@ -1464,8 +1458,7 @@ class _CartVariantPickerSheetState extends State<_CartVariantPickerSheet> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: _brandBlue,
                               foregroundColor: Colors.white,
-                              disabledBackgroundColor:
-                                  const Color(0xFFCBD5E1),
+                              disabledBackgroundColor: const Color(0xFFCBD5E1),
                               elevation: 0,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(14),
@@ -1815,8 +1808,6 @@ void _showCartDeleteSnackBar(
   );
 }
 
-enum _CartVoucherType { discount, shipping }
-
 bool _isCartShippingVoucherData(MemberVoucher voucher) {
   if (voucher.code == _shippingVoucherCode) return true;
   if (voucher.isFreeShipping || voucher.isShippingDiscount) return true;
@@ -1864,30 +1855,27 @@ MemberVoucher? _findSheetVoucherByCode(
 }
 
 class _CartVoucherChoice {
-  final _CartVoucherType? type;
-  final String? code;
+  final String? shippingCode;
   final MemberVoucher? discountVoucher;
+  final bool shippingSelected;
   final bool remove;
 
   const _CartVoucherChoice._({
-    this.type,
-    this.code,
+    this.shippingCode,
     this.discountVoucher,
+    this.shippingSelected = false,
     this.remove = false,
   });
 
-  factory _CartVoucherChoice.discount(MemberVoucher voucher) {
+  factory _CartVoucherChoice.combined({
+    required MemberVoucher? discountVoucher,
+    required bool shippingSelected,
+    String? shippingCode,
+  }) {
     return _CartVoucherChoice._(
-      type: _CartVoucherType.discount,
-      code: voucher.code,
-      discountVoucher: voucher,
-    );
-  }
-
-  factory _CartVoucherChoice.shipping({String? code}) {
-    return _CartVoucherChoice._(
-      type: _CartVoucherType.shipping,
-      code: code ?? _shippingVoucherCode,
+      shippingCode: shippingCode,
+      discountVoucher: discountVoucher,
+      shippingSelected: shippingSelected,
     );
   }
 
@@ -1922,31 +1910,26 @@ class _StickyVoucherBar extends StatelessWidget {
     final hasDiscount = discountVoucher != null && discountAmount > 0;
     final hasShipping = shippingSelected && shippingDiscount > 0;
     final hasSaving = hasSelection && totalSaving > 0;
-    final chipText = hasDiscount
-        ? 'Diskon ${formatRupiah(discountAmount)}'
-        : hasShipping
-            ? 'Gratis Ongkir'
-            : loading
-                ? 'Cek...'
-                : 'Pilih';
-    final chipColor = hasDiscount
-        ? _discountRed
-        : hasShipping
-            ? _shippingGreen
+    final leadingColor = hasShipping
+        ? _shippingGreen
+        : hasDiscount
+            ? _discountRed
             : _brandBlue;
-    final chipBackground = hasDiscount
-        ? _discountRedSoft
-        : hasShipping
-            ? _shippingGreenSoft
+    final leadingBackground = hasShipping
+        ? _shippingGreenSoft
+        : hasDiscount
+            ? _discountRedSoft
             : const Color(0xFFEAF5FF);
-    final chipBorder = hasDiscount
-        ? _discountRedBorder
-        : hasShipping
-            ? _shippingGreenBorder
+    final leadingBorder = hasShipping
+        ? _shippingGreenBorder
+        : hasDiscount
+            ? _discountRedBorder
             : const Color(0xFFBFDBFE);
-    final chipIcon = hasShipping && !hasDiscount
+    final leadingIcon = hasShipping
         ? Icons.local_shipping_outlined
-        : Icons.local_offer_rounded;
+        : hasDiscount
+            ? Icons.local_offer_rounded
+            : Icons.confirmation_number_rounded;
     final subtitle = !hasSelection
         ? 'Pilih produk untuk cek promo'
         : loading
@@ -1975,13 +1958,13 @@ class _StickyVoucherBar extends StatelessWidget {
                   width: 36,
                   height: 36,
                   decoration: BoxDecoration(
-                    color: chipBackground,
+                    color: leadingBackground,
                     borderRadius: BorderRadius.circular(13),
-                    border: Border.all(color: chipBorder),
+                    border: Border.all(color: leadingBorder),
                   ),
                   child: Icon(
-                    chipIcon,
-                    color: chipColor,
+                    leadingIcon,
+                    color: leadingColor,
                     size: 19,
                   ),
                 ),
@@ -2016,12 +1999,12 @@ class _StickyVoucherBar extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                _VoucherMiniChip(
-                  text: chipText,
-                  color: chipColor,
-                  background: chipBackground,
-                  border: chipBorder,
-                  icon: chipIcon,
+                _VoucherBenefitChips(
+                  hasShipping: hasShipping,
+                  shippingText: 'Gratis Ongkir',
+                  hasDiscount: hasDiscount,
+                  discountText: '-${formatRupiah(discountAmount)}',
+                  loading: loading,
                 ),
                 const SizedBox(width: 2),
                 Icon(
@@ -2034,6 +2017,71 @@ class _StickyVoucherBar extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _VoucherBenefitChips extends StatelessWidget {
+  final bool hasShipping;
+  final String shippingText;
+  final bool hasDiscount;
+  final String discountText;
+  final bool loading;
+
+  const _VoucherBenefitChips({
+    required this.hasShipping,
+    required this.shippingText,
+    required this.hasDiscount,
+    required this.discountText,
+    required this.loading,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final chips = <Widget>[];
+    if (hasShipping) {
+      chips.add(
+        _VoucherMiniChip(
+          text: shippingText,
+          color: _shippingGreen,
+          background: _shippingGreenSoft,
+          border: _shippingGreenBorder,
+          icon: Icons.local_shipping_outlined,
+        ),
+      );
+    }
+    if (hasDiscount) {
+      if (chips.isNotEmpty) chips.add(const SizedBox(width: 6));
+      chips.add(
+        _VoucherMiniChip(
+          text: discountText,
+          color: _discountRed,
+          background: _discountRedSoft,
+          border: _discountRedBorder,
+          icon: Icons.local_offer_rounded,
+        ),
+      );
+    }
+    if (chips.isEmpty) {
+      chips.add(
+        _VoucherMiniChip(
+          text: loading ? 'Cek...' : 'Pilih',
+          color: _brandBlue,
+          background: const Color(0xFFEAF5FF),
+          border: const Color(0xFFBFDBFE),
+          icon: Icons.confirmation_number_rounded,
+        ),
+      );
+    }
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 178),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        reverse: true,
+        physics: const NeverScrollableScrollPhysics(),
+        child: Row(mainAxisSize: MainAxisSize.min, children: chips),
       ),
     );
   }
@@ -2110,8 +2158,7 @@ class _CartVoucherSheet extends StatefulWidget {
 }
 
 class _CartVoucherSheetState extends State<_CartVoucherSheet> {
-  _CartVoucherType? _selectedType;
-  String? _selectedCode;
+  String? _selectedShippingCode;
   MemberVoucher? _selectedDiscount;
 
   @override
@@ -2123,55 +2170,57 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
         widget.selectedDiscountCode!,
       );
       if (selectedVoucher != null && _isCartShippingVoucher(selectedVoucher)) {
-        _selectedType = _CartVoucherType.shipping;
-        _selectedCode = selectedVoucher.code;
-        return;
-      }
-
-      _selectedType = _CartVoucherType.discount;
-      _selectedCode = widget.selectedDiscountCode;
-      for (final voucher in widget.availableDiscounts) {
-        if (voucher.code == widget.selectedDiscountCode) {
-          _selectedDiscount = voucher;
-          break;
+        _selectedShippingCode = selectedVoucher.code;
+      } else {
+        for (final voucher in widget.availableDiscounts) {
+          if (voucher.code == widget.selectedDiscountCode) {
+            _selectedDiscount = voucher;
+            break;
+          }
         }
       }
-    } else if (widget.shippingSelected) {
-      _selectedType = _CartVoucherType.shipping;
-      _selectedCode = widget.selectedShippingCode ?? _shippingVoucherCode;
     }
+
+    if (widget.shippingSelected) {
+      _selectedShippingCode ??=
+          widget.selectedShippingCode ?? _firstAvailableShippingCode();
+    }
+  }
+
+  String? _firstAvailableShippingCode() {
+    for (final voucher in widget.availableDiscounts) {
+      if (_isCartShippingVoucher(voucher)) return voucher.code;
+    }
+    return widget.shippingEligible ? _shippingVoucherCode : null;
   }
 
   void _pickDiscount(MemberVoucher voucher) {
     setState(() {
-      _selectedType = _CartVoucherType.discount;
-      _selectedCode = voucher.code;
-      _selectedDiscount = voucher;
+      if (_selectedDiscount?.code == voucher.code) {
+        _selectedDiscount = null;
+      } else {
+        _selectedDiscount = voucher;
+      }
     });
   }
 
   void _pickShipping([String? code]) {
+    final nextCode = code ?? _shippingVoucherCode;
     setState(() {
-      _selectedType = _CartVoucherType.shipping;
-      _selectedCode = code ?? _shippingVoucherCode;
-      _selectedDiscount = null;
+      _selectedShippingCode =
+          _selectedShippingCode == nextCode ? null : nextCode;
     });
   }
 
   void _applySelection() {
-    if (_selectedType == _CartVoucherType.discount &&
-        _selectedDiscount != null) {
-      Navigator.pop(context, _CartVoucherChoice.discount(_selectedDiscount!));
-      return;
-    }
-    if (_selectedType == _CartVoucherType.shipping &&
-        (_selectedCode != null || widget.shippingEligible)) {
-      Navigator.pop(
-        context,
-        _CartVoucherChoice.shipping(code: _selectedCode),
-      );
-      return;
-    }
+    Navigator.pop(
+      context,
+      _CartVoucherChoice.combined(
+        discountVoucher: _selectedDiscount,
+        shippingSelected: _selectedShippingCode != null,
+        shippingCode: _selectedShippingCode,
+      ),
+    );
   }
 
   @override
@@ -2262,7 +2311,7 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                         accent: _shippingGreen,
                         background: _shippingGreenSoft,
                         border: _shippingGreenBorder,
-                        selected: _selectedCode == _shippingVoucherCode,
+                        selected: _selectedShippingCode == _shippingVoucherCode,
                         enabled: true,
                         onTap: _pickShipping,
                       ),
@@ -2283,7 +2332,7 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                         accent: _shippingGreen,
                         background: _shippingGreenSoft,
                         border: _shippingGreenBorder,
-                        selected: _selectedCode == voucher.code,
+                        selected: _selectedShippingCode == voucher.code,
                         enabled: true,
                         onTap: () => _pickShipping(voucher.code),
                       ),
@@ -2299,7 +2348,7 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                         accent: _discountRed,
                         background: _discountRedSoft,
                         border: _discountRedBorder,
-                        selected: _selectedCode == voucher.code,
+                        selected: _selectedDiscount?.code == voucher.code,
                         enabled: true,
                         onTap: () => _pickDiscount(voucher),
                       ),
@@ -2385,7 +2434,10 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: FilledButton(
-                      onPressed: _selectedCode == null ? null : _applySelection,
+                      onPressed: _selectedDiscount == null &&
+                              _selectedShippingCode == null
+                          ? null
+                          : _applySelection,
                       style: FilledButton.styleFrom(
                         backgroundColor: _brandBlue,
                         foregroundColor: Colors.white,

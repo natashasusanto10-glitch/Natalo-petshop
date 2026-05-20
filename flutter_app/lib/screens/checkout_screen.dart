@@ -303,6 +303,52 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     });
   }
 
+  Future<void> _openAddressSelectionPage() async {
+    AppHaptics.tap();
+    await Navigator.pushNamed(context, '/member/addresses');
+    if (!mounted) return;
+
+    setState(() {
+      _loadingRates = true;
+      _shippingMessage = null;
+    });
+
+    try {
+      final previousAddressId = _selectedAddress?.id;
+      final addresses = await memberService.fetchAddresses();
+      if (!mounted) return;
+
+      if (addresses.isEmpty) {
+        setState(() {
+          _addresses = const [];
+          _selectedAddress = null;
+          _shippingRates = const [ShippingRate.selfPickup];
+          _selectedRate = ShippingRate.selfPickup;
+          _loadingRates = false;
+        });
+        await _syncCheckoutPricing(autoApply: !_autoVoucherSuppressed);
+        return;
+      }
+
+      final selectedAddress = addresses.firstWhere(
+        (address) => address.isPrimary,
+        orElse: () => addresses.firstWhere(
+          (address) => address.id == previousAddressId,
+          orElse: () => addresses.first,
+        ),
+      );
+
+      setState(() => _addresses = addresses);
+      _selectAddress(selectedAddress);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _loadingRates = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Alamat gagal diperbarui: $error')),
+      );
+    }
+  }
+
   String get _paymentProvider => _payment == 'Midtrans' ? 'MIDTRANS' : 'MANUAL';
 
   List<Map<String, dynamic>> _checkoutItemPayload() {
@@ -888,9 +934,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                     children: [
                       _CheckoutAddressCard(
-                        addresses: _addresses,
                         selected: _selectedAddress,
-                        onChanged: _selectAddress,
+                        onTap: _openAddressSelectionPage,
                       ),
                       const SizedBox(height: 12),
                       _CheckoutProductsSummaryCard(
@@ -1669,20 +1714,18 @@ class _ShippingIconFallback extends StatelessWidget {
 }
 
 class _CheckoutAddressCard extends StatelessWidget {
-  final List<MemberAddress> addresses;
   final MemberAddress? selected;
-  final ValueChanged<MemberAddress> onChanged;
+  final VoidCallback onTap;
 
   const _CheckoutAddressCard({
-    required this.addresses,
     required this.selected,
-    required this.onChanged,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return _CheckoutCardShell(
-      onTap: addresses.length <= 1 ? null : () => _showAddressSheet(context),
+      onTap: onTap,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1750,46 +1793,6 @@ class _CheckoutAddressCard extends StatelessWidget {
           const Icon(Icons.chevron_right_rounded, color: Color(0xFF98A2B3)),
         ],
       ),
-    );
-  }
-
-  void _showAddressSheet(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) {
-        return SafeArea(
-          child: ListView.separated(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
-            itemCount: addresses.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
-            itemBuilder: (context, index) {
-              final address = addresses[index];
-              final active = address.id == selected?.id;
-              return ListTile(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
-                  side: BorderSide(
-                    color: active ? _brandBlue : const Color(0xFFE5E7EB),
-                  ),
-                ),
-                leading: Icon(
-                  active
-                      ? Icons.radio_button_checked_rounded
-                      : Icons.radio_button_off_rounded,
-                  color: active ? _brandBlue : const Color(0xFFE5E7EB),
-                ),
-                title: Text(address.label ?? 'Alamat'),
-                subtitle: Text('${address.recipient} - ${address.address}'),
-                onTap: () {
-                  onChanged(address);
-                  Navigator.pop(context);
-                },
-              );
-            },
-          ),
-        );
-      },
     );
   }
 }
