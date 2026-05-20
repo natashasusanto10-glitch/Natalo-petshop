@@ -97,34 +97,38 @@ const variantInclude = {
   },
 };
 
-const productListInclude = {
-  category: { select: { id: true, slug: true } },
-  variants: {
-    where: { deletedAt: null, isActive: true },
-    select: { id: true, price: true, stock: true },
-  },
-  // Active Promo Toko items untuk produk ini. Filter inline supaya
-  // tidak perlu post-process di mapper. Include discount.endsAt untuk
-  // priority calculation di resolveActiveDiscount.
-  discountItems: {
-    where: {
-      isItemActive: true,
-      discount: {
-        isActive: true,
-        startsAt: { lte: new Date() },
-        endsAt: { gt: new Date() },
+// BUG FIX: sebelumnya productListInclude adalah const dengan
+// `new Date()` di dalamnya — dievaluasi SEKALI saat module load,
+// jadi promo yang dibuat setelah deploy tidak match. Sekarang wrap
+// di function supaya `new Date()` fresh per call.
+function getProductListInclude() {
+  const now = new Date();
+  return {
+    category: { select: { id: true, slug: true } },
+    variants: {
+      where: { deletedAt: null, isActive: true },
+      select: { id: true, price: true, stock: true },
+    },
+    discountItems: {
+      where: {
+        isItemActive: true,
+        discount: {
+          isActive: true,
+          startsAt: { lte: now },
+          endsAt: { gt: now },
+        },
+      },
+      select: {
+        variantId: true,
+        discountedPrice: true,
+        discount: { select: { endsAt: true } },
       },
     },
-    select: {
-      variantId: true,
-      discountedPrice: true,
-      discount: { select: { endsAt: true } },
-    },
-  },
-} satisfies Prisma.ProductInclude;
+  } satisfies Prisma.ProductInclude;
+}
 
 type ProductListRecord = Prisma.ProductGetPayload<{
-  include: typeof productListInclude;
+  include: ReturnType<typeof getProductListInclude>;
 }>;
 
 function mapProductListRecord(p: ProductListRecord): StoreProduct {
@@ -673,7 +677,7 @@ export async function getProducts(opts?: {
       const order = new Map(productIds.map((id, index) => [id, index]));
       const products = await prisma.product.findMany({
         where: { id: { in: productIds } },
-        include: productListInclude,
+        include: getProductListInclude(),
       });
 
       return withProductListMeta(
@@ -695,7 +699,7 @@ export async function getProducts(opts?: {
       const order = new Map(productIds.map((id, index) => [id, index]));
       const products = await prisma.product.findMany({
         where: { id: { in: productIds } },
-        include: productListInclude,
+        include: getProductListInclude(),
       });
 
       return withProductListMeta(
@@ -732,7 +736,7 @@ export async function getProducts(opts?: {
       const order = new Map(ids.map((id, index) => [id, index]));
       const products = await prisma.product.findMany({
         where: { id: { in: ids } },
-        include: productListInclude,
+        include: getProductListInclude(),
       });
 
       return withProductListMeta(
@@ -753,7 +757,7 @@ export async function getProducts(opts?: {
       orderBy: buildOrderBy(newFilter, popularFilter),
       take,
       skip,
-      include: productListInclude,
+      include: getProductListInclude(),
     });
 
     if (!products.length) {

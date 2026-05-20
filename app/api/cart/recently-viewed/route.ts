@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
       ...cartRecommendationWhere(excludeIds),
       id: { in: productIds },
     },
-    include: cartRecommendationProductInclude,
+    include: cartRecommendationProductInclude(),
   });
   const order = new Map(productIds.map((id, index) => [id, index]));
   const data = products

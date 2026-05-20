@@ -148,7 +148,7 @@ export async function GET(request: NextRequest) {
   if (ruleIds.length > 0) {
     const manualProducts = await prisma.product.findMany({
       where: { AND: [cartRecommendationWhere(excludeIds), { id: { in: ruleIds } }] },
-      include: cartRecommendationProductInclude,
+      include: cartRecommendationProductInclude(),
     });
     const order = new Map(ruleIds.map((id, index) => [id, index]));
     pushUnique(
@@ -173,7 +173,7 @@ export async function GET(request: NextRequest) {
       },
       orderBy: [{ reviewCount: "desc" }, { avgRating: "desc" }, { createdAt: "desc" }],
       take: take - products.length,
-      include: cartRecommendationProductInclude,
+      include: cartRecommendationProductInclude(),
     });
     pushUnique(products, complementary, seen);
   }
@@ -209,7 +209,7 @@ export async function GET(request: NextRequest) {
         },
         orderBy: [{ reviewCount: "desc" }, { avgRating: "desc" }, { createdAt: "desc" }],
         take: take - products.length,
-        include: cartRecommendationProductInclude,
+        include: cartRecommendationProductInclude(),
       });
       pushUnique(products, personalProducts, seen);
     }
@@ -220,7 +220,7 @@ export async function GET(request: NextRequest) {
       where: cartRecommendationWhere([...seen]),
       orderBy: [{ reviewCount: "desc" }, { avgRating: "desc" }, { createdAt: "desc" }],
       take: take - products.length,
-      include: cartRecommendationProductInclude,
+      include: cartRecommendationProductInclude(),
     });
     pushUnique(products, fallback, seen);
   }

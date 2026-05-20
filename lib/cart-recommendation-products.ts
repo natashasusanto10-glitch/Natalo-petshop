@@ -1,21 +1,42 @@
 import type { Prisma } from "@prisma/client";
+import { resolveActiveDiscount } from "@/lib/product-pricing";
 
-export const cartRecommendationProductInclude = {
-  category: { select: { id: true, name: true, slug: true } },
-  brand: { select: { id: true, name: true, slug: true } },
-  variantAttrs: {
-    orderBy: { position: "asc" as const },
-    include: { options: { orderBy: { position: "asc" as const } } },
-  },
-  variants: {
-    where: { deletedAt: null, isActive: true },
-    include: { options: { select: { optionId: true } } },
-    orderBy: { createdAt: "asc" as const },
-  },
-};
+// BUG FIX: dulu const dengan `new Date()` di module load level — sekarang
+// wrap di function supaya fresh per call (sama pattern dengan lib/products.ts).
+export function cartRecommendationProductInclude() {
+  const now = new Date();
+  return {
+    category: { select: { id: true, name: true, slug: true } },
+    brand: { select: { id: true, name: true, slug: true } },
+    variantAttrs: {
+      orderBy: { position: "asc" as const },
+      include: { options: { orderBy: { position: "asc" as const } } },
+    },
+    variants: {
+      where: { deletedAt: null, isActive: true },
+      include: { options: { select: { optionId: true } } },
+      orderBy: { createdAt: "asc" as const },
+    },
+    discountItems: {
+      where: {
+        isItemActive: true,
+        discount: {
+          isActive: true,
+          startsAt: { lte: now },
+          endsAt: { gt: now },
+        },
+      },
+      select: {
+        variantId: true,
+        discountedPrice: true,
+        discount: { select: { endsAt: true } },
+      },
+    },
+  } satisfies Prisma.ProductInclude;
+}
 
 export type CartRecommendationProductRow = Prisma.ProductGetPayload<{
-  include: typeof cartRecommendationProductInclude;
+  include: ReturnType<typeof cartRecommendationProductInclude>;
 }>;
 
 export function cartRecommendationWhere(excludeIds: string[] = []): Prisma.ProductWhereInput {
@@ -36,11 +57,44 @@ export function cartRecommendationWhere(excludeIds: string[] = []): Prisma.Produ
 
 export function effectiveProductPrice(product: CartRecommendationProductRow) {
   if (product.hasVariants && product.variants.length > 0) {
-    return Math.min(...product.variants.map((variant) => variant.price));
+    // Per-variant pricing dengan resolveActiveDiscount.
+    const variantPrices = product.variants.map((v) => {
+      const variantPromoItems = product.discountItems
+        .filter((it) => it.variantId === v.id)
+        .map((it) => ({
+          discountedPrice: it.discountedPrice,
+          endsAt: it.discount.endsAt,
+        }));
+      const discount = resolveActiveDiscount(
+        v.price,
+        // Variant flash sale via ratio dari product level.
+        product.flashSaleEndsAt && product.discountPrice
+          ? {
+              discountPrice: Math.round(
+                v.price * (product.discountPrice / product.price),
+              ),
+              endsAt: product.flashSaleEndsAt,
+            }
+          : { discountPrice: null, endsAt: null },
+        variantPromoItems,
+      );
+      return discount ? discount.effectivePrice : v.price;
+    });
+    return Math.min(...variantPrices);
   }
-  return product.discountPrice !== null && product.discountPrice < product.price
-    ? product.discountPrice
-    : product.price;
+  // Single product — apply Flash Sale + Promo Toko priority.
+  const promoItems = product.discountItems
+    .filter((it) => it.variantId === null)
+    .map((it) => ({
+      discountedPrice: it.discountedPrice,
+      endsAt: it.discount.endsAt,
+    }));
+  const discount = resolveActiveDiscount(
+    product.price,
+    { discountPrice: product.discountPrice, endsAt: product.flashSaleEndsAt },
+    promoItems,
+  );
+  return discount ? discount.effectivePrice : product.price;
 }
 
 export function effectiveProductStock(product: CartRecommendationProductRow) {
@@ -52,14 +106,17 @@ export function effectiveProductStock(product: CartRecommendationProductRow) {
 
 export function serializeCartRecommendationProduct(product: CartRecommendationProductRow) {
   const price = effectiveProductPrice(product);
-  const normalPrice =
-    product.discountPrice !== null && product.discountPrice < product.price
-      ? product.price
-      : product.hasVariants && product.variants.length > 0
-        ? Math.max(...product.variants.map((variant) => variant.price))
-        : null;
+  // normalPrice = base price (sebelum diskon apa pun). Untuk produk
+  // berVarian, ambil MIN base price; untuk single, product.price.
+  const baseMinPrice =
+    product.hasVariants && product.variants.length > 0
+      ? Math.min(...product.variants.map((v) => v.price))
+      : product.price;
+  const normalPrice = price < baseMinPrice ? baseMinPrice : null;
   const discountPercent =
-    normalPrice && normalPrice > price ? Math.round(((normalPrice - price) / normalPrice) * 100) : null;
+    normalPrice && normalPrice > price
+      ? Math.round(((normalPrice - price) / normalPrice) * 100)
+      : null;
 
   return {
     id: product.id,
@@ -67,7 +124,9 @@ export function serializeCartRecommendationProduct(product: CartRecommendationPr
     name: product.name,
     price,
     normal_price: normalPrice,
-    discount_price: product.discountPrice,
+    // discount_price = effective price (yang sudah include Promo Toko).
+    // Sebelumnya field ini cuma product.discountPrice (legacy Flash Sale).
+    discount_price: price < baseMinPrice ? price : null,
     discount_percent: discountPercent,
     image: product.imageUrl,
     stock: effectiveProductStock(product),
