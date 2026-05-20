@@ -2314,15 +2314,6 @@ class _FlashSaleCard extends StatelessWidget {
                     imageUrl: product.imageUrl,
                     height: 76,
                   ),
-                  if (product.hasDiscount)
-                    Positioned(
-                      right: 6,
-                      top: 6,
-                      child: _HomeProductDiscountBadge(
-                        percent: product.discountPercent,
-                        compact: true,
-                      ),
-                    ),
                 ],
               ),
               const SizedBox(height: 7),
@@ -2523,15 +2514,6 @@ class _HomeProductCard extends StatelessWidget {
                       imageUrl: product.imageUrl,
                       height: imageHeight,
                     ),
-                    if (product.hasDiscount)
-                      Positioned(
-                        right: 8,
-                        top: 8,
-                        child: _HomeProductDiscountBadge(
-                          percent: product.discountPercent,
-                          compact: compact,
-                        ),
-                      ),
                     if (rank != null)
                       Positioned(
                         left: 8,
@@ -2934,49 +2916,6 @@ String _formatHomeProductSoldCount(int count) {
   }
   if (count >= 100) return '${(count ~/ 50) * 50}+';
   return count.toString();
-}
-
-class _HomeProductDiscountBadge extends StatelessWidget {
-  final int? percent;
-  final bool compact;
-
-  const _HomeProductDiscountBadge({
-    required this.percent,
-    required this.compact,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final value = percent;
-    if (value == null || value <= 0) return const SizedBox.shrink();
-
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: compact ? 7 : 9,
-        vertical: compact ? 5 : 7,
-      ),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE11D48),
-        borderRadius: BorderRadius.circular(compact ? 10 : 12),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x22000000),
-            blurRadius: 10,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Text(
-        '$value%',
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: compact ? 11 : 13,
-          fontWeight: FontWeight.w900,
-          height: 1,
-        ),
-      ),
-    );
-  }
 }
 
 class _HorizontalProductSection extends StatelessWidget {
