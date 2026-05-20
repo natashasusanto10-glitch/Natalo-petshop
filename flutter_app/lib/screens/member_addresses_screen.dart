@@ -662,6 +662,13 @@ class _AddressFormSheetState extends State<_AddressFormSheet> {
   late String _label;
   late bool _isPrimary;
   bool _saving = false;
+  // Koordinat dari autocomplete pick (atau dari record existing).
+  // Critical untuk eligibility kurir instant (Gojek/Grab) — backend
+  // /api/shipping/rates butuh destination_latitude + destination_longitude.
+  // Tanpa ini, response selalu "Lengkapi titik lokasi alamat agar
+  // Gojek Instant dan Grab Instant tersedia."
+  double? _latitude;
+  double? _longitude;
 
   @override
   void initState() {
@@ -680,6 +687,8 @@ class _AddressFormSheetState extends State<_AddressFormSheet> {
         TextEditingController(text: address?.provinceName ?? 'Sumatera Utara');
     _districtController =
         TextEditingController(text: address?.districtName ?? 'Medan Kota');
+    _latitude = address?.latitude;
+    _longitude = address?.longitude;
   }
 
   @override
@@ -712,8 +721,11 @@ class _AddressFormSheetState extends State<_AddressFormSheet> {
         districtName: _districtController.text.trim(),
         areaId: previous?.areaId,
         areaLabel: previous?.areaLabel,
-        latitude: previous?.latitude,
-        longitude: previous?.longitude,
+        // Pakai state yang di-update dari autocomplete pick. Fallback ke
+        // previous record's lat/lng kalau user buka edit tapi tidak ulang
+        // pilih dari autocomplete.
+        latitude: _latitude ?? previous?.latitude,
+        longitude: _longitude ?? previous?.longitude,
         pinpointAddress: previous?.pinpointAddress,
       );
       final saved = previous == null
@@ -809,6 +821,13 @@ class _AddressFormSheetState extends State<_AddressFormSheet> {
                     }
                     if (details.district?.isNotEmpty == true) {
                       _districtController.text = details.district!;
+                    }
+                    // Simpan lat/lng dari Google Places → wajib untuk
+                    // eligibility kurir instant Gojek/Grab. Tanpa ini
+                    // alamat selalu di-tag "belum tersedia untuk instant".
+                    if (details.latitude != null && details.longitude != null) {
+                      _latitude = details.latitude;
+                      _longitude = details.longitude;
                     }
                   });
                 },
