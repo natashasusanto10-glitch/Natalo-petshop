@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import type { Prisma } from "@prisma/client";
+import type { Prisma, VoucherKind } from "@prisma/client";
 
 /**
  * GET /api/admin/vouchers
@@ -136,14 +136,15 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Map kind string ke enum value.
-  const kindMap: Record<string, "PRODUCT_DISCOUNT" | "FREE_SHIPPING" | "LOYALTY_CLAIM" | "MANUAL_PRIVATE"> = {
+  // Map kind string ke enum value (default PRODUCT_DISCOUNT untuk safety).
+  const kindMap: Record<string, VoucherKind> = {
     PRODUCT_DISCOUNT: "PRODUCT_DISCOUNT",
     FREE_SHIPPING: "FREE_SHIPPING",
     LOYALTY_CLAIM: "LOYALTY_CLAIM",
     MANUAL_PRIVATE: "MANUAL_PRIVATE",
   };
-  const kind = (body.kind && kindMap[body.kind]) ?? "PRODUCT_DISCOUNT";
+  const kind: VoucherKind =
+    body.kind && kindMap[body.kind] ? kindMap[body.kind] : "PRODUCT_DISCOUNT";
 
   const voucher = await prisma.voucher.create({
     data: {
@@ -167,8 +168,12 @@ export async function POST(request: NextRequest) {
       expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
       isActive: true,
       kind,
-      discountType: hasPercent ? "PERCENT" : "FIXED_AMOUNT",
-      type: kind === "FREE_SHIPPING" ? "PUBLIC_FREE_SHIPPING" : "PUBLIC_PRODUCT_DISCOUNT",
+      // Schema enum: PERCENTAGE (bukan PERCENT) + FIXED_AMOUNT.
+      discountType: hasPercent ? "PERCENTAGE" : "FIXED_AMOUNT",
+      type:
+        kind === "FREE_SHIPPING"
+          ? "PUBLIC_FREE_SHIPPING"
+          : "PUBLIC_PRODUCT_DISCOUNT",
     },
     select: {
       id: true,
