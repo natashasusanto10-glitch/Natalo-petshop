@@ -230,10 +230,39 @@ export default async function AdminProductEditPage({
           textarea
         />
 
-        {/* ── 5. Variasi — render di section dedicated di bawah form
-            (lihat <VariantEditor /> di bawah form ini). Tidak masuk
-            ke form action ini karena VariantEditor pakai API call
-            sendiri. */}
+        {/* ── 5. Variasi (inline) ─────────────────────────────────
+            VariantEditor punya state + API call sendiri (standalone
+            mode), terpisah dari form action <updateProduct>. Tapi
+            secara visual harus inline antara Deskripsi dan Harga
+            Satuan supaya urutan konsisten dengan /admin/products/new.
+            Anchor `id="variants"` di-target dari ?from=new#variants
+            (kalau pernah ada redirect lama). */}
+        <div id="variants" className="scroll-mt-6">
+          <VariantEditor
+            productId={id}
+            initialHasVariants={product.hasVariants}
+            initialAttributes={product.variantAttrs.map((a) => ({
+              id: a.id,
+              name: a.name,
+              position: a.position,
+              options: a.options.map((o) => ({
+                id: o.id,
+                value: o.value,
+                position: o.position,
+              })),
+            }))}
+            initialVariants={product.variants.map((v) => ({
+              id: v.id,
+              price: v.price,
+              stock: v.stock,
+              weightGram: v.weightGram,
+              sku: v.sku,
+              imageUrl: v.imageUrl,
+              isActive: v.isActive,
+              options: v.options,
+            }))}
+          />
+        </div>
 
         {/* ── 6. Harga Satuan ────────────────────────────────────── */}
         {/* Conditional disable: kalau produk punya varian, Harga base
@@ -252,7 +281,7 @@ export default async function AdminProductEditPage({
           disabled={product.hasVariants}
           hint={
             product.hasVariants
-              ? "Diatur per varian di tabel Variasi di bawah."
+              ? "Diatur per varian di tabel Variasi di atas."
               : undefined
           }
         />
@@ -279,7 +308,7 @@ export default async function AdminProductEditPage({
             disabled={product.hasVariants}
             hint={
               product.hasVariants
-                ? "Diatur per varian di tabel Variasi di bawah."
+                ? "Diatur per varian di tabel Variasi di atas."
                 : undefined
             }
           />
@@ -296,7 +325,7 @@ export default async function AdminProductEditPage({
           disabled={product.hasVariants}
           hint={
             product.hasVariants
-              ? "Tidak diperlukan — SKU diatur per varian di tabel Variasi di bawah."
+              ? "Tidak diperlukan — SKU diatur per varian di tabel Variasi di atas."
               : "Opsional. Identifier produk untuk inventory tracking (huruf, angka, _, -)."
           }
         />
@@ -347,37 +376,6 @@ export default async function AdminProductEditPage({
           </button>
         </div>
       </form>
-
-      {/* ── Variant Editor (client component) ──
-          Anchor `id="variants"` di-target dari /admin/products/new redirect
-          (?from=new#variants) supaya browser scroll otomatis ke editor
-          variasi setelah produk baru dibuat. */}
-      <div id="variants" className="scroll-mt-6">
-      <VariantEditor
-        productId={id}
-        initialHasVariants={product.hasVariants}
-        initialAttributes={product.variantAttrs.map((a) => ({
-          id: a.id,
-          name: a.name,
-          position: a.position,
-          options: a.options.map((o) => ({
-            id: o.id,
-            value: o.value,
-            position: o.position,
-          })),
-        }))}
-        initialVariants={product.variants.map((v) => ({
-          id: v.id,
-          price: v.price,
-          stock: v.stock,
-          weightGram: v.weightGram,
-          sku: v.sku,
-          imageUrl: v.imageUrl,
-          isActive: v.isActive,
-          options: v.options,
-        }))}
-      />
-      </div>
     </div>
   );
 }
