@@ -8,6 +8,7 @@ import '../state/recently_viewed_store.dart';
 import '../state/search_history_store.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/haptics.dart';
+import '../widgets/app_cart_button.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
@@ -229,7 +230,10 @@ class _WishlistScreenState extends State<WishlistScreen> {
     if (!memberStore.isLoggedIn) {
       return Scaffold(
         backgroundColor: Colors.transparent,
-        appBar: AppBar(title: const Text('Wishlist')),
+        appBar: AppBar(
+          title: const Text('Wishlist'),
+          actions: const [AppCartButton()],
+        ),
         body: AppEmptyState(
           icon: Icons.favorite_border_rounded,
           title: 'Wishlist khusus member',
@@ -263,6 +267,11 @@ class _WishlistScreenState extends State<WishlistScreen> {
       appBar: AppBar(
         titleSpacing: 8,
         toolbarHeight: 64,
+        // Cart icon di kanan atas — match home AppCartButton 1:1
+        // (shopping_cart_outlined, 24px, badge merah live sync via
+        // cartStore). Konsisten visual antar home, wishlist, dan
+        // halaman lain yang punya header.
+        actions: const [AppCartButton()],
         // Title style match PWA wishlist: "Wishlist\n{N} produk disimpan"
         title: AnimatedBuilder(
           animation: favoriteStore,
