@@ -105,10 +105,13 @@ class _ProductsScreenState extends State<ProductsScreen> {
     fromApi: false,
   );
   bool _loading = false;
-  // Infinite scroll state — track current page limit. Each "load more"
-  // bump limit by 24. fetchProducts query include up to current limit.
-  // Crude tapi efektif untuk catalog under 1000 produk.
-  int _pageLimit = 60;
+  // Cursor-based infinite scroll — proper pagination yang scale ke
+  // dataset besar (2000+ produk). Sebelumnya limit-incrementing
+  // (`_pageLimit += 24`) yang capped di 200 backend → customer stuck
+  // di 200 produk. Sekarang fetch batch 24 per request, lanjut dari
+  // cursor terakhir → no ceiling.
+  static const int _pageSize = 24;
+  String? _nextCursor;
   bool _loadingMore = false;
   bool _hasMore = true;
   // ── Catalog rotation state — persisted via SharedPreferences ──
@@ -285,58 +288,60 @@ class _ProductsScreenState extends State<ProductsScreen> {
     }
   }
 
-  /// Increment page limit + refetch. Kalau hasil count sama dengan sebelum,
-  /// berarti API sudah return all available products → `_hasMore = false`.
+  /// Load next page via cursor. Append produk ke list existing.
+  /// Stop kalau response nextCursor null (no more pages).
   Future<void> _loadMore() async {
-    if (_loadingMore || !_hasMore) return;
+    if (_loadingMore || !_hasMore || _nextCursor == null) return;
     setState(() => _loadingMore = true);
-    final prevCount = _result.products.length;
-    _pageLimit += 24;
     final result = await productService.fetchProducts(
       query: _query,
-      limit: _pageLimit,
+      limit: _pageSize,
+      cursor: _nextCursor,
       newFilter: _filter.apiNewFilter,
       popularFilter: _filter.apiPopularFilter,
       inStock: _filter.inStockOnly,
       withImage: _filter.withImageOnly,
-      // Filter "Sedang Diskon" — pass ke API supaya server-side filter
-      // by ProductDiscountItem aktif + Flash Sale. Sebelumnya cuma
-      // client-side filter dari hasilfetch limit → produk diskon yang
-      // bukan baru-baru bisa terkubur di posisi >60 → filter empty.
       discountOnly: _filter.discountOnly,
     );
     if (!mounted) return;
     setState(() {
-      _result = result;
+      // Append produk baru ke list existing.
+      _result = ProductResult(
+        products: [..._result.products, ...result.products],
+        nextCursor: result.nextCursor,
+        fromApi: result.fromApi,
+        total: result.total,
+        error: result.error,
+      );
+      _nextCursor = result.nextCursor;
+      _hasMore = result.nextCursor != null;
       _loadingMore = false;
-      // Kalau count tidak naik = sudah habis, stop load more.
-      _hasMore = result.products.length > prevCount;
     });
   }
 
+  /// Load halaman pertama. Reset cursor + accumulator.
   Future<void> _loadProducts() async {
     setState(() {
       _loading = true;
       // Reset pagination saat filter/query change.
-      _pageLimit = 60;
+      _nextCursor = null;
       _hasMore = true;
     });
     final result = await productService.fetchProducts(
       query: _query,
-      limit: _pageLimit,
+      limit: _pageSize,
+      // cursor: null → fetch dari awal
       newFilter: _filter.apiNewFilter,
       popularFilter: _filter.apiPopularFilter,
       inStock: _filter.inStockOnly,
       withImage: _filter.withImageOnly,
-      // Filter "Sedang Diskon" — pass ke API supaya server-side filter
-      // by ProductDiscountItem aktif + Flash Sale. Sebelumnya cuma
-      // client-side filter dari hasilfetch limit → produk diskon yang
-      // bukan baru-baru bisa terkubur di posisi >60 → filter empty.
       discountOnly: _filter.discountOnly,
     );
     if (!mounted) return;
     setState(() {
       _result = result;
+      _nextCursor = result.nextCursor;
+      _hasMore = result.nextCursor != null;
       _loading = false;
     });
   }

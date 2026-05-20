@@ -161,6 +161,9 @@ class ProductService {
     /// Backend auto-bypass inStockOnly supaya produk stok 0 yang
     /// di-wishlist tetap muncul.
     List<String>? ids,
+    /// Cursor untuk pagination — lanjut dari offset N (response
+    /// `nextCursor`). Null = halaman pertama. Dipakai infinite scroll.
+    String? cursor,
   }) async {
     try {
       final keyword = query?.trim() ?? '';
@@ -179,12 +182,19 @@ class ProductService {
           if (withImage) 'withImage': 'true',
           if (discountOnly) 'discountOnly': 'true',
           if (ids != null && ids.isNotEmpty) 'ids': ids.join(','),
+          if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
         },
       );
       final map = _asMap(data);
       final products = _extractProducts(data);
+      // Extract nextCursor untuk pagination. Backend response shape:
+      // { items: [...], nextCursor: "24" | null, hasMore: bool, total: N }
+      final nextCursor = map?['nextCursor']?.toString();
       return ProductResult(
         products: products,
+        nextCursor: nextCursor != null && nextCursor.isNotEmpty
+            ? nextCursor
+            : null,
         fromApi: map != null || data is List,
         total: map == null ? products.length : _asInt(map['total']),
       );
