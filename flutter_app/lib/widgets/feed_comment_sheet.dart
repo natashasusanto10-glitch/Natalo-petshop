@@ -31,8 +31,9 @@ import 'natalo_paw_refresh_indicator.dart';
 /// - POST /api/feed/posts/:postId/comments → {content, parentCommentId?}
 /// - POST/DELETE /api/feed/comments/:commentId/like → toggle like
 class FeedCommentSheet extends StatefulWidget {
-  /// Height factor default saat sheet pertama buka — match Reels: ~56%.
-  static const double reelsHeightFactor = 0.56;
+  /// Height factor default saat sheet pertama buka — match Shorts/Reels:
+  /// cukup tinggi untuk composer + list, tapi video tetap terlihat jelas.
+  static const double reelsHeightFactor = 0.60;
 
   final FeedPost post;
   final bool applyKeyboardInset;
@@ -341,9 +342,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
         : 0.0;
 
     return ClipRRect(
-      // 14px corner radius — match Instagram Reels comment drawer
-      // (sebelumnya 26 = lebih bulat dari Instagram, terasa less native).
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       child: Container(
         // Dark drawer Instagram Reels-style — bukan putih (user spec).
         // Background, header text, divider, input — semua flip ke variant
@@ -356,7 +355,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
         // bawah. Removed — Instagram Reels TIDAK punya border line di
         // tepi atas drawer.
         decoration: const BoxDecoration(
-          color: Color(0xFF111417),
+          color: Color(0xFF101114),
         ),
         child: Column(
           children: [
@@ -391,8 +390,8 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
                           : '${_comments.length}${_nextCursor != null ? '+' : ''} komentar',
                       style: const TextStyle(
                         color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
                       ),
                     ),
                   ),
@@ -593,7 +592,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
 
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF111417),
+        color: const Color(0xFF101114),
         border: Border(
           top: BorderSide(
             color: Colors.white.withValues(alpha: 0.08),

@@ -889,7 +889,8 @@ class _FeedPostViewState extends State<_FeedPostView>
   VideoPlayerController? _videoController;
   final DraggableScrollableController _commentSheetController =
       DraggableScrollableController();
-  final ValueNotifier<double> _commentSheetProgress = ValueNotifier<double>(0);
+  final ValueNotifier<double> _commentSheetExtent =
+      ValueNotifier<double>(_commentSheetInitialExtent);
   bool _liked = false;
   int _likeCount = 0;
   int _commentCount = 0;
@@ -1098,7 +1099,7 @@ class _FeedPostViewState extends State<_FeedPostView>
         _commentAddedCount = 0;
         _featuredProductIndex = 0;
         _commentDragOffset = 0;
-        _commentSheetProgress.value = 0;
+        _commentSheetExtent.value = _commentSheetInitialExtent;
         // Reset CTA: user swipe ke post lain → next visit dapat fresh
         // chance (dismissed flag clear, visible flag clear).
         _endOfVideoCtaVisible = false;
@@ -1166,7 +1167,7 @@ class _FeedPostViewState extends State<_FeedPostView>
     _stopProductRotation();
     _commentSheetController.removeListener(_syncCommentSheetProgress);
     _commentSheetController.dispose();
-    _commentSheetProgress.dispose();
+    _commentSheetExtent.dispose();
     _videoController?.removeListener(_handleVideoPositionForCta);
     _videoController?.dispose();
     _heartBurstController.dispose();
@@ -1176,11 +1177,11 @@ class _FeedPostViewState extends State<_FeedPostView>
   void _syncCommentSheetProgress() {
     if (!_commentSheetController.isAttached) return;
     final size = _commentSheetController.size;
-    final raw = (size - _commentSheetInitialExtent) /
-        (_commentSheetMaxExtent - _commentSheetInitialExtent);
-    final progress = raw.clamp(0.0, 1.0).toDouble();
-    if ((_commentSheetProgress.value - progress).abs() > 0.002) {
-      _commentSheetProgress.value = progress;
+    final extent = size
+        .clamp(_commentSheetMinExtent, _commentSheetMaxExtent)
+        .toDouble();
+    if ((_commentSheetExtent.value - extent).abs() > 0.002) {
+      _commentSheetExtent.value = extent;
     }
   }
 
@@ -1277,7 +1278,7 @@ class _FeedPostViewState extends State<_FeedPostView>
       _commentAddedCount = 0;
       _commentDragOffset = 0;
     });
-    _commentSheetProgress.value = 0;
+    _commentSheetExtent.value = _commentSheetInitialExtent;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_commentDrawerMounted) return;
       if (_commentSheetController.isAttached) {
@@ -1309,7 +1310,7 @@ class _FeedPostViewState extends State<_FeedPostView>
     });
     Future<void>.delayed(const Duration(milliseconds: 280), () {
       if (!mounted || _commentSheetOpen) return;
-      _commentSheetProgress.value = 0;
+      _commentSheetExtent.value = _commentSheetInitialExtent;
       setState(() => _commentDrawerMounted = false);
       widget.onOverlayStateChanged(false);
     });
@@ -1710,7 +1711,6 @@ class _FeedPostViewState extends State<_FeedPostView>
       },
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final safeTop = MediaQuery.paddingOf(context).top;
           final keyboard = MediaQuery.viewInsetsOf(context).bottom;
           // extendBody: false di Scaffold → body bottom = top edge bottom
           // nav (safeBottom sudah di-consume nav widget). Insets di sini
@@ -1787,9 +1787,8 @@ class _FeedPostViewState extends State<_FeedPostView>
                   ),
                 _CommentVideoFrame(
                   open: minimized,
-                  progressListenable: _commentSheetProgress,
+                  extentListenable: _commentSheetExtent,
                   dragOffsetPx: _commentDragOffset,
-                  safeTop: safeTop,
                   screenSize: constraints.biggest,
                   child: Stack(
                     fit: StackFit.expand,
@@ -2085,21 +2084,19 @@ class _FeedPostViewState extends State<_FeedPostView>
 
 class _CommentVideoFrame extends StatelessWidget {
   final bool open;
-  final ValueListenable<double> progressListenable;
+  final ValueListenable<double> extentListenable;
   // Visual translate offset saat drawer di-drag down untuk dismiss
   // gesture (drawer di-translate, bukan di-resize). Video frame harus
   // track ini supaya bottom edge ikut drawer's visual top edge — tidak
   // ada black gap antara video dan drawer saat dismiss gesture.
   final double dragOffsetPx;
-  final double safeTop;
   final Size screenSize;
   final Widget child;
 
   const _CommentVideoFrame({
     required this.open,
-    required this.progressListenable,
+    required this.extentListenable,
     required this.dragOffsetPx,
-    required this.safeTop,
     required this.screenSize,
     required this.child,
   });
@@ -2115,18 +2112,17 @@ class _CommentVideoFrame extends StatelessWidget {
       child: RepaintBoundary(child: child),
       builder: (context, openProgress, child) {
         return ValueListenableBuilder<double>(
-          valueListenable: progressListenable,
+          valueListenable: extentListenable,
           child: child,
-          builder: (context, sheetProgress, child) {
-            final clampedProgress = sheetProgress.clamp(0.0, 1.0).toDouble();
+          builder: (context, sheetExtent, child) {
             // Pattern YouTube/Threads: video FILLS area di atas drawer,
             // bukan floating preview di tengah. Saat drawer grow ke atas,
             // video shrink vertically dari bawah. Saat drawer drag ke
             // bawah, video expand lagi. Width selalu full screen.
             //
-            // Drawer extent interpolate: 0.60 (initial) → 0.90 (max).
-            // Progress 0..1 dari ValueListenable maps initial..max range
-            // (di feed_screen._syncCommentSheetProgress).
+            // Drawer extent berasal langsung dari DraggableScrollableSheet.
+            // Ini membuat video dan drawer bergerak 1:1 saat user drag,
+            // termasuk saat sheet berada di bawah initial extent.
             //
             // BUG FIX: dulu video tidak ikut drawer saat user drag-down
             // untuk dismiss. Drawer di-translate via Transform.translate
@@ -2134,13 +2130,7 @@ class _CommentVideoFrame extends StatelessWidget {
             // → black gap antara video bottom dan drawer's visual top.
             // Solusi: tambah dragOffsetPx ke drawerTopY supaya video
             // bottom ikut drawer's visual position 1:1, real-time.
-            const drawerInitialExtent = 0.60;
-            const drawerMaxExtent = 0.90;
-            final drawerExtent = ui.lerpDouble(
-              drawerInitialExtent,
-              drawerMaxExtent,
-              clampedProgress,
-            )!;
+            final drawerExtent = sheetExtent.clamp(0.0, 1.0).toDouble();
             final drawerTopY = height * (1 - drawerExtent) + dragOffsetPx;
             final fullRect = Rect.fromLTWH(0, 0, width, height);
             // Video frame saat drawer open: full width, dari y=0 sampai
