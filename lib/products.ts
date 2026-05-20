@@ -619,8 +619,24 @@ function buildOrderBy(
   if (popularFilter === "highest-rating") {
     return [{ avgRating: "desc" }, { reviewCount: "desc" }];
   }
-  // Default & new filter sort
-  return { createdAt: "desc" };
+  // "New" filter — admin-friendly strict createdAt sort, jangan
+  // di-override Flash Sale supaya "Produk Baru" tetap akurat by waktu.
+  if (newFilter) {
+    return { createdAt: "desc" };
+  }
+  // Default sort: BOOST Flash Sale aktif ke top. Prisma sort
+  // `flashSaleEndsAt asc nulls last` → produk dengan endsAt set
+  // (Flash Sale aktif maupun expired) di-rank lebih awal, di-sort
+  // by earliest expiry first. Produk tanpa endsAt fallback ke
+  // createdAt desc.
+  //
+  // Rationale: Flutter homepage fetch /api/products default + filter
+  // Flash Sale eligible client-side. Tanpa boost, Flash Sale products
+  // bisa terkubur di posisi >48 kalau bukan produk terbaru.
+  return [
+    { flashSaleEndsAt: { sort: "asc", nulls: "last" } },
+    { createdAt: "desc" },
+  ];
 }
 
 export async function getProducts(opts?: {
