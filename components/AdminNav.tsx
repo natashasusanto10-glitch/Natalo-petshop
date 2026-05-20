@@ -49,9 +49,13 @@ const NAV_GROUPS: NavGroup[] = [
     section: "Marketing",
     items: [
       {
-        href: "/admin/vouchers",
-        label: "Voucher",
-        icon: <Glyph d="M2 9.5V7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v2.5a2 2 0 0 0 0 4V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3.5a2 2 0 0 0 0-4ZM10 8v8" />,
+        // Hub Buat Diskon — landing untuk semua jenis promosi:
+        // Promo Toko (diskon per-produk) + Voucher + Flash Sale + Paket.
+        // Sebelumnya nav langsung ke /admin/vouchers (1 modul), sekarang
+        // ke /admin/diskon (hub yang grouping semua + link ke vouchers).
+        href: "/admin/diskon",
+        label: "Promo Toko",
+        icon: <Glyph d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82zM7 7h.01" />,
       },
       {
         href: "/admin/brands",
