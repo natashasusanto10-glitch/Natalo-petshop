@@ -28,6 +28,7 @@ import '../widgets/app_notification_button.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/bottom_nav.dart';
+import '../widgets/flash_sale_countdown.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import 'home_search_page.dart';
@@ -438,8 +439,28 @@ class _HomeScreenState extends State<HomeScreen> {
           builder: (context, snapshot) {
             final result = snapshot.data;
             final products = result?.products ?? const <Product>[];
-            final flashSale =
-                products.where((p) => p.hasDiscount).take(8).toList();
+            // 3-tier eligibility — match backend getFlashSaleProducts():
+            //   1. Explicit flashSaleEndsAt set + di future → always
+            //   2. flashSaleEndsAt null + discount >= 20% → auto-include
+            //   3. flashSaleEndsAt expired → exclude
+            // Sorting: explicit-tagged (Tier 1) di awal sorted by earliest
+            // endsAt, lalu Tier 2 by discount % desc.
+            final flashSale = products
+                .where((p) => p.isFlashSaleEligible)
+                .toList()
+              ..sort((a, b) {
+                final aEnds = a.flashSaleEndsAt;
+                final bEnds = b.flashSaleEndsAt;
+                if (aEnds != null && bEnds != null) {
+                  return aEnds.compareTo(bEnds);
+                }
+                if (aEnds != null) return -1;
+                if (bEnds != null) return 1;
+                final aPct = a.discountPercent ?? 0;
+                final bPct = b.discountPercent ?? 0;
+                return bPct.compareTo(aPct);
+              });
+            final flashSaleVisible = flashSale.take(8).toList();
             // Produk Terlaris — ranked by SOLD COUNT (jumlah terjual) sebagai
             // primary key. Tie-break ke reviewCount kalau soldCount sama
             // (mis. saat API list endpoint return soldCount=0 — fallback
@@ -496,13 +517,19 @@ class _HomeScreenState extends State<HomeScreen> {
                   // Flash sale section — sembunyikan kalau tidak ada produk
                   // diskon dari API (bukan fallback ke mock). Single source of
                   // truth = Capacitor admin (admin set hasDiscount=true).
-                  if (flashSale.isNotEmpty)
+                  if (flashSaleVisible.isNotEmpty)
                     SliverToBoxAdapter(
                       child: _FlashSaleGrid(
-                        products: flashSale,
+                        products: flashSaleVisible,
                         onTap: (product) =>
                             _openProductDetail(context, product),
                         onSeeAll: () => _openProducts(context),
+                        onCountdownExpired: () {
+                          // Refresh products supaya item yang expired
+                          // hilang dari grid. Backend juga filter
+                          // server-side, jadi list akan auto-cleanup.
+                          _refreshAll();
+                        },
                       ),
                     ),
                   // Produk Terlaris — sembunyikan kalau API belum return data.
@@ -2117,6 +2144,7 @@ class _FlashSaleGrid extends StatelessWidget {
   final List<Product> products;
   final ValueChanged<Product> onTap;
   final VoidCallback onSeeAll;
+  final VoidCallback? onCountdownExpired;
 
   static const _maxVisible = 6;
 
@@ -2124,7 +2152,24 @@ class _FlashSaleGrid extends StatelessWidget {
     required this.products,
     required this.onTap,
     required this.onSeeAll,
+    this.onCountdownExpired,
   });
+
+  /// Cari endsAt paling awal dari produk yang punya explicit
+  /// flashSaleEndsAt (Tier 1). Section header pakai timer ini sebagai
+  /// urgency cue. Kalau tidak ada produk Tier 1, return null (header
+  /// tampil tanpa countdown).
+  DateTime? get _earliestEndsAt {
+    DateTime? earliest;
+    for (final p in products) {
+      final ends = p.flashSaleEndsAt;
+      if (ends == null) continue;
+      if (earliest == null || ends.isBefore(earliest)) {
+        earliest = ends;
+      }
+    }
+    return earliest;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2132,6 +2177,7 @@ class _FlashSaleGrid extends StatelessWidget {
 
     final visible = products.take(_maxVisible).toList();
     final hasMore = products.length > _maxVisible;
+    final endsAt = _earliestEndsAt;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
@@ -2183,6 +2229,19 @@ class _FlashSaleGrid extends StatelessWidget {
                 ),
             ],
           ),
+          // Countdown timer bar — hanya tampil kalau ada produk Tier 1
+          // (explicit flashSaleEndsAt). Tier 2 (auto-include via 20%
+          // threshold) tidak pakai countdown.
+          if (endsAt != null) ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FlashSaleCountdown(
+                endsAt: endsAt,
+                onExpired: onCountdownExpired,
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           GridView.builder(
             physics: const NeverScrollableScrollPhysics(),

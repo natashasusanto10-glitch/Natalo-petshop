@@ -25,6 +25,7 @@ import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/animated_price.dart';
 import '../widgets/favorite_button.dart';
+import '../widgets/flash_sale_countdown.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/moderation_action_sheet.dart';
 import 'image_viewer_screen.dart';
@@ -692,6 +693,15 @@ class _ProductInfo extends StatelessWidget {
             fontWeight: FontWeight.w900,
           ),
         ),
+        // Flash Sale countdown badge — hanya muncul kalau admin tag
+        // produk ini dengan flashSaleEndsAt (Tier 1). Auto-hide saat
+        // timer reach 0 atau expired.
+        if (product.hasFlashSaleCountdown) ...[
+          const SizedBox(height: 10),
+          FlashSaleCountdown.compact(
+            endsAt: product.flashSaleEndsAt!,
+          ),
+        ],
       ],
     );
   }

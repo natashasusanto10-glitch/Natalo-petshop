@@ -276,6 +276,12 @@ class Product {
   /// soldCount diisi dari /api/products/{slug}; endpoint lain return 0.
   final int soldCount;
 
+  /// Flash Sale explicit end timestamp. Kalau di-set, produk WAJIB
+  /// masuk Flash Sale section di home dengan countdown. Kalau null,
+  /// produk masuk Flash Sale section hanya kalau discount >= 20% (auto).
+  /// ISO UTC dari backend, parsed sebagai DateTime.toLocal() di sini.
+  final DateTime? flashSaleEndsAt;
+
   Product({
     required this.id,
     required this.slug,
@@ -299,6 +305,7 @@ class Product {
     this.variantAttrs = const [],
     this.variants = const [],
     this.soldCount = 0,
+    this.flashSaleEndsAt,
   });
 
   /// Alias `rating` untuk legacy reference `Product.avgRating`.
@@ -383,6 +390,13 @@ class Product {
             json['jumlahTerjual'] ??
             json['sold'],
       ),
+      // Flash Sale explicit end timestamp dari backend (ISO 8601 UTC).
+      // Convert ke local time supaya countdown display benar di timezone
+      // user. Field accept beberapa naming variation untuk compat dengan
+      // berbagai endpoint (PWA store vs admin vs Flutter API).
+      flashSaleEndsAt: _parseDateTime(
+        json['flashSaleEndsAt'] ?? json['flash_sale_ends_at'],
+      ),
     );
   }
 
@@ -409,6 +423,7 @@ class Product {
         'variantAttrs': variantAttrs.map((a) => a.toJson()).toList(),
         'variants': variants.map((v) => v.toJson()).toList(),
         'soldCount': soldCount,
+        'flashSaleEndsAt': flashSaleEndsAt?.toUtc().toIso8601String(),
       };
 
   double get finalPrice {
@@ -427,6 +442,46 @@ class Product {
     if (!hasDiscount || price <= 0) return null;
     return (((price - finalPrice) / price) * 100).round();
   }
+
+  /// Threshold default — mirror dari backend FLASH_SALE_MIN_DISCOUNT_PERCENT.
+  /// Bump bareng kalau business decision ubah ambang.
+  static const int flashSaleMinDiscountPercent = 20;
+
+  /// 3-tier Flash Sale eligibility check — mirror dari backend
+  /// getFlashSaleProducts() di app/page.tsx.
+  ///   Tier 1: flashSaleEndsAt set + di future → always include
+  ///   Tier 2: flashSaleEndsAt null + discount >= 20% → include (no timer)
+  ///   Tier 3: flashSaleEndsAt set + expired → exclude
+  bool get isFlashSaleEligible {
+    if (!hasDiscount) return false;
+    final endsAt = flashSaleEndsAt;
+    if (endsAt != null) {
+      return endsAt.isAfter(DateTime.now()); // Tier 1 (active) or Tier 3 (expired)
+    }
+    // Tier 2: tidak ada explicit endsAt, cek threshold.
+    final pct = discountPercent;
+    return pct != null && pct >= flashSaleMinDiscountPercent;
+  }
+
+  /// True kalau admin explicit tag produk ini Flash Sale (Tier 1).
+  /// Dipakai untuk decide apakah show countdown timer (vs auto-included
+  /// di Tier 2 yang tidak punya end time).
+  bool get hasFlashSaleCountdown {
+    final endsAt = flashSaleEndsAt;
+    return endsAt != null && endsAt.isAfter(DateTime.now());
+  }
+}
+
+/// Parse ISO 8601 string ke DateTime local — graceful fallback null
+/// kalau format invalid atau input bukan string.
+DateTime? _parseDateTime(Object? raw) {
+  if (raw == null) return null;
+  if (raw is DateTime) return raw.toLocal();
+  if (raw is String) {
+    final parsed = DateTime.tryParse(raw);
+    return parsed?.toLocal();
+  }
+  return null;
 }
 
 List<ProductVariantAttribute> _parseVariantAttrs(Object? raw) {
