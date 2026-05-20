@@ -30,8 +30,8 @@ const _discountRedBorder = Color(0xFFFFB8C8);
 const _shippingGreen = Color(0xFF12A66A);
 const _shippingGreenSoft = Color(0xFFECFDF3);
 const _shippingGreenBorder = Color(0xFFA6F4C5);
-const _voucherBarHeight = 64.0;
-const _selectionRowHeight = 50.0;
+const _voucherBarHeight = 52.0;
+const _selectionRowHeight = 44.0;
 // Shared cart chrome auto-hide config — selection row atas + voucher bar
 // bawah pakai SAME duration + curve + state untuk gerakan 1:1 sinkron.
 const _cartChromeIdleDelay = Duration(milliseconds: 180);
