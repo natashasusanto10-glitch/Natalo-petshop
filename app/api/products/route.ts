@@ -55,7 +55,12 @@ function parseIdList(value: string | null) {
 
 export async function GET(request: NextRequest) {
   const sp = request.nextUrl.searchParams;
-  const limit = Math.min(48, parsePositiveInt(sp.get("limit"), 24));
+  // Limit cap dinaikkan 48 → 200. Sebelumnya 48 → customer stuck di
+  // 48 produk pertama walau ada 2000+ di DB. Flutter _loadMore
+  // increment limit, tapi backend cap nutup. Dengan 200, Flutter bisa
+  // ambil sampai 200 per request, plus cursor pagination handle yang
+  // lebih banyak.
+  const limit = Math.min(200, parsePositiveInt(sp.get("limit"), 24));
   const cursor = Math.max(0, parsePositiveInt(sp.get("cursor"), 0));
   const search = (sp.get("search") ?? sp.get("q") ?? "").trim();
   const category = (sp.get("category") ?? sp.get("kategori") ?? "").trim();
