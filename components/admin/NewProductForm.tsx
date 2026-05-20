@@ -43,6 +43,10 @@ export function NewProductForm({ categories, brands }: Props) {
   const [price, setPrice] = useState("");
   const [stock, setStock] = useState("0");
   const [weightGram, setWeightGram] = useState("500");
+  // SKU Induk — identifier opsional untuk produk single (tanpa varian).
+  // Saat varian aktif, field ini di-disable + cleared, karena SKU dikelola
+  // per-varian di tabel di atas.
+  const [sku, setSku] = useState("");
 
   // Variant state (di-emit oleh VariantEditor via onChange)
   const [variantData, setVariantData] = useState<VariantEditorDraftPayload>({
@@ -109,6 +113,10 @@ export function NewProductForm({ categories, brands }: Props) {
         gallery: images.slice(1),
         categoryId: categoryId || undefined,
         brandId: brandId || undefined,
+        // SKU Induk hanya dikirim saat tidak ada varian (single product).
+        // Saat varian aktif, server akan null-kan field ini supaya tidak
+        // bentrok dengan SKU per-varian.
+        sku: !hasVariants && sku.trim() ? sku.trim() : undefined,
         hasVariants,
         attributes: hasVariants ? variantData.attributes : [],
         variants: hasVariants ? variantData.variants : [],
@@ -310,6 +318,29 @@ export function NewProductForm({ categories, brands }: Props) {
             />
           </Section>
         </div>
+
+        {/* ─── 9. SKU Induk ─────────────────────────────────────────
+            Identifier opsional untuk produk single (tanpa varian).
+            Saat varian aktif, field disabled karena SKU per-varian
+            ada di tabel Variasi di atas. */}
+        <Section
+          label="SKU Induk"
+          hint={
+            hasVariants
+              ? "Tidak diperlukan — SKU diatur per varian di tabel di atas."
+              : "Opsional. Identifier produk untuk inventory tracking (huruf, angka, _, -)."
+          }
+        >
+          <input
+            type="text"
+            value={hasVariants ? "" : sku}
+            onChange={(e) => setSku(e.target.value.toUpperCase())}
+            disabled={hasVariants}
+            placeholder={hasVariants ? "—" : "Mis. PROD-001"}
+            maxLength={80}
+            className="block w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-natalo-600 disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400"
+          />
+        </Section>
 
         {/* ─── Error banner ───────────────────────────────────────── */}
         {submitError && (

@@ -20,6 +20,15 @@ const createProductSchema = z.object({
   categoryId: z.string().trim().optional(),
   brandId: z.string().trim().optional(),
   isActive: z.boolean().optional().default(true),
+  // SKU Induk — opsional, identifier produk single (tanpa varian).
+  // Validasi: huruf/angka/_/- saja (consistent dengan ProductVariant.sku).
+  sku: z
+    .string()
+    .trim()
+    .max(80)
+    .regex(/^[A-Za-z0-9_\-]+$/, "SKU Induk hanya boleh huruf, angka, _ dan -")
+    .optional()
+    .or(z.literal("")),
   // Variant payload optional. Kalau ada + hasVariants=true, varian
   // di-create dalam transaction yang sama. Reuse validator dari
   // putVariantsPayloadSchema (sub-set untuk struktur attribute+variant).
@@ -153,10 +162,25 @@ export async function POST(request: NextRequest) {
   // Atomic create — product + variants dalam satu transaction supaya
   // kalau varian gagal di-create, product juga di-rollback (no orphan).
   const created = await prisma.$transaction(async (tx) => {
+    // Validasi SKU Induk unik kalau ada (Product.sku @unique). NULL kalau
+    // varian aktif atau kosong — admin tidak isi SKU Induk untuk produk
+    // multi-varian (pakai SKU per-varian saja).
+    const trimmedSku = body.sku?.trim();
+    const productSku = body.hasVariants ? null : trimmedSku || null;
+    if (productSku) {
+      const existingSku = await tx.product.findFirst({
+        where: { sku: productSku },
+      });
+      if (existingSku) {
+        throw new Error(`SKU Induk "${productSku}" sudah digunakan oleh produk lain.`);
+      }
+    }
+
     const product = await tx.product.create({
       data: {
         name: body.name.trim(),
         slug,
+        sku: productSku,
         description: body.description.trim(),
         price: Math.round(body.price),
         stock: Math.round(body.stock),

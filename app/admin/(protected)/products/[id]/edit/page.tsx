@@ -45,6 +45,15 @@ export default async function AdminProductEditPage({
     const price = parseInt(String(formData.get("price") || "0"), 10);
     const stock = parseInt(String(formData.get("stock") || "0"), 10);
     const weightGram = parseInt(String(formData.get("weightGram") || "500"), 10);
+    // SKU Induk — hanya valid untuk produk tanpa varian. Empty string
+    // = clear, null = preserve (admin tidak isi). Validasi format
+    // huruf/angka/_/- saja.
+    const skuRaw = String(formData.get("sku") || "").trim().toUpperCase();
+    const sku = product?.hasVariants
+      ? null  // produk dengan varian: SKU Induk selalu null
+      : skuRaw && /^[A-Za-z0-9_\-]+$/.test(skuRaw)
+        ? skuRaw
+        : null;
     // discountPrice tidak diambil dari form lagi — fitur diskon akan
     // dipindah ke halaman terpisah (/admin/diskon ala Shopee Promosi).
     // Existing discountPrice di DB di-preserve (tidak di-update).
@@ -85,6 +94,7 @@ export default async function AdminProductEditPage({
       brandId: string | null;
       flashSaleEndsAt: Date | null;
       brandAutoAssigned: boolean;
+      sku: string | null;
       price?: number;
       stock?: number;
       weightGram?: number;
@@ -97,6 +107,7 @@ export default async function AdminProductEditPage({
       brandId,
       flashSaleEndsAt,
       brandAutoAssigned: false,
+      sku,
     };
     if (!product?.hasVariants) {
       baseData.price = price;
@@ -273,6 +284,22 @@ export default async function AdminProductEditPage({
             }
           />
         </div>
+
+        {/* ── 9. SKU Induk ─────────────────────────────────────────
+            Identifier opsional untuk produk single. Disabled saat
+            varian aktif (SKU dikelola per-varian di tabel Variasi). */}
+        <Field
+          label="SKU Induk"
+          name="sku"
+          defaultValue={product.sku ?? ""}
+          placeholder={product.hasVariants ? "—" : "Mis. PROD-001"}
+          disabled={product.hasVariants}
+          hint={
+            product.hasVariants
+              ? "Tidak diperlukan — SKU diatur per varian di tabel Variasi di bawah."
+              : "Opsional. Identifier produk untuk inventory tracking (huruf, angka, _, -)."
+          }
+        />
 
         {/* Flash Sale explicit end time. Kalau di-set, produk ini SELALU
             masuk Flash Sale section di home apapun discount %-nya, dengan

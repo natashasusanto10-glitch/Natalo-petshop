@@ -184,6 +184,10 @@ model Product {
   id                String             @id @default(cuid())
   name              String
   slug              String             @unique
+  // SKU Induk — identifier opsional untuk produk single (tanpa varian)
+  // atau sebagai master SKU di parent level. Beda namespace dari
+  // ProductVariant.sku yang per-kombinasi varian. Nullable + unique.
+  sku               String?            @unique
   description       String
   price             Int
   memberPrice       Int?
