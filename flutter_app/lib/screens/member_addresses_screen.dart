@@ -480,15 +480,9 @@ class _AddressCard extends StatelessWidget {
                 height: 1.4,
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              address.recipient,
-              style: const TextStyle(
-                color: Color(0xFF9CA3AF),
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            // BUG FIX: sebelumnya ada Text(address.recipient) standalone di
+            // bawah alamat — duplicate dari baris "Nama - HP" di atas.
+            // Hasilnya nama recipient tampil dua kali di card. Removed.
             if (address.areaLabel != null && address.areaLabel!.isNotEmpty) ...[
               const SizedBox(height: 6),
               Text(
