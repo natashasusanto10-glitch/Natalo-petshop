@@ -21,6 +21,9 @@ import '../services/places_service.dart';
 /// - Optional `validator` untuk form validation
 class AddressAutocompleteField extends StatefulWidget {
   final TextEditingController controller;
+  /// Optional floating label di atas field. Kosong → placeholder-only style
+  /// (default per spec revisi: address sheet pakai hint sebagai placeholder
+  /// saja, tidak ada label di atas).
   final String label;
   final String hint;
   final void Function(PlaceDetails details) onSelected;
@@ -30,11 +33,11 @@ class AddressAutocompleteField extends StatefulWidget {
   const AddressAutocompleteField({
     super.key,
     required this.controller,
-    required this.label,
     required this.onSelected,
-    this.hint = 'Mis. Jl. MT. Haryono No. 103',
+    this.label = '',
+    this.hint = 'Cari Nama Jalan, Gedung, Alamat',
     this.validator,
-    this.maxLines = 2,
+    this.maxLines = 1,
   });
 
   @override
@@ -57,15 +60,30 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
   void initState() {
     super.initState();
     _focus.addListener(_handleFocusChange);
+    // Rebuild saat controller berubah supaya clear (x) button auto show/hide.
+    widget.controller.addListener(_handleTextChange);
   }
 
   @override
   void dispose() {
     _focus.removeListener(_handleFocusChange);
+    widget.controller.removeListener(_handleTextChange);
     _focus.dispose();
     _debounce?.cancel();
     _removeOverlay();
     super.dispose();
+  }
+
+  void _handleTextChange() {
+    if (mounted) setState(() {});
+  }
+
+  void _clearField() {
+    widget.controller.clear();
+    _debounce?.cancel();
+    _lastQuery = '';
+    setState(() => _suggestions = const []);
+    _removeOverlay();
   }
 
   void _handleFocusChange() {
@@ -259,6 +277,8 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
 
   @override
   Widget build(BuildContext context) {
+    final hasText = widget.controller.text.isNotEmpty;
+    final showLoadingSuffix = _searching || _fetchingDetails;
     return CompositedTransformTarget(
       link: _link,
       child: TextFormField(
@@ -268,14 +288,31 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
         maxLines: widget.maxLines,
         textInputAction: TextInputAction.search,
         onChanged: _onChanged,
+        style: const TextStyle(fontSize: 14, color: Color(0xFF111827)),
         decoration: InputDecoration(
-          labelText: widget.label,
+          // Empty label → placeholder-only style. Non-empty → floating label.
+          labelText: widget.label.isEmpty ? null : widget.label,
           hintText: widget.hint,
-          prefixIcon: const Icon(
-            Icons.location_on_outlined,
+          hintStyle: const TextStyle(
             color: Color(0xFF9CA3AF),
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
           ),
-          suffixIcon: (_searching || _fetchingDetails)
+          filled: true,
+          fillColor: const Color(0xFFFAFBFC),
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 14,
+          ),
+          prefixIcon: const Icon(
+            Icons.search_rounded,
+            color: Color(0xFF6B7280),
+            size: 20,
+          ),
+          // Loading spinner override clear button saat lagi fetch.
+          // Clear (x) button hanya muncul kalau user sudah ngetik.
+          suffixIcon: showLoadingSuffix
               ? const Padding(
                   padding: EdgeInsets.all(12),
                   child: SizedBox(
@@ -284,7 +321,31 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                 )
-              : null,
+              : (hasText
+                  ? IconButton(
+                      tooltip: 'Hapus',
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        size: 18,
+                        color: Color(0xFF9CA3AF),
+                      ),
+                      onPressed: _clearField,
+                      splashRadius: 18,
+                    )
+                  : null),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            // Natalo blue, sedikit lebih tegas saat focused.
+            borderSide: const BorderSide(color: Color(0xFF0B7FEA), width: 1.6),
+          ),
         ),
       ),
     );
