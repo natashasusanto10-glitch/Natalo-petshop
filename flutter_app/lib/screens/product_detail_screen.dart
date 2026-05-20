@@ -23,9 +23,7 @@ import '../widgets/app_cart_button.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
-import '../widgets/animated_price.dart';
 import '../widgets/flash_sale_countdown.dart';
-import '../widgets/glass_surface.dart';
 import '../widgets/moderation_action_sheet.dart';
 import 'image_viewer_screen.dart';
 
@@ -152,11 +150,70 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     });
   }
 
-  void _onSelectOption(String attrId, String optionId) {
-    AppHaptics.tap();
+  void _syncVariantSelection(Map<String, String> options) {
     setState(() {
-      _selectedOptions[attrId] = optionId;
+      _selectedOptions
+        ..clear()
+        ..addAll(options);
     });
+  }
+
+  void _addToCart({
+    ProductVariant? variant,
+    int quantity = 1,
+  }) {
+    AppHaptics.success();
+    cartStore.addProduct(product, variant: variant, quantity: quantity);
+    AppToast.showCartAdded(
+      context,
+      '${product.title} masuk keranjang',
+      onTap: () => Navigator.pushNamed(context, '/cart'),
+    );
+  }
+
+  void _buyNow({
+    ProductVariant? variant,
+    int quantity = 1,
+  }) {
+    AppHaptics.impact();
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => CheckoutScreen(
+          items: [
+            CartItem(
+              product: product,
+              quantity: quantity,
+              variant: variant,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openVariantSheet() async {
+    AppHaptics.tap();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.38),
+      builder: (sheetContext) {
+        return _ProductVariantBottomSheet(
+          product: product,
+          initialSelectedOptions: _selectedOptions,
+          onSelectionChanged: _syncVariantSelection,
+          onAddToCart: (variant, quantity) {
+            Navigator.of(sheetContext).pop();
+            _addToCart(variant: variant, quantity: quantity);
+          },
+          onBuyNow: (variant, quantity) {
+            Navigator.of(sheetContext).pop();
+            _buyNow(variant: variant, quantity: quantity);
+          },
+        );
+      },
+    );
   }
 
   Future<void> _loadRelated() async {
@@ -241,12 +298,18 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           SliverToBoxAdapter(
             child: _ProductHero(product: product),
           ),
+          if (product.hasFlashSaleCountdown)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: _ProductFlashSaleBanner(product: product),
+              ),
+            ),
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
               child: _ProductInfo(
                 product: product,
-                displayStock: _displayStock,
               ),
             ),
           ),
@@ -261,11 +324,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: _VariantSelector(
+                child: _VariantEntryRow(
                   product: product,
                   selectedOptions: _selectedOptions,
                   selectedVariant: _selectedVariant,
-                  onSelect: _onSelectOption,
+                  onTap: _openVariantSheet,
                 ),
               ),
             ),
@@ -282,7 +345,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               key: _overviewKey,
               child: _ProductInformationSection(
                 product: product,
-                displayStock: _displayStock,
               ),
             ),
           ),
@@ -317,6 +379,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         selectedVariant: _selectedVariant,
         needsVariantSelection: _needsVariantSelection,
         displayStock: _displayStock,
+        onSelectVariant: _openVariantSheet,
+        onAddToCart: (variant, quantity) =>
+            _addToCart(variant: variant, quantity: quantity),
+        onBuyNow: (variant, quantity) =>
+            _buyNow(variant: variant, quantity: quantity),
       ),
     );
   }
@@ -529,11 +596,9 @@ class _ImagePlaceholder extends StatelessWidget {
 
 class _ProductInfo extends StatelessWidget {
   final Product product;
-  final int displayStock;
 
   const _ProductInfo({
     required this.product,
-    required this.displayStock,
   });
 
   @override
@@ -544,7 +609,6 @@ class _ProductInfo extends StatelessWidget {
     final hasRating = product.rating > 0;
     final hasReviews = product.reviewCount > 0;
     final hasSold = product.soldCount > 0;
-    final inStock = displayStock > 0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -588,10 +652,11 @@ class _ProductInfo extends StatelessWidget {
               Text(
                 formatRupiah(product.price),
                 style: const TextStyle(
-                  color: Color(0xFF9CA3AF),
+                  color: _discountRed,
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
                   decoration: TextDecoration.lineThrough,
+                  decorationColor: _discountRed,
                 ),
               ),
               Text(
@@ -634,73 +699,138 @@ class _ProductInfo extends StatelessWidget {
             height: 1.22,
           ),
         ),
-        const SizedBox(height: 12),
-        Wrap(
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            if (hasRating) ...[
-              const Icon(Icons.star_rounded, size: 18, color: _starAmber),
-              const SizedBox(width: 4),
-              Text(
-                product.rating.toStringAsFixed(1),
-                style: const TextStyle(
-                  color: _textMedium,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
+        if (hasRating || hasReviews || hasSold) ...[
+          const SizedBox(height: 12),
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              if (hasRating) ...[
+                const Icon(Icons.star_rounded, size: 18, color: _starAmber),
+                const SizedBox(width: 4),
+                Text(
+                  product.rating.toStringAsFixed(1),
+                  style: const TextStyle(
+                    color: _textMedium,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-              ),
-            ] else
-              const Text(
-                'Belum ada ulasan',
-                style: TextStyle(
-                  color: _textGray,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
+              ],
+              if (hasReviews) ...[
+                if (hasRating) const _InfoDot(),
+                Text(
+                  '${product.reviewCount} ulasan',
+                  style: const TextStyle(
+                    color: _textGray,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-              ),
-            if (hasReviews) ...[
-              const _InfoDot(),
-              Text(
-                '${product.reviewCount} ulasan',
-                style: const TextStyle(
-                  color: _textGray,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
+              ],
+              if (hasSold) ...[
+                if (hasRating || hasReviews) const _InfoDot(),
+                Text(
+                  '${_formatCompactCount(product.soldCount)} terjual',
+                  style: const TextStyle(
+                    color: _textGray,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-              ),
+              ],
             ],
-            if (hasSold) ...[
-              const _InfoDot(),
-              Text(
-                '${_formatCompactCount(product.soldCount)} terjual',
-                style: const TextStyle(
-                  color: _textGray,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ],
-        ),
-        const SizedBox(height: 14),
-        Text(
-          inStock ? 'Stok $displayStock tersedia' : 'Stok habis',
-          style: TextStyle(
-            color: inStock ? _successGreen : _discountRed,
-            fontSize: 15,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        // Flash Sale countdown badge — hanya muncul kalau admin tag
-        // produk ini dengan flashSaleEndsAt (Tier 1). Auto-hide saat
-        // timer reach 0 atau expired.
-        if (product.hasFlashSaleCountdown) ...[
-          const SizedBox(height: 10),
-          FlashSaleCountdown.compact(
-            endsAt: product.flashSaleEndsAt!,
           ),
         ],
       ],
+    );
+  }
+}
+
+class _ProductFlashSaleBanner extends StatelessWidget {
+  final Product product;
+
+  const _ProductFlashSaleBanner({required this.product});
+
+  @override
+  Widget build(BuildContext context) {
+    final endsAt = product.flashSaleEndsAt;
+    if (endsAt == null || !product.hasFlashSaleCountdown) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFFF7A1A), Color(0xFFF97316)],
+        ),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFF97316).withValues(alpha: 0.28),
+            blurRadius: 22,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+            ),
+            child: const Icon(
+              Icons.flash_on_rounded,
+              color: Colors.white,
+              size: 27,
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Flash Sale',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    height: 1.1,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Harga spesial aktif untuk produk ini',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Color(0xFFFFF7ED),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              child: FlashSaleCountdown.compact(endsAt: endsAt),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -897,11 +1027,9 @@ class _ProductSectionTabs extends StatelessWidget {
 
 class _ProductInformationSection extends StatelessWidget {
   final Product product;
-  final int displayStock;
 
   const _ProductInformationSection({
     required this.product,
-    required this.displayStock,
   });
 
   @override
@@ -912,11 +1040,6 @@ class _ProductInformationSection extends StatelessWidget {
         _InfoRow(label: 'Brand', value: product.brand),
       if (product.category.isNotEmpty)
         _InfoRow(label: 'Kategori', value: product.category),
-      _InfoRow(
-        label: 'Stok',
-        value: displayStock > 0 ? 'Tersedia' : 'Habis',
-        valueColor: displayStock > 0 ? _successGreen : _discountRed,
-      ),
     ];
     return _SectionShell(
       child: Column(
@@ -941,12 +1064,10 @@ class _ProductInformationSection extends StatelessWidget {
 class _InfoRow extends StatelessWidget {
   final String label;
   final String value;
-  final Color? valueColor;
 
   const _InfoRow({
     required this.label,
     required this.value,
-    this.valueColor,
   });
 
   @override
@@ -970,8 +1091,8 @@ class _InfoRow extends StatelessWidget {
           Expanded(
             child: Text(
               value,
-              style: TextStyle(
-                color: valueColor ?? _textDark,
+              style: const TextStyle(
+                color: _textDark,
                 fontSize: 14,
                 fontWeight: FontWeight.w900,
               ),
@@ -1591,156 +1712,697 @@ class _Tab extends StatelessWidget {
   }
 }
 
-/// Variant Selector — render satu section per attribute (mis. "Ukuran")
-/// dengan chip per option. Chip yang di-tap → call onSelect(attrId, optionId).
-/// Setelah semua attribute terpilih, _selectedVariant di parent state akan
-/// auto-resolve via lookup variants[].optionIds match.
-class _VariantSelector extends StatelessWidget {
+class _VariantEntryRow extends StatelessWidget {
   final Product product;
   final Map<String, String> selectedOptions;
   final ProductVariant? selectedVariant;
-  final void Function(String attrId, String optionId) onSelect;
+  final VoidCallback onTap;
 
-  const _VariantSelector({
+  const _VariantEntryRow({
     required this.product,
     required this.selectedOptions,
     required this.selectedVariant,
-    required this.onSelect,
+    required this.onTap,
   });
 
-  /// Cek apakah satu kombinasi attribute+option ada variant aktif yg cocok.
-  /// Dipakai untuk dim/disabled chip yang tidak punya stok atau tidak ada
-  /// kombinasi variantnya.
-  bool _hasVariantFor(String attrId, String optionId) {
-    // Build "trial selection" = selected sekarang + (attrId → optionId) override.
-    final trial = Map<String, String>.from(selectedOptions);
-    trial[attrId] = optionId;
-    final trialIds = trial.values.toSet();
-    return product.variants.any((v) {
-      // Variant cocok kalau semua optionId di trial ada di variant.optionIds
-      // (subset cocok — supaya saat belum semua attribute dipilih, chip yang
-      // konsisten dengan sebagian pilihan tetap available).
-      return trialIds.every((id) => v.optionIds.contains(id)) && v.stock > 0;
-    });
+  String _selectedLabel() {
+    final variant = selectedVariant;
+    if (variant == null) return _availabilityLabel();
+
+    final labels = <String>[];
+    for (final attr in product.variantAttrs) {
+      final selectedId = selectedOptions[attr.id];
+      if (selectedId == null) continue;
+      for (final opt in attr.options) {
+        if (opt.id == selectedId) {
+          labels.add(opt.value);
+          break;
+        }
+      }
+    }
+    if (labels.isNotEmpty) return labels.join(' / ');
+    return variant.sku ?? 'Varian dipilih';
+  }
+
+  String _availabilityLabel() {
+    if (product.variantAttrs.isEmpty) return 'Pilih varian yang tersedia';
+    if (product.variantAttrs.length == 1) {
+      final attr = product.variantAttrs.first;
+      return 'Tersedia ${attr.options.length} ${attr.name.toLowerCase()}';
+    }
+    if (product.variantAttrs.length == 2) {
+      final first = product.variantAttrs[0];
+      final second = product.variantAttrs[1];
+      return 'Tersedia ${first.options.length} ${first.name.toLowerCase()} / ${second.options.length} ${second.name.toLowerCase()}';
+    }
+    return 'Tersedia ${product.variants.length} pilihan varian';
   }
 
   @override
   Widget build(BuildContext context) {
-    return GlassSurface(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.tune_rounded, color: _brandBlue, size: 20),
-              const SizedBox(width: 8),
-              const Text(
-                'Pilih Varian',
-                style: TextStyle(
-                  color: Color(0xFF17202A),
-                  fontSize: 15,
-                  fontWeight: FontWeight.w900,
-                ),
+    return AppPressable(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: _borderGray),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.035),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: _softBlueBg,
+                borderRadius: BorderRadius.circular(14),
               ),
-              const Spacer(),
-              if (selectedVariant != null)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFD1FAE5),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    'Stok ${selectedVariant!.stock}',
-                    style: const TextStyle(
-                      color: Color(0xFF16A34A),
-                      fontSize: 11,
+              child: const Icon(
+                Icons.tune_rounded,
+                color: _brandBlue,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Variant Produk',
+                    style: TextStyle(
+                      color: _textDark,
+                      fontSize: 15,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          for (final attr in product.variantAttrs) ...[
-            Text(
-              attr.name,
-              style: const TextStyle(
-                color: Color(0xFF475569),
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
+                  const SizedBox(height: 4),
+                  Text(
+                    _selectedLabel(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: _textGray,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: attr.options.map((opt) {
-                final selected = selectedOptions[attr.id] == opt.id;
-                final available = _hasVariantFor(attr.id, opt.id);
-                return _VariantChip(
-                  label: opt.value,
-                  selected: selected,
-                  enabled: available,
-                  onTap: available ? () => onSelect(attr.id, opt.id) : null,
-                );
-              }).toList(),
+            const SizedBox(width: 8),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: _textGray,
+              size: 28,
             ),
-            const SizedBox(height: 12),
           ],
-          if (selectedVariant != null) ...[
-            const Divider(color: Color(0xFFE5E7EB), height: 1),
-            const SizedBox(height: 10),
-            Row(
+        ),
+      ),
+    );
+  }
+}
+
+class _ProductVariantBottomSheet extends StatefulWidget {
+  final Product product;
+  final Map<String, String> initialSelectedOptions;
+  final ValueChanged<Map<String, String>> onSelectionChanged;
+  final void Function(ProductVariant variant, int quantity) onAddToCart;
+  final void Function(ProductVariant variant, int quantity) onBuyNow;
+
+  const _ProductVariantBottomSheet({
+    required this.product,
+    required this.initialSelectedOptions,
+    required this.onSelectionChanged,
+    required this.onAddToCart,
+    required this.onBuyNow,
+  });
+
+  @override
+  State<_ProductVariantBottomSheet> createState() =>
+      _ProductVariantBottomSheetState();
+}
+
+class _ProductVariantBottomSheetState
+    extends State<_ProductVariantBottomSheet> {
+  late Map<String, String> _selectedOptions;
+  int _quantity = 1;
+
+  Product get _product => widget.product;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedOptions = Map<String, String>.from(widget.initialSelectedOptions);
+  }
+
+  ProductVariant? get _selectedVariant {
+    if (!_product.hasVariants || _product.variantAttrs.isEmpty) return null;
+    if (_selectedOptions.length < _product.variantAttrs.length) return null;
+    final selectedIds = _selectedOptions.values.toSet();
+    for (final v in _product.variants) {
+      if (v.optionIds.length == selectedIds.length &&
+          v.optionIds.toSet().containsAll(selectedIds)) {
+        return v;
+      }
+    }
+    return null;
+  }
+
+  bool _hasVariantFor(String attrId, String optionId) {
+    final trial = Map<String, String>.from(_selectedOptions);
+    trial[attrId] = optionId;
+    final trialIds = trial.values.toSet();
+    return _product.variants.any((variant) {
+      return trialIds.every((id) => variant.optionIds.contains(id)) &&
+          variant.stock > 0;
+    });
+  }
+
+  void _selectOption(String attrId, String optionId) {
+    AppHaptics.tap();
+    setState(() {
+      _selectedOptions[attrId] = optionId;
+      final stock = _selectedVariant?.stock ?? 0;
+      if (stock > 0) {
+        _quantity = _quantity.clamp(1, stock);
+      } else {
+        _quantity = 1;
+      }
+    });
+    widget
+        .onSelectionChanged(Map<String, String>.unmodifiable(_selectedOptions));
+  }
+
+  int get _displayPrice =>
+      _selectedVariant?.price ?? _product.finalPrice.round();
+
+  int? get _originalPrice {
+    final original = _product.price.round();
+    if (_product.hasDiscount && original > _displayPrice) return original;
+    return null;
+  }
+
+  int? get _discountPercent {
+    final original = _originalPrice;
+    if (original == null || original <= 0) return null;
+    return (((original - _displayPrice) / original) * 100).round();
+  }
+
+  int get _selectedStock => _selectedVariant?.stock ?? 0;
+
+  bool get _canCheckout => _selectedVariant != null && _selectedStock > 0;
+
+  _VariantStockStatus get _stockStatus {
+    final variant = _selectedVariant;
+    if (variant == null) return _VariantStockStatus.needSelection;
+    if (variant.stock <= 0) return _VariantStockStatus.out;
+    if (variant.stock <= 5) return _VariantStockStatus.low;
+    return _VariantStockStatus.available;
+  }
+
+  String get _imageUrl {
+    final variantImage = _selectedVariant?.imageUrl;
+    if (variantImage != null && variantImage.trim().isNotEmpty) {
+      return variantImage;
+    }
+    return _product.imageUrl;
+  }
+
+  void _decrement() {
+    if (!_canCheckout || _quantity <= 1) return;
+    AppHaptics.tap();
+    setState(() => _quantity -= 1);
+  }
+
+  void _increment() {
+    if (!_canCheckout || _quantity >= _selectedStock) return;
+    AppHaptics.tap();
+    setState(() => _quantity += 1);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final stockTone = _stockStatus.tone;
+    final discountPercent = _discountPercent;
+    final originalPrice = _originalPrice;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.78,
+      minChildSize: 0.46,
+      maxChildSize: 0.92,
+      expand: false,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
               children: [
-                const Text(
-                  'Harga varian',
-                  style: TextStyle(
-                    color: Color(0xFF6B7280),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
+                Expanded(
+                  child: SingleChildScrollView(
+                    controller: scrollController,
+                    padding: EdgeInsets.fromLTRB(20, 10, 20, 18 + bottomInset),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Center(
+                          child: Container(
+                            width: 46,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFD1D5DB),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Row(
+                          children: [
+                            IconButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              icon: const Icon(Icons.close_rounded, size: 30),
+                              color: _textDark,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints.tightFor(
+                                width: 42,
+                                height: 42,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            const Text(
+                              'Varian produk',
+                              style: TextStyle(
+                                color: _textDark,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 18),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(18),
+                              child: AppProductImage(
+                                imageUrl: _imageUrl,
+                                width: 112,
+                                height: 112,
+                                fit: BoxFit.contain,
+                                borderRadius: BorderRadius.zero,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.center,
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          formatRupiah(_displayPrice),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: _textDark,
+                                            fontSize: 26,
+                                            height: 1,
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
+                                      ),
+                                      if (discountPercent != null) ...[
+                                        const SizedBox(width: 8),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 5,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: _softDiscountBg,
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                          ),
+                                          child: Text(
+                                            '$discountPercent% OFF',
+                                            style: const TextStyle(
+                                              color: _discountRed,
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                  if (originalPrice != null) ...[
+                                    const SizedBox(height: 9),
+                                    Text(
+                                      formatRupiah(originalPrice),
+                                      style: const TextStyle(
+                                        color: _discountRed,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w700,
+                                        decoration: TextDecoration.lineThrough,
+                                        decorationColor: _discountRed,
+                                      ),
+                                    ),
+                                  ],
+                                  const SizedBox(height: 10),
+                                  _VariantStockPill(status: _stockStatus),
+                                  if (_selectedVariant?.sku != null) ...[
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'SKU: ${_selectedVariant!.sku}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: _textGray,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 22),
+                        for (final attr in _product.variantAttrs) ...[
+                          Text(
+                            '${attr.name}:',
+                            style: const TextStyle(
+                              color: _textDark,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 10,
+                            children: attr.options.map((opt) {
+                              final selected =
+                                  _selectedOptions[attr.id] == opt.id;
+                              final available = _hasVariantFor(attr.id, opt.id);
+                              return _VariantChip(
+                                label: opt.value,
+                                selected: selected,
+                                enabled: available,
+                                onTap: available
+                                    ? () => _selectOption(attr.id, opt.id)
+                                    : null,
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 18),
+                        ],
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: stockTone.background,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: stockTone.border),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: RichText(
+                                  text: TextSpan(
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w800,
+                                      color: _textDark,
+                                    ),
+                                    children: [
+                                      const TextSpan(text: 'Jumlah:  '),
+                                      TextSpan(
+                                        text: _stockStatus.label,
+                                        style: TextStyle(
+                                          color: stockTone.foreground,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              _QuantityStepper(
+                                quantity: _canCheckout ? _quantity : 0,
+                                canDecrease: _canCheckout && _quantity > 1,
+                                canIncrease:
+                                    _canCheckout && _quantity < _selectedStock,
+                                onDecrease: _decrement,
+                                onIncrease: _increment,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                const Spacer(),
-                // Animated price ticker — tween smoothly saat user ganti
-                // varian (lebih native dari snap di Capacitor WebView).
-                AnimatedPrice(
-                  price: selectedVariant!.price,
-                  style: const TextStyle(
-                    color: _brandBlue,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
+                Container(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.08),
+                        blurRadius: 18,
+                        offset: const Offset(0, -8),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _canCheckout
+                              ? () => widget.onBuyNow(
+                                    _selectedVariant!,
+                                    _quantity,
+                                  )
+                              : null,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: _brandBlue,
+                            minimumSize: const Size.fromHeight(52),
+                            side: const BorderSide(
+                              color: _brandBlue,
+                              width: 1.2,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            textStyle: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 15,
+                            ),
+                          ),
+                          child: const Text('Beli Sekarang'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: _canCheckout
+                              ? () => widget.onAddToCart(
+                                    _selectedVariant!,
+                                    _quantity,
+                                  )
+                              : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _brandBlue,
+                            foregroundColor: Colors.white,
+                            minimumSize: const Size.fromHeight(52),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            textStyle: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 15,
+                            ),
+                          ),
+                          child: const Text('+ Keranjang'),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-            if (selectedVariant!.sku != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                'SKU: ${selectedVariant!.sku}',
-                style: const TextStyle(
-                  color: Color(0xFF9CA3AF),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ] else
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 4),
-              child: Text(
-                'Pilih semua varian untuk lihat harga & stok.',
-                style: TextStyle(
-                  color: Color(0xFFF59E0B),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+enum _VariantStockStatus {
+  needSelection,
+  available,
+  low,
+  out;
+
+  String get label {
+    switch (this) {
+      case _VariantStockStatus.needSelection:
+        return 'Pilih varian';
+      case _VariantStockStatus.available:
+        return 'Stok tersedia';
+      case _VariantStockStatus.low:
+        return 'Stok hampir habis';
+      case _VariantStockStatus.out:
+        return 'Stok habis';
+    }
+  }
+
+  _StatusTone get tone {
+    switch (this) {
+      case _VariantStockStatus.needSelection:
+        return const _StatusTone(
+          foreground: _textGray,
+          background: Color(0xFFF8FAFC),
+          border: _borderGray,
+        );
+      case _VariantStockStatus.available:
+        return const _StatusTone(
+          foreground: _successGreen,
+          background: Color(0xFFF0FDF4),
+          border: Color(0xFFBBF7D0),
+        );
+      case _VariantStockStatus.low:
+        return const _StatusTone(
+          foreground: Color(0xFFF97316),
+          background: Color(0xFFFFF7ED),
+          border: Color(0xFFFED7AA),
+        );
+      case _VariantStockStatus.out:
+        return const _StatusTone(
+          foreground: _discountRed,
+          background: _softDiscountBg,
+          border: Color(0xFFFFC9D0),
+        );
+    }
+  }
+}
+
+class _StatusTone {
+  final Color foreground;
+  final Color background;
+  final Color border;
+
+  const _StatusTone({
+    required this.foreground,
+    required this.background,
+    required this.border,
+  });
+}
+
+class _VariantStockPill extends StatelessWidget {
+  final _VariantStockStatus status;
+
+  const _VariantStockPill({required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    final tone = status.tone;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: tone.background,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: tone.border),
+      ),
+      child: Text(
+        status.label,
+        style: TextStyle(
+          color: tone.foreground,
+          fontSize: 12,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+}
+
+class _QuantityStepper extends StatelessWidget {
+  final int quantity;
+  final bool canDecrease;
+  final bool canIncrease;
+  final VoidCallback onDecrease;
+  final VoidCallback onIncrease;
+
+  const _QuantityStepper({
+    required this.quantity,
+    required this.canDecrease,
+    required this.canIncrease,
+    required this.onDecrease,
+    required this.onIncrease,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 42,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFD1D5DB)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            onPressed: canDecrease ? onDecrease : null,
+            icon: const Icon(Icons.remove_rounded),
+            iconSize: 20,
+            color: _textDark,
+            disabledColor: const Color(0xFFCBD5E1),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+          ),
+          SizedBox(
+            width: 32,
+            child: Text(
+              '$quantity',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: _textDark,
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
               ),
             ),
+          ),
+          IconButton(
+            onPressed: canIncrease ? onIncrease : null,
+            icon: const Icon(Icons.add_rounded),
+            iconSize: 22,
+            color: _textDark,
+            disabledColor: const Color(0xFFCBD5E1),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+          ),
         ],
       ),
     );
@@ -1809,12 +2471,18 @@ class _StickyPurchaseBar extends StatelessWidget {
   final ProductVariant? selectedVariant;
   final bool needsVariantSelection;
   final int displayStock;
+  final VoidCallback onSelectVariant;
+  final void Function(ProductVariant? variant, int quantity) onAddToCart;
+  final void Function(ProductVariant? variant, int quantity) onBuyNow;
 
   const _StickyPurchaseBar({
     required this.product,
     required this.selectedVariant,
     required this.needsVariantSelection,
     required this.displayStock,
+    required this.onSelectVariant,
+    required this.onAddToCart,
+    required this.onBuyNow,
   });
 
   void _onChatWa(BuildContext context) {
@@ -1828,55 +2496,25 @@ class _StickyPurchaseBar extends StatelessWidget {
     launchUrl(url, mode: LaunchMode.externalApplication);
   }
 
-  void _showSelectVariantToast(BuildContext context) {
-    AppHaptics.warning();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Pilih varian dulu sebelum lanjut.'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
   void _onAddToCart(BuildContext context) {
     if (needsVariantSelection) {
-      _showSelectVariantToast(context);
+      onSelectVariant();
       return;
     }
-    AppHaptics.success();
-    cartStore.addProduct(product, variant: selectedVariant);
-    AppToast.showCartAdded(
-      context,
-      '${product.title} masuk keranjang',
-      onTap: () => Navigator.pushNamed(context, '/cart'),
-    );
+    onAddToCart(selectedVariant, 1);
   }
 
   void _onBeliSekarang(BuildContext context) {
     if (needsVariantSelection) {
-      _showSelectVariantToast(context);
+      onSelectVariant();
       return;
     }
-    AppHaptics.impact();
-    // Buy Now flow — push CheckoutScreen langsung dengan single-item
-    // override (bypass cart). Match reference pattern: user impulsive
-    // buy tanpa harus add ke cart dulu.
-    final item = CartItem(
-      product: product,
-      quantity: 1,
-      variant: selectedVariant,
-    );
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => CheckoutScreen(items: [item]),
-      ),
-    );
+    onBuyNow(selectedVariant, 1);
   }
 
   @override
   Widget build(BuildContext context) {
     final outOfStock = displayStock <= 0;
-    final disabled = outOfStock || needsVariantSelection;
     // Saat out-of-stock, ganti tombol Beli + Keranjang dengan "Beri tahu
     // saya saat tersedia" — pre-order notification subscription. User
     // tetap bisa chat WA admin via tombol kiri.
@@ -1940,7 +2578,7 @@ class _StickyPurchaseBar extends StatelessWidget {
           Expanded(
             flex: 2,
             child: OutlinedButton(
-              onPressed: disabled ? null : () => _onBeliSekarang(context),
+              onPressed: outOfStock ? null : () => _onBeliSekarang(context),
               style: OutlinedButton.styleFrom(
                 foregroundColor: _brandBlue,
                 minimumSize: const Size.fromHeight(50),
