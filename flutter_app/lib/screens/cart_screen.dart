@@ -30,8 +30,8 @@ const _discountRedBorder = Color(0xFFFFB8C8);
 const _shippingGreen = Color(0xFF12A66A);
 const _shippingGreenSoft = Color(0xFFECFDF3);
 const _shippingGreenBorder = Color(0xFFA6F4C5);
-const _voucherBarHeight = 52.0;
-const _selectionRowHeight = 44.0;
+const _voucherBarHeight = 50.0;
+const _selectionRowHeight = 42.0;
 // Shared cart chrome auto-hide config — selection row atas + voucher bar
 // bawah pakai SAME duration + curve + state untuk gerakan 1:1 sinkron.
 const _cartChromeIdleDelay = Duration(milliseconds: 180);
@@ -1907,17 +1907,17 @@ class _StickyVoucherBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasDiscount = discountVoucher != null && discountAmount > 0;
     final hasShipping = shippingSelected && shippingDiscount > 0;
-    final leadingColor = hasSelection ? _brandBlue : const Color(0xFF94A3B8);
+    final leadingColor = hasSelection ? _discountRed : const Color(0xFF94A3B8);
     final leadingBackground =
-        hasSelection ? const Color(0xFFEAF5FF) : const Color(0xFFF8FAFC);
+        hasSelection ? _discountRedSoft : const Color(0xFFF8FAFC);
     final leadingBorder =
-        hasSelection ? const Color(0xFFBFDBFE) : const Color(0xFFE2E8F0);
+        hasSelection ? _discountRedBorder : const Color(0xFFE2E8F0);
 
     return Material(
       color: NataloColors.surface,
       child: Container(
         height: _voucherBarHeight,
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        padding: const EdgeInsets.fromLTRB(16, 7, 16, 7),
         decoration: const BoxDecoration(
           color: Colors.white,
           border: Border(top: BorderSide(color: Color(0xFFE5EAF1))),
