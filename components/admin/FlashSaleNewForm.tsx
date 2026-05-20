@@ -28,11 +28,21 @@ export function FlashSaleNewForm({ products, action }: Props) {
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  // Filter produk by search query (case-insensitive, contains match)
+  // Filter produk by search query. Pakai 2 strategi:
+  // 1. Token split: "pro plan" → ["pro", "plan"], semua harus appear
+  // 2. Normalize alphanumeric only: "Pro Plan" + "proplan" sama-sama
+  //    jadi "proplan" → matchable tanpa peduli spasi/dash/dot
+  // Contoh: search "proplan" match "Pro Plan Adult Cat".
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return products;
-    return products.filter((p) => p.name.toLowerCase().includes(q));
+    const raw = search.trim().toLowerCase();
+    if (!raw) return products;
+    const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const tokens = raw.split(/\s+/).filter(Boolean).map(normalize).filter(Boolean);
+    if (tokens.length === 0) return products;
+    return products.filter((p) => {
+      const nName = normalize(p.name);
+      return tokens.every((t) => nName.includes(t));
+    });
   }, [search, products]);
 
   function toggle(id: string) {

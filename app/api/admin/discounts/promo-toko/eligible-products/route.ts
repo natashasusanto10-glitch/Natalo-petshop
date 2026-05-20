@@ -55,11 +55,24 @@ export async function GET(request: NextRequest) {
 
   const where: {
     isActive: boolean;
-    name?: { contains: string; mode: "insensitive" };
+    AND?: Array<{ name: { contains: string; mode: "insensitive" } }>;
     categoryId?: string;
     id?: { notIn: string[] };
   } = { isActive: true };
-  if (q) where.name = { contains: q, mode: "insensitive" };
+  // Token-based search: split query jadi tokens, semua harus appear di
+  // name. Lebih lenient dari single substring match — "adult cat"
+  // match "Pro Plan Adult Cat Chicken" karena setiap token ada.
+  if (q) {
+    const tokens = q
+      .split(/\s+/)
+      .map((t) => t.trim())
+      .filter((t) => t.length >= 1);
+    if (tokens.length > 0) {
+      where.AND = tokens.map((t) => ({
+        name: { contains: t, mode: "insensitive" as const },
+      }));
+    }
+  }
   if (categoryId) where.categoryId = categoryId;
   if (blockedProductIds.size > 0) {
     where.id = { notIn: Array.from(blockedProductIds) };
