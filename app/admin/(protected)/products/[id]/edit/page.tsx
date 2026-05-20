@@ -135,7 +135,7 @@ export default async function AdminProductEditPage({
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-5 md:py-10">
+    <div className="mx-auto max-w-7xl px-4 py-5 md:px-8 md:py-10">
       <Link href="/admin/products" className="text-sm font-bold text-zinc-500 hover:text-zinc-950">
         ← Kembali ke produk
       </Link>
