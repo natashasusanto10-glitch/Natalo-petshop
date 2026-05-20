@@ -274,10 +274,14 @@ class _WishlistScreenState extends State<WishlistScreen> {
         // cartStore). Konsisten visual antar home, wishlist, dan
         // halaman lain yang punya header.
         actions: const [AppCartButton()],
-        // Title style match PWA wishlist: "Wishlist\n{N} produk disimpan"
+        // Title — "Wishlist" saja saat kosong; tambah subtitle hanya
+        // kalau ada item (per user request, hilangkan "0 produk disimpan"
+        // yang redundant di empty state — placeholder hero card sudah
+        // communicate state-nya).
         title: AnimatedBuilder(
           animation: favoriteStore,
           builder: (context, _) {
+            final hasItems = favoriteStore.count > 0;
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
@@ -291,15 +295,17 @@ class _WishlistScreenState extends State<WishlistScreen> {
                     height: 1.1,
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  '${favoriteStore.count} produk disimpan',
-                  style: const TextStyle(
-                    color: Color(0xFF6B7280),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
+                if (hasItems) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    '${favoriteStore.count} produk disimpan',
+                    style: const TextStyle(
+                      color: Color(0xFF6B7280),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
+                ],
               ],
             );
           },
