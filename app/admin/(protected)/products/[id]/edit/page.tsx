@@ -56,6 +56,10 @@ export default async function AdminProductEditPage({
 
     if (!name || !description || !price) return;
 
+    // Capture stock SEBELUM update untuk detect transition 0 → >0
+    // (restock trigger). Hanya fire push kalau stock memang naik dari 0.
+    const wasOutOfStock = product?.stock === 0;
+
     await prisma.product.update({
       where: { id },
       data: {
@@ -69,6 +73,17 @@ export default async function AdminProductEditPage({
     // Sync ke search index (non-blocking)
     const { syncProduct } = await import("@/lib/search");
     await syncProduct(id).catch(() => {});
+
+    // Restock trigger — kalau product berubah dari stock=0 ke stock>0,
+    // notify semua subscriber yang mendaftar lewat "Beri tahu saat tersedia".
+    // Hanya untuk produk tanpa variant (variantId=null subscription). Untuk
+    // produk dengan variant, trigger di-handle di variants PUT route.
+    if (wasOutOfStock && stock > 0) {
+      const { sendBackInStockPush } = await import("@/lib/push-marketing");
+      await sendBackInStockPush(id, null).catch((err) => {
+        console.warn("[admin/products edit] back-in-stock push failed:", err);
+      });
+    }
 
     redirect("/admin/products");
   }

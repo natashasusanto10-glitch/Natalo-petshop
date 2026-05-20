@@ -183,6 +183,25 @@ export async function PUT(
       console.error("[variants PUT syncProduct]", error);
     });
 
+    // Restock trigger — kalau Product.stock berubah dari 0 ke >0
+    // (aggregate dari sum variant stocks di transaction), notify
+    // subscriber yang mendaftar untuk produk ini (variantId=null).
+    // Note: variant-specific subscribers di-handle via CASCADE delete saat
+    // variant lama di-hard-delete; subscribe ulang ke variant baru kalau
+    // user mau.
+    if (product.stock === 0) {
+      const refreshed = await prisma.product.findUnique({
+        where: { id: productId },
+        select: { stock: true },
+      });
+      if (refreshed && refreshed.stock > 0) {
+        const { sendBackInStockPush } = await import("@/lib/push-marketing");
+        sendBackInStockPush(productId, null).catch((err) => {
+          console.warn("[variants PUT back-in-stock]:", err);
+        });
+      }
+    }
+
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("[variants PUT]", error);
