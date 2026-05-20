@@ -652,6 +652,8 @@ export async function getProducts(opts?: {
   hasPriceOnly?: boolean;
   inStockOnly?: boolean;
   withImageOnly?: boolean;
+  /** Filter produk yang sedang ada diskon aktif (Flash Sale atau Promo Toko) */
+  discountOnly?: boolean;
   viewerId?: string | null;
 }): Promise<StoreProduct[]> {
   const {
@@ -667,6 +669,7 @@ export async function getProducts(opts?: {
     hasPriceOnly,
     inStockOnly,
     withImageOnly,
+    discountOnly,
     viewerId,
   } = opts ?? {};
   const createdAtCutoff = newProductCutoff(newFilter);
@@ -679,6 +682,7 @@ export async function getProducts(opts?: {
     hasPriceOnly,
     inStockOnly,
     withImageOnly,
+    discountOnly,
   });
 
   try {
@@ -799,6 +803,7 @@ export async function getProductsCount(opts?: {
   hasPriceOnly?: boolean;
   inStockOnly?: boolean;
   withImageOnly?: boolean;
+  discountOnly?: boolean;
 }): Promise<number> {
   const {
     category,
@@ -810,6 +815,7 @@ export async function getProductsCount(opts?: {
     hasPriceOnly,
     inStockOnly,
     withImageOnly,
+    discountOnly,
   } = opts ?? {};
   const createdAtCutoff = newProductCutoff(newFilter);
   const where = buildProductWhere({
@@ -821,6 +827,7 @@ export async function getProductsCount(opts?: {
     hasPriceOnly,
     inStockOnly,
     withImageOnly,
+    discountOnly,
   });
 
   try {
@@ -861,6 +868,7 @@ function buildProductWhere({
   hasPriceOnly,
   inStockOnly,
   withImageOnly,
+  discountOnly,
 }: {
   category?: string;
   brand?: string;
@@ -870,6 +878,9 @@ function buildProductWhere({
   hasPriceOnly?: boolean;
   inStockOnly?: boolean;
   withImageOnly?: boolean;
+  /** Filter produk yang sedang dalam promo (Flash Sale aktif ATAU
+   *  Promo Toko aktif via ProductDiscountItem). */
+  discountOnly?: boolean;
 }): Prisma.ProductWhereInput {
   const and: Prisma.ProductWhereInput[] = [];
 
@@ -899,6 +910,34 @@ function buildProductWhere({
           hasVariants: true,
           variants: {
             some: { deletedAt: null, isActive: true, price: { gt: 0 } },
+          },
+        },
+      ],
+    });
+  }
+
+  if (discountOnly) {
+    const now = new Date();
+    and.push({
+      OR: [
+        // Flash Sale aktif: punya discountPrice + flashSaleEndsAt future
+        {
+          AND: [
+            { discountPrice: { not: null } },
+            { flashSaleEndsAt: { gt: now } },
+          ],
+        },
+        // Punya ProductDiscountItem aktif (Promo Toko)
+        {
+          discountItems: {
+            some: {
+              isItemActive: true,
+              discount: {
+                isActive: true,
+                startsAt: { lte: now },
+                endsAt: { gt: now },
+              },
+            },
           },
         },
       ],

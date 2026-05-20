@@ -67,6 +67,10 @@ export async function GET(request: NextRequest) {
   const inStockOnly = parseBooleanFlag(sp.get("inStock"));
   const withImageOnly = parseBooleanFlag(sp.get("withImage"));
   const hasPriceOnly = parseBooleanFlag(sp.get("hasPrice"));
+  // Filter "sedang diskon" — produk yang Flash Sale aktif atau punya
+  // Promo Toko (ProductDiscountItem) aktif. Dipakai Flutter ProductsScreen
+  // discountOnly toggle.
+  const discountOnly = parseBooleanFlag(sp.get("discountOnly"));
   const session = await getSession("CUSTOMER").catch(() => null);
 
   const [items, total] = await Promise.all([
@@ -84,6 +88,7 @@ export async function GET(request: NextRequest) {
       hasPriceOnly,
       inStockOnly,
       withImageOnly,
+      discountOnly,
       viewerId: session?.sub ?? null,
     }),
     getProductsCount({
@@ -96,6 +101,7 @@ export async function GET(request: NextRequest) {
       hasPriceOnly,
       inStockOnly,
       withImageOnly,
+      discountOnly,
     }),
   ]);
 

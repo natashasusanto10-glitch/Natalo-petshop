@@ -299,6 +299,11 @@ class _ProductsScreenState extends State<ProductsScreen> {
       popularFilter: _filter.apiPopularFilter,
       inStock: _filter.inStockOnly,
       withImage: _filter.withImageOnly,
+      // Filter "Sedang Diskon" — pass ke API supaya server-side filter
+      // by ProductDiscountItem aktif + Flash Sale. Sebelumnya cuma
+      // client-side filter dari hasilfetch limit → produk diskon yang
+      // bukan baru-baru bisa terkubur di posisi >60 → filter empty.
+      discountOnly: _filter.discountOnly,
     );
     if (!mounted) return;
     setState(() {
@@ -323,6 +328,11 @@ class _ProductsScreenState extends State<ProductsScreen> {
       popularFilter: _filter.apiPopularFilter,
       inStock: _filter.inStockOnly,
       withImage: _filter.withImageOnly,
+      // Filter "Sedang Diskon" — pass ke API supaya server-side filter
+      // by ProductDiscountItem aktif + Flash Sale. Sebelumnya cuma
+      // client-side filter dari hasilfetch limit → produk diskon yang
+      // bukan baru-baru bisa terkubur di posisi >60 → filter empty.
+      discountOnly: _filter.discountOnly,
     );
     if (!mounted) return;
     setState(() {
@@ -1743,14 +1753,6 @@ class _ProductsPageProductCard extends StatelessWidget {
               Stack(
                 children: [
                   _ProductGridImage(imageUrl: product.imageUrl),
-                  if (product.hasDiscount)
-                    Positioned(
-                      right: 8,
-                      top: 8,
-                      child: _ProductDiscountBadge(
-                        percent: product.discountPercent,
-                      ),
-                    ),
                 ],
               ),
               const SizedBox(height: 10),
@@ -2077,42 +2079,6 @@ String _formatProductSoldCount(int count) {
   }
   if (count >= 100) return '${(count ~/ 50) * 50}+';
   return count.toString();
-}
-
-class _ProductDiscountBadge extends StatelessWidget {
-  final int? percent;
-
-  const _ProductDiscountBadge({required this.percent});
-
-  @override
-  Widget build(BuildContext context) {
-    final value = percent;
-    if (value == null || value <= 0) return const SizedBox.shrink();
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE11D48),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x22000000),
-            blurRadius: 10,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Text(
-        '$value%',
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 13,
-          fontWeight: FontWeight.w900,
-          height: 1,
-        ),
-      ),
-    );
-  }
 }
 
 /// Pinned header delegate untuk sliver yang stick di top scroll.

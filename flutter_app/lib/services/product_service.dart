@@ -153,6 +153,10 @@ class ProductService {
     bool inStock = false,
     bool hasPrice = false,
     bool withImage = false,
+    /// Filter produk yang sedang diskon (Flash Sale aktif atau Promo
+    /// Toko aktif). Server-side filter — lebih akurat dari client-side
+    /// karena tidak terkubur di limit pagination.
+    bool discountOnly = false,
   }) async {
     try {
       final keyword = query?.trim() ?? '';
@@ -169,6 +173,7 @@ class ProductService {
           if (inStock) 'inStock': 'true',
           if (hasPrice) 'hasPrice': 'true',
           if (withImage) 'withImage': 'true',
+          if (discountOnly) 'discountOnly': 'true',
         },
       );
       final map = _asMap(data);
