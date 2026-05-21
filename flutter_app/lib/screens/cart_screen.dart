@@ -1035,8 +1035,14 @@ class _CartItemCard extends StatelessWidget {
     final hasDiscount = regular > price;
     final discountPercent =
         hasDiscount ? (((regular - price) / regular) * 100).round() : 0;
-    final hasVariantSelection =
-        item.variantLabel != null && item.variantLabel!.trim().isNotEmpty;
+    final rawVariantLabel = item.variantLabel?.trim();
+    final fallbackVariantLabel = item.variant?.sku?.trim();
+    final variantLabel = rawVariantLabel != null && rawVariantLabel.isNotEmpty
+        ? rawVariantLabel
+        : fallbackVariantLabel != null && fallbackVariantLabel.isNotEmpty
+            ? fallbackVariantLabel
+            : null;
+    final hasVariantSelection = variantLabel != null;
 
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.96, end: 1),
@@ -1131,7 +1137,7 @@ class _CartItemCard extends StatelessWidget {
                     if (hasVariantSelection) ...[
                       const SizedBox(height: 8),
                       _VariantChipDropdown(
-                        label: item.variantLabel!,
+                        label: variantLabel,
                         onTap: () => _openVariantSheet(context),
                       ),
                     ],

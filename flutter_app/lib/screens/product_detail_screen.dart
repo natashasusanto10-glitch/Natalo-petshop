@@ -186,12 +186,36 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     });
   }
 
+  String? _variantLabelFor(ProductVariant? variant) {
+    if (variant == null) return null;
+    final sku = variant.sku?.trim();
+    if (sku != null && sku.isNotEmpty) return sku;
+
+    final labels = <String>[];
+    for (final attr in product.variantAttrs) {
+      for (final option in attr.options) {
+        if (variant.optionIds.contains(option.id)) {
+          final value = option.value.trim();
+          if (value.isNotEmpty) labels.add(value);
+          break;
+        }
+      }
+    }
+    if (labels.isEmpty) return null;
+    return labels.join(', ');
+  }
+
   void _addToCart({
     ProductVariant? variant,
     int quantity = 1,
   }) {
     AppHaptics.success();
-    cartStore.addProduct(product, variant: variant, quantity: quantity);
+    cartStore.addProduct(
+      product,
+      variant: variant,
+      variantLabel: _variantLabelFor(variant),
+      quantity: quantity,
+    );
     AppToast.showCartAdded(
       context,
       '${product.title} masuk keranjang',
@@ -212,6 +236,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               product: product,
               quantity: quantity,
               variant: variant,
+              variantLabel: _variantLabelFor(variant),
               unitPrice: variant == null
                   ? null
                   : effectiveCartVariantPrice(product, variant),
