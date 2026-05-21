@@ -1094,14 +1094,14 @@ class _CartItemCard extends StatelessWidget {
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
               const SizedBox(width: 4),
-              // Product image — soft bg, no border. Tokopedia size ~64px,
-              // radius kecil supaya feels marketplace native.
+              // Product image — soft bg, no border. Dibuat lebih besar agar
+              // varian visual produk lebih mudah dikenali di cart.
               InkWell(
                 onTap: () => _openProductDetail(context),
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
-                  width: 64,
-                  height: 64,
+                  width: 88,
+                  height: 88,
                   decoration: BoxDecoration(
                     color: const Color(0xFFF1F5F9),
                     borderRadius: BorderRadius.circular(8),
@@ -1155,55 +1155,54 @@ class _CartItemCard extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Row(
-                                children: [
-                                  Flexible(
-                                    child: Text(
-                                      formatRupiah(price),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        color: hasDiscount
-                                            ? const Color(0xFFEF4444)
-                                            : const Color(0xFF111827),
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w900,
-                                      ),
+                              SizedBox(
+                                width: double.infinity,
+                                height: 23,
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    formatRupiah(price),
+                                    maxLines: 1,
+                                    softWrap: false,
+                                    style: TextStyle(
+                                      color: hasDiscount
+                                          ? const Color(0xFFEF4444)
+                                          : const Color(0xFF111827),
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w900,
                                     ),
                                   ),
-                                  if (hasDiscount) ...[
-                                    const SizedBox(width: 6),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 6,
-                                        vertical: 2,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFFEE2E2),
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
+                                ),
+                              ),
+                              if (hasDiscount) ...[
+                                const SizedBox(height: 3),
+                                Row(
+                                  children: [
+                                    Flexible(
                                       child: Text(
-                                        '$discountPercent%',
+                                        formatRupiah(regular),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                         style: const TextStyle(
-                                          color: Color(0xFFEF4444),
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w900,
+                                          color: Color(0xFF9CA3AF),
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                          decoration:
+                                              TextDecoration.lineThrough,
                                         ),
                                       ),
                                     ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      '$discountPercent%',
+                                      style: const TextStyle(
+                                        color: Color(0xFFEF4444),
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
                                   ],
-                                ],
-                              ),
-                              if (hasDiscount) ...[
-                                const SizedBox(height: 2),
-                                Text(
-                                  formatRupiah(regular),
-                                  style: const TextStyle(
-                                    color: Color(0xFF9CA3AF),
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                    decoration: TextDecoration.lineThrough,
-                                  ),
                                 ),
                               ],
                             ],
