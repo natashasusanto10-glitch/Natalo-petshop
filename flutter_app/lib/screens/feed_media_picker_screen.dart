@@ -513,21 +513,9 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
   Widget _buildBody() {
     return CustomScrollView(
       slivers: [
-        // ── Helper hint top ──
-        const SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(20, 4, 20, 12),
-            child: Text(
-              'Pilih foto atau video dari galeri kamu untuk membuat postingan.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: _textMuted,
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ),
+        // Subtitle + constraint info dihapus per spec user — UI lebih
+        // clean match Instagram (header langsung media tanpa helper text).
+        const SliverToBoxAdapter(child: SizedBox(height: 8)),
         // ── Preview area 75% × 3:4 ──
         SliverToBoxAdapter(child: _buildPreview()),
         SliverToBoxAdapter(
@@ -581,19 +569,10 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
             ),
           ),
         ),
-        const SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(20, 2, 20, 12),
-            child: Text(
-              'Maksimal 8 foto • Video hanya bisa dipilih 1',
-              style: TextStyle(
-                color: _textMuted,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ),
+        // Constraint helper text dihapus per spec user — IG-style
+        // (constraint info ditampilkan via toast saat user attempt aksi
+        // invalid, bukan static text).
+        const SliverToBoxAdapter(child: SizedBox(height: 10)),
         // ── Toast (kalau ada) ──
         if (_toastMessage != null)
           SliverToBoxAdapter(
