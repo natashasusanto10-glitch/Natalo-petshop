@@ -3392,7 +3392,11 @@ class _ReelsAction extends StatelessWidget {
                       fontWeight: FontWeight.w900,
                       height: 1,
                       shadows: [
-                        Shadow(color: Colors.black54, blurRadius: 6),
+                        Shadow(
+                          color: Colors.black54,
+                          blurRadius: 2,
+                          offset: Offset(0, 0.8),
+                        ),
                       ],
                     ),
                   ),
