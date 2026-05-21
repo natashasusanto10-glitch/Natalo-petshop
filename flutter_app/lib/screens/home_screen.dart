@@ -208,6 +208,12 @@ class _HomeScreenState extends State<HomeScreen> {
       final page = await productService.fetchProductsPage(
         cursor: _exploreNextCursor,
         limit: 14,
+        // Hilangkan filter `withImage=true` — selama development banyak
+        // produk dummy belum punya imageUrl. Tanpa filter ini, produk
+        // tanpa foto tetap muncul (placeholder/icon fallback di
+        // _HomeProductCard). Saat real data sudah upload, behavior tetap
+        // ok karena semua produk punya foto.
+        withImage: false,
       );
       if (!mounted) return;
       final nextProducts = _generateExploreProducts(page.products);
