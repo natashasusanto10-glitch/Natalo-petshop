@@ -460,10 +460,13 @@ class _PostFeedItem extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Profile row — di padding kecil supaya nama dan avatar tetap
-        // align ke edge, tapi media tetap full-width.
+        // align ke edge, tapi media tetap full-width. Subtitle "Lokasi
+        // segera hadir" sebagai placeholder IG-style location/venue line
+        // (future: replace dgn data tag produk atau geo).
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 4, 6, 10),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               ProfileAvatar(
                 initial: memberInitial,
@@ -473,15 +476,37 @@ class _PostFeedItem extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(
-                  memberName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: NataloColors.textPrimary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w900,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      memberName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: NataloColors.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                        height: 1.15,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    // Subtitle placeholder IG-style. "Segera hadir" sampai
+                    // backend support location/venue field.
+                    Text(
+                      'Lokasi · segera hadir',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: NataloColors.textSecondary
+                            .withValues(alpha: 0.75),
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        height: 1.1,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               IconButton(
@@ -538,7 +563,12 @@ class _PostFeedItem extends StatelessWidget {
           const SizedBox(height: 2),
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
-            child: _LikedByLine(memberName: memberName, post: post),
+            child: _LikedByLine(
+              memberName: memberName,
+              memberPhotoUrl: memberPhotoUrl,
+              memberInitial: memberInitial,
+              post: post,
+            ),
           ),
         ],
         // Caption — kalau ada saja.
@@ -580,9 +610,16 @@ String _hybridDateLabel(DateTime created) {
 
 class _LikedByLine extends StatelessWidget {
   final String memberName;
+  final String? memberPhotoUrl;
+  final String memberInitial;
   final MyFeedPost post;
 
-  const _LikedByLine({required this.memberName, required this.post});
+  const _LikedByLine({
+    required this.memberName,
+    required this.memberPhotoUrl,
+    required this.memberInitial,
+    required this.post,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -590,29 +627,161 @@ class _LikedByLine extends StatelessWidget {
     //  - 1 like  → "Disukai oleh X"
     //  - 2+ like → "Disukai oleh X dan N orang lainnya"
     // (0 like sudah di-hide di parent.)
+    //
+    // Avatar stack: IG-style mini overlapping circles di kiri text.
+    // Saat ini Natalo backend belum return list of recent likers, jadi
+    // kita pakai avatar member yang lagi view (self) sebagai placeholder
+    // tunggal — kalau ada 2+ likes, tampilkan 2 overlap avatars (self +
+    // placeholder N). Future: extend feed posts response dengan
+    // recentLikers array untuk avatar yang akurat per-liker.
     final isSelfOnly = post.likeCount == 1;
     final othersCount = post.likeCount - 1;
-    return Text.rich(
-      TextSpan(
-        children: [
-          const TextSpan(text: 'Disukai oleh '),
-          TextSpan(
-            text: memberName,
-            style: const TextStyle(fontWeight: FontWeight.w900),
-          ),
-          if (!isSelfOnly) ...[
-            const TextSpan(text: ' dan '),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        _LikedAvatarStack(
+          memberInitial: memberInitial,
+          memberPhotoUrl: memberPhotoUrl,
+          hasOthers: !isSelfOnly,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text.rich(
             TextSpan(
-              text: '$othersCount orang lainnya',
-              style: const TextStyle(fontWeight: FontWeight.w900),
+              children: [
+                const TextSpan(text: 'Disukai oleh '),
+                TextSpan(
+                  text: memberName,
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+                if (!isSelfOnly) ...[
+                  const TextSpan(text: ' dan '),
+                  TextSpan(
+                    text: '$othersCount orang lainnya',
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                ],
+              ],
             ),
-          ],
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: NataloColors.textPrimary,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              height: 1.3,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Mini avatar stack — overlapping circles di kiri "Disukai oleh ..." text.
+/// IG-style: 1 avatar kalau 1 like, 2 overlap avatars kalau >1 like.
+class _LikedAvatarStack extends StatelessWidget {
+  final String memberInitial;
+  final String? memberPhotoUrl;
+  final bool hasOthers;
+
+  const _LikedAvatarStack({
+    required this.memberInitial,
+    required this.memberPhotoUrl,
+    required this.hasOthers,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const size = 22.0;
+    // Width yang reserve untuk 1 atau 2 avatar overlap.
+    final width = hasOthers ? size + (size * 0.55) : size;
+    return SizedBox(
+      width: width,
+      height: size,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          if (hasOthers)
+            Positioned(
+              left: size * 0.55,
+              child: _MiniAvatar.placeholder(size: size),
+            ),
+          Positioned(
+            left: 0,
+            child: _MiniAvatar.member(
+              initial: memberInitial,
+              photoUrl: memberPhotoUrl,
+              size: size,
+            ),
+          ),
         ],
       ),
-      style: const TextStyle(
-        color: NataloColors.textPrimary,
-        fontSize: 13,
-        fontWeight: FontWeight.w600,
+    );
+  }
+}
+
+class _MiniAvatar extends StatelessWidget {
+  final double size;
+  final String? photoUrl;
+  final String? initial;
+  final Color? backgroundColor;
+
+  const _MiniAvatar({
+    required this.size,
+    this.photoUrl,
+    this.initial,
+    this.backgroundColor,
+  });
+
+  factory _MiniAvatar.member({
+    required String initial,
+    required String? photoUrl,
+    required double size,
+  }) =>
+      _MiniAvatar(size: size, photoUrl: photoUrl, initial: initial);
+
+  factory _MiniAvatar.placeholder({required double size}) => _MiniAvatar(
+        size: size,
+        backgroundColor: const Color(0xFFD1D5DB),
+        initial: '+',
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final url = photoUrl;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: backgroundColor ?? const Color(0xFFE5E7EB),
+        shape: BoxShape.circle,
+        // Border putih supaya overlap antar avatar kelihatan jelas.
+        border: Border.all(color: Colors.white, width: 1.6),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: url != null && url.isNotEmpty
+          ? CachedNetworkImage(
+              imageUrl: url,
+              fit: BoxFit.cover,
+              errorWidget: (_, __, ___) => _miniAvatarFallback(),
+              placeholder: (_, __) => _miniAvatarFallback(),
+            )
+          : _miniAvatarFallback(),
+    );
+  }
+
+  Widget _miniAvatarFallback() {
+    return Center(
+      child: Text(
+        initial ?? 'N',
+        style: TextStyle(
+          color: backgroundColor != null
+              ? Colors.white
+              : NataloColors.textPrimary,
+          fontSize: size * 0.45,
+          fontWeight: FontWeight.w900,
+        ),
       ),
     );
   }
@@ -1770,9 +1939,21 @@ class _CommentTile extends StatelessWidget {
 }
 
 double _safeAspectRatio(int width, int height) {
-  if (width <= 0 || height <= 0) return 9 / 16;
+  if (width <= 0 || height <= 0) return 4 / 5;
   final ratio = width / height;
-  if (ratio.isNaN || ratio.isInfinite || ratio <= 0) return 9 / 16;
-  // Clamp ke range yang reasonable — terlalu lebar/tinggi pecahin layout.
-  return ratio.clamp(0.4, 1.91);
+  if (ratio.isNaN || ratio.isInfinite || ratio <= 0) return 4 / 5;
+  // IG-spec clamp: 4:5 portrait (0.8) → 1.91:1 landscape.
+  //
+  // Sebelumnya min 0.4 = aspect 2:5 (very tall portrait). Konten phone
+  // screenshot (rasio 0.46) ditampilkan height = 2.17× lebar layar →
+  // satu post dominasi full viewport, action row + caption + date butuh
+  // scroll baru kelihatan. "Berantakan" feel.
+  //
+  // Sekarang min 0.8 (4:5) — tall content di-center-crop via BoxFit.cover,
+  // hilangin top+bottom edge. Trade-off: konten tall ke-crop (sama dengan
+  // IG behavior — user upload tall, IG auto-crop ke 4:5).
+  //
+  // Default fallback ke 4:5 supaya match cap (sebelumnya 9:16 = 0.5625
+  // di luar cap).
+  return ratio.clamp(0.8, 1.91);
 }
