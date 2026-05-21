@@ -2286,6 +2286,8 @@ class _FlashSaleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final discountPercent = _activeHomeProductDiscountPercent(product);
+
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(16),
@@ -2312,8 +2314,17 @@ class _FlashSaleCard extends StatelessWidget {
                 children: [
                   _HomeProductImage(
                     imageUrl: product.imageUrl,
-                    height: 76,
+                    height: 92,
                   ),
+                  if (discountPercent != null)
+                    Positioned(
+                      right: 6,
+                      top: 6,
+                      child: _HomeProductDiscountBadge(
+                        percent: discountPercent,
+                        compact: true,
+                      ),
+                    ),
                 ],
               ),
               const SizedBox(height: 7),
@@ -2483,6 +2494,7 @@ class _HomeProductCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final padding = compact ? 8.0 : 10.0;
     final nameHeight = compact ? 31.0 : 34.0;
+    final discountPercent = _activeHomeProductDiscountPercent(product);
 
     return SizedBox(
       width: width,
@@ -2514,6 +2526,15 @@ class _HomeProductCard extends StatelessWidget {
                       imageUrl: product.imageUrl,
                       height: imageHeight,
                     ),
+                    if (discountPercent != null)
+                      Positioned(
+                        right: 8,
+                        top: 8,
+                        child: _HomeProductDiscountBadge(
+                          percent: discountPercent,
+                          compact: compact,
+                        ),
+                      ),
                     if (rank != null)
                       Positioned(
                         left: 8,
@@ -2916,6 +2937,60 @@ String _formatHomeProductSoldCount(int count) {
   }
   if (count >= 100) return '${(count ~/ 50) * 50}+';
   return count.toString();
+}
+
+int? _activeHomeProductDiscountPercent(Product product) {
+  final discount = product.discountPrice;
+  if (discount == null || discount <= 0 || product.price <= 0) return null;
+  if (discount >= product.price) return null;
+
+  final endsAt = product.flashSaleEndsAt;
+  if (endsAt != null && !endsAt.isAfter(DateTime.now())) return null;
+
+  return (((product.price - discount) / product.price) * 100).round();
+}
+
+class _HomeProductDiscountBadge extends StatelessWidget {
+  final int? percent;
+  final bool compact;
+
+  const _HomeProductDiscountBadge({
+    required this.percent,
+    required this.compact,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final value = percent;
+    if (value == null || value <= 0) return const SizedBox.shrink();
+
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 6 : 8,
+        vertical: compact ? 4 : 6,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE11D48),
+        borderRadius: BorderRadius.circular(compact ? 9 : 10),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x22000000),
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Text(
+        '-$value%',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: compact ? 10.5 : 12,
+          fontWeight: FontWeight.w900,
+          height: 1,
+        ),
+      ),
+    );
+  }
 }
 
 class _HorizontalProductSection extends StatelessWidget {

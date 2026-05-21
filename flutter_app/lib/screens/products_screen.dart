@@ -1733,6 +1733,8 @@ class _ProductsPageProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final discountPercent = _activeProductDiscountPercent(product);
+
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(18),
@@ -1758,6 +1760,14 @@ class _ProductsPageProductCard extends StatelessWidget {
               Stack(
                 children: [
                   _ProductGridImage(imageUrl: product.imageUrl),
+                  if (discountPercent != null)
+                    Positioned(
+                      right: 8,
+                      top: 8,
+                      child: _ProductDiscountBadge(
+                        percent: discountPercent,
+                      ),
+                    ),
                 ],
               ),
               const SizedBox(height: 10),
@@ -2084,6 +2094,53 @@ String _formatProductSoldCount(int count) {
   }
   if (count >= 100) return '${(count ~/ 50) * 50}+';
   return count.toString();
+}
+
+int? _activeProductDiscountPercent(Product product) {
+  final discount = product.discountPrice;
+  if (discount == null || discount <= 0 || product.price <= 0) return null;
+  if (discount >= product.price) return null;
+
+  final endsAt = product.flashSaleEndsAt;
+  if (endsAt != null && !endsAt.isAfter(DateTime.now())) return null;
+
+  return (((product.price - discount) / product.price) * 100).round();
+}
+
+class _ProductDiscountBadge extends StatelessWidget {
+  final int? percent;
+
+  const _ProductDiscountBadge({required this.percent});
+
+  @override
+  Widget build(BuildContext context) {
+    final value = percent;
+    if (value == null || value <= 0) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE11D48),
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x22000000),
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Text(
+        '-$value%',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 12,
+          fontWeight: FontWeight.w900,
+          height: 1,
+        ),
+      ),
+    );
+  }
 }
 
 /// Pinned header delegate untuk sliver yang stick di top scroll.
