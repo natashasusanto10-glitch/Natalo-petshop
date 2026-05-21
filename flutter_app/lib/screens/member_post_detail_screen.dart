@@ -165,9 +165,8 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
     final post = _posts[index];
     final url = '${ApiConfig.publicSiteUrl}/feed/${post.slug}';
     final captionSnippet = (post.caption ?? '').trim();
-    final text = captionSnippet.isEmpty
-        ? url
-        : '${truncate(captionSnippet, 120)}\n$url';
+    final text =
+        captionSnippet.isEmpty ? url : '${truncate(captionSnippet, 120)}\n$url';
     try {
       final box = context.findRenderObject() as RenderBox?;
       await Share.share(
@@ -263,7 +262,8 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            style: TextButton.styleFrom(foregroundColor: const Color(0xFFDC2626)),
+            style:
+                TextButton.styleFrom(foregroundColor: const Color(0xFFDC2626)),
             child: const Text('Hapus'),
           ),
         ],
@@ -312,9 +312,9 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
               'Postingan',
               style: TextStyle(
                 color: NataloColors.textPrimary,
-                fontSize: 17,
+                fontSize: 16,
                 fontWeight: FontWeight.w900,
-                height: 1.1,
+                height: 1.0,
               ),
             ),
             Text(
@@ -323,9 +323,9 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: NataloColors.textSecondary,
-                fontSize: 12,
+                fontSize: 11,
                 fontWeight: FontWeight.w700,
-                height: 1.1,
+                height: 1.0,
               ),
             ),
           ],
@@ -344,17 +344,14 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
             )
           : ListView.separated(
               controller: _scrollController,
-              // Top padding bikin post pertama gak nempel ke AppBar.
               // Bottom padding extra space supaya post terakhir bisa di-
               // scroll lega ke atas viewport (gak mepet ke home indicator).
-              padding: const EdgeInsets.only(top: 12, bottom: 48),
+              padding: const EdgeInsets.only(top: 0, bottom: 48),
               physics: const AlwaysScrollableScrollPhysics(),
               itemCount: _posts.length,
-              // Whitespace pemisah antar post — Instagram-style breathing
-              // room. 32px = cukup terasa post boundary jelas tanpa terlalu
-              // boros vertical space. Sebelumnya 18px terlalu mepet, post
-              // terasa "lengket" satu sama lain.
-              separatorBuilder: (_, __) => const SizedBox(height: 32),
+              // Whitespace pemisah antar post tetap ada, tapi lebih compact
+              // supaya detail terasa seperti feed/post Instagram.
+              separatorBuilder: (_, __) => const SizedBox(height: 24),
               itemBuilder: (context, index) {
                 final post = _posts[index];
                 return _PostFeedItem(
@@ -459,20 +456,17 @@ class _PostFeedItem extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Profile row — di padding kecil supaya nama dan avatar tetap
-        // align ke edge, tapi media tetap full-width. Subtitle "Lokasi
-        // segera hadir" sebagai placeholder IG-style location/venue line
-        // (future: replace dgn data tag produk atau geo).
+        // Profile row compact, media tetap full-width.
         Padding(
-          padding: const EdgeInsets.fromLTRB(14, 4, 6, 10),
+          padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               ProfileAvatar(
                 initial: memberInitial,
                 imageUrl: memberPhotoUrl,
-                size: 38,
-                fontSize: 15,
+                size: 34,
+                fontSize: 14,
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -489,21 +483,6 @@ class _PostFeedItem extends StatelessWidget {
                         fontSize: 14,
                         fontWeight: FontWeight.w900,
                         height: 1.15,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    // Subtitle placeholder IG-style. "Segera hadir" sampai
-                    // backend support location/venue field.
-                    Text(
-                      'Lokasi · segera hadir',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: NataloColors.textSecondary
-                            .withValues(alpha: 0.75),
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w700,
-                        height: 1.1,
                       ),
                     ),
                   ],
@@ -534,24 +513,28 @@ class _PostFeedItem extends StatelessWidget {
         _PostMediaSurface(post: post),
         // Action row di-padding sedikit dari edge.
         Padding(
-          padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
+          padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
           child: Row(
             children: [
               NataloPostActionButton(
                 type: NataloPostActionIconType.like,
                 isActive: liked,
+                iconSize: 28,
+                tapSize: 42,
                 semanticLabel: liked ? 'Batalkan suka' : 'Sukai postingan',
                 onTap: onLike,
               ),
-              const SizedBox(width: 4),
               NataloPostActionButton(
                 type: NataloPostActionIconType.comment,
+                iconSize: 28,
+                tapSize: 42,
                 semanticLabel: 'Buka komentar',
                 onTap: onComment,
               ),
-              const SizedBox(width: 4),
               NataloPostActionButton(
                 type: NataloPostActionIconType.share,
+                iconSize: 28,
+                tapSize: 42,
                 semanticLabel: 'Bagikan postingan',
                 onTap: onShare,
               ),
@@ -776,9 +759,8 @@ class _MiniAvatar extends StatelessWidget {
       child: Text(
         initial ?? 'N',
         style: TextStyle(
-          color: backgroundColor != null
-              ? Colors.white
-              : NataloColors.textPrimary,
+          color:
+              backgroundColor != null ? Colors.white : NataloColors.textPrimary,
           fontSize: size * 0.45,
           fontWeight: FontWeight.w900,
         ),
@@ -1424,9 +1406,8 @@ class _FullScreenVideoRouteState extends State<_FullScreenVideoRoute> {
               right: 16,
               bottom: 32,
               child: _RoundIconButton(
-                icon: _muted
-                    ? Icons.volume_off_rounded
-                    : Icons.volume_up_rounded,
+                icon:
+                    _muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
                 onTap: _toggleMute,
               ),
             ),
@@ -1603,8 +1584,8 @@ class _EditCaptionSheetState extends State<_EditCaptionSheet> {
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
                   ),
-                  contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 12),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 ),
               ),
               const SizedBox(height: 12),
