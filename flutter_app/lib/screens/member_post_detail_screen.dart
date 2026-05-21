@@ -1032,18 +1032,18 @@ class _ImageSurface extends StatelessWidget {
     if (imageUrl.trim().isEmpty) {
       return _MediaPlaceholder(icon: placeholderIcon);
     }
-    // BoxFit.contain — foto utuh, gak ada konten yang ke-crop edge.
-    // Frame fixed di 4:5 via AspectRatio parent. Photo yang lebih tinggi
-    // (e.g. phone screenshot 9:19.5) atau lebih lebar (16:9 landscape)
-    // di-shrink supaya muat dalam 4:5 frame, dengan **letterbox bars
-    // hitam** di sisi yang gak match aspect.
+    // BoxFit.cover — per spec sheet final dari user (post landscape, post
+    // portrait, post video semua bilang "Object fit: cover"). Aspect
+    // ratio sudah follow source via _safeAspectRatio clamp (0.8-1.91):
+    //   - 4:3 landscape source → preserved 4:3 display, no crop
+    //   - 4:5 portrait source → preserved 4:5, no crop
+    //   - 16:9 landscape → preserved, no crop
+    //   - Tall phone screenshot 9:19.5 → clamped ke 4:5 + center crop
+    //     (top/bottom hidden, sesuai IG behavior untuk tall content)
     //
-    // Sebelumnya BoxFit.cover (crop center) bikin konten edge hilang —
-    // konsisten dengan _ImageSurface tapi user complaint banyak konten
-    // ke-crop. Ganti ke contain supaya:
-    //   - Konsisten dengan main feed photo carousel (juga contain)
-    //   - Match IG behavior saat user toggle "fit" (preserve original)
-    //   - User gak kehilangan konten edge
+    // Sempat ganti ke contain di v1.0.45 atas hipotesis "IG fit no crop".
+    // Tapi spec final dari user konsisten cover di semua spec sheet —
+    // override hypothesis. Revert ke cover.
     return Container(
       color: Colors.black,
       alignment: Alignment.center,
@@ -1051,7 +1051,7 @@ class _ImageSurface extends StatelessWidget {
         imageUrl: imageUrl,
         width: double.infinity,
         height: double.infinity,
-        fit: BoxFit.contain,
+        fit: BoxFit.cover,
         fadeInDuration: const Duration(milliseconds: 200),
         placeholder: (_, __) => Shimmer.fromColors(
           baseColor: const Color(0xFF1F2937),
