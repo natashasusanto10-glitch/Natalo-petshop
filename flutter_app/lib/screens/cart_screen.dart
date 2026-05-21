@@ -146,30 +146,31 @@ class _CartScreenState extends State<CartScreen> {
     final rotation = (openCount - 1) ~/ _cartBossRefreshEvery;
     final startOffset = rotation * 8;
     final startCursor = startOffset > 0 ? '$startOffset' : null;
-    // Layer 1 — personalized purchase × view signal (top 8 produk dengan
-    // brand × 3.0 + category × 2.5 scoring server-side). Exclude produk
-    // yang sedang ada di cart supaya tidak rekomen produk yang user mau beli.
+    // Layer 1 + Layer 2 paralel — personalized (purchase × view signal) +
+    // rotation catalog browse. Tidak ada dependency antara keduanya, jadi
+    // bisa di-fire bersamaan. Hemat ~300ms vs sequential await.
     final cartProductIds =
         cartStore.items.map((item) => item.product.id).toList();
     final viewedIds = recentlyViewedStore.items.map((p) => p.id).toList();
-    final personalized =
-        await productService.fetchPersonalizedRecommendations(
-      viewedIds: viewedIds,
-      excludeIds: cartProductIds,
-      limit: 8,
-    );
 
-    // Layer 2 — rotation catalog browse (initial). Counter di
-    // SharedPreferences rotate batch tiap 3× buka cart supaya feed terasa
-    // fresh tiap user balik ke cart. Filter `withImage` di-off — selaraskan
-    // dengan Jelajahi Produk Natalo + cartRecommendationWhere.
-    var page = await productService.fetchProductsPage(
-      cursor: startCursor,
-      limit: 8,
-      inStock: true,
-      hasPrice: true,
-      withImage: false,
-    );
+    final results = await Future.wait<dynamic>([
+      productService.fetchPersonalizedRecommendations(
+        viewedIds: viewedIds,
+        excludeIds: cartProductIds,
+        limit: 8,
+      ),
+      productService.fetchProductsPage(
+        cursor: startCursor,
+        limit: 8,
+        inStock: true,
+        hasPrice: true,
+        withImage: false,
+      ),
+    ]);
+    final personalized = results[0] as List<Product>;
+    var page = results[1] as ProductPage;
+
+    // Fallback rotation kalau startOffset out-of-bounds — ulangi tanpa cursor.
     if (page.products.isEmpty && startCursor != null) {
       page = await productService.fetchProductsPage(
         limit: 8,

@@ -133,27 +133,40 @@ class _WishlistScreenState extends State<WishlistScreen> {
       final favoriteIds = favoriteStore.ids.toList();
       final viewedIds = recentlyViewedStore.items.map((p) => p.id).toList();
       final newProducts = <Product>[];
+      ProductPage page;
 
       if (initial) {
-        // Layer 1: server-side personalized (purchase + view signal).
-        final personalized =
-            await productService.fetchPersonalizedRecommendations(
-          viewedIds: viewedIds,
+        // Layer 1 + Layer 2 paralel: personalized (purchase + view signal)
+        // + cursor catalog. Tidak ada dependency antar dua call ini
+        // (excludeIds sama dari favorite snapshot). Hemat ~300ms vs sequential.
+        final results = await Future.wait<dynamic>([
+          productService.fetchPersonalizedRecommendations(
+            viewedIds: viewedIds,
+            excludeIds: favoriteIds,
+            limit: 20,
+          ),
+          productService.fetchProductsPage(
+            cursor: _lookAgainNextCursor,
+            limit: _lookAgainPageSize,
+            excludeIds: favoriteIds,
+            inStock: true,
+            hasPrice: true,
+            withImage: false,
+          ),
+        ]);
+        newProducts.addAll(results[0] as List<Product>);
+        page = results[1] as ProductPage;
+      } else {
+        // Load more: cuma cursor catalog (personalized cuma di initial).
+        page = await productService.fetchProductsPage(
+          cursor: _lookAgainNextCursor,
+          limit: _lookAgainPageSize,
           excludeIds: favoriteIds,
-          limit: 20,
+          inStock: true,
+          hasPrice: true,
+          withImage: false,
         );
-        newProducts.addAll(personalized);
       }
-
-      // Layer 2: cursor paginated catalog. Initial atau load more.
-      final page = await productService.fetchProductsPage(
-        cursor: _lookAgainNextCursor,
-        limit: _lookAgainPageSize,
-        excludeIds: favoriteIds,
-        inStock: true,
-        hasPrice: true,
-        withImage: false,
-      );
       newProducts.addAll(page.products);
 
       // Merge dengan existing + dedup + filter wishlist favorit.
