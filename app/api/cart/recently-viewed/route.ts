@@ -8,6 +8,10 @@ import {
   serializeCartRecommendationProduct,
 } from "@/lib/cart-recommendation-products";
 import { attachPublicProductVoucherPreviews } from "@/lib/product-vouchers";
+import {
+  getPurchaseAffinityScores,
+  rankByPurchaseAffinity,
+} from "@/lib/purchase-affinity";
 
 function parseIds(value: string | null) {
   return (value ?? "")
@@ -90,9 +94,21 @@ export async function GET(request: NextRequest) {
     },
     include: cartRecommendationProductInclude(),
   });
+
+  // Primary sort: recency (newest viewed dulu).
   const order = new Map(productIds.map((id, index) => [id, index]));
-  const data = products
-    .sort((a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999))
+  const byRecency = [...products].sort(
+    (a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999),
+  );
+
+  // Secondary boost: purchase affinity — produk dari brand/kategori yang
+  // sering user beli ke-boost ke atas. rankByPurchaseAffinity stable sort
+  // dengan tiebreak ke original index, jadi produk yang TIDAK match
+  // purchase tetap dapat order recency.
+  const purchaseScores = await getPurchaseAffinityScores(session?.sub ?? null);
+  const ranked = rankByPurchaseAffinity(byRecency, purchaseScores);
+
+  const data = ranked
     .slice(0, limit)
     .map(serializeCartRecommendationProduct);
   const foundIds = new Set(data.map((product) => product.id));

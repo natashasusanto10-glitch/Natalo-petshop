@@ -146,10 +146,23 @@ class _CartScreenState extends State<CartScreen> {
     final rotation = (openCount - 1) ~/ _cartBossRefreshEvery;
     final startOffset = rotation * 8;
     final startCursor = startOffset > 0 ? '$startOffset' : null;
-    // Filter `withImage` di-off — selaraskan dengan Jelajahi Produk
-    // Natalo + cartRecommendationWhere. Produk dummy tanpa foto tetap
-    // tampil (placeholder fallback di card). Real foto upload nanti
-    // behavior tetap normal.
+    // Layer 1 — personalized purchase × view signal (top 8 produk dengan
+    // brand × 3.0 + category × 2.5 scoring server-side). Exclude produk
+    // yang sedang ada di cart supaya tidak rekomen produk yang user mau beli.
+    final cartProductIds =
+        cartStore.items.map((item) => item.product.id).toList();
+    final viewedIds = recentlyViewedStore.items.map((p) => p.id).toList();
+    final personalized =
+        await productService.fetchPersonalizedRecommendations(
+      viewedIds: viewedIds,
+      excludeIds: cartProductIds,
+      limit: 8,
+    );
+
+    // Layer 2 — rotation catalog browse (initial). Counter di
+    // SharedPreferences rotate batch tiap 3× buka cart supaya feed terasa
+    // fresh tiap user balik ke cart. Filter `withImage` di-off — selaraskan
+    // dengan Jelajahi Produk Natalo + cartRecommendationWhere.
     var page = await productService.fetchProductsPage(
       cursor: startCursor,
       limit: 8,
@@ -166,8 +179,20 @@ class _CartScreenState extends State<CartScreen> {
       );
     }
     if (!mounted) return;
+
+    // Merge personalized + rotation, dedup by id, exclude cart products.
+    final cartIdSet = cartProductIds.toSet();
+    final seen = <String>{};
+    final merged = <Product>[];
+    for (final product in [...personalized, ...page.products]) {
+      if (product.id.isEmpty) continue;
+      if (cartIdSet.contains(product.id)) continue;
+      if (!seen.add(product.id)) continue;
+      merged.add(product);
+    }
+
     setState(() {
-      _bossProducts = page.products;
+      _bossProducts = merged;
       _bossProductsCursor = page.nextCursor;
       _bossProductsHasMore = page.hasMore;
       _loadingBossProducts = false;

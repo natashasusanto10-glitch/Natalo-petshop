@@ -205,22 +205,49 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!initial && !_exploreHasMore) return;
     setState(() => _exploreLoading = true);
     try {
+      final accumulated = <Product>[];
+
+      // Initial batch ditambah layer personalized (purchase × view signal).
+      // Exclude IDs yang sudah ada di "Rekomendasi Untuk Kamu" supaya tidak
+      // duplikat — section di atas Jelajahi. Personalized endpoint cap 20
+      // produk, jadi top 10 di Rekomendasi + next 10 di Jelajahi initial.
+      if (initial) {
+        final excludeForPersonalized = _personalizedRecs
+            .map((p) => p.id)
+            .toList();
+        final viewedIds = recentlyViewedStore.items.map((p) => p.id).toList();
+        final personalized =
+            await productService.fetchPersonalizedRecommendations(
+          viewedIds: viewedIds,
+          excludeIds: excludeForPersonalized,
+          limit: 8,
+        );
+        accumulated.addAll(personalized);
+      }
+
+      // Cursor catalog browse — append untuk variation + scrollable depth.
+      // Filter `withImage=true` dihapus supaya produk dummy tanpa foto
+      // tetap muncul (placeholder fallback di _HomeProductCard).
       final page = await productService.fetchProductsPage(
         cursor: _exploreNextCursor,
         limit: 14,
-        // Hilangkan filter `withImage=true` — selama development banyak
-        // produk dummy belum punya imageUrl. Tanpa filter ini, produk
-        // tanpa foto tetap muncul (placeholder/icon fallback di
-        // _HomeProductCard). Saat real data sudah upload, behavior tetap
-        // ok karena semua produk punya foto.
         withImage: false,
       );
+      accumulated.addAll(page.products);
+
       if (!mounted) return;
-      final nextProducts = _generateExploreProducts(page.products);
+      final nextProducts = _generateExploreProducts(accumulated);
       setState(() {
         final existingIds = _exploreProducts.map((item) => item.id).toSet();
+        // Juga exclude IDs dari Rekomendasi Untuk Kamu section.
+        final personalizedIds =
+            _personalizedRecs.map((p) => p.id).toSet();
         _exploreProducts.addAll(
-          nextProducts.where((item) => existingIds.add(item.id)),
+          nextProducts.where(
+            (item) =>
+                !personalizedIds.contains(item.id) &&
+                existingIds.add(item.id),
+          ),
         );
         _exploreNextCursor = page.nextCursor;
         _exploreHasMore = page.hasMore && page.products.isNotEmpty;
