@@ -338,7 +338,7 @@ async function hydrateProductDocsById(productIds: string[]) {
 
   const products = await prisma.product.findMany({
     where: { id: { in: ids }, isActive: true },
-    include: PRODUCT_SEARCH_INCLUDE,
+    include: getProductSearchInclude(),
   });
   const byId = new Map(
     products.map((product) => [
@@ -451,18 +451,42 @@ type ProductForSearchDoc = NonNullable<Awaited<ReturnType<typeof prisma.product.
   }>;
 };
 
-const PRODUCT_SEARCH_INCLUDE = {
-  category: { select: { id: true, name: true, slug: true } },
-  brand: { select: { id: true, name: true, slug: true } },
-  variants: {
-    where: { deletedAt: null, isActive: true },
-    include: {
-      options: {
-        include: { option: { select: { value: true } } },
+// Tidak `as const` lagi karena include sekarang punya nilai dinamis
+// (`new Date()` di discountItems where filter). Wrap di function getter
+// supaya fresh per call — same pattern dengan getProductListInclude().
+function getProductSearchInclude() {
+  const now = new Date();
+  return {
+    category: { select: { id: true, name: true, slug: true } },
+    brand: { select: { id: true, name: true, slug: true } },
+    variants: {
+      where: { deletedAt: null, isActive: true },
+      include: {
+        options: {
+          include: { option: { select: { value: true } } },
+        },
       },
     },
-  },
-} as const;
+    // Active Promo Toko items untuk apply diskon di search results.
+    // Match pattern lib/products.ts → searchProductsFromDb akan return
+    // discount_price yang konsisten dengan product card di catalog.
+    discountItems: {
+      where: {
+        isItemActive: true,
+        discount: {
+          isActive: true,
+          startsAt: { lte: now },
+          endsAt: { gt: now },
+        },
+      },
+      select: {
+        variantId: true,
+        discountedPrice: true,
+        discount: { select: { endsAt: true } },
+      },
+    },
+  };
+}
 
 function normalizeSearchText(value: string) {
   return value
@@ -809,7 +833,7 @@ async function searchProductsFromDb(opts: NormalizedSearchOptions) {
 
   const products = await prisma.product.findMany({
     where,
-    include: PRODUCT_SEARCH_INCLUDE,
+    include: getProductSearchInclude(),
     take: candidateIds ? undefined : 2000,
   });
 

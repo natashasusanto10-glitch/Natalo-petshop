@@ -125,25 +125,116 @@ function productToSuggestion(product: {
   imageUrl: string | null;
   price: number;
   discountPrice: number | null;
+  flashSaleEndsAt?: Date | null;
   hasVariants: boolean;
   brand: { name: string } | null;
-  variants: Array<{ price: number; stock: number }>;
+  variants: Array<{ id?: string; price: number; stock: number }>;
+  discountItems?: Array<{
+    variantId: string | null;
+    discountedPrice: number;
+    discount: { endsAt: Date };
+  }>;
 }): SuggestProduct {
-  const prices = product.hasVariants && product.variants.length
-    ? product.variants.map((variant) => variant.price)
-    : [product.discountPrice && product.discountPrice < product.price
-        ? product.discountPrice
-        : product.price];
+  // Apply Flash Sale + Promo Toko via resolveActiveDiscount (inline).
+  // Search suggestion dropdown harus konsisten dengan product card di
+  // catalog — kalau Promo Toko aktif, dropdown tampil harga setelah
+  // diskon, bukan harga full.
+  const now = new Date();
+  const items = product.discountItems ?? [];
+
+  let priceMin: number;
+  let priceMax: number;
+
+  if (product.hasVariants && product.variants.length > 0) {
+    // Per-variant pricing
+    const effectivePrices = product.variants.map((v) => {
+      const variantPromoItems = items
+        .filter((it) => v.id !== undefined && it.variantId === v.id)
+        .map((it) => ({
+          discountedPrice: it.discountedPrice,
+          endsAt: it.discount.endsAt,
+        }));
+      // Flash Sale ratio
+      const flashSale =
+        product.flashSaleEndsAt &&
+        product.discountPrice &&
+        product.price > 0
+          ? {
+              discountPrice: Math.round(
+                v.price * (product.discountPrice / product.price),
+              ),
+              endsAt: product.flashSaleEndsAt,
+            }
+          : null;
+      const effective = resolveInlineDiscount(
+        v.price,
+        flashSale,
+        variantPromoItems,
+        now,
+      );
+      return effective ?? v.price;
+    });
+    priceMin = Math.min(...effectivePrices);
+    priceMax = Math.max(...product.variants.map((v) => v.price));
+  } else {
+    // Single product
+    const promoItems = items
+      .filter((it) => it.variantId === null)
+      .map((it) => ({
+        discountedPrice: it.discountedPrice,
+        endsAt: it.discount.endsAt,
+      }));
+    const effective = resolveInlineDiscount(
+      product.price,
+      {
+        discountPrice: product.discountPrice,
+        endsAt: product.flashSaleEndsAt ?? null,
+      },
+      promoItems,
+      now,
+    );
+    priceMin = effective ?? product.price;
+    priceMax = product.price;
+  }
 
   return {
     id: product.id,
     slug: product.slug,
     name: product.name,
     image_url: product.imageUrl,
-    price_min: Math.min(...prices),
-    price_max: Math.max(...prices),
+    price_min: priceMin,
+    price_max: priceMax,
     brand_name: product.brand?.name ?? null,
   };
+}
+
+/** Inline pricing utility (sync TypeScript supaya bisa di file ini). */
+function resolveInlineDiscount(
+  basePrice: number,
+  flashSale: { discountPrice: number | null; endsAt: Date | null } | null,
+  promoItems: Array<{ discountedPrice: number; endsAt: Date }>,
+  now: Date,
+): number | null {
+  let best: number | null = null;
+  if (
+    flashSale &&
+    flashSale.endsAt &&
+    flashSale.endsAt > now &&
+    flashSale.discountPrice &&
+    flashSale.discountPrice > 0 &&
+    flashSale.discountPrice < basePrice
+  ) {
+    best = flashSale.discountPrice;
+  }
+  for (const item of promoItems) {
+    if (item.endsAt <= now) continue;
+    if (item.discountedPrice <= 0) continue;
+    if (item.discountedPrice >= basePrice) continue;
+    if (best === null || item.discountedPrice < best) {
+      best = item.discountedPrice;
+    }
+  }
+  return best;
 }
 
 async function hydrateMeiliProductsFromDb(
@@ -152,6 +243,7 @@ async function hydrateMeiliProductsFromDb(
   const ids = meiliProducts.map((product) => product.id).filter(Boolean);
   if (ids.length === 0) return [];
 
+  const now = new Date();
   const products = await prisma.product.findMany({
     where: {
       id: { in: ids },
@@ -162,7 +254,23 @@ async function hydrateMeiliProductsFromDb(
       brand: { select: { name: true } },
       variants: {
         where: { deletedAt: null, isActive: true },
-        select: { price: true, stock: true },
+        select: { id: true, price: true, stock: true },
+      },
+      // Active Promo Toko items untuk search suggestion price.
+      discountItems: {
+        where: {
+          isItemActive: true,
+          discount: {
+            isActive: true,
+            startsAt: { lte: now },
+            endsAt: { gt: now },
+          },
+        },
+        select: {
+          variantId: true,
+          discountedPrice: true,
+          discount: { select: { endsAt: true } },
+        },
       },
     },
   });
@@ -207,6 +315,7 @@ async function suggestFromDb(q: string, limit: number): Promise<SuggestResponse>
 
   const candidateIds = await trigramSuggestIds(q, Math.max(limit * 4, 12));
 
+  const now2 = new Date();
   const productsPromise =
     candidateIds.length === 0
       ? null
@@ -220,7 +329,23 @@ async function suggestFromDb(q: string, limit: number): Promise<SuggestResponse>
             brand: { select: { name: true } },
             variants: {
               where: { deletedAt: null, isActive: true },
-              select: { price: true, stock: true },
+              select: { id: true, price: true, stock: true },
+            },
+            // Active Promo Toko items — apply diskon di suggestion.
+            discountItems: {
+              where: {
+                isItemActive: true,
+                discount: {
+                  isActive: true,
+                  startsAt: { lte: now2 },
+                  endsAt: { gt: now2 },
+                },
+              },
+              select: {
+                variantId: true,
+                discountedPrice: true,
+                discount: { select: { endsAt: true } },
+              },
             },
           },
         });
