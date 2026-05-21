@@ -40,9 +40,14 @@ export type CartRecommendationProductRow = Prisma.ProductGetPayload<{
 }>;
 
 export function cartRecommendationWhere(excludeIds: string[] = []): Prisma.ProductWhereInput {
+  // Filter `imageUrl: { not: null }` dihapus — sebelumnya produk dummy
+  // tanpa foto menyebabkan section "Yuk dilihat lagi", "Rekomendasi
+  // Untuk Kamu", dan cart recommendations jadi sepi saat testing. Card
+  // di Flutter sudah punya placeholder fallback untuk imageUrl null,
+  // jadi UX tetap acceptable. Saat real foto sudah upload, behavior
+  // tetap normal (semua produk pasti punya imageUrl).
   return {
     isActive: true,
-    imageUrl: { not: null },
     price: { gt: 0 },
     ...(excludeIds.length > 0 ? { id: { notIn: excludeIds } } : {}),
     OR: [
