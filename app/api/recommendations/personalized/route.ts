@@ -1,45 +1,34 @@
 /**
- * Personalized Recommendations API — server-side scoring engine untuk
- * home screen "Rekomendasi Untuk Kamu".
+ * Personalized Recommendations API — server-side scoring engine.
  *
- * BEDA dengan /api/cart/recommendations:
- *  - cart-recommendations: multi-pass priority push (manual rules → cat/brand
- *    from viewed → purchased → popular). Tidak ada intra-pass scoring.
- *  - personalized: SINGLE weighted scoring pass. Purchase = signal primer
- *    (×3.0/2.5), view = signal sekunder (×1.2/1.8). Scan candidate pool
- *    lebih luas (top brands+categories × 50 candidates) → re-rank.
- *
- * BEDA dengan client-side scoring di home_screen.dart sebelumnya:
- *  - Pool 48 produk (limited by home fetch) → sekarang scan SELURUH
- *    catalog via DB query dengan WHERE brand IN top OR category IN top.
- *  - Tidak ada purchase signal (cuma view + search) → sekarang purchase
- *    jadi signal utama (×3.0 brand, ×2.5 category).
- *  - O(N) loop di mobile RAM untuk 2134 product → SQL index-backed query.
- *
- * Signal sources:
+ * Sumber signal:
  *  1. Client-side `viewed` query param (recently_viewed_store, last 20)
  *  2. Server-side user_product_views table (last 30, kalau user login)
- *  3. Server-side orderItem table (last 60, kalau user login)
+ *  3. Server-side orderItem table (last 60, kalau user login) — VIA
+ *     `lib/purchase-affinity.ts` yang juga handle consumable detection.
  *
- * Scoring rules:
- *  - Purchase brand:    score += recency × 3.0
- *  - Purchase category: score += recency × 2.5
- *  - View brand:        score += recency × 1.2
- *  - View category:     score += recency × 1.8
- *  - hasDiscount boost: +0.8
- *  - rating boost:      ×0.18 (cap 5)
- *  - reviewCount boost: /500 (cap 1.0)
+ * Scoring (lihat juga lib/purchase-affinity.ts):
+ *  - Purchase brand × 3.0 (recency weighted)
+ *  - Purchase category × 2.5
+ *  - View brand × 1.2
+ *  - View category × 1.8
+ *  - Repurchase due (consumable refill window) × +5.0 (paling tinggi!)
+ *  - Repurchase overdue × +2.5
+ *  - hasDiscount boost +0.8
+ *  - rating boost × 0.18 (max +0.9)
+ *  - reviewCount boost /500 (max +1.0)
  *
- *  Recency: weight = 1 - (index / total) → most recent = 1.0, oldest → 0.0+ε.
+ * Exclusion (sudah handled di getPurchaseSignals):
+ *  - Produk yang sudah viewed
+ *  - Produk DURABLE yang sudah dibeli (kandang, mainan, dst)
+ *  - Produk CONSUMABLE yang baru dibeli (< 70% siklus refill — masih
+ *    punya stok)
+ *  - Caller exclude IDs (mis. wishlist favorites)
  *
- * Cold-start fallback (user guest atau zero history):
- *  Sort by reviewCount desc + avgRating desc + hasDiscount boost.
- *
- * Exclusion:
- *  - Produk yang sudah di-viewed di-EXCLUDE (no point recommend ulang)
- *  - Produk yang sudah dibeli di-EXCLUDE (assumption: durable goods.
- *    Future improvement: per-category consumable detection untuk pet food
- *    repurchase prediction.)
+ * Produk consumable yang sudah waktunya refill (70% ~ 150% cycle) atau
+ * overdue (> 150% cycle) BUKAN di-exclude — mereka muncul dengan
+ * `repurchaseReason` metadata supaya Flutter bisa render badge
+ * "Saatnya beli ulang".
  */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -51,6 +40,7 @@ import {
   type CartRecommendationProductRow,
 } from "@/lib/cart-recommendation-products";
 import { attachPublicProductVoucherPreviews } from "@/lib/product-vouchers";
+import { getPurchaseSignals } from "@/lib/purchase-affinity";
 
 function parseIds(value: string | null) {
   return (value ?? "")
@@ -81,15 +71,11 @@ export async function GET(request: NextRequest) {
     20,
   );
   const clientViewIds = parseIds(searchParams.get("viewed"));
-  // Caller bisa kirim list ID yang HARUS di-exclude dari hasil. Dipakai
-  // wishlist supaya produk yang sudah di-favorite tidak muncul lagi di
-  // section "Ayo Dilihat Kembali".
   const callerExcludeIds = parseIds(searchParams.get("exclude"));
   const session = await getSession("CUSTOMER").catch(() => null);
   const userId = session?.sub ?? null;
 
-  // ─── 1. Gather signals ────────────────────────────────────────────────
-  // Server-side view tracking (kalau login).
+  // ─── 1. Server-side view tracking ─────────────────────────────────────
   let serverViewIds: string[] = [];
   if (userId) {
     try {
@@ -106,34 +92,8 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Order item history (kalau login). Order by id desc = paling baru pertama
-  // (id auto-increment by creation time).
-  type PurchasedRow = {
-    productId: string;
-    product: { categoryId: string | null; brandId: string | null };
-  };
-  let purchasedItems: PurchasedRow[] = [];
-  if (userId) {
-    try {
-      purchasedItems = await prisma.orderItem.findMany({
-        where: {
-          order: {
-            userId,
-            // Hanya order yang sudah commited (bayar / kirim / selesai).
-            status: { in: ["PAID", "PROCESSING", "SHIPPED", "DELIVERED"] },
-          },
-        },
-        orderBy: { id: "desc" },
-        take: 60,
-        select: {
-          productId: true,
-          product: { select: { categoryId: true, brandId: true } },
-        },
-      });
-    } catch {
-      purchasedItems = [];
-    }
-  }
+  // ─── 2. Purchase signals (brand/category scores + repurchase) ─────────
+  const purchaseSignals = await getPurchaseSignals(userId);
 
   // Merge view IDs (client + server, dedup, keep client order priority).
   const seenViewSet = new Set<string>();
@@ -144,18 +104,16 @@ export async function GET(request: NextRequest) {
     viewIds.push(id);
   }
 
-  // Exclude list: produk yang sudah view + sudah dibeli (assumption: durable)
-  // + IDs yang dikirim caller (mis. wishlist user — supaya tidak duplikat
-  // dengan list favorit).
-  const purchasedIds = purchasedItems.map((it) => it.productId);
+  // Exclude: viewed + durable purchased (dari purchaseSignals) + caller list.
+  // Consumable yang waktunya refill TIDAK di-exclude — muncul di repurchase
+  // candidates dengan boost.
   const excludeSet = new Set<string>([
     ...viewIds,
-    ...purchasedIds,
+    ...purchaseSignals.excludeProductIds,
     ...callerExcludeIds,
   ]);
 
-  // ─── 2. Fetch detail (brand + category) untuk viewed products ─────────
-  // Purchase sudah include brand+category via Prisma include.
+  // ─── 3. Fetch detail (brand + category) untuk viewed products ─────────
   let viewedDetails: { id: string; brandId: string | null; categoryId: string | null }[] = [];
   if (viewIds.length > 0) {
     viewedDetails = await prisma.product.findMany({
@@ -164,22 +122,14 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // Map viewIds order → recency weight (1.0 = newest, ~0 = oldest).
   const viewIndexMap = new Map(viewIds.map((id, idx) => [id, idx]));
 
-  // ─── 3. Build brand & category score maps ─────────────────────────────
-  const brandScores: ScoreMap = new Map();
-  const categoryScores: ScoreMap = new Map();
+  // ─── 4. Build combined brand & category score maps ────────────────────
+  // Purchase scores sudah pre-computed di getPurchaseSignals.
+  // Tambah view signals di atasnya.
+  const brandScores: ScoreMap = new Map(purchaseSignals.scores.brandScores);
+  const categoryScores: ScoreMap = new Map(purchaseSignals.scores.categoryScores);
 
-  // Purchase signals (×3.0 / ×2.5). Strongest.
-  const purchaseN = purchasedItems.length;
-  purchasedItems.forEach((item, idx) => {
-    const recency = 1 - idx / Math.max(purchaseN, 1);
-    addScore(brandScores, item.product.brandId, recency * 3.0);
-    addScore(categoryScores, item.product.categoryId, recency * 2.5);
-  });
-
-  // View signals (×1.2 / ×1.8). Lebih lemah dari purchase.
   const viewN = viewIds.length;
   viewedDetails.forEach((row) => {
     const idx = viewIndexMap.get(row.id) ?? viewN;
@@ -190,16 +140,42 @@ export async function GET(request: NextRequest) {
 
   const topBrandIds = topNKeys(brandScores, 5);
   const topCategoryIds = topNKeys(categoryScores, 5);
-  const hasPersonalSignal = topBrandIds.length > 0 || topCategoryIds.length > 0;
+  const hasPersonalSignal =
+    topBrandIds.length > 0 ||
+    topCategoryIds.length > 0 ||
+    purchaseSignals.repurchaseSignals.size > 0;
 
-  // ─── 4. Fetch candidate pool ─────────────────────────────────────────
+  // ─── 5. Fetch candidate pool ─────────────────────────────────────────
   const excludeArr = [...excludeSet];
-  let candidates: CartRecommendationProductRow[] = [];
+  const candidateMap = new Map<string, CartRecommendationProductRow>();
 
-  if (hasPersonalSignal) {
-    // Scan candidates matching top brands ATAU top categories. limit × 5
-    // supaya re-ranking punya cukup variation untuk pick best.
-    candidates = await prisma.product.findMany({
+  // 5a. Repurchase candidates (consumable produk yang sudah waktunya refill).
+  //     Fetched EXPLICITLY by ID supaya pasti masuk pool walaupun brand/cat
+  //     mereka bukan top affinity.
+  if (purchaseSignals.repurchaseSignals.size > 0) {
+    const repurchaseIds = [...purchaseSignals.repurchaseSignals.keys()];
+    const repurchaseProducts = await prisma.product.findMany({
+      where: {
+        AND: [
+          { id: { in: repurchaseIds } },
+          // Bypass excludeArr — repurchase candidates explicitly allowed.
+          // Tapi tetap pakai cartRecommendationWhere base filter.
+          cartRecommendationWhere([
+            ...viewIds,
+            ...callerExcludeIds,
+          ]),
+        ],
+      },
+      include: cartRecommendationProductInclude(),
+    });
+    for (const product of repurchaseProducts) {
+      candidateMap.set(product.id, product);
+    }
+  }
+
+  // 5b. Brand/category affinity candidates.
+  if (hasPersonalSignal && (topBrandIds.length > 0 || topCategoryIds.length > 0)) {
+    const affinityCandidates = await prisma.product.findMany({
       where: {
         AND: [
           cartRecommendationWhere(excludeArr),
@@ -221,21 +197,30 @@ export async function GET(request: NextRequest) {
       take: limit * 5,
       include: cartRecommendationProductInclude(),
     });
+    for (const product of affinityCandidates) {
+      if (!candidateMap.has(product.id)) {
+        candidateMap.set(product.id, product);
+      }
+    }
   }
 
-  // ─── 5. Re-rank candidates by combined signal score ──────────────────
+  // ─── 6. Re-rank candidates by combined signal score ──────────────────
+  const candidates = [...candidateMap.values()];
   const scored = candidates.map((product) => {
     let score = 0;
     score += brandScores.get(product.brandId ?? "") ?? 0;
     score += categoryScores.get(product.categoryId ?? "") ?? 0;
+    // Repurchase boost (paling tinggi untuk consumable yang due).
+    const repurchase = purchaseSignals.repurchaseSignals.get(product.id);
+    if (repurchase) {
+      score += repurchase.scoreBoost;
+    }
     // Boost diskon (Promo Toko / Flash Sale aktif).
     const hasActiveDiscount =
       product.discountItems.length > 0 ||
       (product.flashSaleEndsAt && product.flashSaleEndsAt > new Date());
     if (hasActiveDiscount) score += 0.8;
-    // Rating boost (max +0.9).
     score += Math.min(product.avgRating, 5) * 0.18;
-    // Review count boost (max +1.0).
     score += Math.min(product.reviewCount, 500) / 500;
     return { product, score };
   });
@@ -245,7 +230,7 @@ export async function GET(request: NextRequest) {
     .slice(0, limit)
     .map((s) => s.product);
 
-  // ─── 6. Cold-start / top-up fallback (popular by reviewCount) ────────
+  // ─── 7. Cold-start / top-up fallback (popular by reviewCount) ────────
   if (ranked.length < limit) {
     const usedIds = new Set([...excludeArr, ...ranked.map((p) => p.id)]);
     const fallback = await prisma.product.findMany({
@@ -261,10 +246,22 @@ export async function GET(request: NextRequest) {
     ranked.push(...fallback);
   }
 
-  const data = await attachPublicProductVoucherPreviews(
-    ranked.slice(0, limit).map(serializeCartRecommendationProduct),
-    { userId },
-  );
+  // ─── 8. Serialize + attach repurchase metadata per produk ────────────
+  const serialized = ranked.slice(0, limit).map((product) => {
+    const base = serializeCartRecommendationProduct(product);
+    const repurchase = purchaseSignals.repurchaseSignals.get(product.id);
+    if (repurchase) {
+      return {
+        ...base,
+        repurchase_reason: repurchase.reason,
+        days_since_last_purchase: repurchase.daysSincePurchase,
+        typical_refill_days: repurchase.typicalRefillDays,
+      };
+    }
+    return base;
+  });
+
+  const data = await attachPublicProductVoucherPreviews(serialized, { userId });
 
   return NextResponse.json({
     data,
@@ -273,7 +270,8 @@ export async function GET(request: NextRequest) {
       signal_breakdown: {
         purchased_brands: topBrandIds.length,
         viewed: viewIds.length,
-        purchased_items: purchasedItems.length,
+        purchased_items: purchaseSignals.scores.itemCount,
+        repurchase_candidates: purchaseSignals.repurchaseSignals.size,
       },
     },
   });

@@ -2642,6 +2642,12 @@ class _HomeProductCard extends StatelessWidget {
                     ),
                   ),
                 ),
+                // Consumable repurchase badge — produk yang user pernah
+                // beli dan sudah waktunya refill (food, pasir, vitamin, dst).
+                if (product.isRepurchaseCandidate) ...[
+                  SizedBox(height: compact ? 6 : 7),
+                  _HomeProductRepurchaseBadge(product: product),
+                ],
                 SizedBox(height: compact ? 7 : 8),
                 _HomeProductPriceRow(
                   product: product,
@@ -3023,6 +3029,56 @@ int? _activeHomeProductDiscountPercent(Product product) {
   if (endsAt != null && !endsAt.isAfter(DateTime.now())) return null;
 
   return (((product.price - discount) / product.price) * 100).round();
+}
+
+/// Badge "Saatnya beli ulang" untuk produk consumable yang sudah masuk
+/// siklus refill (food, pasir, vitamin, dst).
+///
+/// Color palette: amber/yellow-warm (Color(0xFFD97706) text di soft
+/// background Color(0xFFFFF7E6)) — beda dari diskon red supaya tidak
+/// kontradiktif. Icon `autorenew_rounded` = repeat purchase metaphor.
+class _HomeProductRepurchaseBadge extends StatelessWidget {
+  final Product product;
+
+  const _HomeProductRepurchaseBadge({required this.product});
+
+  @override
+  Widget build(BuildContext context) {
+    final isOverdue = product.repurchaseReason == 'refill_overdue';
+    final label = isOverdue ? 'Sudah lama tidak beli' : 'Saatnya beli ulang';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7E6),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0xFFFDE68A), width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.autorenew_rounded,
+            size: 11,
+            color: Color(0xFFD97706),
+          ),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFFD97706),
+                fontSize: 10.5,
+                fontWeight: FontWeight.w800,
+                height: 1.0,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _HomeProductDiscountBadge extends StatelessWidget {

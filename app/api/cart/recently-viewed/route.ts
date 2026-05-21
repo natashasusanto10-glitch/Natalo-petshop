@@ -9,7 +9,7 @@ import {
 } from "@/lib/cart-recommendation-products";
 import { attachPublicProductVoucherPreviews } from "@/lib/product-vouchers";
 import {
-  getPurchaseAffinityScores,
+  getPurchaseSignals,
   rankByPurchaseAffinity,
 } from "@/lib/purchase-affinity";
 
@@ -101,16 +101,31 @@ export async function GET(request: NextRequest) {
     (a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999),
   );
 
-  // Secondary boost: purchase affinity — produk dari brand/kategori yang
-  // sering user beli ke-boost ke atas. rankByPurchaseAffinity stable sort
-  // dengan tiebreak ke original index, jadi produk yang TIDAK match
-  // purchase tetap dapat order recency.
-  const purchaseScores = await getPurchaseAffinityScores(session?.sub ?? null);
-  const ranked = rankByPurchaseAffinity(byRecency, purchaseScores);
+  // Secondary boost: purchase affinity + consumable repurchase.
+  //  - Produk dari brand/kategori yang sering user beli → boost
+  //  - Consumable yang sudah waktunya refill (~70-150% cycle) → boost +5.0
+  //  - Stable sort dengan tiebreak ke original index → produk yang
+  //    TIDAK match purchase signal tetap dapat order recency.
+  const purchaseSignals = await getPurchaseSignals(session?.sub ?? null);
+  const ranked = rankByPurchaseAffinity(
+    byRecency,
+    purchaseSignals.scores,
+    purchaseSignals.repurchaseSignals,
+  );
 
-  const data = ranked
-    .slice(0, limit)
-    .map(serializeCartRecommendationProduct);
+  const data = ranked.slice(0, limit).map((product) => {
+    const base = serializeCartRecommendationProduct(product);
+    const repurchase = purchaseSignals.repurchaseSignals.get(product.id);
+    if (repurchase) {
+      return {
+        ...base,
+        repurchase_reason: repurchase.reason,
+        days_since_last_purchase: repurchase.daysSincePurchase,
+        typical_refill_days: repurchase.typicalRefillDays,
+      };
+    }
+    return base;
+  });
   const foundIds = new Set(data.map((product) => product.id));
   const sampleData =
     data.length < limit

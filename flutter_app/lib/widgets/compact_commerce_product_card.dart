@@ -395,6 +395,22 @@ class _CartButton extends StatelessWidget {
 List<Widget> _promoChips(Product product) {
   final chips = <Widget>[];
 
+  // Consumable repurchase badge — paling prioritas (display di paling kiri).
+  // Tampil kalau backend kirim signal "saatnya beli ulang" via
+  // /api/recommendations/personalized atau /api/cart/recently-viewed.
+  if (product.isRepurchaseCandidate) {
+    final isOverdue = product.repurchaseReason == 'refill_overdue';
+    chips.add(
+      _PromoChip(
+        label: isOverdue ? 'Sudah lama tidak beli' : 'Saatnya beli ulang',
+        icon: Icons.autorenew_rounded,
+        foreground: const Color(0xFFD97706),
+        background: const Color(0xFFFFF7E6),
+        border: const Color(0xFFFDE68A),
+      ),
+    );
+  }
+
   if (product.shippingVoucherPreview != null) {
     chips.add(
       const _PromoChip(

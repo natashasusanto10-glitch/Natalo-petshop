@@ -323,6 +323,26 @@ class Product {
   /// ISO UTC dari backend, parsed sebagai DateTime.toLocal() di sini.
   final DateTime? flashSaleEndsAt;
 
+  /// Consumable repurchase signal — produk yang user pernah beli dan
+  /// sekarang sudah waktunya beli lagi (food, pasir, vitamin, dst).
+  /// Backend kirim field ini dari /api/recommendations/personalized
+  /// dan /api/cart/recently-viewed.
+  ///
+  ///  - 'refill_due'      → siklus refill normal (70-150% cycle)
+  ///  - 'refill_overdue'  → overdue (> 150% cycle, mungkin user lupa)
+  ///  - null              → bukan kandidat refill (durable atau baru beli)
+  ///
+  /// Flutter pakai untuk render badge "Saatnya beli ulang" di card.
+  final String? repurchaseReason;
+
+  /// Hari sejak pembelian terakhir produk ini. Null kalau bukan
+  /// repurchase candidate.
+  final int? daysSinceLastPurchase;
+
+  /// Siklus refill estimated dalam hari (dari Category.typicalRefillDays).
+  /// Null kalau bukan repurchase candidate.
+  final int? typicalRefillDays;
+
   Product({
     required this.id,
     required this.slug,
@@ -348,7 +368,15 @@ class Product {
     this.variants = const [],
     this.soldCount = 0,
     this.flashSaleEndsAt,
+    this.repurchaseReason,
+    this.daysSinceLastPurchase,
+    this.typicalRefillDays,
   });
+
+  /// True kalau produk ini dapat sinyal repurchase dari backend
+  /// (consumable yang sudah waktunya refill).
+  bool get isRepurchaseCandidate =>
+      repurchaseReason != null && repurchaseReason!.isNotEmpty;
 
   /// Alias `rating` untuk legacy reference `Product.avgRating`.
   double get avgRating => rating;
@@ -444,6 +472,17 @@ class Product {
       // berbagai endpoint (PWA store vs admin vs Flutter API).
       flashSaleEndsAt: _parseDateTime(
         json['flashSaleEndsAt'] ?? json['flash_sale_ends_at'],
+      ),
+      // Consumable repurchase signal — dari /api/recommendations/personalized
+      // dan /api/cart/recently-viewed. Backend send dengan snake_case.
+      repurchaseReason: _stringOrNull(
+        json['repurchase_reason'] ?? json['repurchaseReason'],
+      ),
+      daysSinceLastPurchase: _asIntOrNull(
+        json['days_since_last_purchase'] ?? json['daysSinceLastPurchase'],
+      ),
+      typicalRefillDays: _asIntOrNull(
+        json['typical_refill_days'] ?? json['typicalRefillDays'],
       ),
     );
   }
@@ -592,4 +631,12 @@ int _asInt(Object? value, {int fallback = 0}) {
   if (value is num) return value.toInt();
   if (value is String) return int.tryParse(value) ?? fallback;
   return fallback;
+}
+
+int? _asIntOrNull(Object? value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value);
+  return null;
 }

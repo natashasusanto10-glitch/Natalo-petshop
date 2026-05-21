@@ -163,9 +163,21 @@ model Category {
   id        String    @id @default(cuid())
   name      String
   slug      String    @unique
-  products  Product[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  // Consumable detection — produk dengan kategori `isConsumable=true`
+  // dianggap habis pakai (mis. makanan, pasir, vitamin). Dipakai oleh
+  // recommendation engine untuk:
+  //  1. JANGAN exclude produk yang pernah dibeli (user butuh refill).
+  //  2. Boost score saat sudah waktunya refill (cycle = typicalRefillDays).
+  //  3. Render badge "Saatnya beli ulang" di Flutter card.
+  // Kategori durable (kandang, mainan, aksesoris) tetap di-exclude
+  // setelah dibeli — user sudah punya, tidak butuh repurchase.
+  isConsumable      Boolean   @default(false) @map("is_consumable")
+  // Estimasi siklus refill dalam hari. Null kalau bukan consumable.
+  // Contoh: makanan 30 hari, pasir 25, snack 14, vitamin 30.
+  typicalRefillDays Int?      @map("typical_refill_days")
+  products          Product[]
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 }
 
 model Brand {
