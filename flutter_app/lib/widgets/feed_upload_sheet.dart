@@ -29,7 +29,7 @@ const _uploadBlue = Color(0xFF1E5FBF);
 // TUS resumable (koneksi putus = lanjut, bukan restart).
 const _maxVideoBytes = 200 * 1024 * 1024;
 const _minVideoSeconds = 1;
-const _maxVideoSeconds = 45;
+const _maxVideoSeconds = 60;
 
 // Sprint 3 #8 — pending upload state untuk recovery saat app crash /
 // kill mid-upload. TUS fingerprint sendiri di-track tus-js-client, tapi
@@ -754,7 +754,7 @@ class _Header extends StatelessWidget {
                 ),
                 SizedBox(height: 2),
                 Text(
-                  'Video 1-45 detik, maksimal 20 MB.',
+                  'Video 1-60 detik, maksimal 20 MB.',
                   style: TextStyle(
                     color: Color(0xFF64748B),
                     fontSize: 12,

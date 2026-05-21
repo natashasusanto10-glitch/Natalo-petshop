@@ -53,7 +53,11 @@ export const MAX_SOURCE_VIDEO_SIZE = 200 * 1024 * 1024;
 // quality lebih sharp (sesuai rekomendasi Natalo Feed spec).
 export const USER_VIDEO_CONFIG = {
   minDuration: 1,
-  maxDuration: 45,
+  // Bumped 45 → 60s untuk parity dengan admin + match industry standard
+  // (TikTok, YouTube Shorts). Cost impact negligible karena Bunny
+  // tetap encode ke 720p. Reliability concern (close app saat upload)
+  // diatasi dengan compression konsisten 720p H.264 + TUS resumable.
+  maxDuration: 60,
   resolution: 720,
   // Target 3 Mbps untuk Bunny encoder. Legacy ffmpeg.wasm config-nya
   // di-keep di "1500k" supaya FeedUploadProvider (background toast)

@@ -15,7 +15,7 @@ import 'feed_video_upload_flow.dart';
 
 const int maxPhotoCarouselItems = 8;
 const int minVideoDurationSeconds = 1;
-const int maxVideoDurationSeconds = 45;
+const int maxVideoDurationSeconds = 60;
 
 const _bgBlack = Color(0xFF000000);
 const _natoloBlue = Color(0xFF2563EB);
@@ -437,7 +437,7 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
       originalFilename: video.localPath.split(RegExp(r'[\\/]')).last,
       mimeType: _videoMimeType(video.localPath),
     );
-    // Video > 45 dtk → masuk Trim Video. <= 45 dtk → masuk Preview/Detail.
+    // Video > 60 dtk → masuk Trim Video. <= 60 dtk → masuk Preview/Detail.
     final needsTrim = duration.inSeconds > maxVideoDurationSeconds;
     final result = await Navigator.push<bool>(
       context,

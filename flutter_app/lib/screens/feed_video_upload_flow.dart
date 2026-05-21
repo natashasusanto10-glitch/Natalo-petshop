@@ -34,7 +34,7 @@ const _feedUploadMuted = Color(0xFFAEB7C7);
 /// Compression akan turunkan jadi ~5-15MB sebelum upload ke Bunny.
 const _maxFeedVideoBytes = 200 * 1024 * 1024;
 const _minFeedVideoSeconds = 1;
-const _maxFeedVideoSeconds = 45;
+const _maxFeedVideoSeconds = 60;
 
 class FeedVideoStartScreen extends StatefulWidget {
   const FeedVideoStartScreen({super.key});
@@ -113,7 +113,7 @@ class _FeedVideoStartScreenState extends State<FeedVideoStartScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Video lebih dari 45 detik. Pilih bagian terbaik untuk digunakan.',
+              'Video lebih dari 60 detik. Pilih bagian terbaik untuk digunakan.',
             ),
           ),
         );
@@ -266,7 +266,7 @@ class _FeedVideoPreviewScreenState extends State<FeedVideoPreviewScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Video lebih dari 45 detik. Edit video untuk memilih bagian terbaik.',
+            'Video lebih dari 60 detik. Edit video untuk memilih bagian terbaik.',
           ),
         ),
       );
@@ -318,7 +318,7 @@ class _FeedVideoPreviewScreenState extends State<FeedVideoPreviewScreen> {
                   const SizedBox(height: 14),
                   const _DarkErrorBox(
                     message:
-                        'Video lebih dari 45 detik. Edit video untuk memilih bagian terbaik.',
+                        'Video lebih dari 60 detik. Edit video untuk memilih bagian terbaik.',
                   ),
                 ],
                 if (_error != null) ...[
@@ -556,7 +556,7 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
     if (selectedSeconds < _minFeedVideoSeconds ||
         selectedSeconds > _maxFeedVideoSeconds) {
       setState(() {
-        _error = 'Pilih durasi antara 1 sampai 45 detik.';
+        _error = 'Pilih durasi antara 1 sampai 60 detik.';
       });
       return;
     }
@@ -653,7 +653,7 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
                 _InfoPanel(
                   title: 'Durasi yang dipilih',
                   value:
-                      '${_formatDuration(selectedDuration)}  •  Maksimal 45 detik',
+                      '${_formatDuration(selectedDuration)}  •  Maksimal 60 detik',
                 ),
                 const SizedBox(height: 16),
                 _TrimTimeline(
