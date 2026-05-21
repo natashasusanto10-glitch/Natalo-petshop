@@ -882,7 +882,13 @@ class _PostMediaSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final aspectRatio = _safeAspectRatio(post.aspectWidth, post.aspectHeight);
+    // Pass type ke aspect calculator — video pakai 3:5 fixed (immersive),
+    // photo/carousel pakai source aspect clamped ke 4:5.
+    final aspectRatio = _safeAspectRatio(
+      post.aspectWidth,
+      post.aspectHeight,
+      type: post.type,
+    );
     return AspectRatio(
       aspectRatio: aspectRatio,
       child: switch (post.type) {
@@ -1950,22 +1956,24 @@ class _CommentTile extends StatelessWidget {
   }
 }
 
-double _safeAspectRatio(int width, int height) {
+/// Aspect ratio per media type — per spec final:
+///   - Video: 3:5 (0.6) — frame lebih immersive, ~77% viewport height.
+///     Source video upload 9:16 (1080×1920) di-crop center ke 3:5 frame
+///     via BoxFit.cover di _InlineVideoPlayer.
+///   - Photo (single/carousel): 4:5 (0.8) — Instagram-spec standard.
+///     Source photo di-fit dengan BoxFit.contain (letterbox kalau gak
+///     match) supaya konten edge tidak hilang.
+///
+/// Default fallback 4:5 kalau type tidak diketahui.
+double _safeAspectRatio(int width, int height, {MyFeedPostType? type}) {
+  // Video: fixed 3:5 — frame immersive untuk video content, bukan ngikut
+  // source aspect. Source 9:16 ke-crop center 3:5 di display.
+  if (type == MyFeedPostType.video) {
+    return 3 / 5;
+  }
+  // Photo / carousel: clamp ke 4:5 portrait → 1.91:1 landscape.
   if (width <= 0 || height <= 0) return 4 / 5;
   final ratio = width / height;
   if (ratio.isNaN || ratio.isInfinite || ratio <= 0) return 4 / 5;
-  // IG-spec clamp: 4:5 portrait (0.8) → 1.91:1 landscape.
-  //
-  // Sebelumnya min 0.4 = aspect 2:5 (very tall portrait). Konten phone
-  // screenshot (rasio 0.46) ditampilkan height = 2.17× lebar layar →
-  // satu post dominasi full viewport, action row + caption + date butuh
-  // scroll baru kelihatan. "Berantakan" feel.
-  //
-  // Sekarang min 0.8 (4:5) — tall content di-center-crop via BoxFit.cover,
-  // hilangin top+bottom edge. Trade-off: konten tall ke-crop (sama dengan
-  // IG behavior — user upload tall, IG auto-crop ke 4:5).
-  //
-  // Default fallback ke 4:5 supaya match cap (sebelumnya 9:16 = 0.5625
-  // di luar cap).
   return ratio.clamp(0.8, 1.91);
 }
