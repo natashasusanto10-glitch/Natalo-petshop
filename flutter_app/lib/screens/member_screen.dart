@@ -7,7 +7,6 @@ import '../models/my_feed_post.dart';
 import '../services/feed_service.dart';
 import '../state/member_store.dart';
 import '../utils/haptics.dart';
-import '../widgets/app_cart_button.dart';
 import '../widgets/app_notification_button.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/feed_upload_sheet.dart';
@@ -273,10 +272,17 @@ class _ProfileAppBar extends StatelessWidget implements PreferredSizeWidget {
           ),
         ],
       ),
-      actions: const [
-        AppNotificationButton(),
-        AppCartButton(),
-        SizedBox(width: 8),
+      actions: [
+        const AppNotificationButton(),
+        IconButton(
+          onPressed: () => Navigator.pushNamed(context, '/account/settings'),
+          tooltip: 'Pengaturan akun',
+          icon: const Icon(
+            Icons.settings_outlined,
+            color: _textPrimary,
+          ),
+        ),
+        const SizedBox(width: 8),
       ],
     );
   }
@@ -550,13 +556,10 @@ class _PostThumbnail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final mediaUrl =
-        (post.thumbnailUrl?.trim().isNotEmpty == true
-                ? post.thumbnailUrl
-                : null) ??
-            (post.previewMediaUrl.trim().isNotEmpty
-                ? post.previewMediaUrl
-                : null);
+    final mediaUrl = (post.thumbnailUrl?.trim().isNotEmpty == true
+            ? post.thumbnailUrl
+            : null) ??
+        (post.previewMediaUrl.trim().isNotEmpty ? post.previewMediaUrl : null);
     return InkWell(
       onTap: onTap,
       child: Stack(

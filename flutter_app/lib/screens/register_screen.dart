@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../utils/haptics.dart';
 import '../utils/phone_formatter.dart';
@@ -138,9 +139,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
     } catch (error) {
       if (!mounted) return;
       AppHaptics.warning();
+      final message = error is ApiException ? error.message : error.toString();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(error.toString()),
+          content: Text(message),
           behavior: SnackBarBehavior.floating,
         ),
       );
