@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../config/api_config.dart';
 import '../state/member_store.dart';
@@ -29,14 +31,62 @@ class FeedPhotoService {
     };
   }
 
+  /// Compress photo file sebelum upload supaya tidak kena Vercel 4.5MB
+  /// platform limit. iPhone camera default 4032×3024 = ~5MB JPEG; setelah
+  /// compress ke 1920×1920 quality 75 → ~500KB-1MB.
+  ///
+  /// Skip kalau file sudah kecil (<1.5MB) — sudah aman untuk Vercel.
+  /// Return compressed File di temp directory, atau original kalau compress
+  /// gagal (graceful fallback supaya upload tetap jalan untuk foto kecil).
+  Future<File> _compressForUpload(File source) async {
+    try {
+      final originalBytes = await source.length();
+      // Skip compression kalau foto sudah ≤1.5MB — sweet spot di bawah
+      // Vercel 4.5MB limit dengan headroom. Hemat CPU + battery + waktu.
+      if (originalBytes <= 1.5 * 1024 * 1024) return source;
+
+      final tempDir = await getTemporaryDirectory();
+      final outputPath =
+          '${tempDir.path}/feed_compressed_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+      final compressed = await FlutterImageCompress.compressAndGetFile(
+        source.path,
+        outputPath,
+        // 1920×1920 max — match image_picker config di flow lama, juga
+        // ideal untuk display feed (max viewport phone ~1170px actual).
+        minWidth: 1920,
+        minHeight: 1920,
+        // Quality 75 — sweet spot. iOS HEIC asli sudah quality ~95, drop
+        // 20 point negligible visual diff tapi 3-5x file size reduction.
+        quality: 75,
+        // Force JPEG output — Vercel + UploadThing optimal di JPEG, plus
+        // gampang preview di image viewer. PNG/WebP support diabaikan
+        // untuk uniformity.
+        format: CompressFormat.jpeg,
+      );
+
+      if (compressed == null) return source;
+      return File(compressed.path);
+    } catch (_) {
+      // Compression fail jangan break upload — fallback ke original. Kalau
+      // file kebesaran, backend tetap return 413 dengan pesan jelas.
+      return source;
+    }
+  }
+
   /// Upload 1 foto ke UploadThing via backend, return UploadThing URL +
   /// key. Throws kalau status != 200.
   Future<({String url, String? key})> uploadSinglePhoto(File file) async {
+    // Compress dulu supaya tidak kena Vercel 4.5MB request body limit.
+    // Original file 4-6MB (iPhone HEIC + ProRAW + DSLR) di-compress ke
+    // 1920×1920 JPEG quality 75 → ~500KB-1MB.
+    final fileToUpload = await _compressForUpload(file);
+
     final uri = ApiConfig.uri('/api/feed/upload-photo');
     final request = http.MultipartRequest('POST', uri);
     request.headers.addAll(_headers);
 
-    final filename = file.uri.pathSegments.last;
+    final filename = fileToUpload.uri.pathSegments.last;
     final ext = filename.split('.').last.toLowerCase();
     final mimeType = switch (ext) {
       'png' => MediaType('image', 'png'),
@@ -47,7 +97,7 @@ class FeedPhotoService {
     request.files.add(
       await http.MultipartFile.fromPath(
         'file',
-        file.path,
+        fileToUpload.path,
         filename: filename,
         contentType: mimeType,
       ),
