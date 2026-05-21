@@ -57,6 +57,11 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
   // Track liked state per post id — optimistic toggle, source-of-truth
   // sampai backend respons confirm.
   final Map<String, bool> _likedCache = {};
+  // GlobalKey per post supaya initial scroll bisa pakai
+  // Scrollable.ensureVisible — akurat 100% vs estimate-based offset yang
+  // dulu sering "lari" (mendarat di posisi salah karena chrome/separator
+  // calculation drift dengan layout sesungguhnya).
+  late final List<GlobalKey> _postKeys;
 
   @override
   void initState() {
@@ -65,47 +70,48 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
     _posts = source == null || source.isEmpty
         ? [widget.post]
         : List<MyFeedPost>.from(source);
+    _postKeys = List.generate(_posts.length, (_) => GlobalKey());
     _scrollController = ScrollController();
-    // Jump ke post target setelah first frame. Pakai estimasi offset by
-    // aspect ratio — approximate tapi cukup akurat untuk Instagram-style
-    // tap-and-land UX.
+    // Jump ke post target setelah first frame settled. Pakai
+    // Scrollable.ensureVisible via GlobalKey context — Flutter handle
+    // layout precisely, gak ada drift estimasi.
     WidgetsBinding.instance.addPostFrameCallback((_) => _jumpToInitial());
   }
 
   void _jumpToInitial() {
-    if (!_scrollController.hasClients) return;
     if (widget.initialIndex <= 0 || widget.initialIndex >= _posts.length) {
       return;
     }
-    final offset = _estimateOffsetFor(widget.initialIndex);
-    // Clamp ke max scroll supaya tidak overshoot (kalau estimate > actual).
-    final maxScroll = _scrollController.position.maxScrollExtent;
-    _scrollController.jumpTo(offset.clamp(0.0, maxScroll));
-  }
-
-  /// Estimasi offset Y untuk post #index.
-  /// Per post: media height (screen width × aspectRatio inverse) + chrome
-  /// (profile row ~64 + action row ~52 + likes line ~22 + date ~22 +
-  /// status badge optional ~52 + spacing/divider ~24).
-  double _estimateOffsetFor(int index) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    double offset = 0;
-    for (int i = 0; i < index; i++) {
-      final post = _posts[i];
-      final aspectRatio = _safeAspectRatio(post.aspectWidth, post.aspectHeight);
-      final mediaHeight = screenWidth / aspectRatio;
-      // Chrome estimate. Tambah extra kalau ada status badge.
-      double chrome = 64 + 52 + 22 + 22 + 24;
-      if (post.statusInfo == MyFeedPostStatus.pending ||
-          post.statusInfo == MyFeedPostStatus.rejected) {
-        chrome += 56;
+    final key = _postKeys[widget.initialIndex];
+    final ctx = key.currentContext;
+    if (ctx == null) {
+      // Item belum ke-render (ListView lazy build). Force scroll dulu ke
+      // approximate offset supaya item masuk render tree, lalu ensure
+      // visible di frame berikutnya.
+      final approxOffset = MediaQuery.of(context).size.height *
+          widget.initialIndex.clamp(0, _posts.length - 1).toDouble();
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(
+          approxOffset.clamp(0.0, _scrollController.position.maxScrollExtent),
+        );
       }
-      if ((post.caption ?? '').trim().isNotEmpty) {
-        chrome += 28;
-      }
-      offset += mediaHeight + chrome;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final c2 = _postKeys[widget.initialIndex].currentContext;
+        if (c2 != null) {
+          Scrollable.ensureVisible(
+            c2,
+            duration: Duration.zero,
+            alignment: 0.0, // align ke TOP viewport
+          );
+        }
+      });
+      return;
     }
-    return offset;
+    Scrollable.ensureVisible(
+      ctx,
+      duration: Duration.zero,
+      alignment: 0.0,
+    );
   }
 
   @override
@@ -352,7 +358,9 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
               itemBuilder: (context, index) {
                 final post = _posts[index];
                 return _PostFeedItem(
-                  key: ValueKey(post.id),
+                  // GlobalKey untuk Scrollable.ensureVisible jump akurat
+                  // ke post target saat initial open dari grid.
+                  key: _postKeys[index],
                   post: post,
                   memberName: _memberName,
                   memberInitial: profile?.initial ?? 'N',
