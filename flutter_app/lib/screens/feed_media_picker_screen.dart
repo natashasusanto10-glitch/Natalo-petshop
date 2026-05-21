@@ -24,6 +24,30 @@ const _textMuted = Color(0xFF9CA3AF);
 const _selectedBorder = _natoloBlue;
 const _tileBg = Color(0xFF1F2937);
 
+// ─── Saturation boost matrices ──────────────────────────────────────
+// Flutter Skia renderer default clamp warna P3 (iPhone wide gamut) → sRGB,
+// hasilnya foto preview terlihat lebih pucat dibanding native iOS apps
+// seperti Instagram. Compensate dengan ColorFilter matrix yang bump
+// saturation. Formula: standard sat matrix Rec.709 luma weights
+// (Lr=0.213, Lg=0.715, Lb=0.072).
+//
+// Preview = 1.15× (15% boost, lebih agresif untuk foto utama).
+// Grid tile = 1.10× (10% boost, subtle untuk banyak thumbnails sekaligus).
+
+const _previewSaturationMatrix = <double>[
+  1.118, -0.107, -0.011, 0, 0,
+  -0.032, 1.043, -0.011, 0, 0,
+  -0.032, -0.107, 1.139, 0, 0,
+  0, 0, 0, 1, 0,
+];
+
+const _gridSaturationMatrix = <double>[
+  1.079, -0.072, -0.007, 0, 0,
+  -0.021, 1.029, -0.007, 0, 0,
+  -0.021, -0.072, 1.093, 0, 0,
+  0, 0, 0, 1, 0,
+];
+
 enum FeedPostContentType {
   image,
   video,
@@ -191,7 +215,13 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
 
   Future<void> _setPreviewAsset(AssetEntity asset) async {
     final isVideo = asset.type == AssetType.video;
-    final file = await asset.file;
+    // Pakai originFile (bukan asset.file) — preserve ICC color profile
+    // bytes dari original photo (iPhone biasa simpan dengan P3 wide
+    // gamut). asset.file mungkin re-compress + strip profile, bikin
+    // warna ke-clamp lebih pucat saat di-render Flutter. originFile
+    // raw bytes intact → ColorFilter saturation boost di bawah dapat
+    // source yang lebih kaya.
+    final file = await asset.originFile;
     if (!mounted || file == null) return;
     final path = file.path;
     setState(() {
@@ -696,9 +726,13 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
         ],
       );
     }
-    // Photo preview.
+    // Photo preview. Wrap dengan ColorFiltered untuk saturation boost
+    // (compensate Flutter Skia clamp P3 → sRGB yang bikin warna pucat).
     if (_previewPath != null) {
-      return Image.file(File(_previewPath!), fit: BoxFit.cover);
+      return ColorFiltered(
+        colorFilter: const ColorFilter.matrix(_previewSaturationMatrix),
+        child: Image.file(File(_previewPath!), fit: BoxFit.cover),
+      );
     }
     return const ColoredBox(color: _tileBg);
   }
@@ -836,7 +870,16 @@ class _AssetGridTileState extends State<_AssetGridTile> {
             color: _tileBg,
             child: _thumb == null
                 ? const SizedBox.shrink()
-                : Image.memory(_thumb!, fit: BoxFit.cover),
+                // Saturation boost subtle (+10%) untuk grid tile.
+                // Lebih ringan dari preview (+15%) karena thumbnail sudah
+                // pre-compressed by photo_manager + banyak tile sekaligus
+                // (boost agresif akan over-saturate massal).
+                : ColorFiltered(
+                    colorFilter: const ColorFilter.matrix(
+                      _gridSaturationMatrix,
+                    ),
+                    child: Image.memory(_thumb!, fit: BoxFit.cover),
+                  ),
           ),
           if (_isDimmed)
             Container(color: Colors.black.withValues(alpha: 0.45)),
