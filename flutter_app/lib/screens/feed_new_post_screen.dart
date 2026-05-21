@@ -527,14 +527,20 @@ class _VideoPreview extends StatelessWidget {
     final ctrl = controller;
     final thumb = draft?.thumbnailPath;
     final playing = ctrl?.value.isPlaying ?? false;
+    final videoReady = ctrl != null && ctrl.value.isInitialized;
     return ColoredBox(
       color: Colors.black,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (thumb != null)
+          // Thumb cuma render saat video belum ready (loading state) —
+          // memberikan preview frame sebentar sebelum VideoPlayer initialize.
+          // Setelah video loaded, thumb HILANG supaya kanan-kiri video
+          // (yang punya aspect ratio asli) tampil sebagai black screen,
+          // bukan thumb yang ke-stretch BoxFit.cover (terlihat seperti blur).
+          if (!videoReady && thumb != null)
             Image.file(File(thumb), fit: BoxFit.cover)
-          else
+          else if (!videoReady)
             const Center(
               child: Icon(
                 Icons.play_circle_outline_rounded,
@@ -542,7 +548,7 @@ class _VideoPreview extends StatelessWidget {
                 size: 64,
               ),
             ),
-          if (ctrl != null && ctrl.value.isInitialized)
+          if (videoReady)
             Center(
               child: AspectRatio(
                 aspectRatio: ctrl.value.aspectRatio,
