@@ -447,7 +447,11 @@ class _FeedUploadSheetState extends State<FeedUploadSheet>
         try {
           final info = await VideoCompress.compressVideo(
             video.path,
-            quality: VideoQuality.MediumQuality, // ~720p H.264
+            // Res1280x720Quality eksplisit (match feed_video_upload_flow
+            // setelah parity fix). MediumQuality di iOS = 540p-720p
+            // depending on source, Res1280x720Quality memastikan 720p
+            // konsisten di semua platform.
+            quality: VideoQuality.Res1280x720Quality,
             deleteOrigin: false,
             includeAudio: true,
             // frameRate: 30, // default sudah ~30

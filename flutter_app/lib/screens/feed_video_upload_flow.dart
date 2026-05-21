@@ -569,9 +569,15 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
     });
 
     try {
+      // 720p compression — match IG upload spec + cocok untuk mobile feed
+      // viewport (<6" screen). Bunny Stream tetap re-encode multi-variant
+      // (240p/360p/480p/720p) untuk adaptive streaming. Dropped dari 1080p
+      // karena 60s video di 1080p = ~50-60MB (sering gagal di koneksi
+      // mobile / saat user matikan layar mid-upload), sedangkan 720p =
+      // ~18-22MB (3× lebih cepat upload, success rate jauh lebih tinggi).
       final info = await VideoCompress.compressVideo(
         source,
-        quality: VideoQuality.Res1920x1080Quality,
+        quality: VideoQuality.Res1280x720Quality,
         deleteOrigin: false,
         includeAudio: true,
         startTime: _range.start.floor(),
@@ -955,16 +961,18 @@ class _FeedUploadProgressScreenState extends State<FeedUploadProgressScreen> {
 
       // Two-stage compression:
       // 1. Client (HP user) — di sini, sebelum upload. Pakai
-      //    video_compress Res1920x1080Quality (max 1080p — Bunny
-      //    Stream akan generate adaptive variants 720p + 1080p untuk
-      //    streaming). Tujuan: kurangi bandwidth + speed up TUS upload
-      //    sambil tetap preserve quality untuk display device modern.
+      //    video_compress Res1280x720Quality (target 720p — match IG
+      //    upload spec, cocok untuk mobile feed viewport <6" screen).
+      //    Tujuan: kurangi bandwidth + speed up TUS upload + tingkatkan
+      //    success rate di koneksi mobile. 60s @ 1080p = ~50-60MB sering
+      //    gagal, 60s @ 720p = ~18-22MB jauh lebih reliable.
       // 2. Server (Bunny Stream) — auto re-encode jadi multiple
-      //    resolutions (240p/360p/480p/720p/1080p) untuk adaptive
-      //    streaming. Handled di Bunny side, tidak perlu code di client.
+      //    resolutions (240p/360p/480p/720p) untuk adaptive streaming.
+      //    Source 720p artinya Bunny tidak generate 1080p variant — ok
+      //    karena feed display capped 720p anyway.
       //
-      // Kalau video sudah lewat trim screen (>45s),
-      // `trimmedVideoPath` sudah hasil VideoCompress — skip re-compress.
+      // Kalau video sudah lewat trim screen (>60s),
+      // `trimmedVideoPath` sudah hasil VideoCompress 720p — skip re-compress.
       // Kalau short video langsung dari pick (no trim), compress dulu.
       String videoPath = originalPath;
       if (widget.draft.trimmedVideoPath == null) {
@@ -973,7 +981,7 @@ class _FeedUploadProgressScreenState extends State<FeedUploadProgressScreen> {
         try {
           final info = await VideoCompress.compressVideo(
             originalPath,
-            quality: VideoQuality.Res1920x1080Quality,
+            quality: VideoQuality.Res1280x720Quality,
             deleteOrigin: false,
             includeAudio: true,
           );
