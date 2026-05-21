@@ -138,8 +138,11 @@ class _SectionHeaderTimer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = isUrgent ? const Color(0xFFEF4444) : const Color(0xFFF97316);
-    final bg = isUrgent ? const Color(0xFFFEE2E2) : const Color(0xFFFFF7ED);
+    // Flash Sale color scheme = MERAH (consistent dengan banner + badge
+    // "Harga Diskon"). Sebelumnya non-urgent orange. Sekarang dua-duanya
+    // red, beda intensity: urgent = darker red + saturated bg.
+    final accent = isUrgent ? const Color(0xFFDC2626) : const Color(0xFFEF4444);
+    final bg = isUrgent ? const Color(0xFFFECACA) : const Color(0xFFFEE2E2);
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -239,7 +242,8 @@ class _CompactBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = isUrgent ? const Color(0xFFEF4444) : const Color(0xFFF97316);
+    // Compact variant — keep red palette consistent dengan full variant.
+    final accent = isUrgent ? const Color(0xFFDC2626) : const Color(0xFFEF4444);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(

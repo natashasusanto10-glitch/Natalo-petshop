@@ -762,13 +762,16 @@ class _ProductFlashSaleBanner extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: BoxDecoration(
+        // Flash Sale = merah (consistent dengan badge "Harga Diskon"
+        // merah di product card + identitas urgent Flash Sale ala
+        // Shopee). Sebelumnya orange — user request ganti ke merah.
         gradient: const LinearGradient(
-          colors: [Color(0xFFFF7A1A), Color(0xFFF97316)],
+          colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
         ),
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFF97316).withValues(alpha: 0.28),
+            color: const Color(0xFFDC2626).withValues(alpha: 0.28),
             blurRadius: 22,
             offset: const Offset(0, 10),
           ),
@@ -810,7 +813,7 @@ class _ProductFlashSaleBanner extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: Color(0xFFFFF7ED),
+                    color: Color(0xFFFEE2E2), // light red/pink — match merah palette
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
