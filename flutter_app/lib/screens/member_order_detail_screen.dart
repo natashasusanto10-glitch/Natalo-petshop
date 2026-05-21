@@ -107,32 +107,20 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
           textAlign: TextAlign.center,
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
-        content: Column(
+        content: const Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Pesanan ${order.orderNumber} akan dibatalkan dan tidak bisa '
-              'dikembalikan. Stock produk akan otomatis tersedia lagi.',
+              'Pesanan ini akan dibatalkan. Voucher atau promo yang dipakai '
+              'pada pesanan ini mungkin tidak bisa digunakan kembali.',
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 color: Color(0xFF6B7280),
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 height: 1.5,
               ),
             ),
-            if (order.voucherCode != null && order.voucherCode!.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              const Text(
-                'Voucher yang dipakai akan bisa digunakan ulang.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Color(0xFF9CA3AF),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
           ],
         ),
         actions: [
