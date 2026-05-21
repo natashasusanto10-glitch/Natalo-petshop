@@ -65,6 +65,7 @@ class ProductsScreen extends StatefulWidget {
   final String? selectedBrand;
   final String? initialQuery;
   final String? initialCategory;
+  final bool discountOnly;
   final bool flashSaleOnly;
 
   const ProductsScreen({
@@ -72,6 +73,7 @@ class ProductsScreen extends StatefulWidget {
     this.selectedBrand,
     this.initialQuery,
     this.initialCategory,
+    this.discountOnly = false,
     this.flashSaleOnly = false,
   });
 
@@ -232,6 +234,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
     }
     if (widget.initialCategory?.trim().isNotEmpty == true) {
       _filter = _filter.copyWith(category: widget.initialCategory!.trim());
+    }
+    if (widget.discountOnly) {
+      _filter = _filter.copyWith(discountOnly: true);
     }
     _scrollController.addListener(_onScroll);
     _loadSearchHistory();

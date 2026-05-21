@@ -224,6 +224,8 @@ class NataloPetshopApp extends StatelessWidget {
                       (settings.arguments as ProductCatalogArgs).initialQuery,
                   initialCategory: (settings.arguments as ProductCatalogArgs)
                       .initialCategory,
+                  discountOnly:
+                      (settings.arguments as ProductCatalogArgs).discountOnly,
                   flashSaleOnly:
                       (settings.arguments as ProductCatalogArgs).flashSaleOnly,
                 ),

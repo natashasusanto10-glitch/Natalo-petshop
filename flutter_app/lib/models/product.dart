@@ -10,12 +10,14 @@ class ProductCatalogArgs {
   final String? selectedBrand;
   final String? initialQuery;
   final String? initialCategory;
+  final bool discountOnly;
   final bool flashSaleOnly;
 
   const ProductCatalogArgs({
     this.selectedBrand,
     this.initialQuery,
     this.initialCategory,
+    this.discountOnly = false,
     this.flashSaleOnly = false,
   });
 }

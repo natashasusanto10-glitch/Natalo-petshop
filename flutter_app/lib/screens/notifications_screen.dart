@@ -117,6 +117,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final url = item.url?.trim() ?? '';
     final haystack = _notificationHaystack(item);
 
+    if (_isShopPromoNotification(item)) {
+      await Navigator.pushNamed(
+        context,
+        '/products',
+        arguments: const ProductCatalogArgs(discountOnly: true),
+      );
+      return;
+    }
+
     if (_isPromoDetailNotification(item)) {
       await Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
@@ -822,6 +831,7 @@ String _notificationHaystack(AppNotification item) {
 }
 
 String? _notificationCtaLabel(AppNotification item) {
+  if (_isShopPromoNotification(item)) return 'Belanja Sekarang';
   if (_isPromoDetailNotification(item)) return 'Lihat Detail';
   if (_isFlashSaleNotification(item)) return 'Lihat Promo';
   if (_isVoucherNotification(item)) return 'Pakai Voucher';
@@ -881,6 +891,7 @@ bool _isAnnouncementNotification(AppNotification item) {
 bool _isFlashSaleNotification(AppNotification item) {
   final text = _notificationHaystack(item);
   final url = item.url?.toLowerCase() ?? '';
+  if (_isShopPromoNotification(item)) return false;
   if (_isPromoDetailNotification(item)) return false;
   return text.contains('flash sale') ||
       text.contains('flashsale') ||
@@ -895,6 +906,20 @@ bool _isPromoDetailNotification(AppNotification item) {
 
   final text = _notificationHaystack(item);
   return text.contains('promo') ||
+      text.contains('diskon') ||
+      text.contains('discount') ||
+      text.contains('flash sale') ||
+      text.contains('flashsale') ||
+      text.contains('flash_sale');
+}
+
+bool _isShopPromoNotification(AppNotification item) {
+  final cta = item.ctaLabel?.trim().toLowerCase() ?? '';
+  if (!cta.contains('belanja sekarang')) return false;
+
+  final text = _notificationHaystack(item);
+  return text.contains('promo') ||
+      text.contains('promosi') ||
       text.contains('diskon') ||
       text.contains('discount') ||
       text.contains('flash sale') ||
