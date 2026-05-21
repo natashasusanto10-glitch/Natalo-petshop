@@ -26,10 +26,27 @@ enum _OrderFilter {
   final String label;
 
   const _OrderFilter(this.label);
+
+  static _OrderFilter fromRouteArgument(Object? argument) {
+    final value = argument?.toString().trim().toLowerCase();
+    return switch (value) {
+      'unpaid' || 'belum_bayar' || 'belum-bayar' => _OrderFilter.unpaid,
+      'processing' || 'diproses' => _OrderFilter.processing,
+      'shipped' || 'dikirim' => _OrderFilter.shipped,
+      'delivered' || 'selesai' || 'completed' => _OrderFilter.delivered,
+      'cancelled' || 'canceled' || 'dibatalkan' => _OrderFilter.cancelled,
+      _ => _OrderFilter.all,
+    };
+  }
 }
 
 class MemberOrdersScreen extends StatefulWidget {
-  const MemberOrdersScreen({super.key});
+  final Object? initialFilterArgument;
+
+  const MemberOrdersScreen({
+    super.key,
+    this.initialFilterArgument,
+  });
 
   @override
   State<MemberOrdersScreen> createState() => _MemberOrdersScreenState();
@@ -37,11 +54,13 @@ class MemberOrdersScreen extends StatefulWidget {
 
 class _MemberOrdersScreenState extends State<MemberOrdersScreen> {
   late Future<List<OrderSummary>> _ordersFuture;
-  _OrderFilter _selectedFilter = _OrderFilter.all;
+  late _OrderFilter _selectedFilter;
 
   @override
   void initState() {
     super.initState();
+    _selectedFilter =
+        _OrderFilter.fromRouteArgument(widget.initialFilterArgument);
     _ordersFuture = _loadOrders();
   }
 

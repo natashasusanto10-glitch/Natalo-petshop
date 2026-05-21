@@ -277,7 +277,8 @@ class NataloPetshopApp extends StatelessWidget {
               '/member/forgot-password' => const ForgotPasswordScreen(),
               '/member/profile' => const MemberProfileScreen(),
               '/member/addresses' => const MemberAddressesScreen(),
-              '/member/orders' => const MemberOrdersScreen(),
+              '/member/orders' =>
+                MemberOrdersScreen(initialFilterArgument: settings.arguments),
               '/member/reviews' => const MemberReviewsScreen(),
               '/member/loyalty' => const MemberLoyaltyScreen(),
               '/member/loyalty/history' => const MemberLoyaltyHistoryScreen(),
