@@ -36,7 +36,7 @@ class CompactCommerceProductCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final adminDiscount = _adminDiscount(product);
     final discountPercent = _adminDiscountPercent(product);
-    final promoChips = _promoChips(product, hasAdminDiscount: adminDiscount);
+    final promoChips = _promoChips(product);
 
     return Material(
       color: Colors.transparent,
@@ -169,7 +169,7 @@ class _DiscountBadge extends StatelessWidget {
         ),
       ),
       child: Text(
-        '$percent%',
+        '-$percent%',
         style: const TextStyle(
           color: Colors.white,
           fontSize: 15,
@@ -392,22 +392,8 @@ class _CartButton extends StatelessWidget {
   }
 }
 
-List<Widget> _promoChips(
-  Product product, {
-  required bool hasAdminDiscount,
-}) {
+List<Widget> _promoChips(Product product) {
   final chips = <Widget>[];
-
-  if (hasAdminDiscount) {
-    chips.add(
-      const _PromoChip(
-        label: 'Harga Diskon',
-        foreground: _discountRed,
-        background: _discountSoft,
-        border: Color(0xFFFFC9D0),
-      ),
-    );
-  }
 
   if (product.shippingVoucherPreview != null) {
     chips.add(

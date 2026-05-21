@@ -43,6 +43,7 @@ class ProductCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasMemberPrice =
         product.memberPrice != null && product.memberPrice! < product.price;
+    final discountPercent = productDiscountPercent(product);
 
     return GestureDetector(
       onLongPress: () {
@@ -168,10 +169,16 @@ class ProductCard extends StatelessWidget {
                           ),
                         ),
                       ),
+                    if (discountPercent != null)
+                      Positioned(
+                        right: 0,
+                        top: 0,
+                        child: _ImageDiscountBadge(percent: discountPercent),
+                      ),
                     if (showWishlistButton)
                       Positioned(
                         right: AppSpacing.xs,
-                        top: AppSpacing.xs,
+                        top: discountPercent != null ? 38 : AppSpacing.xs,
                         child: FavoriteButton(
                           product: product,
                           size: 34,
@@ -199,33 +206,16 @@ class ProductCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: AppSpacing.sm),
-              // Premium polish (Tier 2): harga + diskon % pill inline.
-              // Pill kecil "-XX%" merah di kanan harga supaya user instant
-              // tahu seberapa besar diskonnya (konvensi Tokopedia/Shopee).
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Flexible(
-                    child: Text(
-                      formatRupiah(product.finalPrice),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: NataloColors.nataloBlue,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w900,
-                        height: 1.05,
-                      ),
-                    ),
-                  ),
-                  if (product.hasDiscount &&
-                      productDiscountPercent(product) != null) ...[
-                    const SizedBox(width: AppSpacing.xs),
-                    _DiscountPercentPill(
-                      percent: productDiscountPercent(product)!,
-                    ),
-                  ],
-                ],
+              Text(
+                formatRupiah(product.finalPrice),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: NataloColors.nataloBlue,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  height: 1.05,
+                ),
               ),
               ProductSavingsBadge(product: product),
               ProductRatingSoldMeta(product: product),
@@ -716,35 +706,29 @@ int? productDiscountPercent(Product product) {
   return pct > 99 ? 99 : pct;
 }
 
-/// Premium polish (Tier 2): pill kecil merah "-XX%" untuk product card.
-/// Inline dengan harga finalPrice — konvensi marketplace ID
-/// (Tokopedia/Shopee/Blibli). Membuat diskon instantly visible tanpa
-/// user perlu hitung sendiri price vs finalPrice.
-class _DiscountPercentPill extends StatelessWidget {
+class _ImageDiscountBadge extends StatelessWidget {
   final int percent;
 
-  const _DiscountPercentPill({required this.percent});
+  const _ImageDiscountBadge({required this.percent});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: NataloColors.dangerSoft,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(
-          color: NataloColors.danger.withValues(alpha: 0.30),
-          width: 0.6,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: const BoxDecoration(
+        color: NataloColors.danger,
+        borderRadius: BorderRadius.only(
+          topRight: Radius.circular(16),
+          bottomLeft: Radius.circular(12),
         ),
       ),
       child: Text(
         '-$percent%',
         style: const TextStyle(
-          color: NataloColors.danger,
-          fontSize: 10.5,
+          color: NataloColors.white,
+          fontSize: 12,
           fontWeight: FontWeight.w900,
-          height: 1.0,
-          letterSpacing: -0.1,
+          height: 1,
         ),
       ),
     );

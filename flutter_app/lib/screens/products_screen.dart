@@ -1905,14 +1905,6 @@ class _ProductSavingBadge extends StatelessWidget {
     final savingLabel = _productSavingLabel(product);
     final shippingLabel = _productShippingLabel(product);
     final badges = <Widget>[
-      if (product.hasDiscount)
-        const _ProductPromoBadge(
-          label: 'Harga Diskon',
-          icon: Icons.percent_rounded,
-          color: Color(0xFFEF4444),
-          backgroundColor: Color(0xFFFFF1F2),
-          borderColor: Color(0xFFFCA5A5),
-        ),
       if (shippingLabel != null)
         _ProductPromoBadge(
           label: shippingLabel,
