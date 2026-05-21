@@ -39,8 +39,16 @@ class _WishlistScreenState extends State<WishlistScreen> {
   List<String> _searchHistory = const [];
 
   // Look Again pagination state.
+  //
+  // Pattern hybrid:
+  //  - Initial fetch: /api/recommendations/personalized (top 20 dengan
+  //    purchase signal ×3.0/×2.5 + view signal ×1.2/×1.8 di server).
+  //  - Load more: /api/products dengan cursor pagination — append produk
+  //    catalog umum yang belum di-show.
+  //  - Final re-rank di client dengan _lookAgainScore (search history
+  //    signal ×12/×4 yang unik di wishlist).
   List<Product> _lookAgainProducts = const [];
-  int _lookAgainPage = 0;
+  String? _lookAgainNextCursor;
   bool _lookAgainHasMore = false;
   bool _lookAgainLoading = false;
   bool _lookAgainInitialLoaded = false;
@@ -92,21 +100,28 @@ class _WishlistScreenState extends State<WishlistScreen> {
     }
   }
 
-  /// Load look-again recommendations. Backend saat ini belum expose cursor,
-  /// jadi pagination dibuat dengan menaikkan limit bertahap lalu dedupe.
+  /// Load look-again recommendations.
+  ///
+  /// Initial fetch (initial=true):
+  ///  1. Call /api/recommendations/personalized — top 20 produk dengan
+  ///     scoring server-side (purchase × view).
+  ///  2. Top-up dengan /api/products page pertama (cursor=null) supaya
+  ///     dapat candidate pool yang lebih besar untuk client re-rank.
+  ///  3. Apply _lookAgainScore (search history signal) untuk re-rank.
+  ///
+  /// Load more (initial=false):
+  ///  1. Lanjut cursor /api/products → append produk baru.
+  ///  2. Dedup by ID + filter favorit user.
+  ///  3. Apply re-rank ulang (search history bisa berubah saat scroll).
   Future<void> _loadLookAgain({bool initial = false}) async {
     if (_lookAgainLoading) return;
     if (!initial && !_lookAgainHasMore) return;
-
-    final nextPage = initial ? 1 : _lookAgainPage + 1;
-    final requestLimit = nextPage * _lookAgainPageSize;
-    final previousCount = initial ? 0 : _lookAgainProducts.length;
 
     if (mounted) {
       setState(() {
         if (initial) {
           _lookAgainProducts = const [];
-          _lookAgainPage = 0;
+          _lookAgainNextCursor = null;
           _lookAgainHasMore = false;
           _lookAgainInitialLoaded = false;
         }
@@ -115,43 +130,48 @@ class _WishlistScreenState extends State<WishlistScreen> {
     }
 
     try {
-      var result = await productService.fetchRecommendations(
-        viewedIds: recentlyViewedStore.items.map((p) => p.id).toList(),
-        excludeIds: favoriteStore.ids.toList(),
-        limit: requestLimit,
-      );
-      if (result.length < requestLimit) {
-        final fallback = await productService.fetchAll(limit: requestLimit);
-        final merged = <String, Product>{};
-        for (final product in [...result, ...fallback]) {
-          if (product.id.isEmpty || favoriteStore.isFavorite(product.id)) {
-            continue;
-          }
-          merged.putIfAbsent(product.id, () => product);
-        }
-        result = merged.values.toList(growable: false);
+      final favoriteIds = favoriteStore.ids.toList();
+      final viewedIds = recentlyViewedStore.items.map((p) => p.id).toList();
+      final newProducts = <Product>[];
+
+      if (initial) {
+        // Layer 1: server-side personalized (purchase + view signal).
+        final personalized =
+            await productService.fetchPersonalizedRecommendations(
+          viewedIds: viewedIds,
+          excludeIds: favoriteIds,
+          limit: 20,
+        );
+        newProducts.addAll(personalized);
       }
 
-      final nextProducts = _rankLookAgainProducts(result)
-          .where((product) => !favoriteStore.isFavorite(product.id))
-          .fold<Map<String, Product>>(
-            <String, Product>{},
-            (map, product) {
-              if (product.id.isNotEmpty) {
-                map.putIfAbsent(product.id, () => product);
-              }
-              return map;
-            },
-          )
-          .values
-          .toList(growable: false);
+      // Layer 2: cursor paginated catalog. Initial atau load more.
+      final page = await productService.fetchProductsPage(
+        cursor: _lookAgainNextCursor,
+        limit: _lookAgainPageSize,
+        excludeIds: favoriteIds,
+        inStock: true,
+        hasPrice: true,
+        withImage: false,
+      );
+      newProducts.addAll(page.products);
+
+      // Merge dengan existing + dedup + filter wishlist favorit.
+      final merged = <String, Product>{};
+      for (final product in [..._lookAgainProducts, ...newProducts]) {
+        if (product.id.isEmpty) continue;
+        if (favoriteStore.isFavorite(product.id)) continue;
+        merged.putIfAbsent(product.id, () => product);
+      }
+
+      // Final layer: client-side re-rank dengan search history signal.
+      final ranked = _rankLookAgainProducts(merged.values.toList());
 
       if (!mounted) return;
       setState(() {
-        _lookAgainProducts = nextProducts;
-        _lookAgainPage = nextPage;
-        _lookAgainHasMore = nextProducts.length >= requestLimit &&
-            nextProducts.length > previousCount;
+        _lookAgainProducts = ranked;
+        _lookAgainNextCursor = page.nextCursor;
+        _lookAgainHasMore = page.hasMore && page.products.isNotEmpty;
         _lookAgainLoading = false;
         _lookAgainInitialLoaded = true;
       });

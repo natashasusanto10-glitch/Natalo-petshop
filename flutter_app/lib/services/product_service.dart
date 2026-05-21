@@ -303,6 +303,7 @@ class ProductService {
   /// harus fallback ke client-side scoring.
   Future<List<Product>> fetchPersonalizedRecommendations({
     List<String> viewedIds = const [],
+    List<String> excludeIds = const [],
     int limit = 10,
   }) async {
     try {
@@ -311,6 +312,7 @@ class ProductService {
         query: {
           'limit': '$limit',
           if (viewedIds.isNotEmpty) 'viewed': viewedIds.join(','),
+          if (excludeIds.isNotEmpty) 'exclude': excludeIds.join(','),
         },
       );
       final map = _asMap(data);

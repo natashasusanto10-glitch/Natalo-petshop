@@ -81,6 +81,10 @@ export async function GET(request: NextRequest) {
     20,
   );
   const clientViewIds = parseIds(searchParams.get("viewed"));
+  // Caller bisa kirim list ID yang HARUS di-exclude dari hasil. Dipakai
+  // wishlist supaya produk yang sudah di-favorite tidak muncul lagi di
+  // section "Ayo Dilihat Kembali".
+  const callerExcludeIds = parseIds(searchParams.get("exclude"));
   const session = await getSession("CUSTOMER").catch(() => null);
   const userId = session?.sub ?? null;
 
@@ -140,9 +144,15 @@ export async function GET(request: NextRequest) {
     viewIds.push(id);
   }
 
-  // Exclude list: produk yang sudah view + sudah dibeli (assumption: durable).
+  // Exclude list: produk yang sudah view + sudah dibeli (assumption: durable)
+  // + IDs yang dikirim caller (mis. wishlist user — supaya tidak duplikat
+  // dengan list favorit).
   const purchasedIds = purchasedItems.map((it) => it.productId);
-  const excludeSet = new Set<string>([...viewIds, ...purchasedIds]);
+  const excludeSet = new Set<string>([
+    ...viewIds,
+    ...purchasedIds,
+    ...callerExcludeIds,
+  ]);
 
   // ─── 2. Fetch detail (brand + category) untuk viewed products ─────────
   // Purchase sudah include brand+category via Prisma include.
