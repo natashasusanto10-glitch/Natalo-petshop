@@ -23,6 +23,7 @@ import '../widgets/app_cart_button.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
+import '../widgets/favorite_button.dart';
 import '../widgets/flash_sale_countdown.dart';
 import '../widgets/moderation_action_sheet.dart';
 import 'image_viewer_screen.dart';
@@ -325,6 +326,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           SliverToBoxAdapter(
             child: _ProductHero(product: product),
           ),
+          if (product.hasVariants && product.variantAttrs.isNotEmpty)
+            SliverToBoxAdapter(
+              child: _VariantEntryRow(
+                product: product,
+                selectedOptions: _selectedOptions,
+                selectedVariant: _selectedVariant,
+                onTap: _openVariantSheet,
+              ),
+            ),
           if (product.hasFlashSaleCountdown)
             SliverToBoxAdapter(
               child: Padding(
@@ -349,19 +359,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               ),
             ),
           ),
-          // ── Variant Selector — hanya tampil kalau hasVariants ──
-          if (product.hasVariants && product.variantAttrs.isNotEmpty)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: _VariantEntryRow(
-                  product: product,
-                  selectedOptions: _selectedOptions,
-                  selectedVariant: _selectedVariant,
-                  onTap: _openVariantSheet,
-                ),
-              ),
-            ),
           SliverPersistentHeader(
             pinned: true,
             delegate: _ProductSectionTabsDelegate(
@@ -676,16 +673,31 @@ class _ProductInfo extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 18),
-        Text(
-          product.title,
-          maxLines: 3,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: _textDark,
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
-            height: 1.22,
-          ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                product.title,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: _textDark,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  height: 1.22,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Padding(
+              padding: const EdgeInsets.only(top: 1),
+              child: FavoriteButton(
+                product: product,
+                size: 36,
+              ),
+            ),
+          ],
         ),
         if (hasRating || hasReviews || hasSold) ...[
           const SizedBox(height: 12),
@@ -838,15 +850,9 @@ class _InfoDot extends StatelessWidget {
   }
 }
 
-/// Section voucher di product detail. Render salah satu mode:
-///  - 0 voucher (fetch belum jalan / kosong): fallback placeholder single
-///    card "Cek voucher di keranjang" — match perilaku lama, kompatibel
-///    dengan product.voucherPreview (preview ringkas dari list endpoint).
-///  - 1 voucher: single full-width card (sama dengan placeholder, tapi
-///    text dari voucher beneran).
-///  - 2+ voucher: header label + horizontal scroll chip merah-mirip-Shopee
-///    sehingga user bisa scan banyak voucher sekaligus. Tap → buka cart
-///    screen tempat voucher bisa di-apply.
+/// Compact voucher strip di product detail. Cukup satu baris agar section
+/// harga → voucher → tabs tetap rapi dan tidak terasa seperti marketplace
+/// besar yang terlalu ramai.
 class _VoucherAndTrust extends StatelessWidget {
   final Product product;
   final List<ProductVoucherPreview> vouchers;
@@ -867,175 +873,98 @@ class _VoucherAndTrust extends StatelessWidget {
             ? [product.voucherPreview!]
             : const []);
 
-    if (resolved.length >= 2) {
-      return _VoucherCarousel(vouchers: resolved);
-    }
-
     final voucher = resolved.isNotEmpty ? resolved.first : null;
-    final voucherLabel = voucher?.badgeLabel.trim();
-    final subtitle = voucherLabel != null && voucherLabel.isNotEmpty
-        ? voucher?.isNewMemberOnly == true
-            ? '$voucherLabel • khusus member baru saat checkout'
-            : '$voucherLabel • cek di keranjang sebelum checkout'
-        : 'Cek voucher di keranjang sebelum checkout';
+    final benefit = _voucherBenefitText(voucher);
+    final countLabel = resolved.length > 1 ? '${resolved.length} voucher' : '';
+    final icon = voucher?.isShippingVoucher == true
+        ? Icons.local_shipping_rounded
+        : Icons.confirmation_number_rounded;
+    final tone =
+        voucher?.isShippingVoucher == true ? _successGreen : _discountRed;
+    final bg = voucher?.isShippingVoucher == true
+        ? const Color(0xFFEFFAF4)
+        : _softDiscountBg;
+    final border = voucher?.isShippingVoucher == true
+        ? const Color(0xFFC7F0D8)
+        : const Color(0xFFFFC9D0);
 
     return AppPressable(
       onTap: () => Navigator.pushNamed(context, '/cart'),
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(14),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        constraints: const BoxConstraints(minHeight: 48),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(color: _borderGray),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
-              blurRadius: 14,
-              offset: const Offset(0, 6),
-            ),
-          ],
         ),
         child: Row(
           children: [
             Container(
-              height: 44,
-              width: 44,
+              height: 30,
+              width: 30,
               decoration: BoxDecoration(
-                color: _softBlueBg,
-                borderRadius: BorderRadius.circular(14),
+                color: bg,
+                borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.percent_rounded, color: _brandBlue),
+              child: Icon(icon, color: tone, size: 17),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
+            Text(
+              voucher == null ? 'Voucher tersedia' : 'Voucher Toko',
+              style: const TextStyle(
+                color: _textDark,
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(width: 8),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Voucher tersedia',
-                    style: TextStyle(
-                      color: _textDark,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    subtitle,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: _textGray,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
+              child: Text(
+                benefit,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: voucher == null ? _textGray : tone,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
-            const Icon(Icons.chevron_right_rounded, color: _textDark),
+            if (countLabel.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: bg,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: border),
+                ),
+                child: Text(
+                  countLabel,
+                  style: TextStyle(
+                    color: tone,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(width: 4),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: _textDark,
+              size: 22,
+            ),
           ],
         ),
       ),
     );
   }
-}
 
-/// Horizontal-scroll list voucher chips. Tampil saat ada 2+ voucher
-/// applicable untuk produk ini (campuran public + shipping + member).
-class _VoucherCarousel extends StatelessWidget {
-  final List<ProductVoucherPreview> vouchers;
-
-  const _VoucherCarousel({required this.vouchers});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(2, 0, 2, 8),
-          child: Row(
-            children: [
-              Container(
-                height: 28,
-                width: 28,
-                decoration: BoxDecoration(
-                  color: _softDiscountBg,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.confirmation_number_rounded,
-                  color: _discountRed,
-                  size: 16,
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: Text(
-                  'Voucher Toko',
-                  style: TextStyle(
-                    color: _textDark,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-              AppPressable(
-                onTap: () => Navigator.pushNamed(context, '/cart'),
-                borderRadius: BorderRadius.circular(8),
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'Lihat semua',
-                        style: TextStyle(
-                          color: _brandBlue,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      SizedBox(width: 2),
-                      Icon(
-                        Icons.chevron_right_rounded,
-                        color: _brandBlue,
-                        size: 16,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        SizedBox(
-          height: 72,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 2),
-            itemCount: vouchers.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 10),
-            itemBuilder: (context, index) {
-              return _VoucherChip(voucher: vouchers[index]);
-            },
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Voucher chip — Shopee-style ticket dengan notched edge (gradient red,
-/// kanan badge bertuliskan ringkasan benefit).
-class _VoucherChip extends StatelessWidget {
-  final ProductVoucherPreview voucher;
-
-  const _VoucherChip({required this.voucher});
-
-  String _benefitText() {
+  String _voucherBenefitText(ProductVoucherPreview? voucher) {
+    if (voucher == null) return 'Cek di keranjang sebelum checkout';
     if (voucher.isShippingVoucher) return 'Gratis Ongkir';
     final percent = voucher.discountPercent;
     if (percent != null && percent > 0) {
@@ -1045,99 +974,12 @@ class _VoucherChip extends StatelessWidget {
               : '';
       return 'Diskon ${percent.toStringAsFixed(0)}%$cap';
     }
-    final amount = voucher.discountAmount;
+    final amount = voucher.discountAmount ?? voucher.savingAmount;
     if (amount != null && amount > 0) {
       return 'Hemat ${formatRupiahCompact(amount)}';
     }
     final label = voucher.badgeLabel.trim();
-    return label.isEmpty ? 'Voucher Hemat' : label;
-  }
-
-  String _minText() {
-    if (voucher.minimumOrder <= 0) return 'Tanpa min. belanja';
-    return 'Min. ${formatRupiahCompact(voucher.minimumOrder)}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final benefit = _benefitText();
-    final minText = _minText();
-    final isMemberOnly = voucher.isNewMemberOnly;
-    return AppPressable(
-      onTap: () => Navigator.pushNamed(context, '/cart'),
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        constraints: const BoxConstraints(minWidth: 168, maxWidth: 240),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFFFFEEF1), Color(0xFFFFDDE3)],
-          ),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: _discountRed.withValues(alpha: 0.30),
-            width: 1,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              voucher.isShippingVoucher
-                  ? Icons.local_shipping_rounded
-                  : Icons.local_offer_rounded,
-              color: _discountRed,
-              size: 22,
-            ),
-            const SizedBox(width: 10),
-            Flexible(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    benefit,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: _discountRed,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    minText,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: _textMedium,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  if (isMemberOnly) ...[
-                    const SizedBox(height: 2),
-                    const Text(
-                      'Khusus member baru',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: _textGray,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    return label.isEmpty ? 'Voucher hemat tersedia' : label;
   }
 }
 
@@ -1934,106 +1776,162 @@ class _VariantEntryRow extends StatelessWidget {
     required this.onTap,
   });
 
-  String _selectedLabel() {
-    final variant = selectedVariant;
-    if (variant == null) return _availabilityLabel();
-
-    final labels = <String>[];
-    for (final attr in product.variantAttrs) {
-      final selectedId = selectedOptions[attr.id];
-      if (selectedId == null) continue;
-      for (final opt in attr.options) {
-        if (opt.id == selectedId) {
-          labels.add(opt.value);
-          break;
-        }
-      }
-    }
-    if (labels.isNotEmpty) return labels.join(' / ');
-    return variant.sku ?? 'Varian dipilih';
-  }
-
   String _availabilityLabel() {
     if (product.variantAttrs.isEmpty) return 'Pilih varian yang tersedia';
     if (product.variantAttrs.length == 1) {
       final attr = product.variantAttrs.first;
-      return 'Tersedia ${attr.options.length} ${attr.name.toLowerCase()}';
+      final name = attr.name.trim().toLowerCase();
+      return 'Tersedia ${attr.options.length} ${name.isEmpty ? 'varian' : name}';
     }
-    if (product.variantAttrs.length == 2) {
-      final first = product.variantAttrs[0];
-      final second = product.variantAttrs[1];
-      return 'Tersedia ${first.options.length} ${first.name.toLowerCase()} / ${second.options.length} ${second.name.toLowerCase()}';
+    return 'Tersedia ${product.variants.length} varian';
+  }
+
+  List<ProductVariant> _previewVariants() {
+    final seen = <String>{};
+    final result = <ProductVariant>[];
+    for (final variant in product.variants) {
+      final key = variant.imageUrl?.trim().isNotEmpty == true
+          ? variant.imageUrl!.trim()
+          : variant.optionIds.join('|');
+      if (seen.add(key)) result.add(variant);
+      if (result.length >= 8) break;
     }
-    return 'Tersedia ${product.variants.length} pilihan varian';
+    return result;
+  }
+
+  bool _isSelected(ProductVariant variant) {
+    final selected = selectedVariant;
+    if (selected != null) return selected.id == variant.id;
+    if (selectedOptions.isEmpty) return false;
+    return selectedOptions.values.every(variant.optionIds.contains);
+  }
+
+  Widget _buildVariantThumb(ProductVariant variant) {
+    final selected = _isSelected(variant);
+    final imageUrl = variant.imageUrl?.trim().isNotEmpty == true
+        ? variant.imageUrl!
+        : product.imageUrl;
+
+    return Container(
+      width: 48,
+      height: 48,
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: selected ? _brandBlue : _borderGray,
+          width: selected ? 1.6 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.035),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: AppProductImage(
+          imageUrl: imageUrl,
+          width: 44,
+          height: 44,
+          fit: BoxFit.contain,
+          borderRadius: BorderRadius.zero,
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final previewVariants = _previewVariants();
+
     return AppPressable(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.zero,
       child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+        decoration: const BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: _borderGray),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.035),
-              blurRadius: 16,
-              offset: const Offset(0, 8),
+          border: Border(
+            bottom: BorderSide(
+              color: _borderGray,
+              width: 1,
             ),
-          ],
+          ),
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: _softBlueBg,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: const Icon(
-                Icons.tune_rounded,
-                color: _brandBlue,
-                size: 22,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Variant Produk',
-                    style: TextStyle(
-                      color: _textDark,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _selectedLabel(),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _availabilityLabel(),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: _textGray,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: _textDark,
+                  size: 28,
+                ),
+              ],
+            ),
+            if (previewVariants.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 50,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: previewVariants.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 10),
+                  itemBuilder: (context, index) {
+                    return _buildVariantThumb(previewVariants[index]);
+                  },
+                ),
+              ),
+            ] else ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final attr in product.variantAttrs.take(2))
+                    for (final option in attr.options.take(4))
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _softBlueBg,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: _borderGray),
+                        ),
+                        child: Text(
+                          option.value,
+                          style: const TextStyle(
+                            color: _textMedium,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
                 ],
               ),
-            ),
-            const SizedBox(width: 8),
-            const Icon(
-              Icons.chevron_right_rounded,
-              color: _textGray,
-              size: 28,
-            ),
+            ],
           ],
         ),
       ),
