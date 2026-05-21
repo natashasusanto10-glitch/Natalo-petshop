@@ -4,6 +4,7 @@ import 'package:shimmer/shimmer.dart';
 import 'package:video_player/video_player.dart';
 
 import '../models/my_feed_post.dart';
+import '../shared/widgets/natalo_post_action_icon.dart';
 import '../state/member_store.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
@@ -216,54 +217,24 @@ class _PostActionRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        _PostActionButton(
-          icon: Icons.favorite_border_rounded,
-          semanticLabel: 'Like',
+        NataloPostActionButton(
+          type: NataloPostActionIconType.like,
+          semanticLabel: 'Sukai postingan',
           onTap: () => AppHaptics.tap(),
         ),
-        _PostActionButton(
-          icon: Icons.chat_bubble_outline_rounded,
-          semanticLabel: 'Comment',
+        const SizedBox(width: 14),
+        NataloPostActionButton(
+          type: NataloPostActionIconType.comment,
+          semanticLabel: 'Buka komentar',
           onTap: () => AppHaptics.tap(),
         ),
-        _PostActionButton(
-          icon: Icons.send_outlined,
-          semanticLabel: 'Share',
+        const SizedBox(width: 14),
+        NataloPostActionButton(
+          type: NataloPostActionIconType.share,
+          semanticLabel: 'Bagikan postingan',
           onTap: () => AppHaptics.tap(),
         ),
       ],
-    );
-  }
-}
-
-class _PostActionButton extends StatelessWidget {
-  final IconData icon;
-  final String semanticLabel;
-  final VoidCallback onTap;
-
-  const _PostActionButton({
-    required this.icon,
-    required this.semanticLabel,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      label: semanticLabel,
-      button: true,
-      child: InkResponse(
-        onTap: onTap,
-        radius: 26,
-        child: Padding(
-          padding: const EdgeInsets.only(right: 18, top: 6, bottom: 6),
-          child: Icon(
-            icon,
-            color: NataloColors.textPrimary,
-            size: 28,
-          ),
-        ),
-      ),
     );
   }
 }
