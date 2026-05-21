@@ -112,13 +112,24 @@ class _HomeScreenState extends State<HomeScreen> {
 
     _productsFuture = productService.fetchProducts(limit: 48);
     _scrollController.addListener(_onScroll);
-    _loadMoreExplore(initial: true);
     _loadDynamicSections();
-    _loadPersonalizedRecs();
+    // ORDER MATTERS: personalized recs load DULU, lalu explore initial.
+    // Sebelumnya kedua-duanya paralel → explore initial fetch dengan
+    // exclude list kosong → ambil top personalized yang SAMA dengan
+    // section "Rekomendasi Untuk Kamu" di atas → duplikat di 2 section.
+    _initializeRecsAndExplore();
     // Re-fetch personalized recs setiap kali user buka produk baru
     // (recentlyViewedStore berubah) — server bisa update rekomendasi
     // berdasarkan signal baru.
     recentlyViewedStore.addListener(_onRecentlyViewedChanged);
+  }
+
+  /// Sequential init: personalized → explore. Mencegah race condition
+  /// duplikat produk antara "Rekomendasi Untuk Kamu" + "Jelajahi".
+  Future<void> _initializeRecsAndExplore() async {
+    await _loadPersonalizedRecs();
+    if (!mounted) return;
+    await _loadMoreExplore(initial: true);
   }
 
   /// Re-fetch personalized recs saat recentlyViewedStore berubah.
@@ -176,10 +187,13 @@ class _HomeScreenState extends State<HomeScreen> {
     _resetExploreProducts(regenerate: true);
     // Reset debounce supaya pull-to-refresh selalu trigger ulang.
     _lastPersonalizedFetch = null;
+    // _loadDynamicSections paralel — tidak ada dependency dengan
+    // personalized/explore. _initializeRecsAndExplore sequential
+    // internal (personalized DULU baru explore — mencegah race
+    // duplikat IDs).
     await Future.wait([
       _loadDynamicSections(),
-      _loadMoreExplore(initial: true),
-      _loadPersonalizedRecs(),
+      _initializeRecsAndExplore(),
     ]);
   }
 
