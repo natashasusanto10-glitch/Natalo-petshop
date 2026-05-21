@@ -1,6 +1,9 @@
 import 'dart:ui';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+
+import '../state/member_store.dart';
 
 /// Bottom nav bar Natalo: compact, integrated, 5 menu utama.
 ///
@@ -147,9 +150,12 @@ class BottomNavBar extends StatelessWidget {
                 inactiveColor: inactiveColor,
                 onTap: () => _onTap(context, 3),
               ),
-              _BottomNavItem(
-                icon: Icons.person_outline_rounded,
-                selectedIcon: Icons.person_rounded,
+              // Tab Akun pakai avatar foto profil (Instagram-style).
+              // Listen ke memberStore supaya saat user upload foto baru
+              // / logout / login, icon auto-update. Ukuran icon SAMA
+              // dengan tab lain — slot kotak 24px, supaya bottom nav
+              // height tetap 46px (NO change ke nav structure).
+              _BottomNavAvatarItem(
                 label: 'Akun',
                 selected: currentIndex == 4,
                 activeColor: activeColor,
@@ -249,6 +255,191 @@ class _BottomNavItem extends StatelessWidget {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Tab Akun varian dengan avatar foto profil user (Instagram-style).
+///
+/// Render persis di slot ukuran yang sama dengan _BottomNavItem reguler
+/// supaya bottom nav height TIDAK berubah (tetap 46px). Cuma swap konten
+/// icon dari IconData ke CircleAvatar 22px.
+///
+/// State changes:
+///  - Listen `memberStore` → kalau profile.photoUrl berubah (user upload
+///    foto baru), avatar auto-refresh.
+///  - Active state: 2px ring warna activeColor di sekeliling avatar.
+///  - Inactive state: no ring, plain avatar.
+///  - Fallback kalau profile null / photo null: pakai inisial nama atau
+///    default person icon (sama style dengan _BottomNavItem reguler).
+class _BottomNavAvatarItem extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final Color activeColor;
+  final Color inactiveColor;
+  final VoidCallback onTap;
+
+  const _BottomNavAvatarItem({
+    required this.label,
+    required this.selected,
+    required this.activeColor,
+    required this.inactiveColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = selected ? activeColor : inactiveColor;
+    return Expanded(
+      child: Semantics(
+        button: true,
+        selected: selected,
+        label: label,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            splashColor: activeColor.withValues(alpha: 0.08),
+            highlightColor: activeColor.withValues(alpha: 0.06),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 3, bottom: 1),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    AnimatedScale(
+                      scale: selected ? 1.02 : 1,
+                      duration: const Duration(milliseconds: 160),
+                      curve: Curves.easeOutCubic,
+                      child: AnimatedBuilder(
+                        animation: memberStore,
+                        builder: (context, _) {
+                          return _AvatarIcon(
+                            selected: selected,
+                            activeColor: activeColor,
+                            inactiveColor: color,
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    AnimatedDefaultTextStyle(
+                      duration: const Duration(milliseconds: 160),
+                      curve: Curves.easeOutCubic,
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 11.5,
+                        fontWeight:
+                            selected ? FontWeight.w600 : FontWeight.w500,
+                        height: 1,
+                      ),
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AvatarIcon extends StatelessWidget {
+  final bool selected;
+  final Color activeColor;
+  final Color inactiveColor;
+
+  const _AvatarIcon({
+    required this.selected,
+    required this.activeColor,
+    required this.inactiveColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final profile = memberStore.profile;
+    final photoUrl = profile?.profilePhotoUrl;
+    final initial = profile?.initial ?? '';
+    // Slot size 24px (match _BottomNavItem icon size 23-24). Ring +2px
+    // saat active masuk ke padding luar — total tetap 24×24 dengan ring,
+    // jadi visual size sama dengan icon tab lain.
+    const slotSize = 24.0;
+    const ringWidth = 2.0;
+    final avatarSize = selected ? slotSize - (ringWidth * 2) : slotSize;
+    return SizedBox(
+      width: slotSize,
+      height: slotSize,
+      child: Center(
+        child: Container(
+          width: selected ? slotSize : avatarSize,
+          height: selected ? slotSize : avatarSize,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: selected
+                ? Border.all(color: activeColor, width: ringWidth)
+                : null,
+          ),
+          padding: selected ? const EdgeInsets.all(ringWidth - 0.5) : null,
+          child: ClipOval(
+            child: photoUrl != null && photoUrl.trim().isNotEmpty
+                ? CachedNetworkImage(
+                    imageUrl: photoUrl,
+                    fit: BoxFit.cover,
+                    placeholder: (_, __) => _AvatarFallback(
+                      initial: initial,
+                      color: inactiveColor,
+                    ),
+                    errorWidget: (_, __, ___) => _AvatarFallback(
+                      initial: initial,
+                      color: inactiveColor,
+                    ),
+                  )
+                : _AvatarFallback(initial: initial, color: inactiveColor),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AvatarFallback extends StatelessWidget {
+  final String initial;
+  final Color color;
+
+  const _AvatarFallback({required this.initial, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    if (initial.isEmpty) {
+      // No inisial (guest) → pakai default person icon.
+      return Container(
+        color: const Color(0xFFE5E7EB),
+        child: Icon(
+          Icons.person_rounded,
+          color: color,
+          size: 16,
+        ),
+      );
+    }
+    return Container(
+      color: const Color(0xFFE0E7FF),
+      alignment: Alignment.center,
+      child: Text(
+        initial.toUpperCase(),
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w900,
+          height: 1,
         ),
       ),
     );

@@ -87,6 +87,23 @@ class FeedService {
         .toList();
   }
 
+  /// Fetch jumlah feed post yang user (sedang login) LIKE — bukan likes
+  /// di post sendiri. Dipakai di stat "Disukai" halaman Akun.
+  /// Return 0 kalau guest atau error.
+  Future<int> fetchMyLikesCount() async {
+    try {
+      final data = await apiClient.getJson('/api/feed/me/likes-count');
+      if (data is Map<String, dynamic>) {
+        final count = data['count'];
+        if (count is num) return count.toInt();
+        if (count is String) return int.tryParse(count) ?? 0;
+      }
+      return 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   /// Track view event — fire-and-forget. Backend increment viewCount
   /// + record analytics event. Client debounce sendiri (avoid
   /// double-count) via FeedLocalStore.hasViewedThisSession.
