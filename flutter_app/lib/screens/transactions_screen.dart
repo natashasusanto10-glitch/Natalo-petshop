@@ -6,7 +6,7 @@ import '../models/member_profile.dart';
 import '../services/member_service.dart';
 import '../state/member_store.dart';
 import '../utils/haptics.dart';
-import '../widgets/app_notification_button.dart';
+import '../widgets/app_cart_button.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/glass_surface.dart';
@@ -78,21 +78,11 @@ class _TransactionsHeader extends StatelessWidget implements PreferredSizeWidget
           fontWeight: FontWeight.w900,
         ),
       ),
-      actions: [
-        // Bell icon dengan unread count badge — reuse komponen existing
-        // yang sudah handle subscribe ke notificationRefreshTick + auto
-        // re-fetch on app resume.
-        const AppNotificationButton(),
-        // Gear icon → /account/settings (general settings page).
-        AppHeaderIconButton(
-          onPressed: () {
-            AppHaptics.tap();
-            Navigator.pushNamed(context, '/account/settings');
-          },
-          tooltip: 'Pengaturan',
-          child: const Icon(Icons.settings_outlined),
-        ),
-        const SizedBox(width: 8),
+      actions: const [
+        // Cart icon dengan item count badge — reuse komponen existing yang
+        // listen cartStore + auto-update saat item add/remove. Tap → /cart.
+        AppCartButton(),
+        SizedBox(width: 8),
       ],
     );
   }
