@@ -328,7 +328,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           if (product.hasFlashSaleCountdown)
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                padding: const EdgeInsets.fromLTRB(0, 8, 0, 0),
                 child: _ProductFlashSaleBanner(product: product),
               ),
             ),
@@ -577,30 +577,6 @@ class _ProductHeroState extends State<_ProductHero> {
                   ],
                 ),
               ),
-              if (widget.product.hasDiscount &&
-                  widget.product.discountPercent != null)
-                Positioned(
-                  left: 14,
-                  top: 14,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEF2F2),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      '-${widget.product.discountPercent}%',
-                      style: const TextStyle(
-                        color: Color(0xFFEF4444),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                ),
             ],
           ),
         );
@@ -643,24 +619,6 @@ class _ProductInfo extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (hasDiscount) ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: _softDiscountBg,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              '$discount% OFF',
-              style: const TextStyle(
-                color: _discountRed,
-                fontSize: 12,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-        ],
         Text(
           formatRupiah(product.finalPrice),
           maxLines: 1,
@@ -790,75 +748,68 @@ class _ProductFlashSaleBanner extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       decoration: BoxDecoration(
-        // Flash Sale = merah (consistent dengan badge "Harga Diskon"
-        // merah di product card + identitas urgent Flash Sale ala
-        // Shopee). Sebelumnya orange — user request ganti ke merah.
         gradient: const LinearGradient(
-          colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [Color(0xFFE11D48), Color(0xFFDC2626)],
         ),
-        borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFDC2626).withValues(alpha: 0.28),
-            blurRadius: 22,
-            offset: const Offset(0, 10),
+            color: const Color(0xFFE11D48).withValues(alpha: 0.22),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Row(
         children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.18),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
-            ),
-            child: const Icon(
-              Icons.flash_on_rounded,
-              color: Colors.white,
-              size: 27,
-            ),
+          const Icon(
+            Icons.flash_on_rounded,
+            color: Colors.white,
+            size: 24,
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
           const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Flash Sale',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    height: 1.1,
-                  ),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Harga spesial aktif untuk produk ini',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Color(0xFFFEE2E2), // light red/pink — match merah palette
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
+            child: Text(
+              'Flash Sale',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                height: 1,
+              ),
             ),
           ),
-          const SizedBox(width: 10),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
+          const SizedBox(width: 8),
+          const Text(
+            'Berakhir dalam',
+            style: TextStyle(
+              color: Color(0xFFFFE4E6),
+              fontSize: 12.5,
+              fontWeight: FontWeight.w800,
             ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            decoration: BoxDecoration(
+              color: const Color(0xFF7F1D1D).withValues(alpha: 0.58),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.16),
+              ),
+            ),
+            child: DefaultTextStyle.merge(
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+                height: 1,
+              ),
               child: FlashSaleCountdown.compact(endsAt: endsAt),
             ),
           ),
@@ -912,7 +863,9 @@ class _VoucherAndTrust extends StatelessWidget {
     // payload product list (snapshot ringkas dari /api/products).
     final List<ProductVoucherPreview> resolved = vouchers.isNotEmpty
         ? vouchers
-        : (product.voucherPreview != null ? [product.voucherPreview!] : const []);
+        : (product.voucherPreview != null
+            ? [product.voucherPreview!]
+            : const []);
 
     if (resolved.length >= 2) {
       return _VoucherCarousel(vouchers: resolved);
@@ -1086,10 +1039,10 @@ class _VoucherChip extends StatelessWidget {
     if (voucher.isShippingVoucher) return 'Gratis Ongkir';
     final percent = voucher.discountPercent;
     if (percent != null && percent > 0) {
-      final cap = voucher.maxDiscountAmount != null &&
-              voucher.maxDiscountAmount! > 0
-          ? ' s.d. ${formatRupiahCompact(voucher.maxDiscountAmount!)}'
-          : '';
+      final cap =
+          voucher.maxDiscountAmount != null && voucher.maxDiscountAmount! > 0
+              ? ' s.d. ${formatRupiahCompact(voucher.maxDiscountAmount!)}'
+              : '';
       return 'Diskon ${percent.toStringAsFixed(0)}%$cap';
     }
     final amount = voucher.discountAmount;
@@ -2168,12 +2121,6 @@ class _ProductVariantBottomSheetState
     return null;
   }
 
-  int? get _discountPercent {
-    final original = _originalPrice;
-    if (original == null || original <= 0) return null;
-    return (((original - _displayPrice) / original) * 100).round();
-  }
-
   int get _selectedStock => _selectedVariant?.stock ?? 0;
 
   bool get _canCheckout => _selectedVariant != null && _selectedStock > 0;
@@ -2210,7 +2157,6 @@ class _ProductVariantBottomSheetState
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final stockTone = _stockStatus.tone;
-    final discountPercent = _discountPercent;
     final originalPrice = _originalPrice;
 
     return DraggableScrollableSheet(
@@ -2288,46 +2234,16 @@ class _ProductVariantBottomSheetState
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.center,
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          formatRupiah(_displayPrice),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            color: _textDark,
-                                            fontSize: 26,
-                                            height: 1,
-                                            fontWeight: FontWeight.w900,
-                                          ),
-                                        ),
-                                      ),
-                                      if (discountPercent != null) ...[
-                                        const SizedBox(width: 8),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 5,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: _softDiscountBg,
-                                            borderRadius:
-                                                BorderRadius.circular(10),
-                                          ),
-                                          child: Text(
-                                            '$discountPercent% OFF',
-                                            style: const TextStyle(
-                                              color: _discountRed,
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w900,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ],
+                                  Text(
+                                    formatRupiah(_displayPrice),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: _textDark,
+                                      fontSize: 26,
+                                      height: 1,
+                                      fontWeight: FontWeight.w900,
+                                    ),
                                   ),
                                   if (originalPrice != null) ...[
                                     const SizedBox(height: 9),
