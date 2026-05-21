@@ -9,6 +9,20 @@ import '../models/product.dart';
 import '../services/cart_service.dart';
 import 'member_store.dart';
 
+int effectiveCartVariantPrice(Product product, ProductVariant variant) {
+  final discount = product.discountPrice;
+  if (product.hasFlashSaleCountdown &&
+      discount != null &&
+      product.price > 0 &&
+      discount > 0 &&
+      discount < product.price &&
+      variant.price > 0) {
+    final discounted = (variant.price * (discount / product.price)).round();
+    if (discounted > 0 && discounted < variant.price) return discounted;
+  }
+  return variant.price;
+}
+
 /// Cart state store — offline-first dengan optional remote sync.
 ///
 /// Local state persisted ke SharedPreferences (survive app restart).
@@ -104,11 +118,15 @@ class CartStore extends ChangeNotifier {
     int? overridePrice,
     int? overrideStock,
   }) async {
+    final unitPrice = overridePrice ??
+        (variant == null
+            ? product.finalPrice.round()
+            : effectiveCartVariantPrice(product, variant));
     final item = CartItem(
       product: product,
       variant: variant,
       variantLabel: variantLabel,
-      unitPrice: overridePrice ?? variant?.price ?? product.finalPrice.round(),
+      unitPrice: unitPrice,
       quantity: quantity,
       effectiveStock: overrideStock ?? variant?.stock ?? product.stock,
     );

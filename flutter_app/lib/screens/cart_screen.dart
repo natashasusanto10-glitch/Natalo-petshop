@@ -990,7 +990,7 @@ class _CartItemCard extends StatelessWidget {
   /// variants), user pilih varian baru, swap di cart.
   Future<void> _openVariantSheet(BuildContext context) async {
     AppHaptics.tap();
-    final picked = await showModalBottomSheet<ProductVariant>(
+    final picked = await showModalBottomSheet<_CartVariantPickResult>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -1004,9 +1004,10 @@ class _CartItemCard extends StatelessWidget {
     // kalau variantId sudah ada di cart (increment qty existing).
     await cartStore.remove(item.key);
     await cartStore.addProduct(
-      item.product,
-      variant: picked,
-      variantLabel: picked.sku ?? _composeVariantLabel(item.product, picked),
+      picked.product,
+      variant: picked.variant,
+      variantLabel: picked.variant.sku ??
+          _composeVariantLabel(picked.product, picked.variant),
       quantity: item.quantity,
     );
   }
@@ -1030,11 +1031,12 @@ class _CartItemCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final price = item.effectivePrice;
-    final regular = item.product.price;
+    final regular = item.variant?.price.toDouble() ?? item.product.price;
     final hasDiscount = regular > price;
     final discountPercent =
         hasDiscount ? (((regular - price) / regular) * 100).round() : 0;
-    final hasVariants = item.product.hasVariants;
+    final hasVariantSelection =
+        item.variantLabel != null && item.variantLabel!.trim().isNotEmpty;
 
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.96, end: 1),
@@ -1122,9 +1124,11 @@ class _CartItemCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    // Variant chip — HANYA kalau product punya variants.
+                    // Variant chip — tampil kalau item menyimpan pilihan
+                    // varian, termasuk cart lama yang product snapshot-nya
+                    // partial dari server.
                     // Tap → buka bottom sheet variant picker untuk ganti.
-                    if (hasVariants && item.variantLabel != null) ...[
+                    if (hasVariantSelection) ...[
                       const SizedBox(height: 8),
                       _VariantChipDropdown(
                         label: item.variantLabel!,
@@ -1287,6 +1291,16 @@ class _VariantChipDropdown extends StatelessWidget {
 /// data (semua variants + attrs) lewat productService.fetchProductBySlug,
 /// display variant chips, user select → return ProductVariant ke parent
 /// untuk swap di cart.
+class _CartVariantPickResult {
+  final Product product;
+  final ProductVariant variant;
+
+  const _CartVariantPickResult({
+    required this.product,
+    required this.variant,
+  });
+}
+
 class _CartVariantPickerSheet extends StatefulWidget {
   final CartItem cartItem;
 
@@ -1325,7 +1339,16 @@ class _CartVariantPickerSheetState extends State<_CartVariantPickerSheet> {
         return;
       }
       // Pre-select current variant options kalau ada.
-      final currentVariant = widget.cartItem.variant;
+      ProductVariant? currentVariant = widget.cartItem.variant;
+      final currentVariantId = widget.cartItem.variantId;
+      if (currentVariantId != null && currentVariantId.isNotEmpty) {
+        for (final variant in result.variants) {
+          if (variant.id == currentVariantId) {
+            currentVariant = variant;
+            break;
+          }
+        }
+      }
       if (currentVariant != null) {
         for (final attr in result.variantAttrs) {
           for (final opt in attr.options) {
@@ -1392,16 +1415,20 @@ class _CartVariantPickerSheetState extends State<_CartVariantPickerSheet> {
 
   void _confirm() {
     final variant = _matchedVariant;
+    final product = _fullProduct;
     if (variant == null) return;
     AppHaptics.tap();
-    Navigator.pop(context, variant);
+    Navigator.pop(
+      context,
+      _CartVariantPickResult(product: product!, variant: variant),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final variant = _matchedVariant;
     return FractionallySizedBox(
-      heightFactor: 0.7,
+      heightFactor: 0.78,
       child: ClipRRect(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         child: Container(
@@ -1452,59 +1479,26 @@ class _CartVariantPickerSheetState extends State<_CartVariantPickerSheet> {
                         top: BorderSide(color: Color(0xFFE5E7EB)),
                       ),
                     ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text(
-                                'Harga varian',
-                                style: TextStyle(
-                                  color: Color(0xFF6B7280),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                variant != null
-                                    ? formatRupiah(variant.price.toDouble())
-                                    : '—',
-                                style: const TextStyle(
-                                  color: _brandBlue,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ],
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: ElevatedButton(
+                        onPressed: variant != null ? _confirm : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _shippingGreen,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: const Color(0xFFCBD5E1),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          textStyle: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
                           ),
                         ),
-                        SizedBox(
-                          height: 48,
-                          child: ElevatedButton(
-                            onPressed: variant != null ? _confirm : null,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: _brandBlue,
-                              foregroundColor: Colors.white,
-                              disabledBackgroundColor: const Color(0xFFCBD5E1),
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 28,
-                              ),
-                              textStyle: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                            child: const Text('Pilih'),
-                          ),
-                        ),
-                      ],
+                        child: const Text('Simpan'),
+                      ),
                     ),
                   ),
                 ),
@@ -1545,6 +1539,8 @@ class _CartVariantPickerSheetState extends State<_CartVariantPickerSheet> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
       children: [
+        _CartVariantSummary(product: product, variant: _matchedVariant),
+        const SizedBox(height: 22),
         for (final attr in product.variantAttrs) ...[
           Text(
             attr.name,
@@ -1602,6 +1598,130 @@ class _CartVariantPickerSheetState extends State<_CartVariantPickerSheet> {
           ),
           const SizedBox(height: 18),
         ],
+      ],
+    );
+  }
+}
+
+class _CartVariantSummary extends StatelessWidget {
+  final Product product;
+  final ProductVariant? variant;
+
+  const _CartVariantSummary({
+    required this.product,
+    required this.variant,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedVariant = variant;
+    final imageUrl = selectedVariant?.imageUrl?.trim().isNotEmpty == true
+        ? selectedVariant!.imageUrl!
+        : product.imageUrl;
+    final displayPrice = selectedVariant == null
+        ? product.finalPrice.round()
+        : effectiveCartVariantPrice(product, selectedVariant);
+    final originalPrice = selectedVariant?.price ?? product.price.round();
+    final hasDiscount = originalPrice > displayPrice;
+    final discountPercent = hasDiscount && originalPrice > 0
+        ? (((originalPrice - displayPrice) / originalPrice) * 100).round()
+        : 0;
+    final stock = selectedVariant?.stock;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 92,
+          height: 92,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF1F5F9),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: AppProductImage(
+            imageUrl: imageUrl,
+            fit: BoxFit.cover,
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (selectedVariant?.sku != null &&
+                  selectedVariant!.sku!.trim().isNotEmpty) ...[
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF3F8),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    selectedVariant.sku!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+              Text(
+                formatRupiah(displayPrice.toDouble()),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF111827),
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              if (hasDiscount) ...[
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        formatRupiah(originalPrice.toDouble()),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF9CA3AF),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          decoration: TextDecoration.lineThrough,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '$discountPercent%',
+                      style: const TextStyle(
+                        color: _discountRed,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 6),
+              Text(
+                stock == null ? 'Pilih varian' : 'Stok: $stock',
+                style: const TextStyle(
+                  color: Color(0xFF374151),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }

@@ -9,6 +9,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { reconcileCartItemsWithStock } from "@/lib/cart-stock";
 import { getCartStockSnapshots } from "@/lib/cart-stock-server";
+import { buildCheckoutItemsFromInventory } from "@/lib/checkout-items";
 
 type ApiCartItem = {
   productId: string;
@@ -16,12 +17,97 @@ type ApiCartItem = {
   variantLabel?: string | null;
   name: string;
   price: number;
+  originalPrice?: number;
   quantity: number;
   subtotal?: number;
   weightGram: number;
   imageUrl?: string | null;
   stock?: number | null;
 };
+
+function cartItemKey(item: Pick<ApiCartItem, "productId" | "variantId">) {
+  return `${item.productId}:${item.variantId ?? ""}`;
+}
+
+async function applyCurrentCartPricing(items: ApiCartItem[]): Promise<ApiCartItem[]> {
+  if (items.length === 0) return items;
+
+  const productIds = [...new Set(items.map((item) => item.productId))];
+  const variantIds = [
+    ...new Set(items.map((item) => item.variantId).filter(Boolean)),
+  ] as string[];
+
+  const [products, variants] = await Promise.all([
+    prisma.product.findMany({
+      where: { id: { in: productIds } },
+      select: {
+        id: true,
+        name: true,
+        price: true,
+        discountPrice: true,
+        flashSaleEndsAt: true,
+        stock: true,
+        categoryId: true,
+        weightGram: true,
+        isActive: true,
+        hasVariants: true,
+        discountItems: {
+          where: {
+            isItemActive: true,
+            discount: {
+              isActive: true,
+              startsAt: { lte: new Date() },
+              endsAt: { gt: new Date() },
+            },
+          },
+          select: {
+            variantId: true,
+            discountedPrice: true,
+            discount: { select: { endsAt: true } },
+          },
+        },
+      },
+    }),
+    variantIds.length
+      ? prisma.productVariant.findMany({
+          where: { id: { in: variantIds }, deletedAt: null, isActive: true },
+          select: { id: true, productId: true, price: true, stock: true, weightGram: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const { checkoutItems } = buildCheckoutItemsFromInventory({
+    requestedItems: items.map((item) => ({
+      productId: item.productId,
+      variantId: item.variantId ?? null,
+      variantLabel: item.variantLabel ?? null,
+      quantity: item.quantity,
+    })),
+    products,
+    variants,
+  });
+  const checkoutItemByKey = new Map(checkoutItems.map((item) => [cartItemKey(item), item]));
+  const productById = new Map(products.map((product) => [product.id, product]));
+  const variantById = new Map(variants.map((variant) => [variant.id, variant]));
+
+  return items.map((item) => {
+    const checkoutItem = checkoutItemByKey.get(cartItemKey(item));
+    if (!checkoutItem) return item;
+
+    const variant = item.variantId ? variantById.get(item.variantId) : null;
+    const product = productById.get(item.productId);
+    const originalPrice = variant?.price ?? product?.price ?? item.price;
+
+    return {
+      ...item,
+      name: checkoutItem.name || item.name,
+      price: checkoutItem.price,
+      originalPrice,
+      subtotal: checkoutItem.price * item.quantity,
+      weightGram: checkoutItem.weightGram,
+    };
+  });
+}
 
 function sanitizeItems(raw: unknown): ApiCartItem[] {
   if (!Array.isArray(raw)) return [];
@@ -76,8 +162,9 @@ export async function GET() {
     imageUrl: i.imageUrl,
     stock: i.stock,
   }));
-  const snapshots = await getCartStockSnapshots(cartItems);
-  const result = reconcileCartItemsWithStock(cartItems, snapshots);
+  const pricedItems = await applyCurrentCartPricing(cartItems);
+  const snapshots = await getCartStockSnapshots(pricedItems);
+  const result = reconcileCartItemsWithStock(pricedItems, snapshots);
 
   return NextResponse.json({ items: result.items, stockIssues: result.issues });
 }

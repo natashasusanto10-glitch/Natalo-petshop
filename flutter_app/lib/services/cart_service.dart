@@ -13,6 +13,8 @@ class CartService {
       // Product.price = double. Cart endpoint return number — convert
       // via _asDouble untuk handle int/double/string uniformly.
       final price = _asDouble(item['price']);
+      final originalPrice = _asDouble(item['originalPrice']);
+      final displayPrice = originalPrice > price ? originalPrice : price;
       final variantId = item['variantId']?.toString();
       final stock = _asInt(item['stock'], fallback: 999);
       final weightGram = _asInt(item['weightGram'], fallback: 500);
@@ -23,7 +25,8 @@ class CartService {
         category: 'Produk',
         brand: 'Natalo',
         imageUrl: (item['imageUrl'] ?? '').toString(),
-        price: price.toDouble(),
+        price: displayPrice.toDouble(),
+        discountPrice: originalPrice > price ? price.toDouble() : null,
         rating: 0,
         reviewCount: 0,
         stock: stock,
@@ -34,7 +37,7 @@ class CartService {
           ? null
           : ProductVariant(
               id: variantId,
-              price: price.round(),
+              price: displayPrice.round(),
               stock: stock,
               weightGram: weightGram,
             );

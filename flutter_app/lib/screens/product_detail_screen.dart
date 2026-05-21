@@ -212,6 +212,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               product: product,
               quantity: quantity,
               variant: variant,
+              unitPrice: variant == null
+                  ? null
+                  : effectiveCartVariantPrice(product, variant),
             ),
           ],
         ),
@@ -2010,11 +2013,12 @@ class _ProductVariantBottomSheetState
         .onSelectionChanged(Map<String, String>.unmodifiable(_selectedOptions));
   }
 
-  int get _displayPrice =>
-      _selectedVariant?.price ?? _product.finalPrice.round();
+  int get _displayPrice => _selectedVariant == null
+      ? _product.finalPrice.round()
+      : effectiveCartVariantPrice(_product, _selectedVariant!);
 
   int? get _originalPrice {
-    final original = _product.price.round();
+    final original = _selectedVariant?.price ?? _product.price.round();
     if (_product.hasDiscount && original > _displayPrice) return original;
     return null;
   }
