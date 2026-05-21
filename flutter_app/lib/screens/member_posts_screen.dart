@@ -7,9 +7,12 @@ import 'package:video_player/video_player.dart';
 
 import '../models/my_feed_post.dart';
 import '../services/feed_service.dart';
+import '../state/member_store.dart';
 import '../utils/haptics.dart';
 import '../widgets/feed_upload_sheet.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
+import '../widgets/profile_avatar.dart';
+import 'member_post_detail_screen.dart';
 
 const _brandBlue = Color(0xFF0B7FEA);
 const _deepNavy = Color(0xFF0F172A);
@@ -36,22 +39,18 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     _PostsFilter(
       label: 'Semua',
       type: _PostFilterType.all,
-      icon: Icons.grid_view_rounded,
     ),
     _PostsFilter(
       label: 'Foto',
       type: _PostFilterType.photo,
-      icon: Icons.image_outlined,
     ),
     _PostsFilter(
       label: 'Video',
       type: _PostFilterType.video,
-      icon: Icons.play_circle_outline_rounded,
     ),
     _PostsFilter(
-      label: 'Review',
+      label: 'Menunggu',
       type: _PostFilterType.review,
-      icon: Icons.schedule_rounded,
     ),
   ];
 
@@ -136,17 +135,6 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     }).toList();
   }
 
-  int _countFor(_PostFilterType type) {
-    return _allPosts.where((post) {
-      return switch (type) {
-        _PostFilterType.all => true,
-        _PostFilterType.photo => !post.isVideo,
-        _PostFilterType.video => post.isVideo,
-        _PostFilterType.review => post.statusInfo == MyFeedPostStatus.pending,
-      };
-    }).length;
-  }
-
   Future<void> _openUpload() async {
     AppHaptics.tap();
     final uploaded = await FeedUploadSheet.show(context);
@@ -168,12 +156,16 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     setState(() => _filterIndex = index);
   }
 
-  void _openPreview(MyFeedPost post) {
+  void _openPostDetail(List<MyFeedPost> posts, int initialIndex) {
     AppHaptics.tap();
     Navigator.push<void>(
       context,
       MaterialPageRoute(
-        builder: (_) => _MemberPostPreviewScreen(post: post),
+        builder: (_) => MemberPostDetailScreen(
+          post: posts[initialIndex],
+          posts: posts,
+          initialIndex: initialIndex,
+        ),
       ),
     ).then((_) => _loadPosts());
   }
@@ -253,7 +245,6 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
               child: _FeedGalleryTabs(
                 filters: _filters,
                 activeIndex: _filterIndex,
-                countFor: _countFor,
                 onTap: _onFilterChanged,
               ),
             ),
@@ -299,7 +290,7 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
                     final post = visiblePosts[index];
                     return _GalleryPostTile(
                       post: post,
-                      onTap: () => _openPreview(post),
+                      onTap: () => _openPostDetail(visiblePosts, index),
                     );
                   },
                 ),
@@ -316,12 +307,10 @@ enum _PostFilterType { all, photo, video, review }
 class _PostsFilter {
   final String label;
   final _PostFilterType type;
-  final IconData icon;
 
   const _PostsFilter({
     required this.label,
     required this.type,
-    required this.icon,
   });
 }
 
@@ -330,78 +319,34 @@ class _NlFeedIntro extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        _NlFeedIcon(),
-        SizedBox(width: 14),
-        Expanded(
-          child: Text(
-            'Cerita lucu, gemas, dan seru kamu kumpul di sini. 🐾💙',
-            style: TextStyle(
-              color: Color(0xFF334155),
-              fontSize: 16,
-              height: 1.36,
-              fontWeight: FontWeight.w800,
+    return AnimatedBuilder(
+      animation: memberStore,
+      builder: (context, _) {
+        final profile = memberStore.profile;
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            ProfileAvatar(
+              initial: profile?.initial ?? 'N',
+              imageUrl: profile?.profilePhotoUrl,
+              size: 50,
+              fontSize: 20,
             ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _NlFeedIcon extends StatelessWidget {
-  const _NlFeedIcon();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 48,
-      height: 48,
-      decoration: BoxDecoration(
-        color: _brandBlue,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: const Stack(
-        children: [
-          Positioned(
-            left: 10,
-            top: 7,
-            child: Text(
-              'NL',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 17,
-                fontWeight: FontWeight.w900,
-                height: 1,
+            const SizedBox(width: 14),
+            const Expanded(
+              child: Text(
+                'Cerita lucu, gemas, dan seru kamu kumpul di sini. 🐾💙',
+                style: TextStyle(
+                  color: Color(0xFF334155),
+                  fontSize: 15.5,
+                  height: 1.36,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
-          ),
-          Positioned(
-            left: 10,
-            bottom: 8,
-            child: Text(
-              'Feed',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.w900,
-                height: 1,
-              ),
-            ),
-          ),
-          Positioned(
-            right: 7,
-            top: 7,
-            child: Icon(
-              Icons.pets_rounded,
-              size: 12,
-              color: Color(0xFFFFD166),
-            ),
-          ),
-        ],
-      ),
+          ],
+        );
+      },
     );
   }
 }
@@ -494,13 +439,11 @@ class _DraftReminderBanner extends StatelessWidget {
 class _FeedGalleryTabs extends StatelessWidget {
   final List<_PostsFilter> filters;
   final int activeIndex;
-  final int Function(_PostFilterType type) countFor;
   final ValueChanged<int> onTap;
 
   const _FeedGalleryTabs({
     required this.filters,
     required this.activeIndex,
-    required this.countFor,
     required this.onTap,
   });
 
@@ -511,46 +454,35 @@ class _FeedGalleryTabs extends StatelessWidget {
         color: Colors.white,
         border: Border(bottom: BorderSide(color: Color(0xFFE5EAF2))),
       ),
-      height: 54,
+      height: 50,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14),
         itemCount: filters.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 2),
+        separatorBuilder: (_, __) => const SizedBox(width: 24),
         itemBuilder: (context, index) {
           final filter = filters[index];
           final active = index == activeIndex;
           return InkWell(
             onTap: () => onTap(index),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 2),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        filter.icon,
-                        size: 21,
-                        color: active ? _brandBlue : const Color(0xFF475569),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        '${filter.label} (${countFor(filter.type)})',
-                        style: TextStyle(
-                          color: active ? _brandBlue : const Color(0xFF475569),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ],
+                  Text(
+                    filter.label,
+                    style: TextStyle(
+                      color: active ? _brandBlue : const Color(0xFF64748B),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
-                  const SizedBox(height: 11),
+                  const SizedBox(height: 10),
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
                     height: 3,
-                    width: active ? 72 : 0,
+                    width: active ? 38 : 0,
                     decoration: BoxDecoration(
                       color: _brandBlue,
                       borderRadius: BorderRadius.circular(999),
@@ -695,9 +627,9 @@ class _StatusBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final style = switch (status) {
       MyFeedPostStatus.pending => const _StatusStyle(
-          label: 'Menunggu Review',
-          bg: Color(0xFFFFB020),
-          fg: Colors.white,
+          label: 'Menunggu',
+          bg: Color(0xFFFFF4D6),
+          fg: Color(0xFFB45309),
           icon: Icons.schedule_rounded,
         ),
       MyFeedPostStatus.rejected => const _StatusStyle(

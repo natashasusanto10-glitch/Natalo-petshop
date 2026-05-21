@@ -4,280 +4,352 @@ import 'package:shimmer/shimmer.dart';
 import 'package:video_player/video_player.dart';
 
 import '../models/my_feed_post.dart';
-import '../services/api_client.dart';
-import '../services/feed_service.dart';
+import '../state/member_store.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
-import '../widgets/app_toast.dart';
+import '../widgets/profile_avatar.dart';
 
-/// Member Post Detail — preview media asli sesuai tipe postingan.
+/// Detail postingan member dengan interaksi dasar seperti feed/gallery.
 class MemberPostDetailScreen extends StatefulWidget {
   final MyFeedPost post;
+  final List<MyFeedPost>? posts;
+  final int initialIndex;
 
-  const MemberPostDetailScreen({super.key, required this.post});
+  const MemberPostDetailScreen({
+    super.key,
+    required this.post,
+    this.posts,
+    this.initialIndex = 0,
+  });
 
   @override
   State<MemberPostDetailScreen> createState() => _MemberPostDetailScreenState();
 }
 
 class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
-  bool _deleting = false;
+  late final PageController _pageController;
 
-  MyFeedPost get post => widget.post;
+  List<MyFeedPost> get _posts {
+    final source = widget.posts;
+    if (source == null || source.isEmpty) return [widget.post];
+    return source;
+  }
 
-  Future<void> _confirmAndDelete() async {
-    if (_deleting) return;
-    AppHaptics.tap();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Hapus Postingan?'),
-        content: const Text(
-          'Postingan akan dihapus permanen dari feed dan tidak bisa dikembalikan.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Batal'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: NataloColors.danger,
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Hapus'),
-          ),
-        ],
-      ),
+  String get _memberName {
+    final name = memberStore.profile?.name.trim();
+    return name == null || name.isEmpty ? 'Member Natalo' : name;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final maxIndex = _posts.length - 1;
+    _pageController = PageController(
+      initialPage: widget.initialIndex.clamp(0, maxIndex),
     );
-    if (confirmed != true) return;
-    if (!mounted) return;
-    setState(() => _deleting = true);
-    try {
-      await feedService.deleteMyPost(post.id);
-      if (!mounted) return;
-      AppHaptics.success();
-      AppToast.show(context, 'Postingan dihapus.');
-      // Pop dengan result true supaya parent list refresh.
-      Navigator.pop(context, true);
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      AppHaptics.warning();
-      final msg = e.statusCode == 401
-          ? 'Sesi login expired. Login ulang.'
-          : e.statusCode == 404
-              ? 'Post tidak ditemukan atau sudah dihapus.'
-              : 'Gagal hapus: ${e.message}';
-      AppToast.show(context, msg);
-      setState(() => _deleting = false);
-    } catch (e) {
-      if (!mounted) return;
-      AppHaptics.warning();
-      AppToast.show(context, 'Koneksi terputus. Coba lagi.');
-      setState(() => _deleting = false);
-    }
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7FAFF),
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('Detail Postingan'),
-        backgroundColor: const Color(0xFFF7FAFF),
+        backgroundColor: Colors.white,
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit_outlined),
-            tooltip: 'Edit caption',
-            onPressed: () {
-              AppHaptics.tap();
-              Navigator.pushNamed(
-                context,
-                '/member/post-edit',
-                arguments: post,
-              );
-            },
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.white,
+        leading: IconButton(
+          onPressed: () => Navigator.maybePop(context),
+          icon: const Icon(
+            Icons.arrow_back_rounded,
+            color: NataloColors.textPrimary,
+          ),
+        ),
+        centerTitle: true,
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Postingan',
+              style: TextStyle(
+                color: NataloColors.textPrimary,
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+                height: 1.1,
+              ),
+            ),
+            Text(
+              _memberName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: NataloColors.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                height: 1.1,
+              ),
+            ),
+          ],
+        ),
+      ),
+      body: PageView.builder(
+        controller: _pageController,
+        scrollDirection: Axis.vertical,
+        itemCount: _posts.length,
+        itemBuilder: (context, index) {
+          return _MemberPostDetailItem(
+            post: _posts[index],
+            memberName: _memberName,
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _MemberPostDetailItem extends StatelessWidget {
+  final MyFeedPost post;
+  final String memberName;
+
+  const _MemberPostDetailItem({
+    required this.post,
+    required this.memberName,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final profile = memberStore.profile;
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 28),
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+          child: Row(
+            children: [
+              ProfileAvatar(
+                initial: profile?.initial ?? 'N',
+                imageUrl: profile?.profilePhotoUrl,
+                size: 42,
+                fontSize: 17,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  memberName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: NataloColors.textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: () => AppHaptics.tap(),
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(
+                  Icons.more_horiz_rounded,
+                  color: NataloColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: _PostMediaPreview(post: post),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: _PostActionRow(post: post),
+        ),
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: _LikedByLine(memberName: memberName, post: post),
+        ),
+        const SizedBox(height: 7),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            formatTanggal(post.createdAt),
+            style: const TextStyle(
+              color: NataloColors.textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        if (post.statusInfo == MyFeedPostStatus.pending ||
+            post.statusInfo == MyFeedPostStatus.rejected) ...[
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _PostReviewNotice(post: post),
           ),
         ],
+        const SizedBox(height: 20),
+        const Divider(height: 1, color: Color(0xFFE5EAF2)),
+      ],
+    );
+  }
+}
+
+class _PostActionRow extends StatelessWidget {
+  final MyFeedPost post;
+
+  const _PostActionRow({required this.post});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        _PostActionButton(
+          icon: Icons.favorite_border_rounded,
+          semanticLabel: 'Like',
+          onTap: () => AppHaptics.tap(),
+        ),
+        _PostActionButton(
+          icon: Icons.chat_bubble_outline_rounded,
+          semanticLabel: 'Comment',
+          onTap: () => AppHaptics.tap(),
+        ),
+        _PostActionButton(
+          icon: Icons.send_outlined,
+          semanticLabel: 'Share',
+          onTap: () => AppHaptics.tap(),
+        ),
+      ],
+    );
+  }
+}
+
+class _PostActionButton extends StatelessWidget {
+  final IconData icon;
+  final String semanticLabel;
+  final VoidCallback onTap;
+
+  const _PostActionButton({
+    required this.icon,
+    required this.semanticLabel,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: semanticLabel,
+      button: true,
+      child: InkResponse(
+        onTap: onTap,
+        radius: 26,
+        child: Padding(
+          padding: const EdgeInsets.only(right: 18, top: 6, bottom: 6),
+          child: Icon(
+            icon,
+            color: NataloColors.textPrimary,
+            size: 28,
+          ),
+        ),
       ),
-      body: ListView(
+    );
+  }
+}
+
+class _LikedByLine extends StatelessWidget {
+  final String memberName;
+  final MyFeedPost post;
+
+  const _LikedByLine({
+    required this.memberName,
+    required this.post,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Text.rich(
+      TextSpan(
         children: [
-          _PostMediaPreview(post: post),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _StatusBadge(status: post.status),
-                if (post.status == 'REJECTED' &&
-                    post.rejectionReason != null) ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEF2F2),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFFFECACA)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.error_outline_rounded,
-                          color: Color(0xFFEF4444),
-                          size: 18,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Alasan ditolak: ${post.rejectionReason}',
-                            style: const TextStyle(
-                              color: Color(0xFFB91C1C),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 16),
-                if (post.caption != null && post.caption!.isNotEmpty) ...[
-                  Text(
-                    post.caption!,
-                    style: const TextStyle(
-                      color: NataloColors.textPrimary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      height: 1.5,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-                // Stats
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFFDDE8F8)),
-                  ),
-                  child: Row(
-                    children: [
-                      _Stat(
-                        icon: Icons.visibility_outlined,
-                        label: 'Dilihat',
-                        value: post.viewCount.toString(),
-                      ),
-                      _Divider(),
-                      _Stat(
-                        icon: Icons.favorite_border_rounded,
-                        label: 'Like',
-                        value: post.likeCount.toString(),
-                      ),
-                      _Divider(),
-                      _Stat(
-                        icon: Icons.chat_bubble_outline_rounded,
-                        label: 'Komentar',
-                        value: post.commentCount.toString(),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(
-                    Icons.schedule_rounded,
-                    color: NataloColors.primary,
-                    size: 20,
-                  ),
-                  title: const Text(
-                    'Diposting',
-                    style: TextStyle(
-                      color: NataloColors.textSecondary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  subtitle: Text(
-                    formatTanggal(post.createdAt, withTime: true),
-                    style: const TextStyle(
-                      color: NataloColors.textPrimary,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                if (post.productIds.isNotEmpty)
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(
-                      Icons.local_offer_outlined,
-                      color: NataloColors.primary,
-                      size: 20,
-                    ),
-                    title: const Text(
-                      'Produk Ditag',
-                      style: TextStyle(
-                        color: NataloColors.textSecondary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    subtitle: Text(
-                      '${post.productIds.length} produk',
-                      style: const TextStyle(
-                        color: NataloColors.textPrimary,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _deleting ? null : _confirmAndDelete,
-                        icon: _deleting
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: NataloColors.danger,
-                                ),
-                              )
-                            : const Icon(
-                                Icons.delete_outline_rounded,
-                                color: NataloColors.danger,
-                              ),
-                        label: Text(
-                          _deleting ? 'Menghapus…' : 'Hapus',
-                          style: const TextStyle(color: NataloColors.danger),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: NataloColors.danger),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: () {
-                          AppHaptics.tap();
-                          Navigator.pushReplacementNamed(context, '/feed');
-                        },
-                        icon: const Icon(Icons.play_circle_outline_rounded),
-                        label: const Text('Lihat di Feed'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+          const TextSpan(text: 'Disukai oleh '),
+          TextSpan(
+            text: post.likeCount > 0 ? memberName : memberName,
+            style: const TextStyle(fontWeight: FontWeight.w900),
+          ),
+          const TextSpan(text: ' dan lainnya'),
+        ],
+      ),
+      style: const TextStyle(
+        color: NataloColors.textPrimary,
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+      ),
+    );
+  }
+}
+
+class _PostReviewNotice extends StatelessWidget {
+  final MyFeedPost post;
+
+  const _PostReviewNotice({required this.post});
+
+  @override
+  Widget build(BuildContext context) {
+    final rejected = post.statusInfo == MyFeedPostStatus.rejected;
+    final bg = rejected ? const Color(0xFFFEF2F2) : const Color(0xFFFFF7E6);
+    final fg = rejected ? const Color(0xFFDC2626) : const Color(0xFFB45309);
+    final label = rejected ? 'Ditolak' : 'Menunggu';
+    final text = rejected
+        ? (post.rejectionReason?.trim().isNotEmpty == true
+            ? 'Postingan ditolak: ${post.rejectionReason}'
+            : 'Postingan ditolak.')
+        : 'Postingan sedang diperiksa admin.';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: fg.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            rejected ? Icons.cancel_rounded : Icons.schedule_rounded,
+            color: fg,
+            size: 18,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              color: fg,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: NataloColors.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ],
@@ -636,114 +708,4 @@ double _safeAspectRatio(int width, int height) {
   final ratio = width / height;
   if (ratio.isNaN || ratio.isInfinite || ratio <= 0) return 9 / 16;
   return ratio.clamp(0.45, 1.8);
-}
-
-class _StatusBadge extends StatelessWidget {
-  final String status;
-  const _StatusBadge({required this.status});
-
-  @override
-  Widget build(BuildContext context) {
-    Color bg;
-    Color fg;
-    String label;
-    IconData icon;
-
-    switch (status.toUpperCase()) {
-      case 'APPROVED':
-      case 'PUBLISHED':
-        bg = const Color(0xFFD1FAE5);
-        fg = const Color(0xFF16A34A);
-        label = 'Sudah Tayang';
-        icon = Icons.check_circle_rounded;
-        break;
-      case 'REJECTED':
-        bg = const Color(0xFFFEE2E2);
-        fg = const Color(0xFFEF4444);
-        label = 'Ditolak';
-        icon = Icons.cancel_rounded;
-        break;
-      case 'PENDING_REVIEW':
-      default:
-        bg = const Color(0xFFFEF3C7);
-        fg = const Color(0xFFD97706);
-        label = 'Menunggu Review';
-        icon = Icons.schedule_rounded;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: fg, size: 14),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            style: TextStyle(
-              color: fg,
-              fontSize: 11,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Stat extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-
-  const _Stat({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Column(
-        children: [
-          Icon(icon, size: 20, color: NataloColors.primary),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            style: const TextStyle(
-              color: NataloColors.textPrimary,
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: const TextStyle(
-              color: NataloColors.textSecondary,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Divider extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 1,
-      height: 36,
-      color: const Color(0xFFE5EAF3),
-    );
-  }
 }
