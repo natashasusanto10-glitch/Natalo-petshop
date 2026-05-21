@@ -7,6 +7,7 @@ import '../utils/haptics.dart';
 
 const _brandBlue = Color(0xFF1677FF);
 const _announcementGreen = Color(0xFF20B26B);
+const _promoRed = Color(0xFFE11D48);
 const _pageBg = Color(0xFFF7F9FC);
 const _textPrimary = Color(0xFF101828);
 const _textSecondary = Color(0xFF667085);
@@ -202,6 +203,8 @@ class _AnnouncementTitleSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tone = _AnnouncementTone.from(notification);
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -209,12 +212,12 @@ class _AnnouncementTitleSection extends StatelessWidget {
           width: 68,
           height: 68,
           decoration: BoxDecoration(
-            color: const Color(0xFFE8F8F0),
+            color: tone.softBg,
             borderRadius: BorderRadius.circular(20),
           ),
-          child: const Icon(
+          child: Icon(
             Icons.campaign_rounded,
-            color: _announcementGreen,
+            color: tone.color,
             size: 34,
           ),
         ),
@@ -227,13 +230,13 @@ class _AnnouncementTitleSection extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE8F8F0),
+                  color: tone.softBg,
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
                   _categoryLabel(notification),
-                  style: const TextStyle(
-                    color: _announcementGreen,
+                  style: TextStyle(
+                    color: tone.color,
                     fontSize: 12.5,
                     fontWeight: FontWeight.w900,
                   ),
@@ -314,6 +317,7 @@ class _ImportantInfo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tone = _AnnouncementTone.from(notification);
     final title = notification.importantTitle?.trim();
     final value = notification.importantValue?.trim();
     final description = notification.importantDescription?.trim();
@@ -330,9 +334,9 @@ class _ImportantInfo extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: const Color(0xFFF0FAF5),
+          color: tone.infoBg,
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: const Color(0xFFDDF7EA)),
+          border: Border.all(color: tone.border),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -340,13 +344,13 @@ class _ImportantInfo extends StatelessWidget {
             Container(
               width: 46,
               height: 46,
-              decoration: const BoxDecoration(
-                color: Color(0xFFDDF7EA),
+              decoration: BoxDecoration(
+                color: tone.iconBg,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.info_rounded,
-                color: _announcementGreen,
+                color: tone.color,
                 size: 25,
               ),
             ),
@@ -358,8 +362,8 @@ class _ImportantInfo extends StatelessWidget {
                   if (title != null && title.isNotEmpty)
                     Text(
                       title,
-                      style: const TextStyle(
-                        color: _announcementGreen,
+                      style: TextStyle(
+                        color: tone.color,
                         fontSize: 15,
                         fontWeight: FontWeight.w900,
                       ),
@@ -530,10 +534,81 @@ class _AnnouncementBottomActions extends StatelessWidget {
   }
 }
 
+class _AnnouncementTone {
+  final Color color;
+  final Color softBg;
+  final Color iconBg;
+  final Color infoBg;
+  final Color border;
+
+  const _AnnouncementTone({
+    required this.color,
+    required this.softBg,
+    required this.iconBg,
+    required this.infoBg,
+    required this.border,
+  });
+
+  factory _AnnouncementTone.from(AppNotification notification) {
+    if (_isPromoAnnouncement(notification)) {
+      return const _AnnouncementTone(
+        color: _promoRed,
+        softBg: Color(0xFFFFEEF2),
+        iconBg: Color(0xFFFFDCE6),
+        infoBg: Color(0xFFFFF1F4),
+        border: Color(0xFFFFCBD5),
+      );
+    }
+
+    return const _AnnouncementTone(
+      color: _announcementGreen,
+      softBg: Color(0xFFE8F8F0),
+      iconBg: Color(0xFFDDF7EA),
+      infoBg: Color(0xFFF0FAF5),
+      border: Color(0xFFDDF7EA),
+    );
+  }
+}
+
 String _categoryLabel(AppNotification notification) {
   final category = notification.category?.trim();
-  if (category != null && category.isNotEmpty) return category;
+  if (category != null && category.isNotEmpty) {
+    final normalized = category.toLowerCase();
+    if (normalized == 'promo' ||
+        normalized == 'promotion' ||
+        normalized == 'promosi') {
+      return 'Promo';
+    }
+    if (normalized == 'announcement' ||
+        normalized == 'broadcast' ||
+        normalized == 'newsletter') {
+      return 'Pengumuman';
+    }
+    return category;
+  }
   return 'Pengumuman';
+}
+
+bool _isPromoAnnouncement(AppNotification notification) {
+  final text = [
+    notification.type,
+    notification.category,
+    notification.source,
+    notification.eventType,
+    notification.status,
+    notification.title,
+    notification.shortDescription,
+    notification.body,
+    notification.ctaLabel,
+  ].whereType<String>().join(' ').toLowerCase();
+
+  return text.contains('promo') ||
+      text.contains('promosi') ||
+      text.contains('diskon') ||
+      text.contains('discount') ||
+      text.contains('flash sale') ||
+      text.contains('flashsale') ||
+      text.contains('flash_sale');
 }
 
 String _formatClock(DateTime date) {

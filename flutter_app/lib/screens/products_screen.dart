@@ -65,12 +65,14 @@ class ProductsScreen extends StatefulWidget {
   final String? selectedBrand;
   final String? initialQuery;
   final String? initialCategory;
+  final bool flashSaleOnly;
 
   const ProductsScreen({
     super.key,
     this.selectedBrand,
     this.initialQuery,
     this.initialCategory,
+    this.flashSaleOnly = false,
   });
 
   @override
@@ -148,7 +150,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
         _filter.sort == ProductSort.newest &&
         _filter.inStockOnly &&
         !_filter.discountOnly &&
-        !_filter.withImageOnly;
+        !_filter.withImageOnly &&
+        !widget.flashSaleOnly;
   }
 
   List<String> get _categories {
@@ -171,6 +174,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
           _filter.category == null || product.category == _filter.category;
       final stockMatch = !_filter.inStockOnly || product.stock > 0;
       final discountMatch = !_filter.discountOnly || product.hasDiscount;
+      final flashSaleMatch =
+          !widget.flashSaleOnly || product.isFlashSaleEligible;
       // Search Filters extension — advanced filter from _FilterSheet:
       // multi-brand, price range, rating. Cek pakai finalPrice
       // (consider discount) supaya user yang filter "<50rb" tetap
@@ -200,6 +205,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
           categoryMatch &&
           stockMatch &&
           discountMatch &&
+          flashSaleMatch &&
           multiBrandMatch &&
           minPriceMatch &&
           maxPriceMatch &&
@@ -301,7 +307,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
       popularFilter: _filter.apiPopularFilter,
       inStock: _filter.inStockOnly,
       withImage: _filter.withImageOnly,
-      discountOnly: _filter.discountOnly,
+      discountOnly: widget.flashSaleOnly || _filter.discountOnly,
     );
     if (!mounted) return;
     setState(() {
@@ -335,7 +341,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
       popularFilter: _filter.apiPopularFilter,
       inStock: _filter.inStockOnly,
       withImage: _filter.withImageOnly,
-      discountOnly: _filter.discountOnly,
+      discountOnly: widget.flashSaleOnly || _filter.discountOnly,
     );
     if (!mounted) return;
     setState(() {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../config/api_config.dart';
 import '../models/app_notification.dart';
+import '../models/product.dart';
 import '../services/api_client.dart';
 import '../services/notification_service.dart';
 import '../utils/formatters.dart';
@@ -115,6 +116,29 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Future<void> _navigateForNotification(AppNotification item) async {
     final url = item.url?.trim() ?? '';
     final haystack = _notificationHaystack(item);
+
+    if (_isPromoDetailNotification(item)) {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => AnnouncementDetailScreen(notification: item),
+        ),
+      );
+      return;
+    }
+
+    if (_isFlashSaleNotification(item)) {
+      await Navigator.pushNamed(
+        context,
+        '/products',
+        arguments: const ProductCatalogArgs(flashSaleOnly: true),
+      );
+      return;
+    }
+
+    if (_isVoucherNotification(item)) {
+      await Navigator.pushNamed(context, '/member/vouchers');
+      return;
+    }
 
     if (_isAnnouncementNotification(item)) {
       await Navigator.of(context).push<void>(
@@ -422,6 +446,7 @@ class _NotificationTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final visual = _NotificationVisual.from(notification);
+    final ctaLabel = _notificationCtaLabel(notification);
 
     return Material(
       color: Colors.white,
@@ -541,9 +566,9 @@ class _NotificationTile extends StatelessWidget {
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-                        if (notification.ctaLabel?.trim().isNotEmpty == true)
+                        if (ctaLabel != null)
                           Text(
-                            notification.ctaLabel!,
+                            ctaLabel,
                             style: const TextStyle(
                               color: _brandBlue,
                               fontSize: 11.5,
@@ -704,6 +729,8 @@ enum _NotificationFilter {
           text.contains('shipped') ||
           text.contains('dikirim'),
       _NotificationFilter.promo => text.contains('promo') ||
+          text.contains('flash sale') ||
+          text.contains('flashsale') ||
           text.contains('voucher') ||
           text.contains('diskon') ||
           text.contains('discount') ||
@@ -743,6 +770,20 @@ class _NotificationVisual {
         label: 'Pesanan',
       );
     }
+    if (_isVoucherNotification(item)) {
+      return const _NotificationVisual(
+        icon: Icons.confirmation_number_rounded,
+        color: Color(0xFF16A34A),
+        label: 'Voucher',
+      );
+    }
+    if (_isPromoDetailNotification(item)) {
+      return const _NotificationVisual(
+        icon: Icons.campaign_rounded,
+        color: Color(0xFFE11D48),
+        label: 'Promo',
+      );
+    }
     if (_NotificationFilter.promo.matches(item)) {
       return const _NotificationVisual(
         icon: Icons.confirmation_number_rounded,
@@ -778,6 +819,14 @@ String _notificationHaystack(AppNotification item) {
     item.shortDescription,
     item.ctaLabel,
   ].whereType<String>().join(' ').toLowerCase();
+}
+
+String? _notificationCtaLabel(AppNotification item) {
+  if (_isPromoDetailNotification(item)) return 'Lihat Detail';
+  if (_isFlashSaleNotification(item)) return 'Lihat Promo';
+  if (_isVoucherNotification(item)) return 'Pakai Voucher';
+  final label = item.ctaLabel?.trim();
+  return label == null || label.isEmpty ? null : label;
 }
 
 bool _isAnnouncementNotification(AppNotification item) {
@@ -827,6 +876,57 @@ bool _isAnnouncementNotification(AppNotification item) {
       text.contains('promo');
 
   return looksLikeAnnouncement || (announcementCta && !looksLikeOtherFlow);
+}
+
+bool _isFlashSaleNotification(AppNotification item) {
+  final text = _notificationHaystack(item);
+  final url = item.url?.toLowerCase() ?? '';
+  if (_isPromoDetailNotification(item)) return false;
+  return text.contains('flash sale') ||
+      text.contains('flashsale') ||
+      text.contains('flash_sale') ||
+      url.contains('flash-sale') ||
+      url.contains('flashsale');
+}
+
+bool _isPromoDetailNotification(AppNotification item) {
+  final cta = item.ctaLabel?.trim().toLowerCase() ?? '';
+  if (!cta.contains('lihat detail')) return false;
+
+  final text = _notificationHaystack(item);
+  return text.contains('promo') ||
+      text.contains('diskon') ||
+      text.contains('discount') ||
+      text.contains('flash sale') ||
+      text.contains('flashsale') ||
+      text.contains('flash_sale');
+}
+
+bool _isVoucherNotification(AppNotification item) {
+  final url = item.url?.toLowerCase() ?? '';
+  if (url.contains('/member/vouchers') ||
+      url.contains('/member/voucher') ||
+      url.contains('/vouchers') ||
+      url.contains('/voucher')) {
+    return true;
+  }
+
+  final cta = item.ctaLabel?.trim().toLowerCase() ?? '';
+  if (cta.contains('pakai voucher') ||
+      cta.contains('lihat voucher') ||
+      cta.contains('cek voucher')) {
+    return true;
+  }
+
+  final explicit = [
+    item.type,
+    item.category,
+    item.source,
+    item.eventType,
+    item.status,
+  ].whereType<String>().join(' ').toLowerCase();
+
+  return explicit.contains('voucher') && !explicit.contains('flash');
 }
 
 String? _toAbsoluteUrl(String url) {
