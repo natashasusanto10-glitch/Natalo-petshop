@@ -40,11 +40,17 @@ class FlashSaleCountdown extends StatefulWidget {
     this.onExpired,
   }) : _style = _CountdownStyle.compact;
 
+  const FlashSaleCountdown.digitsOnly({
+    super.key,
+    required this.endsAt,
+    this.onExpired,
+  }) : _style = _CountdownStyle.digitsOnly;
+
   @override
   State<FlashSaleCountdown> createState() => _FlashSaleCountdownState();
 }
 
-enum _CountdownStyle { section, compact }
+enum _CountdownStyle { section, compact, digitsOnly }
 
 class _FlashSaleCountdownState extends State<FlashSaleCountdown> {
   Timer? _ticker;
@@ -109,12 +115,51 @@ class _FlashSaleCountdownState extends State<FlashSaleCountdown> {
         formatTwo: _two,
       );
     }
+    if (widget._style == _CountdownStyle.digitsOnly) {
+      return _DigitsOnlyCountdown(
+        hours: hours,
+        minutes: minutes,
+        seconds: seconds,
+        formatTwo: _two,
+      );
+    }
     return _SectionHeaderTimer(
       hours: hours,
       minutes: minutes,
       seconds: seconds,
       isUrgent: isUrgent,
       formatTwo: _two,
+    );
+  }
+}
+
+class _DigitsOnlyCountdown extends StatelessWidget {
+  final int hours;
+  final int minutes;
+  final int seconds;
+  final String Function(int) formatTwo;
+
+  const _DigitsOnlyCountdown({
+    required this.hours,
+    required this.minutes,
+    required this.seconds,
+    required this.formatTwo,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      '${formatTwo(hours)}:${formatTwo(minutes)}:${formatTwo(seconds)}',
+      maxLines: 1,
+      overflow: TextOverflow.clip,
+      softWrap: false,
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 13,
+        fontWeight: FontWeight.w900,
+        height: 1,
+        fontFeatures: [FontFeature.tabularFigures()],
+      ),
     );
   }
 }

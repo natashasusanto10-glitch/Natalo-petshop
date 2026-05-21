@@ -763,7 +763,7 @@ class _ProductFlashSaleBanner extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.centerLeft,
@@ -783,34 +783,28 @@ class _ProductFlashSaleBanner extends StatelessWidget {
           const Icon(
             Icons.flash_on_rounded,
             color: Colors.white,
-            size: 24,
+            size: 20,
           ),
           const SizedBox(width: 8),
           const Expanded(
             child: Text(
-              'Flash Sale',
+              'Flash Sale berakhir dalam',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
+              softWrap: false,
               style: TextStyle(
                 color: Colors.white,
-                fontSize: 18,
+                fontSize: 15,
                 fontWeight: FontWeight.w900,
                 height: 1,
               ),
             ),
           ),
-          const SizedBox(width: 8),
-          const Text(
-            'Berakhir dalam',
-            style: TextStyle(
-              color: Color(0xFFFFE4E6),
-              fontSize: 12.5,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 12),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            width: 92,
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
             decoration: BoxDecoration(
               color: const Color(0xFF7F1D1D).withValues(alpha: 0.58),
               borderRadius: BorderRadius.circular(999),
@@ -825,7 +819,7 @@ class _ProductFlashSaleBanner extends StatelessWidget {
                 fontWeight: FontWeight.w900,
                 height: 1,
               ),
-              child: FlashSaleCountdown.compact(endsAt: endsAt),
+              child: FlashSaleCountdown.digitsOnly(endsAt: endsAt),
             ),
           ),
         ],
