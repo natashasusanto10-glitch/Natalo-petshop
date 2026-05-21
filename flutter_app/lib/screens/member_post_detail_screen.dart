@@ -338,10 +338,17 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
             )
           : ListView.separated(
               controller: _scrollController,
-              padding: const EdgeInsets.only(bottom: 32),
+              // Top padding bikin post pertama gak nempel ke AppBar.
+              // Bottom padding extra space supaya post terakhir bisa di-
+              // scroll lega ke atas viewport (gak mepet ke home indicator).
+              padding: const EdgeInsets.only(top: 12, bottom: 48),
               physics: const AlwaysScrollableScrollPhysics(),
               itemCount: _posts.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 18),
+              // Whitespace pemisah antar post — Instagram-style breathing
+              // room. 32px = cukup terasa post boundary jelas tanpa terlalu
+              // boros vertical space. Sebelumnya 18px terlalu mepet, post
+              // terasa "lengket" satu sama lain.
+              separatorBuilder: (_, __) => const SizedBox(height: 32),
               itemBuilder: (context, index) {
                 final post = _posts[index];
                 return _PostFeedItem(
