@@ -17,6 +17,7 @@ import '../services/feed_service.dart';
 import '../services/product_service.dart';
 import '../utils/haptics.dart';
 import 'app_product_image.dart';
+import '../screens/feed_media_picker_screen.dart';
 
 const _uploadSheetBg = Color(0xFFF7FBFF);
 const _uploadInk = Color(0xFF0F172A);
@@ -40,12 +41,11 @@ class FeedUploadSheet extends StatefulWidget {
   const FeedUploadSheet({super.key});
 
   static Future<bool?> show(BuildContext context) {
-    return showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => const FeedUploadSheet(),
+    return Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => const FeedMediaPickerScreen(),
+        fullscreenDialog: true,
+      ),
     );
   }
 

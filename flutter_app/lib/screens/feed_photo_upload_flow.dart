@@ -8,6 +8,7 @@ import '../models/product.dart';
 import '../services/feed_photo_service.dart';
 import '../services/product_service.dart';
 import '../utils/haptics.dart';
+import 'feed_new_post_screen.dart';
 import 'feed_video_upload_flow.dart' show FeedPostSubmittedScreen;
 
 const int _kPhotoMin = 1;
@@ -398,9 +399,8 @@ class _SelectedPhotosGrid extends StatelessWidget {
                   vertical: 3,
                 ),
                 decoration: BoxDecoration(
-                  color: isFirst
-                      ? _kAccent
-                      : Colors.black.withValues(alpha: 0.65),
+                  color:
+                      isFirst ? _kAccent : Colors.black.withValues(alpha: 0.65),
                   borderRadius: BorderRadius.circular(99),
                 ),
                 child: Text(
@@ -452,8 +452,7 @@ class FeedPhotoPreviewScreen extends StatefulWidget {
   const FeedPhotoPreviewScreen({super.key, required this.draft});
 
   @override
-  State<FeedPhotoPreviewScreen> createState() =>
-      _FeedPhotoPreviewScreenState();
+  State<FeedPhotoPreviewScreen> createState() => _FeedPhotoPreviewScreenState();
 }
 
 class _FeedPhotoPreviewScreenState extends State<FeedPhotoPreviewScreen> {
@@ -475,7 +474,9 @@ class _FeedPhotoPreviewScreenState extends State<FeedPhotoPreviewScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => FeedPhotoDetailScreen(draft: widget.draft),
+        builder: (_) => FeedNewPostScreen(
+          draft: NewPostMediaDraft.photos(widget.draft.localFiles),
+        ),
       ),
     );
   }
@@ -643,7 +644,7 @@ class _FeedPhotoPreviewScreenState extends State<FeedPhotoPreviewScreen> {
 }
 
 // ════════════════════════════════════════════════════════════════
-// 3. DETAIL SCREEN — Caption + product tag + submit.
+// 3. DETAIL SCREEN — Optional product tag + submit.
 // ════════════════════════════════════════════════════════════════
 
 class FeedPhotoDetailScreen extends StatefulWidget {
@@ -656,7 +657,6 @@ class FeedPhotoDetailScreen extends StatefulWidget {
 }
 
 class _FeedPhotoDetailScreenState extends State<FeedPhotoDetailScreen> {
-  late final TextEditingController _captionController;
   List<Product> _products = const [];
   final Set<String> _selectedProductIds = {};
   bool _loadingProducts = false;
@@ -666,15 +666,8 @@ class _FeedPhotoDetailScreenState extends State<FeedPhotoDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _captionController = TextEditingController(text: widget.draft.caption);
     _selectedProductIds.addAll(widget.draft.taggedProductIds);
     _loadProducts();
-  }
-
-  @override
-  void dispose() {
-    _captionController.dispose();
-    super.dispose();
   }
 
   Future<void> _loadProducts() async {
@@ -707,12 +700,6 @@ class _FeedPhotoDetailScreenState extends State<FeedPhotoDetailScreen> {
   }
 
   Future<void> _submit() async {
-    final caption = _captionController.text.trim();
-    if (caption.isEmpty || caption.length < 3) {
-      setState(() => _error = 'Caption minimal 3 karakter.');
-      AppHaptics.warning();
-      return;
-    }
     AppHaptics.tap();
     setState(() {
       _submitting = true;
@@ -724,7 +711,7 @@ class _FeedPhotoDetailScreenState extends State<FeedPhotoDetailScreen> {
       MaterialPageRoute(
         builder: (_) => FeedPhotoUploadProgressScreen(
           files: files,
-          title: caption,
+          title: 'Postingan baru',
           productIds: _selectedProductIds.toList(),
         ),
       ),
@@ -745,7 +732,7 @@ class _FeedPhotoDetailScreenState extends State<FeedPhotoDetailScreen> {
         scrolledUnderElevation: 0,
         iconTheme: const IconThemeData(color: _kTextPrimary),
         title: const Text(
-          'Detail Postingan',
+          'Tag Produk',
           style: TextStyle(
             color: _kTextPrimary,
             fontWeight: FontWeight.w900,
@@ -809,57 +796,6 @@ class _FeedPhotoDetailScreenState extends State<FeedPhotoDetailScreen> {
                             ),
                           ),
                       ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Caption field.
-                  const Text(
-                    'CAPTION',
-                    style: TextStyle(
-                      color: _kTextSecondary,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.6,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _captionController,
-                    minLines: 3,
-                    maxLines: 6,
-                    maxLength: 500,
-                    style: const TextStyle(
-                      color: _kTextPrimary,
-                      fontSize: 15,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: 'Tulis caption postingan kamu...',
-                      hintStyle: const TextStyle(
-                        color: _kTextSecondary,
-                        fontSize: 14,
-                      ),
-                      filled: true,
-                      fillColor: _kSurface,
-                      counterStyle: const TextStyle(
-                        color: _kTextSecondary,
-                        fontSize: 11,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(color: _kBorder),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(color: _kBorder),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(
-                          color: _kAccent,
-                          width: 1.4,
-                        ),
-                      ),
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -963,9 +899,8 @@ class _FeedPhotoDetailScreenState extends State<FeedPhotoDetailScreen> {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
-                                      color: selected
-                                          ? _kAccent
-                                          : _kTextPrimary,
+                                      color:
+                                          selected ? _kAccent : _kTextPrimary,
                                       fontSize: 12.5,
                                       fontWeight: FontWeight.w700,
                                     ),
@@ -1047,7 +982,7 @@ class _FeedPhotoDetailScreenState extends State<FeedPhotoDetailScreen> {
                           ),
                         )
                       : const Icon(Icons.send_rounded),
-                  label: Text(_submitting ? 'Mengirim...' : 'Kirim Postingan'),
+                  label: Text(_submitting ? 'Mengirim...' : 'Upload ke Feed'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _kAccent,
                     foregroundColor: Colors.white,
@@ -1216,8 +1151,7 @@ class _FeedPhotoUploadProgressScreenState
                     value: total > 0 ? _uploadedCount / total : 0,
                     backgroundColor: _kSurface,
                     minHeight: 6,
-                    valueColor:
-                        const AlwaysStoppedAnimation<Color>(_kAccent),
+                    valueColor: const AlwaysStoppedAnimation<Color>(_kAccent),
                   ),
                 ),
               ],

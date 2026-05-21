@@ -20,6 +20,7 @@ import '../services/product_service.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_product_image.dart';
+import 'feed_new_post_screen.dart';
 
 const _feedUploadBlue = Color(0xFF1E5BFF);
 const _feedUploadBg = Color(0xFF05070D);
@@ -27,6 +28,7 @@ const _feedUploadCard = Color(0xFF11141B);
 const _feedUploadBorder = Color(0xFF252A35);
 const _feedUploadText = Color(0xFFFFFFFF);
 const _feedUploadMuted = Color(0xFFAEB7C7);
+
 /// Max video size yang user boleh pick dari galeri/kamera.
 /// 200MB cukup untuk 1080p 60s @ 25Mbps bitrate (typical iPhone source).
 /// Compression akan turunkan jadi ~5-15MB sebelum upload ke Bunny.
@@ -258,6 +260,18 @@ class _FeedVideoPreviewScreenState extends State<FeedVideoPreviewScreen> {
   }
 
   Future<void> _next() async {
+    final duration = widget.draft.originalDuration ?? Duration.zero;
+    if (duration.inSeconds > _maxFeedVideoSeconds) {
+      AppHaptics.warning();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Video lebih dari 45 detik. Edit video untuk memilih bagian terbaik.',
+          ),
+        ),
+      );
+      return;
+    }
     await _controller?.pause();
     if (!mounted) return;
     final draft = widget.draft.copyWith(
@@ -267,13 +281,17 @@ class _FeedVideoPreviewScreenState extends State<FeedVideoPreviewScreen> {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => FeedPostDetailScreen(draft: draft),
+        builder: (_) => FeedNewPostScreen(
+          draft: NewPostMediaDraft.video(draft),
+        ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final duration = widget.draft.originalDuration ?? Duration.zero;
+    final mustEditVideo = duration.inSeconds > _maxFeedVideoSeconds;
     return _DarkUploadScaffold(
       title: 'Preview Video',
       leading: Icons.close_rounded,
@@ -296,6 +314,13 @@ class _FeedVideoPreviewScreenState extends State<FeedVideoPreviewScreen> {
                   title: 'Durasi video yang dipilih',
                   value: _formatDuration(widget.draft.originalDuration),
                 ),
+                if (mustEditVideo) ...[
+                  const SizedBox(height: 14),
+                  const _DarkErrorBox(
+                    message:
+                        'Video lebih dari 45 detik. Edit video untuk memilih bagian terbaik.',
+                  ),
+                ],
                 if (_error != null) ...[
                   const SizedBox(height: 14),
                   _DarkErrorBox(message: _error!),
@@ -328,7 +353,7 @@ class _FeedVideoPreviewScreenState extends State<FeedVideoPreviewScreen> {
                 child: _PrimaryUploadButton(
                   label: 'Next',
                   icon: Icons.arrow_forward_rounded,
-                  enabled: !_loading && _error == null,
+                  enabled: !_loading && _error == null && !mustEditVideo,
                   onPressed: _next,
                 ),
               ),
@@ -529,7 +554,9 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
       await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => FeedPostDetailScreen(draft: nextDraft),
+          builder: (_) => FeedNewPostScreen(
+            draft: NewPostMediaDraft.video(nextDraft),
+          ),
         ),
       );
     } catch (error) {
@@ -551,7 +578,7 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
       milliseconds: ((_range.end - _range.start) * 1000).round(),
     );
     return _DarkUploadScaffold(
-      title: 'Trim Video',
+      title: 'Edit Video',
       leading: Icons.arrow_back_rounded,
       onLeading: () => Navigator.pop(context),
       trailing: _RoundNextButton(
@@ -585,6 +612,16 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
                   range: _range,
                   totalSeconds: totalSeconds,
                   onChanged: _exporting ? null : _updateRange,
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Geser pegangan untuk memangkas video',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: _feedUploadMuted,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 14),
                 Center(
@@ -622,7 +659,6 @@ class FeedPostDetailScreen extends StatefulWidget {
 
 class _FeedPostDetailScreenState extends State<FeedPostDetailScreen> {
   late FeedCreatePostDraft _draft;
-  late final TextEditingController _captionController;
   final _productSearchController = TextEditingController();
   List<Product> _products = const [];
   final Set<String> _selectedProductIds = {};
@@ -634,14 +670,12 @@ class _FeedPostDetailScreenState extends State<FeedPostDetailScreen> {
   void initState() {
     super.initState();
     _draft = widget.draft;
-    _captionController = TextEditingController(text: _draft.caption);
     _selectedProductIds.addAll(_draft.taggedProductIds);
     _loadProducts();
   }
 
   @override
   void dispose() {
-    _captionController.dispose();
     _productSearchController.dispose();
     super.dispose();
   }
@@ -726,11 +760,6 @@ class _FeedPostDetailScreenState extends State<FeedPostDetailScreen> {
   }
 
   Future<void> _upload() async {
-    final caption = _captionController.text.trim();
-    if (caption.length > 1000) {
-      setState(() => _error = 'Caption maksimal 1000 karakter.');
-      return;
-    }
     final videoPath = _draft.finalVideoPath;
     if (videoPath == null || !File(videoPath).existsSync()) {
       setState(() => _error = 'Video tidak tersedia. Pilih video lagi.');
@@ -742,7 +771,7 @@ class _FeedPostDetailScreenState extends State<FeedPostDetailScreen> {
       MaterialPageRoute(
         builder: (_) => FeedUploadProgressScreen(
           draft: _draft.copyWith(
-            caption: caption,
+            caption: '',
             taggedProductIds: _selectedProductIds.toList(),
           ),
         ),
@@ -753,7 +782,7 @@ class _FeedPostDetailScreenState extends State<FeedPostDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return _DarkUploadScaffold(
-      title: 'Detail Postingan',
+      title: 'Tag Produk',
       leading: Icons.arrow_back_rounded,
       onLeading: () => Navigator.pop(context),
       child: Column(
@@ -767,20 +796,6 @@ class _FeedPostDetailScreenState extends State<FeedPostDetailScreen> {
                   onEdit: _editVideo,
                 ),
                 const SizedBox(height: 14),
-                TextField(
-                  controller: _captionController,
-                  maxLength: 1000,
-                  maxLines: 5,
-                  style: const TextStyle(
-                    color: _feedUploadText,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  decoration: _darkInputDecoration(
-                    'Caption video',
-                    'Ceritakan tentang video kamu...',
-                  ),
-                ),
-                const SizedBox(height: 8),
                 Row(
                   children: [
                     ChoiceChip(
@@ -956,7 +971,9 @@ class _FeedUploadProgressScreenState extends State<FeedUploadProgressScreen> {
           contentType: 'image/jpeg',
         );
       } catch (error) {
-        if (kDebugMode) debugPrint('[feed-upload] thumbnail upload error: $error');
+        if (kDebugMode) {
+          debugPrint('[feed-upload] thumbnail upload error: $error');
+        }
         throw _FeedVideoFlowException(
           '[Thumbnail] ${_friendlyErrorMessage(error)}',
         );
