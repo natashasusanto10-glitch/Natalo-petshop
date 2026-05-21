@@ -41,7 +41,7 @@ const _officialGold = Color(0xFFF4D47C);
 const _officialGoldMuted = Color(0xFFD7B55B);
 const _feedBlue = Color(0xFF0B7FEA);
 const _feedActionIconSize = 32.0;
-const _feedActionStrokeWidth = 2.45;
+const _feedActionStrokeWidth = 2.2;
 const _feedActionCountFontSize = 12.0;
 const _feedActionItemSpacing = 18.0;
 const _feedActionBottomInset = 24.0;
@@ -983,7 +983,8 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
       ),
       TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.0), weight: 38),
       TweenSequenceItem(
-        tween: Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeIn)),
+        tween:
+            Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeIn)),
         weight: 37,
       ),
     ]).animate(_heartBurstController);
@@ -1083,9 +1084,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     try {
       final url = ApiConfig.uri('/feed/${widget.post.id}').toString();
       await Share.share(
-        widget.post.title.isNotEmpty
-            ? '${widget.post.title}\n$url'
-            : url,
+        widget.post.title.isNotEmpty ? '${widget.post.title}\n$url' : url,
       );
       if (!mounted) return;
       setState(() => _shareCount += 1);
@@ -1326,9 +1325,8 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                     ),
                     const SizedBox(height: 7),
                     _ExpandableCaption(
-                      text: post.title.isNotEmpty
-                          ? post.title
-                          : post.description,
+                      text:
+                          post.title.isNotEmpty ? post.title : post.description,
                       expanded: _captionExpanded,
                       onToggle: () =>
                           setState(() => _captionExpanded = !_captionExpanded),
@@ -3467,54 +3465,70 @@ class _HeartGlyphPainter extends CustomPainter {
 
   Path _buildHeartPath(Size size) {
     return Path()
-      ..moveTo(size.width * 0.50, size.height * 0.84)
+      ..moveTo(size.width * 0.50, size.height * 0.844)
       ..cubicTo(
-        size.width * 0.41,
-        size.height * 0.75,
-        size.width * 0.16,
-        size.height * 0.57,
-        size.width * 0.12,
-        size.height * 0.34,
+        size.width * 0.469,
+        size.height * 0.815,
+        size.width * 0.342,
+        size.height * 0.698,
+        size.width * 0.244,
+        size.height * 0.592,
       )
       ..cubicTo(
-        size.width * 0.08,
-        size.height * 0.14,
-        size.width * 0.30,
-        size.height * 0.05,
-        size.width * 0.43,
-        size.height * 0.20,
+        size.width * 0.158,
+        size.height * 0.498,
+        size.width * 0.129,
+        size.height * 0.425,
+        size.width * 0.129,
+        size.height * 0.346,
       )
       ..cubicTo(
-        size.width * 0.46,
-        size.height * 0.24,
-        size.width * 0.48,
-        size.height * 0.27,
+        size.width * 0.129,
+        size.height * 0.231,
+        size.width * 0.219,
+        size.height * 0.150,
+        size.width * 0.338,
+        size.height * 0.150,
+      )
+      ..cubicTo(
+        size.width * 0.406,
+        size.height * 0.150,
+        size.width * 0.460,
+        size.height * 0.179,
+        size.width * 0.500,
+        size.height * 0.231,
+      )
+      ..cubicTo(
+        size.width * 0.540,
+        size.height * 0.179,
+        size.width * 0.594,
+        size.height * 0.150,
+        size.width * 0.662,
+        size.height * 0.150,
+      )
+      ..cubicTo(
+        size.width * 0.781,
+        size.height * 0.150,
+        size.width * 0.871,
+        size.height * 0.231,
+        size.width * 0.871,
+        size.height * 0.346,
+      )
+      ..cubicTo(
+        size.width * 0.871,
+        size.height * 0.425,
+        size.width * 0.842,
+        size.height * 0.498,
+        size.width * 0.756,
+        size.height * 0.592,
+      )
+      ..cubicTo(
+        size.width * 0.658,
+        size.height * 0.698,
+        size.width * 0.531,
+        size.height * 0.815,
         size.width * 0.50,
-        size.height * 0.31,
-      )
-      ..cubicTo(
-        size.width * 0.52,
-        size.height * 0.27,
-        size.width * 0.54,
-        size.height * 0.24,
-        size.width * 0.57,
-        size.height * 0.20,
-      )
-      ..cubicTo(
-        size.width * 0.70,
-        size.height * 0.05,
-        size.width * 0.92,
-        size.height * 0.14,
-        size.width * 0.88,
-        size.height * 0.34,
-      )
-      ..cubicTo(
-        size.width * 0.84,
-        size.height * 0.57,
-        size.width * 0.59,
-        size.height * 0.75,
-        size.width * 0.50,
-        size.height * 0.84,
+        size.height * 0.844,
       )
       ..close();
   }
@@ -3558,41 +3572,49 @@ class _CommentGlyphPainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round;
 
     final path = Path()
-      ..moveTo(size.width * 0.86, size.height * 0.82)
-      ..lineTo(size.width * 0.62, size.height * 0.76)
+      ..moveTo(size.width * 0.519, size.height * 0.169)
       ..cubicTo(
-        size.width * 0.51,
-        size.height * 0.81,
-        size.width * 0.35,
-        size.height * 0.80,
-        size.width * 0.24,
-        size.height * 0.72,
+        size.width * 0.731,
+        size.height * 0.169,
+        size.width * 0.879,
+        size.height * 0.300,
+        size.width * 0.879,
+        size.height * 0.469,
       )
       ..cubicTo(
-        size.width * 0.05,
-        size.height * 0.58,
-        size.width * 0.04,
-        size.height * 0.30,
-        size.width * 0.22,
-        size.height * 0.16,
+        size.width * 0.879,
+        size.height * 0.640,
+        size.width * 0.731,
+        size.height * 0.765,
+        size.width * 0.519,
+        size.height * 0.765,
       )
       ..cubicTo(
-        size.width * 0.38,
-        size.height * 0.02,
-        size.width * 0.66,
-        size.height * 0.03,
-        size.width * 0.80,
-        size.height * 0.21,
+        size.width * 0.473,
+        size.height * 0.765,
+        size.width * 0.431,
+        size.height * 0.758,
+        size.width * 0.392,
+        size.height * 0.746,
+      )
+      ..lineTo(size.width * 0.185, size.height * 0.850)
+      ..lineTo(size.width * 0.252, size.height * 0.660)
+      ..cubicTo(
+        size.width * 0.179,
+        size.height * 0.610,
+        size.width * 0.131,
+        size.height * 0.544,
+        size.width * 0.131,
+        size.height * 0.469,
       )
       ..cubicTo(
-        size.width * 0.93,
-        size.height * 0.38,
-        size.width * 0.89,
-        size.height * 0.62,
-        size.width * 0.72,
-        size.height * 0.73,
+        size.width * 0.131,
+        size.height * 0.300,
+        size.width * 0.279,
+        size.height * 0.169,
+        size.width * 0.519,
+        size.height * 0.169,
       )
-      ..lineTo(size.width * 0.86, size.height * 0.82)
       ..close();
 
     canvas.drawPath(path.shift(const Offset(0, 1.2)), shadowPaint);
@@ -3636,13 +3658,14 @@ class _ShareGlyphPainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round;
 
     final path = Path()
-      ..moveTo(size.width * 0.10, size.height * 0.14)
-      ..lineTo(size.width * 0.92, size.height * 0.15)
-      ..lineTo(size.width * 0.40, size.height * 0.88)
-      ..lineTo(size.width * 0.30, size.height * 0.48)
-      ..lineTo(size.width * 0.92, size.height * 0.15)
-      ..moveTo(size.width * 0.30, size.height * 0.48)
-      ..lineTo(size.width * 0.10, size.height * 0.14);
+      ..moveTo(size.width * 0.152, size.height * 0.227)
+      ..lineTo(size.width * 0.869, size.height * 0.158)
+      ..lineTo(size.width * 0.594, size.height * 0.777)
+      ..lineTo(size.width * 0.463, size.height * 0.527)
+      ..lineTo(size.width * 0.152, size.height * 0.410)
+      ..lineTo(size.width * 0.869, size.height * 0.158)
+      ..moveTo(size.width * 0.463, size.height * 0.527)
+      ..lineTo(size.width * 0.677, size.height * 0.342);
 
     canvas.drawPath(path.shift(const Offset(0, 1.2)), shadowPaint);
     canvas.drawPath(path, paint);
