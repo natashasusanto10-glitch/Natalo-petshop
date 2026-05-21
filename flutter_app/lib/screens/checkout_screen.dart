@@ -1526,11 +1526,12 @@ class _CheckoutOrderSuccessDialog extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               height: 52,
-              child: OutlinedButton(
+              child: ElevatedButton(
                 onPressed: onOpenDetail,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _brandBlue,
-                  side: const BorderSide(color: _brandBlue, width: 1.4),
+                style: ElevatedButton.styleFrom(
+                  elevation: 0,
+                  backgroundColor: _brandBlue,
+                  foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
