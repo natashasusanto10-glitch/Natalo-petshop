@@ -1026,6 +1026,18 @@ class _ImageSurface extends StatelessWidget {
     if (imageUrl.trim().isEmpty) {
       return _MediaPlaceholder(icon: placeholderIcon);
     }
+    // BoxFit.contain — foto utuh, gak ada konten yang ke-crop edge.
+    // Frame fixed di 4:5 via AspectRatio parent. Photo yang lebih tinggi
+    // (e.g. phone screenshot 9:19.5) atau lebih lebar (16:9 landscape)
+    // di-shrink supaya muat dalam 4:5 frame, dengan **letterbox bars
+    // hitam** di sisi yang gak match aspect.
+    //
+    // Sebelumnya BoxFit.cover (crop center) bikin konten edge hilang —
+    // konsisten dengan _ImageSurface tapi user complaint banyak konten
+    // ke-crop. Ganti ke contain supaya:
+    //   - Konsisten dengan main feed photo carousel (juga contain)
+    //   - Match IG behavior saat user toggle "fit" (preserve original)
+    //   - User gak kehilangan konten edge
     return Container(
       color: Colors.black,
       alignment: Alignment.center,
@@ -1033,7 +1045,7 @@ class _ImageSurface extends StatelessWidget {
         imageUrl: imageUrl,
         width: double.infinity,
         height: double.infinity,
-        fit: BoxFit.cover,
+        fit: BoxFit.contain,
         fadeInDuration: const Duration(milliseconds: 200),
         placeholder: (_, __) => Shimmer.fromColors(
           baseColor: const Color(0xFF1F2937),
