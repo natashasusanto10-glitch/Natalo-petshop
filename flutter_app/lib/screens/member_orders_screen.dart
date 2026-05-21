@@ -383,55 +383,35 @@ class _OrderCard extends StatelessWidget {
     );
   }
 
-  void _handlePrimaryAction(BuildContext context) {
+  bool get _isUnpaid {
     final status = order.status.toUpperCase();
     final payment = order.paymentStatus.toUpperCase();
 
-    if (payment == 'UNPAID' || payment == 'PENDING' || status == 'PENDING') {
+    return payment == 'UNPAID' || payment == 'PENDING' || status == 'PENDING';
+  }
+
+  bool get _isDelivered => order.status.toUpperCase() == 'DELIVERED';
+
+  String? get _actionLabel {
+    if (_isUnpaid) return 'Bayar Sekarang';
+    if (_isDelivered) return 'Beli Lagi';
+    return null;
+  }
+
+  void _handleOrderAction(BuildContext context) {
+    if (_isUnpaid) {
       _openPayment(context);
       return;
     }
-    if (status == 'SHIPPED') {
-      _openOrderDetail(context);
-      return;
-    }
-    if (status == 'DELIVERED' || status == 'CANCELLED') {
+    if (_isDelivered) {
       _buyAgain(context);
-      return;
     }
-    _openOrderDetail(context);
-  }
-
-  String get _primaryLabel {
-    final status = order.status.toUpperCase();
-    final payment = order.paymentStatus.toUpperCase();
-
-    if (payment == 'UNPAID' || payment == 'PENDING' || status == 'PENDING') {
-      return 'Bayar Sekarang';
-    }
-    if (status == 'SHIPPED') return 'Lacak Pesanan';
-    if (status == 'DELIVERED' || status == 'CANCELLED') return 'Beli Lagi';
-    return 'Lihat Detail';
-  }
-
-  IconData get _primaryIcon {
-    final status = order.status.toUpperCase();
-    final payment = order.paymentStatus.toUpperCase();
-
-    if (payment == 'UNPAID' || payment == 'PENDING' || status == 'PENDING') {
-      return Icons.account_balance_wallet_outlined;
-    }
-    if (status == 'SHIPPED') return Icons.local_shipping_outlined;
-    if (status == 'DELIVERED' || status == 'CANCELLED') {
-      return Icons.shopping_bag_outlined;
-    }
-    return Icons.receipt_long_outlined;
   }
 
   @override
   Widget build(BuildContext context) {
     final statusColor = _statusColor(order.status);
-    final hasSecondaryDetail = _primaryLabel != 'Lihat Detail';
+    final actionLabel = _actionLabel;
 
     return AppAnimatedEntrance(
       index: index,
@@ -453,7 +433,7 @@ class _OrderCard extends StatelessWidget {
               splashColor: _brandBlue.withValues(alpha: 0.06),
               highlightColor: _brandBlue.withValues(alpha: 0.035),
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(14),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -488,7 +468,7 @@ class _OrderCard extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     Text(
                       '${_formatDate(order.createdAt)} • ${_displayItemCount(order)} item',
                       style: const TextStyle(
@@ -496,66 +476,61 @@ class _OrderCard extends StatelessWidget {
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     _OrderProductPreview(order: order),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     const Divider(height: 1, color: Color(0xFFE5E7EB)),
-                    const SizedBox(height: 14),
-                    const Text(
-                      'Total Belanja',
-                      style: TextStyle(
-                        color: Color(0xFF6B7280),
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      formatRupiah(order.total),
-                      style: const TextStyle(
-                        color: _brandBlue,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
                     const SizedBox(height: 12),
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Expanded(
-                          flex: hasSecondaryDetail ? 5 : 1,
-                          child: ElevatedButton.icon(
-                            onPressed: () => _handlePrimaryAction(context),
-                            icon: Icon(_primaryIcon, size: 19),
-                            label: Text(_primaryLabel),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text(
+                                'Total Belanja',
+                                style: TextStyle(
+                                  color: Color(0xFF6B7280),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                formatRupiah(order.total),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: _brandBlue,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (actionLabel != null) ...[
+                          const SizedBox(width: 12),
+                          ElevatedButton(
+                            onPressed: () => _handleOrderAction(context),
                             style: ElevatedButton.styleFrom(
-                              minimumSize: const Size.fromHeight(52),
+                              minimumSize: const Size(0, 40),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
                               backgroundColor: _brandBlue,
                               foregroundColor: Colors.white,
                               elevation: 0,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
+                                borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                          ),
-                        ),
-                        if (hasSecondaryDetail) ...[
-                          const SizedBox(width: 10),
-                          Expanded(
-                            flex: 4,
-                            child: OutlinedButton.icon(
-                              onPressed: () => _openOrderDetail(context),
-                              icon: const Icon(
-                                Icons.receipt_long_outlined,
-                                size: 19,
-                              ),
-                              label: const Text('Lihat Detail'),
-                              style: OutlinedButton.styleFrom(
-                                minimumSize: const Size.fromHeight(52),
-                                foregroundColor: _brandBlue,
-                                side: const BorderSide(color: _brandBlue),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
+                            child: Text(
+                              actionLabel,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
                               ),
                             ),
                           ),
@@ -585,19 +560,19 @@ class _OrderProductPreview extends StatelessWidget {
       return Row(
         children: [
           Container(
-            height: 70,
-            width: 70,
+            height: 58,
+            width: 58,
             decoration: BoxDecoration(
               color: const Color(0xFFEAF5FF),
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(16),
             ),
             child: const Icon(
               Icons.inventory_2_outlined,
               color: _brandBlue,
-              size: 30,
+              size: 26,
             ),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 12),
           const Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -635,29 +610,29 @@ class _OrderProductPreview extends StatelessWidget {
     return Row(
       children: [
         SizedBox(
-          height: 82,
-          width: 112,
+          height: 64,
+          width: 90,
           child: Stack(
             clipBehavior: Clip.none,
             children: [
               Positioned(
                 left: 0,
-                top: 4,
-                child: _PreviewImage(item: first, size: 70),
+                top: 2,
+                child: _PreviewImage(item: first, size: 58),
               ),
               if (second != null)
                 Positioned(
-                  left: 47,
-                  top: 22,
-                  child: _PreviewImage(item: second, size: 50),
+                  left: 38,
+                  top: 16,
+                  child: _PreviewImage(item: second, size: 44),
                 ),
               if (extraCount > 0)
                 Positioned(
-                  left: second == null ? 58 : 78,
-                  top: second == null ? 30 : 40,
+                  left: second == null ? 48 : 62,
+                  top: second == null ? 24 : 30,
                   child: Container(
-                    height: 40,
-                    width: 40,
+                    height: 34,
+                    width: 34,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
@@ -665,14 +640,14 @@ class _OrderProductPreview extends StatelessWidget {
                         end: Alignment.bottomRight,
                         colors: [Color(0xFFC8CED8), Color(0xFF929AA8)],
                       ),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(11),
                       border: Border.all(color: Colors.white, width: 2),
                     ),
                     child: Text(
                       '+$extraCount',
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 15,
+                        fontSize: 13,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
@@ -681,7 +656,7 @@ class _OrderProductPreview extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(width: 14),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -692,18 +667,18 @@ class _OrderProductPreview extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   color: Color(0xFF17202A),
-                  fontSize: 15,
+                  fontSize: 14.5,
                   fontWeight: FontWeight.w900,
                 ),
               ),
-              const SizedBox(height: 5),
+              const SizedBox(height: 4),
               Text(
                 subtitle,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   color: Color(0xFF6B7280),
-                  fontSize: 14,
+                  fontSize: 13.5,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -728,13 +703,13 @@ class _PreviewImage extends StatelessWidget {
       width: size,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(13),
         border: Border.all(color: Colors.white, width: 2),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
