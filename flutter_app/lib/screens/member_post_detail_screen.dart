@@ -4,16 +4,80 @@ import 'package:shimmer/shimmer.dart';
 import 'package:video_player/video_player.dart';
 
 import '../models/my_feed_post.dart';
+import '../services/api_client.dart';
+import '../services/feed_service.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_toast.dart';
 
 /// Member Post Detail — preview media asli sesuai tipe postingan.
-class MemberPostDetailScreen extends StatelessWidget {
+class MemberPostDetailScreen extends StatefulWidget {
   final MyFeedPost post;
 
   const MemberPostDetailScreen({super.key, required this.post});
+
+  @override
+  State<MemberPostDetailScreen> createState() => _MemberPostDetailScreenState();
+}
+
+class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
+  bool _deleting = false;
+
+  MyFeedPost get post => widget.post;
+
+  Future<void> _confirmAndDelete() async {
+    if (_deleting) return;
+    AppHaptics.tap();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Hapus Postingan?'),
+        content: const Text(
+          'Postingan akan dihapus permanen dari feed dan tidak bisa dikembalikan.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: NataloColors.danger,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    if (!mounted) return;
+    setState(() => _deleting = true);
+    try {
+      await feedService.deleteMyPost(post.id);
+      if (!mounted) return;
+      AppHaptics.success();
+      AppToast.show(context, 'Postingan dihapus.');
+      // Pop dengan result true supaya parent list refresh.
+      Navigator.pop(context, true);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      AppHaptics.warning();
+      final msg = e.statusCode == 401
+          ? 'Sesi login expired. Login ulang.'
+          : e.statusCode == 404
+              ? 'Post tidak ditemukan atau sudah dihapus.'
+              : 'Gagal hapus: ${e.message}';
+      AppToast.show(context, msg);
+      setState(() => _deleting = false);
+    } catch (e) {
+      if (!mounted) return;
+      AppHaptics.warning();
+      AppToast.show(context, 'Koneksi terputus. Coba lagi.');
+      setState(() => _deleting = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -177,20 +241,23 @@ class MemberPostDetailScreen extends StatelessWidget {
                   children: [
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: () {
-                          AppHaptics.tap();
-                          AppToast.show(
-                            context,
-                            'Hapus postingan sementara via PWA web.',
-                          );
-                        },
-                        icon: const Icon(
-                          Icons.delete_outline_rounded,
-                          color: NataloColors.danger,
-                        ),
-                        label: const Text(
-                          'Hapus',
-                          style: TextStyle(color: NataloColors.danger),
+                        onPressed: _deleting ? null : _confirmAndDelete,
+                        icon: _deleting
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: NataloColors.danger,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.delete_outline_rounded,
+                                color: NataloColors.danger,
+                              ),
+                        label: Text(
+                          _deleting ? 'Menghapus…' : 'Hapus',
+                          style: const TextStyle(color: NataloColors.danger),
                         ),
                         style: OutlinedButton.styleFrom(
                           side: const BorderSide(color: NataloColors.danger),

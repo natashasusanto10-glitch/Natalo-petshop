@@ -289,6 +289,38 @@ class FeedService {
     }
   }
 
+  /// Soft-delete post milik user sendiri (COMMUNITY video atau PHOTO_CAROUSEL).
+  ///
+  /// Backend route: DELETE /api/feed/posts/{id}
+  ///   - Verify session user = post author
+  ///   - Set deletedAt timestamp
+  ///   - Fire-and-forget cleanup Bunny + UploadThing assets
+  ///
+  /// Return true kalau sukses. Throw ApiException dengan statusCode untuk
+  /// caller mapping error message (401 → relogin, 404 → not your post, 5xx
+  /// → server error).
+  Future<bool> deleteMyPost(String postId) async {
+    final uri = ApiConfig.uri('/api/feed/posts/$postId');
+    try {
+      final res = await http
+          .delete(uri, headers: _headers)
+          .timeout(const Duration(seconds: 15));
+      if (res.statusCode == 200) return true;
+      if (res.statusCode == 401) {
+        throw const ApiException('unauthorized', statusCode: 401);
+      }
+      if (res.statusCode == 404) {
+        throw const ApiException('Post tidak ditemukan', statusCode: 404);
+      }
+      throw ApiException('delete failed', statusCode: res.statusCode);
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      if (kDebugMode) debugPrint('[feedService.deleteMyPost] $e');
+      throw ApiException(e.toString(), cause: e);
+    }
+  }
+
   /// List produk yang boleh di-pin / tag di feed post (admin moderation).
   Future<List<dynamic>> fetchPinnableProducts({int limit = 30}) async {
     try {

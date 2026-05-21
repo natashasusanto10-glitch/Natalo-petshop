@@ -276,16 +276,20 @@ export async function DELETE(
     return NextResponse.json({ error: "Post ID required" }, { status: 400 });
   }
 
-  // Select juga videoUrl / thumbnailUrl / videoGuid supaya bisa cleanup
-  // Bunny + UploadThing asset setelah soft-delete commit. Sebelumnya cuma
-  // ambil id+status — bug: user delete post tapi video di Bunny tetap
-  // accumulate storage selamanya.
+  // Select juga videoUrl / thumbnailUrl / videoGuid + media supaya bisa
+  // cleanup Bunny + UploadThing asset setelah soft-delete commit.
+  // Sebelumnya cuma ambil id+status — bug: user delete post tapi video di
+  // Bunny tetap accumulate storage selamanya.
+  //
+  // Allow kedua kind user-generated: COMMUNITY (video) + PHOTO_CAROUSEL.
+  // Sebelumnya filter `kind: "COMMUNITY"` aja → user gak bisa hapus post
+  // foto carousel sendiri (visible bug post "asiong asiong" yang ke-stuck).
   const post = await prisma.feedPost.findFirst({
     where: {
       id: postId,
       authorId: session.sub,
       authorRole: "CUSTOMER",
-      kind: "COMMUNITY",
+      kind: { in: ["COMMUNITY", "PHOTO_CAROUSEL"] },
       deletedAt: null,
       status: { in: [...MY_FEED_VISIBLE_STATUSES] },
     },
@@ -295,6 +299,11 @@ export async function DELETE(
       videoUrl: true,
       thumbnailUrl: true,
       videoGuid: true,
+      // Untuk PHOTO_CAROUSEL — semua FeedMedia rows perlu di-cleanup di
+      // UploadThing (1-8 foto per post). Pakai uploadthingKey kalau ada.
+      media: {
+        select: { url: true, uploadthingKey: true },
+      },
     },
   });
 
@@ -325,13 +334,15 @@ export async function DELETE(
   ]);
 
   // Cleanup Bunny Stream video record (HLS + MP4 variants + thumbnail
-  // auto-generated) + UploadThing legacy asset. Fire-and-forget — kalau
-  // Bunny unreachable, soft-delete tetap commit; weekly storage GC cron
-  // (/api/cron/feed-storage-gc) catch orphan nanti.
+  // auto-generated) + UploadThing asset (legacy video + PHOTO_CAROUSEL
+  // media). Fire-and-forget — kalau Bunny unreachable, soft-delete tetap
+  // commit; weekly storage GC cron (/api/cron/feed-storage-gc) catch
+  // orphan nanti.
   void deleteFeedAssets({
     videoUrl: post.videoUrl,
     thumbnailUrl: post.thumbnailUrl,
     videoGuid: post.videoGuid,
+    mediaItems: post.media,
     context: `user-delete ${postId}`,
   });
 

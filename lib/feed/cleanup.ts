@@ -41,6 +41,11 @@ export async function deleteFeedAssets(params: {
   thumbnailUrl?: string | null;
   /** Bunny video GUID, when the post was uploaded through Bunny Stream. */
   videoGuid?: string | null;
+  /**
+   * Untuk PHOTO_CAROUSEL post — array of FeedMedia rows. Tiap row punya
+   * URL (untuk extract key fallback) atau uploadthingKey langsung (preferred).
+   */
+  mediaItems?: Array<{ url?: string | null; uploadthingKey?: string | null }>;
   context?: string;
 }): Promise<number> {
   // Bunny Stream — delete the whole video record (covers playlist + every
@@ -50,13 +55,19 @@ export async function deleteFeedAssets(params: {
     void deleteBunnyVideo(params.videoGuid);
   }
 
-  // UploadThing legacy — keys are encoded in the ufsUrl segments. Only
-  // applies to posts created before the Bunny migration; videoUrl from a
-  // Bunny post is an HLS playlist on the b-cdn.net domain and won't
-  // match the /f/ regex anyway.
+  // UploadThing keys — collect dari semua source:
+  //   1. videoUrl + thumbnailUrl (legacy single-video posts)
+  //   2. mediaItems.uploadthingKey langsung (preferred, akurat)
+  //   3. mediaItems.url fallback (extract key dari URL segment)
   const keys = [
     extractUploadThingKey(params.videoUrl),
     extractUploadThingKey(params.thumbnailUrl),
+    ...(params.mediaItems ?? []).flatMap((m) => [
+      m.uploadthingKey ?? null,
+      // Hanya extract dari URL kalau uploadthingKey null — avoid double
+      // delete request untuk key yang sama.
+      m.uploadthingKey ? null : extractUploadThingKey(m.url),
+    ]),
   ].filter((k): k is string => Boolean(k));
 
   if (keys.length === 0) return params.videoGuid ? 1 : 0;
