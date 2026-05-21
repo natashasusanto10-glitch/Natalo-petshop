@@ -49,6 +49,7 @@ import 'state/trending_placeholder_controller.dart';
 import 'utils/motion_prefs.dart';
 import 'utils/read_only_mode.dart';
 import 'screens/products_screen.dart';
+import 'screens/transactions_screen.dart';
 import 'screens/wishlist_screen.dart';
 import 'services/analytics_observer.dart';
 import 'services/app_analytics.dart';
@@ -270,6 +271,7 @@ class NataloPetshopApp extends StatelessWidget {
                 const StaticInfoScreen.returnPolicy(),
               '/return-policy' => const StaticInfoScreen.returnPolicy(),
               '/feed' => const FeedScreen(),
+              '/transactions' => const TransactionsScreen(),
               '/member' => const MemberScreen(),
               '/member/login' => const LoginScreen(),
               '/member/login-otp' => const LoginOtpScreen(),

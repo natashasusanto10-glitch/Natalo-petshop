@@ -88,7 +88,7 @@ class _MemberScreenState extends State<MemberScreen> {
           body: memberStore.isLoggedIn
               ? const _MemberDashboard()
               : const _MemberLoadingView(),
-          bottomNavigationBar: const BottomNavBar(currentIndex: 3),
+          bottomNavigationBar: const BottomNavBar(currentIndex: 4),
         );
       },
     );

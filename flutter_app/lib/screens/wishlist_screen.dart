@@ -304,7 +304,8 @@ class _WishlistScreenState extends State<WishlistScreen> {
             ),
           ),
         ),
-        bottomNavigationBar: const BottomNavBar(currentIndex: 3),
+        // Wishlist sekarang dibuka dari tab Transaksi (index 3) — bukan Akun.
+      bottomNavigationBar: const BottomNavBar(currentIndex: 3),
       );
     }
 
@@ -477,6 +478,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
           );
         },
       ),
+      // Wishlist sekarang dibuka dari tab Transaksi (index 3) — bukan Akun.
       bottomNavigationBar: const BottomNavBar(currentIndex: 3),
     );
   }

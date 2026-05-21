@@ -2,7 +2,14 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
-/// Bottom nav bar Natalo: compact, integrated, 4 menu utama.
+/// Bottom nav bar Natalo: compact, integrated, 5 menu utama.
+///
+/// Index urutan:
+///  0 = Beranda    /
+///  1 = Produk     /products
+///  2 = Feed       /feed
+///  3 = Transaksi  /transactions   ⭐ NEW
+///  4 = Akun       /member
 ///
 /// `variant` tetap dipertahankan agar call-site lama tidak perlu berubah.
 /// - light: putih polos seperti marketplace besar (rendah, separator tipis)
@@ -60,6 +67,13 @@ class BottomNavBar extends StatelessWidget {
         );
         break;
       case 3:
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          '/transactions',
+          (route) => false,
+        );
+        break;
+      case 4:
         Navigator.pushNamedAndRemoveUntil(
           context,
           '/member',
@@ -125,13 +139,22 @@ class BottomNavBar extends StatelessWidget {
                 onTap: () => _onTap(context, 2),
               ),
               _BottomNavItem(
-                icon: Icons.person_outline_rounded,
-                selectedIcon: Icons.person_rounded,
-                label: 'Akun',
+                icon: Icons.receipt_long_outlined,
+                selectedIcon: Icons.receipt_long_rounded,
+                label: 'Transaksi',
                 selected: currentIndex == 3,
                 activeColor: activeColor,
                 inactiveColor: inactiveColor,
                 onTap: () => _onTap(context, 3),
+              ),
+              _BottomNavItem(
+                icon: Icons.person_outline_rounded,
+                selectedIcon: Icons.person_rounded,
+                label: 'Akun',
+                selected: currentIndex == 4,
+                activeColor: activeColor,
+                inactiveColor: inactiveColor,
+                onTap: () => _onTap(context, 4),
               ),
             ],
           ),
