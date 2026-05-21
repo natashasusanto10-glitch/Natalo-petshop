@@ -13,6 +13,9 @@ class CartService {
       // Product.price = double. Cart endpoint return number — convert
       // via _asDouble untuk handle int/double/string uniformly.
       final price = _asDouble(item['price']);
+      final variantId = item['variantId']?.toString();
+      final stock = _asInt(item['stock'], fallback: 999);
+      final weightGram = _asInt(item['weightGram'], fallback: 500);
       final product = Product(
         id: (item['productId'] ?? '').toString(),
         slug: (item['productId'] ?? '').toString(),
@@ -23,12 +26,24 @@ class CartService {
         price: price.toDouble(),
         rating: 0,
         reviewCount: 0,
-        stock: _asInt(item['stock'], fallback: 999),
-        weightGram: _asInt(item['weightGram'], fallback: 500),
+        stock: stock,
+        weightGram: weightGram,
         description: '',
       );
+      final variant = variantId == null || variantId.isEmpty
+          ? null
+          : ProductVariant(
+              id: variantId,
+              price: price.round(),
+              stock: stock,
+              weightGram: weightGram,
+            );
       return CartItem(
         product: product,
+        variant: variant,
+        variantLabel: item['variantLabel']?.toString(),
+        unitPrice: price.round(),
+        effectiveStock: stock,
         quantity: _asInt(item['quantity'], fallback: 1),
       );
     }).toList();
@@ -44,12 +59,14 @@ class CartService {
         'items': items.map((item) {
           return {
             'productId': item.product.id,
+            if (item.variantId != null) 'variantId': item.variantId,
+            if (item.variantLabel != null) 'variantLabel': item.variantLabel,
             'name': item.product.title,
-            'price': item.product.finalPrice.round(),
+            'price': item.effectivePrice.round(),
             'quantity': item.quantity,
-            'weightGram': item.product.weightGram,
+            'weightGram': item.weightGram,
             'imageUrl': item.product.imageUrl,
-            'stock': item.product.stock,
+            'stock': item.effectiveStock,
           };
         }).toList(),
       },
@@ -67,8 +84,12 @@ class CartService {
           'items': items
               .map((item) => {
                     'productId': item.product.id,
+                    if (item.variantId != null) 'variantId': item.variantId,
+                    if (item.variantLabel != null)
+                      'variantLabel': item.variantLabel,
                     'quantity': item.quantity,
-                    'price': item.product.finalPrice.round(),
+                    'price': item.effectivePrice.round(),
+                    'weightGram': item.weightGram,
                   })
               .toList(),
         },

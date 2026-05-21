@@ -5,10 +5,13 @@ import 'product.dart';
 class CartItem {
   final Product product;
   final ProductVariant? variant;
+
   /// Snapshot label varian ("4KG / Beef") — tidak berubah meski varian diedit.
   final String? variantLabel;
+
   /// Override price kalau dikasih — kalau null, derive dari variant.price ?? product.finalPrice.
   final int _unitPriceOverride;
+
   /// Override stock kalau dikasih — kalau null, derive dari variant.stock ?? product.stock.
   final int _effectiveStockOverride;
   final int quantity;
@@ -30,6 +33,7 @@ class CartItem {
 
   int get unitPrice => _unitPriceOverride;
   int get effectiveStock => _effectiveStockOverride;
+
   /// Alias `unitPrice` — beberapa code pakai `effectivePrice` literal.
   /// Returns double untuk konsistensi dengan Product.finalPrice.
   double get effectivePrice => _unitPriceOverride.toDouble();
@@ -47,7 +51,7 @@ class CartItem {
   String? get imageUrl => product.imageUrl;
   String? get slug => product.slug;
   String get productId => product.id;
-  int get weightGram => product.weightGram;
+  int get weightGram => variant?.weightGram ?? product.weightGram;
 
   CartItem copyWith({
     int? quantity,
@@ -68,6 +72,7 @@ class CartItem {
         'product': product.toJson(),
         if (variantId != null) 'variantId': variantId,
         if (variantLabel != null) 'variantLabel': variantLabel,
+        if (variant != null) 'variantWeightGram': variant!.weightGram,
         'unitPrice': unitPrice,
         'quantity': quantity,
         'effectiveStock': effectiveStock,
@@ -91,14 +96,28 @@ class CartItem {
             rating: 0,
             reviewCount: 0,
           );
+    final unitPrice =
+        (json['unitPrice'] as num?)?.toInt() ?? product.finalPrice.round();
+    final effectiveStock =
+        (json['effectiveStock'] as num?)?.toInt() ?? product.stock;
+    final variantId = json['variantId'] as String?;
+    final variant = variantId == null || variantId.isEmpty
+        ? null
+        : ProductVariant(
+            id: variantId,
+            price: unitPrice,
+            stock: effectiveStock,
+            weightGram: (json['variantWeightGram'] as num?)?.toInt() ??
+                (json['weightGram'] as num?)?.toInt() ??
+                product.weightGram,
+          );
     return CartItem(
       product: product,
+      variant: variant,
       variantLabel: json['variantLabel'] as String?,
-      unitPrice:
-          (json['unitPrice'] as num?)?.toInt() ?? product.finalPrice.round(),
+      unitPrice: unitPrice,
       quantity: (json['quantity'] as num?)?.toInt() ?? 1,
-      effectiveStock:
-          (json['effectiveStock'] as num?)?.toInt() ?? product.stock,
+      effectiveStock: effectiveStock,
     );
   }
 }
