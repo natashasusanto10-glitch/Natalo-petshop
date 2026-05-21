@@ -24,7 +24,9 @@ class MyFeedMediaItem {
         _string(json['url']) ??
         _string(json['videoUrl']) ??
         '';
-    final rawType = (_string(json['mediaType']) ?? '').toLowerCase();
+    final rawType =
+        (_string(json['contentType']) ?? _string(json['mediaType']) ?? '')
+            .toLowerCase();
     final mediaType = rawType == 'video' || _looksLikeVideoUrl(mediaUrl)
         ? MyFeedMediaType.video
         : MyFeedMediaType.image;
@@ -199,6 +201,7 @@ MyFeedPostType _resolvePostType(
   int durationSec,
 ) {
   final raw = (_string(json['type']) ??
+          _string(json['contentType']) ??
           _string(json['postType']) ??
           _string(json['kind']) ??
           _string(json['mediaType']) ??

@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:video_player/video_player.dart';
 
 import '../models/my_feed_post.dart';
 import '../services/feed_service.dart';
@@ -10,8 +14,7 @@ import '../widgets/natalo_paw_refresh_indicator.dart';
 const _brandBlue = Color(0xFF0B7FEA);
 const _deepNavy = Color(0xFF0F172A);
 const _mutedText = Color(0xFF667085);
-const _softBorder = Color(0xFFDCE8F8);
-const _pageBg = Color(0xFFF7FAFF);
+const _draftPendingUploadKey = 'natalo-feed-upload-pending';
 
 class MemberPostsScreen extends StatefulWidget {
   const MemberPostsScreen({super.key});
@@ -21,21 +24,52 @@ class MemberPostsScreen extends StatefulWidget {
 }
 
 class _MemberPostsScreenState extends State<MemberPostsScreen> {
+  final _scrollController = ScrollController();
+  Timer? _draftAutoHideTimer;
   int _filterIndex = 0;
+  int _draftCount = 0;
+  bool _showDraftReminder = true;
   List<MyFeedPost> _allPosts = const [];
   bool _loading = true;
 
   static const _filters = [
-    _PostsFilter(label: 'Semua', type: _PostFilterType.all),
-    _PostsFilter(label: 'Foto', type: _PostFilterType.photo),
-    _PostsFilter(label: 'Video', type: _PostFilterType.video),
-    _PostsFilter(label: 'Menunggu Review', type: _PostFilterType.review),
+    _PostsFilter(
+      label: 'Semua',
+      type: _PostFilterType.all,
+      icon: Icons.grid_view_rounded,
+    ),
+    _PostsFilter(
+      label: 'Foto',
+      type: _PostFilterType.photo,
+      icon: Icons.image_outlined,
+    ),
+    _PostsFilter(
+      label: 'Video',
+      type: _PostFilterType.video,
+      icon: Icons.play_circle_outline_rounded,
+    ),
+    _PostsFilter(
+      label: 'Review',
+      type: _PostFilterType.review,
+      icon: Icons.schedule_rounded,
+    ),
   ];
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_hideDraftOnScroll);
     _loadPosts();
+    _loadLocalDrafts();
+  }
+
+  @override
+  void dispose() {
+    _draftAutoHideTimer?.cancel();
+    _scrollController
+      ..removeListener(_hideDraftOnScroll)
+      ..dispose();
+    super.dispose();
   }
 
   Future<void> _loadPosts() async {
@@ -45,6 +79,48 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     setState(() {
       _allPosts = result;
       _loading = false;
+    });
+  }
+
+  Future<void> _loadLocalDrafts() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_draftPendingUploadKey);
+      final hasRecentPendingUpload = _isRecentPendingDraft(raw);
+      if (!mounted) return;
+      setState(() {
+        _draftCount = hasRecentPendingUpload ? 1 : 0;
+        _showDraftReminder = true;
+      });
+      if (hasRecentPendingUpload) _scheduleDraftAutoHide();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _draftCount = 0);
+    }
+  }
+
+  bool _isRecentPendingDraft(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return false;
+    final parts = raw.split('|');
+    if (parts.length < 5) return true;
+    final savedAtMs = int.tryParse(parts.last);
+    if (savedAtMs == null) return true;
+    final savedAt = DateTime.fromMillisecondsSinceEpoch(savedAtMs);
+    return DateTime.now().difference(savedAt) < const Duration(hours: 24);
+  }
+
+  void _hideDraftOnScroll() {
+    if (_draftCount == 0 || !_showDraftReminder) return;
+    if (_scrollController.offset <= 10) return;
+    _draftAutoHideTimer?.cancel();
+    setState(() => _showDraftReminder = false);
+  }
+
+  void _scheduleDraftAutoHide() {
+    _draftAutoHideTimer?.cancel();
+    _draftAutoHideTimer = Timer(const Duration(seconds: 7), () {
+      if (!mounted || _draftCount == 0 || !_showDraftReminder) return;
+      setState(() => _showDraftReminder = false);
     });
   }
 
@@ -60,40 +136,31 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     }).toList();
   }
 
-  _PostStats get _stats {
-    final videos = _allPosts.where((post) => post.isVideo).length;
-    return _PostStats(
-      total: _allPosts.length,
-      active: _allPosts
-          .where((post) => post.statusInfo == MyFeedPostStatus.active)
-          .length,
-      photos: _allPosts.length - videos,
-      videos: videos,
-    );
-  }
-
-  void _openDetail(MyFeedPost post) {
-    AppHaptics.tap();
-    Navigator.pushNamed(context, '/member/postingan-detail', arguments: post)
-        .then((_) => _loadPosts());
+  int _countFor(_PostFilterType type) {
+    return _allPosts.where((post) {
+      return switch (type) {
+        _PostFilterType.all => true,
+        _PostFilterType.photo => !post.isVideo,
+        _PostFilterType.video => post.isVideo,
+        _PostFilterType.review => post.statusInfo == MyFeedPostStatus.pending,
+      };
+    }).length;
   }
 
   Future<void> _openUpload() async {
     AppHaptics.tap();
     final uploaded = await FeedUploadSheet.show(context);
     if (uploaded == true) {
-      _loadPosts();
+      await _loadPosts();
     }
+    await _loadLocalDrafts();
   }
 
-  void _openDrafts() {
+  void _openDraft() {
     AppHaptics.tap();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Draft postingan belum tersedia di aplikasi.'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    _draftAutoHideTimer?.cancel();
+    setState(() => _showDraftReminder = false);
+    _openUpload();
   }
 
   void _onFilterChanged(int index) {
@@ -101,17 +168,29 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     setState(() => _filterIndex = index);
   }
 
+  void _openPreview(MyFeedPost post) {
+    AppHaptics.tap();
+    Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _MemberPostPreviewScreen(post: post),
+      ),
+    ).then((_) => _loadPosts());
+  }
+
   @override
   Widget build(BuildContext context) {
     final visiblePosts = _visiblePosts;
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+    final showDraft = _draftCount > 0 && _showDraftReminder;
 
     return Scaffold(
-      backgroundColor: _pageBg,
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: _pageBg,
+        backgroundColor: Colors.white,
         elevation: 0,
         scrolledUnderElevation: 0,
-        surfaceTintColor: _pageBg,
+        surfaceTintColor: Colors.white,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded, color: _deepNavy),
           onPressed: () => Navigator.maybePop(context),
@@ -120,39 +199,62 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
           'Postingan Saya',
           style: TextStyle(
             color: _deepNavy,
-            fontSize: 19,
+            fontSize: 20,
             fontWeight: FontWeight.w900,
           ),
         ),
         centerTitle: true,
+        actions: [
+          IconButton(
+            onPressed: _openUpload,
+            tooltip: 'Buat postingan',
+            icon: const Icon(
+              Icons.add_rounded,
+              color: _deepNavy,
+              size: 32,
+            ),
+          ),
+          const SizedBox(width: 4),
+        ],
       ),
       body: NataloPawRefreshIndicator(
-        onRefresh: _loadPosts,
+        onRefresh: () async {
+          await _loadPosts();
+          await _loadLocalDrafts();
+        },
         child: CustomScrollView(
+          controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _PostsHeroCard(stats: _stats),
-                    const SizedBox(height: 14),
-                    _PostActionsRow(
-                      onCreate: _openUpload,
-                      onDraft: _openDrafts,
-                    ),
-                    const SizedBox(height: 14),
-                    const _ApprovalInfoStrip(),
-                    const SizedBox(height: 14),
-                    _FilterChips(
-                      filters: _filters,
-                      activeIndex: _filterIndex,
-                      onTap: _onFilterChanged,
-                    ),
-                    const SizedBox(height: 14),
+                    const _NlFeedIntro(),
+                    if (showDraft) ...[
+                      const SizedBox(height: 14),
+                      _DraftReminderBanner(
+                        count: _draftCount,
+                        onContinue: _openDraft,
+                        onClose: () {
+                          AppHaptics.tap();
+                          _draftAutoHideTimer?.cancel();
+                          setState(() => _showDraftReminder = false);
+                        },
+                      ),
+                    ],
                   ],
                 ),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: _FeedGalleryTabs(
+                filters: _filters,
+                activeIndex: _filterIndex,
+                countFor: _countFor,
+                onTap: _onFilterChanged,
               ),
             ),
             if (_loading)
@@ -169,40 +271,35 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
             else if (_allPosts.isEmpty)
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
+                  padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
                   child: _EmptyPostsCard(onUpload: _openUpload),
                 ),
               )
             else if (visiblePosts.isEmpty)
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 18, 16, 28),
-                  child: _FilteredEmptyCard(
+                  padding: const EdgeInsets.fromLTRB(24, 34, 24, 32),
+                  child: _FilteredEmptyState(
                     label: _filters[_filterIndex].label,
                   ),
                 ),
               )
             else
               SliverPadding(
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  0,
-                  16,
-                  MediaQuery.of(context).padding.bottom + 28,
-                ),
+                padding: EdgeInsets.fromLTRB(12, 12, 12, bottomInset + 28),
                 sliver: SliverGrid.builder(
                   itemCount: visiblePosts.length,
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 3,
-                    crossAxisSpacing: 7,
-                    mainAxisSpacing: 7,
-                    childAspectRatio: 1.0,
+                    crossAxisSpacing: 4,
+                    mainAxisSpacing: 4,
+                    childAspectRatio: 1,
                   ),
                   itemBuilder: (context, index) {
                     final post = visiblePosts[index];
                     return _GalleryPostTile(
                       post: post,
-                      onTap: () => _openDetail(post),
+                      onTap: () => _openPreview(post),
                     );
                   },
                 ),
@@ -219,417 +316,33 @@ enum _PostFilterType { all, photo, video, review }
 class _PostsFilter {
   final String label;
   final _PostFilterType type;
-  const _PostsFilter({required this.label, required this.type});
-}
-
-class _PostStats {
-  final int total;
-  final int active;
-  final int photos;
-  final int videos;
-
-  const _PostStats({
-    required this.total,
-    required this.active,
-    required this.photos,
-    required this.videos,
-  });
-}
-
-class _PostsHeroCard extends StatelessWidget {
-  final _PostStats stats;
-  const _PostsHeroCard({required this.stats});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: _softBorder),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF0F172A).withValues(alpha: 0.05),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          const Row(
-            children: [
-              _FeedHeroIllustration(),
-              SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Cerita seru kamu\nkumpul di sini',
-                      style: TextStyle(
-                        color: _deepNavy,
-                        fontSize: 23,
-                        height: 1.16,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.2,
-                      ),
-                    ),
-                    SizedBox(height: 10),
-                    Text(
-                      'Lihat lagi momen lucu, gemas, dan seru yang pernah kamu bagikan ke Feed Natalo.',
-                      style: TextStyle(
-                        color: _mutedText,
-                        fontSize: 14,
-                        height: 1.45,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          const Divider(height: 1, color: Color(0xFFE5EAF2)),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              _StatItem(value: stats.total, label: 'Postingan'),
-              const _StatDivider(),
-              _StatItem(value: stats.active, label: 'Tayang'),
-              const _StatDivider(),
-              _StatItem(value: stats.photos, label: 'Foto'),
-              const _StatDivider(),
-              _StatItem(value: stats.videos, label: 'Video'),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FeedHeroIllustration extends StatelessWidget {
-  const _FeedHeroIllustration();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 122,
-      height: 122,
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF0EA5FF), Color(0xFF075FCC)],
-        ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: _brandBlue.withValues(alpha: 0.20),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: const Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Positioned(
-            left: 24,
-            top: 24,
-            child: Text(
-              'NL',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 40,
-                fontWeight: FontWeight.w900,
-                height: 0.95,
-              ),
-            ),
-          ),
-          Positioned(
-            left: 27,
-            top: 64,
-            child: Text(
-              'Feed',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-                height: 1,
-              ),
-            ),
-          ),
-          Positioned(
-            left: -10,
-            top: -8,
-            child: _FloatingBadge(
-              color: Color(0xFFFFA12B),
-              icon: Icons.play_arrow_rounded,
-              tilt: -0.18,
-            ),
-          ),
-          Positioned(
-            left: -12,
-            bottom: 26,
-            child: _FloatingBadge(
-              color: Color(0xFFEF4444),
-              icon: Icons.favorite_rounded,
-              tilt: -0.16,
-            ),
-          ),
-          Positioned(
-            right: -10,
-            top: -10,
-            child: _FloatingBadge(
-              color: Color(0xFFEAF3FF),
-              icon: Icons.pets_rounded,
-              iconColor: _brandBlue,
-              tilt: 0.18,
-            ),
-          ),
-          Positioned(
-            right: 12,
-            bottom: 36,
-            child: Icon(
-              Icons.camera_alt_rounded,
-              color: Color(0xFFDCEBFF),
-              size: 31,
-            ),
-          ),
-          Positioned(
-            left: 16,
-            bottom: 7,
-            child: _PetFace(
-              color: Color(0xFFC9782A),
-              earColor: Color(0xFF8B4A1A),
-            ),
-          ),
-          Positioned(
-            right: 19,
-            bottom: 8,
-            child: _PetFace(
-              color: Color(0xFFD7DEE8),
-              earColor: Color(0xFF94A3B8),
-            ),
-          ),
-          Positioned(
-            right: 38,
-            top: 24,
-            child: Icon(Icons.auto_awesome_rounded,
-                color: Color(0xFFFFD166), size: 15),
-          ),
-          Positioned(
-            left: 70,
-            top: 18,
-            child: Icon(Icons.auto_awesome_rounded,
-                color: Color(0xFFFFD166), size: 13),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FloatingBadge extends StatelessWidget {
-  final Color color;
   final IconData icon;
-  final Color iconColor;
-  final double tilt;
 
-  const _FloatingBadge({
-    required this.color,
+  const _PostsFilter({
+    required this.label,
+    required this.type,
     required this.icon,
-    this.iconColor = Colors.white,
-    this.tilt = 0,
   });
-
-  @override
-  Widget build(BuildContext context) {
-    return Transform.rotate(
-      angle: tilt,
-      child: Container(
-        width: 42,
-        height: 42,
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF0F172A).withValues(alpha: 0.14),
-              blurRadius: 12,
-              offset: const Offset(0, 5),
-            ),
-          ],
-        ),
-        child: Icon(icon, color: iconColor, size: 25),
-      ),
-    );
-  }
 }
 
-class _PetFace extends StatelessWidget {
-  final Color color;
-  final Color earColor;
-
-  const _PetFace({
-    required this.color,
-    required this.earColor,
-  });
+class _NlFeedIntro extends StatelessWidget {
+  const _NlFeedIntro();
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 44,
-      height: 42,
-      child: Stack(
-        children: [
-          Positioned(
-            left: 4,
-            top: 0,
-            child: Transform.rotate(
-              angle: -0.35,
-              child:
-                  Icon(Icons.change_history_rounded, color: earColor, size: 24),
-            ),
-          ),
-          Positioned(
-            right: 4,
-            top: 0,
-            child: Transform.rotate(
-              angle: 0.35,
-              child:
-                  Icon(Icons.change_history_rounded, color: earColor, size: 24),
-            ),
-          ),
-          Positioned(
-            left: 4,
-            right: 4,
-            bottom: 0,
-            child: Container(
-              height: 34,
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: const Center(
-                child: Icon(
-                  Icons.pets_rounded,
-                  color: Colors.white,
-                  size: 18,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatItem extends StatelessWidget {
-  final int value;
-  final String label;
-  const _StatItem({required this.value, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Column(
-        children: [
-          Text(
-            '$value',
-            style: const TextStyle(
-              color: _deepNavy,
-              fontSize: 20,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Color(0xFF53627A),
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatDivider extends StatelessWidget {
-  const _StatDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 1,
-      height: 34,
-      color: const Color(0xFFD9E5F6),
-    );
-  }
-}
-
-class _PostActionsRow extends StatelessWidget {
-  final VoidCallback onCreate;
-  final VoidCallback onDraft;
-
-  const _PostActionsRow({
-    required this.onCreate,
-    required this.onDraft,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
+    return const Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
+        _NlFeedIcon(),
+        SizedBox(width: 14),
         Expanded(
-          child: SizedBox(
-            height: 52,
-            child: ElevatedButton.icon(
-              onPressed: onCreate,
-              icon: const Icon(Icons.add_rounded, size: 24),
-              label: const Text('Buat Postingan'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _brandBlue,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                textStyle: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: SizedBox(
-            height: 52,
-            child: OutlinedButton.icon(
-              onPressed: onDraft,
-              icon: const Icon(Icons.description_outlined, size: 22),
-              label: const Text('Draft'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: _brandBlue,
-                side: const BorderSide(color: _brandBlue, width: 1.4),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                textStyle: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
+          child: Text(
+            'Cerita lucu, gemas, dan seru kamu kumpul di sini. 🐾💙',
+            style: TextStyle(
+              color: Color(0xFF334155),
+              fontSize: 16,
+              height: 1.36,
+              fontWeight: FontWeight.w800,
             ),
           ),
         ),
@@ -638,31 +351,53 @@ class _PostActionsRow extends StatelessWidget {
   }
 }
 
-class _ApprovalInfoStrip extends StatelessWidget {
-  const _ApprovalInfoStrip();
+class _NlFeedIcon extends StatelessWidget {
+  const _NlFeedIcon();
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+      width: 48,
+      height: 48,
       decoration: BoxDecoration(
-        color: const Color(0xFFEFF6FF),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFDCEBFF)),
+        color: _brandBlue,
+        borderRadius: BorderRadius.circular(14),
       ),
-      child: const Row(
+      child: const Stack(
         children: [
-          Icon(Icons.info_rounded, color: _brandBlue, size: 24),
-          SizedBox(width: 10),
-          Expanded(
+          Positioned(
+            left: 10,
+            top: 7,
             child: Text(
-              'Foto dan video akan tampil di Feed setelah disetujui admin.',
+              'NL',
               style: TextStyle(
-                color: Color(0xFF53627A),
-                fontSize: 13,
-                height: 1.3,
-                fontWeight: FontWeight.w700,
+                color: Colors.white,
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+                height: 1,
               ),
+            ),
+          ),
+          Positioned(
+            left: 10,
+            bottom: 8,
+            child: Text(
+              'Feed',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+                height: 1,
+              ),
+            ),
+          ),
+          Positioned(
+            right: 7,
+            top: 7,
+            child: Icon(
+              Icons.pets_rounded,
+              size: 12,
+              color: Color(0xFFFFD166),
             ),
           ),
         ],
@@ -671,47 +406,157 @@ class _ApprovalInfoStrip extends StatelessWidget {
   }
 }
 
-class _FilterChips extends StatelessWidget {
+class _DraftReminderBanner extends StatelessWidget {
+  final int count;
+  final VoidCallback onContinue;
+  final VoidCallback onClose;
+
+  const _DraftReminderBanner({
+    required this.count,
+    required this.onContinue,
+    required this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onContinue,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF2F7FF),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFD9E9FF)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFDDEBFF),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.folder_copy_rounded,
+                  color: _brandBlue,
+                  size: 21,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Ada $count draft yang bisa kamu lanjutkan',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: _deepNavy,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Lanjutkan',
+                      style: TextStyle(
+                        color: _brandBlue,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                onPressed: onClose,
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(
+                  Icons.close_rounded,
+                  color: _deepNavy,
+                  size: 22,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FeedGalleryTabs extends StatelessWidget {
   final List<_PostsFilter> filters;
   final int activeIndex;
+  final int Function(_PostFilterType type) countFor;
   final ValueChanged<int> onTap;
 
-  const _FilterChips({
+  const _FeedGalleryTabs({
     required this.filters,
     required this.activeIndex,
+    required this.countFor,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 42,
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Color(0xFFE5EAF2))),
+      ),
+      height: 54,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
         itemCount: filters.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        separatorBuilder: (_, __) => const SizedBox(width: 2),
         itemBuilder: (context, index) {
+          final filter = filters[index];
           final active = index == activeIndex;
           return InkWell(
             onTap: () => onTap(index),
-            borderRadius: BorderRadius.circular(999),
-            child: Container(
-              alignment: Alignment.center,
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              decoration: BoxDecoration(
-                color: active ? _brandBlue : const Color(0xFFF0F4FA),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(
-                  color: active ? _brandBlue : const Color(0xFFE5EAF2),
-                ),
-              ),
-              child: Text(
-                filters[index].label,
-                style: TextStyle(
-                  color: active ? Colors.white : const Color(0xFF64748B),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w900,
-                ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        filter.icon,
+                        size: 21,
+                        color: active ? _brandBlue : const Color(0xFF475569),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${filter.label} (${countFor(filter.type)})',
+                        style: TextStyle(
+                          color: active ? _brandBlue : const Color(0xFF475569),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 11),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    height: 3,
+                    width: active ? 72 : 0,
+                    decoration: BoxDecoration(
+                      color: _brandBlue,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ],
               ),
             ),
           );
@@ -732,42 +577,32 @@ class _GalleryPostTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final typeIcon = switch (post.type) {
-      MyFeedPostType.video => Icons.play_arrow_rounded,
-      MyFeedPostType.carousel => Icons.collections_rounded,
-      MyFeedPostType.photo => Icons.image_outlined,
-    };
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(8),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(8),
           child: Stack(
             fit: StackFit.expand,
             children: [
               _PostThumbnail(post: post),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withValues(alpha: 0.06),
-                      Colors.black.withValues(alpha: 0.24),
-                    ],
-                  ),
+              if (post.isVideo)
+                const Positioned(
+                  right: 7,
+                  top: 7,
+                  child: _PostMediaTypeIcon(icon: Icons.play_arrow_rounded),
+                )
+              else if (post.isCarousel || post.mediaItems.length > 1)
+                const Positioned(
+                  right: 7,
+                  top: 7,
+                  child: _PostMediaTypeIcon(icon: Icons.collections_rounded),
                 ),
-              ),
-              Positioned(
-                right: 7,
-                top: 7,
-                child: _PostTypeIcon(icon: typeIcon),
-              ),
               Positioned(
                 left: 7,
-                bottom: 8,
+                bottom: 7,
                 child: _StatusBadge(status: post.statusInfo),
               ),
             ],
@@ -784,13 +619,8 @@ class _PostThumbnail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final thumbnail = post.thumbnailUrl;
-    final imageUrl =
-        thumbnail != null && thumbnail.trim().isNotEmpty ? thumbnail : null;
-
-    if (imageUrl == null) {
-      return const _PostThumbnailFallback();
-    }
+    final imageUrl = _thumbnailUrlForPost(post);
+    if (imageUrl == null) return const _PostThumbnailFallback();
 
     return CachedNetworkImage(
       imageUrl: imageUrl,
@@ -802,23 +632,31 @@ class _PostThumbnail extends StatelessWidget {
   }
 }
 
+String? _thumbnailUrlForPost(MyFeedPost post) {
+  final thumbnail = post.thumbnailUrl;
+  if (thumbnail != null && thumbnail.trim().isNotEmpty) return thumbnail.trim();
+  for (final item in post.mediaItems) {
+    final itemThumb = item.thumbnailUrl;
+    if (itemThumb != null && itemThumb.trim().isNotEmpty) {
+      return itemThumb.trim();
+    }
+    if (item.mediaUrl.trim().isNotEmpty) return item.mediaUrl.trim();
+  }
+  final preview = post.previewMediaUrl;
+  return preview.trim().isNotEmpty ? preview.trim() : null;
+}
+
 class _PostThumbnailFallback extends StatelessWidget {
   const _PostThumbnailFallback();
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFEAF5FF), Color(0xFFDCEBFF)],
-        ),
-      ),
+      color: const Color(0xFFF3F7FF),
       child: const Center(
         child: Icon(
           Icons.photo_library_rounded,
-          color: Color(0xFF7AA8E8),
+          color: Color(0xFF8AA4C2),
           size: 28,
         ),
       ),
@@ -826,18 +664,18 @@ class _PostThumbnailFallback extends StatelessWidget {
   }
 }
 
-class _PostTypeIcon extends StatelessWidget {
+class _PostMediaTypeIcon extends StatelessWidget {
   final IconData icon;
-  const _PostTypeIcon({required this.icon});
+  const _PostMediaTypeIcon({required this.icon});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 26,
-      height: 26,
+      width: 27,
+      height: 27,
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.38),
-        borderRadius: BorderRadius.circular(9),
+        color: Colors.black.withValues(alpha: 0.42),
+        borderRadius: BorderRadius.circular(999),
         border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
       ),
       child: Icon(
@@ -856,53 +694,49 @@ class _StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final style = switch (status) {
-      MyFeedPostStatus.active => const _StatusStyle(
-          label: 'Tayang',
-          bg: Color(0xFFE5FFF0),
-          fg: Color(0xFF047857),
-          border: Color(0xFFB7F3D0),
-        ),
       MyFeedPostStatus.pending => const _StatusStyle(
           label: 'Menunggu Review',
-          bg: Color(0xFFFFF7E6),
-          fg: Color(0xFFB45309),
-          border: Color(0xFFFED7AA),
+          bg: Color(0xFFFFB020),
+          fg: Colors.white,
+          icon: Icons.schedule_rounded,
         ),
       MyFeedPostStatus.rejected => const _StatusStyle(
           label: 'Ditolak',
-          bg: Color(0xFFFFEBEE),
-          fg: Color(0xFFEF4444),
-          border: Color(0xFFFECACA),
+          bg: Color(0xFFEF4444),
+          fg: Colors.white,
+          icon: Icons.cancel_rounded,
         ),
-      MyFeedPostStatus.unknown => const _StatusStyle(
-          label: 'Draft',
-          bg: Color(0xFFEFF2F6),
-          fg: Color(0xFF64748B),
-          border: Color(0xFFDCE3EC),
-        ),
+      MyFeedPostStatus.active || MyFeedPostStatus.unknown => null,
     };
 
-    final isLong = style.label.length > 9;
+    if (style == null) return const SizedBox.shrink();
+
     return Container(
-      constraints: const BoxConstraints(maxWidth: 112),
-      padding: EdgeInsets.symmetric(
-        horizontal: isLong ? 7 : 9,
-        vertical: 4,
-      ),
+      constraints: const BoxConstraints(maxWidth: 116),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
       decoration: BoxDecoration(
-        color: style.bg,
+        color: style.bg.withValues(alpha: 0.94),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: style.border),
       ),
-      child: Text(
-        style.label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: style.fg,
-          fontSize: isLong ? 9.2 : 10.5,
-          fontWeight: FontWeight.w900,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(style.icon, color: style.fg, size: 12),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              style.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: style.fg,
+                fontSize: style.label.length > 9 ? 9.2 : 10.5,
+                fontWeight: FontWeight.w900,
+                height: 1,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -912,13 +746,13 @@ class _StatusStyle {
   final String label;
   final Color bg;
   final Color fg;
-  final Color border;
+  final IconData icon;
 
   const _StatusStyle({
     required this.label,
     required this.bg,
     required this.fg,
-    required this.border,
+    required this.icon,
   });
 }
 
@@ -928,106 +762,412 @@ class _EmptyPostsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(22, 28, 22, 24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: _softBorder),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF0F172A).withValues(alpha: 0.04),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
+    return Column(
+      children: [
+        const SizedBox(height: 18),
+        const Icon(
+          Icons.photo_library_outlined,
+          color: Color(0xFF94A3B8),
+          size: 44,
+        ),
+        const SizedBox(height: 14),
+        const Text(
+          'Belum ada postingan',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: _deepNavy,
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
           ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Container(
-            width: 86,
-            height: 86,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                colors: [Color(0xFFEAF5FF), Color(0xFFDCEBFF)],
+        ),
+        const SizedBox(height: 7),
+        const Text(
+          'Bagikan foto atau video hewan kesayanganmu ke Feed Natalo.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: _mutedText,
+            fontSize: 13,
+            height: 1.4,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 18),
+        SizedBox(
+          height: 44,
+          child: FilledButton(
+            onPressed: onUpload,
+            style: FilledButton.styleFrom(
+              backgroundColor: _brandBlue,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(999),
               ),
             ),
-            child: const Icon(
-              Icons.add_a_photo_rounded,
-              color: _brandBlue,
-              size: 36,
+            child: const Text(
+              'Buat Postingan',
+              style: TextStyle(fontWeight: FontWeight.w900),
             ),
           ),
-          const SizedBox(height: 16),
-          const Text(
-            'Belum ada postingan',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: _deepNavy,
-              fontSize: 20,
-              fontWeight: FontWeight.w900,
+        ),
+      ],
+    );
+  }
+}
+
+class _FilteredEmptyState extends StatelessWidget {
+  final String label;
+  const _FilteredEmptyState({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      'Belum ada postingan untuk $label.',
+      textAlign: TextAlign.center,
+      style: const TextStyle(
+        color: _mutedText,
+        fontSize: 13,
+        fontWeight: FontWeight.w700,
+      ),
+    );
+  }
+}
+
+class _MemberPostPreviewScreen extends StatefulWidget {
+  final MyFeedPost post;
+
+  const _MemberPostPreviewScreen({required this.post});
+
+  @override
+  State<_MemberPostPreviewScreen> createState() =>
+      _MemberPostPreviewScreenState();
+}
+
+class _MemberPostPreviewScreenState extends State<_MemberPostPreviewScreen> {
+  int _index = 0;
+
+  List<MyFeedMediaItem> get _items {
+    if (widget.post.mediaItems.isNotEmpty) return widget.post.mediaItems;
+    final mediaUrl = widget.post.previewMediaUrl;
+    if (mediaUrl.trim().isEmpty) return const [];
+    return [
+      MyFeedMediaItem(
+        id: '${widget.post.id}-preview',
+        mediaUrl: mediaUrl,
+        thumbnailUrl: widget.post.thumbnailUrl,
+        mediaType:
+            widget.post.isVideo ? MyFeedMediaType.video : MyFeedMediaType.image,
+        durationSeconds: widget.post.durationSec,
+      ),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final items = _items;
+    final isVideo = widget.post.isVideo;
+    final isSlider = !isVideo && items.length > 1;
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: isVideo
+                  ? _PreviewVideoPlayer(
+                      mediaUrl: widget.post.previewMediaUrl,
+                      thumbnailUrl: widget.post.thumbnailUrl,
+                    )
+                  : isSlider
+                      ? PageView.builder(
+                          itemCount: items.length,
+                          onPageChanged: (index) =>
+                              setState(() => _index = index),
+                          itemBuilder: (context, index) {
+                            return _PreviewImage(
+                              imageUrl: items[index].mediaUrl,
+                            );
+                          },
+                        )
+                      : _PreviewImage(
+                          imageUrl: items.isEmpty
+                              ? widget.post.previewMediaUrl
+                              : items.first.mediaUrl,
+                        ),
             ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Bagikan foto atau video hewan kesayanganmu ke Feed Natalo.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: _mutedText,
-              fontSize: 14,
-              height: 1.45,
-              fontWeight: FontWeight.w600,
+            Positioned(
+              left: 8,
+              top: 4,
+              child: IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(
+                  Icons.arrow_back_rounded,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
             ),
-          ),
-          const SizedBox(height: 18),
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: ElevatedButton.icon(
-              onPressed: onUpload,
-              icon: const Icon(Icons.add_rounded, size: 21),
-              label: const Text('Buat Postingan'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _brandBlue,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
+            if (isSlider)
+              Positioned(
+                top: 14,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.42),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '${_index + 1}/${items.length}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            if (isSlider)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 18,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(items.length, (index) {
+                    final active = index == _index;
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      margin: const EdgeInsets.symmetric(horizontal: 3),
+                      width: active ? 18 : 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(
+                          alpha: active ? 0.92 : 0.42,
+                        ),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PreviewImage extends StatelessWidget {
+  final String imageUrl;
+
+  const _PreviewImage({required this.imageUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    if (imageUrl.trim().isEmpty) {
+      return const _PreviewPlaceholder(icon: Icons.image_outlined);
+    }
+
+    return Center(
+      child: InteractiveViewer(
+        minScale: 1,
+        maxScale: 4,
+        child: CachedNetworkImage(
+          imageUrl: imageUrl,
+          fit: BoxFit.contain,
+          placeholder: (_, __) =>
+              const _PreviewPlaceholder(icon: Icons.image_outlined),
+          errorWidget: (_, __, ___) =>
+              const _PreviewPlaceholder(icon: Icons.broken_image_outlined),
+        ),
+      ),
+    );
+  }
+}
+
+class _PreviewVideoPlayer extends StatefulWidget {
+  final String mediaUrl;
+  final String? thumbnailUrl;
+
+  const _PreviewVideoPlayer({
+    required this.mediaUrl,
+    required this.thumbnailUrl,
+  });
+
+  @override
+  State<_PreviewVideoPlayer> createState() => _PreviewVideoPlayerState();
+}
+
+class _PreviewVideoPlayerState extends State<_PreviewVideoPlayer> {
+  VideoPlayerController? _controller;
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _initVideo();
+  }
+
+  Future<void> _initVideo() async {
+    if (widget.mediaUrl.trim().isEmpty) {
+      setState(() => _error = 'Video tidak tersedia');
+      return;
+    }
+
+    setState(() => _loading = true);
+    final controller = VideoPlayerController.networkUrl(
+      Uri.parse(widget.mediaUrl),
+    );
+    _controller = controller;
+
+    try {
+      await controller.initialize();
+      if (!mounted || _controller != controller) return;
+      await controller.setLooping(true);
+      setState(() => _loading = false);
+    } catch (_) {
+      await controller.dispose();
+      if (!mounted || _controller != controller) return;
+      setState(() {
+        _controller = null;
+        _loading = false;
+        _error = 'Video belum bisa diputar';
+      });
+    }
+  }
+
+  void _toggle() {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    controller.value.isPlaying ? controller.pause() : controller.play();
+    setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    final ready = controller != null && controller.value.isInitialized;
+    final playing = ready && controller.value.isPlaying;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _toggle,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Container(color: Colors.black),
+          if (ready)
+            Center(
+              child: AspectRatio(
+                aspectRatio: controller.value.aspectRatio > 0
+                    ? controller.value.aspectRatio
+                    : 9 / 16,
+                child: VideoPlayer(controller),
+              ),
+            )
+          else if (widget.thumbnailUrl != null &&
+              widget.thumbnailUrl!.trim().isNotEmpty)
+            _PreviewImage(imageUrl: widget.thumbnailUrl!)
+          else
+            const _PreviewPlaceholder(icon: Icons.play_circle_outline_rounded),
+          if (_loading)
+            const Center(
+              child: SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.4,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          if (_error != null)
+            Center(
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.55),
                   borderRadius: BorderRadius.circular(999),
                 ),
-                textStyle: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w900,
+                child: Text(
+                  _error!,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
             ),
-          ),
+          if (!playing && _error == null)
+            Center(
+              child: Container(
+                width: 66,
+                height: 66,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.45),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.55),
+                  ),
+                ),
+                child: const Icon(
+                  Icons.play_arrow_rounded,
+                  color: Colors.white,
+                  size: 44,
+                ),
+              ),
+            ),
+          if (ready)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: VideoProgressIndicator(
+                controller,
+                allowScrubbing: true,
+                colors: const VideoProgressColors(
+                  playedColor: _brandBlue,
+                  bufferedColor: Colors.white38,
+                  backgroundColor: Colors.white12,
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 }
 
-class _FilteredEmptyCard extends StatelessWidget {
-  final String label;
-  const _FilteredEmptyCard({required this.label});
+class _PreviewPlaceholder extends StatelessWidget {
+  final IconData icon;
+
+  const _PreviewPlaceholder({required this.icon});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _softBorder),
-      ),
-      child: Text(
-        'Belum ada postingan untuk filter $label.',
-        textAlign: TextAlign.center,
-        style: const TextStyle(
-          color: _mutedText,
-          fontSize: 14,
-          fontWeight: FontWeight.w700,
+      color: Colors.black,
+      child: Center(
+        child: Icon(
+          icon,
+          color: Colors.white24,
+          size: 72,
         ),
       ),
     );
