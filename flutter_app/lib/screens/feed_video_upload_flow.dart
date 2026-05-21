@@ -1142,7 +1142,7 @@ class FeedPostSubmittedScreen extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             const Text(
-              'Video kamu sedang menunggu review admin.',
+              'Feed kamu sedang menunggu review admin.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: _feedUploadMuted,

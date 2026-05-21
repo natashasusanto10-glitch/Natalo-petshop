@@ -28,14 +28,14 @@ function eventForAction(action: FeedModerationAction): {
       return {
         eventType: "feed_post_approved",
         status: "approved",
-        title: "Video kamu sudah tayang",
+        title: "Feed kamu sudah tayang",
         ctaLabel: "Lihat Postingan",
       };
     case "reject":
       return {
         eventType: "feed_post_rejected",
         status: "rejected",
-        title: "Video kamu ditolak",
+        title: "Feed kamu ditolak",
         ctaLabel: "Lihat Alasan",
       };
     case "hide":
@@ -67,8 +67,10 @@ export async function sendFeedPendingReviewNotification(params: {
     await createFeedNotification({
       userId: post.authorId,
       eventType: "feed_review_pending",
-      title: "Video kamu sedang menunggu review",
-      message: `Postingan ${quoteFeedTitle(post.title)} sedang menunggu review admin sebelum tampil di Feed.`,
+      title: "Feed kamu sedang menunggu review",
+      message: `Postingan ${quoteFeedTitle(
+        post.title
+      )} sedang menunggu review admin sebelum tampil di Feed.`,
       feedPostId: post.id,
       thumbnailUrl: post.thumbnailUrl,
       status: "pending",
@@ -104,15 +106,23 @@ export async function sendFeedModerationNotification(params: {
 
     let message: string;
     if (params.action === "approve") {
-      message = `Postingan ${quoteFeedTitle(post.title)} sudah disetujui dan sekarang tampil di Feed.`;
+      message = `Postingan ${quoteFeedTitle(
+        post.title
+      )} sudah disetujui dan sekarang tampil di Feed.`;
     } else if (params.action === "reject") {
-      message = `Postingan ${quoteFeedTitle(post.title)} belum bisa ditayangkan. Silakan cek alasannya.`;
+      message = `Postingan ${quoteFeedTitle(
+        post.title
+      )} belum bisa ditayangkan. Silakan cek alasannya.`;
     } else if (params.action === "hide") {
       message = params.note
-        ? `Postingan ${quoteFeedTitle(post.title)} disembunyikan oleh admin. Alasan: ${params.note}`
+        ? `Postingan ${quoteFeedTitle(
+            post.title
+          )} disembunyikan oleh admin. Alasan: ${params.note}`
         : `Postingan ${quoteFeedTitle(post.title)} disembunyikan oleh admin.`;
     } else {
-      message = `Postingan ${quoteFeedTitle(post.title)} sudah ditampilkan kembali di Feed.`;
+      message = `Postingan ${quoteFeedTitle(
+        post.title
+      )} sudah ditampilkan kembali di Feed.`;
     }
 
     await createFeedNotification({

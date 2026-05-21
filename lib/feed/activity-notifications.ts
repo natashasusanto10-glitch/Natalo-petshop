@@ -64,8 +64,10 @@ export async function sendCommentNotification(params: {
     await createFeedNotification({
       userId: post.authorId,
       eventType: "feed_new_comment",
-      title: "Komentar baru di video kamu",
-      message: `${actorName} mengomentari postingan ${quoteFeedTitle(post.title)}: ${truncateFeedText(params.content)}`,
+      title: "Komentar baru di Feed kamu",
+      message: `${actorName} mengomentari postingan ${quoteFeedTitle(
+        post.title
+      )}: ${truncateFeedText(params.content)}`,
       feedPostId: post.id,
       thumbnailUrl: post.thumbnailUrl,
       url: feedPostOwnerUrl(post.id),
@@ -132,7 +134,10 @@ export async function sendReplyNotification(params: {
  * Was a milestone crossed between two likeCount snapshots? Returns the
  * milestone value, or null if no boundary in (prev, next].
  */
-export function crossedLikeMilestone(prev: number, next: number): number | null {
+export function crossedLikeMilestone(
+  prev: number,
+  next: number
+): number | null {
   if (next <= prev) return null;
   for (const m of LIKE_MILESTONES) {
     if (prev < m && next >= m) return m;
@@ -166,8 +171,10 @@ export async function sendLikeMilestoneNotification(params: {
     await createFeedNotification({
       userId: post.authorId,
       eventType: "feed_new_like",
-      title: `${params.milestone} orang menyukai video kamu`,
-      message: `Postingan ${quoteFeedTitle(post.title)} mendapat beberapa like baru.`,
+      title: `${params.milestone} orang menyukai Feed kamu`,
+      message: `Postingan ${quoteFeedTitle(
+        post.title
+      )} mendapat beberapa like baru.`,
       feedPostId: post.id,
       thumbnailUrl: post.thumbnailUrl,
       url: feedPostOwnerUrl(post.id),
@@ -218,8 +225,10 @@ export async function sendLikeNotification(params: {
       await prisma.announcement.update({
         where: { id: recentUnread.id },
         data: {
-          title: `${params.likeCount} orang menyukai video kamu`,
-          body: `Postingan ${quoteFeedTitle(post.title)} mendapat beberapa like baru.`,
+          title: `${params.likeCount} orang menyukai Feed kamu`,
+          body: `Postingan ${quoteFeedTitle(
+            post.title
+          )} mendapat beberapa like baru.`,
           thumbnailUrl: post.thumbnailUrl,
           publishedAt: new Date(),
         },
@@ -230,8 +239,10 @@ export async function sendLikeNotification(params: {
     await createFeedNotification({
       userId: post.authorId,
       eventType: "feed_new_like",
-      title: "Video kamu mendapat like baru",
-      message: `Postingan ${quoteFeedTitle(post.title)} disukai oleh pengguna lain.`,
+      title: "Feed kamu mendapat like baru",
+      message: `Postingan ${quoteFeedTitle(
+        post.title
+      )} disukai oleh pengguna lain.`,
       feedPostId: post.id,
       thumbnailUrl: post.thumbnailUrl,
       url: feedPostOwnerUrl(post.id),
@@ -265,7 +276,7 @@ export async function sendShareNotification(params: {
     await createFeedNotification({
       userId: post.authorId,
       eventType: "feed_new_share",
-      title: "Video kamu dibagikan",
+      title: "Feed kamu dibagikan",
       message: `Postingan ${quoteFeedTitle(post.title)} baru saja dibagikan.`,
       feedPostId: post.id,
       thumbnailUrl: post.thumbnailUrl,
