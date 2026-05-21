@@ -146,19 +146,23 @@ class _CartScreenState extends State<CartScreen> {
     final rotation = (openCount - 1) ~/ _cartBossRefreshEvery;
     final startOffset = rotation * 8;
     final startCursor = startOffset > 0 ? '$startOffset' : null;
+    // Filter `withImage` di-off — selaraskan dengan Jelajahi Produk
+    // Natalo + cartRecommendationWhere. Produk dummy tanpa foto tetap
+    // tampil (placeholder fallback di card). Real foto upload nanti
+    // behavior tetap normal.
     var page = await productService.fetchProductsPage(
       cursor: startCursor,
       limit: 8,
       inStock: true,
       hasPrice: true,
-      withImage: true,
+      withImage: false,
     );
     if (page.products.isEmpty && startCursor != null) {
       page = await productService.fetchProductsPage(
         limit: 8,
         inStock: true,
         hasPrice: true,
-        withImage: true,
+        withImage: false,
       );
     }
     if (!mounted) return;
@@ -200,7 +204,7 @@ class _CartScreenState extends State<CartScreen> {
       limit: 8,
       inStock: true,
       hasPrice: true,
-      withImage: true,
+      withImage: false,
     );
     if (!mounted) return;
     final existingIds = _bossProducts.map((product) => product.id).toSet();
