@@ -123,6 +123,16 @@ class MemberService {
       final res = await http
           .get(uri, headers: _authHeaders)
           .timeout(const Duration(seconds: 6));
+      // BUG FIX: bedakan 401 (session invalid — user.id tidak ada di DB,
+      // mungkin admin switch DB / user dihapus / session token expired)
+      // dari error lain (5xx, network glitch). 401 harus throw supaya
+      // memberStore.hydrateFromApi tahu untuk force-clear cache + logout.
+      // Sebelumnya: 401 dianggap sama dengan network glitch → return null
+      // → memberStore tetap render user "logged in" walaupun server udah
+      // bilang session invalid.
+      if (res.statusCode == 401 || res.statusCode == 403) {
+        throw const ApiException('session invalid', statusCode: 401);
+      }
       if (res.statusCode != 200) return null;
       final body = jsonDecode(res.body);
       if (body is Map<String, dynamic>) {
@@ -130,6 +140,8 @@ class MemberService {
         if (user is Map<String, dynamic>) return MemberProfile.fromJson(user);
       }
       return null;
+    } on ApiException {
+      rethrow; // bubble up untuk caller handle 401 secara explicit
     } catch (e) {
       if (kDebugMode) debugPrint('[memberService.fetchProfile] $e');
       return null;

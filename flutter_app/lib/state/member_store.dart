@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/member_profile.dart';
+import '../services/api_client.dart';
 import '../services/member_service.dart';
 
 /// Member auth + profile store. Setelah login success, cache profile +
@@ -98,8 +99,26 @@ class MemberStore extends ChangeNotifier {
         } catch (_) {}
       }
       notifyListeners();
+    } on ApiException catch (error) {
+      // BUG FIX: session invalid (401/403) — user di JWT tidak ada di DB
+      // (mis. admin switch ke DB baru, atau user dihapus, atau token
+      // expired). Sebelumnya: cuma swallow error → _profile stay cached
+      // → user "logged in" hantu walaupun server udah reject.
+      //
+      // Sekarang: detect 401/403 → force logout + clear local cache.
+      // Network error (statusCode null) atau 5xx tetap di-keep cache
+      // supaya UX offline tidak putus.
+      if (error.isUnauthorized || error.isForbidden) {
+        if (kDebugMode) {
+          debugPrint(
+            '[memberStore.hydrate] Session invalid (${error.statusCode}) — auto logout',
+          );
+        }
+        await logout();
+      }
     } catch (_) {
-      // Screens still fetch their own fresh data; this cache is optional.
+      // Network glitch / parsing error — keep cache. Screens fetch
+      // fresh data sendiri saat dibutuhkan.
     }
   }
 
