@@ -16,6 +16,8 @@
  */
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { getPerformaMetrics } from "@/lib/promo-analytics";
+import { formatRupiah } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -70,12 +72,17 @@ export default async function AdminDiskonHub() {
     }),
   ]);
 
-  // ── Aggregate metrics (stub — placeholder data) ─────────────────
-  // TODO Phase 1C: integrate dengan real order metrics filter promosi.
+  // ── Aggregate metrics — REAL data dari Order table ──────────────
+  // Periode default: 7 hari terakhir. Compare ke 7 hari sebelumnya untuk
+  // delta % (vs 7 hari terakhir di label).
   const performaPeriode = {
     start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
     end: new Date(),
   };
+  const performaMetrics = await getPerformaMetrics(
+    performaPeriode.start,
+    performaPeriode.end,
+  );
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-5 md:px-8 md:py-10">
@@ -145,14 +152,35 @@ export default async function AdminDiskonHub() {
           </div>
         </div>
         <div className="mt-3 grid gap-3 rounded-2xl border border-zinc-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
-          <MetricCard label="Penjualan" value="Rp —" compare="vs 7 hari terakhir" />
-          <MetricCard label="Pesanan" value="—" compare="vs 7 hari terakhir" />
-          <MetricCard label="Jumlah Terjual" value="—" compare="vs 7 hari terakhir" />
-          <MetricCard label="Pembeli" value="—" compare="vs 7 hari terakhir" />
+          <MetricCard
+            label="Penjualan"
+            value={formatRupiah(performaMetrics.current.penjualan)}
+            deltaPercent={performaMetrics.deltaPercent.penjualan}
+            compare="vs 7 hari terakhir"
+          />
+          <MetricCard
+            label="Pesanan"
+            value={performaMetrics.current.pesanan.toLocaleString("id-ID")}
+            deltaPercent={performaMetrics.deltaPercent.pesanan}
+            compare="vs 7 hari terakhir"
+          />
+          <MetricCard
+            label="Jumlah Terjual"
+            value={performaMetrics.current.jumlahTerjual.toLocaleString("id-ID")}
+            deltaPercent={performaMetrics.deltaPercent.jumlahTerjual}
+            compare="vs 7 hari terakhir"
+          />
+          <MetricCard
+            label="Pembeli"
+            value={performaMetrics.current.pembeli.toLocaleString("id-ID")}
+            deltaPercent={performaMetrics.deltaPercent.pembeli}
+            compare="vs 7 hari terakhir"
+          />
         </div>
         <p className="mt-2 text-xs text-zinc-400">
-          ⓘ Metrik analytics akan diaktifkan setelah integrasi tracking
-          per-promo. Untuk sementara, lihat performa di Laporan.
+          ⓘ Metrik di atas dihitung dari order PAID/PROCESSING/SHIPPED/
+          DELIVERED yang include produk yang sedang/pernah masuk promo
+          (Flash Sale atau Promo Toko) dalam periode tersebut.
         </p>
       </div>
 
@@ -263,16 +291,38 @@ function MetricCard({
   label,
   value,
   compare,
+  deltaPercent,
 }: {
   label: string;
   value: string;
   compare: string;
+  /** Delta % vs previous period. null = no baseline (previous=0). */
+  deltaPercent?: number | null;
 }) {
+  // Color delta: green untuk positive, red untuk negative, zinc untuk 0/null
+  const deltaColor =
+    deltaPercent === null || deltaPercent === undefined
+      ? "text-zinc-400"
+      : deltaPercent > 0
+        ? "text-green-600"
+        : deltaPercent < 0
+          ? "text-red-500"
+          : "text-zinc-400";
+  const deltaText =
+    deltaPercent === null || deltaPercent === undefined
+      ? "—"
+      : deltaPercent > 0
+        ? `+${deltaPercent}%`
+        : `${deltaPercent}%`;
+
   return (
     <div>
       <p className="text-xs font-semibold text-zinc-500">{label} ⓘ</p>
       <p className="mt-1 text-2xl font-black text-zinc-900">{value}</p>
-      <p className="mt-1 text-[11px] text-zinc-400">{compare}</p>
+      <p className="mt-1 text-[11px]">
+        <span className="text-zinc-400">{compare}</span>{" "}
+        <span className={`font-bold ${deltaColor}`}>{deltaText}</span>
+      </p>
     </div>
   );
 }
