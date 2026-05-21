@@ -1124,8 +1124,6 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   Widget build(BuildContext context) {
     final post = widget.post;
     final photos = post.media;
-    final currentPhoto =
-        _photoIndex < photos.length ? photos[_photoIndex] : photos.first;
     final screenSize = MediaQuery.sizeOf(context);
     final actionRailInset = screenSize.height < 760 ? 88.0 : 100.0;
     const feedInfoInset = 24.0;
@@ -1146,8 +1144,12 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Blurred backdrop dari current photo (untuk aspect non-9:16).
-            _BlurredFeedBackdrop(thumbnailUrl: currentPhoto.url),
+            // Backdrop: pure BLACK solid (Instagram-style), bukan blur.
+            // Foto tetap utuh (BoxFit.contain centered) — letterbox top+bottom
+            // hitam supaya action rail putih konsisten kontras dengan video
+            // feed dan content focus jelas. Blur backdrop dipakai sebelumnya
+            // bikin icon putih low-contrast saat foto bg putih (mis. foto
+            // product di studio).
             // Foto carousel — PageView horizontal swipe.
             GestureDetector(
               onDoubleTap: _onDoubleTapLike,
@@ -1203,7 +1205,8 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                 ),
               ),
             ),
-            // Dots indicator (kalau >1 foto).
+            // Dots indicator (kalau >1 foto) — tengah atas, Instagram-style
+            // pill background semi-transparent. Active dot widen ke 16px.
             if (photos.length > 1 && !_hideOverlayForLongPress)
               Positioned(
                 top: MediaQuery.paddingOf(context).top + 12,
@@ -1234,6 +1237,33 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                           ),
                         );
                       }),
+                    ),
+                  ),
+                ),
+              ),
+            // Counter "X/Y" — top-right pill. Instagram pattern: kasih user
+            // referensi posisi yang explicit (lebih informative dari dots
+            // untuk carousel banyak foto). Hide kalau cuma 1 foto.
+            if (photos.length > 1 && !_hideOverlayForLongPress)
+              Positioned(
+                top: MediaQuery.paddingOf(context).top + 12,
+                right: 12,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                  child: Text(
+                    '${_photoIndex + 1}/${photos.length}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      height: 1.1,
                     ),
                   ),
                 ),
