@@ -93,12 +93,18 @@ class _MemberOrdersScreenState extends State<MemberOrdersScreen> {
     final status = order.status.toUpperCase();
     final payment = order.paymentStatus.toUpperCase();
 
+    // BUG FIX: order CANCELLED tetap punya paymentStatus UNPAID/PENDING
+    // (karena tidak pernah dibayar). Tanpa explicit exclude, filter
+    // "Belum Bayar" ikut match order dibatalkan → duplicate di 2 tab.
+    final isFinalized = status == 'CANCELLED' || status == 'REFUNDED';
+
     return switch (_selectedFilter) {
       _OrderFilter.all => true,
-      _OrderFilter.unpaid => status == 'PENDING' ||
-          status == 'UNPAID' ||
-          payment == 'UNPAID' ||
-          payment == 'PENDING',
+      _OrderFilter.unpaid => !isFinalized &&
+          (status == 'PENDING' ||
+              status == 'UNPAID' ||
+              payment == 'UNPAID' ||
+              payment == 'PENDING'),
       _OrderFilter.processing => status == 'PROCESSING' || status == 'PAID',
       _OrderFilter.shipped => status == 'SHIPPED',
       _OrderFilter.delivered => status == 'DELIVERED',

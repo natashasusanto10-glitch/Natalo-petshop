@@ -420,6 +420,13 @@ class _OrderStatusCounts {
       final status = order.status.toUpperCase();
       final payment = order.paymentStatus.toUpperCase();
 
+      // BUG FIX: skip order yang sudah CANCELLED/REFUNDED. Tanpa cek ini,
+      // order dibatalkan dengan paymentStatus UNPAID/PENDING ikut ke-count
+      // sebagai "Belum Bayar" — badge angka jadi salah.
+      if (status == 'CANCELLED' || status == 'REFUNDED') {
+        continue;
+      }
+
       if (status == 'PENDING' ||
           status == 'UNPAID' ||
           payment == 'UNPAID' ||
