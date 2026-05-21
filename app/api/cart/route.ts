@@ -29,6 +29,35 @@ function cartItemKey(item: Pick<ApiCartItem, "productId" | "variantId">) {
   return `${item.productId}:${item.variantId ?? ""}`;
 }
 
+function variantOptionLabel(
+  variant:
+    | {
+        options?: {
+          option: {
+            value: string;
+            position: number;
+            attribute: { position: number };
+          };
+        }[];
+      }
+    | null
+    | undefined,
+) {
+  const options = variant?.options ?? [];
+  if (options.length === 0) return null;
+
+  const values = [...options]
+    .sort((a, b) => {
+      const attrDiff = a.option.attribute.position - b.option.attribute.position;
+      if (attrDiff !== 0) return attrDiff;
+      return a.option.position - b.option.position;
+    })
+    .map((entry) => entry.option.value.trim())
+    .filter(Boolean);
+
+  return values.length ? values.join(", ") : null;
+}
+
 async function applyCurrentCartPricing(items: ApiCartItem[]): Promise<ApiCartItem[]> {
   if (items.length === 0) return items;
 
@@ -71,7 +100,24 @@ async function applyCurrentCartPricing(items: ApiCartItem[]): Promise<ApiCartIte
     variantIds.length
       ? prisma.productVariant.findMany({
           where: { id: { in: variantIds }, deletedAt: null, isActive: true },
-          select: { id: true, productId: true, price: true, stock: true, weightGram: true },
+          select: {
+            id: true,
+            productId: true,
+            price: true,
+            stock: true,
+            weightGram: true,
+            options: {
+              select: {
+                option: {
+                  select: {
+                    value: true,
+                    position: true,
+                    attribute: { select: { position: true } },
+                  },
+                },
+              },
+            },
+          },
         })
       : Promise.resolve([]),
   ]);
@@ -97,9 +143,11 @@ async function applyCurrentCartPricing(items: ApiCartItem[]): Promise<ApiCartIte
     const variant = item.variantId ? variantById.get(item.variantId) : null;
     const product = productById.get(item.productId);
     const originalPrice = variant?.price ?? product?.price ?? item.price;
+    const label = variant ? variantOptionLabel(variant) : null;
 
     return {
       ...item,
+      variantLabel: label,
       name: checkoutItem.name || item.name,
       price: checkoutItem.price,
       originalPrice,

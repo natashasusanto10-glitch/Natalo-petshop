@@ -188,21 +188,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   String? _variantLabelFor(ProductVariant? variant) {
     if (variant == null) return null;
-    final sku = variant.sku?.trim();
-    if (sku != null && sku.isNotEmpty) return sku;
-
-    final labels = <String>[];
-    for (final attr in product.variantAttrs) {
-      for (final option in attr.options) {
-        if (variant.optionIds.contains(option.id)) {
-          final value = option.value.trim();
-          if (value.isNotEmpty) labels.add(value);
-          break;
-        }
-      }
-    }
-    if (labels.isEmpty) return null;
-    return labels.join(', ');
+    return cartVariantOptionLabel(product, variant);
   }
 
   void _addToCart({
@@ -2181,10 +2167,18 @@ class _ProductVariantBottomSheetState
                                   ],
                                   const SizedBox(height: 10),
                                   _VariantStockPill(status: _stockStatus),
-                                  if (_selectedVariant?.sku != null) ...[
+                                  if (_selectedVariant != null &&
+                                      cartVariantOptionLabel(
+                                            _product,
+                                            _selectedVariant!,
+                                          ) !=
+                                          null) ...[
                                     const SizedBox(height: 8),
                                     Text(
-                                      'SKU: ${_selectedVariant!.sku}',
+                                      cartVariantOptionLabel(
+                                        _product,
+                                        _selectedVariant!,
+                                      )!,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(

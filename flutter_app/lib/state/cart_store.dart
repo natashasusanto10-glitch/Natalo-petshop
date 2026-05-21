@@ -23,6 +23,21 @@ int effectiveCartVariantPrice(Product product, ProductVariant variant) {
   return variant.price;
 }
 
+String? cartVariantOptionLabel(Product product, ProductVariant variant) {
+  final labels = <String>[];
+  for (final attr in product.variantAttrs) {
+    for (final option in attr.options) {
+      if (variant.optionIds.contains(option.id)) {
+        final value = option.value.trim();
+        if (value.isNotEmpty) labels.add(value);
+        break;
+      }
+    }
+  }
+  if (labels.isEmpty) return null;
+  return labels.join(', ');
+}
+
 /// Cart state store — offline-first dengan optional remote sync.
 ///
 /// Local state persisted ke SharedPreferences (survive app restart).

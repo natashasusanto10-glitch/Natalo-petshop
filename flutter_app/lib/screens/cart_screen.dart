@@ -1006,26 +1006,13 @@ class _CartItemCard extends StatelessWidget {
     await cartStore.addProduct(
       picked.product,
       variant: picked.variant,
-      variantLabel: picked.variant.sku ??
-          _composeVariantLabel(picked.product, picked.variant),
+      variantLabel: _composeVariantLabel(picked.product, picked.variant),
       quantity: item.quantity,
     );
   }
 
-  /// Compose label varian "Hitam, S" dari variant.optionIds × product
-  /// variantAttrs. Fallback ke SKU kalau attrs tidak lengkap.
-  String _composeVariantLabel(Product product, ProductVariant variant) {
-    final labels = <String>[];
-    for (final attr in product.variantAttrs) {
-      for (final opt in attr.options) {
-        if (variant.optionIds.contains(opt.id)) {
-          labels.add(opt.value);
-          break;
-        }
-      }
-    }
-    if (labels.isEmpty) return variant.sku ?? '';
-    return labels.join(', ');
+  String? _composeVariantLabel(Product product, ProductVariant variant) {
+    return cartVariantOptionLabel(product, variant);
   }
 
   @override
@@ -1035,13 +1022,30 @@ class _CartItemCard extends StatelessWidget {
     final hasDiscount = regular > price;
     final discountPercent =
         hasDiscount ? (((regular - price) / regular) * 100).round() : 0;
+    ProductVariant? labelVariant = item.variant;
+    if (labelVariant != null && labelVariant.optionIds.isEmpty) {
+      final variantId = labelVariant.id;
+      for (final variant in item.product.variants) {
+        if (variant.id == variantId) {
+          labelVariant = variant;
+          break;
+        }
+      }
+    }
+    final optionVariantLabel = labelVariant == null
+        ? null
+        : cartVariantOptionLabel(item.product, labelVariant);
     final rawVariantLabel = item.variantLabel?.trim();
-    final fallbackVariantLabel = item.variant?.sku?.trim();
-    final variantLabel = rawVariantLabel != null && rawVariantLabel.isNotEmpty
-        ? rawVariantLabel
-        : fallbackVariantLabel != null && fallbackVariantLabel.isNotEmpty
-            ? fallbackVariantLabel
-            : null;
+    final skuVariantLabel =
+        labelVariant?.sku?.trim() ?? item.variant?.sku?.trim();
+    final variantLabel =
+        optionVariantLabel != null && optionVariantLabel.isNotEmpty
+            ? optionVariantLabel
+            : rawVariantLabel != null &&
+                    rawVariantLabel.isNotEmpty &&
+                    rawVariantLabel != skuVariantLabel
+                ? rawVariantLabel
+                : null;
     final hasVariantSelection = variantLabel != null;
 
     return TweenAnimationBuilder<double>(
@@ -1621,6 +1625,9 @@ class _CartVariantSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final selectedVariant = variant;
+    final selectedVariantLabel = selectedVariant == null
+        ? null
+        : cartVariantOptionLabel(product, selectedVariant);
     final imageUrl = selectedVariant?.imageUrl?.trim().isNotEmpty == true
         ? selectedVariant!.imageUrl!
         : product.imageUrl;
@@ -1655,8 +1662,8 @@ class _CartVariantSummary extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (selectedVariant?.sku != null &&
-                  selectedVariant!.sku!.trim().isNotEmpty) ...[
+              if (selectedVariantLabel != null &&
+                  selectedVariantLabel.isNotEmpty) ...[
                 Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1665,7 +1672,7 @@ class _CartVariantSummary extends StatelessWidget {
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
-                    selectedVariant.sku!,
+                    selectedVariantLabel,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
