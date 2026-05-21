@@ -86,6 +86,14 @@ class _HomeScreenState extends State<HomeScreen> {
   List<HomeCategory> _categories = const [];
   List<HomeBanner> _banners = const [];
 
+  // ── Personalized recommendations dari server ──
+  // Backend scan full catalog dengan scoring weighted: purchase × 3.0
+  // (brand) / × 2.5 (category), view × 1.2 / × 1.8. Untuk user login
+  // tambah signal dari order history + server-side user_product_views.
+  // Kalau kosong (API gagal / offline / guest), widget fall back ke
+  // client-side `_buildPersonalizedRecommendations` yang scan pool 48.
+  List<Product> _personalizedRecs = const [];
+
   @override
   void initState() {
     super.initState();
@@ -106,6 +114,42 @@ class _HomeScreenState extends State<HomeScreen> {
     _scrollController.addListener(_onScroll);
     _loadMoreExplore(initial: true);
     _loadDynamicSections();
+    _loadPersonalizedRecs();
+    // Re-fetch personalized recs setiap kali user buka produk baru
+    // (recentlyViewedStore berubah) — server bisa update rekomendasi
+    // berdasarkan signal baru.
+    recentlyViewedStore.addListener(_onRecentlyViewedChanged);
+  }
+
+  /// Re-fetch personalized recs saat recentlyViewedStore berubah.
+  /// Debounce manual: skip kalau fetch terakhir < 5 detik lalu supaya
+  /// tidak spam saat user scroll cepat antar produk.
+  DateTime? _lastPersonalizedFetch;
+  void _onRecentlyViewedChanged() {
+    final now = DateTime.now();
+    if (_lastPersonalizedFetch != null &&
+        now.difference(_lastPersonalizedFetch!).inSeconds < 5) {
+      return;
+    }
+    _loadPersonalizedRecs();
+  }
+
+  /// Fetch server-side personalized recommendations. Async, non-blocking.
+  /// Hasil di-store di `_personalizedRecs`. Builder di `_RecommendationGrid`
+  /// akan fall back ke client-side scoring kalau kosong.
+  Future<void> _loadPersonalizedRecs() async {
+    _lastPersonalizedFetch = DateTime.now();
+    final viewedIds = recentlyViewedStore.items.map((p) => p.id).toList();
+    try {
+      final recs = await productService.fetchPersonalizedRecommendations(
+        viewedIds: viewedIds,
+        limit: 10,
+      );
+      if (!mounted) return;
+      setState(() => _personalizedRecs = recs);
+    } catch (_) {
+      // Fallback ke client-side scoring tetap jalan via builder logic.
+    }
   }
 
   Future<void> _loadDynamicSections() async {
@@ -130,9 +174,12 @@ class _HomeScreenState extends State<HomeScreen> {
     AppHaptics.impact();
     // Reset explore state supaya benar-benar refetch dari halaman 1.
     _resetExploreProducts(regenerate: true);
+    // Reset debounce supaya pull-to-refresh selalu trigger ulang.
+    _lastPersonalizedFetch = null;
     await Future.wait([
       _loadDynamicSections(),
       _loadMoreExplore(initial: true),
+      _loadPersonalizedRecs(),
     ]);
   }
 
@@ -140,6 +187,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
+    recentlyViewedStore.removeListener(_onRecentlyViewedChanged);
     super.dispose();
   }
 
@@ -563,20 +611,23 @@ class _HomeScreenState extends State<HomeScreen> {
                       onTap: (name) => _openProducts(context, category: name),
                     ),
                   ),
-                  // Rekomendasi personal dari kebiasaan user membuka detail
-                  // produk. Kalau belum ada history, fallback ke promo/popular.
+                  // Rekomendasi personal — utamakan hasil server-side
+                  // scoring (`_personalizedRecs`) yang scan SELURUH catalog
+                  // dengan signal purchase + view weighted. Fallback ke
+                  // client-side scoring (pool 48) kalau API gagal /
+                  // offline / response kosong.
                   SliverToBoxAdapter(
                     child: AnimatedBuilder(
                       animation: recentlyViewedStore,
                       builder: (context, _) {
-                        final recommendations =
-                            _buildPersonalizedRecommendations(products);
+                        final recommendations = _personalizedRecs.isNotEmpty
+                            ? _personalizedRecs
+                            : _buildPersonalizedRecommendations(products);
                         if (recommendations.isEmpty) {
                           return const SizedBox.shrink();
                         }
                         return _RecommendationGrid(
                           products: recommendations,
-                          personalized: !recentlyViewedStore.isEmpty,
                           onTap: (product) =>
                               _openProductDetail(context, product),
                         );
@@ -3573,13 +3624,11 @@ class _PopularCategoryCard extends StatelessWidget {
 
 class _RecommendationGrid extends StatelessWidget {
   final List<Product> products;
-  final bool personalized;
   final ValueChanged<Product> onTap;
 
   const _RecommendationGrid({
     required this.products,
     required this.onTap,
-    this.personalized = false,
   });
 
   @override
@@ -3595,17 +3644,6 @@ class _RecommendationGrid extends StatelessWidget {
               color: Color(0xFF111827),
               fontSize: 18,
               fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            personalized
-                ? 'Dipilih dari kategori dan brand yang sering kamu lihat'
-                : 'Produk pilihan berdasarkan minat dan aktivitas belanjamu',
-            style: const TextStyle(
-              color: Color(0xFF6B7280),
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 12),

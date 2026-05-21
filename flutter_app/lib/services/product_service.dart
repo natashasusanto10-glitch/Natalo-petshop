@@ -289,6 +289,42 @@ class ProductService {
     }
   }
 
+  /// Server-side personalized recommendations untuk home screen
+  /// "Rekomendasi Untuk Kamu". Backend scan SELURUH catalog (bukan cuma
+  /// pool 48 dari home fetch) + tambah purchase signal (×3.0 brand /
+  /// ×2.5 category) di samping view signal.
+  ///
+  /// Wajib pass `viewedIds` dari client-side `recentlyViewedStore` —
+  /// signal anonymous untuk user yang belum login. Untuk user yang
+  /// login, backend juga merge dengan `user_product_views` table +
+  /// orderItem history.
+  ///
+  /// Return empty list kalau API gagal (offline, server down). Caller
+  /// harus fallback ke client-side scoring.
+  Future<List<Product>> fetchPersonalizedRecommendations({
+    List<String> viewedIds = const [],
+    int limit = 10,
+  }) async {
+    try {
+      final data = await apiClient.getJson(
+        '/api/recommendations/personalized',
+        query: {
+          'limit': '$limit',
+          if (viewedIds.isNotEmpty) 'viewed': viewedIds.join(','),
+        },
+      );
+      final map = _asMap(data);
+      final raw = map == null ? data : (map['data'] ?? map['items']);
+      if (raw is! List) return const [];
+      return raw
+          .whereType<Map<String, dynamic>>()
+          .map(Product.fromApiJson)
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
   /// Fetch recently-viewed produk (server-side stored kalau user login,
   /// merged dengan IDs dari client). Endpoint /api/cart/recently-viewed.
   Future<List<Product>> fetchRecentlyViewed({
