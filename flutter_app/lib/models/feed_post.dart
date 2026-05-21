@@ -112,6 +112,10 @@ class FeedPost {
   final bool isLiked;
   final bool viewerLiked;
   final DateTime createdAt;
+  /// FeedMedia rows untuk PHOTO_CAROUSEL post — 1-8 foto ordered by
+  /// sortOrder. Empty untuk VIDEO_ONLY / VIDEO_PRODUCT / COMMUNITY (video
+  /// pakai videoUrl + thumbnailUrl).
+  final List<FeedMedia> media;
 
   const FeedPost({
     required this.id,
@@ -139,7 +143,14 @@ class FeedPost {
     this.isLiked = false,
     this.viewerLiked = false,
     required this.createdAt,
+    this.media = const [],
   });
+
+  /// Detect PHOTO_CAROUSEL post — render harus pakai _PhotoCarouselPostView,
+  /// bukan _FeedPostView (yang assume video controller). Defensive cek media
+  /// non-empty supaya gak crash kalau backend bug return PHOTO_CAROUSEL
+  /// tanpa media (mis. legacy data atau partial migration).
+  bool get isPhotoCarousel => kind == 'PHOTO_CAROUSEL' && media.isNotEmpty;
 
   factory FeedPost.fromJson(Map<String, dynamic> json) {
     final productsJson = (json['products'] as List?) ??
@@ -174,6 +185,12 @@ class FeedPost {
     final liked = json['viewerLiked'] as bool? ?? json['isLiked'] as bool? ?? false;
     final blurhash =
         (json['thumbnailBlurhash'] ?? json['blurhash']) as String?;
+    final mediaJson = (json['media'] as List?) ?? const [];
+    final media = mediaJson
+        .whereType<Map<String, dynamic>>()
+        .map(FeedMedia.fromJson)
+        .toList()
+      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
     return FeedPost(
       id: json['id'] as String,
       slug: (json['slug'] ?? json['id']) as String,
@@ -203,6 +220,50 @@ class FeedPost {
       viewerLiked: liked,
       createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
           DateTime.now(),
+      media: media,
+    );
+  }
+}
+
+/// 1 row dari FeedMedia table — image (atau future video) yang di-tag ke
+/// FeedPost. Saat ini hanya image yang dipakai untuk PHOTO_CAROUSEL.
+class FeedMedia {
+  final String id;
+  final String mediaType; // "image" | "video"
+  final String url;
+  final String? thumbnailUrl;
+  final int? width;
+  final int? height;
+  final int sortOrder;
+
+  const FeedMedia({
+    required this.id,
+    required this.mediaType,
+    required this.url,
+    this.thumbnailUrl,
+    this.width,
+    this.height,
+    this.sortOrder = 0,
+  });
+
+  /// Aspect ratio untuk pre-compute layout sebelum image fully load. Default
+  /// 1:1 (square) supaya gak ada layout shift kalau width/height null.
+  double get aspectRatio {
+    final w = width;
+    final h = height;
+    if (w == null || h == null || w <= 0 || h <= 0) return 1.0;
+    return w / h;
+  }
+
+  factory FeedMedia.fromJson(Map<String, dynamic> json) {
+    return FeedMedia(
+      id: (json['id'] as String?) ?? '',
+      mediaType: (json['mediaType'] as String?) ?? 'image',
+      url: (json['url'] as String?) ?? '',
+      thumbnailUrl: json['thumbnailUrl'] as String?,
+      width: (json['width'] as num?)?.toInt(),
+      height: (json['height'] as num?)?.toInt(),
+      sortOrder: (json['sortOrder'] as num?)?.toInt() ?? 0,
     );
   }
 }

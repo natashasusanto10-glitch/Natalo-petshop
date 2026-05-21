@@ -455,11 +455,22 @@ class _FeedScreenState extends State<FeedScreen> {
                     itemCount: visible.length,
                     onPageChanged: _onPageChanged,
                     itemBuilder: (context, index) {
+                      final post = visible[index];
+                      // Branch by kind: PHOTO_CAROUSEL render carousel
+                      // PageView horizontal 1-8 foto; video kind render
+                      // _FeedPostView dengan VideoPlayerController.
+                      if (post.isPhotoCarousel) {
+                        return _PhotoCarouselPostView(
+                          post: post,
+                          isActive: index == _activeIndex,
+                          onOverlayStateChanged: _setFeedInteractionLocked,
+                        );
+                      }
                       return _FeedPostView(
-                        post: visible[index],
+                        post: post,
                         isActive: index == _activeIndex,
                         preloadedController:
-                            _preloadedControllers.remove(visible[index].id),
+                            _preloadedControllers.remove(post.id),
                         onOverlayStateChanged: _setFeedInteractionLocked,
                       );
                     },
@@ -876,6 +887,422 @@ class _FeedErrorState extends StatelessWidget {
                 ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(28),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// PHOTO_CAROUSEL post view — render 1-8 foto pakai PageView horizontal +
+/// dots indicator + heart burst + action rail. Reuse helper components
+/// (_ReelsAction, _BlurredFeedBackdrop, _FeedCreatorIdentity, _ExpandableCaption)
+/// dari _FeedPostView via lokasi sama-file.
+///
+/// Beda dari _FeedPostView:
+///   - Tidak ada VideoPlayerController (foto static, no playback state)
+///   - Tidak ada progress bar (no duration)
+///   - Tidak ada autoplay logic
+///   - Tambah dots indicator + horizontal PageView swipe antar foto
+class _PhotoCarouselPostView extends StatefulWidget {
+  final FeedPost post;
+  final bool isActive;
+  final ValueChanged<bool> onOverlayStateChanged;
+
+  const _PhotoCarouselPostView({
+    required this.post,
+    required this.isActive,
+    required this.onOverlayStateChanged,
+  });
+
+  @override
+  State<_PhotoCarouselPostView> createState() => _PhotoCarouselPostViewState();
+}
+
+class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
+    with SingleTickerProviderStateMixin {
+  late final PageController _photoPageController;
+  int _photoIndex = 0;
+  bool _liked = false;
+  int _likeCount = 0;
+  int _commentCount = 0;
+  int _shareCount = 0;
+  bool _likeBusy = false;
+  bool _captionExpanded = false;
+  bool _hideOverlayForLongPress = false;
+
+  // Heart burst (sama dengan _FeedPostView)
+  late final AnimationController _heartBurstController;
+  late final Animation<double> _heartScale;
+  late final Animation<double> _heartOpacity;
+
+  @override
+  void initState() {
+    super.initState();
+    _photoPageController = PageController();
+    _liked = widget.post.viewerLiked || feedLocalStore.isLiked(widget.post.id);
+    _likeCount = widget.post.likeCount;
+    _commentCount = widget.post.commentCount;
+    _shareCount = widget.post.shareCount;
+
+    _heartBurstController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 620),
+    );
+    _heartScale = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(begin: 0.35, end: 1.42)
+            .chain(CurveTween(curve: Curves.easeOutBack)),
+        weight: 34,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 1.42, end: 1.00)
+            .chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 22,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 1.00, end: 0.82)
+            .chain(CurveTween(curve: Curves.easeOutCubic)),
+        weight: 18,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 0.82, end: 0.0)
+            .chain(CurveTween(curve: Curves.easeIn)),
+        weight: 26,
+      ),
+    ]).animate(_heartBurstController);
+    _heartOpacity = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(begin: 0.0, end: 1.0)
+            .chain(CurveTween(curve: Curves.easeOut)),
+        weight: 25,
+      ),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.0), weight: 38),
+      TweenSequenceItem(
+        tween: Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeIn)),
+        weight: 37,
+      ),
+    ]).animate(_heartBurstController);
+
+    // Pre-cache thumbnail foto pertama supaya muncul instan.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      for (final m in widget.post.media.take(3)) {
+        precacheImage(CachedNetworkImageProvider(m.url), context);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _photoPageController.dispose();
+    _heartBurstController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _onLikePressed() async {
+    if (_likeBusy) return;
+    AppHaptics.impact();
+    final wasLiked = _liked;
+    final previousCount = _likeCount;
+    setState(() {
+      _likeBusy = true;
+      _liked = !wasLiked;
+      _likeCount =
+          wasLiked ? (_likeCount > 0 ? _likeCount - 1 : 0) : _likeCount + 1;
+    });
+    feedLocalStore.setLiked(widget.post.id, !wasLiked);
+    try {
+      final result = await feedService.toggleLike(
+        widget.post.id,
+        currentlyLiked: wasLiked,
+      );
+      if (!mounted) return;
+      setState(() {
+        _liked = result.liked;
+        _likeCount = result.likeCount;
+      });
+      feedLocalStore.setLiked(widget.post.id, result.liked);
+    } catch (_) {
+      if (!mounted) return;
+      // Rollback optimistic.
+      setState(() {
+        _liked = wasLiked;
+        _likeCount = previousCount;
+      });
+      feedLocalStore.setLiked(widget.post.id, wasLiked);
+    } finally {
+      if (mounted) setState(() => _likeBusy = false);
+    }
+  }
+
+  void _onDoubleTapLike() {
+    AppHaptics.impact();
+    if (!_liked) {
+      _onLikePressed();
+    }
+    if (!_heartBurstController.isAnimating) {
+      _heartBurstController.forward(from: 0);
+    }
+  }
+
+  void _onComment() {
+    AppHaptics.tap();
+    // TODO: open comment sheet (reuse FeedCommentSheet — sama dengan video).
+    // Untuk MVP carousel, buka modal sheet dengan post comments.
+    showModalBottomSheet(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        snap: true,
+        builder: (_, scrollController) => FeedCommentSheet(
+          post: widget.post,
+          applyKeyboardInset: true,
+          sheetScrollController: scrollController,
+          onClose: () => Navigator.pop(context),
+          onAddedCountChanged: (count) {
+            if (!mounted) return;
+            setState(() => _commentCount = widget.post.commentCount + count);
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _onShare() async {
+    AppHaptics.tap();
+    try {
+      final url = ApiConfig.uri('/feed/${widget.post.id}').toString();
+      await Share.share(
+        widget.post.title.isNotEmpty
+            ? '${widget.post.title}\n$url'
+            : url,
+      );
+      if (!mounted) return;
+      setState(() => _shareCount += 1);
+      await feedService.trackShare(widget.post.id);
+    } catch (_) {
+      // Cancel atau share fail — silent.
+    }
+  }
+
+  void _onLongPressStart(LongPressStartDetails _) {
+    AppHaptics.selection();
+    setState(() => _hideOverlayForLongPress = true);
+  }
+
+  void _onLongPressEnd(LongPressEndDetails _) {
+    setState(() => _hideOverlayForLongPress = false);
+  }
+
+  Future<void> _showMoreActionsSheet() async {
+    AppHaptics.tap();
+    final result = await showModerationActions(
+      context,
+      targetKind: ReportTargetKind.feedPost,
+      targetId: widget.post.id,
+      authorId: widget.post.author.id,
+      authorName: widget.post.author.isAdmin
+          ? 'Natalo Petshop'
+          : widget.post.author.name,
+      useFeedStyle: true,
+    );
+    if (result == null || !mounted) return;
+    // FeedScreen listen blockService.notifyListeners → auto-refresh
+    // visible filter kalau result.didBlock. Tidak perlu manual reload.
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final post = widget.post;
+    final photos = post.media;
+    final currentPhoto =
+        _photoIndex < photos.length ? photos[_photoIndex] : photos.first;
+    final screenSize = MediaQuery.sizeOf(context);
+    final actionRailInset = screenSize.height < 760 ? 88.0 : 100.0;
+    const feedInfoInset = 24.0;
+
+    return VisibilityDetector(
+      key: ValueKey('photo-post-${post.id}'),
+      onVisibilityChanged: (info) {
+        if (!mounted) return;
+        if (info.visibleFraction > 0.5 &&
+            widget.isActive &&
+            !feedLocalStore.hasViewedThisSession(post.id)) {
+          feedLocalStore.markViewedThisSession(post.id);
+          feedService.trackView(post.id);
+        }
+      },
+      child: ColoredBox(
+        color: Colors.black,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Blurred backdrop dari current photo (untuk aspect non-9:16).
+            _BlurredFeedBackdrop(thumbnailUrl: currentPhoto.url),
+            // Foto carousel — PageView horizontal swipe.
+            GestureDetector(
+              onDoubleTap: _onDoubleTapLike,
+              onLongPressStart: _onLongPressStart,
+              onLongPressEnd: _onLongPressEnd,
+              child: PageView.builder(
+                controller: _photoPageController,
+                itemCount: photos.length,
+                onPageChanged: (idx) => setState(() => _photoIndex = idx),
+                itemBuilder: (context, index) {
+                  final photo = photos[index];
+                  return Center(
+                    child: CachedNetworkImage(
+                      imageUrl: photo.url,
+                      fit: BoxFit.contain,
+                      placeholder: (_, __) => const SizedBox.shrink(),
+                      errorWidget: (_, __, ___) => const Center(
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          color: Colors.white54,
+                          size: 48,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            // Heart burst overlay (double-tap signature).
+            IgnorePointer(
+              child: Center(
+                child: AnimatedBuilder(
+                  animation: _heartBurstController,
+                  builder: (context, _) {
+                    if (_heartOpacity.value == 0) {
+                      return const SizedBox.shrink();
+                    }
+                    return Opacity(
+                      opacity: _heartOpacity.value,
+                      child: Transform.scale(
+                        scale: _heartScale.value,
+                        child: const Icon(
+                          Icons.favorite_rounded,
+                          color: Color(0xFFEF4444),
+                          size: 128,
+                          shadows: [
+                            Shadow(color: Colors.black54, blurRadius: 28),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+            // Dots indicator (kalau >1 foto).
+            if (photos.length > 1 && !_hideOverlayForLongPress)
+              Positioned(
+                top: MediaQuery.paddingOf(context).top + 12,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: List.generate(photos.length, (i) {
+                        final active = i == _photoIndex;
+                        return AnimatedContainer(
+                          duration: const Duration(milliseconds: 220),
+                          margin: const EdgeInsets.symmetric(horizontal: 2),
+                          width: active ? 16 : 4,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: active
+                                ? Colors.white
+                                : Colors.white.withValues(alpha: 0.4),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        );
+                      }),
+                    ),
+                  ),
+                ),
+              ),
+            // Right action rail — sama pattern dengan _FeedPostView:
+            // Like / Comment / Share / More (Report/Block).
+            Positioned(
+              right: 18,
+              bottom: actionRailInset,
+              child: AnimatedOpacity(
+                opacity: _hideOverlayForLongPress ? 0 : 1,
+                duration: const Duration(milliseconds: 200),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _ReelsAction(
+                      iconChild: _ReelsHeartGlyph(liked: _liked),
+                      count: _likeCount,
+                      onTap: _onLikePressed,
+                    ),
+                    const SizedBox(height: _feedActionItemSpacing),
+                    _ReelsAction(
+                      iconChild: const _ReelsCommentGlyph(),
+                      count: _commentCount,
+                      onTap: _onComment,
+                    ),
+                    const SizedBox(height: _feedActionItemSpacing),
+                    _ReelsAction(
+                      iconChild: const _ReelsShareGlyph(),
+                      count: _shareCount,
+                      onTap: _onShare,
+                    ),
+                    const SizedBox(height: _feedActionItemSpacing),
+                    // More actions (Report/Block) — Google Play UGC policy.
+                    _ReelsAction(
+                      iconChild: const _ReelsMoreGlyph(),
+                      onTap: () => _showMoreActionsSheet(),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Bottom info (creator + caption).
+            Positioned(
+              left: 16,
+              right: 78,
+              bottom: feedInfoInset,
+              child: AnimatedOpacity(
+                opacity: _hideOverlayForLongPress ? 0 : 1,
+                duration: const Duration(milliseconds: 150),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _FeedCreatorIdentity(
+                      author: post.author,
+                      displayName: post.author.isAdmin
+                          ? 'Natalo Petshop'
+                          : post.author.name,
+                    ),
+                    const SizedBox(height: 7),
+                    _ExpandableCaption(
+                      text: post.title.isNotEmpty
+                          ? post.title
+                          : post.description,
+                      expanded: _captionExpanded,
+                      onToggle: () =>
+                          setState(() => _captionExpanded = !_captionExpanded),
+                    ),
+                  ],
                 ),
               ),
             ),
