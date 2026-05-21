@@ -26,6 +26,7 @@ import '../services/report_service.dart';
 import '../services/video_quality_service.dart';
 import '../state/cart_store.dart';
 import '../state/feed_local_store.dart';
+import '../state/member_store.dart';
 import '../state/settings_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
@@ -1736,6 +1737,16 @@ class _FeedPostViewState extends State<_FeedPostView>
       // Rollback local cache juga.
       feedLocalStore.setLiked(widget.post.id, wasLiked);
       if (error is ApiException && error.statusCode == 401) {
+        // BUG FIX: kalau backend reject 401 padahal client kira logged-in
+        // (zombie session — user.id tidak ada di DB / token expired), JANGAN
+        // langsung push login. Clear local cache dulu via logout() supaya
+        // memberStore.isLoggedIn = false → halaman lain auto-respond.
+        // Tanpa ini, user di-redirect ke login tapi cache "logged in" tetap,
+        // jadi looping.
+        if (memberStore.isLoggedIn) {
+          await memberStore.logout();
+        }
+        if (!mounted) return;
         Navigator.pushNamed(context, '/member/login');
       } else {
         AppToast.show(
