@@ -201,12 +201,33 @@ class ProductVoucherPreview {
   }
 
   factory ProductVoucherPreview.fromJson(Map<String, dynamic> json) {
+    // Endpoint /api/products/{slug}/vouchers mengembalikan campuran 2 shape:
+    //  - ProductVoucherPreview (publicVoucher + shippingVoucher) — pakai
+    //    field `badgeLabel`, `minimumOrder`, `type`.
+    //  - ProductVoucherItem (memberVouchers) — pakai field `label`,
+    //    `minPurchase`, `kind` (FREE_SHIPPING / PRODUCT_DISCOUNT / dst).
+    // Parser di sini menerima dua-duanya supaya widget bisa render mixed
+    // list tanpa tahu source-nya.
+    final kindRaw = _stringOrNull(json['kind']);
+    final typeRaw = _stringOrNull(json['type']);
+    // Map `kind` → `type` supaya `isShippingVoucher` getter tetap berfungsi
+    // walaupun source-nya member voucher.
+    final resolvedType = typeRaw ??
+        (kindRaw == 'FREE_SHIPPING'
+            ? 'FREE_SHIPPING'
+            : kindRaw == 'PRODUCT_DISCOUNT'
+                ? 'MEMBER_PRODUCT_DISCOUNT'
+                : 'PUBLIC_PRODUCT_DISCOUNT');
+    final resolvedScope = _stringOrNull(
+          json['discountScope'] ?? json['discount_scope'],
+        ) ??
+        (kindRaw == 'FREE_SHIPPING' ? 'SHIPPING' : 'PRODUCT');
     return ProductVoucherPreview(
       id: _string(json['id']),
       title: _string(json['title'], fallback: 'Voucher Natalo'),
       description: _stringOrNull(json['description']),
       badgeLabel: _string(
-        json['badgeLabel'] ?? json['badge_label'],
+        json['badgeLabel'] ?? json['badge_label'] ?? json['label'],
         fallback: 'Voucher hemat',
       ),
       sheetTitle: _string(
@@ -227,20 +248,17 @@ class ProductVoucherPreview {
         json['maxDiscountAmount'] ?? json['max_discount_amount'],
       ),
       minimumOrder: _asDouble(
-        json['minimumOrder'] ?? json['minimum_order'],
+        json['minimumOrder'] ??
+            json['minimum_order'] ??
+            json['minPurchase'] ??
+            json['min_purchase'],
       ),
       savingAmount: _nullableDouble(
         json['savingAmount'] ?? json['saving_amount'],
       ),
       expiresAt: _stringOrNull(json['expiresAt'] ?? json['expires_at']),
-      type: _string(
-        json['type'],
-        fallback: 'PUBLIC_PRODUCT_DISCOUNT',
-      ),
-      discountScope: _string(
-        json['discountScope'] ?? json['discount_scope'],
-        fallback: 'PRODUCT',
-      ),
+      type: resolvedType,
+      discountScope: resolvedScope,
       targetUser: _string(
         json['targetUser'] ?? json['target_user'],
         fallback: 'ALL_MEMBERS',

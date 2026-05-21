@@ -55,6 +55,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   List<Product> _related = const [];
   ReviewSummary? _reviewSummary;
   List<ProductReview> _reviewPreview = const [];
+  // List voucher untuk produk ini, hasil fetch /api/products/{slug}/vouchers.
+  // Backend kembalikan campuran publicVoucher + shippingVoucher + memberVouchers.
+  // Render sebagai horizontal scroll chip — beda dari single placeholder
+  // sebelumnya yang cuma pakai product.voucherPreview.
+  List<ProductVoucherPreview> _vouchers = const [];
   bool _descriptionExpanded = false;
   int _activeTab = 0;
   final ScrollController _scrollController = ScrollController();
@@ -118,6 +123,28 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     _loadRelated();
     _loadFullProduct();
     _loadReviewPreview();
+    _loadVouchers();
+  }
+
+  /// Fetch list voucher untuk produk ini. Non-blocking — kalau gagal /
+  /// tidak ada voucher, widget fallback ke single placeholder.
+  Future<void> _loadVouchers() async {
+    try {
+      final raw = await productService.fetchProductVouchers(product.slug);
+      if (!mounted || raw.isEmpty) return;
+      final parsed = <ProductVoucherPreview>[];
+      for (final entry in raw) {
+        try {
+          parsed.add(ProductVoucherPreview.fromJson(entry));
+        } catch (_) {
+          // Skip entry yang malformed — jangan blokir voucher lain.
+        }
+      }
+      if (!mounted || parsed.isEmpty) return;
+      setState(() => _vouchers = parsed);
+    } catch (_) {
+      // Non-critical — fallback ke product.voucherPreview di widget.
+    }
   }
 
   @override
@@ -316,7 +343,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-              child: _VoucherAndTrust(product: product),
+              child: _VoucherAndTrust(
+                product: product,
+                vouchers: _vouchers,
+              ),
             ),
           ),
           // ── Variant Selector — hanya tampil kalau hasVariants ──
@@ -857,14 +887,38 @@ class _InfoDot extends StatelessWidget {
   }
 }
 
+/// Section voucher di product detail. Render salah satu mode:
+///  - 0 voucher (fetch belum jalan / kosong): fallback placeholder single
+///    card "Cek voucher di keranjang" — match perilaku lama, kompatibel
+///    dengan product.voucherPreview (preview ringkas dari list endpoint).
+///  - 1 voucher: single full-width card (sama dengan placeholder, tapi
+///    text dari voucher beneran).
+///  - 2+ voucher: header label + horizontal scroll chip merah-mirip-Shopee
+///    sehingga user bisa scan banyak voucher sekaligus. Tap → buka cart
+///    screen tempat voucher bisa di-apply.
 class _VoucherAndTrust extends StatelessWidget {
   final Product product;
+  final List<ProductVoucherPreview> vouchers;
 
-  const _VoucherAndTrust({required this.product});
+  const _VoucherAndTrust({
+    required this.product,
+    this.vouchers = const [],
+  });
 
   @override
   Widget build(BuildContext context) {
-    final voucher = product.voucherPreview;
+    // Sumber voucher final — kalau API call sudah balik (list non-empty),
+    // pakai itu. Kalau kosong, fallback ke single preview yang ikut di
+    // payload product list (snapshot ringkas dari /api/products).
+    final List<ProductVoucherPreview> resolved = vouchers.isNotEmpty
+        ? vouchers
+        : (product.voucherPreview != null ? [product.voucherPreview!] : const []);
+
+    if (resolved.length >= 2) {
+      return _VoucherCarousel(vouchers: resolved);
+    }
+
+    final voucher = resolved.isNotEmpty ? resolved.first : null;
     final voucherLabel = voucher?.badgeLabel.trim();
     final subtitle = voucherLabel != null && voucherLabel.isNotEmpty
         ? voucher?.isNewMemberOnly == true
@@ -928,6 +982,205 @@ class _VoucherAndTrust extends StatelessWidget {
               ),
             ),
             const Icon(Icons.chevron_right_rounded, color: _textDark),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Horizontal-scroll list voucher chips. Tampil saat ada 2+ voucher
+/// applicable untuk produk ini (campuran public + shipping + member).
+class _VoucherCarousel extends StatelessWidget {
+  final List<ProductVoucherPreview> vouchers;
+
+  const _VoucherCarousel({required this.vouchers});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(2, 0, 2, 8),
+          child: Row(
+            children: [
+              Container(
+                height: 28,
+                width: 28,
+                decoration: BoxDecoration(
+                  color: _softDiscountBg,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.confirmation_number_rounded,
+                  color: _discountRed,
+                  size: 16,
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Voucher Toko',
+                  style: TextStyle(
+                    color: _textDark,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              AppPressable(
+                onTap: () => Navigator.pushNamed(context, '/cart'),
+                borderRadius: BorderRadius.circular(8),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Lihat semua',
+                        style: TextStyle(
+                          color: _brandBlue,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      SizedBox(width: 2),
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        color: _brandBlue,
+                        size: 16,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: 72,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            itemCount: vouchers.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (context, index) {
+              return _VoucherChip(voucher: vouchers[index]);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Voucher chip — Shopee-style ticket dengan notched edge (gradient red,
+/// kanan badge bertuliskan ringkasan benefit).
+class _VoucherChip extends StatelessWidget {
+  final ProductVoucherPreview voucher;
+
+  const _VoucherChip({required this.voucher});
+
+  String _benefitText() {
+    if (voucher.isShippingVoucher) return 'Gratis Ongkir';
+    final percent = voucher.discountPercent;
+    if (percent != null && percent > 0) {
+      final cap = voucher.maxDiscountAmount != null &&
+              voucher.maxDiscountAmount! > 0
+          ? ' s.d. ${formatRupiahCompact(voucher.maxDiscountAmount!)}'
+          : '';
+      return 'Diskon ${percent.toStringAsFixed(0)}%$cap';
+    }
+    final amount = voucher.discountAmount;
+    if (amount != null && amount > 0) {
+      return 'Hemat ${formatRupiahCompact(amount)}';
+    }
+    final label = voucher.badgeLabel.trim();
+    return label.isEmpty ? 'Voucher Hemat' : label;
+  }
+
+  String _minText() {
+    if (voucher.minimumOrder <= 0) return 'Tanpa min. belanja';
+    return 'Min. ${formatRupiahCompact(voucher.minimumOrder)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final benefit = _benefitText();
+    final minText = _minText();
+    final isMemberOnly = voucher.isNewMemberOnly;
+    return AppPressable(
+      onTap: () => Navigator.pushNamed(context, '/cart'),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        constraints: const BoxConstraints(minWidth: 168, maxWidth: 240),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFFFFEEF1), Color(0xFFFFDDE3)],
+          ),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: _discountRed.withValues(alpha: 0.30),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              voucher.isShippingVoucher
+                  ? Icons.local_shipping_rounded
+                  : Icons.local_offer_rounded,
+              color: _discountRed,
+              size: 22,
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    benefit,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: _discountRed,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    minText,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: _textMedium,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if (isMemberOnly) ...[
+                    const SizedBox(height: 2),
+                    const Text(
+                      'Khusus member baru',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: _textGray,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ],
         ),
       ),
