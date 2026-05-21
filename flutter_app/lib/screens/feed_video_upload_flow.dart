@@ -387,6 +387,10 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
   bool _playing = false;
   String? _error;
   Timer? _playbackGuard;
+  // Extracted frames untuk timeline thumbnails — IG-style.
+  // Diisi setelah video controller init, parallel sambil show fallback.
+  List<Uint8List?> _frameThumbs = const [];
+  static const _frameCount = 10;
 
   Duration get _duration => widget.draft.originalDuration ?? Duration.zero;
 
@@ -423,6 +427,8 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
     final controller = VideoPlayerController.file(File(path));
     try {
       await controller.initialize();
+      // IG-style: looping AUTO sambil trim. Loop manual lewat playback
+      // guard ke range.start saat reach range.end.
       await controller.setLooping(false);
       await controller.setVolume(0);
       controller.addListener(_syncPlaying);
@@ -434,6 +440,13 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
         _controller = controller;
         _loading = false;
       });
+      // Auto-start playback in trim window (IG-style: video selalu jalan).
+      await controller
+          .seekTo(Duration(milliseconds: (_range.start * 1000).round()));
+      await controller.play();
+      _startPlaybackGuard();
+      // Extract frame thumbnails parallel (non-blocking).
+      unawaited(_extractFrameThumbnails(path));
     } catch (_) {
       await controller.dispose();
       if (!mounted) return;
@@ -444,6 +457,33 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
     }
   }
 
+  /// Extract N frames distributed evenly across video duration. Dipakai
+  /// untuk render timeline scrubber yang menggambarkan isi video (IG-style).
+  Future<void> _extractFrameThumbnails(String videoPath) async {
+    final durationMs = _duration.inMilliseconds;
+    if (durationMs <= 0) return;
+    final frames = List<Uint8List?>.filled(_frameCount, null);
+    for (var i = 0; i < _frameCount; i++) {
+      // Distribute timestamps: i / (N-1) supaya frame pertama = 0,
+      // frame terakhir = durationMs.
+      final tMs = ((durationMs * i) / (_frameCount - 1)).round();
+      try {
+        final bytes = await VideoThumbnail.thumbnailData(
+          video: videoPath,
+          imageFormat: ImageFormat.JPEG,
+          quality: 50,
+          maxWidth: 120,
+          timeMs: tMs,
+        );
+        if (!mounted) return;
+        frames[i] = bytes;
+        setState(() => _frameThumbs = List<Uint8List?>.from(frames));
+      } catch (_) {
+        // Skip frame yang gagal extract.
+      }
+    }
+  }
+
   void _syncPlaying() {
     final playing = _controller?.value.isPlaying ?? false;
     if (mounted && _playing != playing) {
@@ -451,7 +491,7 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
     }
   }
 
-  void _updateRange(RangeValues values) {
+  void _updateRange(RangeValues values, {required bool dragging}) {
     final old = _range;
     final total = math.max(1.0, _duration.inMilliseconds / 1000);
     var start = values.start.clamp(0.0, total - 1);
@@ -475,22 +515,28 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
     }
 
     setState(() => _range = RangeValues(start.toDouble(), end.toDouble()));
-  }
 
-  Future<void> _togglePlay() async {
+    // Live seek to handle position untuk preview — IG-style. Saat user
+    // drag start handle, seek ke start. Saat drag end handle, seek ke
+    // end. Saat user release, restart loop dari new range.start.
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
-    AppHaptics.tap();
-    if (controller.value.isPlaying) {
-      await controller.pause();
-      _playbackGuard?.cancel();
-      return;
+    final seekTo = movedStart ? start : end;
+    controller.seekTo(Duration(milliseconds: (seekTo * 1000).round()));
+    if (dragging) {
+      // Sambil drag, pause supaya frame stabil di posisi handle.
+      controller.pause();
+    } else {
+      // Release: lanjut auto-loop dari new range.start.
+      controller.seekTo(Duration(milliseconds: (start * 1000).round()));
+      controller.play();
+      _startPlaybackGuard();
     }
-    await controller
-        .seekTo(Duration(milliseconds: (_range.start * 1000).round()));
-    await controller.play();
+  }
+
+  void _startPlaybackGuard() {
     _playbackGuard?.cancel();
-    _playbackGuard = Timer.periodic(const Duration(milliseconds: 160), (_) {
+    _playbackGuard = Timer.periodic(const Duration(milliseconds: 120), (_) {
       final ctrl = _controller;
       if (ctrl == null || !ctrl.value.isInitialized || !ctrl.value.isPlaying) {
         return;
@@ -595,8 +641,11 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
                   controller: _controller,
                   thumbnailPath: widget.draft.thumbnailPath,
                   loading: _loading,
+                  // IG-style: video auto-loop terus, tidak ada tap-to-toggle
+                  // play/pause. `playing` cuma untuk visual indicator
+                  // (kalau perlu).
                   playing: _playing,
-                  onTap: _togglePlay,
+                  onTap: null,
                   timeText:
                       '${_formatDuration(Duration(milliseconds: (_range.start * 1000).round()))} / ${_formatDuration(_duration)}',
                 ),
@@ -608,10 +657,14 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
                 ),
                 const SizedBox(height: 16),
                 _TrimTimeline(
-                  thumbnailPath: widget.draft.thumbnailPath,
+                  frameThumbs: _frameThumbs,
+                  fallbackThumbnailPath: widget.draft.thumbnailPath,
                   range: _range,
                   totalSeconds: totalSeconds,
-                  onChanged: _exporting ? null : _updateRange,
+                  onChanged: _exporting
+                      ? null
+                      : (values, {required bool dragging}) =>
+                          _updateRange(values, dragging: dragging),
                 ),
                 const SizedBox(height: 10),
                 const Text(
@@ -624,13 +677,6 @@ class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                Center(
-                  child: _RoundPlayButton(
-                    playing: _playing,
-                    enabled: !_loading && !_exporting && _error == null,
-                    onTap: _togglePlay,
-                  ),
-                ),
                 if (_exporting) ...[
                   const SizedBox(height: 18),
                   const _ProcessingPanel(),
@@ -1292,7 +1338,7 @@ class _VideoPreviewStage extends StatelessWidget {
   final String? thumbnailPath;
   final bool loading;
   final bool playing;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final String? timeText;
 
   const _VideoPreviewStage({
@@ -1300,7 +1346,7 @@ class _VideoPreviewStage extends StatelessWidget {
     required this.thumbnailPath,
     required this.loading,
     required this.playing,
-    required this.onTap,
+    this.onTap,
     this.timeText,
   });
 
@@ -1443,23 +1489,48 @@ class _InfoPanel extends StatelessWidget {
   }
 }
 
-class _TrimTimeline extends StatelessWidget {
-  final String? thumbnailPath;
+/// Instagram-style trim timeline.
+///
+/// Layout: horizontal strip of N frame thumbnails extracted dari video,
+/// dengan 2 draggable handles (start kiri + end kanan) yang membentuk
+/// selection window. Area outside selection di-dim. Window di-bordered
+/// warna brand supaya jelas mana yang akan di-trim.
+///
+/// Handle drag callback dibedakan antara `dragging: true` (sambil drag,
+/// untuk live seek + pause) dan `dragging: false` (release, untuk
+/// restart loop dari new start position).
+typedef _TimelineDragCallback = void Function(
+  RangeValues values, {
+  required bool dragging,
+});
+
+class _TrimTimeline extends StatefulWidget {
+  final List<Uint8List?> frameThumbs;
+  final String? fallbackThumbnailPath;
   final RangeValues range;
   final double totalSeconds;
-  final ValueChanged<RangeValues>? onChanged;
+  final _TimelineDragCallback? onChanged;
 
   const _TrimTimeline({
-    required this.thumbnailPath,
+    required this.frameThumbs,
+    required this.fallbackThumbnailPath,
     required this.range,
     required this.totalSeconds,
     required this.onChanged,
   });
 
   @override
+  State<_TrimTimeline> createState() => _TrimTimelineState();
+}
+
+class _TrimTimelineState extends State<_TrimTimeline> {
+  static const _handleWidth = 16.0;
+  static const _frameStripHeight = 56.0;
+
+  @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 14, 12, 10),
+      padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
       decoration: BoxDecoration(
         color: _feedUploadCard,
         borderRadius: BorderRadius.circular(20),
@@ -1467,58 +1538,28 @@ class _TrimTimeline extends StatelessWidget {
       ),
       child: Column(
         children: [
-          SizedBox(
-            height: 54,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: Row(
-                children: List.generate(8, (index) {
-                  return Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1B2230),
-                        border: Border(
-                          right: BorderSide(
-                            color: Colors.black.withValues(alpha: 0.35),
-                          ),
-                        ),
-                      ),
-                      child: thumbnailPath == null
-                          ? const Icon(
-                              Icons.movie_creation_rounded,
-                              color: Colors.white24,
-                            )
-                          : Image.file(
-                              File(thumbnailPath!),
-                              fit: BoxFit.cover,
-                            ),
-                    ),
-                  );
-                }),
-              ),
-            ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              return _TrimRangeBar(
+                width: constraints.maxWidth,
+                stripHeight: _frameStripHeight,
+                handleWidth: _handleWidth,
+                frameThumbs: widget.frameThumbs,
+                fallbackThumbnailPath: widget.fallbackThumbnailPath,
+                range: widget.range,
+                totalSeconds: widget.totalSeconds,
+                onChanged: widget.onChanged,
+              );
+            },
           ),
-          RangeSlider(
-            min: 0,
-            max: totalSeconds,
-            values: range,
-            activeColor: Colors.white,
-            inactiveColor: Colors.white24,
-            labels: RangeLabels(
-              _formatDuration(
-                  Duration(milliseconds: (range.start * 1000).round())),
-              _formatDuration(
-                  Duration(milliseconds: (range.end * 1000).round())),
-            ),
-            onChanged: onChanged,
-          ),
+          const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(_formatDuration(Duration.zero), style: _markerStyle),
               Text(
                 _formatDuration(
-                  Duration(milliseconds: (totalSeconds * 1000).round()),
+                  Duration(milliseconds: (widget.totalSeconds * 1000).round()),
                 ),
                 style: _markerStyle,
               ),
@@ -1534,6 +1575,250 @@ class _TrimTimeline extends StatelessWidget {
     fontSize: 11,
     fontWeight: FontWeight.w700,
   );
+}
+
+/// Internal widget yang handle gesture detection + render frame strip
+/// + dim overlay + draggable handles.
+class _TrimRangeBar extends StatefulWidget {
+  final double width;
+  final double stripHeight;
+  final double handleWidth;
+  final List<Uint8List?> frameThumbs;
+  final String? fallbackThumbnailPath;
+  final RangeValues range;
+  final double totalSeconds;
+  final _TimelineDragCallback? onChanged;
+
+  const _TrimRangeBar({
+    required this.width,
+    required this.stripHeight,
+    required this.handleWidth,
+    required this.frameThumbs,
+    required this.fallbackThumbnailPath,
+    required this.range,
+    required this.totalSeconds,
+    required this.onChanged,
+  });
+
+  @override
+  State<_TrimRangeBar> createState() => _TrimRangeBarState();
+}
+
+class _TrimRangeBarState extends State<_TrimRangeBar> {
+  // Track which handle is being dragged. null = idle.
+  // 'start' = left handle, 'end' = right handle, 'window' = window pan.
+  String? _activeHandle;
+
+  double get _availableWidth => widget.width - widget.handleWidth * 2;
+
+  double _secondsToX(double seconds) {
+    final ratio = (seconds / widget.totalSeconds).clamp(0.0, 1.0);
+    return widget.handleWidth + ratio * _availableWidth;
+  }
+
+  double _xToSeconds(double x) {
+    final clamped = (x - widget.handleWidth).clamp(0.0, _availableWidth);
+    if (_availableWidth <= 0) return 0;
+    return (clamped / _availableWidth) * widget.totalSeconds;
+  }
+
+  void _onDragStart(String handle) {
+    if (widget.onChanged == null) return;
+    _activeHandle = handle;
+  }
+
+  void _onDragUpdate(DragUpdateDetails details) {
+    final cb = widget.onChanged;
+    if (cb == null || _activeHandle == null) return;
+    final localX =
+        (details.globalPosition.dx - _renderBoxOriginX()).clamp(0.0, widget.width);
+    final sec = _xToSeconds(localX);
+    if (_activeHandle == 'start') {
+      cb(RangeValues(sec, widget.range.end), dragging: true);
+    } else if (_activeHandle == 'end') {
+      cb(RangeValues(widget.range.start, sec), dragging: true);
+    } else if (_activeHandle == 'window') {
+      final span = widget.range.end - widget.range.start;
+      final dragMid = sec;
+      var newStart = dragMid - span / 2;
+      var newEnd = dragMid + span / 2;
+      if (newStart < 0) {
+        newStart = 0;
+        newEnd = span;
+      }
+      if (newEnd > widget.totalSeconds) {
+        newEnd = widget.totalSeconds;
+        newStart = newEnd - span;
+      }
+      cb(RangeValues(newStart, newEnd), dragging: true);
+    }
+  }
+
+  void _onDragEnd(_) {
+    final cb = widget.onChanged;
+    if (cb != null && _activeHandle != null) {
+      // Trigger release event → parent restart loop.
+      cb(widget.range, dragging: false);
+    }
+    _activeHandle = null;
+  }
+
+  double _renderBoxOriginX() {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null) return 0;
+    return box.localToGlobal(Offset.zero).dx;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final startX = _secondsToX(widget.range.start);
+    final endX = _secondsToX(widget.range.end);
+    return SizedBox(
+      width: widget.width,
+      height: widget.stripHeight,
+      child: Stack(
+        children: [
+          // ── Frame strip background ──
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Row(
+              children: List.generate(
+                _FeedVideoTrimScreenState._frameCount,
+                (i) {
+                  final bytes = i < widget.frameThumbs.length
+                      ? widget.frameThumbs[i]
+                      : null;
+                  return Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1B2230),
+                        border: Border(
+                          right: BorderSide(
+                            color: Colors.black.withValues(alpha: 0.30),
+                            width: 0.5,
+                          ),
+                        ),
+                      ),
+                      child: bytes != null
+                          ? Image.memory(bytes, fit: BoxFit.cover)
+                          : widget.fallbackThumbnailPath != null
+                              ? Image.file(
+                                  File(widget.fallbackThumbnailPath!),
+                                  fit: BoxFit.cover,
+                                  opacity:
+                                      const AlwaysStoppedAnimation(0.35),
+                                )
+                              : const SizedBox.shrink(),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          // ── Dim outside selection window ──
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: startX,
+            child: IgnorePointer(
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.55),
+              ),
+            ),
+          ),
+          Positioned(
+            left: endX,
+            top: 0,
+            bottom: 0,
+            right: 0,
+            child: IgnorePointer(
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.55),
+              ),
+            ),
+          ),
+          // ── Selection window border ──
+          Positioned(
+            left: startX,
+            right: widget.width - endX,
+            top: 0,
+            bottom: 0,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onHorizontalDragStart: (_) => _onDragStart('window'),
+              onHorizontalDragUpdate: _onDragUpdate,
+              onHorizontalDragEnd: _onDragEnd,
+              child: Container(
+                decoration: const BoxDecoration(
+                  border: Border.symmetric(
+                    horizontal: BorderSide(color: Colors.white, width: 3),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          // ── Start handle (left) ──
+          Positioned(
+            left: startX - widget.handleWidth,
+            top: 0,
+            bottom: 0,
+            width: widget.handleWidth,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onHorizontalDragStart: (_) => _onDragStart('start'),
+              onHorizontalDragUpdate: _onDragUpdate,
+              onHorizontalDragEnd: _onDragEnd,
+              child: const _TrimHandle(side: 'left'),
+            ),
+          ),
+          // ── End handle (right) ──
+          Positioned(
+            left: endX,
+            top: 0,
+            bottom: 0,
+            width: widget.handleWidth,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onHorizontalDragStart: (_) => _onDragStart('end'),
+              onHorizontalDragUpdate: _onDragUpdate,
+              onHorizontalDragEnd: _onDragEnd,
+              child: const _TrimHandle(side: 'right'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TrimHandle extends StatelessWidget {
+  final String side;
+
+  const _TrimHandle({required this.side});
+
+  @override
+  Widget build(BuildContext context) {
+    final isLeft = side == 'left';
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.horizontal(
+          left: isLeft ? const Radius.circular(6) : Radius.zero,
+          right: isLeft ? Radius.zero : const Radius.circular(6),
+        ),
+      ),
+      alignment: Alignment.center,
+      child: Container(
+        width: 3,
+        height: 18,
+        decoration: BoxDecoration(
+          color: const Color(0xFF111827),
+          borderRadius: BorderRadius.circular(2),
+        ),
+      ),
+    );
+  }
 }
 
 class _DetailPreviewCard extends StatelessWidget {
@@ -2140,39 +2425,6 @@ class _RoundNextButton extends StatelessWidget {
                 ),
               )
             : const Icon(Icons.arrow_forward_rounded, color: Colors.white),
-      ),
-    );
-  }
-}
-
-class _RoundPlayButton extends StatelessWidget {
-  final bool playing;
-  final bool enabled;
-  final VoidCallback onTap;
-
-  const _RoundPlayButton({
-    required this.playing,
-    required this.enabled,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkResponse(
-      onTap: enabled ? onTap : null,
-      radius: 25,
-      child: Container(
-        width: 50,
-        height: 50,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: const Color(0xFF0B0E16),
-          border: Border.all(color: _feedUploadBorder),
-        ),
-        child: Icon(
-          playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-          color: enabled ? Colors.white : Colors.white24,
-        ),
       ),
     );
   }
