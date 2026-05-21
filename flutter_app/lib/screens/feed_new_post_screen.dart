@@ -9,9 +9,11 @@ import 'package:video_thumbnail/video_thumbnail.dart';
 import '../models/feed_create_post_draft.dart';
 import '../models/product.dart';
 import '../services/feed_service.dart';
+import '../state/member_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_product_image.dart';
+import '../widgets/profile_avatar.dart';
 import 'feed_photo_upload_flow.dart';
 import 'feed_video_upload_flow.dart';
 
@@ -193,6 +195,37 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
     });
   }
 
+  /// Buka fullscreen Preview Mode — show bagaimana post akan tampil di
+  /// feed sebelum publish. User bisa balik untuk revise atau langsung
+  /// Share dari preview.
+  Future<void> _openPreview() async {
+    AppHaptics.tap();
+    // Pause video di-edit screen supaya audio tidak overlap dengan video
+    // di preview screen.
+    await _videoController?.pause();
+    final caption = _captionController.text.trim();
+    if (!mounted) return;
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => FeedPostPreviewScreen(
+          draft: widget.draft,
+          videoDraft: _videoDraft,
+          caption: caption,
+        ),
+      ),
+    );
+    // Setelah balik dari preview, kalau user tekan Share di preview,
+    // result == true → langsung upload.
+    if (result == true && mounted) {
+      await _upload();
+    } else {
+      // Resume video editor preview.
+      await _videoController?.play();
+    }
+  }
+
   Future<void> _editCover() async {
     final draft = _videoDraft;
     final path = draft?.finalVideoPath;
@@ -235,7 +268,7 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
           !File(videoPath).existsSync() ||
           duration == null ||
           duration.inSeconds < 1 ||
-          duration.inSeconds > 45) {
+          duration.inSeconds > 60) {
         setState(() =>
             _error = 'Media belum bisa diproses. Coba pilih ulang media.');
         return;
@@ -353,6 +386,25 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
             ),
           ),
           centerTitle: true,
+          actions: [
+            // Preview button — tap untuk buka fullscreen preview yang
+            // nunjukin bagaimana post akan tampil di feed sebelum publish.
+            // Match Instagram "Edit" button di header New reel.
+            TextButton(
+              onPressed: _openPreview,
+              style: TextButton.styleFrom(
+                foregroundColor: _newPostBlue,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+              ),
+              child: const Text(
+                'Preview',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
         ),
         body: SafeArea(
           child: Column(
@@ -379,8 +431,6 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
                       controller: _captionController,
                       counter: '$captionLength/1000',
                     ),
-                    const SizedBox(height: 18),
-                    const _AudioComingSoon(),
                     const SizedBox(height: 26),
                     const _SectionTitle(
                       'Tag produk yang pernah dibeli',
@@ -460,8 +510,13 @@ class _MediaPreview extends StatelessWidget {
   Widget build(BuildContext context) {
     final isVideo = draft.type == NewPostMediaType.video;
     final files = draft.photoFiles;
+    // Aspect ratio 4:5 — match Instagram Feed portrait (`width 80, height
+    // 100`). Sebelumnya 16:10 landscape — video portrait user terlihat
+    // kecil center dengan kanan-kiri kosong. 4:5 accommodate portrait
+    // content natural sambil tetap show foto landscape (sedikit
+    // letterbox top-bottom acceptable).
     return AspectRatio(
-      aspectRatio: 16 / 10,
+      aspectRatio: 4 / 5,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(26),
         child: Stack(
@@ -754,78 +809,6 @@ class _CaptionField extends StatelessWidget {
           borderRadius: BorderRadius.circular(18),
           borderSide: const BorderSide(color: _newPostBlue, width: 1.4),
         ),
-      ),
-    );
-  }
-}
-
-class _AudioComingSoon extends StatelessWidget {
-  const _AudioComingSoon();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _newPostBorder),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: const Color(0xFFEFF4FF),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: const Icon(
-              Icons.music_note_rounded,
-              color: Color(0xFF667DB8),
-            ),
-          ),
-          const SizedBox(width: 14),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Audio',
-                  style: TextStyle(
-                    color: _newPostInk,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                SizedBox(height: 3),
-                Text(
-                  'Segera hadir',
-                  style: TextStyle(
-                    color: Color(0xFF98A2B3),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF1F4FA),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: const Text(
-              'Segera hadir',
-              style: TextStyle(
-                color: Color(0xFF98A2B3),
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -1393,6 +1376,384 @@ class _CoverPickerSheet extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ─── Preview Mode — fullscreen preview before publish ──────────────
+
+/// Fullscreen preview screen — show how post akan tampil di feed
+/// publik. Inspired by Instagram "New reel" → tap "Edit" → preview mode.
+///
+/// Layout:
+///  - Background hitam (immersive)
+///  - Media fullscreen di tengah dengan aspect ratio asli
+///  - Floating action rail di kanan (heart, comment, share) — UI mockup,
+///    tidak interactive (preview only)
+///  - Creator avatar + name + caption overlay di bawah
+///  - Bottom action bar: "Simpan Draft" + "Upload ke Feed" (real action)
+///  - Back button kiri atas
+class FeedPostPreviewScreen extends StatefulWidget {
+  final NewPostMediaDraft draft;
+  final FeedCreatePostDraft? videoDraft;
+  final String caption;
+
+  const FeedPostPreviewScreen({
+    super.key,
+    required this.draft,
+    required this.videoDraft,
+    required this.caption,
+  });
+
+  @override
+  State<FeedPostPreviewScreen> createState() => _FeedPostPreviewScreenState();
+}
+
+class _FeedPostPreviewScreenState extends State<FeedPostPreviewScreen> {
+  VideoPlayerController? _videoController;
+  bool _videoReady = false;
+  int _photoIndex = 0;
+  late final PageController _photoPageController;
+
+  bool get _isVideo => widget.draft.type == NewPostMediaType.video;
+
+  @override
+  void initState() {
+    super.initState();
+    _photoPageController = PageController();
+    if (_isVideo) _initVideo();
+  }
+
+  @override
+  void dispose() {
+    _videoController?.dispose();
+    _photoPageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _initVideo() async {
+    final path = widget.videoDraft?.finalVideoPath;
+    if (path == null) return;
+    final controller = VideoPlayerController.file(File(path));
+    _videoController = controller;
+    try {
+      await controller.initialize();
+      if (!mounted || _videoController != controller) return;
+      await controller.setLooping(true);
+      await controller.setVolume(0);
+      await controller.play();
+      setState(() => _videoReady = true);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _videoReady = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          // ── Media fullscreen ──
+          Positioned.fill(child: _buildMediaContent()),
+          // ── Top chrome: back button + Preview label ──
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Row(
+                children: [
+                  _PreviewRoundButton(
+                    icon: Icons.arrow_back_rounded,
+                    onTap: () => Navigator.pop(context, false),
+                  ),
+                  const Expanded(
+                    child: Center(
+                      child: Text(
+                        'Preview',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 44),
+                ],
+              ),
+            ),
+          ),
+          // ── Right rail: heart / comment / share (mockup, not interactive) ──
+          const Positioned(
+            right: 14,
+            bottom: 200,
+            child: _PreviewActionRail(),
+          ),
+          // ── Bottom-left creator overlay ──
+          Positioned(
+            left: 16,
+            right: 80,
+            bottom: 120,
+            child: _PreviewCreatorOverlay(caption: widget.caption),
+          ),
+          // ── Bottom action bar: Simpan Draft + Upload ke Feed ──
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          backgroundColor:
+                              Colors.white.withValues(alpha: 0.10),
+                          side: const BorderSide(color: Colors.white24),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        child: const Text(
+                          'Simpan Draft',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _newPostBlue,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        child: const Text(
+                          'Upload ke Feed',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMediaContent() {
+    if (_isVideo) {
+      final ctrl = _videoController;
+      if (_videoReady && ctrl != null && ctrl.value.isInitialized) {
+        return Center(
+          child: AspectRatio(
+            aspectRatio: ctrl.value.aspectRatio,
+            child: VideoPlayer(ctrl),
+          ),
+        );
+      }
+      final thumb = widget.videoDraft?.thumbnailPath;
+      if (thumb != null) {
+        return Image.file(File(thumb), fit: BoxFit.contain);
+      }
+      return const Center(
+        child: SizedBox(
+          width: 32,
+          height: 32,
+          child: CircularProgressIndicator(
+            color: Colors.white,
+            strokeWidth: 2.4,
+          ),
+        ),
+      );
+    }
+    // Photo / carousel.
+    final files = widget.draft.photoFiles;
+    if (files.isEmpty) {
+      return const Center(
+        child: Icon(Icons.image_outlined, color: Colors.white24, size: 64),
+      );
+    }
+    if (files.length == 1) {
+      return Image.file(files.first, fit: BoxFit.contain);
+    }
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        PageView.builder(
+          controller: _photoPageController,
+          itemCount: files.length,
+          onPageChanged: (i) => setState(() => _photoIndex = i),
+          itemBuilder: (context, index) {
+            return Image.file(files[index], fit: BoxFit.contain);
+          },
+        ),
+        Positioned(
+          top: 70,
+          right: 14,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.55),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              '${_photoIndex + 1}/${files.length}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PreviewRoundButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _PreviewRoundButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.black.withValues(alpha: 0.45),
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: SizedBox(
+          width: 40,
+          height: 40,
+          child: Icon(icon, color: Colors.white, size: 20),
+        ),
+      ),
+    );
+  }
+}
+
+/// Right rail mockup — heart, comment, share. NOT interactive — ini cuma
+/// show user bagaimana action buttons akan terlihat di feed publik nanti.
+class _PreviewActionRail extends StatelessWidget {
+  const _PreviewActionRail();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _PreviewActionIcon(icon: Icons.favorite_border_rounded, label: '0'),
+        SizedBox(height: 22),
+        _PreviewActionIcon(
+          icon: Icons.mode_comment_outlined,
+          label: '0',
+        ),
+        SizedBox(height: 22),
+        _PreviewActionIcon(icon: Icons.send_outlined, label: '0'),
+      ],
+    );
+  }
+}
+
+class _PreviewActionIcon extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _PreviewActionIcon({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: Colors.white, size: 32),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PreviewCreatorOverlay extends StatelessWidget {
+  final String caption;
+
+  const _PreviewCreatorOverlay({required this.caption});
+
+  @override
+  Widget build(BuildContext context) {
+    final profile = memberStore.profile;
+    final name = profile?.name ?? 'Kamu';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            ProfileAvatar(
+              initial: profile?.initial ?? 'U',
+              imageUrl: profile?.profilePhotoUrl,
+              size: 34,
+              fontSize: 14,
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (caption.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            caption,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13.5,
+              fontWeight: FontWeight.w600,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

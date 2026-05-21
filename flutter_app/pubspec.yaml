@@ -1,7 +1,7 @@
 name: natalo_petshop_flutter
 description: Native Flutter app for Natalo Petshop.
 publish_to: none
-version: 1.0.55+94
+version: 1.0.56+95
 environment:
   sdk: '>=3.0.0 <4.0.0'
   flutter: '>=3.7.0'
@@ -107,6 +107,12 @@ dependencies:
   # geolocation API yang Capacitor PWA pakai.
   geolocator: ^13.0.4
   video_compress: ^3.1.4
+  # Image compression sebelum upload — required karena Vercel serverless
+  # limit body 4.5MB. Photo manager API kasih file original (4-6MB iPhone),
+  # tanpa compress akan trigger 413 Request Entity Too Large. Pakai
+  # FlutterImageCompress.compressAndGetFile dengan target 1920×1920 quality
+  # 75 → ~500KB-1MB JPEG.
+  flutter_image_compress: ^2.3.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
