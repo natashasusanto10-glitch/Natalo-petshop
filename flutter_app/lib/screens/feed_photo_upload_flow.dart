@@ -48,8 +48,17 @@ class _FeedPhotoPickerScreenState extends State<FeedPhotoPickerScreen> {
     try {
       // image_picker pickMultiImage — system handles multi-select UI.
       // Default limit unlimited, kita enforce 1-8 di client side.
+      //
+      // maxWidth/maxHeight 1920: auto-downsize foto besar sebelum di-load
+      // ke device memory. iPhone 15 camera 4032×3024 = ~5MB JPEG, di-resize
+      // ke 1920×1440 jadi ~500KB (10x smaller). Critical untuk upload speed
+      // di 4G Indonesia (5-15 Mbps): 8 foto × 5MB = 40MB raw upload (60s),
+      // setelah resize 8 × 500KB = 4MB (6s). 10x lebih cepat tanpa quality
+      // loss yang noticeable di display feed (max viewport phone ~1170px).
       final picked = await _picker.pickMultiImage(
         imageQuality: 85,
+        maxWidth: 1920,
+        maxHeight: 1920,
         limit: _kPhotoMax,
       );
       if (picked.isEmpty) {

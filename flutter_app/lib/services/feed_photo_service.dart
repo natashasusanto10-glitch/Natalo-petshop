@@ -82,9 +82,19 @@ class FeedPhotoService {
     return (url: url, key: key);
   }
 
-  /// Batch upload 1-8 foto paralel via Future.wait. Return list of
-  /// uploaded photo data (url + key) dengan urutan SAMA dengan input
-  /// files (penting untuk sortOrder carousel).
+  /// Batch upload 1-8 foto dengan concurrency cap 4 — 4 upload paralel
+  /// jalan bersamaan, sisanya queue setelah ada slot kosong. Cap 4 karena:
+  ///   - HTTP/1.1 default cap connection per host = 6, kasih 2 spare untuk
+  ///     other traffic (analytics, push refresh)
+  ///   - Backend rate limit /api/feed/upload-photo masih comfortable
+  ///   - Concurrent encode overhead Vercel function tetap acceptable
+  ///
+  /// Result list di-preserve urutan SAMA dengan input files via index
+  /// pre-allocation (penting untuk sortOrder carousel).
+  ///
+  /// Performance gain (8 foto × ~4s upload via Vercel proxy):
+  ///   - Sebelum (serial): ~32 detik
+  ///   - Sesudah (parallel cap 4): ~8-12 detik
   ///
   /// Kalau ada upload yang gagal, throw exception — partial upload
   /// tidak commit ke backend. UploadThing assets yang terlanjur upload
@@ -95,19 +105,39 @@ class FeedPhotoService {
     void Function(int done, int total)? onProgress,
   }) async {
     if (files.isEmpty) return [];
-    final results = <({String url, String? key})>[];
+    const concurrency = 4;
+    final results = List<({String url, String? key})?>.filled(
+      files.length,
+      null,
+      growable: false,
+    );
     var done = 0;
-    for (final file in files) {
-      // Serial upload (bukan parallel) supaya:
-      //  1. Backend rate limit aman
-      //  2. Progress indicator akurat
-      //  3. User punya time untuk cancel kalau perlu (future)
-      final uploaded = await uploadSinglePhoto(file);
-      results.add(uploaded);
-      done++;
-      onProgress?.call(done, files.length);
+    final pending = List.generate(files.length, (i) => i);
+
+    Future<void> worker() async {
+      while (true) {
+        if (pending.isEmpty) return;
+        final index = pending.removeAt(0);
+        final file = files[index];
+        final uploaded = await uploadSinglePhoto(file);
+        results[index] = uploaded;
+        done++;
+        onProgress?.call(done, files.length);
+      }
     }
-    return results;
+
+    // Spawn N workers, semua kerja dari shared queue. Future.wait
+    // bubble-up exception dari worker manapun → seluruh batch fail.
+    await Future.wait(
+      List.generate(
+        concurrency.clamp(1, files.length),
+        (_) => worker(),
+      ),
+    );
+
+    // results sudah pasti non-null karena worker isi semua slot sebelum
+    // return. Cast aman.
+    return results.cast<({String url, String? key})>();
   }
 
   /// Create PHOTO_CAROUSEL FeedPost dengan media + caption + product tags.
