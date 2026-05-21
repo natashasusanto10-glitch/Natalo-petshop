@@ -139,6 +139,38 @@ export async function sendFcmToUser(userId: string, payload: FcmPayload) {
           ...(payload.imageUrl ? { imageUrl: payload.imageUrl } : {}),
         },
       },
+      // iOS via FCM — Firebase forward ke APNs. Tanpa block ini, default
+      // payload aps yang FCM generate cuma punya `alert` (banner), TANPA
+      // sound + badge + mutable-content. Akibatnya iOS user dapat banner
+      // SILENT (no sound), badge counter app icon tidak naik, dan rich
+      // image attachment tidak trigger Notification Service Extension.
+      apns: {
+        headers: {
+          // Priority 10 = immediate delivery (vs 5 = throttled).
+          // Wajib untuk alert push iOS 13+.
+          "apns-priority": "10",
+          // pushType "alert" = visible banner (vs "background" = silent).
+          // Wajib iOS 13+ untuk visible notification.
+          "apns-push-type": "alert",
+        },
+        payload: {
+          aps: {
+            sound: "default",
+            badge: 1,
+            // mutable-content=1 → iOS deliver notif ke Notification Service
+            // Extension dulu. NSE bisa fetch image + attach sebagai preview
+            // di banner. Hanya set kalau ada imageUrl supaya text-only notif
+            // tidak overhead extension launch.
+            "mutable-content": payload.imageUrl ? 1 : 0,
+          },
+        },
+        // fcm_options.image → Firebase iOS SDK NSE auto-fetch image dan
+        // attach ke notif. Bundled di pod 'Firebase/Messaging' — tidak
+        // butuh extra NSE target di Xcode (Firebase iOS handles it).
+        ...(payload.imageUrl
+          ? { fcmOptions: { imageUrl: payload.imageUrl } }
+          : {}),
+      },
     });
 
     // Cleanup invalid tokens (UNREGISTERED, INVALID_ARGUMENT, etc).
