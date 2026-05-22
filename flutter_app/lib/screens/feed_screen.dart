@@ -432,6 +432,11 @@ class _FeedScreenState extends State<FeedScreen> {
               RefreshIndicator(
                 color: Colors.white,
                 backgroundColor: Colors.black87,
+                // Wider displacement supaya pull-down feel lebih elastic —
+                // user tarik lebih jauh sebelum trigger refresh, match
+                // iOS rubber-band feel di TikTok / IG Reels.
+                displacement: 80,
+                strokeWidth: 2.6,
                 notificationPredicate: (notification) {
                   return canRefresh && notification.depth == 0;
                 },
@@ -446,7 +451,13 @@ class _FeedScreenState extends State<FeedScreen> {
                     scrollDirection: Axis.vertical,
                     physics: _interactionLocked
                         ? const NeverScrollableScrollPhysics()
-                        : const PageScrollPhysics(),
+                        // BouncingScrollPhysics di parent untuk rubber-band
+                        // overscroll di Android (iOS default sudah elastic).
+                        // PageScrollPhysics di-keep untuk page snap behavior
+                        // (TikTok-style snap per post).
+                        : const PageScrollPhysics(
+                            parent: BouncingScrollPhysics(),
+                          ),
                     itemCount: visible.length,
                     onPageChanged: _onPageChanged,
                     itemBuilder: (context, index) {

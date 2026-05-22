@@ -120,13 +120,38 @@ class NataloPostActionButton extends StatelessWidget {
                   children: [
                     iconWidget,
                     const SizedBox(width: 6),
-                    Text(
-                      _formatActionCount(count!),
-                      style: TextStyle(
-                        color: isDisabled ? disabledColor : countColor,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        height: 1.0,
+                    // AnimatedSwitcher untuk count → angka baru slide up
+                    // dari bawah, angka lama slide up keluar atas. IG /
+                    // Twitter pattern saat like count naik 1. ValueKey wajib
+                    // supaya widget di-rebuild saat count berubah.
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 240),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      transitionBuilder: (child, animation) {
+                        final inAnim = Tween<Offset>(
+                          begin: const Offset(0, 0.6),
+                          end: Offset.zero,
+                        ).animate(animation);
+                        return ClipRect(
+                          child: SlideTransition(
+                            position: inAnim,
+                            child: FadeTransition(
+                              opacity: animation,
+                              child: child,
+                            ),
+                          ),
+                        );
+                      },
+                      child: Text(
+                        _formatActionCount(count!),
+                        key: ValueKey<int>(count!),
+                        style: TextStyle(
+                          color: isDisabled ? disabledColor : countColor,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          height: 1.0,
+                        ),
                       ),
                     ),
                   ],

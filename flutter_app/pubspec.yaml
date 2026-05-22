@@ -1,7 +1,7 @@
 name: natalo_petshop_flutter
 description: Native Flutter app for Natalo Petshop.
 publish_to: none
-version: 1.0.72+111
+version: 1.0.73+112
 environment:
   sdk: '>=3.0.0 <4.0.0'
   flutter: '>=3.7.0'
@@ -126,6 +126,12 @@ dependencies:
   # CADisableMinimumFrameDurationOnPhone. Effect terasa di feed scroll +
   # carousel swipe + video transition (2x lebih smooth).
   flutter_displaymode: ^0.6.0
+  # Emoji picker — keyboard kategori (Smileys, Animals, Food, dst) buat
+  # composer caption & komentar. IG/TT-style: tap 😀 button di samping
+  # input → bottom panel kategori. Tap emoji → inject ke TextField
+  # controller di posisi cursor. Plain Unicode emoji (no image asset),
+  # cross-platform rendering native via font.
+  emoji_picker_flutter: ^4.0.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

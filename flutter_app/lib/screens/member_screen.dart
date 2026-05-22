@@ -476,9 +476,25 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
         controller: controller,
         labelColor: _brandBlue,
         unselectedLabelColor: _textSecondary,
-        indicatorColor: _brandBlue,
-        indicatorWeight: 2,
+        // Custom UnderlineTabIndicator dengan ketebalan 3 + bottom inset
+        // 4dp supaya indikator floating subtle di bawah icon, bukan
+        // nempel mati di edge bottom. Animated transition antar tab
+        // langsung di-handle Flutter TabBar (200ms ease-in-out default).
+        indicator: UnderlineTabIndicator(
+          borderSide: const BorderSide(color: _brandBlue, width: 3),
+          borderRadius: BorderRadius.circular(3),
+          insets: const EdgeInsets.symmetric(horizontal: 16),
+        ),
         indicatorSize: TabBarIndicatorSize.label,
+        // Hide old static indicatorColor/Weight props karena kita pakai
+        // custom UnderlineTabIndicator di atas.
+        indicatorColor: _brandBlue,
+        indicatorWeight: 0.001,
+        // Splash + hover di-disable supaya tap area clean — bukan ada
+        // splash bulat material yang clash dengan custom indicator.
+        splashFactory: NoSplash.splashFactory,
+        overlayColor:
+            WidgetStateProperty.all<Color>(Colors.transparent),
         labelStyle: const TextStyle(
           fontSize: 0,
           fontWeight: FontWeight.w800,
