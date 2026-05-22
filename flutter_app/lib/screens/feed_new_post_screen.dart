@@ -12,6 +12,7 @@ import '../services/feed_service.dart';
 import '../state/member_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
+import '../utils/photo_filter.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/profile_avatar.dart';
 import 'feed_photo_upload_flow.dart';
@@ -71,8 +72,13 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
   List<Product> _visibleProducts = const [];
   bool _loadingProducts = true;
   bool _savingDraft = false;
+  bool _bakingFilters = false;
   String? _error;
   int _photoIndex = 0;
+  // Filter terpilih per-index foto di carousel. Default `none` (Original)
+  // untuk semua foto. State independen per index supaya user bisa pilih
+  // filter beda untuk tiap foto di 1 post (parity dengan Instagram).
+  final Map<int, PhotoFilter> _photoFilters = {};
 
   bool get _isVideo => widget.draft.type == NewPostMediaType.video;
 
@@ -293,11 +299,34 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
           () => _error = 'Media belum bisa diproses. Coba pilih ulang media.');
       return;
     }
+
+    // Bake filter ke bytes sebelum upload — supaya backend terima foto
+    // yang sudah berfiltter, bukan original. Skip kalau semua foto pilih
+    // Original (Map kosong = tidak ada filter aktif).
+    var filesToUpload = files;
+    if (_photoFilters.isNotEmpty) {
+      setState(() => _bakingFilters = true);
+      try {
+        // Process per-index dengan filter yang dipilih user. Index tanpa
+        // entry di map = Original, skip bake (return source asli).
+        final baked = <File>[];
+        for (var i = 0; i < files.length; i++) {
+          final filter = _photoFilters[i] ?? PhotoFilter.none;
+          final out = await applyPhotoFilter(files[i], filter);
+          baked.add(out);
+        }
+        filesToUpload = baked;
+      } finally {
+        if (mounted) setState(() => _bakingFilters = false);
+      }
+    }
+
+    if (!mounted) return;
     await Navigator.pushReplacement(
       context,
       MaterialPageRoute(
         builder: (_) => FeedPhotoUploadProgressScreen(
-          files: files,
+          files: filesToUpload,
           title: caption.isEmpty ? 'Postingan baru' : caption,
           productIds: productIds,
         ),
@@ -419,6 +448,7 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
                         videoController: _videoController,
                         photoIndex: _photoIndex,
                         photoPageController: _photoPageController,
+                        photoFilters: _photoFilters,
                         onPhotoChanged: (index) =>
                             setState(() => _photoIndex = index),
                         // Rewire: video tap → open preview (bukan toggle
@@ -428,6 +458,26 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
                         onEditCover: _editCover,
                       ),
                     ),
+                    // Filter strip — hanya untuk foto, tidak untuk video.
+                    // Per-foto filter state (carousel mode): tap foto di
+                    // PageView → swipe → strip update ke filter foto aktif.
+                    if (!_isVideo && widget.draft.photoFiles.isNotEmpty) ...[
+                      const SizedBox(height: 14),
+                      _PhotoFilterStrip(
+                        sourceFile: widget.draft.photoFiles[_photoIndex],
+                        selected: _photoFilters[_photoIndex] ?? PhotoFilter.none,
+                        onSelected: (filter) {
+                          AppHaptics.selection();
+                          setState(() {
+                            if (filter == PhotoFilter.none) {
+                              _photoFilters.remove(_photoIndex);
+                            } else {
+                              _photoFilters[_photoIndex] = filter;
+                            }
+                          });
+                        },
+                      ),
+                    ],
                     const SizedBox(height: 24),
                     const _SectionTitle('Caption'),
                     const SizedBox(height: 10),
@@ -465,6 +515,7 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
               ),
               _BottomActions(
                 uploadEnabled: _error == null,
+                busy: _bakingFilters,
                 onUpload: _upload,
               ),
             ],
@@ -486,6 +537,7 @@ class _MediaPreview extends StatelessWidget {
   final VideoPlayerController? videoController;
   final int photoIndex;
   final PageController photoPageController;
+  final Map<int, PhotoFilter> photoFilters;
   final ValueChanged<int> onPhotoChanged;
   final VoidCallback onToggleVideo;
   final VoidCallback onEditCover;
@@ -496,6 +548,7 @@ class _MediaPreview extends StatelessWidget {
     required this.videoController,
     required this.photoIndex,
     required this.photoPageController,
+    required this.photoFilters,
     required this.onPhotoChanged,
     required this.onToggleVideo,
     required this.onEditCover,
@@ -529,7 +582,15 @@ class _MediaPreview extends StatelessWidget {
                 itemCount: files.length,
                 onPageChanged: onPhotoChanged,
                 itemBuilder: (context, index) {
-                  return Image.file(files[index], fit: BoxFit.cover);
+                  final image = Image.file(files[index], fit: BoxFit.cover);
+                  // Wrap dengan ColorFiltered hanya kalau ada filter aktif —
+                  // hemat 1 render pass untuk foto tanpa filter (Original).
+                  final filter = photoFilters[index]?.colorFilter;
+                  if (filter == null) return image;
+                  return ColorFiltered(
+                    colorFilter: filter,
+                    child: image,
+                  );
                 },
               ),
             if (!isVideo && files.length > 1)
@@ -1030,15 +1091,18 @@ class _PurchasedProductCard extends StatelessWidget {
 
 class _BottomActions extends StatelessWidget {
   final bool uploadEnabled;
+  final bool busy;
   final VoidCallback onUpload;
 
   const _BottomActions({
     required this.uploadEnabled,
+    required this.busy,
     required this.onUpload,
   });
 
   @override
   Widget build(BuildContext context) {
+    final disabled = !uploadEnabled || busy;
     return SafeArea(
       top: false,
       child: Container(
@@ -1051,7 +1115,7 @@ class _BottomActions extends StatelessWidget {
           width: double.infinity,
           height: 56,
           child: FilledButton(
-            onPressed: uploadEnabled ? onUpload : null,
+            onPressed: disabled ? null : onUpload,
             style: FilledButton.styleFrom(
               backgroundColor: _newPostBlue,
               disabledBackgroundColor: const Color(0xFFCBD5E1),
@@ -1063,7 +1127,24 @@ class _BottomActions extends StatelessWidget {
                 fontWeight: FontWeight.w900,
               ),
             ),
-            child: const Text('Upload ke Feed'),
+            child: busy
+                ? const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.4,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      ),
+                      SizedBox(width: 12),
+                      Text('Memproses foto...'),
+                    ],
+                  )
+                : const Text('Upload ke Feed'),
           ),
         ),
       ),
@@ -1101,6 +1182,108 @@ class _ErrorBox extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Horizontal strip preset filter foto. Render mini-preview foto user
+/// dengan masing-masing filter applied via `ColorFiltered` widget — user
+/// lihat hasil filter SEBELUM tap. Selected filter di-highlight dengan
+/// border biru + scale up subtle.
+///
+/// Source file = foto aktif di carousel (yang lagi di-preview di
+/// `_MediaPreview` PageView). Saat user swipe carousel → strip re-render
+/// dengan source baru → user pilih filter independent per foto.
+class _PhotoFilterStrip extends StatelessWidget {
+  final File sourceFile;
+  final PhotoFilter selected;
+  final ValueChanged<PhotoFilter> onSelected;
+
+  const _PhotoFilterStrip({
+    required this.sourceFile,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  static const _thumbSize = 64.0;
+
+  @override
+  Widget build(BuildContext context) {
+    const filters = PhotoFilter.values;
+    return SizedBox(
+      height: _thumbSize + 26, // thumb + label gap
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        itemCount: filters.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (context, index) {
+          final filter = filters[index];
+          final isSelected = filter == selected;
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => onSelected(filter),
+            child: Column(
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 140),
+                  curve: Curves.easeOut,
+                  width: _thumbSize,
+                  height: _thumbSize,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: isSelected ? _newPostBlue : _newPostBorder,
+                      width: isSelected ? 2.4 : 1,
+                    ),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: _FilteredThumb(
+                      file: sourceFile,
+                      filter: filter,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  filter.label,
+                  style: TextStyle(
+                    color: isSelected ? _newPostBlue : _newPostMuted,
+                    fontSize: 11,
+                    fontWeight:
+                        isSelected ? FontWeight.w900 : FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Mini thumbnail dengan filter applied — render Image.file dengan
+/// `ColorFiltered`. Image decoder cached di Flutter sehingga 6 thumb
+/// sama-source tidak decode 6× (1 decode, reused di semua wrap filter).
+class _FilteredThumb extends StatelessWidget {
+  final File file;
+  final PhotoFilter filter;
+
+  const _FilteredThumb({required this.file, required this.filter});
+
+  @override
+  Widget build(BuildContext context) {
+    final image = Image.file(
+      file,
+      fit: BoxFit.cover,
+      // cacheWidth low-res supaya decode cepat untuk strip preview saja —
+      // bukan untuk display utama. Hemat memory + render time.
+      cacheWidth: 192,
+    );
+    final colorFilter = filter.colorFilter;
+    if (colorFilter == null) return image;
+    return ColorFiltered(colorFilter: colorFilter, child: image);
   }
 }
 
