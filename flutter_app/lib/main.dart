@@ -1,7 +1,10 @@
+import 'dart:io' show Platform;
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_displaymode/flutter_displaymode.dart';
 
 import 'firebase_options.dart';
 import 'models/app_notification.dart';
@@ -77,6 +80,18 @@ String _initialRoute = '/';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Android high refresh rate opt-in — Galaxy S / Pixel Pro / OnePlus dll
+  // default locked 60fps di Flutter walau hardware support 90/120Hz.
+  // Call ini cari display mode dengan refresh rate tertinggi yang fit
+  // resolution native, lalu pakai. iOS auto-handle 120Hz via Info.plist.
+  //
+  // Fire-and-forget — kalau gagal (device tidak support / API tidak ada),
+  // app tetap boot di 60fps. Log only di debug.
+  if (Platform.isAndroid) {
+    FlutterDisplayMode.setHighRefreshRate().catchError((Object e) {
+      if (kDebugMode) debugPrint('[main] setHighRefreshRate failed: $e');
+    });
+  }
   // Firebase core init — wajib sebelum messaging/crashlytics/analytics dipakai.
   // Pakai DefaultFirebaseOptions yang di-generate FlutterFire CLI dari
   // google-services.json (Android) + GoogleService-Info.plist (iOS). Wrap

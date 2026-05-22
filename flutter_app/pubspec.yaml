@@ -1,7 +1,7 @@
 name: natalo_petshop_flutter
 description: Native Flutter app for Natalo Petshop.
 publish_to: none
-version: 1.0.71+110
+version: 1.0.72+111
 environment:
   sdk: '>=3.0.0 <4.0.0'
   flutter: '>=3.7.0'
@@ -120,6 +120,12 @@ dependencies:
   # flutter_image_compress hanya resize, tidak punya crop function — jadi
   # butuh image package.
   image: ^4.5.4
+  # Android high refresh rate — opt-in ke 90/120Hz di Samsung Galaxy S /
+  # Pixel Pro / OnePlus dll. Tanpa ini Android default locked 60fps walau
+  # device support 120Hz. iOS sudah auto 120fps via Info.plist
+  # CADisableMinimumFrameDurationOnPhone. Effect terasa di feed scroll +
+  # carousel swipe + video transition (2x lebih smooth).
+  flutter_displaymode: ^0.6.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
