@@ -31,8 +31,8 @@
  *     uploadHeaders: { AccessKey: string, "Content-Type": "application/octet-stream" }
  *   }
  *
- * Rate-limited: same 3-per-24h cap as the legacy /api/feed/upload-video
- * route. Admin sessions exempt.
+ * Rate-limited: 10 VIDEO uploads / 24h (count over VIDEO_ONLY + COMMUNITY
+ * kinds — PHOTO_CAROUSEL unlimited & tidak counted). Admin sessions exempt.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -82,15 +82,21 @@ export async function POST(request: NextRequest) {
 
   const isAdmin = session.role === "ADMIN";
 
-  // Rate limit — same logic as legacy upload-video.
+  // Rate limit — count ONLY video kinds (VIDEO_ONLY + COMMUNITY) supaya
+  // PHOTO_CAROUSEL post (yang unlimited) tidak ikut burn video slot.
+  // Heavy photo poster harusnya tetap bisa upload 10 video/hari penuh.
   if (!isAdmin) {
     const since = new Date(Date.now() - RATE_LIMIT_WINDOW_MS);
     const recent = await prisma.feedPost.count({
-      where: { authorId: session.sub, createdAt: { gte: since } },
+      where: {
+        authorId: session.sub,
+        createdAt: { gte: since },
+        kind: { in: ["VIDEO_ONLY", "COMMUNITY"] },
+      },
     });
     if (recent >= CUSTOMER_RATE_LIMIT_PER_DAY) {
       return NextResponse.json(
-        { error: `Batas upload tercapai (${CUSTOMER_RATE_LIMIT_PER_DAY}/hari). Coba lagi besok.` },
+        { error: `Batas upload video tercapai (${CUSTOMER_RATE_LIMIT_PER_DAY}/hari). Coba lagi besok atau post foto.` },
         { status: 429 },
       );
     }

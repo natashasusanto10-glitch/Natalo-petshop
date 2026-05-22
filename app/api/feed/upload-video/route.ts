@@ -27,9 +27,12 @@ const ALLOWED_TYPES = new Set([
   "video/quicktime", // iOS .mov
 ]);
 
-// Customer-side feed upload limit. Counts posts (FeedPost rows) created
-// in the last 24h by the same user, regardless of moderation status —
-// so a flood of upload→reject loops still counts. Admins exempt.
+// Customer-side feed VIDEO upload limit. Counts ONLY video FeedPost rows
+// (VIDEO_ONLY + COMMUNITY) created in the last 24h by the same user,
+// regardless of moderation status — so a flood of upload→reject loops still
+// counts. Photo carousel posts (PHOTO_CAROUSEL) are unlimited dan TIDAK
+// di-count di sini supaya heavy photo poster tidak ikut nge-block video
+// upload slot. Admins exempt.
 const CUSTOMER_RATE_LIMIT_PER_DAY = 10;
 const RATE_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 export async function POST(request: NextRequest) {
@@ -66,20 +69,24 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Customer rate limit: max 10 uploads / 24h. Admins exempt — they post
-  // promo and curated content. Count is over FeedPost (the metadata row
-  // that actually gets committed) so a half-finished upload doesn't burn
-  // a slot. Net effect: a spammer who tries to flood the moderation
-  // queue gets a 429 after their 10th successful submission.
+  // Customer rate limit: max 10 VIDEO uploads / 24h. Admins exempt — they
+  // post promo and curated content. Count over VIDEO_ONLY + COMMUNITY kinds
+  // saja (exclude PHOTO_CAROUSEL — photo unlimited per product decision).
+  // Tanpa filter kind, heavy photo poster akan ikut burn video slot meski
+  // belum upload video sekalipun = bad UX.
   if (session.role !== "ADMIN") {
     const since = new Date(Date.now() - RATE_LIMIT_WINDOW_MS);
     const recentCount = await prisma.feedPost.count({
-      where: { authorId: session.sub, createdAt: { gte: since } },
+      where: {
+        authorId: session.sub,
+        createdAt: { gte: since },
+        kind: { in: ["VIDEO_ONLY", "COMMUNITY"] },
+      },
     });
     if (recentCount >= CUSTOMER_RATE_LIMIT_PER_DAY) {
       return NextResponse.json(
         {
-          error: `Batas upload tercapai (${CUSTOMER_RATE_LIMIT_PER_DAY}/hari). Coba lagi besok.`,
+          error: `Batas upload video tercapai (${CUSTOMER_RATE_LIMIT_PER_DAY}/hari). Coba lagi besok atau post foto.`,
         },
         { status: 429 },
       );
