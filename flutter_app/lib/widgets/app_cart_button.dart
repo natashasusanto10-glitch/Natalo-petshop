@@ -15,12 +15,23 @@ class AppCartButton extends StatefulWidget {
 
   const AppCartButton({super.key, this.onPressed});
 
-  /// Static key untuk track posisi icon — dipakai oleh `flyImageToCart()`
-  /// animation untuk tahu target koordinat saat user tap "Add to Cart"
-  /// di product detail. Hanya 1 cart button visible at-a-time di app
-  /// (di app bar screen aktif), jadi single static key aman secara
-  /// praktis. Detached saat widget dispose → null lookup graceful.
-  static final GlobalKey iconKey = GlobalKey(debugLabel: 'AppCartButton-icon');
+  /// Cart icon ada di BANYAK screen (Beranda, Produk, Wishlist, dst).
+  /// IndexedStack keep semua tab alive → multiple AppCartButton coexist.
+  /// Static GlobalKey TIDAK boleh dipakai untuk multi-instance — Flutter
+  /// rule: 1 GlobalKey = 1 widget. Sebelumnya pakai single static key
+  /// → bug "cart icon hilang dari Beranda" karena Flutter diam-diam
+  /// drop instance kedua.
+  ///
+  /// Fix: per-instance key di state + static `activeIconKey` yang track
+  /// instance terakhir attached. `flyImageToCart()` baca `activeIconKey`
+  /// untuk dapat posisi target. Default ke instance latest visible
+  /// (yang user lihat saat tap "Add to Cart") — tetap akurat untuk
+  /// 99% kasus karena animation fly DI screen yang sama.
+  static GlobalKey? _activeIconKey;
+
+  /// Cart icon yang sedang attached terakhir — null kalau belum ada
+  /// AppCartButton yang ke-build (mis. di splash / login screen).
+  static GlobalKey? get activeIconKey => _activeIconKey;
 
   @override
   State<AppCartButton> createState() => _AppCartButtonState();
@@ -30,12 +41,19 @@ class _AppCartButtonState extends State<AppCartButton>
     with SingleTickerProviderStateMixin {
   late final AnimationController _pulseCtrl;
   late final Animation<double> _pulseScale;
+  // Per-instance GlobalKey supaya tidak konflik dengan AppCartButton lain
+  // yang concurrent alive di tab lain (IndexedStack).
+  final GlobalKey _iconKey = GlobalKey(debugLabel: 'AppCartButton-icon');
   int _prevCount = 0;
 
   @override
   void initState() {
     super.initState();
     _prevCount = cartStore.count;
+    // Register sebagai active cart icon — flyImageToCart() akan target
+    // posisi key ini. Multiple register OK, latest wins (biasanya tab
+    // aktif terakhir di-build).
+    AppCartButton._activeIconKey = _iconKey;
     _pulseCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 340),
@@ -58,9 +76,24 @@ class _AppCartButtonState extends State<AppCartButton>
 
   @override
   void dispose() {
+    // Clear activeIconKey hanya kalau masih nunjuk ke instance ini —
+    // kalau instance lain sudah overwrite (mis. user pindah tab),
+    // biarkan saja supaya `activeIconKey` tetap pointing ke yang aktif.
+    if (AppCartButton._activeIconKey == _iconKey) {
+      AppCartButton._activeIconKey = null;
+    }
     cartStore.removeListener(_onCartChanged);
     _pulseCtrl.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Setiap kali widget jadi visible (tab switch dengan IndexedStack
+    // tidak rebuild state, tapi rebuild widget tree), claim active key
+    // supaya fly-to-cart animation target icon yang user lihat sekarang.
+    AppCartButton._activeIconKey = _iconKey;
   }
 
   void _onCartChanged() {
@@ -85,11 +118,12 @@ class _AppCartButtonState extends State<AppCartButton>
               tooltip: 'Keranjang',
               onPressed: widget.onPressed ??
                   () => Navigator.pushNamed(context, '/cart'),
-              // Wrap icon dgn KeyedSubtree(key: AppCartButton.iconKey)
-              // supaya fly-to-cart animation bisa lookup posisi target
-              // via GlobalKey.currentContext.findRenderObject().
+              // Wrap icon dgn KeyedSubtree(key: _iconKey) — per-instance
+              // key supaya tidak konflik dengan AppCartButton di tab lain.
+              // flyImageToCart() lookup via AppCartButton.activeIconKey
+              // yang track instance terakhir aktif.
               icon: KeyedSubtree(
-                key: AppCartButton.iconKey,
+                key: _iconKey,
                 child: const Icon(Icons.shopping_cart_outlined),
               ),
             ),

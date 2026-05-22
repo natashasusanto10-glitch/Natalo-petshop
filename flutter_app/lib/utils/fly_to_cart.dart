@@ -38,7 +38,9 @@ Future<void> flyImageToCart({
 
   final sourceBox =
       sourceKey.currentContext?.findRenderObject() as RenderBox?;
-  final cartBox = AppCartButton.iconKey.currentContext
+  // activeIconKey nullable — kalau tidak ada cart icon visible (mis. user
+  // di screen tanpa header cart), skip animasi tanpa crash.
+  final cartBox = AppCartButton.activeIconKey?.currentContext
       ?.findRenderObject() as RenderBox?;
   if (sourceBox == null || cartBox == null) return;
 
