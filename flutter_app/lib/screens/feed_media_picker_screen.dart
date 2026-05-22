@@ -4,6 +4,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
+import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
@@ -35,17 +37,49 @@ const _tileBg = Color(0xFF1F2937);
 // Grid tile = 1.10× (10% boost, subtle untuk banyak thumbnails sekaligus).
 
 const _previewSaturationMatrix = <double>[
-  1.118, -0.107, -0.011, 0, 0,
-  -0.032, 1.043, -0.011, 0, 0,
-  -0.032, -0.107, 1.139, 0, 0,
-  0, 0, 0, 1, 0,
+  1.118,
+  -0.107,
+  -0.011,
+  0,
+  0,
+  -0.032,
+  1.043,
+  -0.011,
+  0,
+  0,
+  -0.032,
+  -0.107,
+  1.139,
+  0,
+  0,
+  0,
+  0,
+  0,
+  1,
+  0,
 ];
 
 const _gridSaturationMatrix = <double>[
-  1.079, -0.072, -0.007, 0, 0,
-  -0.021, 1.029, -0.007, 0, 0,
-  -0.021, -0.072, 1.093, 0, 0,
-  0, 0, 0, 1, 0,
+  1.079,
+  -0.072,
+  -0.007,
+  0,
+  0,
+  -0.021,
+  1.029,
+  -0.007,
+  0,
+  0,
+  -0.021,
+  -0.072,
+  1.093,
+  0,
+  0,
+  0,
+  0,
+  0,
+  1,
+  0,
 ];
 
 enum FeedPostContentType {
@@ -149,7 +183,9 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
       type: RequestType.common, // foto + video
       onlyAll: false,
       filterOption: FilterOptionGroup(
-        orders: [const OrderOption(type: OrderOptionType.createDate, asc: false)],
+        orders: [
+          const OrderOption(type: OrderOptionType.createDate, asc: false)
+        ],
       ),
     );
     if (!mounted || albums.isEmpty) {
@@ -227,7 +263,8 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
     setState(() {
       _previewAsset = asset;
       _previewPath = path;
-      _previewType = isVideo ? FeedPostContentType.video : FeedPostContentType.image;
+      _previewType =
+          isVideo ? FeedPostContentType.video : FeedPostContentType.image;
       _previewDurationSec = isVideo ? asset.duration : null;
     });
     if (isVideo) {
@@ -292,6 +329,99 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
     } catch (_) {
       return null;
     }
+  }
+
+  // ─── Photo crop: center-crop ke 4:5 (Instagram-style WYSIWYG) ─────
+  // Source foto bisa apa saja (9:16 HP screenshot, 4:3 DSLR, 1:1 square,
+  // 16:9 landscape). Picker preview show 4:5 cropbox, jadi file actual
+  // harus di-crop center ke 4:5 sebelum upload — supaya feed display
+  // (yang juga clamp ke 4:5) tidak crop ulang & user dapat WYSIWYG.
+  //
+  // Behavior:
+  //   - aspect < 0.8 (lebih tall, mis. 9:16) → crop tinggi, lebar full
+  //   - aspect > 0.8 (lebih wide, mis. 4:3, 1:1) → crop lebar, tinggi full
+  //   - aspect == 0.8 (sudah 4:5) → no-op, skip decode/encode untuk speed
+  //
+  // Limit max long-side 2160px supaya hasil tidak gigantic (iPhone foto
+  // 12MP = ~4032×3024 → setelah crop ke 4:5 jadi ~2419×3024 → resize
+  // proportional ke max 2160 di long side). Vercel upload limit 4.5MB
+  // tidak akan kena dengan ukuran ini di JPEG quality 88.
+  static const double _targetAspect = 4.0 / 5.0; // 0.8
+  static const double _aspectEpsilon = 0.005;
+  static const int _maxLongSide = 2160;
+  static const int _jpegQuality = 88;
+
+  Future<List<File>> _cropPhotosTo4x5(List<File> sources) async {
+    final results = <File>[];
+    for (final source in sources) {
+      final cropped = await _cropPhotoTo4x5(source);
+      results.add(cropped);
+    }
+    return results;
+  }
+
+  Future<File> _cropPhotoTo4x5(File source) async {
+    final bytes = await source.readAsBytes();
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) {
+      // Decode gagal — fallback ke source asli daripada gagal total.
+      // Feed display akan crop via BoxFit.cover sebagai safety net.
+      return source;
+    }
+    // Apply EXIF orientation supaya portrait/landscape benar (iPhone
+    // simpan landscape sensor + EXIF rotate flag → kalau tidak di-bake
+    // crop dilakukan di orientasi salah).
+    final oriented = img.bakeOrientation(decoded);
+    final srcW = oriented.width;
+    final srcH = oriented.height;
+    final srcAspect = srcW / srcH;
+
+    img.Image cropped;
+    if ((srcAspect - _targetAspect).abs() <= _aspectEpsilon) {
+      // Sudah ~4:5, skip crop step (tetap perlu re-encode kalau resize).
+      cropped = oriented;
+    } else if (srcAspect < _targetAspect) {
+      // Source lebih tall (mis. 9:16) → keep width full, crop tinggi.
+      final targetH = (srcW / _targetAspect).round();
+      final y = ((srcH - targetH) / 2).round();
+      cropped = img.copyCrop(
+        oriented,
+        x: 0,
+        y: y,
+        width: srcW,
+        height: targetH,
+      );
+    } else {
+      // Source lebih wide (mis. 4:3, 1:1, 16:9) → keep height full, crop lebar.
+      final targetW = (srcH * _targetAspect).round();
+      final x = ((srcW - targetW) / 2).round();
+      cropped = img.copyCrop(
+        oriented,
+        x: x,
+        y: 0,
+        width: targetW,
+        height: srcH,
+      );
+    }
+
+    // Resize ke max long-side 2160 kalau perlu. Long side untuk 4:5 =
+    // height (karena portrait), so cap height.
+    if (cropped.height > _maxLongSide) {
+      cropped = img.copyResize(
+        cropped,
+        height: _maxLongSide,
+        interpolation: img.Interpolation.linear,
+      );
+    }
+
+    final jpegBytes = img.encodeJpg(cropped, quality: _jpegQuality);
+    final tmpDir = await getTemporaryDirectory();
+    final ts = DateTime.now().microsecondsSinceEpoch;
+    final out = File(
+      '${tmpDir.path}${Platform.pathSeparator}natalo_crop_$ts.jpg',
+    );
+    await out.writeAsBytes(jpegBytes, flush: true);
+    return out;
   }
 
   // ─── Selection logic ─────────────────────────────────────────────
@@ -403,8 +533,7 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
 
   void _removeSelectedPhotoAt(int index) {
     AppHaptics.selection();
-    final next = List<SelectedMediaItem>.from(_selectedPhotos)
-      ..removeAt(index);
+    final next = List<SelectedMediaItem>.from(_selectedPhotos)..removeAt(index);
     setState(() {
       _selectedPhotos = List.generate(
         next.length,
@@ -438,14 +567,32 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
     if (!_canProceed) return;
     AppHaptics.tap();
     if (_mode == FeedPostContentType.image) {
-      final files = _selectedPhotos.map((item) => File(item.localPath)).toList();
+      // Crop semua selected photos ke 4:5 sebelum push ke editor.
+      // Per Instagram WYSIWYG pattern: preview di picker = 4:5, file
+      // upload juga harus 4:5, supaya feed display (yang clamp ke 4:5)
+      // tidak crop visible. Crop = center-crop (sama dengan BoxFit.cover
+      // behavior tapi di file level, bukan render level).
+      setState(() => _busyProcessing = true);
+      List<File> croppedFiles;
+      try {
+        croppedFiles = await _cropPhotosTo4x5(
+          _selectedPhotos.map((item) => File(item.localPath)).toList(),
+        );
+      } catch (_) {
+        if (!mounted) return;
+        setState(() => _busyProcessing = false);
+        _showToast('Gagal proses foto. Coba lagi.');
+        return;
+      }
+      if (!mounted) return;
+      setState(() => _busyProcessing = false);
       // Pause video preview while we navigate.
       await _videoController?.pause();
       final result = await Navigator.push<bool>(
         context,
         MaterialPageRoute(
           builder: (_) => FeedNewPostScreen(
-            draft: NewPostMediaDraft.photos(files),
+            draft: NewPostMediaDraft.photos(croppedFiles),
           ),
         ),
       );
@@ -563,8 +710,8 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
                           _selectedAlbum?.name ?? 'Terbaru',
                           style: const TextStyle(
                             color: _textWhite,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
                         const SizedBox(width: 6),
@@ -579,18 +726,20 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
                 ),
                 OutlinedButton.icon(
                   onPressed: _openAlbumSheet,
-                  icon: const Icon(Icons.collections_outlined, size: 16),
+                  icon: const Icon(Icons.collections_outlined, size: 15),
                   label: const Text('Album'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: _textWhite,
                     side: const BorderSide(color: Color(0xFF4B5563)),
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 8),
+                      horizontal: 12,
+                      vertical: 7,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(999),
                     ),
                     textStyle: const TextStyle(
-                      fontSize: 13,
+                      fontSize: 12.5,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -655,9 +804,16 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
           child: SizedBox(
             width: previewWidth,
             child: AspectRatio(
-              aspectRatio: 3 / 4,
+              // 4:5 portrait — match Instagram spec + feed display aspect
+              // (lihat _safeAspectRatio di member_post_detail_screen.dart).
+              // Sebelumnya 3:4 (0.75 lebih tall), bikin WYSIWYG mismatch:
+              // preview keliatan utuh tapi setelah publish ke-crop di feed
+              // karena display clamp ke 4:5. Sekarang preview 4:5 = display
+              // 4:5 + file actual di-crop center ke 4:5 di _next() sebelum
+              // upload (lihat _cropPhotoTo4x5).
+              aspectRatio: 4 / 5,
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.zero,
                 child: _buildPreviewContent(),
               ),
             ),
@@ -746,7 +902,6 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
     }
     return const ColoredBox(color: _tileBg);
   }
-
 }
 
 // ─── Header ──────────────────────────────────────────────────────────
@@ -778,7 +933,7 @@ class _MediaPickerHeader extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: _textWhite,
-                fontSize: 16,
+                fontSize: 15.5,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -855,7 +1010,8 @@ class _AssetGridTileState extends State<_AssetGridTile> {
 
   int? get _selectionOrder {
     if (_isVideo) return _isSelected ? 1 : null;
-    final idx = widget.selectedPhotos.indexWhere((p) => p.id == widget.asset.id);
+    final idx =
+        widget.selectedPhotos.indexWhere((p) => p.id == widget.asset.id);
     return idx >= 0 ? idx + 1 : null;
   }
 
@@ -863,7 +1019,9 @@ class _AssetGridTileState extends State<_AssetGridTile> {
     final mode = widget.mode;
     if (mode == null) return false;
     if (mode == FeedPostContentType.image && _isVideo) return true;
-    if (mode == FeedPostContentType.video && !_isVideo && widget.selectedVideo != null) {
+    if (mode == FeedPostContentType.video &&
+        !_isVideo &&
+        widget.selectedVideo != null) {
       return true;
     }
     return false;
@@ -891,8 +1049,7 @@ class _AssetGridTileState extends State<_AssetGridTile> {
                     child: Image.memory(_thumb!, fit: BoxFit.cover),
                   ),
           ),
-          if (_isDimmed)
-            Container(color: Colors.black.withValues(alpha: 0.45)),
+          if (_isDimmed) Container(color: Colors.black.withValues(alpha: 0.45)),
           if (_isSelected)
             Container(
               decoration: BoxDecoration(
@@ -1058,8 +1215,7 @@ class _PermissionDeniedView extends StatelessWidget {
             style: ElevatedButton.styleFrom(
               backgroundColor: _natoloBlue,
               foregroundColor: _textWhite,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),

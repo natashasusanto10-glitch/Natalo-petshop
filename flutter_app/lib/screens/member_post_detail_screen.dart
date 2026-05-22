@@ -1942,8 +1942,14 @@ class _CommentTile extends StatelessWidget {
 ///     Source video upload 9:16 (1080×1920) di-crop center ke 3:5 frame
 ///     via BoxFit.cover di _InlineVideoPlayer.
 ///   - Photo (single/carousel): 4:5 (0.8) — Instagram-spec standard.
-///     Source photo di-fit dengan BoxFit.contain (letterbox kalau gak
-///     match) supaya konten edge tidak hilang.
+///     Sejak v1.0.62, picker actual crop file ke 4:5 sebelum upload
+///     (lihat _cropPhotoTo4x5 di feed_media_picker_screen.dart). Jadi
+///     post baru: source aspect ≈ 4:5 → frame 4:5 → BoxFit.cover no
+///     visible crop (WYSIWYG match IG).
+///
+///     Post lama (pre-v1.0.62) bisa punya aspect ratio apapun → clamp
+///     ke [0.8, 1.91] sebagai safety net. Kalau aspect di luar range,
+///     BoxFit.cover akan center-crop ke frame (acceptable fallback).
 ///
 /// Default fallback 4:5 kalau type tidak diketahui.
 double _safeAspectRatio(int width, int height, {MyFeedPostType? type}) {
@@ -1953,6 +1959,8 @@ double _safeAspectRatio(int width, int height, {MyFeedPostType? type}) {
     return 3 / 5;
   }
   // Photo / carousel: clamp ke 4:5 portrait → 1.91:1 landscape.
+  // New posts (v1.0.62+) sudah 4:5 di upload-side → ratio = 0.8 = no-op
+  // clamp. Old posts: clamp untuk safety.
   if (width <= 0 || height <= 0) return 4 / 5;
   final ratio = width / height;
   if (ratio.isNaN || ratio.isInfinite || ratio <= 0) return 4 / 5;
