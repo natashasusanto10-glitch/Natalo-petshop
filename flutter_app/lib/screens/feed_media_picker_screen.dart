@@ -752,13 +752,10 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
         // clean match Instagram (header langsung media tanpa helper text).
         const SliverToBoxAdapter(child: SizedBox(height: 8)),
         // ── Preview area 75% × dynamic aspect ──
+        // Aspect toggle button sekarang OVERLAY di preview (bottom-left)
+        // — match IG layout. 3-chip lama (4:5/1:1/1.91:1) dihapus,
+        // diganti single icon button yang cycle via tap.
         SliverToBoxAdapter(child: _buildPreview()),
-        // ── Aspect ratio toggle (visible saat mode foto) ──
-        // 3 button: 4:5 (portrait) / 1:1 (square) / 1.91:1 (landscape).
-        // Hide saat video mode atau belum ada foto selected.
-        if (_mode != FeedPostContentType.video &&
-            _previewType == FeedPostContentType.image)
-          SliverToBoxAdapter(child: _buildAspectToggle()),
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
@@ -868,14 +865,33 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
           child: SizedBox(
             width: previewWidth,
             child: AspectRatio(
-              // Aspect ratio dynamic — user pilih via toggle 4:5 / 1:1 /
-              // 1.91:1. Crop file actual mengikuti aspect ini saat _next()
-              // (lihat _cropPhoto). Feed display side accept range
-              // [0.8, 1.91] via _safeAspectRatio clamp.
+              // Aspect ratio dynamic — user toggle via floating button
+              // bottom-left preview (cycle 4:5 → 1:1 → 1.91:1). Crop file
+              // actual mengikuti aspect ini saat _next() (lihat _cropPhoto).
+              // Pinch-to-zoom + drag-pan crop ditangani crop_image package
+              // (CropController) — match IG behavior.
               aspectRatio: _targetAspect,
               child: ClipRRect(
                 borderRadius: BorderRadius.zero,
-                child: _buildPreviewContent(),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    _buildPreviewContent(),
+                    // Floating aspect toggle bottom-left — visible saat mode
+                    // foto. Tap = cycle aspect. Match IG single-icon
+                    // pattern (vs 3 chip explicit yang ribet).
+                    if (_mode != FeedPostContentType.video &&
+                        _previewType == FeedPostContentType.image)
+                      Positioned(
+                        left: 12,
+                        bottom: 12,
+                        child: _AspectToggleButton(
+                          currentAspect: _targetAspect,
+                          onTap: _cycleAspect,
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -884,34 +900,15 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
     );
   }
 
-  /// 3-button aspect ratio toggle. Active button = filled blue,
-  /// inactive = grey border. Match IG cropbox switcher.
-  Widget _buildAspectToggle() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _AspectChip(
-            label: '4:5',
-            active: _targetAspect == _aspectPortrait,
-            onTap: () => _changeAspect(_aspectPortrait),
-          ),
-          const SizedBox(width: 8),
-          _AspectChip(
-            label: '1:1',
-            active: _targetAspect == _aspectSquare,
-            onTap: () => _changeAspect(_aspectSquare),
-          ),
-          const SizedBox(width: 8),
-          _AspectChip(
-            label: '1.91:1',
-            active: _targetAspect == _aspectLandscape,
-            onTap: () => _changeAspect(_aspectLandscape),
-          ),
-        ],
-      ),
-    );
+  /// Cycle aspect ratio: 4:5 → 1:1 → 1.91:1 → 4:5 ... Match IG single
+  /// icon button bottom-left preview yang user tap untuk toggle.
+  void _cycleAspect() {
+    final next = _targetAspect == _aspectPortrait
+        ? _aspectSquare
+        : _targetAspect == _aspectSquare
+            ? _aspectLandscape
+            : _aspectPortrait;
+    _changeAspect(next);
   }
 
   Widget _buildPreviewContent() {
@@ -1455,43 +1452,47 @@ class _PickerToast extends StatelessWidget {
   }
 }
 
-class _AspectChip extends StatelessWidget {
-  final String label;
-  final bool active;
+/// Floating aspect toggle button — IG-style icon di bottom-left preview.
+/// Tap = cycle 4:5 → 1:1 → 1.91:1 → 4:5 ...
+///
+/// Icon dinamis menunjukkan aspect saat ini (subtle visual hint). Background
+/// black 50% opacity supaya visible di atas konten apapun (foto cerah /
+/// gelap). User pinch-to-zoom + drag pan untuk crop dalam aspect terpilih
+/// (di-handle crop_image package, bukan widget ini).
+class _AspectToggleButton extends StatelessWidget {
+  final double currentAspect;
   final VoidCallback onTap;
 
-  const _AspectChip({
-    required this.label,
-    required this.active,
+  const _AspectToggleButton({
+    required this.currentAspect,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    // Icon shape disesuaikan aspect: portrait (tall), square, landscape.
+    final icon = currentAspect < 0.99
+        ? Icons.crop_portrait_rounded // 4:5 vertical
+        : currentAspect <= 1.01
+            ? Icons.crop_square_rounded // 1:1
+            : Icons.crop_landscape_rounded; // 1.91:1
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(999),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Container(
+          width: 36,
+          height: 36,
           decoration: BoxDecoration(
-            color: active ? _natoloBlue : Colors.transparent,
-            borderRadius: BorderRadius.circular(999),
+            color: Colors.black.withValues(alpha: 0.55),
+            shape: BoxShape.circle,
             border: Border.all(
-              color: active ? _natoloBlue : const Color(0xFF4B5563),
-              width: 1.2,
+              color: Colors.white.withValues(alpha: 0.25),
+              width: 0.8,
             ),
           ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: active ? Colors.white : _textWhite,
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
+          child: Icon(icon, color: Colors.white, size: 20),
         ),
       ),
     );
