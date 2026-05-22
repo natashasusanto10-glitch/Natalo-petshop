@@ -13,6 +13,7 @@ import '../services/product_service.dart';
 import '../services/report_service.dart';
 import '../services/review_service.dart';
 import '../services/stock_notification_service.dart';
+import '../shared/widgets/natalo_post_action_icon.dart';
 import '../state/cart_store.dart';
 import '../state/member_store.dart';
 import '../state/recently_viewed_store.dart';
@@ -329,7 +330,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           AppHeaderIconButton(
             onPressed: () => _shareProduct(context),
             tooltip: 'Bagikan',
-            child: const Icon(Icons.ios_share_rounded),
+            child: const NataloPostActionIcon(
+              type: NataloPostActionIconType.share,
+              size: 24,
+              strokeWidth: 2.3,
+            ),
           ),
           const AppCartButton(),
         ],

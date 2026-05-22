@@ -3653,14 +3653,27 @@ class _ShareGlyphPainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round;
 
     final path = Path()
-      ..moveTo(size.width * 0.152, size.height * 0.227)
-      ..lineTo(size.width * 0.869, size.height * 0.158)
-      ..lineTo(size.width * 0.594, size.height * 0.777)
-      ..lineTo(size.width * 0.463, size.height * 0.527)
-      ..lineTo(size.width * 0.152, size.height * 0.410)
-      ..lineTo(size.width * 0.869, size.height * 0.158)
-      ..moveTo(size.width * 0.463, size.height * 0.527)
-      ..lineTo(size.width * 0.677, size.height * 0.342);
+      ..moveTo(size.width * 0.167, size.height * 0.800)
+      ..cubicTo(
+        size.width * 0.183,
+        size.height * 0.512,
+        size.width * 0.350,
+        size.height * 0.333,
+        size.width * 0.563,
+        size.height * 0.333,
+      )
+      ..lineTo(size.width * 0.563, size.height * 0.154)
+      ..lineTo(size.width * 0.875, size.height * 0.433)
+      ..lineTo(size.width * 0.563, size.height * 0.713)
+      ..lineTo(size.width * 0.563, size.height * 0.538)
+      ..cubicTo(
+        size.width * 0.400,
+        size.height * 0.542,
+        size.width * 0.275,
+        size.height * 0.625,
+        size.width * 0.167,
+        size.height * 0.800,
+      );
 
     canvas.drawPath(path.shift(const Offset(0, 1.2)), shadowPaint);
     canvas.drawPath(path, paint);

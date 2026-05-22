@@ -185,14 +185,13 @@ class _NataloPostActionIconPainter extends CustomPainter {
 
   Path _sharePath() {
     return Path()
-      ..moveTo(3.65, 5.45)
-      ..lineTo(20.85, 3.8)
-      ..lineTo(14.25, 18.65)
-      ..lineTo(11.1, 12.65)
-      ..lineTo(3.65, 9.85)
-      ..lineTo(20.85, 3.8)
-      ..moveTo(11.1, 12.65)
-      ..lineTo(16.25, 8.2);
+      ..moveTo(4.0, 19.2)
+      ..cubicTo(4.4, 12.3, 8.4, 8.0, 13.5, 8.0)
+      ..lineTo(13.5, 3.7)
+      ..lineTo(21.0, 10.4)
+      ..lineTo(13.5, 17.1)
+      ..lineTo(13.5, 12.9)
+      ..cubicTo(9.6, 13.0, 6.6, 15.0, 4.0, 19.2);
   }
 
   @override
