@@ -689,21 +689,31 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
       return Stack(
         fit: StackFit.expand,
         children: [
+          // Wrap VideoPlayer + thumb fallback dengan ColorFiltered untuk
+          // saturation boost — sama treatment dengan photo preview.
+          // VideoPlayer pakai render path berbeda dari Image.file tapi
+          // ColorFiltered universal — apply ke widget tree.
           if (ready)
-            FittedBox(
-              fit: BoxFit.cover,
-              child: SizedBox(
-                width: controller.value.size.width > 0
-                    ? controller.value.size.width
-                    : 100,
-                height: controller.value.size.height > 0
-                    ? controller.value.size.height
-                    : 100,
-                child: VideoPlayer(controller),
+            ColorFiltered(
+              colorFilter: const ColorFilter.matrix(_previewSaturationMatrix),
+              child: FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width: controller.value.size.width > 0
+                      ? controller.value.size.width
+                      : 100,
+                  height: controller.value.size.height > 0
+                      ? controller.value.size.height
+                      : 100,
+                  child: VideoPlayer(controller),
+                ),
               ),
             )
           else if (_previewThumb != null)
-            Image.file(File(_previewThumb!), fit: BoxFit.cover)
+            ColorFiltered(
+              colorFilter: const ColorFilter.matrix(_previewSaturationMatrix),
+              child: Image.file(File(_previewThumb!), fit: BoxFit.cover),
+            )
           else
             const ColoredBox(color: _tileBg),
           if (!ready)

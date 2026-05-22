@@ -1,7 +1,7 @@
 name: natalo_petshop_flutter
 description: Native Flutter app for Natalo Petshop.
 publish_to: none
-version: 1.0.60+99
+version: 1.0.61+100
 environment:
   sdk: '>=3.0.0 <4.0.0'
   flutter: '>=3.7.0'
