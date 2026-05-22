@@ -1170,16 +1170,26 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                 onPageChanged: (idx) => setState(() => _photoIndex = idx),
                 itemBuilder: (context, index) {
                   final photo = photos[index];
+                  // InteractiveViewer wrap untuk pinch-zoom (1× → 4×).
+                  // PageView tetap handle horizontal swipe saat tidak
+                  // zoomed (scale 1.0). Saat user pinch, InteractiveViewer
+                  // ambil over gesture untuk pan + zoom. IG / Pinterest
+                  // pattern — user expect pinch zoom di photo.
                   return Center(
-                    child: CachedNetworkImage(
-                      imageUrl: photo.url,
-                      fit: BoxFit.contain,
-                      placeholder: (_, __) => const SizedBox.shrink(),
-                      errorWidget: (_, __, ___) => const Center(
-                        child: Icon(
-                          Icons.broken_image_outlined,
-                          color: Colors.white54,
-                          size: 48,
+                    child: InteractiveViewer(
+                      minScale: 1,
+                      maxScale: 4,
+                      clipBehavior: Clip.none,
+                      child: CachedNetworkImage(
+                        imageUrl: photo.url,
+                        fit: BoxFit.contain,
+                        placeholder: (_, __) => const SizedBox.shrink(),
+                        errorWidget: (_, __, ___) => const Center(
+                          child: Icon(
+                            Icons.broken_image_outlined,
+                            color: Colors.white54,
+                            size: 48,
+                          ),
                         ),
                       ),
                     ),

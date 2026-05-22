@@ -1261,18 +1261,28 @@ class _ImageSurface extends StatelessWidget {
     return Container(
       color: Colors.black,
       alignment: Alignment.center,
-      child: CachedNetworkImage(
-        imageUrl: imageUrl,
-        width: double.infinity,
-        height: double.infinity,
-        fit: BoxFit.cover,
-        fadeInDuration: const Duration(milliseconds: 200),
-        placeholder: (_, __) => Shimmer.fromColors(
-          baseColor: const Color(0xFF1F2937),
-          highlightColor: const Color(0xFF374151),
-          child: Container(color: const Color(0xFF1F2937)),
+      // InteractiveViewer wrap untuk pinch-zoom 1×→4× di photo detail.
+      // User expect bisa pinch foto pet untuk lihat detail (bulu, ekspresi).
+      // clipBehavior none supaya zoom keluar boundaries widget — parent
+      // Container yang handle clipping.
+      child: InteractiveViewer(
+        minScale: 1,
+        maxScale: 4,
+        clipBehavior: Clip.none,
+        child: CachedNetworkImage(
+          imageUrl: imageUrl,
+          width: double.infinity,
+          height: double.infinity,
+          fit: BoxFit.cover,
+          fadeInDuration: const Duration(milliseconds: 200),
+          placeholder: (_, __) => Shimmer.fromColors(
+            baseColor: const Color(0xFF1F2937),
+            highlightColor: const Color(0xFF374151),
+            child: Container(color: const Color(0xFF1F2937)),
+          ),
+          errorWidget: (_, __, ___) =>
+              _MediaPlaceholder(icon: placeholderIcon),
         ),
-        errorWidget: (_, __, ___) => _MediaPlaceholder(icon: placeholderIcon),
       ),
     );
   }
