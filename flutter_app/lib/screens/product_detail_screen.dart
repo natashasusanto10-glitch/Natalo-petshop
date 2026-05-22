@@ -522,19 +522,27 @@ class _ProductHeroState extends State<_ProductHero> {
                     Positioned.fill(
                       child: images.isEmpty
                           ? const _ImagePlaceholder()
-                          : Hero(
-                              tag: 'product-image-${widget.product.id}',
-                              child: PageView.builder(
-                                controller: _controller,
-                                itemCount: images.length,
-                                onPageChanged: (index) =>
-                                    setState(() => _activeIndex = index),
-                                itemBuilder: (context, index) {
-                                  return GestureDetector(
-                                    // Tap image → buka fullscreen pinch-zoom
-                                    // gallery viewer dengan native Flutter
-                                    // InteractiveViewer (smooth + GPU-accelerated).
-                                    onTap: () {
+                          : PageView.builder(
+                              // Hero wrap di PageView dihapus — bikin bug
+                              // blank hitam saat user tap foto → buka
+                              // ImageViewerScreen. Hero source di-"lift"
+                              // ke overlay saat navigate, tapi destination
+                              // (viewer) tidak punya matching Hero tag →
+                              // source widget tidak balik ke tree dengan
+                              // benar. Hero animation card → detail jadi
+                              // hilang (acceptable trade — bug fix
+                              // prioritas, animation bisa di-restore
+                              // nanti via flightShuttleBuilder).
+                              controller: _controller,
+                              itemCount: images.length,
+                              onPageChanged: (index) =>
+                                  setState(() => _activeIndex = index),
+                              itemBuilder: (context, index) {
+                                return GestureDetector(
+                                  // Tap image → buka fullscreen pinch-zoom
+                                  // gallery viewer dengan native Flutter
+                                  // InteractiveViewer (smooth + GPU-accelerated).
+                                  onTap: () {
                                       AppHaptics.tap();
                                       Navigator.push<void>(
                                         context,
@@ -578,7 +586,6 @@ class _ProductHeroState extends State<_ProductHero> {
                                   );
                                 },
                               ),
-                            ),
                     ),
                     if (showIndicators)
                       Positioned(
