@@ -11,7 +11,10 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   const session = await getSession("CUSTOMER");
-  if (!session || session.role !== "CUSTOMER") {
+  // getSession("CUSTOMER") sudah accept admin via privilege elevation.
+  // Cek strict role !== CUSTOMER di-hapus supaya admin (Natasha) bisa
+  // pakai customer flow (cek alamat, posting feed, komentar, dll).
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -37,7 +40,10 @@ export async function GET() {
 
 export async function POST(request) {
   const session = await getSession("CUSTOMER");
-  if (!session || session.role !== "CUSTOMER") {
+  // getSession("CUSTOMER") sudah accept admin via privilege elevation.
+  // Cek strict role !== CUSTOMER di-hapus supaya admin (Natasha) bisa
+  // pakai customer flow (cek alamat, posting feed, komentar, dll).
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

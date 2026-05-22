@@ -7,7 +7,11 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const session = await getSession("CUSTOMER");
-  if (!session || session.role !== "CUSTOMER") {
+  // getSession("CUSTOMER") sudah accept admin via privilege elevation
+  // (lihat lib/auth.ts:64-77). Strict re-check session.role !== CUSTOMER
+  // dihapus supaya admin (Natasha) bisa cek pesanan miliknya saat pakai
+  // app customer-side.
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

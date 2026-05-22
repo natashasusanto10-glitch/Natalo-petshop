@@ -8,7 +8,7 @@ export async function DELETE(
   { params }: { params: Promise<{ productId: string }> }
 ) {
   const session = await getSession("CUSTOMER");
-  if (!session || session.role !== "CUSTOMER") {
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

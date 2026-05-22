@@ -27,7 +27,8 @@ const MAX_SIZE = 5 * 1024 * 1024;
 
 export async function POST(request: NextRequest) {
   const session = await getSession("CUSTOMER");
-  if (!session || session.role !== "CUSTOMER") {
+  // Admin (privilege elevation) bisa update foto profilnya juga.
+  if (!session) {
     return NextResponse.json(
       { error: "Login member dulu." },
       { status: 401 },
@@ -115,7 +116,8 @@ export async function POST(request: NextRequest) {
  */
 export async function DELETE() {
   const session = await getSession("CUSTOMER");
-  if (!session || session.role !== "CUSTOMER") {
+  // Admin (privilege elevation) bisa update foto profilnya juga.
+  if (!session) {
     return NextResponse.json(
       { error: "Login member dulu." },
       { status: 401 },

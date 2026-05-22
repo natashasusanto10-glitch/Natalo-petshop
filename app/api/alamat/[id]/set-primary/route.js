@@ -4,7 +4,8 @@ import { prisma } from "@/lib/prisma";
 
 export async function PATCH(_request, { params }) {
   const session = await getSession("CUSTOMER");
-  if (!session || session.role !== "CUSTOMER") {
+  // Admin (privilege elevation) bisa pakai customer flow alamat.
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

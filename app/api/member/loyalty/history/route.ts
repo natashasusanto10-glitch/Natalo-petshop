@@ -19,7 +19,8 @@ function describeSource(source: string, points: number) {
 export async function GET() {
   try {
     const session = await getSession("CUSTOMER");
-    if (!session || session.role !== "CUSTOMER") {
+    // Admin (privilege elevation) bisa pakai loyalty juga.
+    if (!session) {
       return NextResponse.json({ error: "Login dulu." }, { status: 401 });
     }
 

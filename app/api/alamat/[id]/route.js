@@ -15,7 +15,8 @@ async function getOwnedAddress(id, userId) {
 
 export async function GET(_request, { params }) {
   const session = await getSession("CUSTOMER");
-  if (!session || session.role !== "CUSTOMER") {
+  // Admin (privilege elevation) bisa pakai customer flow alamat.
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -33,7 +34,8 @@ export async function GET(_request, { params }) {
 
 async function updateAddress(request, { params }) {
   const session = await getSession("CUSTOMER");
-  if (!session || session.role !== "CUSTOMER") {
+  // Admin (privilege elevation) bisa pakai customer flow alamat.
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -70,7 +72,8 @@ export const PATCH = updateAddress;
 
 export async function DELETE(_request, { params }) {
   const session = await getSession("CUSTOMER");
-  if (!session || session.role !== "CUSTOMER") {
+  // Admin (privilege elevation) bisa pakai customer flow alamat.
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
