@@ -945,6 +945,12 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   late final Animation<double> _heartScale;
   late final Animation<double> _heartOpacity;
 
+  // Product chip rotation — sama pattern dengan _FeedPostView untuk video.
+  // Tagged products di PHOTO_CAROUSEL/COMMUNITY post juga butuh chip
+  // produk di atas nama user. Multi-product → rotate per 2.5 detik.
+  int _featuredProductIndex = 0;
+  Timer? _productRotationTimer;
+
   @override
   void initState() {
     super.initState();
@@ -1001,13 +1007,62 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
         precacheImage(CachedNetworkImageProvider(m.url), context);
       }
     });
+
+    _syncProductRotation();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PhotoCarouselPostView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Re-sync rotation kalau post berubah (PageView ke post lain) atau
+    // tagged products length berubah (admin edit tag dari background).
+    if (oldWidget.post.id != widget.post.id ||
+        oldWidget.post.taggedProducts.length !=
+            widget.post.taggedProducts.length) {
+      _featuredProductIndex = 0;
+      _syncProductRotation();
+    } else if (oldWidget.isActive != widget.isActive) {
+      // Pause rotation saat post tidak aktif (out of viewport).
+      _syncProductRotation();
+    }
   }
 
   @override
   void dispose() {
+    _stopProductRotation();
     _photoPageController.dispose();
     _heartBurstController.dispose();
     super.dispose();
+  }
+
+  // ─── Product chip rotation ──────────────────────────────────────────
+  // Max products per post:
+  //   - Admin    → 5 (lebih banyak slot untuk produk recommendation)
+  //   - Customer → 3 (community post tag terbatas supaya tidak spammy)
+  List<FeedProductLink> _rotatingProductsForPost(FeedPost post) {
+    final maxProducts = post.author.isAdmin ? 5 : 3;
+    return post.taggedProducts.take(maxProducts).toList();
+  }
+
+  void _syncProductRotation() {
+    _stopProductRotation();
+    final products = _rotatingProductsForPost(widget.post);
+    if (!widget.isActive || products.length <= 1) return;
+    _productRotationTimer = Timer.periodic(
+      const Duration(milliseconds: 2500),
+      (_) {
+        if (!mounted || !widget.isActive) return;
+        setState(() {
+          _featuredProductIndex =
+              (_featuredProductIndex + 1) % products.length;
+        });
+      },
+    );
+  }
+
+  void _stopProductRotation() {
+    _productRotationTimer?.cancel();
+    _productRotationTimer = null;
   }
 
   Future<void> _onLikePressed() async {
@@ -1104,6 +1159,165 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     }
   }
 
+  // ─── Product chip handlers ──────────────────────────────────────────
+  // Reuse pattern dari _FeedPostView. Tap chip → kalau 1 produk, langsung
+  // open product sheet. Multi-produk → buka carousel sheet (Shop the Look).
+  // Quick-add → direct cart add (skip variant picker kalau hasVariants).
+
+  Future<void> _onProductsTap(List<FeedProductLink> products) async {
+    if (products.isEmpty) return;
+    if (products.length == 1) {
+      await _onProductTap(products.first);
+      return;
+    }
+    AppHaptics.tap();
+    widget.onOverlayStateChanged(true);
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.18),
+      builder: (_) => _FeedTaggedProductsSheet(
+        products: products,
+        onOpenProduct: (link) async {
+          await _onProductTap(link);
+        },
+        onAdd: (link, quantity) async {
+          _addFeedLinkToCart(link, quantity: quantity);
+        },
+        onBuy: (link, quantity) async {
+          _buyFeedLinkNow(link, quantity: quantity);
+        },
+      ),
+    ).whenComplete(() => widget.onOverlayStateChanged(false));
+  }
+
+  Future<void> _quickAddProduct(FeedProductLink link) async {
+    _addFeedLinkToCart(link);
+  }
+
+  Future<void> _onProductTap(FeedProductLink link) async {
+    AppHaptics.tap();
+    widget.onOverlayStateChanged(true);
+    final product = await productService.fetchProductBySlug(link.slug);
+    if (!mounted) {
+      widget.onOverlayStateChanged(false);
+      return;
+    }
+    if (product == null) {
+      widget.onOverlayStateChanged(false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Produk tidak ditemukan.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.18),
+      builder: (_) => _FeedProductSheet(
+        product: product,
+        onOpenProduct: () => _openProductDetail(product),
+        onAdd: (quantity) => _addProductToCart(product, quantity: quantity),
+        onBuy: (quantity) => _buyProductNow(product, quantity: quantity),
+      ),
+    ).whenComplete(() => widget.onOverlayStateChanged(false));
+  }
+
+  void _openProductDetail(Product product) {
+    AppHaptics.tap();
+    Navigator.pushNamed(context, '/product-detail', arguments: product);
+  }
+
+  void _addFeedLinkToCart(FeedProductLink link, {int quantity = 1}) {
+    if (!link.isAvailable || link.stock <= 0) {
+      _showProductUnavailable();
+      return;
+    }
+    if (link.hasVariants) {
+      _onProductTap(link);
+      return;
+    }
+    final product = _productFromFeedLink(link);
+    cartStore.addProduct(product, quantity: quantity);
+    if (!mounted) return;
+    AppToast.showCartAdded(
+      context,
+      quantity > 1
+          ? '$quantity x ${link.name} masuk keranjang'
+          : '${link.name} masuk keranjang',
+    );
+  }
+
+  void _addProductToCart(Product product, {int quantity = 1}) {
+    if (product.stock <= 0) {
+      _showProductUnavailable();
+      return;
+    }
+    if (product.hasVariants) {
+      _openProductDetail(product);
+      return;
+    }
+    cartStore.addProduct(product, quantity: quantity);
+    if (!mounted) return;
+    AppToast.showCartAdded(
+      context,
+      quantity > 1
+          ? '$quantity x ${product.title} masuk keranjang'
+          : '${product.title} masuk keranjang',
+    );
+  }
+
+  void _buyFeedLinkNow(FeedProductLink link, {int quantity = 1}) {
+    if (!link.isAvailable || link.stock <= 0) {
+      _showProductUnavailable();
+      return;
+    }
+    if (link.hasVariants) {
+      _onProductTap(link);
+      return;
+    }
+    _buyProductNow(_productFromFeedLink(link), quantity: quantity);
+  }
+
+  void _buyProductNow(Product product, {int quantity = 1}) {
+    if (product.stock <= 0) {
+      _showProductUnavailable();
+      return;
+    }
+    if (product.hasVariants) {
+      _openProductDetail(product);
+      return;
+    }
+    AppHaptics.impact();
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => CheckoutScreen(
+          items: [
+            CartItem(
+              product: product,
+              quantity: quantity.clamp(1, math.max(1, product.stock)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showProductUnavailable() {
+    AppToast.show(
+      context,
+      'Produk sedang tidak tersedia.',
+      kind: ToastKind.warning,
+    );
+  }
+
   void _onLongPressStart(LongPressStartDetails _) {
     AppHaptics.selection();
     setState(() => _hideOverlayForLongPress = true);
@@ -1136,6 +1350,12 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     final photos = post.media;
     const actionRailInset = _feedActionBottomInset;
     const feedInfoInset = 24.0;
+
+    // Product chip — same rotation pattern dengan video post.
+    final products = _rotatingProductsForPost(post);
+    final featuredProduct = products.isEmpty
+        ? null
+        : products[_featuredProductIndex % products.length];
 
     return VisibilityDetector(
       key: ValueKey('photo-post-${post.id}'),
@@ -1304,7 +1524,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                 ),
               ),
             ),
-            // Bottom info (creator + caption).
+            // Bottom info: product tag + creator + caption.
             Positioned(
               left: 16,
               right: 78,
@@ -1315,6 +1535,21 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Product chip — only when post has tagged products.
+                    // Reuse widget yang sama dengan _FeedPostView untuk
+                    // consistency visual antar video post & photo carousel.
+                    if (products.isNotEmpty) ...[
+                      _ProductLinkChip(
+                        products: products,
+                        featuredProduct: featuredProduct!,
+                        featuredIndex:
+                            _featuredProductIndex % products.length,
+                        onTap: () => _onProductsTap(products),
+                        onQuickAdd: () =>
+                            _quickAddProduct(featuredProduct),
+                      ),
+                      const SizedBox(height: 9),
+                    ],
                     _FeedCreatorIdentity(
                       author: post.author,
                       displayName: post.author.isAdmin
