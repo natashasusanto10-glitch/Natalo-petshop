@@ -1676,7 +1676,13 @@ class _FeedPostViewState extends State<_FeedPostView>
 
   List<FeedProductLink> _rotatingProductsForPost(FeedPost post) {
     final maxProducts = post.author.isAdmin ? 5 : 3;
-    return post.productsInVideo.take(maxProducts).toList();
+    // Pakai `taggedProducts` — itu yang backend return (lihat
+    // lib/feed/queries.ts:208). Sebelumnya pakai `productsInVideo` yang
+    // tidak pernah di-populate backend → product bar di atas nama user
+    // tidak pernah muncul untuk admin post yang tag produk.
+    // `productsInVideo` field tetap di model untuk future use kalau ada
+    // timed product feature (produk muncul di detik tertentu video).
+    return post.taggedProducts.take(maxProducts).toList();
   }
 
   void _syncProductRotation() {
