@@ -23,6 +23,13 @@ class FeedComment {
   final DateTime createdAt;
   final FeedAuthor author;
   final bool viewerLiked;
+  /// Nested replies (1-level deep). Backend `/api/feed/posts/[id]/comments`
+  /// return top-level comments only (parentCommentId IS NULL) dengan
+  /// `replies` array inline untuk reply 1 level di bawah. Reply ke reply
+  /// (>=2 level) di-flatten ke parent yang sama backend-side — Instagram
+  /// behavior. Untuk top-level comment, `replies` bisa kosong.
+  final List<FeedComment> replies;
+  final int replyCount;
 
   const FeedComment({
     required this.id,
@@ -35,10 +42,19 @@ class FeedComment {
     required this.createdAt,
     required this.author,
     required this.viewerLiked,
+    this.replies = const [],
+    this.replyCount = 0,
   });
 
   factory FeedComment.fromApiJson(Map<String, dynamic> json) {
     final authorJson = json['author'];
+    final repliesJson = json['replies'];
+    final replies = repliesJson is List
+        ? repliesJson
+            .whereType<Map<String, dynamic>>()
+            .map(FeedComment.fromApiJson)
+            .toList()
+        : const <FeedComment>[];
     return FeedComment(
       id: (json['id'] ?? '').toString(),
       postId: (json['postId'] ?? '').toString(),
@@ -57,12 +73,18 @@ class FeedComment {
               role: 'CUSTOMER',
             ),
       viewerLiked: json['viewerLiked'] == true,
+      replies: replies,
+      replyCount: _asInt(json['replyCount']) > 0
+          ? _asInt(json['replyCount'])
+          : replies.length,
     );
   }
 
   FeedComment copyWith({
     int? likeCount,
     bool? viewerLiked,
+    List<FeedComment>? replies,
+    int? replyCount,
   }) {
     return FeedComment(
       id: id,
@@ -75,6 +97,8 @@ class FeedComment {
       createdAt: createdAt,
       author: author,
       viewerLiked: viewerLiked ?? this.viewerLiked,
+      replies: replies ?? this.replies,
+      replyCount: replyCount ?? this.replyCount,
     );
   }
 }

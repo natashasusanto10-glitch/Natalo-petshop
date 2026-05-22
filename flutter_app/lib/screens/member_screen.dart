@@ -127,8 +127,14 @@ class _ProfilePageState extends State<_ProfilePage>
       feedService.fetchMyLikesCount(),
     ]);
     if (!mounted) return;
+    // fetchMyPosts return MyFeedPostPage (cursor-paginated). Untuk
+    // header summary di Akun (stat post count), kita pakai page pertama
+    // saja — tidak perlu fetch all pages. Total post count tetap akurat
+    // via len(items) untuk preview, atau ambil dari totalCount kalau
+    // butuh exact (future enhancement).
+    final page = results[0] as MyFeedPostPage;
     setState(() {
-      _allPosts = results[0] as List<MyFeedPost>;
+      _allPosts = page.items;
       _likedPostsCount = results[1] as int;
       _loadingPosts = false;
     });

@@ -37,6 +37,13 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
   bool _showDraftReminder = true;
   List<MyFeedPost> _allPosts = const [];
   bool _loading = true;
+  // Pagination state:
+  // - _nextCursor: post id terakhir dari fetch sebelumnya. null = end-of-list.
+  // - _loadingMore: guard supaya scroll listener tidak fire concurrent fetch.
+  // - _initialLoadDone: tahu kapan boleh trigger load-more (skip saat initial).
+  String? _nextCursor;
+  bool _loadingMore = false;
+  bool _initialLoadDone = false;
 
   static const _filters = [
     _PostsFilter(
@@ -60,7 +67,9 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_hideDraftOnScroll);
+    _scrollController
+      ..addListener(_hideDraftOnScroll)
+      ..addListener(_handleScrollLoadMore);
     _loadPosts();
     _loadLocalDrafts();
   }
@@ -70,18 +79,71 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     _draftAutoHideTimer?.cancel();
     _scrollController
       ..removeListener(_hideDraftOnScroll)
+      ..removeListener(_handleScrollLoadMore)
       ..dispose();
     super.dispose();
   }
 
   Future<void> _loadPosts() async {
-    setState(() => _loading = true);
-    final result = await feedService.fetchMyPosts(filter: 'all');
-    if (!mounted) return;
     setState(() {
-      _allPosts = result;
-      _loading = false;
+      _loading = true;
+      _initialLoadDone = false;
+      _nextCursor = null;
     });
+    try {
+      final page = await feedService.fetchMyPosts(filter: 'all');
+      if (!mounted) return;
+      setState(() {
+        _allPosts = page.items;
+        _nextCursor = page.nextCursor;
+        _loading = false;
+        _initialLoadDone = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _allPosts = const [];
+        _nextCursor = null;
+        _loading = false;
+        _initialLoadDone = true;
+      });
+    }
+  }
+
+  /// Lazy-load next page saat scroll near bottom. Trigger ~400px sebelum
+  /// end supaya user tidak ngerasa "loading hits hard" — page baru udah
+  /// stand-by saat user mau scroll lebih jauh.
+  void _handleScrollLoadMore() {
+    if (!_initialLoadDone || _loadingMore || _nextCursor == null) return;
+    final position = _scrollController.position;
+    if (position.pixels >= position.maxScrollExtent - 400) {
+      _loadMore();
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_loadingMore || _nextCursor == null) return;
+    setState(() => _loadingMore = true);
+    try {
+      final page = await feedService.fetchMyPosts(
+        filter: 'all',
+        cursor: _nextCursor,
+      );
+      if (!mounted) return;
+      setState(() {
+        // Append + dedupe by id (defensive: backend cursor pattern
+        // sudah skip:1 tapi tetap guard kalau ada race condition).
+        final existingIds = _allPosts.map((p) => p.id).toSet();
+        final fresh =
+            page.items.where((p) => !existingIds.contains(p.id)).toList();
+        _allPosts = [..._allPosts, ...fresh];
+        _nextCursor = page.nextCursor;
+        _loadingMore = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingMore = false);
+    }
   }
 
   Future<void> _loadLocalDrafts() async {

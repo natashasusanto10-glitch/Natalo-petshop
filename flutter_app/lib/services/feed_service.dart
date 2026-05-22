@@ -73,18 +73,34 @@ class FeedService {
     }
   }
 
-  Future<List<MyFeedPost>> fetchMyPosts({String filter = 'all'}) async {
+  /// Fetch user's own posts. Cursor-paginated:
+  /// - Page pertama: omit `cursor`, default 20 items (max 50)
+  /// - Page selanjutnya: pass `cursor` dari `nextCursor` page sebelumnya
+  ///
+  /// Return [MyFeedPostPage] dengan `nextCursor` null kalau end-of-list.
+  Future<MyFeedPostPage> fetchMyPosts({
+    String filter = 'all',
+    String? cursor,
+    int limit = 20,
+  }) async {
     final data = await apiClient.getJson(
       '/api/feed/my-posts',
-      query: {'status': filter},
+      query: {
+        'status': filter,
+        if (cursor != null) 'cursor': cursor,
+        'limit': '$limit',
+      },
     );
     final raw =
         data is Map ? (data['posts'] ?? data['items'] ?? data['data']) : data;
-    if (raw is! List) return const [];
-    return raw
-        .whereType<Map<String, dynamic>>()
-        .map(MyFeedPost.fromApiJson)
-        .toList();
+    final items = raw is List
+        ? raw
+            .whereType<Map<String, dynamic>>()
+            .map(MyFeedPost.fromApiJson)
+            .toList()
+        : const <MyFeedPost>[];
+    final nextCursor = data is Map ? data['nextCursor'] as String? : null;
+    return MyFeedPostPage(items: items, nextCursor: nextCursor);
   }
 
   /// Fetch jumlah feed post yang user (sedang login) LIKE — bukan likes

@@ -38,6 +38,19 @@ export async function GET(request: NextRequest) {
   const selectedStatus =
     filter === "all" ? undefined : MY_FEED_STATUS_BY_FILTER[filter];
 
+  // Pagination — cursor + limit. Default page = 20, max 50. Cursor
+  // adalah feedPost.id terakhir dari page sebelumnya. Tanpa cursor,
+  // ambil page pertama. Backward-compatible: kalau cursor/limit tidak
+  // di-set, return semua sampai 20 post pertama.
+  const cursor = request.nextUrl.searchParams.get("cursor") || null;
+  const rawLimit = Number(
+    request.nextUrl.searchParams.get("limit") ?? "20",
+  );
+  const limit =
+    Number.isFinite(rawLimit) && rawLimit > 0
+      ? Math.min(50, Math.max(1, Math.floor(rawLimit)))
+      : 20;
+
   const baseWhere: Prisma.FeedPostWhereInput = {
     authorId: session.sub,
     authorRole: "CUSTOMER",
@@ -54,6 +67,10 @@ export async function GET(request: NextRequest) {
     prisma.feedPost.findMany({
       where,
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      // take + 1 untuk detect hasMore. Cursor skip current item supaya
+      // tidak duplicate antar page (Prisma cursor pattern standard).
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       select: {
         id: true,
         kind: true,
@@ -89,6 +106,12 @@ export async function GET(request: NextRequest) {
     prisma.feedPost.count({ where: baseWhere }),
   ]);
 
+  // Detect hasMore via `take + 1` pattern. Slice ke `limit` items asli,
+  // kalau extra item exists berarti ada next page.
+  const hasMore = rawPosts.length > limit;
+  const slicedPosts = hasMore ? rawPosts.slice(0, limit) : rawPosts;
+  const nextCursor = hasMore ? slicedPosts[slicedPosts.length - 1].id : null;
+
   // Lookup viewerLiked per post — Flutter pakai field ini buat hydrate
   // _likedCache awal di My Posts screen. Tanpa ini, post yang user
   // sudah pernah like tampil grey di icon, dan tap pertama bakal
@@ -97,14 +120,14 @@ export async function GET(request: NextRequest) {
   //
   // 1 query batch via { postId: { in: ids } } — index pada
   // FeedLike.userId_postId membuat lookup O(log n).
-  const viewerLikedIds = rawPosts.length === 0
+  const viewerLikedIds = slicedPosts.length === 0
     ? new Set<string>()
     : new Set(
         (
           await prisma.feedLike.findMany({
             where: {
               userId: session.sub,
-              postId: { in: rawPosts.map((p) => p.id) },
+              postId: { in: slicedPosts.map((p) => p.id) },
             },
             select: { postId: true },
           })
@@ -112,7 +135,7 @@ export async function GET(request: NextRequest) {
       );
 
   return NextResponse.json({
-    posts: rawPosts.map((post) => {
+    posts: slicedPosts.map((post) => {
       const signedMedia = post.media.map((item) => ({
         id: item.id,
         mediaType: item.mediaType,
@@ -188,5 +211,7 @@ export async function GET(request: NextRequest) {
     }),
     filter,
     totalCount,
+    nextCursor,
+    hasMore,
   });
 }

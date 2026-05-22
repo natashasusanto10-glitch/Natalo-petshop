@@ -7,6 +7,8 @@ import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 import '../config/api_config.dart';
+import '../models/feed_comment.dart';
+import '../models/feed_post.dart';
 import '../models/my_feed_post.dart';
 import '../services/api_client.dart';
 import '../services/feed_service.dart';
@@ -1896,84 +1898,214 @@ class _MyPostCommentSheet extends StatefulWidget {
 
 class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
   final TextEditingController _inputController = TextEditingController();
-  late Future<List<_CommentRow>> _commentsFuture;
+  final FocusNode _inputFocusNode = FocusNode();
+  List<FeedComment> _comments = const [];
+  bool _loading = true;
   bool _posting = false;
 
+  /// Comment yang sedang di-reply (null = top-level comment baru).
+  /// Saat non-null, input field show hint "Balas @username…" + chip
+  /// cancel pill di atas. Submit pakai parentCommentId = _replyingTo.id.
+  FeedComment? _replyingTo;
+
+  /// Parent comment IDs yang sedang di-expand replies. Default collapsed
+  /// (match IG: user harus tap "Lihat N balasan" supaya replies muncul).
+  final Set<String> _expandedReplies = {};
+
+  /// Comment IDs yang sedang dalam optimistic like toggle — guard
+  /// supaya tidak double-fire request kalau user spam tap.
+  final Set<String> _likeBusy = {};
+
   /// Caption ditampilkan sebagai pinned item pertama di list (kalau ada).
-  /// Synthesize _CommentRow virtual — bukan dari backend comment table,
-  /// jadi tidak masuk ke fetchComments / postComment lifecycle.
-  _CommentRow? get _captionRow {
+  /// Synthesize FeedComment virtual — bukan dari backend comment table,
+  /// jadi tidak masuk ke fetchComments / postComment lifecycle. Caption
+  /// tile tidak punya action row (like/reply hidden).
+  FeedComment? get _captionRow {
     final raw = (widget.post.caption ?? '').trim();
     if (raw.isEmpty) return null;
-    return _CommentRow(
+    return FeedComment(
       id: '__caption__${widget.post.id}',
-      authorName: widget.authorName,
-      authorAvatarUrl: widget.authorAvatarUrl,
+      postId: widget.post.id,
       content: raw,
+      isAdminOfficial: false,
+      isHidden: false,
+      likeCount: 0,
       createdAt: widget.post.createdAt,
+      author: FeedAuthor(
+        id: 'self',
+        name: widget.authorName,
+        role: 'CUSTOMER',
+        profilePhotoUrl: widget.authorAvatarUrl,
+      ),
+      viewerLiked: false,
     );
   }
 
   @override
   void initState() {
     super.initState();
-    _commentsFuture = _loadComments();
+    _loadComments();
   }
 
   @override
   void dispose() {
     _inputController.dispose();
+    _inputFocusNode.dispose();
     super.dispose();
   }
 
-  Future<List<_CommentRow>> _loadComments() async {
+  Future<void> _loadComments() async {
     try {
       final page = await feedService.fetchComments(widget.post.id, limit: 30);
-      return page.items
-          .map((c) => _CommentRow(
-                id: c.id,
-                authorName: c.author.name,
-                authorAvatarUrl: c.author.avatarUrl ?? c.author.profilePhotoUrl,
-                content: c.content,
-                createdAt: c.createdAt,
-              ))
-          .toList();
+      if (!mounted) return;
+      setState(() {
+        _comments = page.items;
+        _loading = false;
+      });
     } catch (_) {
-      return const [];
+      if (!mounted) return;
+      setState(() {
+        _comments = const [];
+        _loading = false;
+      });
     }
+  }
+
+  void _startReply(FeedComment parent) {
+    AppHaptics.tap();
+    // Reply ke reply: backend flatten ke parent root. Cari root parent.
+    final root = _findRootParent(parent);
+    setState(() => _replyingTo = root);
+    _inputFocusNode.requestFocus();
+  }
+
+  void _cancelReply() {
+    setState(() => _replyingTo = null);
+  }
+
+  FeedComment _findRootParent(FeedComment candidate) {
+    if (candidate.parentCommentId == null) return candidate;
+    // Cari di top-level comments yang punya candidate sebagai reply.
+    for (final top in _comments) {
+      if (top.id == candidate.parentCommentId) return top;
+      for (final reply in top.replies) {
+        if (reply.id == candidate.id) return top;
+      }
+    }
+    return candidate;
+  }
+
+  void _toggleRepliesExpanded(String parentId) {
+    AppHaptics.tap();
+    setState(() {
+      if (_expandedReplies.contains(parentId)) {
+        _expandedReplies.remove(parentId);
+      } else {
+        _expandedReplies.add(parentId);
+      }
+    });
+  }
+
+  Future<void> _toggleCommentLike(FeedComment comment) async {
+    if (_likeBusy.contains(comment.id)) return;
+    AppHaptics.tap();
+    final wasLiked = comment.viewerLiked;
+    final previousCount = comment.likeCount;
+    final newLiked = !wasLiked;
+    setState(() {
+      _likeBusy.add(comment.id);
+      _comments = _updateCommentInTree(
+        _comments,
+        comment.id,
+        (c) => c.copyWith(
+          viewerLiked: newLiked,
+          likeCount:
+              newLiked ? c.likeCount + 1 : (c.likeCount - 1).clamp(0, 999999),
+        ),
+      );
+    });
+    try {
+      final newLikeCount = await feedService.toggleCommentLike(
+        comment.id,
+        currentlyLiked: wasLiked,
+      );
+      if (!mounted) return;
+      setState(() {
+        _likeBusy.remove(comment.id);
+        _comments = _updateCommentInTree(
+          _comments,
+          comment.id,
+          (c) => c.copyWith(
+            viewerLiked: newLiked,
+            likeCount: newLikeCount,
+          ),
+        );
+      });
+    } catch (_) {
+      if (!mounted) return;
+      // Revert optimistic.
+      setState(() {
+        _likeBusy.remove(comment.id);
+        _comments = _updateCommentInTree(
+          _comments,
+          comment.id,
+          (c) => c.copyWith(
+            viewerLiked: wasLiked,
+            likeCount: previousCount,
+          ),
+        );
+      });
+      AppToast.show(context, 'Gagal update suka komentar, coba lagi');
+    }
+  }
+
+  /// Recursively walk top-level + replies, swap comment id-nya dengan
+  /// result transform. Immutable update — return new list.
+  List<FeedComment> _updateCommentInTree(
+    List<FeedComment> tree,
+    String id,
+    FeedComment Function(FeedComment c) transform,
+  ) {
+    return tree.map((top) {
+      if (top.id == id) return transform(top);
+      if (top.replies.isEmpty) return top;
+      final newReplies = top.replies
+          .map((reply) => reply.id == id ? transform(reply) : reply)
+          .toList();
+      return top.copyWith(replies: newReplies);
+    }).toList();
   }
 
   Future<void> _submitComment() async {
     final text = _inputController.text.trim();
     if (text.isEmpty || _posting) return;
     setState(() => _posting = true);
+    final replyTo = _replyingTo;
     try {
       final comment = await feedService.postComment(
         widget.post.id,
         content: text,
+        parentCommentId: replyTo?.id,
       );
       if (!mounted) return;
       _inputController.clear();
-      // Reload with the new comment at top.
       setState(() {
-        _commentsFuture = _loadComments();
-      });
-      // Inject the new comment immediately for UX while reload runs.
-      _commentsFuture.then((existing) {
-        if (!mounted) return;
-        setState(() {
-          _commentsFuture = Future.value([
-            _CommentRow(
-              id: comment.id,
-              authorName: comment.author.name,
-              authorAvatarUrl:
-                  comment.author.avatarUrl ?? comment.author.profilePhotoUrl,
-              content: comment.content,
-              createdAt: comment.createdAt,
-            ),
-            ...existing.where((c) => c.id != comment.id),
-          ]);
-        });
+        _replyingTo = null;
+        if (replyTo == null) {
+          // Top-level: prepend ke list.
+          _comments = [comment, ..._comments];
+        } else {
+          // Reply: insert ke parent's replies + auto-expand.
+          _comments = _comments.map((top) {
+            if (top.id != replyTo.id) return top;
+            final newReplies = [...top.replies, comment];
+            return top.copyWith(
+              replies: newReplies,
+              replyCount: newReplies.length,
+            );
+          }).toList();
+          _expandedReplies.add(replyTo.id);
+        }
       });
     } catch (_) {
       if (!mounted) return;
@@ -2018,63 +2150,131 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
               ),
               const Divider(height: 1, color: Color(0xFFEEF2F6)),
               Flexible(
-                child: FutureBuilder<List<_CommentRow>>(
-                  future: _commentsFuture,
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(24),
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.4,
-                          ),
-                        ),
-                      );
-                    }
-                    final items = snapshot.data ?? const [];
-                    final captionRow = _captionRow;
-                    // Empty state: hanya kalau TIDAK ADA caption juga.
-                    // Kalau ada caption, render caption + "Belum ada
-                    // komentar" prompt biar feel-nya match IG.
-                    if (items.isEmpty && captionRow == null) {
-                      return const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 28),
-                        child: Center(
-                          child: Text(
-                            'Belum ada komentar.\nJadi yang pertama!',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: NataloColors.textSecondary,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              height: 1.4,
-                            ),
-                          ),
-                        ),
-                      );
-                    }
-                    // Caption pinned di atas (kalau ada), lalu list
-                    // comment normal. Caption tile = same widget,
-                    // tidak ada highlight khusus per IG convention.
-                    final visibleRows = <_CommentRow>[
-                      if (captionRow != null) captionRow,
-                      ...items,
-                    ];
-                    return ListView.separated(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 8,
+                child: Builder(builder: (context) {
+                  if (_loading) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(24),
+                        child:
+                            CircularProgressIndicator(strokeWidth: 2.4),
                       ),
-                      itemCount: visibleRows.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        final c = visibleRows[index];
-                        return _CommentTile(comment: c);
-                      },
                     );
-                  },
-                ),
+                  }
+                  final captionRow = _captionRow;
+                  if (_comments.isEmpty && captionRow == null) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 28),
+                      child: Center(
+                        child: Text(
+                          'Belum ada komentar.\nJadi yang pertama!',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: NataloColors.textSecondary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+                  // Build flat list of rows untuk ListView:
+                  //  - Caption tile (kalau ada) di top, no actions
+                  //  - Each top-level comment: parent tile + (optional)
+                  //    "Lihat N balasan" toggle + (optional, when expanded)
+                  //    semua reply tiles indented
+                  final entries = <_CommentEntry>[];
+                  if (captionRow != null) {
+                    entries.add(_CommentEntry.caption(captionRow));
+                  }
+                  for (final top in _comments) {
+                    entries.add(_CommentEntry.comment(top, isReply: false));
+                    if (top.replyCount > 0) {
+                      entries.add(_CommentEntry.repliesToggle(
+                        parent: top,
+                        expanded: _expandedReplies.contains(top.id),
+                      ));
+                      if (_expandedReplies.contains(top.id)) {
+                        for (final reply in top.replies) {
+                          entries.add(
+                            _CommentEntry.comment(reply, isReply: true),
+                          );
+                        }
+                      }
+                    }
+                  }
+                  return ListView.separated(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
+                    itemCount: entries.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final entry = entries[index];
+                      switch (entry.kind) {
+                        case _CommentEntryKind.caption:
+                          return _CommentTile(
+                            comment: entry.comment!,
+                            isReply: false,
+                            isCaption: true,
+                            likeBusy: false,
+                            onToggleLike: null,
+                            onReply: null,
+                          );
+                        case _CommentEntryKind.comment:
+                          final c = entry.comment!;
+                          return _CommentTile(
+                            comment: c,
+                            isReply: entry.isReply,
+                            isCaption: false,
+                            likeBusy: _likeBusy.contains(c.id),
+                            onToggleLike: () => _toggleCommentLike(c),
+                            onReply: () => _startReply(c),
+                          );
+                        case _CommentEntryKind.repliesToggle:
+                          return _RepliesToggle(
+                            parentId: entry.comment!.id,
+                            replyCount: entry.comment!.replyCount,
+                            expanded: entry.expanded,
+                            onTap: () =>
+                                _toggleRepliesExpanded(entry.comment!.id),
+                          );
+                      }
+                    },
+                  );
+                }),
               ),
+              // Reply chip — kalau lagi reply, show context bar di atas
+              // input. Tap X cancel reply → kembali ke top-level mode.
+              if (_replyingTo != null)
+                Container(
+                  padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+                  color: const Color(0xFFF3F4F6),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Membalas ${_replyingTo!.author.name}',
+                          style: const TextStyle(
+                            color: NataloColors.textSecondary,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: _cancelReply,
+                        visualDensity: VisualDensity.compact,
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          size: 18,
+                          color: NataloColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               Container(
                 padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
                 decoration: const BoxDecoration(
@@ -2087,9 +2287,12 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
                     Expanded(
                       child: TextField(
                         controller: _inputController,
+                        focusNode: _inputFocusNode,
                         maxLength: 500,
                         decoration: InputDecoration(
-                          hintText: 'Tulis komentar…',
+                          hintText: _replyingTo == null
+                              ? 'Tulis komentar…'
+                              : 'Balas ${_replyingTo!.author.name}…',
                           filled: true,
                           fillColor: const Color(0xFFF3F4F6),
                           counterText: '',
@@ -2132,75 +2335,217 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
   }
 }
 
-class _CommentRow {
-  final String id;
-  final String authorName;
-  final String? authorAvatarUrl;
-  final String content;
-  final DateTime createdAt;
+/// Entry dalam flat list ListView — tile bisa caption/comment/replies toggle.
+enum _CommentEntryKind { caption, comment, repliesToggle }
 
-  const _CommentRow({
-    required this.id,
-    required this.authorName,
-    this.authorAvatarUrl,
-    required this.content,
-    required this.createdAt,
+class _CommentEntry {
+  final _CommentEntryKind kind;
+  final FeedComment? comment;
+  final bool isReply;
+  final bool expanded;
+
+  const _CommentEntry._({
+    required this.kind,
+    this.comment,
+    this.isReply = false,
+    this.expanded = false,
   });
+
+  factory _CommentEntry.caption(FeedComment row) =>
+      _CommentEntry._(kind: _CommentEntryKind.caption, comment: row);
+
+  factory _CommentEntry.comment(FeedComment c, {required bool isReply}) =>
+      _CommentEntry._(
+        kind: _CommentEntryKind.comment,
+        comment: c,
+        isReply: isReply,
+      );
+
+  factory _CommentEntry.repliesToggle({
+    required FeedComment parent,
+    required bool expanded,
+  }) =>
+      _CommentEntry._(
+        kind: _CommentEntryKind.repliesToggle,
+        comment: parent,
+        expanded: expanded,
+      );
 }
 
 class _CommentTile extends StatelessWidget {
-  final _CommentRow comment;
+  final FeedComment comment;
+  final bool isReply;
+  final bool isCaption;
+  final bool likeBusy;
+  final VoidCallback? onToggleLike;
+  final VoidCallback? onReply;
 
-  const _CommentTile({required this.comment});
+  const _CommentTile({
+    required this.comment,
+    required this.isReply,
+    required this.isCaption,
+    required this.likeBusy,
+    this.onToggleLike,
+    this.onReply,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ProfileAvatar(
-          initial: comment.authorName.isNotEmpty
-              ? comment.authorName[0].toUpperCase()
-              : 'U',
-          imageUrl: comment.authorAvatarUrl,
-          size: 34,
-          fontSize: 14,
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text.rich(
-                TextSpan(
+    final liked = comment.viewerLiked;
+    final author = comment.author;
+    return Padding(
+      // Reply indented ~40px supaya jelas hierarchy parent → reply.
+      padding: EdgeInsets.only(left: isReply ? 40 : 0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ProfileAvatar(
+            initial: author.name.isNotEmpty
+                ? author.name[0].toUpperCase()
+                : 'U',
+            imageUrl: author.avatarUrl ?? author.profilePhotoUrl,
+            // Reply pakai avatar lebih kecil supaya hierarchy visual jelas.
+            size: isReply ? 28 : 34,
+            fontSize: isReply ? 12 : 14,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: '${author.name} ',
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                      TextSpan(text: comment.content),
+                    ],
+                  ),
+                  style: TextStyle(
+                    color: NataloColors.textPrimary,
+                    fontSize: isReply ? 13 : 13.5,
+                    fontWeight: FontWeight.w600,
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                // Action row: timestamp + (kalau bukan caption) Reply
+                // button + (di luar row) Like icon vertical kanan.
+                Row(
                   children: [
-                    TextSpan(
-                      text: '${comment.authorName} ',
-                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    Text(
+                      formatRelativeTime(comment.createdAt),
+                      style: const TextStyle(
+                        color: NataloColors.textSecondary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                    TextSpan(text: comment.content),
+                    if (!isCaption && comment.likeCount > 0) ...[
+                      const SizedBox(width: 12),
+                      Text(
+                        '${comment.likeCount} suka',
+                        style: const TextStyle(
+                          color: NataloColors.textSecondary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                    if (!isCaption && onReply != null) ...[
+                      const SizedBox(width: 12),
+                      GestureDetector(
+                        onTap: onReply,
+                        behavior: HitTestBehavior.opaque,
+                        child: const Text(
+                          'Balas',
+                          style: TextStyle(
+                            color: NataloColors.textSecondary,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
-                style: const TextStyle(
-                  color: NataloColors.textPrimary,
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                  height: 1.35,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                formatRelativeTime(comment.createdAt),
-                style: const TextStyle(
-                  color: NataloColors.textSecondary,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
+          // Heart icon di kanan tile — caption tidak punya. Reply tile
+          // tetap punya supaya bisa di-like.
+          if (!isCaption && onToggleLike != null) ...[
+            const SizedBox(width: 6),
+            GestureDetector(
+              onTap: likeBusy ? null : onToggleLike,
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 4,
+                  vertical: 2,
+                ),
+                child: Icon(
+                  liked
+                      ? Icons.favorite_rounded
+                      : Icons.favorite_outline_rounded,
+                  size: isReply ? 14 : 16,
+                  color: liked
+                      ? const Color(0xFFE53935)
+                      : NataloColors.textSecondary,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _RepliesToggle extends StatelessWidget {
+  final String parentId;
+  final int replyCount;
+  final bool expanded;
+  final VoidCallback onTap;
+
+  const _RepliesToggle({
+    required this.parentId,
+    required this.replyCount,
+    required this.expanded,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 40, top: 2),
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 24,
+              height: 1,
+              color: const Color(0xFFD1D5DB),
+              margin: const EdgeInsets.only(right: 8),
+            ),
+            Text(
+              expanded
+                  ? 'Sembunyikan balasan'
+                  : 'Lihat $replyCount balasan',
+              style: const TextStyle(
+                color: NataloColors.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }

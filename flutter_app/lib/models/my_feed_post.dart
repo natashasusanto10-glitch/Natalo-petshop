@@ -65,6 +65,17 @@ extension MyFeedPostStatusX on MyFeedPostStatus {
 }
 
 /// Feed post yang dipost user — dipakai di Member > Postingan + detail + edit.
+/// Page result untuk cursor-paginated fetchMyPosts. `nextCursor` null
+/// kalau sudah end-of-list — caller stop loadMore.
+class MyFeedPostPage {
+  final List<MyFeedPost> items;
+  final String? nextCursor;
+
+  const MyFeedPostPage({required this.items, this.nextCursor});
+
+  static const empty = MyFeedPostPage(items: [], nextCursor: null);
+}
+
 class MyFeedPost {
   final String id;
   final String slug;
