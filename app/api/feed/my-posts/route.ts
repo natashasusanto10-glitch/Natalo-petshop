@@ -89,6 +89,28 @@ export async function GET(request: NextRequest) {
     prisma.feedPost.count({ where: baseWhere }),
   ]);
 
+  // Lookup viewerLiked per post — Flutter pakai field ini buat hydrate
+  // _likedCache awal di My Posts screen. Tanpa ini, post yang user
+  // sudah pernah like tampil grey di icon, dan tap pertama bakal
+  // accidentally UN-LIKE (backend toggle berdasar DB, bukan trust
+  // `currentlyLiked` dari client). Lihat bug "klik 1x hilang".
+  //
+  // 1 query batch via { postId: { in: ids } } — index pada
+  // FeedLike.userId_postId membuat lookup O(log n).
+  const viewerLikedIds = rawPosts.length === 0
+    ? new Set<string>()
+    : new Set(
+        (
+          await prisma.feedLike.findMany({
+            where: {
+              userId: session.sub,
+              postId: { in: rawPosts.map((p) => p.id) },
+            },
+            select: { postId: true },
+          })
+        ).map((l) => l.postId),
+      );
+
   return NextResponse.json({
     posts: rawPosts.map((post) => {
       const signedMedia = post.media.map((item) => ({
@@ -161,6 +183,7 @@ export async function GET(request: NextRequest) {
         commentCount: post.commentCount,
         shareCount: post.shareCount,
         viewCount: post.viewCount,
+        viewerLiked: viewerLikedIds.has(post.id),
       };
     }),
     filter,

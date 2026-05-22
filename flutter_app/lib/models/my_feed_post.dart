@@ -82,6 +82,14 @@ class MyFeedPost {
   final int likeCount;
   final int commentCount;
   final int viewCount;
+  /// True kalau viewer (session user) sudah pernah klik like post ini —
+  /// source of truth dari backend (FeedLike row exists untuk session.sub).
+  /// Dipakai initialize _likedCache di My Posts screen supaya tombol like
+  /// match dengan DB state. Tanpa field ini, cache start `false` dan tap
+  /// pertama bisa accidentally UN-LIKE post yang sebelumnya di-like (lihat
+  /// bug "klik 1x hilang" — backend toggle berdasar DB, bukan trust
+  /// `currentlyLiked` param dari client).
+  final bool viewerLiked;
   final List<String> productIds;
   final DateTime createdAt;
   final DateTime? approvedAt;
@@ -103,6 +111,7 @@ class MyFeedPost {
     this.likeCount = 0,
     this.commentCount = 0,
     this.viewCount = 0,
+    this.viewerLiked = false,
     this.productIds = const [],
     required this.createdAt,
     this.approvedAt,
@@ -183,6 +192,7 @@ class MyFeedPost {
       likeCount: (json['likeCount'] as num?)?.toInt() ?? 0,
       commentCount: (json['commentCount'] as num?)?.toInt() ?? 0,
       viewCount: (json['viewCount'] as num?)?.toInt() ?? 0,
+      viewerLiked: json['viewerLiked'] as bool? ?? false,
       productIds: (json['productIds'] as List?)?.cast<String>() ?? const [],
       createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
           DateTime.now(),

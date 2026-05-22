@@ -72,6 +72,14 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
         : List<MyFeedPost>.from(source);
     _postKeys = List.generate(_posts.length, (_) => GlobalKey());
     _scrollController = ScrollController();
+    // Hydrate _likedCache dari backend `viewerLiked` field — tanpa ini,
+    // post yang sudah di-like sebelumnya tampil grey di icon, dan tap
+    // pertama bakal accidentally UN-LIKE (backend toggle berdasar DB,
+    // bukan trust client). Lihat bug "klik like 1x hilang harus klik
+    // kedua kali baru bisa di-like".
+    for (final post in _posts) {
+      _likedCache[post.id] = post.viewerLiked;
+    }
     // Jump ke post target setelah first frame settled. Pakai
     // Scrollable.ensureVisible via GlobalKey context — Flutter handle
     // layout precisely, gak ada drift estimasi.
@@ -128,7 +136,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
   Future<void> _toggleLike(int index) async {
     final post = _posts[index];
     AppHaptics.tap();
-    final currentlyLiked = _likedCache[post.id] ?? false;
+    final currentlyLiked = _likedCache[post.id] ?? post.viewerLiked;
     final newLiked = !currentlyLiked;
     // Optimistic update — UI immediately respond.
     setState(() {
@@ -136,6 +144,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
       _posts[index] = _withLikeCount(
         post,
         newLiked ? post.likeCount + 1 : (post.likeCount - 1).clamp(0, 999999),
+        liked: newLiked,
       );
     });
     // Background sync — kalau gagal, revert.
@@ -147,14 +156,22 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
       if (!mounted) return;
       setState(() {
         _likedCache[post.id] = result.liked;
-        _posts[index] = _withLikeCount(_posts[index], result.likeCount);
+        _posts[index] = _withLikeCount(
+          _posts[index],
+          result.likeCount,
+          liked: result.liked,
+        );
       });
     } catch (_) {
       if (!mounted) return;
       // Revert.
       setState(() {
         _likedCache[post.id] = currentlyLiked;
-        _posts[index] = _withLikeCount(_posts[index], post.likeCount);
+        _posts[index] = _withLikeCount(
+          post,
+          post.likeCount,
+          liked: currentlyLiked,
+        );
       });
       AppToast.show(context, 'Gagal update suka, coba lagi');
     }
@@ -373,9 +390,11 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
     );
   }
 
-  /// Helper rebuild post dengan likeCount baru — MyFeedPost immutable jadi
-  /// kita rekonstruksi (mirip copyWith pattern).
-  MyFeedPost _withLikeCount(MyFeedPost post, int newCount) {
+  /// Helper rebuild post dengan likeCount + viewerLiked baru — MyFeedPost
+  /// immutable jadi kita rekonstruksi (mirip copyWith pattern). `liked`
+  /// optional supaya call site lama bisa preserve, sekaligus support fresh
+  /// dari backend response (toggleLike return { liked, likeCount }).
+  MyFeedPost _withLikeCount(MyFeedPost post, int newCount, {bool? liked}) {
     return MyFeedPost(
       id: post.id,
       slug: post.slug,
@@ -393,6 +412,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
       likeCount: newCount,
       commentCount: post.commentCount,
       viewCount: post.viewCount,
+      viewerLiked: liked ?? post.viewerLiked,
       productIds: post.productIds,
       createdAt: post.createdAt,
       approvedAt: post.approvedAt,
@@ -418,6 +438,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
       likeCount: post.likeCount,
       commentCount: post.commentCount,
       viewCount: post.viewCount,
+      viewerLiked: post.viewerLiked,
       productIds: post.productIds,
       createdAt: post.createdAt,
       approvedAt: post.approvedAt,
