@@ -343,7 +343,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         controller: _scrollController,
         slivers: [
           SliverToBoxAdapter(
-            child: _ProductHero(product: product),
+            child: _ProductHero(
+              product: product,
+              selectedVariant: _selectedVariant,
+              needsVariantSelection: _needsVariantSelection,
+              onSelectVariant: _openVariantSheet,
+              onAddToCart: (variant, quantity) =>
+                  _addToCart(variant: variant, quantity: quantity),
+            ),
           ),
           if (product.hasVariants && product.variantAttrs.isNotEmpty)
             SliverToBoxAdapter(
@@ -365,14 +372,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
               child: _ProductInfo(
-                product: product,
-              ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-              child: _VoucherAndTrust(
                 product: product,
                 vouchers: _vouchers,
               ),
@@ -437,8 +436,18 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
 class _ProductHero extends StatefulWidget {
   final Product product;
+  final ProductVariant? selectedVariant;
+  final bool needsVariantSelection;
+  final VoidCallback onSelectVariant;
+  final void Function(ProductVariant? variant, int quantity) onAddToCart;
 
-  const _ProductHero({required this.product});
+  const _ProductHero({
+    required this.product,
+    required this.selectedVariant,
+    required this.needsVariantSelection,
+    required this.onSelectVariant,
+    required this.onAddToCart,
+  });
 
   @override
   State<_ProductHero> createState() => _ProductHeroState();
@@ -511,7 +520,7 @@ class _ProductHeroState extends State<_ProductHero> {
                                       Navigator.push<void>(
                                         context,
                                         PageRouteBuilder<void>(
-                                          opaque: false,
+                                          opaque: true,
                                           barrierColor: Colors.black,
                                           transitionDuration:
                                               const Duration(milliseconds: 280),
@@ -521,6 +530,15 @@ class _ProductHeroState extends State<_ProductHero> {
                                               ImageViewerScreen(
                                             images: images,
                                             initialIndex: _activeIndex,
+                                            productMediaViewer: true,
+                                            product: widget.product,
+                                            selectedVariant:
+                                                widget.selectedVariant,
+                                            needsVariantSelection:
+                                                widget.needsVariantSelection,
+                                            onSelectVariant:
+                                                widget.onSelectVariant,
+                                            onAddToCart: widget.onAddToCart,
                                           ),
                                           transitionsBuilder:
                                               (_, animation, __, child) =>
@@ -618,9 +636,11 @@ class _ImagePlaceholder extends StatelessWidget {
 
 class _ProductInfo extends StatelessWidget {
   final Product product;
+  final List<ProductVoucherPreview> vouchers;
 
   const _ProductInfo({
     required this.product,
+    this.vouchers = const [],
   });
 
   @override
@@ -691,7 +711,15 @@ class _ProductInfo extends StatelessWidget {
             ],
           ),
         ],
-        const SizedBox(height: 18),
+        if (_VoucherAndTrust.hasVoucher(product, vouchers)) ...[
+          const SizedBox(height: 12),
+          _VoucherAndTrust(
+            product: product,
+            vouchers: vouchers,
+          ),
+          const SizedBox(height: 16),
+        ] else
+          const SizedBox(height: 18),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -863,9 +891,10 @@ class _InfoDot extends StatelessWidget {
   }
 }
 
-/// Compact voucher strip di product detail. Cukup satu baris agar section
-/// harga → voucher → tabs tetap rapi dan tidak terasa seperti marketplace
-/// besar yang terlalu ramai.
+/// Compact voucher strip di product detail.
+///
+/// Intentionally tanpa icon / label "Voucher Toko": row langsung memperlihatkan
+/// benefit checkout yang user peduli, mis. [Gratis Ongkir] [-Rp20.000].
 class _VoucherAndTrust extends StatelessWidget {
   final Product product;
   final List<ProductVoucherPreview> vouchers;
@@ -875,95 +904,68 @@ class _VoucherAndTrust extends StatelessWidget {
     this.vouchers = const [],
   });
 
-  @override
-  Widget build(BuildContext context) {
-    // Sumber voucher final — kalau API call sudah balik (list non-empty),
-    // pakai itu. Kalau kosong, fallback ke single preview yang ikut di
-    // payload product list (snapshot ringkas dari /api/products).
-    final List<ProductVoucherPreview> resolved = vouchers.isNotEmpty
+  static bool hasVoucher(
+    Product product,
+    List<ProductVoucherPreview> vouchers,
+  ) {
+    return _resolveVouchers(product, vouchers).isNotEmpty;
+  }
+
+  static List<ProductVoucherPreview> _resolveVouchers(
+    Product product,
+    List<ProductVoucherPreview> vouchers,
+  ) {
+    final resolved = vouchers.isNotEmpty
         ? vouchers
         : (product.voucherPreview != null
             ? [product.voucherPreview!]
-            : const []);
+            : const <ProductVoucherPreview>[]);
+    return resolved
+        .where(
+            (voucher) => voucher.isShippingVoucher || !_isPromoStore(voucher))
+        .toList(growable: false);
+  }
 
-    final voucher = resolved.isNotEmpty ? resolved.first : null;
-    final benefit = _voucherBenefitText(voucher);
-    final countLabel = resolved.length > 1 ? '${resolved.length} voucher' : '';
-    final icon = voucher?.isShippingVoucher == true
-        ? Icons.local_shipping_rounded
-        : Icons.confirmation_number_rounded;
-    final tone =
-        voucher?.isShippingVoucher == true ? _successGreen : _discountRed;
-    final bg = voucher?.isShippingVoucher == true
-        ? const Color(0xFFEFFAF4)
-        : _softDiscountBg;
-    final border = voucher?.isShippingVoucher == true
-        ? const Color(0xFFC7F0D8)
-        : const Color(0xFFFFC9D0);
+  static bool _isPromoStore(ProductVoucherPreview voucher) {
+    final scope = voucher.discountScope.trim().toUpperCase();
+    final type = voucher.type.trim().toUpperCase();
+    return scope == 'STORE' || type.contains('STORE_PROMO');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final resolved = _resolveVouchers(product, vouchers);
+    if (resolved.isEmpty) return const SizedBox.shrink();
 
     return AppPressable(
-      onTap: () => Navigator.pushNamed(context, '/cart'),
-      borderRadius: BorderRadius.circular(14),
+      onTap: () => _showPromoSheet(context, resolved),
+      borderRadius: BorderRadius.circular(10),
       child: Container(
-        constraints: const BoxConstraints(minHeight: 48),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        constraints: const BoxConstraints(minHeight: 46),
+        padding: const EdgeInsets.symmetric(vertical: 8),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: _borderGray),
+          border: Border(
+            top: BorderSide(color: _borderGray.withValues(alpha: 0.72)),
+            bottom: BorderSide(color: _borderGray.withValues(alpha: 0.72)),
+          ),
         ),
         child: Row(
           children: [
-            Container(
-              height: 30,
-              width: 30,
-              decoration: BoxDecoration(
-                color: bg,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: tone, size: 17),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              voucher == null ? 'Voucher tersedia' : 'Voucher Toko',
-              style: const TextStyle(
-                color: _textDark,
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(width: 8),
             Expanded(
-              child: Text(
-                benefit,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: voucher == null ? _textGray : tone,
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w800,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                child: Row(
+                  children: [
+                    for (final voucher in resolved) ...[
+                      _VoucherChip(voucher: voucher),
+                      const SizedBox(width: 8),
+                    ],
+                  ],
                 ),
               ),
             ),
-            if (countLabel.isNotEmpty) ...[
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: bg,
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: border),
-                ),
-                child: Text(
-                  countLabel,
-                  style: TextStyle(
-                    color: tone,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-            ],
             const SizedBox(width: 4),
             const Icon(
               Icons.chevron_right_rounded,
@@ -976,24 +978,387 @@ class _VoucherAndTrust extends StatelessWidget {
     );
   }
 
-  String _voucherBenefitText(ProductVoucherPreview? voucher) {
-    if (voucher == null) return 'Cek di keranjang sebelum checkout';
-    if (voucher.isShippingVoucher) return 'Gratis Ongkir';
-    final percent = voucher.discountPercent;
-    if (percent != null && percent > 0) {
-      final cap =
-          voucher.maxDiscountAmount != null && voucher.maxDiscountAmount! > 0
-              ? ' s.d. ${formatRupiahCompact(voucher.maxDiscountAmount!)}'
-              : '';
-      return 'Diskon ${percent.toStringAsFixed(0)}%$cap';
-    }
-    final amount = voucher.discountAmount ?? voucher.savingAmount;
-    if (amount != null && amount > 0) {
-      return 'Hemat ${formatRupiahCompact(amount)}';
-    }
-    final label = voucher.badgeLabel.trim();
-    return label.isEmpty ? 'Voucher hemat tersedia' : label;
+  void _showPromoSheet(
+    BuildContext context,
+    List<ProductVoucherPreview> resolved,
+  ) {
+    AppHaptics.tap();
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.38),
+      builder: (context) => _PromoVoucherSheet(
+        product: product,
+        vouchers: resolved,
+      ),
+    );
   }
+}
+
+class _VoucherChip extends StatelessWidget {
+  final ProductVoucherPreview voucher;
+
+  const _VoucherChip({required this.voucher});
+
+  @override
+  Widget build(BuildContext context) {
+    final shipping = voucher.isShippingVoucher;
+    final tone = shipping ? _successGreen : _discountRed;
+    final bg = shipping ? const Color(0xFFEFFAF4) : _softDiscountBg;
+    final border = shipping ? const Color(0xFFC7F0D8) : const Color(0xFFFFC9D0);
+    return Container(
+      height: 30,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: border),
+      ),
+      child: Text(
+        _voucherChipText(voucher),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: tone,
+          fontSize: 13,
+          fontWeight: FontWeight.w900,
+          height: 1,
+        ),
+      ),
+    );
+  }
+}
+
+class _PromoVoucherSheet extends StatelessWidget {
+  final Product product;
+  final List<ProductVoucherPreview> vouchers;
+
+  const _PromoVoucherSheet({
+    required this.product,
+    required this.vouchers,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final shippingVouchers =
+        vouchers.where((v) => v.isShippingVoucher).toList();
+    final discountVouchers =
+        vouchers.where((v) => !v.isShippingVoucher).toList();
+    final discountProduct = product.price - product.finalPrice;
+    final bestVoucherDiscount = discountVouchers
+        .map((voucher) => _voucherDiscountEstimate(product, voucher))
+        .fold<double>(0, (best, value) => value > best ? value : best);
+    final showEstimate = discountProduct > 0 || bestVoucherDiscount > 0;
+    final estimatedPrice =
+        (product.finalPrice - bestVoucherDiscount).clamp(0, double.infinity);
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.68,
+          minChildSize: 0.42,
+          maxChildSize: 0.92,
+          builder: (context, scrollController) {
+            return ListView(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(18, 10, 18, 24),
+              children: [
+                Center(
+                  child: Container(
+                    width: 72,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFD6DEE8),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Promo & voucher',
+                  style: TextStyle(
+                    color: _textDark,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    height: 1.1,
+                  ),
+                ),
+                if (showEstimate) ...[
+                  const SizedBox(height: 16),
+                  _PromoEstimateCard(
+                    priceBeforePromo: product.price,
+                    productDiscount: discountProduct,
+                    voucherDiscount: bestVoucherDiscount,
+                    estimatedPrice: estimatedPrice.toDouble(),
+                  ),
+                ],
+                if (shippingVouchers.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Gratis ongkir tersedia di checkout',
+                    style: TextStyle(
+                      color: _successGreen,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 22),
+                const Text(
+                  'Voucher tersedia',
+                  style: TextStyle(
+                    color: _textDark,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                for (final voucher in vouchers) ...[
+                  _VoucherSheetCard(voucher: voucher),
+                  const SizedBox(height: 10),
+                ],
+                const SizedBox(height: 8),
+                const Text(
+                  'Voucher final akan dihitung saat checkout.',
+                  style: TextStyle(
+                    color: _textGray,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    height: 1.25,
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _PromoEstimateCard extends StatelessWidget {
+  final double priceBeforePromo;
+  final double productDiscount;
+  final double voucherDiscount;
+  final double estimatedPrice;
+
+  const _PromoEstimateCard({
+    required this.priceBeforePromo,
+    required this.productDiscount,
+    required this.voucherDiscount,
+    required this.estimatedPrice,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _softDiscountBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFFD4DC)),
+      ),
+      child: Column(
+        children: [
+          _PromoEstimateRow(
+            label: 'Harga sebelum promo',
+            value: formatRupiah(priceBeforePromo),
+            valueColor: _textDark,
+          ),
+          if (productDiscount > 0)
+            _PromoEstimateRow(
+              label: 'Diskon barang',
+              value: '-${formatRupiah(productDiscount)}',
+              valueColor: _discountRed,
+            ),
+          if (voucherDiscount > 0)
+            _PromoEstimateRow(
+              label: 'Diskon voucher',
+              value: '-${formatRupiah(voucherDiscount)}',
+              valueColor: _discountRed,
+            ),
+          const Divider(height: 24, color: Color(0xFFE5E7EB)),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Perkiraan harga hemat',
+                  style: TextStyle(
+                    color: _textDark,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              Text(
+                formatRupiah(estimatedPrice),
+                style: const TextStyle(
+                  color: _discountRed,
+                  fontSize: 21,
+                  fontWeight: FontWeight.w900,
+                  height: 1,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PromoEstimateRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color valueColor;
+
+  const _PromoEstimateRow({
+    required this.label,
+    required this.value,
+    required this.valueColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: _textDark,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              color: valueColor,
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VoucherSheetCard extends StatelessWidget {
+  final ProductVoucherPreview voucher;
+
+  const _VoucherSheetCard({required this.voucher});
+
+  @override
+  Widget build(BuildContext context) {
+    final shipping = voucher.isShippingVoucher;
+    final tone = shipping ? _successGreen : _discountRed;
+    final bg = shipping ? const Color(0xFFF0FDF4) : _softDiscountBg;
+    final border = shipping ? const Color(0xFFBBF7D0) : const Color(0xFFFFC9D0);
+    final subtitle = _voucherSheetSubtitle(voucher);
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _voucherChipText(voucher),
+                  style: TextStyle(
+                    color: tone,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    height: 1.1,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: _textMedium,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    height: 1.25,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Icon(
+            shipping ? Icons.local_shipping_rounded : Icons.percent_rounded,
+            color: tone,
+            size: 24,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _voucherChipText(ProductVoucherPreview voucher) {
+  if (voucher.isShippingVoucher) return 'Gratis Ongkir';
+  final amount = voucher.discountAmount ?? voucher.savingAmount;
+  if (amount != null && amount > 0) {
+    return '-${formatRupiahCompact(amount)}';
+  }
+  final percent = voucher.discountPercent;
+  if (percent != null && percent > 0) {
+    final cap =
+        voucher.maxDiscountAmount != null && voucher.maxDiscountAmount! > 0
+            ? ' s.d. ${formatRupiahCompact(voucher.maxDiscountAmount!)}'
+            : '';
+    return 'Diskon ${percent.toStringAsFixed(0)}%$cap';
+  }
+  final label = voucher.badgeLabel.trim();
+  return label.isEmpty ? 'Voucher hemat' : label;
+}
+
+String _voucherSheetSubtitle(ProductVoucherPreview voucher) {
+  if (voucher.isShippingVoucher) {
+    return 'Bisa digunakan saat checkout';
+  }
+  final minimum = voucher.minimumOrder;
+  if (minimum > 0) {
+    return 'Potongan belanja saat checkout • Min. belanja ${formatRupiahCompact(minimum)}';
+  }
+  return 'Potongan belanja saat checkout';
+}
+
+double _voucherDiscountEstimate(
+  Product product,
+  ProductVoucherPreview voucher,
+) {
+  if (voucher.isShippingVoucher) return 0;
+  final direct = voucher.savingAmount ?? voucher.discountAmount;
+  if (direct != null && direct > 0) return direct;
+
+  final percent = voucher.discountPercent;
+  if (percent == null || percent <= 0) return 0;
+  final raw = product.finalPrice * (percent / 100);
+  final cap = voucher.maxDiscountAmount;
+  if (cap != null && cap > 0) return raw > cap ? cap : raw;
+  return raw;
 }
 
 class _SectionShell extends StatelessWidget {
