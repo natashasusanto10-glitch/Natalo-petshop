@@ -477,61 +477,98 @@ class _PostFeedItem extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Profile row compact, media tetap full-width.
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              ProfileAvatar(
-                initial: memberInitial,
-                imageUrl: memberPhotoUrl,
-                size: 34,
-                fontSize: 14,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      memberName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: NataloColors.textPrimary,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w900,
-                        height: 1.15,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                onPressed: onMenuTap,
-                visualDensity: VisualDensity.compact,
-                icon: const Icon(
-                  Icons.more_horiz_rounded,
-                  color: NataloColors.textPrimary,
-                ),
-              ),
-            ],
-          ),
-        ),
         // Status badge (pending / rejected) — di ATAS media supaya jelas
         // tanpa harus scroll. Auto-hide kalau published (clean Instagram-feel).
         if (post.statusInfo == MyFeedPostStatus.pending ||
             post.statusInfo == MyFeedPostStatus.rejected) ...[
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
             child: _PostStatusBadge(post: post),
           ),
         ],
-        // Media full-width — no card wrapper, no rounded clipping di luar
-        // media itu sendiri. Edge-to-edge seperti Instagram feed.
-        _PostMediaSurface(post: post),
+        // Media full-width dengan author overlay inlay di top — IG-style.
+        // Sebelumnya author row terpisah di atas media (outline) makan
+        // ~60dp space, di video 3:5 portrait bikin action bar (heart /
+        // comment / share) kepotong off-screen. Sekarang author overlay
+        // di dalam media via Stack + dark gradient top supaya teks putih
+        // tetap readable di atas konten media apapun.
+        Stack(
+          children: [
+            _PostMediaSurface(post: post),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: IgnorePointer(
+                child: Container(
+                  height: 72,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Color(0x66000000), // 40% black
+                        Color(0x00000000),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 8,
+              left: 10,
+              right: 4,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  ProfileAvatar(
+                    initial: memberInitial,
+                    imageUrl: memberPhotoUrl,
+                    size: 30,
+                    fontSize: 13,
+                  ),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      memberName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                        height: 1.15,
+                        shadows: [
+                          Shadow(
+                            color: Color(0x80000000),
+                            blurRadius: 4,
+                            offset: Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: onMenuTap,
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(
+                      Icons.more_horiz_rounded,
+                      color: Colors.white,
+                      shadows: [
+                        Shadow(
+                          color: Color(0x80000000),
+                          blurRadius: 4,
+                          offset: Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
         // Action row di-padding sedikit dari edge.
         // Count di-render inline samping icon (TikTok/Reels style) supaya
         // user langsung lihat berapa like/comment/share. 0 → hide count
