@@ -18,6 +18,7 @@ import '../state/cart_store.dart';
 import '../state/member_store.dart';
 import '../state/recently_viewed_store.dart';
 import 'checkout_screen.dart';
+import '../utils/fly_to_cart.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_cart_button.dart';
@@ -67,6 +68,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _overviewKey = GlobalKey();
   final GlobalKey _reviewsKey = GlobalKey();
+  // Posisi product hero image — dipakai oleh flyImageToCart saat user
+  // tap "Tambah ke Keranjang" supaya mini image fly dari foto produk
+  // (yang user sedang lihat) → ke cart icon di AppBar. Tokopedia pattern.
+  final GlobalKey _heroImageKey = GlobalKey();
   // Map attribute.id → selected option.id. Kosong = belum pilih satu pun.
   final Map<String, String> _selectedOptions = {};
 
@@ -197,6 +202,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     int quantity = 1,
   }) {
     AppHaptics.success();
+    // Fire fly-to-cart animation dulu (Overlay-based, tidak block UI).
+    // Mini product image fly dari posisi hero image → cart icon di AppBar
+    // dengan parabolic arc. Match Tokopedia / Shopee pattern.
+    flyImageToCart(
+      context: context,
+      imageUrl: product.imageUrl,
+      sourceKey: _heroImageKey,
+    );
     cartStore.addProduct(
       product,
       variant: variant,
@@ -343,13 +356,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         controller: _scrollController,
         slivers: [
           SliverToBoxAdapter(
-            child: _ProductHero(
-              product: product,
-              selectedVariant: _selectedVariant,
-              needsVariantSelection: _needsVariantSelection,
-              onSelectVariant: _openVariantSheet,
-              onAddToCart: (variant, quantity) =>
-                  _addToCart(variant: variant, quantity: quantity),
+            // KeyedSubtree dengan _heroImageKey supaya flyImageToCart()
+            // bisa lookup posisi hero area saat user tap "Tambah ke
+            // Keranjang" → fly mini image dari sini ke cart icon AppBar.
+            child: KeyedSubtree(
+              key: _heroImageKey,
+              child: _ProductHero(
+                product: product,
+                selectedVariant: _selectedVariant,
+                needsVariantSelection: _needsVariantSelection,
+                onSelectVariant: _openVariantSheet,
+                onAddToCart: (variant, quantity) =>
+                    _addToCart(variant: variant, quantity: quantity),
+              ),
             ),
           ),
           if (product.hasVariants && product.variantAttrs.isNotEmpty)

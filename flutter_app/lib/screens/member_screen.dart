@@ -623,16 +623,25 @@ class _PostThumbnail extends StatelessWidget {
         children: [
           Container(color: const Color(0xFFF1F5F9)),
           if (mediaUrl != null)
-            CachedNetworkImage(
-              imageUrl: mediaUrl,
-              fit: BoxFit.cover,
-              fadeInDuration: const Duration(milliseconds: 180),
-              placeholder: (_, __) => Container(color: const Color(0xFFE2E8F0)),
-              errorWidget: (_, __, ___) => const Center(
-                child: Icon(
-                  Icons.image_not_supported_outlined,
-                  color: Color(0xFF94A3B8),
-                  size: 28,
+            // Hero animation source — wraps thumbnail dengan tag unik
+            // per-post. Detail screen wrap image dengan tag yang sama
+            // di _PostMediaSurface → Flutter auto-fly + scale image saat
+            // navigate. Skip untuk video (VideoPlayer destination tidak
+            // compatible dengan Hero — animasi snap kalau mismatch).
+            Hero(
+              tag: 'post-thumb-${post.id}',
+              child: CachedNetworkImage(
+                imageUrl: mediaUrl,
+                fit: BoxFit.cover,
+                fadeInDuration: const Duration(milliseconds: 180),
+                placeholder: (_, __) =>
+                    Container(color: const Color(0xFFE2E8F0)),
+                errorWidget: (_, __, ___) => const Center(
+                  child: Icon(
+                    Icons.image_not_supported_outlined,
+                    color: Color(0xFF94A3B8),
+                    size: 28,
+                  ),
                 ),
               ),
             )

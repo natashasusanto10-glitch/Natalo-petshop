@@ -15,6 +15,13 @@ class AppCartButton extends StatefulWidget {
 
   const AppCartButton({super.key, this.onPressed});
 
+  /// Static key untuk track posisi icon — dipakai oleh `flyImageToCart()`
+  /// animation untuk tahu target koordinat saat user tap "Add to Cart"
+  /// di product detail. Hanya 1 cart button visible at-a-time di app
+  /// (di app bar screen aktif), jadi single static key aman secara
+  /// praktis. Detached saat widget dispose → null lookup graceful.
+  static final GlobalKey iconKey = GlobalKey(debugLabel: 'AppCartButton-icon');
+
   @override
   State<AppCartButton> createState() => _AppCartButtonState();
 }
@@ -78,7 +85,13 @@ class _AppCartButtonState extends State<AppCartButton>
               tooltip: 'Keranjang',
               onPressed: widget.onPressed ??
                   () => Navigator.pushNamed(context, '/cart'),
-              icon: const Icon(Icons.shopping_cart_outlined),
+              // Wrap icon dgn KeyedSubtree(key: AppCartButton.iconKey)
+              // supaya fly-to-cart animation bisa lookup posisi target
+              // via GlobalKey.currentContext.findRenderObject().
+              icon: KeyedSubtree(
+                key: AppCartButton.iconKey,
+                child: const Icon(Icons.shopping_cart_outlined),
+              ),
             ),
             if (count > 0)
               Positioned(
