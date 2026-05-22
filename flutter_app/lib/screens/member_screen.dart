@@ -309,7 +309,7 @@ class _ProfileSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 10, 18, 14),
+      padding: const EdgeInsets.fromLTRB(18, 6, 18, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -319,12 +319,12 @@ class _ProfileSection extends StatelessWidget {
               ProfileAvatar(
                 initial: profile.initial as String? ?? '?',
                 imageUrl: profile.profilePhotoUrl as String?,
-                size: 88,
-                fontSize: 32,
+                size: 80,
+                fontSize: 30,
                 showCameraBadge: true,
                 onTap: onAvatarTap,
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -335,12 +335,12 @@ class _ProfileSection extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: _textPrimary,
-                        fontSize: 21,
+                        fontSize: 20,
                         fontWeight: FontWeight.w900,
                         height: 1.15,
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
                     Row(
                       children: [
                         Expanded(
@@ -384,42 +384,34 @@ class _ProfileStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FBFF),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE5EEF8)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Text(
-            _formatCount(value),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: _textPrimary,
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              height: 1.0,
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(
+          _formatCount(value),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: _textPrimary,
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+            height: 1.0,
           ),
-          const SizedBox(height: 3),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: _textSecondary,
-              fontSize: 11.5,
-              fontWeight: FontWeight.w700,
-              height: 1.1,
-            ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: _textSecondary,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            height: 1.05,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -444,10 +436,10 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
   _TabBarDelegate({required this.controller});
 
   @override
-  double get minExtent => 46;
+  double get minExtent => 42;
 
   @override
-  double get maxExtent => 46;
+  double get maxExtent => 42;
 
   @override
   Widget build(
@@ -465,31 +457,37 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
         indicatorWeight: 2,
         indicatorSize: TabBarIndicatorSize.label,
         labelStyle: const TextStyle(
-          fontSize: 12.5,
+          fontSize: 0,
           fontWeight: FontWeight.w800,
         ),
         unselectedLabelStyle: const TextStyle(
-          fontSize: 12.5,
+          fontSize: 0,
           fontWeight: FontWeight.w700,
         ),
-        tabs: const [
+        tabs: [
           Tab(
-            height: 46,
-            iconMargin: EdgeInsets.only(bottom: 2),
-            icon: Icon(Icons.grid_on_rounded, size: 19),
-            text: 'Postingan',
+            height: 42,
+            iconMargin: EdgeInsets.zero,
+            icon: Semantics(
+              label: 'Postingan',
+              child: const Icon(Icons.grid_on_rounded, size: 24),
+            ),
           ),
           Tab(
-            height: 46,
-            iconMargin: EdgeInsets.only(bottom: 2),
-            icon: Icon(Icons.play_circle_outline_rounded, size: 19),
-            text: 'Video',
+            height: 42,
+            iconMargin: EdgeInsets.zero,
+            icon: Semantics(
+              label: 'Video',
+              child: const Icon(Icons.play_circle_outline_rounded, size: 24),
+            ),
           ),
           Tab(
-            height: 46,
-            iconMargin: EdgeInsets.only(bottom: 2),
-            icon: Icon(Icons.shopping_bag_outlined, size: 19),
-            text: 'Produk Ditag',
+            height: 42,
+            iconMargin: EdgeInsets.zero,
+            icon: Semantics(
+              label: 'Produk Ditag',
+              child: const Icon(Icons.shopping_bag_outlined, size: 24),
+            ),
           ),
         ],
       ),
@@ -544,21 +542,25 @@ class _PostGrid extends StatelessWidget {
         onCreateCta: onCreateCta,
       );
     }
-    return GridView.builder(
-      padding: const EdgeInsets.only(bottom: 100),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        mainAxisSpacing: 2,
-        crossAxisSpacing: 2,
-        childAspectRatio: 1,
+    return MediaQuery.removePadding(
+      context: context,
+      removeTop: true,
+      child: GridView.builder(
+        padding: const EdgeInsets.only(bottom: 100),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          mainAxisSpacing: 2,
+          crossAxisSpacing: 2,
+          childAspectRatio: 1,
+        ),
+        itemCount: posts.length,
+        itemBuilder: (context, index) {
+          return _PostThumbnail(
+            post: posts[index],
+            onTap: () => onTapPost(index),
+          );
+        },
       ),
-      itemCount: posts.length,
-      itemBuilder: (context, index) {
-        return _PostThumbnail(
-          post: posts[index],
-          onTap: () => onTapPost(index),
-        );
-      },
     );
   }
 }
