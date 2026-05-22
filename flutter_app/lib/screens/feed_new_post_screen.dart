@@ -464,9 +464,7 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
                 ),
               ),
               _BottomActions(
-                savingDraft: _savingDraft,
                 uploadEnabled: _error == null,
-                onSaveDraft: _saveDraftAndExit,
                 onUpload: _upload,
               ),
             ],
@@ -1031,15 +1029,11 @@ class _PurchasedProductCard extends StatelessWidget {
 }
 
 class _BottomActions extends StatelessWidget {
-  final bool savingDraft;
   final bool uploadEnabled;
-  final VoidCallback onSaveDraft;
   final VoidCallback onUpload;
 
   const _BottomActions({
-    required this.savingDraft,
     required this.uploadEnabled,
-    required this.onSaveDraft,
     required this.onUpload,
   });
 
@@ -1053,50 +1047,24 @@ class _BottomActions extends StatelessWidget {
           color: Colors.white,
           border: Border(top: BorderSide(color: Color(0xFFE5EAF2))),
         ),
-        child: Row(
-          children: [
-            Expanded(
-              child: SizedBox(
-                height: 56,
-                child: OutlinedButton(
-                  onPressed: savingDraft ? null : onSaveDraft,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: _newPostBlue,
-                    side: const BorderSide(color: _newPostBlue, width: 1.4),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    textStyle: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  child: Text(savingDraft ? 'Menyimpan...' : 'Simpan Draft'),
-                ),
+        child: SizedBox(
+          width: double.infinity,
+          height: 56,
+          child: FilledButton(
+            onPressed: uploadEnabled ? onUpload : null,
+            style: FilledButton.styleFrom(
+              backgroundColor: _newPostBlue,
+              disabledBackgroundColor: const Color(0xFFCBD5E1),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+              textStyle: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w900,
               ),
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: SizedBox(
-                height: 56,
-                child: FilledButton(
-                  onPressed: uploadEnabled ? onUpload : null,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _newPostBlue,
-                    disabledBackgroundColor: const Color(0xFFCBD5E1),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    textStyle: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  child: const Text('Upload ke Feed'),
-                ),
-              ),
-            ),
-          ],
+            child: const Text('Upload ke Feed'),
+          ),
         ),
       ),
     );
@@ -1388,7 +1356,7 @@ class _CoverPickerSheet extends StatelessWidget {
 ///  - Floating action rail di kanan (heart, comment, share) — UI mockup,
 ///    tidak interactive (preview only)
 ///  - Creator avatar + name + caption overlay di bawah
-///  - Bottom action bar: "Simpan Draft" + "Upload ke Feed" (real action)
+///  - Bottom action bar: "Upload ke Feed" (real action)
 ///  - Back button kiri atas
 class FeedPostPreviewScreen extends StatefulWidget {
   final NewPostMediaDraft draft;
@@ -1494,59 +1462,33 @@ class _FeedPostPreviewScreenState extends State<FeedPostPreviewScreen> {
             bottom: 120,
             child: _PreviewCreatorOverlay(caption: widget.caption),
           ),
-          // ── Bottom action bar: Simpan Draft + Upload ke Feed ──
+          // ── Bottom action bar: Upload ke Feed ──
           Align(
             alignment: Alignment.bottomCenter,
             child: SafeArea(
               top: false,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.pop(context, false),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          backgroundColor:
-                              Colors.white.withValues(alpha: 0.10),
-                          side: const BorderSide(color: Colors.white24),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                        child: const Text(
-                          'Simpan Draft',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 14,
-                          ),
-                        ),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _newPostBlue,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () => Navigator.pop(context, true),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _newPostBlue,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                        child: const Text(
-                          'Upload ke Feed',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 14,
-                          ),
-                        ),
+                    child: const Text(
+                      'Upload ke Feed',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
