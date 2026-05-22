@@ -39,6 +39,9 @@ import '../widgets/moderation_action_sheet.dart';
 const _officialGold = Color(0xFFF4D47C);
 const _officialGoldMuted = Color(0xFFD7B55B);
 const _feedBlue = Color(0xFF0B7FEA);
+const _feedActionForegroundColor = Color(0xFFFFFFFF);
+const _feedActionShadowColor = Color(0x99000000);
+const _feedActionTextShadowColor = Color(0xB3000000);
 const _feedActionIconSize = 32.0;
 const _feedActionStrokeWidth = 2.2;
 const _feedActionCountFontSize = 12.0;
@@ -1115,8 +1118,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   Widget build(BuildContext context) {
     final post = widget.post;
     final photos = post.media;
-    final screenSize = MediaQuery.sizeOf(context);
-    final actionRailInset = screenSize.height < 760 ? 88.0 : 100.0;
+    const actionRailInset = _feedActionBottomInset;
     const feedInfoInset = 24.0;
 
     return VisibilityDetector(
@@ -3375,20 +3377,22 @@ class _ReelsAction extends StatelessWidget {
                 iconChild,
                 if (count != null) ...[
                   const SizedBox(height: 2),
-                  Text(
-                    _formatCount(count!),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: _feedActionCountFontSize,
-                      fontWeight: FontWeight.w900,
-                      height: 1,
-                      shadows: [
-                        Shadow(
-                          color: Colors.black54,
-                          blurRadius: 2,
-                          offset: Offset(0, 0.8),
-                        ),
-                      ],
+                  RepaintBoundary(
+                    child: Text(
+                      _formatCount(count!),
+                      style: const TextStyle(
+                        color: _feedActionForegroundColor,
+                        fontSize: _feedActionCountFontSize,
+                        fontWeight: FontWeight.w900,
+                        height: 1,
+                        shadows: [
+                          Shadow(
+                            color: _feedActionTextShadowColor,
+                            blurRadius: 2.4,
+                            offset: Offset(0, 0.8),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -3439,7 +3443,7 @@ class _HeartGlyphPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final path = _buildHeartPath(size);
     final shadowPaint = Paint()
-      ..color = const Color(0x99000000)
+      ..color = _feedActionShadowColor
       ..style = liked ? PaintingStyle.fill : PaintingStyle.stroke
       ..strokeWidth = _feedActionStrokeWidth
       ..strokeCap = StrokeCap.round
@@ -3449,7 +3453,7 @@ class _HeartGlyphPainter extends CustomPainter {
     canvas.drawPath(path.shift(const Offset(0, 1.2)), shadowPaint);
 
     final paint = Paint()
-      ..color = liked ? const Color(0xFFEF4444) : Colors.white
+      ..color = liked ? const Color(0xFFEF4444) : _feedActionForegroundColor
       ..style = liked ? PaintingStyle.fill : PaintingStyle.stroke
       ..strokeWidth = _feedActionStrokeWidth
       ..strokeCap = StrokeCap.round
@@ -3553,14 +3557,14 @@ class _CommentGlyphPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final shadowPaint = Paint()
-      ..color = const Color(0x99000000)
+      ..color = _feedActionShadowColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = _feedActionStrokeWidth
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
     final paint = Paint()
-      ..color = Colors.white
+      ..color = _feedActionForegroundColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = _feedActionStrokeWidth
       ..strokeCap = StrokeCap.round
@@ -3639,14 +3643,14 @@ class _ShareGlyphPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final shadowPaint = Paint()
-      ..color = const Color(0x99000000)
+      ..color = _feedActionShadowColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = _feedActionStrokeWidth
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
     final paint = Paint()
-      ..color = Colors.white
+      ..color = _feedActionForegroundColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = _feedActionStrokeWidth
       ..strokeCap = StrokeCap.round
@@ -3708,11 +3712,11 @@ class _MoreGlyphPainter extends CustomPainter {
       Offset(size.width * 0.70, size.height * 0.50),
     ];
     final shadowPaint = Paint()
-      ..color = const Color(0x99000000)
+      ..color = _feedActionShadowColor
       ..style = PaintingStyle.fill
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
     final paint = Paint()
-      ..color = Colors.white
+      ..color = _feedActionForegroundColor
       ..style = PaintingStyle.fill;
 
     for (final center in centers) {
