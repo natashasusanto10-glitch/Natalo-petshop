@@ -541,8 +541,8 @@ class _PostFeedItemState extends State<_PostFeedItem>
         weight: 18,
       ),
       TweenSequenceItem(
-        tween:
-            Tween(begin: 0.82, end: 0.0).chain(CurveTween(curve: Curves.easeIn)),
+        tween: Tween(begin: 0.82, end: 0.0)
+            .chain(CurveTween(curve: Curves.easeIn)),
         weight: 26,
       ),
     ]).animate(_heartBurstController);
@@ -610,13 +610,15 @@ class _PostFeedItemState extends State<_PostFeedItem>
             child: _PostStatusBadge(post: post),
           ),
         ],
-        // Media full-width dengan author overlay inlay di top — IG-style.
-        // Sebelumnya author row terpisah di atas media (outline) makan
-        // ~60dp space, di video 3:5 portrait bikin action bar (heart /
-        // comment / share) kepotong off-screen. Sekarang author overlay
-        // di dalam media via Stack + dark gradient top supaya teks putih
-        // tetap readable di atas konten media apapun.
-        //
+        // Author row putih di atas media — Instagram posts style.
+        // Halaman Postingan Saya memakai list post, bukan Reels, jadi author
+        // tidak dioverlay di media agar image/video sama-sama jelas.
+        _PostAuthorRow(
+          memberName: memberName,
+          memberInitial: memberInitial,
+          memberPhotoUrl: memberPhotoUrl,
+          onMenuTap: widget.onMenuTap,
+        ),
         // Double-tap detector wrap media: signature Instagram-feel "tap
         // dua kali untuk like". Single tap ke media tetap fall-through
         // ke gesture detector dalam (mis. _InlineVideoPlayer onTap →
@@ -628,111 +630,39 @@ class _PostFeedItemState extends State<_PostFeedItem>
           child: Stack(
             children: [
               _PostMediaSurface(post: post),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: IgnorePointer(
-                child: Container(
-                  height: 72,
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Color(0x66000000), // 40% black
-                        Color(0x00000000),
-                      ],
+              // Heart burst overlay — big white heart pop di tengah image
+              // saat double-tap. Signature Instagram-style. IgnorePointer
+              // supaya tidak intercept tap (gesture wrap di luar Stack udah
+              // handle double-tap).
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Center(
+                    child: AnimatedBuilder(
+                      animation: _heartBurstController,
+                      builder: (context, _) {
+                        if (_burstOpacity.value == 0) {
+                          return const SizedBox.shrink();
+                        }
+                        return Opacity(
+                          opacity: _burstOpacity.value,
+                          child: Transform.scale(
+                            scale: _burstScale.value,
+                            child: const Icon(
+                              Icons.favorite_rounded,
+                              color: Colors.white,
+                              size: 128,
+                              shadows: [
+                                Shadow(color: Colors.black54, blurRadius: 28),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ),
               ),
-            ),
-            Positioned(
-              top: 8,
-              left: 10,
-              right: 4,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  ProfileAvatar(
-                    initial: memberInitial,
-                    imageUrl: memberPhotoUrl,
-                    size: 30,
-                    fontSize: 13,
-                  ),
-                  const SizedBox(width: 9),
-                  Expanded(
-                    child: Text(
-                      memberName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w900,
-                        height: 1.15,
-                        shadows: [
-                          Shadow(
-                            color: Color(0x80000000),
-                            blurRadius: 4,
-                            offset: Offset(0, 1),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: widget.onMenuTap,
-                    visualDensity: VisualDensity.compact,
-                    icon: const Icon(
-                      Icons.more_horiz_rounded,
-                      color: Colors.white,
-                      shadows: [
-                        Shadow(
-                          color: Color(0x80000000),
-                          blurRadius: 4,
-                          offset: Offset(0, 1),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // Heart burst overlay — big white heart pop di tengah image
-            // saat double-tap. Signature Instagram-style. IgnorePointer
-            // supaya tidak intercept tap (gesture wrap di luar Stack udah
-            // handle double-tap).
-            Positioned.fill(
-              child: IgnorePointer(
-                child: Center(
-                  child: AnimatedBuilder(
-                    animation: _heartBurstController,
-                    builder: (context, _) {
-                      if (_burstOpacity.value == 0) {
-                        return const SizedBox.shrink();
-                      }
-                      return Opacity(
-                        opacity: _burstOpacity.value,
-                        child: Transform.scale(
-                          scale: _burstScale.value,
-                          child: const Icon(
-                            Icons.favorite_rounded,
-                            color: Colors.white,
-                            size: 128,
-                            shadows: [
-                              Shadow(color: Colors.black54, blurRadius: 28),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ),
-          ],
+            ],
           ),
         ),
         // Action row di-padding sedikit dari edge.
@@ -756,8 +686,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
                   iconSize: 28,
                   tapSize: 42,
                   count: post.likeCount,
-                  semanticLabel:
-                      liked ? 'Batalkan suka' : 'Sukai postingan',
+                  semanticLabel: liked ? 'Batalkan suka' : 'Sukai postingan',
                   onTap: _handleLikeTap,
                 ),
               ),
@@ -815,6 +744,60 @@ class _PostFeedItemState extends State<_PostFeedItem>
           ),
         ),
       ],
+    );
+  }
+}
+
+class _PostAuthorRow extends StatelessWidget {
+  final String memberName;
+  final String memberInitial;
+  final String? memberPhotoUrl;
+  final VoidCallback onMenuTap;
+
+  const _PostAuthorRow({
+    required this.memberName,
+    required this.memberInitial,
+    required this.memberPhotoUrl,
+    required this.onMenuTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
+      child: Row(
+        children: [
+          ProfileAvatar(
+            initial: memberInitial,
+            imageUrl: memberPhotoUrl,
+            size: 36,
+            fontSize: 15,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              memberName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: NataloColors.textPrimary,
+                fontSize: 15,
+                fontWeight: FontWeight.w900,
+                height: 1.15,
+              ),
+            ),
+          ),
+          IconButton(
+            onPressed: onMenuTap,
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(
+              Icons.more_horiz_rounded,
+              color: NataloColors.textPrimary,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2180,8 +2163,7 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
                     return const Center(
                       child: Padding(
                         padding: EdgeInsets.all(24),
-                        child:
-                            CircularProgressIndicator(strokeWidth: 2.4),
+                        child: CircularProgressIndicator(strokeWidth: 2.4),
                       ),
                     );
                   }
@@ -2326,8 +2308,7 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
                             : NataloColors.textSecondary,
                         size: 22,
                       ),
-                      tooltip:
-                          _emojiVisible ? 'Tutup emoji' : 'Buka emoji',
+                      tooltip: _emojiVisible ? 'Tutup emoji' : 'Buka emoji',
                     ),
                     const SizedBox(width: 4),
                     Expanded(
@@ -2460,9 +2441,8 @@ class _CommentTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ProfileAvatar(
-            initial: author.name.isNotEmpty
-                ? author.name[0].toUpperCase()
-                : 'U',
+            initial:
+                author.name.isNotEmpty ? author.name[0].toUpperCase() : 'U',
             imageUrl: author.avatarUrl ?? author.profilePhotoUrl,
             // Reply pakai avatar lebih kecil supaya hierarchy visual jelas.
             size: isReply ? 28 : 34,
@@ -2594,9 +2574,7 @@ class _RepliesToggle extends StatelessWidget {
               margin: const EdgeInsets.only(right: 8),
             ),
             Text(
-              expanded
-                  ? 'Sembunyikan balasan'
-                  : 'Lihat $replyCount balasan',
+              expanded ? 'Sembunyikan balasan' : 'Lihat $replyCount balasan',
               style: const TextStyle(
                 color: NataloColors.textSecondary,
                 fontSize: 12,
@@ -2610,10 +2588,8 @@ class _RepliesToggle extends StatelessWidget {
   }
 }
 
-/// Aspect ratio per media type — per spec final:
-///   - Video: 3:5 (0.6) — frame lebih immersive, ~77% viewport height.
-///     Source video upload 9:16 (1080×1920) di-crop center ke 3:5 frame
-///     via BoxFit.cover di _InlineVideoPlayer.
+/// Aspect ratio per media type — Postingan Saya memakai Instagram posts style:
+///   - Video: 4:5 (0.8) — konsisten dengan image feed post, bukan Reels.
 ///   - Photo (single/carousel): 4:5 (0.8) — Instagram-spec standard.
 ///     Sejak v1.0.62, picker actual crop file ke 4:5 sebelum upload
 ///     (lihat _cropPhotoTo4x5 di feed_media_picker_screen.dart). Jadi
@@ -2626,10 +2602,9 @@ class _RepliesToggle extends StatelessWidget {
 ///
 /// Default fallback 4:5 kalau type tidak diketahui.
 double _safeAspectRatio(int width, int height, {MyFeedPostType? type}) {
-  // Video: fixed 3:5 — frame immersive untuk video content, bukan ngikut
-  // source aspect. Source 9:16 ke-crop center 3:5 di display.
+  // Video: fixed 4:5 — halaman ini list posts, bukan Reels.
   if (type == MyFeedPostType.video) {
-    return 3 / 5;
+    return 4 / 5;
   }
   // Photo / carousel: clamp ke 4:5 portrait → 1.91:1 landscape.
   // New posts (v1.0.62+) sudah 4:5 di upload-side → ratio = 0.8 = no-op
