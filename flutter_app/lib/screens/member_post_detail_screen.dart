@@ -90,39 +90,50 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
   }
 
   void _jumpToInitial() {
-    if (widget.initialIndex <= 0 || widget.initialIndex >= _posts.length) {
+    final targetIndex = widget.initialIndex;
+    if (targetIndex <= 0 || targetIndex >= _posts.length) {
       return;
     }
-    final key = _postKeys[widget.initialIndex];
-    final ctx = key.currentContext;
-    if (ctx == null) {
-      // Item belum ke-render (ListView lazy build). Force scroll dulu ke
-      // approximate offset supaya item masuk render tree, lalu ensure
-      // visible di frame berikutnya.
-      final approxOffset = MediaQuery.of(context).size.height *
-          widget.initialIndex.clamp(0, _posts.length - 1).toDouble();
-      if (_scrollController.hasClients) {
-        _scrollController.jumpTo(
-          approxOffset.clamp(0.0, _scrollController.position.maxScrollExtent),
-        );
-      }
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final c2 = _postKeys[widget.initialIndex].currentContext;
-        if (c2 != null) {
-          Scrollable.ensureVisible(
-            c2,
-            duration: Duration.zero,
-            alignment: 0.0, // align ke TOP viewport
-          );
-        }
-      });
+    _jumpNearPost(targetIndex);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _ensurePostVisible(targetIndex, attemptsLeft: 8);
+    });
+  }
+
+  void _jumpNearPost(int targetIndex) {
+    if (!_scrollController.hasClients) return;
+    final maxExtent = _scrollController.position.maxScrollExtent;
+    final approxOffset = _estimatedPostExtent(context) * targetIndex;
+    final targetOffset = approxOffset.clamp(0.0, maxExtent).toDouble();
+    _scrollController.jumpTo(targetOffset);
+  }
+
+  void _ensurePostVisible(int targetIndex, {required int attemptsLeft}) {
+    if (!mounted || !_scrollController.hasClients) return;
+    final ctx = _postKeys[targetIndex].currentContext;
+    if (ctx != null) {
+      Scrollable.ensureVisible(
+        ctx,
+        duration: Duration.zero,
+        alignment: 0.0,
+        alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+      );
       return;
     }
-    Scrollable.ensureVisible(
-      ctx,
-      duration: Duration.zero,
-      alignment: 0.0,
-    );
+    if (attemptsLeft <= 0) return;
+    _jumpNearPost(targetIndex);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _ensurePostVisible(targetIndex, attemptsLeft: attemptsLeft - 1);
+    });
+  }
+
+  double _estimatedPostExtent(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    const mediaAspectRatio = 4 / 5;
+    const authorRowHeight = 52.0;
+    const actionCaptionDateHeight = 118.0;
+    final mediaHeight = width / mediaAspectRatio;
+    return mediaHeight + authorRowHeight + actionCaptionDateHeight;
   }
 
   @override
@@ -371,6 +382,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
             )
           : ListView.separated(
               controller: _scrollController,
+              cacheExtent: _estimatedPostExtent(context) * 2,
               // Bottom padding extra space supaya post terakhir bisa di-
               // scroll lega ke atas viewport (gak mepet ke home indicator).
               padding: const EdgeInsets.only(top: 0, bottom: 48),
@@ -1280,8 +1292,7 @@ class _ImageSurface extends StatelessWidget {
             highlightColor: const Color(0xFF374151),
             child: Container(color: const Color(0xFF1F2937)),
           ),
-          errorWidget: (_, __, ___) =>
-              _MediaPlaceholder(icon: placeholderIcon),
+          errorWidget: (_, __, ___) => _MediaPlaceholder(icon: placeholderIcon),
         ),
       ),
     );
