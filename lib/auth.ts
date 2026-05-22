@@ -61,16 +61,35 @@ export async function getSession(
 ): Promise<SessionPayload | null> {
   const cookieStore = await cookies();
 
-  const cookieNames = expectedRole
-    ? [cookieNameForRole(expectedRole), LEGACY_SESSION_COOKIE]
-    : [MEMBER_SESSION_COOKIE, ADMIN_SESSION_COOKIE, LEGACY_SESSION_COOKIE];
+  // Saat expectedRole = CUSTOMER, kita ALSO check admin cookie. Alasan:
+  // ADMIN punya privilege superset CUSTOMER (privilege elevation pattern).
+  // Admin yang login di Flutter app dengan akun admin tetap bisa akses
+  // endpoint member-facing (/api/auth/me, /api/feed/*, /api/cart/*, dll)
+  // tanpa di-reject 401 yang memicu auto-logout.
+  //
+  // Reverse TIDAK berlaku: CUSTOMER ditolak di endpoint ADMIN. Privilege
+  // cuma elevate up, tidak down.
+  const cookieNames =
+    expectedRole == null
+      ? [MEMBER_SESSION_COOKIE, ADMIN_SESSION_COOKIE, LEGACY_SESSION_COOKIE]
+      : expectedRole === "CUSTOMER"
+      ? [MEMBER_SESSION_COOKIE, ADMIN_SESSION_COOKIE, LEGACY_SESSION_COOKIE]
+      : [cookieNameForRole(expectedRole), LEGACY_SESSION_COOKIE];
 
   for (const cookieName of cookieNames) {
     const token = cookieStore.get(cookieName)?.value;
     if (!token) continue;
     const session = await verifySessionToken(token);
     if (!session) continue;
-    if (expectedRole && session.role !== expectedRole) continue;
+    // Role check: CUSTOMER expectedRole accept BOTH CUSTOMER + ADMIN.
+    // Other roles (mis. expectedRole=ADMIN) strict match.
+    if (expectedRole) {
+      if (expectedRole === "CUSTOMER") {
+        if (session.role !== "CUSTOMER" && session.role !== "ADMIN") continue;
+      } else if (session.role !== expectedRole) {
+        continue;
+      }
+    }
     if (!(await isTokenVersionCurrent(session))) continue;
     return session;
   }
