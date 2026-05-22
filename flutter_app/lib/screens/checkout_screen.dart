@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -22,6 +24,12 @@ import '../widgets/app_ui.dart';
 import '../widgets/order_success_overlay.dart';
 
 const _brandBlue = NataloColors.nataloBlue;
+const _maxPricingSyncRetries = 3;
+const _pricingSyncRetryDelays = [
+  Duration(milliseconds: 800),
+  Duration(milliseconds: 1500),
+  Duration(milliseconds: 2500),
+];
 
 class CheckoutScreen extends StatefulWidget {
   /// Optional items override — kalau di-pass, checkout pakai item yang
@@ -57,12 +65,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   bool _loadingVouchers = false;
   bool _syncingPricing = false;
   bool _voucherSyncFailed = false;
+  bool _pricingRetryScheduled = false;
+  int _pricingRetryAttempt = 0;
+  String? _pricingSyncError;
   bool _autoVoucherSuppressed = false;
   CheckoutRecalcResult? _checkoutPricing;
   bool _isNearBottom = false;
   // Catatan pesanan ke admin.
   final TextEditingController _noteController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  Timer? _pricingRetryTimer;
 
   @override
   void initState() {
@@ -193,10 +205,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   bool get _hasSelectedShippingMethod => _shippingRateSelectedByUser;
 
   bool get _checkoutActionDisabled =>
-      _voucherSyncFailed || _syncingPricing || !_hasSelectedShippingMethod;
+      _voucherSyncFailed ||
+      _syncingPricing ||
+      _pricingRetryScheduled ||
+      !_hasSelectedShippingMethod;
 
   @override
   void dispose() {
+    _pricingRetryTimer?.cancel();
     _scrollController.removeListener(_handleCheckoutScroll);
     _scrollController.dispose();
     _noteController.dispose();
@@ -375,9 +391,60 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }).toList();
   }
 
-  Future<void> _syncCheckoutPricing({required bool autoApply}) async {
+  void _cancelPricingRetry() {
+    _pricingRetryTimer?.cancel();
+    _pricingRetryTimer = null;
+  }
+
+  String _pricingSyncErrorMessage(Object? error) {
+    final text = error?.toString().trim();
+    if (text == null || text.isEmpty) {
+      return 'Koneksi ke server checkout belum stabil.';
+    }
+    return text.replaceFirst('Exception: ', '');
+  }
+
+  void _schedulePricingRetry({
+    required bool autoApply,
+    Object? error,
+  }) {
+    if (!mounted || _checkoutItems.isEmpty) return;
+
+    if (_pricingRetryAttempt >= _maxPricingSyncRetries) {
+      setState(() {
+        _pricingRetryScheduled = false;
+        _voucherSyncFailed = true;
+        _pricingSyncError = _pricingSyncErrorMessage(error);
+      });
+      return;
+    }
+
+    final attempt = _pricingRetryAttempt + 1;
+    final delay = _pricingSyncRetryDelays[
+        (attempt - 1).clamp(0, _pricingSyncRetryDelays.length - 1)];
+
+    _cancelPricingRetry();
+    setState(() {
+      _pricingRetryAttempt = attempt;
+      _pricingRetryScheduled = true;
+      _voucherSyncFailed = false;
+      _pricingSyncError = _pricingSyncErrorMessage(error);
+    });
+
+    _pricingRetryTimer = Timer(delay, () {
+      if (!mounted) return;
+      setState(() => _pricingRetryScheduled = false);
+      _syncCheckoutPricing(autoApply: autoApply, resetRetry: false);
+    });
+  }
+
+  Future<void> _syncCheckoutPricing({
+    required bool autoApply,
+    bool resetRetry = true,
+  }) async {
     if (_checkoutItems.isEmpty) {
       if (!mounted) return;
+      _cancelPricingRetry();
       setState(() {
         _checkoutPricing = null;
         _selectedFreeShippingVoucher = null;
@@ -387,13 +454,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _availableVouchers = const [];
         _unavailableVouchers = const [];
         _voucherSyncFailed = false;
+        _pricingRetryScheduled = false;
+        _pricingRetryAttempt = 0;
+        _pricingSyncError = null;
       });
       return;
+    }
+
+    if (resetRetry) {
+      _cancelPricingRetry();
     }
 
     setState(() {
       _syncingPricing = true;
       _loadingVouchers = true;
+      if (resetRetry) {
+        _pricingRetryScheduled = false;
+        _pricingRetryAttempt = 0;
+        _pricingSyncError = null;
+      }
+      _voucherSyncFailed = false;
       if (_selectedRate.isSelfPickup) {
         _selectedFreeShippingVoucher = null;
       }
@@ -415,15 +495,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         paymentProvider: _paymentProvider,
       );
       if (!mounted || recalc == null) {
-        if (mounted) {
-          setState(() => _voucherSyncFailed = true);
-        }
+        _schedulePricingRetry(
+          autoApply: autoApply,
+          error: checkoutService.lastRecalculateError,
+        );
         return;
       }
 
       setState(() {
         _checkoutPricing = recalc;
         _voucherSyncFailed = false;
+        _pricingRetryScheduled = false;
+        _pricingRetryAttempt = 0;
+        _pricingSyncError = null;
         _selectedFreeShippingVoucher = recalc.appliedFreeShippingVoucher;
         _selectedProductVoucher = recalc.appliedProductVoucher ??
             (recalc.appliedCustomerVoucher?.isProductDiscount == true
@@ -448,9 +532,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ),
         );
       }
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
-      setState(() => _voucherSyncFailed = true);
+      _schedulePricingRetry(autoApply: autoApply, error: error);
     } finally {
       if (mounted) {
         setState(() {
@@ -996,7 +1080,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         shippingDiscount: _shippingDiscount,
                         grandTotal: _grandTotal,
                         syncing: _syncingPricing,
+                        syncRetrying: _pricingRetryScheduled,
                         syncFailed: _voucherSyncFailed,
+                        syncError: _pricingSyncError,
+                        onRetrySync: () => _syncCheckoutPricing(
+                          autoApply: !_autoVoucherSuppressed,
+                        ),
                       ),
                       _CheckoutSavingsStrip(
                         productDiscount: _productDiscount,
@@ -2931,7 +3020,10 @@ class _PaymentSummaryCard extends StatelessWidget {
   final double shippingDiscount;
   final double grandTotal;
   final bool syncing;
+  final bool syncRetrying;
   final bool syncFailed;
+  final String? syncError;
+  final VoidCallback? onRetrySync;
 
   const _PaymentSummaryCard({
     required this.subtotal,
@@ -2941,7 +3033,10 @@ class _PaymentSummaryCard extends StatelessWidget {
     required this.shippingDiscount,
     required this.grandTotal,
     this.syncing = false,
+    this.syncRetrying = false,
     this.syncFailed = false,
+    this.syncError,
+    this.onRetrySync,
   });
 
   @override
@@ -2967,21 +3062,70 @@ class _PaymentSummaryCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          if (syncing)
+          if (syncing || syncRetrying)
             const Padding(
               padding: EdgeInsets.only(bottom: 10),
               child: LinearProgressIndicator(minHeight: 3),
             ),
-          if (syncFailed)
+          if (syncRetrying)
             const Padding(
               padding: EdgeInsets.only(bottom: 10),
               child: Text(
-                'Total checkout belum tersinkron. Cek koneksi lalu coba lagi.',
+                'Menyinkronkan ulang total checkout...',
                 style: TextStyle(
-                  color: Color(0xFFEF4444),
+                  color: _brandBlue,
                   fontSize: 12,
                   fontWeight: FontWeight.w800,
                 ),
+              ),
+            ),
+          if (syncFailed)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Total checkout belum tersinkron. Cek koneksi lalu coba lagi.',
+                    style: TextStyle(
+                      color: Color(0xFFEF4444),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  if ((syncError ?? '').isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      syncError!,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFFB91C1C),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        height: 1.25,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: syncing ? null : onRetrySync,
+                      style: TextButton.styleFrom(
+                        foregroundColor: _brandBlue,
+                        padding: EdgeInsets.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        minimumSize: const Size(0, 32),
+                      ),
+                      icon: const Icon(Icons.refresh_rounded, size: 16),
+                      label: const Text(
+                        'Coba sinkronkan lagi',
+                        style: TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           _SummaryLine(label: 'Subtotal produk', value: formatRupiah(subtotal)),

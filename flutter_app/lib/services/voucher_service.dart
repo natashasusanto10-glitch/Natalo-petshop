@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../models/member_profile.dart';
 import '../models/shipping_rate.dart';
 import 'api_client.dart';
@@ -202,6 +204,8 @@ class CheckoutRecalcResult {
 }
 
 class CheckoutService {
+  Object? lastRecalculateError;
+
   Future<CheckoutRecalcResult?> recalculate({
     required List<Map<String, dynamic>> items,
     required int shippingFee,
@@ -219,6 +223,7 @@ class CheckoutService {
     bool? useProtection,
   }) async {
     try {
+      lastRecalculateError = null;
       final selfPickup = shippingRate?.isSelfPickup == true;
       final data = await apiClient.postJson(
         '/api/checkout/recalculate',
@@ -249,7 +254,12 @@ class CheckoutService {
         },
       );
       return CheckoutRecalcResult.fromJson(data);
-    } catch (_) {
+    } catch (error, stackTrace) {
+      lastRecalculateError = error;
+      if (kDebugMode) {
+        debugPrint('[checkoutService.recalculate] $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
       return null;
     }
   }
