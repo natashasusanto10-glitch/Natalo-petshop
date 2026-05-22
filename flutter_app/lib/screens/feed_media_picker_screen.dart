@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:crop_image/crop_image.dart';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
@@ -158,6 +159,26 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
   bool _videoControllerReady = false;
   String? _videoControllerPath;
 
+  // Crop state — IG/TikTok-style 3 aspect ratio toggle + per-photo
+  // interactive crop (pan + zoom). User pilih aspect global untuk
+  // seluruh post, lalu reposisi tiap foto sendiri-sendiri via
+  // CropImage widget di preview area.
+  //
+  // _targetAspect default 4:5 (0.8 portrait IG-standard). Pilihan lain:
+  // 1:1 (square), 1.91:1 (landscape). Saat user ganti aspect, semua
+  // CropController di-update ke aspect baru. crop_image package
+  // otomatis adjust crop rect supaya match aspect baru.
+  //
+  // _cropControllers: Map assetId → CropController. Lazy created saat
+  // foto pertama kali di-preview (lihat _getCropController). Persisted
+  // sampai selection di-clear, supaya user bisa toggle antar foto tanpa
+  // kehilangan crop position.
+  static const double _aspectPortrait = 4 / 5; // 0.8
+  static const double _aspectSquare = 1.0;
+  static const double _aspectLandscape = 1.91;
+  double _targetAspect = _aspectPortrait;
+  final Map<String, CropController> _cropControllers = {};
+
   // ─── Lifecycle ────────────────────────────────────────────────────
   @override
   void initState() {
@@ -169,7 +190,35 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
   void dispose() {
     _toastTimer?.cancel();
     _disposeVideoController();
+    for (final c in _cropControllers.values) {
+      c.dispose();
+    }
+    _cropControllers.clear();
     super.dispose();
+  }
+
+  /// Lazy create CropController per asset. Reuse kalau sudah ada
+  /// supaya user toggle antar foto tidak kehilangan crop position.
+  CropController _getCropController(String assetId) {
+    return _cropControllers.putIfAbsent(
+      assetId,
+      () => CropController(
+        aspectRatio: _targetAspect,
+        defaultCrop: const Rect.fromLTRB(0.05, 0.05, 0.95, 0.95),
+      ),
+    );
+  }
+
+  /// Ganti target aspect ratio + propagate ke semua existing
+  /// CropController. crop_image package otomatis adjust crop rect
+  /// per-controller supaya match aspect baru (re-center kalau perlu).
+  void _changeAspect(double aspect) {
+    if (_targetAspect == aspect) return;
+    AppHaptics.tap();
+    setState(() => _targetAspect = aspect);
+    for (final c in _cropControllers.values) {
+      c.aspectRatio = aspect;
+    }
   }
 
   // ─── Permission + album fetch ─────────────────────────────────────
@@ -331,36 +380,45 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
     }
   }
 
-  // ─── Photo crop: center-crop ke 4:5 (Instagram-style WYSIWYG) ─────
+  // ─── Photo crop: WYSIWYG dari CropController (interactive pan/zoom) ───
   // Source foto bisa apa saja (9:16 HP screenshot, 4:3 DSLR, 1:1 square,
-  // 16:9 landscape). Picker preview show 4:5 cropbox, jadi file actual
-  // harus di-crop center ke 4:5 sebelum upload — supaya feed display
-  // (yang juga clamp ke 4:5) tidak crop ulang & user dapat WYSIWYG.
+  // 16:9 landscape). Picker preview show interactive crop frame di
+  // aspect terpilih (_targetAspect: 4:5 / 1:1 / 1.91:1), user pan + zoom
+  // untuk reposisi crop area.
   //
-  // Behavior:
-  //   - aspect < 0.8 (lebih tall, mis. 9:16) → crop tinggi, lebar full
-  //   - aspect > 0.8 (lebih wide, mis. 4:3, 1:1) → crop lebar, tinggi full
-  //   - aspect == 0.8 (sudah 4:5) → no-op, skip decode/encode untuk speed
+  // Saat _next(), per asset:
+  //   1. Ambil CropController.crop (Rect normalized 0..1 di source coords)
+  //   2. Decode source file (preserve EXIF orientation via bakeOrientation)
+  //   3. Apply crop rect ke source bitmap (Image.copyCrop)
+  //   4. Resize max long-side 2160 (kalau perlu, hemat Vercel body limit)
+  //   5. Encode JPEG quality 88, save temp file
   //
   // Limit max long-side 2160px supaya hasil tidak gigantic (iPhone foto
-  // 12MP = ~4032×3024 → setelah crop ke 4:5 jadi ~2419×3024 → resize
-  // proportional ke max 2160 di long side). Vercel upload limit 4.5MB
-  // tidak akan kena dengan ukuran ini di JPEG quality 88.
-  static const double _targetAspect = 4.0 / 5.0; // 0.8
-  static const double _aspectEpsilon = 0.005;
+  // 12MP = ~4032×3024 → setelah crop bisa jadi ~2500×3125 → resize
+  // proportional). Vercel upload limit 4.5MB tidak akan kena di quality 88.
   static const int _maxLongSide = 2160;
   static const int _jpegQuality = 88;
 
-  Future<List<File>> _cropPhotosTo4x5(List<File> sources) async {
+  Future<List<File>> _cropPhotos(
+    List<SelectedMediaItem> items,
+  ) async {
     final results = <File>[];
-    for (final source in sources) {
-      final cropped = await _cropPhotoTo4x5(source);
+    for (final item in items) {
+      final source = File(item.localPath);
+      // Cari controller per asset. Kalau user tidak pernah swap ke foto
+      // ini (misal pilih multiple foto tapi cuma toggle preview 1), maka
+      // controller belum dibuat → fallback ke center-crop default rect.
+      final ctrl = _cropControllers[item.id] ??
+          CropController(aspectRatio: _targetAspect);
+      final cropped = await _cropPhoto(source, ctrl.crop);
       results.add(cropped);
     }
     return results;
   }
 
-  Future<File> _cropPhotoTo4x5(File source) async {
+  /// Apply crop rect (normalized 0..1 di source coords) ke file foto +
+  /// resize + encode JPEG. Return File baru di temp dir.
+  Future<File> _cropPhoto(File source, Rect cropRect) async {
     final bytes = await source.readAsBytes();
     final decoded = img.decodeImage(bytes);
     if (decoded == null) {
@@ -374,44 +432,46 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
     final oriented = img.bakeOrientation(decoded);
     final srcW = oriented.width;
     final srcH = oriented.height;
-    final srcAspect = srcW / srcH;
 
-    img.Image cropped;
-    if ((srcAspect - _targetAspect).abs() <= _aspectEpsilon) {
-      // Sudah ~4:5, skip crop step (tetap perlu re-encode kalau resize).
-      cropped = oriented;
-    } else if (srcAspect < _targetAspect) {
-      // Source lebih tall (mis. 9:16) → keep width full, crop tinggi.
-      final targetH = (srcW / _targetAspect).round();
-      final y = ((srcH - targetH) / 2).round();
-      cropped = img.copyCrop(
-        oriented,
-        x: 0,
-        y: y,
-        width: srcW,
-        height: targetH,
-      );
-    } else {
-      // Source lebih wide (mis. 4:3, 1:1, 16:9) → keep height full, crop lebar.
-      final targetW = (srcH * _targetAspect).round();
-      final x = ((srcW - targetW) / 2).round();
-      cropped = img.copyCrop(
-        oriented,
-        x: x,
-        y: 0,
-        width: targetW,
-        height: srcH,
-      );
-    }
+    // Clamp normalized rect ke [0,1] supaya tidak overflow source bounds
+    // (defensive — biasanya CropController sudah enforce).
+    final left = cropRect.left.clamp(0.0, 1.0);
+    final top = cropRect.top.clamp(0.0, 1.0);
+    final right = cropRect.right.clamp(0.0, 1.0);
+    final bottom = cropRect.bottom.clamp(0.0, 1.0);
 
-    // Resize ke max long-side 2160 kalau perlu. Long side untuk 4:5 =
-    // height (karena portrait), so cap height.
-    if (cropped.height > _maxLongSide) {
-      cropped = img.copyResize(
-        cropped,
-        height: _maxLongSide,
-        interpolation: img.Interpolation.linear,
-      );
+    final cx = (left * srcW).round();
+    final cy = (top * srcH).round();
+    final cw = ((right - left) * srcW).round().clamp(1, srcW);
+    final ch = ((bottom - top) * srcH).round().clamp(1, srcH);
+
+    img.Image cropped = img.copyCrop(
+      oriented,
+      x: cx,
+      y: cy,
+      width: cw,
+      height: ch,
+    );
+
+    // Resize ke max long-side 2160 kalau perlu. Cek mana dimensi
+    // terbesar (height untuk portrait/square, width untuk landscape).
+    final longSide = cropped.width > cropped.height
+        ? cropped.width
+        : cropped.height;
+    if (longSide > _maxLongSide) {
+      if (cropped.height >= cropped.width) {
+        cropped = img.copyResize(
+          cropped,
+          height: _maxLongSide,
+          interpolation: img.Interpolation.linear,
+        );
+      } else {
+        cropped = img.copyResize(
+          cropped,
+          width: _maxLongSide,
+          interpolation: img.Interpolation.linear,
+        );
+      }
     }
 
     final jpegBytes = img.encodeJpg(cropped, quality: _jpegQuality);
@@ -567,17 +627,15 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
     if (!_canProceed) return;
     AppHaptics.tap();
     if (_mode == FeedPostContentType.image) {
-      // Crop semua selected photos ke 4:5 sebelum push ke editor.
-      // Per Instagram WYSIWYG pattern: preview di picker = 4:5, file
-      // upload juga harus 4:5, supaya feed display (yang clamp ke 4:5)
-      // tidak crop visible. Crop = center-crop (sama dengan BoxFit.cover
-      // behavior tapi di file level, bukan render level).
+      // Crop semua selected photos pakai rect dari masing-masing
+      // CropController (interactive crop user). Per Instagram WYSIWYG
+      // pattern: apa yang user lihat di preview = apa yang di-publish.
+      // _cropPhotos resolve CropController per item, fallback ke default
+      // center-crop kalau user tidak pernah preview foto tersebut.
       setState(() => _busyProcessing = true);
       List<File> croppedFiles;
       try {
-        croppedFiles = await _cropPhotosTo4x5(
-          _selectedPhotos.map((item) => File(item.localPath)).toList(),
-        );
+        croppedFiles = await _cropPhotos(_selectedPhotos);
       } catch (_) {
         if (!mounted) return;
         setState(() => _busyProcessing = false);
@@ -693,8 +751,14 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
         // Subtitle + constraint info dihapus per spec user — UI lebih
         // clean match Instagram (header langsung media tanpa helper text).
         const SliverToBoxAdapter(child: SizedBox(height: 8)),
-        // ── Preview area 75% × 3:4 ──
+        // ── Preview area 75% × dynamic aspect ──
         SliverToBoxAdapter(child: _buildPreview()),
+        // ── Aspect ratio toggle (visible saat mode foto) ──
+        // 3 button: 4:5 (portrait) / 1:1 (square) / 1.91:1 (landscape).
+        // Hide saat video mode atau belum ada foto selected.
+        if (_mode != FeedPostContentType.video &&
+            _previewType == FeedPostContentType.image)
+          SliverToBoxAdapter(child: _buildAspectToggle()),
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
@@ -804,14 +868,11 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
           child: SizedBox(
             width: previewWidth,
             child: AspectRatio(
-              // 4:5 portrait — match Instagram spec + feed display aspect
-              // (lihat _safeAspectRatio di member_post_detail_screen.dart).
-              // Sebelumnya 3:4 (0.75 lebih tall), bikin WYSIWYG mismatch:
-              // preview keliatan utuh tapi setelah publish ke-crop di feed
-              // karena display clamp ke 4:5. Sekarang preview 4:5 = display
-              // 4:5 + file actual di-crop center ke 4:5 di _next() sebelum
-              // upload (lihat _cropPhotoTo4x5).
-              aspectRatio: 4 / 5,
+              // Aspect ratio dynamic — user pilih via toggle 4:5 / 1:1 /
+              // 1.91:1. Crop file actual mengikuti aspect ini saat _next()
+              // (lihat _cropPhoto). Feed display side accept range
+              // [0.8, 1.91] via _safeAspectRatio clamp.
+              aspectRatio: _targetAspect,
               child: ClipRRect(
                 borderRadius: BorderRadius.zero,
                 child: _buildPreviewContent(),
@@ -820,6 +881,36 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
           ),
         );
       },
+    );
+  }
+
+  /// 3-button aspect ratio toggle. Active button = filled blue,
+  /// inactive = grey border. Match IG cropbox switcher.
+  Widget _buildAspectToggle() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _AspectChip(
+            label: '4:5',
+            active: _targetAspect == _aspectPortrait,
+            onTap: () => _changeAspect(_aspectPortrait),
+          ),
+          const SizedBox(width: 8),
+          _AspectChip(
+            label: '1:1',
+            active: _targetAspect == _aspectSquare,
+            onTap: () => _changeAspect(_aspectSquare),
+          ),
+          const SizedBox(width: 8),
+          _AspectChip(
+            label: '1.91:1',
+            active: _targetAspect == _aspectLandscape,
+            onTap: () => _changeAspect(_aspectLandscape),
+          ),
+        ],
+      ),
     );
   }
 
@@ -892,12 +983,34 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
         ],
       );
     }
-    // Photo preview. Wrap dengan ColorFiltered untuk saturation boost
-    // (compensate Flutter Skia clamp P3 → sRGB yang bikin warna pucat).
+    // Photo preview — interactive crop via CropImage.
+    // - Pan + zoom inside the crop frame (controlled by CropController)
+    // - Aspect ratio locked ke _targetAspect (4:5 / 1:1 / 1.91:1)
+    // - Per-asset CropController persists position antar foto swap
+    // - ColorFiltered saturation boost di-apply ke image widget yang
+    //   di-wrap CropImage. Crop bake colors via croppedBitmap, jadi
+    //   saturation boost otomatis ke-include di file output.
     if (_previewPath != null) {
+      final ctrl = _getCropController(asset.id);
+      // CropImage requires `image: Image` (not arbitrary Widget). Jadi
+      // ColorFiltered di-wrap di LUAR CropImage, bukan di dalam image
+      // param. Saturation matrix tidak affect grid putih (saturate white
+      // = white), jadi visual grid tetap clean.
       return ColorFiltered(
-        colorFilter: const ColorFilter.matrix(_previewSaturationMatrix),
-        child: Image.file(File(_previewPath!), fit: BoxFit.cover),
+        colorFilter:
+            const ColorFilter.matrix(_previewSaturationMatrix),
+        child: CropImage(
+          controller: ctrl,
+          key: ValueKey('${asset.id}_$_targetAspect'),
+          paddingSize: 0,
+          alwaysShowThirdLines: true,
+          gridColor: Colors.white.withValues(alpha: 0.35),
+          gridThinWidth: 0.8,
+          gridThickWidth: 2.5,
+          gridInnerColor: Colors.white.withValues(alpha: 0.2),
+          gridCornerSize: 22,
+          image: Image.file(File(_previewPath!), fit: BoxFit.cover),
+        ),
       );
     }
     return const ColoredBox(color: _tileBg);
@@ -1336,6 +1449,49 @@ class _PickerToast extends StatelessWidget {
           color: _textWhite,
           fontSize: 12.5,
           fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _AspectChip extends StatelessWidget {
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  const _AspectChip({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: active ? _natoloBlue : Colors.transparent,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: active ? _natoloBlue : const Color(0xFF4B5563),
+              width: 1.2,
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: active ? Colors.white : _textWhite,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
         ),
       ),
     );

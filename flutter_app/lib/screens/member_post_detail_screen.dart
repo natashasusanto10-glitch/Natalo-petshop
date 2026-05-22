@@ -17,6 +17,7 @@ import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/emoji_picker_panel.dart';
 import '../widgets/profile_avatar.dart';
 import '../shared/widgets/natalo_post_action_icon.dart';
 
@@ -1109,6 +1110,10 @@ class _PostMediaSurface extends StatelessWidget {
       post.aspectHeight,
       type: post.type,
     );
+    // Hero destination — wraps photo (single & carousel cover) dengan tag
+    // sama dengan _PostThumbnail di member_screen grid: 'post-thumb-${id}'.
+    // Saat user tap thumb di grid, image fly + scale ke posisi ini.
+    // Video skip (VideoPlayer destination tidak compatible).
     return AspectRatio(
       aspectRatio: aspectRatio,
       child: switch (post.type) {
@@ -1118,13 +1123,19 @@ class _PostMediaSurface extends StatelessWidget {
             thumbnailUrl: post.thumbnailUrl,
             aspectRatio: aspectRatio,
           ),
-        MyFeedPostType.carousel => _CarouselSurface(
-            post: post,
-            aspectRatio: aspectRatio,
+        MyFeedPostType.carousel => Hero(
+            tag: 'post-thumb-${post.id}',
+            child: _CarouselSurface(
+              post: post,
+              aspectRatio: aspectRatio,
+            ),
           ),
-        MyFeedPostType.photo => _ImageSurface(
-            imageUrl: post.previewMediaUrl,
-            placeholderIcon: Icons.image_outlined,
+        MyFeedPostType.photo => Hero(
+            tag: 'post-thumb-${post.id}',
+            child: _ImageSurface(
+              imageUrl: post.previewMediaUrl,
+              placeholderIcon: Icons.image_outlined,
+            ),
           ),
       },
     );
@@ -1902,6 +1913,8 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
   List<FeedComment> _comments = const [];
   bool _loading = true;
   bool _posting = false;
+  // Emoji panel visibility — toggle via 😀 button samping input.
+  bool _emojiVisible = false;
 
   /// Comment yang sedang di-reply (null = top-level comment baru).
   /// Saat non-null, input field show hint "Balas @username…" + chip
@@ -1968,6 +1981,18 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
         _comments = const [];
         _loading = false;
       });
+    }
+  }
+
+  void _toggleEmojiPicker() {
+    AppHaptics.tap();
+    final newState = !_emojiVisible;
+    setState(() => _emojiVisible = newState);
+    if (newState) {
+      // Hide keyboard supaya emoji panel pas di bawah input.
+      FocusScope.of(context).unfocus();
+    } else {
+      _inputFocusNode.requestFocus();
     }
   }
 
@@ -2284,10 +2309,38 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
                 ),
                 child: Row(
                   children: [
+                    // 😀 emoji toggle — fixed left of input. Pakai
+                    // smaller icon vs caption composer (sheet space lebih
+                    // tight).
+                    IconButton(
+                      onPressed: _toggleEmojiPicker,
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.all(6),
+                      constraints: const BoxConstraints(),
+                      icon: Icon(
+                        _emojiVisible
+                            ? Icons.keyboard_rounded
+                            : Icons.emoji_emotions_outlined,
+                        color: _emojiVisible
+                            ? NataloColors.primary
+                            : NataloColors.textSecondary,
+                        size: 22,
+                      ),
+                      tooltip:
+                          _emojiVisible ? 'Tutup emoji' : 'Buka emoji',
+                    ),
+                    const SizedBox(width: 4),
                     Expanded(
                       child: TextField(
                         controller: _inputController,
                         focusNode: _inputFocusNode,
+                        onTap: () {
+                          // Auto-hide emoji panel saat user tap input
+                          // (mau soft keyboard naik).
+                          if (_emojiVisible) {
+                            setState(() => _emojiVisible = false);
+                          }
+                        },
                         maxLength: 500,
                         decoration: InputDecoration(
                           hintText: _replyingTo == null
@@ -2326,6 +2379,13 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
                     ),
                   ],
                 ),
+              ),
+              // Emoji panel di bawah input bar — visible toggle via state.
+              EmojiPickerPanel(
+                controller: _inputController,
+                visible: _emojiVisible,
+                // Sheet sudah tight di height. Pakai 260 vs default 280.
+                height: 260,
               ),
             ],
           ),

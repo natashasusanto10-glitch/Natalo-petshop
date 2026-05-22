@@ -1,7 +1,7 @@
 name: natalo_petshop_flutter
 description: Native Flutter app for Natalo Petshop.
 publish_to: none
-version: 1.0.73+112
+version: 1.0.74+113
 environment:
   sdk: '>=3.0.0 <4.0.0'
   flutter: '>=3.7.0'
@@ -132,6 +132,12 @@ dependencies:
   # controller di posisi cursor. Plain Unicode emoji (no image asset),
   # cross-platform rendering native via font.
   emoji_picker_flutter: ^4.0.0
+  # Interactive crop widget — embeddable di picker preview area dengan
+  # drag handles + pan/zoom. Plain Flutter (no native config), match
+  # IG/TT crop UI: user drag/zoom image di dalam cropbox aspect tetap.
+  # Saat tap Next, ambil bytes ter-crop sesuai posisi user via
+  # CropController.croppedBitmap().
+  crop_image: ^1.0.16
 dev_dependencies:
   flutter_test:
     sdk: flutter

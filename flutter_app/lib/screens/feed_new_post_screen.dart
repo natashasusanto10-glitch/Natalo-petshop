@@ -14,6 +14,7 @@ import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../utils/photo_filter.dart';
 import '../widgets/app_product_image.dart';
+import '../widgets/emoji_picker_panel.dart';
 import '../widgets/profile_avatar.dart';
 import 'feed_photo_upload_flow.dart';
 import 'feed_video_upload_flow.dart';
@@ -72,8 +73,13 @@ class FeedNewPostScreen extends StatefulWidget {
 
 class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
   final _captionController = TextEditingController();
+  final _captionFocusNode = FocusNode();
   final _productSearchController = TextEditingController();
   final _photoPageController = PageController();
+  // Emoji picker visibility — toggle via 😀 button di caption field.
+  // Saat true, render EmojiPickerPanel di bawah caption. Auto-close
+  // saat caption field di-unfocus (mis. user fokus ke search produk).
+  bool _emojiVisible = false;
   final Set<String> _selectedProductIds = {};
 
   VideoPlayerController? _videoController;
@@ -121,10 +127,28 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
   @override
   void dispose() {
     _captionController.dispose();
+    _captionFocusNode.dispose();
     _productSearchController.dispose();
     _photoPageController.dispose();
     _videoController?.dispose();
     super.dispose();
+  }
+
+  /// Toggle emoji panel — tap 😀 button di caption field.
+  /// Saat panel buka, force unfocus caption supaya soft keyboard close
+  /// (panel emoji ambil tempat di bawah, biar tidak overlap keyboard).
+  /// Saat panel close, refocus ke caption supaya user lanjut ketik.
+  void _toggleEmojiPicker() {
+    AppHaptics.tap();
+    final newState = !_emojiVisible;
+    setState(() => _emojiVisible = newState);
+    if (newState) {
+      // Hide keyboard supaya emoji panel pas di tempat.
+      FocusScope.of(context).unfocus();
+    } else {
+      // Show keyboard lagi.
+      _captionFocusNode.requestFocus();
+    }
   }
 
   Future<void> _initVideo() async {
@@ -501,7 +525,23 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
                     const SizedBox(height: 10),
                     _CaptionField(
                       controller: _captionController,
+                      focusNode: _captionFocusNode,
                       counter: '$captionLength/1000',
+                      emojiActive: _emojiVisible,
+                      onToggleEmoji: _toggleEmojiPicker,
+                      onTap: () {
+                        // Saat user tap caption field, auto-hide emoji
+                        // panel supaya keyboard naik tanpa overlap.
+                        if (_emojiVisible) {
+                          setState(() => _emojiVisible = false);
+                        }
+                      },
+                    ),
+                    // Emoji panel — slide-down style. Visible toggle via
+                    // tombol 😀 di caption field.
+                    EmojiPickerPanel(
+                      controller: _captionController,
+                      visible: _emojiVisible,
                     ),
                     const SizedBox(height: 26),
                     const _SectionTitle(
@@ -837,53 +877,90 @@ class _SectionTitle extends StatelessWidget {
 
 class _CaptionField extends StatelessWidget {
   final TextEditingController controller;
+  final FocusNode? focusNode;
   final String counter;
+  final bool emojiActive;
+  final VoidCallback? onToggleEmoji;
+  final VoidCallback? onTap;
 
   const _CaptionField({
     required this.controller,
     required this.counter,
+    this.focusNode,
+    this.emojiActive = false,
+    this.onToggleEmoji,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      maxLength: 1000,
-      minLines: 2,
-      maxLines: 4,
-      style: const TextStyle(
-        color: _newPostInk,
-        fontSize: 15,
-        fontWeight: FontWeight.w600,
-      ),
-      decoration: InputDecoration(
-        hintText: 'Ceritakan momen lucu atau seru si kecil...',
-        hintStyle: const TextStyle(
-          color: Color(0xFF98A2B3),
-          fontWeight: FontWeight.w600,
+    return Stack(
+      children: [
+        TextField(
+          controller: controller,
+          focusNode: focusNode,
+          onTap: onTap,
+          maxLength: 1000,
+          minLines: 2,
+          maxLines: 4,
+          style: const TextStyle(
+            color: _newPostInk,
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+          ),
+          decoration: InputDecoration(
+            hintText: 'Ceritakan momen lucu atau seru si kecil...',
+            hintStyle: const TextStyle(
+              color: Color(0xFF98A2B3),
+              fontWeight: FontWeight.w600,
+            ),
+            counterText: counter,
+            counterStyle: const TextStyle(
+              color: Color(0xFF98A2B3),
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+            filled: true,
+            fillColor: Colors.white,
+            // Right padding extra 44 supaya text tidak tumpang tindih
+            // dengan 😀 button yang di-overlay di kanan atas.
+            contentPadding: const EdgeInsets.fromLTRB(16, 15, 52, 12),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(18),
+              borderSide: const BorderSide(color: _newPostBorder, width: 1.2),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(18),
+              borderSide: const BorderSide(color: _newPostBorder, width: 1.2),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(18),
+              borderSide: const BorderSide(color: _newPostBlue, width: 1.4),
+            ),
+          ),
         ),
-        counterText: counter,
-        counterStyle: const TextStyle(
-          color: Color(0xFF98A2B3),
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
+        // 😀 emoji toggle button — pojok kanan atas field.
+        // Pakai IconButton di-position absolute via Positioned supaya
+        // tidak ikut layout text (lebih konsisten visual).
+        Positioned(
+          top: 6,
+          right: 6,
+          child: IconButton(
+            onPressed: onToggleEmoji,
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.all(8),
+            constraints: const BoxConstraints(),
+            icon: Icon(
+              emojiActive
+                  ? Icons.keyboard_rounded
+                  : Icons.emoji_emotions_outlined,
+              color: emojiActive ? _newPostBlue : const Color(0xFF98A2B3),
+              size: 24,
+            ),
+            tooltip: emojiActive ? 'Tutup emoji' : 'Buka emoji',
+          ),
         ),
-        filled: true,
-        fillColor: Colors.white,
-        contentPadding: const EdgeInsets.fromLTRB(16, 15, 16, 12),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: const BorderSide(color: _newPostBorder, width: 1.2),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: const BorderSide(color: _newPostBorder, width: 1.2),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: const BorderSide(color: _newPostBlue, width: 1.4),
-        ),
-      ),
+      ],
     );
   }
 }
