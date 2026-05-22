@@ -27,61 +27,12 @@ const _textMuted = Color(0xFF9CA3AF);
 const _selectedBorder = _natoloBlue;
 const _tileBg = Color(0xFF1F2937);
 
-// ─── Saturation boost matrices ──────────────────────────────────────
-// Flutter Skia renderer default clamp warna P3 (iPhone wide gamut) → sRGB,
-// hasilnya foto preview terlihat lebih pucat dibanding native iOS apps
-// seperti Instagram. Compensate dengan ColorFilter matrix yang bump
-// saturation. Formula: standard sat matrix Rec.709 luma weights
-// (Lr=0.213, Lg=0.715, Lb=0.072).
-//
-// Preview = 1.15× (15% boost, lebih agresif untuk foto utama).
-// Grid tile = 1.10× (10% boost, subtle untuk banyak thumbnails sekaligus).
-
-const _previewSaturationMatrix = <double>[
-  1.118,
-  -0.107,
-  -0.011,
-  0,
-  0,
-  -0.032,
-  1.043,
-  -0.011,
-  0,
-  0,
-  -0.032,
-  -0.107,
-  1.139,
-  0,
-  0,
-  0,
-  0,
-  0,
-  1,
-  0,
-];
-
-const _gridSaturationMatrix = <double>[
-  1.079,
-  -0.072,
-  -0.007,
-  0,
-  0,
-  -0.021,
-  1.029,
-  -0.007,
-  0,
-  0,
-  -0.021,
-  -0.072,
-  1.093,
-  0,
-  0,
-  0,
-  0,
-  0,
-  1,
-  0,
-];
+// Saturation boost matrices DIHAPUS (v1.0.82) — bikin lag scroll grid
+// + lag swipe/pinch preview karena ColorFilter shader apply per-frame
+// ke setiap thumbnail (100+ tile) + ke VideoPlayer/CropImage. Trade-off:
+// foto sedikit kurang saturated dibanding sebelumnya, tapi UX jauh
+// lebih smooth. Bunny CDN sudah handle color profile P3 → sRGB di
+// server-side (saat encoding), tidak perlu compensate di client.
 
 enum FeedPostContentType {
   image,
@@ -159,15 +110,16 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
   bool _videoControllerReady = false;
   String? _videoControllerPath;
 
-  // Crop state — IG/TikTok-style 3 aspect ratio toggle + per-photo
+  // Crop state — IG-style aspect toggle + per-photo
   // interactive crop (pan + zoom). User pilih aspect global untuk
   // seluruh post, lalu reposisi tiap foto sendiri-sendiri via
   // CropImage widget di preview area.
   //
-  // _targetAspect default 4:5 (0.8 portrait IG-standard). Pilihan lain:
-  // 1:1 (square), 1.91:1 (landscape). Saat user ganti aspect, semua
-  // CropController di-update ke aspect baru. crop_image package
-  // otomatis adjust crop rect supaya match aspect baru.
+  // _targetAspect default 4:5 (0.8 portrait IG-standard). Tap tombol
+  // diagonal-corners di preview untuk toggle ke 1:1 seperti Instagram.
+  // Saat user ganti aspect, semua CropController di-update ke aspect
+  // baru. crop_image package otomatis adjust crop rect supaya match
+  // aspect baru.
   //
   // _cropControllers: Map assetId → CropController. Lazy created saat
   // foto pertama kali di-preview (lihat _getCropController). Persisted
@@ -175,7 +127,6 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
   // kehilangan crop position.
   static const double _aspectPortrait = 4 / 5; // 0.8
   static const double _aspectSquare = 1.0;
-  static const double _aspectLandscape = 1.91;
   double _targetAspect = _aspectPortrait;
   final Map<String, CropController> _cropControllers = {};
 
@@ -383,7 +334,7 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
   // ─── Photo crop: WYSIWYG dari CropController (interactive pan/zoom) ───
   // Source foto bisa apa saja (9:16 HP screenshot, 4:3 DSLR, 1:1 square,
   // 16:9 landscape). Picker preview show interactive crop frame di
-  // aspect terpilih (_targetAspect: 4:5 / 1:1 / 1.91:1), user pan + zoom
+  // aspect terpilih (_targetAspect: 4:5 / 1:1), user pan + zoom
   // untuk reposisi crop area.
   //
   // Saat _next(), per asset:
@@ -455,9 +406,8 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
 
     // Resize ke max long-side 2160 kalau perlu. Cek mana dimensi
     // terbesar (height untuk portrait/square, width untuk landscape).
-    final longSide = cropped.width > cropped.height
-        ? cropped.width
-        : cropped.height;
+    final longSide =
+        cropped.width > cropped.height ? cropped.width : cropped.height;
     if (longSide > _maxLongSide) {
       if (cropped.height >= cropped.width) {
         cropped = img.copyResize(
@@ -753,8 +703,8 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
         const SliverToBoxAdapter(child: SizedBox(height: 8)),
         // ── Preview area 75% × dynamic aspect ──
         // Aspect toggle button sekarang OVERLAY di preview (bottom-left)
-        // — match IG layout. 3-chip lama (4:5/1:1/1.91:1) dihapus,
-        // diganti single icon button yang cycle via tap.
+        // — match IG layout. 3-chip lama dihapus, diganti single icon
+        // button yang toggle 4:5 <-> 1:1 via tap.
         SliverToBoxAdapter(child: _buildPreview()),
         SliverToBoxAdapter(
           child: Padding(
@@ -866,7 +816,7 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
             width: previewWidth,
             child: AspectRatio(
               // Aspect ratio dynamic — user toggle via floating button
-              // bottom-left preview (cycle 4:5 → 1:1 → 1.91:1). Crop file
+              // bottom-left preview (4:5 <-> 1:1). Crop file
               // actual mengikuti aspect ini saat _next() (lihat _cropPhoto).
               // Pinch-to-zoom + drag-pan crop ditangani crop_image package
               // (CropController) — match IG behavior.
@@ -900,14 +850,11 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
     );
   }
 
-  /// Cycle aspect ratio: 4:5 → 1:1 → 1.91:1 → 4:5 ... Match IG single
-  /// icon button bottom-left preview yang user tap untuk toggle.
+  /// Toggle aspect ratio: 4:5 <-> 1:1. Match IG single icon button
+  /// bottom-left preview yang user tap untuk crop square.
   void _cycleAspect() {
-    final next = _targetAspect == _aspectPortrait
-        ? _aspectSquare
-        : _targetAspect == _aspectSquare
-            ? _aspectLandscape
-            : _aspectPortrait;
+    final next =
+        _targetAspect == _aspectPortrait ? _aspectSquare : _aspectPortrait;
     _changeAspect(next);
   }
 
@@ -936,28 +883,25 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
           // Wrap VideoPlayer + thumb fallback dengan ColorFiltered untuk
           // saturation boost — sama treatment dengan photo preview.
           // VideoPlayer pakai render path berbeda dari Image.file tapi
-          // ColorFiltered universal — apply ke widget tree.
+          // ColorFiltered saturation di-hapus dari preview — bikin
+          // VideoPlayer + Image.file re-render dengan matrix shader
+          // tiap frame video / tiap swipe interaksi. Drop = swipe
+          // preview jauh lebih smooth.
           if (ready)
-            ColorFiltered(
-              colorFilter: const ColorFilter.matrix(_previewSaturationMatrix),
-              child: FittedBox(
-                fit: BoxFit.cover,
-                child: SizedBox(
-                  width: controller.value.size.width > 0
-                      ? controller.value.size.width
-                      : 100,
-                  height: controller.value.size.height > 0
-                      ? controller.value.size.height
-                      : 100,
-                  child: VideoPlayer(controller),
-                ),
+            FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: controller.value.size.width > 0
+                    ? controller.value.size.width
+                    : 100,
+                height: controller.value.size.height > 0
+                    ? controller.value.size.height
+                    : 100,
+                child: VideoPlayer(controller),
               ),
             )
           else if (_previewThumb != null)
-            ColorFiltered(
-              colorFilter: const ColorFilter.matrix(_previewSaturationMatrix),
-              child: Image.file(File(_previewThumb!), fit: BoxFit.cover),
-            )
+            Image.file(File(_previewThumb!), fit: BoxFit.cover)
           else
             const ColoredBox(color: _tileBg),
           if (!ready)
@@ -982,32 +926,27 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
     }
     // Photo preview — interactive crop via CropImage.
     // - Pan + zoom inside the crop frame (controlled by CropController)
-    // - Aspect ratio locked ke _targetAspect (4:5 / 1:1 / 1.91:1)
+    // - Aspect ratio locked ke _targetAspect (4:5 / 1:1)
     // - Per-asset CropController persists position antar foto swap
     // - ColorFiltered saturation boost di-apply ke image widget yang
     //   di-wrap CropImage. Crop bake colors via croppedBitmap, jadi
     //   saturation boost otomatis ke-include di file output.
     if (_previewPath != null) {
       final ctrl = _getCropController(asset.id);
-      // CropImage requires `image: Image` (not arbitrary Widget). Jadi
-      // ColorFiltered di-wrap di LUAR CropImage, bukan di dalam image
-      // param. Saturation matrix tidak affect grid putih (saturate white
-      // = white), jadi visual grid tetap clean.
-      return ColorFiltered(
-        colorFilter:
-            const ColorFilter.matrix(_previewSaturationMatrix),
-        child: CropImage(
-          controller: ctrl,
-          key: ValueKey('${asset.id}_$_targetAspect'),
-          paddingSize: 0,
-          alwaysShowThirdLines: true,
-          gridColor: Colors.white.withValues(alpha: 0.35),
-          gridThinWidth: 0.8,
-          gridThickWidth: 2.5,
-          gridInnerColor: Colors.white.withValues(alpha: 0.2),
-          gridCornerSize: 22,
-          image: Image.file(File(_previewPath!), fit: BoxFit.cover),
-        ),
+      // ColorFiltered saturation di-hapus dari preview crop — bikin lag
+      // saat user pan/zoom karena matrix shader re-apply tiap frame
+      // interaksi. Drop = swipe + pinch crop smooth lagi.
+      return CropImage(
+        controller: ctrl,
+        key: ValueKey('${asset.id}_$_targetAspect'),
+        paddingSize: 0,
+        alwaysShowThirdLines: true,
+        gridColor: Colors.white.withValues(alpha: 0.35),
+        gridThinWidth: 0.8,
+        gridThickWidth: 2.5,
+        gridInnerColor: Colors.white.withValues(alpha: 0.2),
+        gridCornerSize: 22,
+        image: Image.file(File(_previewPath!), fit: BoxFit.cover),
       );
     }
     return const ColoredBox(color: _tileBg);
@@ -1148,15 +1087,19 @@ class _AssetGridTileState extends State<_AssetGridTile> {
             color: _tileBg,
             child: _thumb == null
                 ? const SizedBox.shrink()
-                // Saturation boost subtle (+10%) untuk grid tile.
-                // Lebih ringan dari preview (+15%) karena thumbnail sudah
-                // pre-compressed by photo_manager + banyak tile sekaligus
-                // (boost agresif akan over-saturate massal).
-                : ColorFiltered(
-                    colorFilter: const ColorFilter.matrix(
-                      _gridSaturationMatrix,
-                    ),
-                    child: Image.memory(_thumb!, fit: BoxFit.cover),
+                // ColorFiltered grid saturation di-hapus — terlalu mahal
+                // di scroll (100+ thumbnail × ColorFilter render pass per
+                // frame = stutter). User report grid scroll lag jadi
+                // smooth setelah hapus ini.
+                //
+                // cacheWidth limit decode resolution ke 240px (sebelum
+                // ditampilkan di 90×90 tile) — hemat memory + decode
+                // time vs decode full thumbnail size.
+                : Image.memory(
+                    _thumb!,
+                    fit: BoxFit.cover,
+                    cacheWidth: 240,
+                    gaplessPlayback: true,
                   ),
           ),
           if (_isDimmed) Container(color: Colors.black.withValues(alpha: 0.45)),
@@ -1453,12 +1396,12 @@ class _PickerToast extends StatelessWidget {
 }
 
 /// Floating aspect toggle button — IG-style icon di bottom-left preview.
-/// Tap = cycle 4:5 → 1:1 → 1.91:1 → 4:5 ...
+/// Tap = toggle 4:5 <-> 1:1.
 ///
-/// Icon dinamis menunjukkan aspect saat ini (subtle visual hint). Background
-/// black 50% opacity supaya visible di atas konten apapun (foto cerah /
-/// gelap). User pinch-to-zoom + drag pan untuk crop dalam aspect terpilih
-/// (di-handle crop_image package, bukan widget ini).
+/// Icon diagonal-corners mengikuti pattern Instagram: saat preview default
+/// 4:5, tap membuat foto jadi 1:1; tap lagi balik ke 4:5. Background black
+/// 50% opacity supaya visible di atas konten apapun (foto cerah / gelap).
+/// User pinch-to-zoom + drag pan untuk crop dalam aspect terpilih.
 class _AspectToggleButton extends StatelessWidget {
   final double currentAspect;
   final VoidCallback onTap;
@@ -1470,12 +1413,7 @@ class _AspectToggleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Icon shape disesuaikan aspect: portrait (tall), square, landscape.
-    final icon = currentAspect < 0.99
-        ? Icons.crop_portrait_rounded // 4:5 vertical
-        : currentAspect <= 1.01
-            ? Icons.crop_square_rounded // 1:1
-            : Icons.crop_landscape_rounded; // 1.91:1
+    final isSquare = currentAspect >= 0.99;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -1492,7 +1430,13 @@ class _AspectToggleButton extends StatelessWidget {
               width: 0.8,
             ),
           ),
-          child: Icon(icon, color: Colors.white, size: 20),
+          child: Icon(
+            isSquare
+                ? Icons.fullscreen_exit_rounded
+                : Icons.open_in_full_rounded,
+            color: Colors.white,
+            size: 19,
+          ),
         ),
       ),
     );
