@@ -512,6 +512,11 @@ class _PostFeedItem extends StatelessWidget {
         // media itu sendiri. Edge-to-edge seperti Instagram feed.
         _PostMediaSurface(post: post),
         // Action row di-padding sedikit dari edge.
+        // Count di-render inline samping icon (TikTok/Reels style) supaya
+        // user langsung lihat berapa like/comment/share. 0 → hide count
+        // (icon-only fallback), match IG convention "tidak tampilkan 0".
+        // Like count dari _likedCache parent state sudah optimistic, jadi
+        // tap heart langsung naik 1 — tidak nunggu round-trip backend.
         Padding(
           padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
           child: Row(
@@ -521,6 +526,7 @@ class _PostFeedItem extends StatelessWidget {
                 isActive: liked,
                 iconSize: 28,
                 tapSize: 42,
+                count: post.likeCount,
                 semanticLabel: liked ? 'Batalkan suka' : 'Sukai postingan',
                 onTap: onLike,
               ),
@@ -528,6 +534,7 @@ class _PostFeedItem extends StatelessWidget {
                 type: NataloPostActionIconType.comment,
                 iconSize: 28,
                 tapSize: 42,
+                count: post.commentCount,
                 semanticLabel: 'Buka komentar',
                 onTap: onComment,
               ),
@@ -535,6 +542,7 @@ class _PostFeedItem extends StatelessWidget {
                 type: NataloPostActionIconType.share,
                 iconSize: 28,
                 tapSize: 42,
+                count: post.shareCount,
                 semanticLabel: 'Bagikan postingan',
                 onTap: onShare,
               ),

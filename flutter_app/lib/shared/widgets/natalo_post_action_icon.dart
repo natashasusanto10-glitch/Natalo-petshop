@@ -61,6 +61,8 @@ class NataloPostActionButton extends StatelessWidget {
     this.activeColor = const Color(0xFFE53935),
     this.disabledColor = const Color(0xFFBDBDBD),
     this.semanticLabel,
+    this.count,
+    this.countColor = const Color(0xFF111111),
   });
 
   final NataloPostActionIconType type;
@@ -74,8 +76,29 @@ class NataloPostActionButton extends StatelessWidget {
   final Color disabledColor;
   final String? semanticLabel;
 
+  /// Optional count yang di-render di samping icon (inline horizontal).
+  /// Null atau 0 → hide count, button kembali ke layout square icon-only
+  /// (match Instagram convention "hide '0 likes'"). Non-zero → tampilkan
+  /// formatted number (12, 1.2K, 1.5M, dst). Tap area otomatis expand
+  /// untuk cover icon + count text.
+  final int? count;
+
+  /// Warna text count. Default ink dark — caller bisa override untuk
+  /// dark mode atau context khusus (mis. white kalau di atas image).
+  final Color countColor;
+
   @override
   Widget build(BuildContext context) {
+    final showCount = count != null && count! > 0;
+    final iconWidget = NataloPostActionIcon(
+      type: type,
+      size: iconSize,
+      color: color,
+      activeColor: activeColor,
+      disabledColor: disabledColor,
+      isActive: isActive,
+      isDisabled: isDisabled,
+    );
     return Semantics(
       button: true,
       label: semanticLabel,
@@ -84,23 +107,53 @@ class NataloPostActionButton extends StatelessWidget {
         onTap: isDisabled ? null : onTap,
         radius: tapSize / 2,
         containedInkWell: false,
-        child: SizedBox.square(
-          dimension: tapSize,
-          child: Center(
-            child: NataloPostActionIcon(
-              type: type,
-              size: iconSize,
-              color: color,
-              activeColor: activeColor,
-              disabledColor: disabledColor,
-              isActive: isActive,
-              isDisabled: isDisabled,
-            ),
-          ),
-        ),
+        child: showCount
+            // Inline mode: icon + spacer + count text. Tap area = icon
+            // + text. Horizontal padding 6 ngasih breathing room antar
+            // action group dalam Row di parent.
+            ? Container(
+                constraints: BoxConstraints(minHeight: tapSize),
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    iconWidget,
+                    const SizedBox(width: 6),
+                    Text(
+                      _formatActionCount(count!),
+                      style: TextStyle(
+                        color: isDisabled ? disabledColor : countColor,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        height: 1.0,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            // Icon-only mode (count null/0): preserve existing square tap.
+            : SizedBox.square(
+                dimension: tapSize,
+                child: Center(child: iconWidget),
+              ),
       ),
     );
   }
+}
+
+/// Format count IG/TikTok style:
+///   < 1000     → "12"
+///   1000-999K  → "1.2K"
+///   ≥ 1M       → "1.5M"
+String _formatActionCount(int count) {
+  if (count >= 1000000) {
+    return '${(count / 1000000).toStringAsFixed(1)}M';
+  }
+  if (count >= 1000) {
+    return '${(count / 1000).toStringAsFixed(1)}K';
+  }
+  return '$count';
 }
 
 class _NataloPostActionIconPainter extends CustomPainter {
