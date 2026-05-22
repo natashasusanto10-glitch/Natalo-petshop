@@ -134,6 +134,7 @@ export async function POST(request: NextRequest) {
         email: user.email,
         phone: user.phone,
         profilePhotoUrl: user.profilePhotoUrl,
+        bio: user.bio,
         birthDate: user.birthDate?.toISOString() ?? null,
         createdAt: user.createdAt.toISOString(),
       },

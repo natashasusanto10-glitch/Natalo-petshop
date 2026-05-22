@@ -80,6 +80,11 @@ model User {
   /// belum upload pakai fallback initial avatar di UI. Dipakai di feed
   /// posts, comments, member screen, dst.
   profilePhotoUrl     String?
+  /// Bio user — short description (max 150 char) yang muncul di header
+  /// profile, IG-style. Nullable: user yang belum isi pakai empty text
+  /// + placeholder "Tambahkan bio". Dipakai juga di /feed/u/[id] public
+  /// profile page (future) dan comment hover di web.
+  bio                 String?
   orders              Order[]
   points              CustomerPoint[]
   reviews             Review[]

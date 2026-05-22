@@ -23,6 +23,10 @@ class MemberProfile {
   final DateTime? createdAt;
   final int points;
   final String? profilePhotoUrl;
+  /// Bio user — short description max 150 char yang muncul di header
+  /// profile screen. Nullable / empty → tampilkan placeholder
+  /// "Tambahkan bio" di edit form.
+  final String? bio;
 
   const MemberProfile({
     required this.id,
@@ -34,6 +38,7 @@ class MemberProfile {
     this.createdAt,
     this.points = 0,
     this.profilePhotoUrl,
+    this.bio,
   });
 
   bool get isAdmin => role.toUpperCase() == 'ADMIN';
@@ -58,6 +63,7 @@ class MemberProfile {
             json['photoUrl'] ??
             json['imageUrl'],
       ),
+      bio: _nullableString(json['bio']),
     );
   }
 
@@ -78,6 +84,7 @@ class MemberProfile {
         'createdAt': createdAt?.toIso8601String(),
         'points': points,
         'profilePhotoUrl': profilePhotoUrl,
+        'bio': bio,
       };
 
   MemberProfile copyWith({
@@ -90,6 +97,8 @@ class MemberProfile {
     int? points,
     String? profilePhotoUrl,
     bool clearProfilePhoto = false,
+    String? bio,
+    bool clearBio = false,
   }) {
     return MemberProfile(
       id: id,
@@ -102,6 +111,7 @@ class MemberProfile {
       points: points ?? this.points,
       profilePhotoUrl:
           clearProfilePhoto ? null : profilePhotoUrl ?? this.profilePhotoUrl,
+      bio: clearBio ? null : bio ?? this.bio,
     );
   }
 }

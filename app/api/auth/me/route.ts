@@ -20,6 +20,7 @@ export async function GET() {
       birthDate: true,
       createdAt: true,
       profilePhotoUrl: true,
+      bio: true,
     },
   });
 
@@ -101,6 +102,22 @@ export async function PATCH(request: NextRequest) {
         ? body.profilePhotoUrl.trim()
         : null;
     updates.profilePhotoUrl = photoUrl;
+  }
+  if (body.bio !== undefined) {
+    // Bio max 150 char enforced di app — IG convention. Trim whitespace.
+    // Empty string atau null = clear bio.
+    if (body.bio === null) {
+      updates.bio = null;
+    } else if (typeof body.bio === "string") {
+      const bio = body.bio.trim();
+      if (bio.length > 150) {
+        return NextResponse.json(
+          { error: "Bio maksimal 150 karakter." },
+          { status: 400 },
+        );
+      }
+      updates.bio = bio.length > 0 ? bio : null;
+    }
   }
 
   if (Object.keys(updates).length === 0) {

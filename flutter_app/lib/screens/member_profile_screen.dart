@@ -42,10 +42,13 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
   late final TextEditingController _nameController;
   late final TextEditingController _emailController;
   late final TextEditingController _phoneController;
+  late final TextEditingController _bioController;
 
   DateTime? _birthDate;
   bool _saving = false;
   bool _dirty = false;
+
+  static const int _bioMaxLength = 150;
 
   @override
   void initState() {
@@ -57,6 +60,8 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
       ..addListener(_markDirty);
     _phoneController = TextEditingController(text: profile?.phone ?? '')
       ..addListener(_markDirty);
+    _bioController = TextEditingController(text: profile?.bio ?? '')
+      ..addListener(_markDirty);
     _birthDate = profile?.birthDate;
   }
 
@@ -65,6 +70,7 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _bioController.dispose();
     super.dispose();
   }
 
@@ -113,6 +119,7 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
     final name = _nameController.text.trim();
     final email = _emailController.text.trim();
     final phone = _phoneController.text.trim();
+    final bio = _bioController.text.trim();
 
     if (name.isEmpty) {
       AppHaptics.warning();
@@ -124,15 +131,28 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
       AppToast.show(context, 'Format email tidak valid.', kind: ToastKind.error);
       return;
     }
+    if (bio.length > _bioMaxLength) {
+      AppHaptics.warning();
+      AppToast.show(
+        context,
+        'Bio maksimal $_bioMaxLength karakter.',
+        kind: ToastKind.error,
+      );
+      return;
+    }
 
     AppHaptics.tap();
     setState(() => _saving = true);
     try {
+      // Bio clear behavior: text kosong → clearBio=true (kirim null ke
+      // backend untuk hapus dari DB). Non-empty → kirim string.
       final updated = await memberService.updateProfile(
         name: name,
         email: email.isEmpty ? null : email,
         phone: phone.isEmpty ? null : phone,
         birthDate: _birthDate,
+        bio: bio.isEmpty ? null : bio,
+        clearBio: bio.isEmpty,
       );
       if (updated != null) {
         // Preserve foto profil local kalau ada — server biasanya tidak return
@@ -152,6 +172,8 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
               email: email.isEmpty ? null : email,
               phone: phone.isEmpty ? null : phone,
               birthDate: _birthDate,
+              bio: bio.isEmpty ? null : bio,
+              clearBio: bio.isEmpty,
             ),
           );
         }
@@ -313,6 +335,25 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
                           birthDate: _birthDate,
                           onTap: _pickBirthDate,
                         ),
+                        const _FormDivider(),
+                        // Bio field — multiline text, max 150 char (IG conv).
+                        // Live counter di kanan bawah supaya user paham
+                        // berapa karakter tersisa. Pakai _ProfileFormField
+                        // dengan extras `multiline` + `maxLength` supaya
+                        // visual consistent dengan field lain.
+                        _ProfileFormField(
+                          label: 'Bio',
+                          controller: _bioController,
+                          icon: Icons.short_text_rounded,
+                          iconColor: const Color(0xFFEC4899),
+                          iconBg: const Color(0xFFFCE7F3),
+                          hint: 'Tulis bio singkat (max $_bioMaxLength karakter)',
+                          maxLines: 3,
+                          minLines: 2,
+                          maxLength: _bioMaxLength,
+                          showCounter: true,
+                          textCapitalization: TextCapitalization.sentences,
+                        ),
                       ],
                     ),
                   ),
@@ -372,6 +413,19 @@ class _ProfileFormField extends StatelessWidget {
   final TextInputType? keyboardType;
   final TextCapitalization textCapitalization;
   final List<TextInputFormatter>? inputFormatters;
+  /// Multiline support — defaults to 1 line. Pass `maxLines: 3` untuk
+  /// textarea-style field (mis. bio). `minLines` opsional supaya field
+  /// start tinggi tertentu (anchor expand bottom-up).
+  final int maxLines;
+  final int? minLines;
+  /// Maksimum karakter input — soft-limit via TextField.maxLength.
+  /// Validation tetap di submit handler (caller's _save method) supaya
+  /// pesan error consistent.
+  final int? maxLength;
+  /// Show counter "N / max" di kanan bawah field — IG-style untuk bio.
+  /// Auto-hide kalau maxLength null. Pakai TextField built-in counter
+  /// dengan style match design.
+  final bool showCounter;
 
   const _ProfileFormField({
     required this.label,
@@ -383,6 +437,10 @@ class _ProfileFormField extends StatelessWidget {
     this.keyboardType,
     this.textCapitalization = TextCapitalization.none,
     this.inputFormatters,
+    this.maxLines = 1,
+    this.minLines,
+    this.maxLength,
+    this.showCounter = false,
   });
 
   @override
@@ -390,7 +448,9 @@ class _ProfileFormField extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+        crossAxisAlignment: maxLines > 1
+            ? CrossAxisAlignment.start
+            : CrossAxisAlignment.center,
         children: [
           Container(
             width: 40,
@@ -418,9 +478,13 @@ class _ProfileFormField extends StatelessWidget {
                 ),
                 TextField(
                   controller: controller,
-                  keyboardType: keyboardType,
+                  keyboardType: keyboardType ??
+                      (maxLines > 1 ? TextInputType.multiline : null),
                   textCapitalization: textCapitalization,
                   inputFormatters: inputFormatters,
+                  maxLines: maxLines,
+                  minLines: minLines,
+                  maxLength: maxLength,
                   style: const TextStyle(
                     color: _darkNavy,
                     fontSize: 15,
@@ -438,6 +502,17 @@ class _ProfileFormField extends StatelessWidget {
                     enabledBorder: InputBorder.none,
                     focusedBorder: InputBorder.none,
                     contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                    // Hide built-in counter kalau showCounter false (default).
+                    // Untuk bio, kita pakai default counter Flutter (kanan
+                    // bawah, format "n / max"). Default style match design.
+                    counterText: showCounter ? null : '',
+                    counterStyle: showCounter
+                        ? const TextStyle(
+                            color: _textSecondary,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                          )
+                        : null,
                   ),
                 ),
               ],

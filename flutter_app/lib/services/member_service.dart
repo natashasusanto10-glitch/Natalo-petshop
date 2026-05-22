@@ -35,6 +35,8 @@ class MemberService {
     String? email,
     String? phone,
     DateTime? birthDate,
+    String? bio,
+    bool clearBio = false,
   }) async {
     try {
       final uri = ApiConfig.uri('/api/auth/me');
@@ -43,6 +45,14 @@ class MemberService {
       if (email != null) body['email'] = email;
       if (phone != null) body['phone'] = phone;
       if (birthDate != null) body['birthDate'] = birthDate.toIso8601String();
+      // Bio: kalau clearBio → kirim explicit null untuk delete dari DB.
+      // Kalau bio != null → kirim string (empty string treated as clear
+      // di backend). Kalau cuma 'bio' tidak dimaksud di-update, skip.
+      if (clearBio) {
+        body['bio'] = null;
+      } else if (bio != null) {
+        body['bio'] = bio;
+      }
       if (body.isEmpty) return memberStore.profile;
       final res = await http
           .patch(

@@ -376,6 +376,23 @@ class _ProfileSection extends StatelessWidget {
               ),
             ],
           ),
+          // Bio (kalau ada) — IG-style di bawah row avatar+nama+stats.
+          // Multiline, 3 max biar tidak push down hasil scroll. Auto-hide
+          // kalau profile.bio null/empty (jangan render kosong takes space).
+          if ((profile.bio as String?)?.trim().isNotEmpty ?? false) ...[
+            const SizedBox(height: 12),
+            Text(
+              profile.bio as String,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: _textPrimary,
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+                height: 1.4,
+              ),
+            ),
+          ],
         ],
       ),
     );
