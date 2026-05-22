@@ -206,7 +206,8 @@ class _ProfilePageState extends State<_ProfilePage>
                 posts: _allPosts,
                 loading: _loadingPosts,
                 emptyText: 'Belum ada postingan',
-                emptySubtext: 'Bagikan foto atau video pertama kamu di Natalo.',
+                emptySubtext:
+                    'Bagikan momen lucu hewan kesayanganmu di Feed Natalo.',
                 showCreateCta: true,
                 onCreateCta: _openCreatePost,
                 onTapPost: (idx) => _openPostDetail(_allPosts, idx),
@@ -308,7 +309,7 @@ class _ProfileSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
+      padding: const EdgeInsets.fromLTRB(18, 10, 18, 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -318,12 +319,12 @@ class _ProfileSection extends StatelessWidget {
               ProfileAvatar(
                 initial: profile.initial as String? ?? '?',
                 imageUrl: profile.profilePhotoUrl as String?,
-                size: 100,
-                fontSize: 36,
+                size: 88,
+                fontSize: 32,
                 showCameraBadge: true,
                 onTap: onAvatarTap,
               ),
-              const SizedBox(width: 18),
+              const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -334,12 +335,12 @@ class _ProfileSection extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: _textPrimary,
-                        fontSize: 22,
+                        fontSize: 21,
                         fontWeight: FontWeight.w900,
-                        height: 1.2,
+                        height: 1.15,
                       ),
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(
@@ -348,12 +349,14 @@ class _ProfileSection extends StatelessWidget {
                             label: 'Postingan',
                           ),
                         ),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: _ProfileStat(
                             value: likedCount,
                             label: 'Disukai',
                           ),
                         ),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: _ProfileStat(
                             value: taggedCount,
@@ -381,30 +384,42 @@ class _ProfileStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          _formatCount(value),
-          style: const TextStyle(
-            color: _textPrimary,
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
-            height: 1.1,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FBFF),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE5EEF8)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(
+            _formatCount(value),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: _textPrimary,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              height: 1.0,
+            ),
           ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: _textSecondary,
-            fontSize: 12.5,
-            fontWeight: FontWeight.w600,
+          const SizedBox(height: 3),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: _textSecondary,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              height: 1.1,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -429,10 +444,10 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
   _TabBarDelegate({required this.controller});
 
   @override
-  double get minExtent => 48;
+  double get minExtent => 46;
 
   @override
-  double get maxExtent => 48;
+  double get maxExtent => 46;
 
   @override
   Widget build(
@@ -450,30 +465,30 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
         indicatorWeight: 2,
         indicatorSize: TabBarIndicatorSize.label,
         labelStyle: const TextStyle(
-          fontSize: 13,
+          fontSize: 12.5,
           fontWeight: FontWeight.w800,
         ),
         unselectedLabelStyle: const TextStyle(
-          fontSize: 13,
+          fontSize: 12.5,
           fontWeight: FontWeight.w700,
         ),
         tabs: const [
           Tab(
-            height: 48,
+            height: 46,
             iconMargin: EdgeInsets.only(bottom: 2),
-            icon: Icon(Icons.grid_on_rounded, size: 20),
+            icon: Icon(Icons.grid_on_rounded, size: 19),
             text: 'Postingan',
           ),
           Tab(
-            height: 48,
+            height: 46,
             iconMargin: EdgeInsets.only(bottom: 2),
-            icon: Icon(Icons.play_circle_outline_rounded, size: 20),
+            icon: Icon(Icons.play_circle_outline_rounded, size: 19),
             text: 'Video',
           ),
           Tab(
-            height: 48,
+            height: 46,
             iconMargin: EdgeInsets.only(bottom: 2),
-            icon: Icon(Icons.shopping_bag_outlined, size: 20),
+            icon: Icon(Icons.shopping_bag_outlined, size: 19),
             text: 'Produk Ditag',
           ),
         ],
@@ -651,29 +666,56 @@ class _EmptyState extends StatelessWidget {
     return SingleChildScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(32, 60, 32, 100),
+        padding: const EdgeInsets.fromLTRB(32, 54, 32, 100),
         child: Column(
           children: [
-            Container(
-              width: 84,
-              height: 84,
-              decoration: const BoxDecoration(
-                color: Color(0xFFEAF5FF),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.photo_camera_outlined,
-                color: _brandBlue,
-                size: 38,
+            SizedBox(
+              width: 96,
+              height: 90,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Container(
+                    width: 82,
+                    height: 82,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEAF5FF),
+                      borderRadius: BorderRadius.circular(26),
+                    ),
+                    child: const Icon(
+                      Icons.pets_rounded,
+                      color: _brandBlue,
+                      size: 36,
+                    ),
+                  ),
+                  Positioned(
+                    right: 6,
+                    bottom: 4,
+                    child: Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: _brandBlue,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 3),
+                      ),
+                      child: const Icon(
+                        Icons.photo_camera_outlined,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 16),
             Text(
               text,
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: _textPrimary,
-                fontSize: 16,
+                fontSize: 16.5,
                 fontWeight: FontWeight.w900,
               ),
             ),
@@ -683,7 +725,7 @@ class _EmptyState extends StatelessWidget {
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: _textSecondary,
-                fontSize: 13,
+                fontSize: 13.5,
                 fontWeight: FontWeight.w600,
                 height: 1.4,
               ),

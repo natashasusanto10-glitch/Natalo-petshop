@@ -205,8 +205,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
       // existing. Kalau parent, prepend di top (newest-first).
       setState(() {
         if (parentId != null) {
-          final parentIndex =
-              _comments.indexWhere((c) => c.id == parentId);
+          final parentIndex = _comments.indexWhere((c) => c.id == parentId);
           if (parentIndex >= 0) {
             // Cari insertion point: setelah parent + semua reply existing.
             int insertAt = parentIndex + 1;
@@ -267,9 +266,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     // Optimistic update.
     _updateComment(comment.copyWith(
       viewerLiked: !wasLiked,
-      likeCount: wasLiked
-          ? (prevCount > 0 ? prevCount - 1 : 0)
-          : prevCount + 1,
+      likeCount: wasLiked ? (prevCount > 0 ? prevCount - 1 : 0) : prevCount + 1,
     ));
     try {
       final newCount = await feedService.toggleCommentLike(
@@ -555,6 +552,10 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
         ? profile!.name.substring(0, 1).toUpperCase()
         : 'N';
     final isLoggedIn = memberStore.isLoggedIn;
+    final bottomSafeArea = MediaQuery.viewPaddingOf(context).bottom;
+    final bottomPadding = keyboardInset > 0
+        ? 10 + keyboardInset
+        : 18 + (bottomSafeArea > 0 ? bottomSafeArea : 16.0);
 
     return Container(
       decoration: BoxDecoration(
@@ -570,103 +571,100 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
         12,
         10,
         8,
-        10 + keyboardInset,
+        bottomPadding,
       ),
-      child: SafeArea(
-        top: false,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            // Avatar user current — pakai foto profil kalau ada,
-            // fallback ke initial bubble. Re-use _CommentAvatar yang
-            // sudah handle Image.network + errorBuilder fallback ke
-            // initial supaya konsisten dengan avatar di comment list.
-            Padding(
-              padding: const EdgeInsets.only(bottom: 2),
-              child: _CommentAvatar(
-                size: 34,
-                initial: initial,
-                imageUrl: profile?.profilePhotoUrl,
-              ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          // Avatar user current — pakai foto profil kalau ada,
+          // fallback ke initial bubble. Re-use _CommentAvatar yang
+          // sudah handle Image.network + errorBuilder fallback ke
+          // initial supaya konsisten dengan avatar di comment list.
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: _CommentAvatar(
+              size: 34,
+              initial: initial,
+              imageUrl: profile?.profilePhotoUrl,
             ),
-            const SizedBox(width: 10),
+          ),
+          const SizedBox(width: 10),
 
-            // Input field — dark transparent fill, white text + cursor.
-            Expanded(
-              child: Container(
-                constraints: const BoxConstraints(
-                  minHeight: 40,
-                  maxHeight: 120,
+          // Input field — dark transparent fill, white text + cursor.
+          Expanded(
+            child: Container(
+              constraints: const BoxConstraints(
+                minHeight: 40,
+                maxHeight: 120,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.10),
                 ),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.10),
-                  ),
+              ),
+              child: TextField(
+                controller: _inputCtrl,
+                focusNode: _inputFocus,
+                enabled: !_posting,
+                maxLines: null,
+                minLines: 1,
+                textCapitalization: TextCapitalization.sentences,
+                textInputAction: TextInputAction.newline,
+                keyboardAppearance: Brightness.dark,
+                cursorColor: Colors.white,
+                inputFormatters: [
+                  LengthLimitingTextInputFormatter(500),
+                ],
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  height: 1.35,
                 ),
-                child: TextField(
-                  controller: _inputCtrl,
-                  focusNode: _inputFocus,
-                  enabled: !_posting,
-                  maxLines: null,
-                  minLines: 1,
-                  textCapitalization: TextCapitalization.sentences,
-                  textInputAction: TextInputAction.newline,
-                  keyboardAppearance: Brightness.dark,
-                  cursorColor: Colors.white,
-                  inputFormatters: [
-                    LengthLimitingTextInputFormatter(500),
-                  ],
-                  style: const TextStyle(
-                    color: Colors.white,
+                decoration: InputDecoration(
+                  isDense: true,
+                  // BUG FIX: global app theme set `filled: true` +
+                  // `fillColor: white surface`, yang override styling
+                  // wrapping Container. Hasil: input field tampil
+                  // solid white pill di dark drawer (bukan dark
+                  // transparent). Explicit `filled: false` + transparent
+                  // fillColor supaya theme global tidak bocor masuk.
+                  filled: false,
+                  fillColor: Colors.transparent,
+                  hintText: isLoggedIn
+                      ? 'Tambahkan komentar...'
+                      : 'Login untuk komentar...',
+                  hintStyle: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.45),
                     fontSize: 14,
-                    height: 1.35,
                   ),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    // BUG FIX: global app theme set `filled: true` +
-                    // `fillColor: white surface`, yang override styling
-                    // wrapping Container. Hasil: input field tampil
-                    // solid white pill di dark drawer (bukan dark
-                    // transparent). Explicit `filled: false` + transparent
-                    // fillColor supaya theme global tidak bocor masuk.
-                    filled: false,
-                    fillColor: Colors.transparent,
-                    hintText: isLoggedIn
-                        ? 'Tambahkan komentar...'
-                        : 'Login untuk komentar...',
-                    hintStyle: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.45),
-                      fontSize: 14,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 9,
-                    ),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    disabledBorder: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 9,
                   ),
-                  onChanged: (_) => setState(() {}),
-                  onTap: () {
-                    if (!isLoggedIn) {
-                      Navigator.pushNamed(context, '/member/login');
-                    }
-                  },
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  disabledBorder: InputBorder.none,
                 ),
+                onChanged: (_) => setState(() {}),
+                onTap: () {
+                  if (!isLoggedIn) {
+                    Navigator.pushNamed(context, '/member/login');
+                  }
+                },
               ),
             ),
+          ),
 
-            // Send button (disabled saat kosong / posting).
-            _SendButton(
-              enabled: !_posting && _inputCtrl.text.trim().isNotEmpty,
-              posting: _posting,
-              onPressed: _postComment,
-            ),
-          ],
-        ),
+          // Send button (disabled saat kosong / posting).
+          _SendButton(
+            enabled: !_posting && _inputCtrl.text.trim().isNotEmpty,
+            posting: _posting,
+            onPressed: _postComment,
+          ),
+        ],
       ),
     );
   }
@@ -696,12 +694,10 @@ class _CommentTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final author = comment.author;
-    final name = author.username?.isNotEmpty == true
-        ? author.username!
-        : author.name;
+    final name =
+        author.username?.isNotEmpty == true ? author.username! : author.name;
     final avatarUrl = author.profilePhotoUrl ?? author.avatarUrl;
-    final initial =
-        name.isNotEmpty ? name.substring(0, 1).toUpperCase() : 'N';
+    final initial = name.isNotEmpty ? name.substring(0, 1).toUpperCase() : 'N';
     final avatarSize = isReply ? 28.0 : 36.0;
 
     return GestureDetector(
@@ -742,90 +738,90 @@ class _CommentTile extends StatelessWidget {
             ),
             const SizedBox(width: 10),
 
-          // Body: name + content + meta.
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          // White untuk dark drawer (was 0xFF111111 dark
-                          // text di dark bg → poor contrast, terlihat
-                          // bluish/faded di screenshot user).
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 12.5,
+            // Body: name + content + meta.
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            // White untuk dark drawer (was 0xFF111111 dark
+                            // text di dark bg → poor contrast, terlihat
+                            // bluish/faded di screenshot user).
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12.5,
+                          ),
                         ),
                       ),
-                    ),
-                    if (author.isOfficial || author.isAdmin) ...[
-                      const SizedBox(width: 4),
-                      const Icon(
-                        Icons.verified_rounded,
-                        size: 13,
-                        color: NataloColors.primary,
-                      ),
-                    ],
-                    const SizedBox(width: 6),
-                    Text(
-                      _timeAgo(comment.createdAt),
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.55),
-                        fontWeight: FontWeight.w600,
-                        fontSize: 11.5,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  comment.content,
-                  style: TextStyle(
-                    // White alpha 90% — primary content content readable
-                    // di dark bg, slightly softer dari 100% white untuk
-                    // mengurangi eye strain di long scroll.
-                    color: Colors.white.withValues(alpha: 0.90),
-                    fontSize: 13.5,
-                    height: 1.35,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    if (comment.likeCount > 0) ...[
+                      if (author.isOfficial || author.isAdmin) ...[
+                        const SizedBox(width: 4),
+                        const Icon(
+                          Icons.verified_rounded,
+                          size: 13,
+                          color: NataloColors.primary,
+                        ),
+                      ],
+                      const SizedBox(width: 6),
                       Text(
-                        '${_formatCount(comment.likeCount)} suka',
+                        _timeAgo(comment.createdAt),
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.55),
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w600,
                           fontSize: 11.5,
                         ),
                       ),
-                      const SizedBox(width: 14),
                     ],
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: onReply,
-                      child: Text(
-                        'Balas',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.70),
-                          fontWeight: FontWeight.w800,
-                          fontSize: 11.5,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    comment.content,
+                    style: TextStyle(
+                      // White alpha 90% — primary content content readable
+                      // di dark bg, slightly softer dari 100% white untuk
+                      // mengurangi eye strain di long scroll.
+                      color: Colors.white.withValues(alpha: 0.90),
+                      fontSize: 13.5,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      if (comment.likeCount > 0) ...[
+                        Text(
+                          '${_formatCount(comment.likeCount)} suka',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.55),
+                            fontWeight: FontWeight.w700,
+                            fontSize: 11.5,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                      ],
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: onReply,
+                        child: Text(
+                          'Balas',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.70),
+                            fontWeight: FontWeight.w800,
+                            fontSize: 11.5,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
 
             // Like heart.
             _CommentLikeButton(
