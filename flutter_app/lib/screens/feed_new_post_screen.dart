@@ -51,9 +51,19 @@ class NewPostMediaDraft {
 class FeedNewPostScreen extends StatefulWidget {
   final NewPostMediaDraft draft;
 
+  /// Optional caption pre-fill — dipakai saat resume draft dari SharedPreferences
+  /// (tap "Lanjutkan draft" banner di My Posts). Null = composer kosong.
+  final String? prefilledCaption;
+
+  /// Optional product IDs pre-fill — sama dengan prefilledCaption, dipakai
+  /// pas resume draft. Empty = no products tagged.
+  final List<String> prefilledProductIds;
+
   const FeedNewPostScreen({
     super.key,
     required this.draft,
+    this.prefilledCaption,
+    this.prefilledProductIds = const [],
   });
 
   @override
@@ -93,6 +103,14 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
   void initState() {
     super.initState();
     _videoDraft = widget.draft.videoDraft;
+    // Restore caption + tagged products dari draft (kalau ada).
+    if (widget.prefilledCaption != null &&
+        widget.prefilledCaption!.isNotEmpty) {
+      _captionController.text = widget.prefilledCaption!;
+    }
+    if (widget.prefilledProductIds.isNotEmpty) {
+      _selectedProductIds.addAll(widget.prefilledProductIds);
+    }
     _captionController.addListener(() {
       if (mounted) setState(() {});
     });

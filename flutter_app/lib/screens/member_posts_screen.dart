@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -12,6 +14,7 @@ import '../utils/haptics.dart';
 import '../widgets/feed_upload_sheet.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/profile_avatar.dart';
+import 'feed_new_post_screen.dart';
 import 'member_post_detail_screen.dart';
 
 const _brandBlue = Color(0xFF0B7FEA);
@@ -144,11 +147,87 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     await _loadLocalDrafts();
   }
 
-  void _openDraft() {
+  Future<void> _openDraft() async {
     AppHaptics.tap();
     _draftAutoHideTimer?.cancel();
     setState(() => _showDraftReminder = false);
-    _openUpload();
+    // Try restore composer draft (caption + photos + tagged products).
+    // Kalau format-nya video-upload-pending (lain), fallback ke upload sheet.
+    final restored = await _tryRestoreComposerDraft();
+    if (restored) return;
+    await _openUpload();
+  }
+
+  /// Parse draft dari SharedPreferences, kalau format-nya composer draft
+  /// (`local|post-new|<json>|<ts>`), rekonstruksi File list + push langsung
+  /// ke FeedNewPostScreen dengan caption + tagged products pre-filled.
+  ///
+  /// Return true kalau sukses restore + nav ke editor. False kalau:
+  ///  - Tidak ada draft
+  ///  - Format-nya video-upload-pending (5 parts pipe-separated)
+  ///  - JSON corrupt
+  ///  - Semua file foto sudah hilang dari device (user delete di galeri)
+  ///  - Video draft (TODO: support resume video composer)
+  Future<bool> _tryRestoreComposerDraft() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_draftPendingUploadKey);
+      if (raw == null || !raw.startsWith('local|post-new|')) return false;
+
+      // Split: ["local", "post-new", "<jsonStr...>", "<ts>"]
+      // JSON itself bisa contain '|', jadi rejoin parts antara index 2
+      // sampai parts.length - 1 sebagai jsonStr.
+      final parts = raw.split('|');
+      if (parts.length < 4) return false;
+      final jsonStr = parts.sublist(2, parts.length - 1).join('|');
+      final payload = jsonDecode(jsonStr) as Map<String, dynamic>;
+
+      final type = payload['type'] as String?;
+      final caption = (payload['caption'] as String?) ?? '';
+      final productIds = (payload['productIds'] as List?)?.cast<String>() ??
+          const <String>[];
+      final mediaPaths = (payload['media'] as List?)?.cast<String>() ??
+          const <String>[];
+
+      // Photo composer drafts only — video drafts skip dulu (butuh
+      // FeedCreatePostDraft rekonstruksi yang lebih kompleks).
+      if (type != 'image' || mediaPaths.isEmpty) return false;
+
+      // Verify files masih ada — user mungkin sudah hapus dari galeri /
+      // temp dir di-clean OS. Kalau semua file hilang, clear draft.
+      final files = <File>[];
+      for (final path in mediaPaths) {
+        final file = File(path);
+        if (await file.exists()) files.add(file);
+      }
+      if (files.isEmpty) {
+        await prefs.remove(_draftPendingUploadKey);
+        return false;
+      }
+      if (!mounted) return false;
+
+      final result = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => FeedNewPostScreen(
+            draft: NewPostMediaDraft.photos(files),
+            prefilledCaption: caption,
+            prefilledProductIds: productIds,
+          ),
+        ),
+      );
+      // Clear draft kalau user sukses publish (result == true). Kalau
+      // user save-draft-and-exit lagi, _saveDraftAndExit akan tulis ulang.
+      if (result == true) {
+        await prefs.remove(_draftPendingUploadKey);
+        await _loadPosts();
+      }
+      await _loadLocalDrafts();
+      return true;
+    } catch (_) {
+      // Parse error / IO error — silent fallback ke upload sheet.
+      return false;
+    }
   }
 
   void _onFilterChanged(int index) {

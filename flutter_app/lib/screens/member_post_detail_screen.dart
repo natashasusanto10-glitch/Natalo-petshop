@@ -448,7 +448,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
 
 // ─── Per-post item ───────────────────────────────────────────────────
 
-class _PostFeedItem extends StatelessWidget {
+class _PostFeedItem extends StatefulWidget {
   final MyFeedPost post;
   final String memberName;
   final String memberInitial;
@@ -473,7 +473,121 @@ class _PostFeedItem extends StatelessWidget {
   });
 
   @override
+  State<_PostFeedItem> createState() => _PostFeedItemState();
+}
+
+class _PostFeedItemState extends State<_PostFeedItem>
+    with TickerProviderStateMixin {
+  // Heart icon scale-on-tap controller — bouncy pop kecil saat user tap
+  // tombol heart di action row. 140ms cepat supaya gak feel laggy.
+  late final AnimationController _heartScaleController;
+  late final Animation<double> _heartScale;
+
+  // Heart burst controller — big heart pop di tengah image saat user
+  // double-tap media. Signature Instagram-style: scale 0.35→1.42→1.0→0
+  // dengan opacity fade in/out. 620ms total.
+  late final AnimationController _heartBurstController;
+  late final Animation<double> _burstScale;
+  late final Animation<double> _burstOpacity;
+
+  @override
+  void initState() {
+    super.initState();
+    _heartScaleController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 240),
+    );
+    _heartScale = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(begin: 1.0, end: 1.32)
+            .chain(CurveTween(curve: Curves.easeOutBack)),
+        weight: 45,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 1.32, end: 1.0)
+            .chain(CurveTween(curve: Curves.easeInOutCubic)),
+        weight: 55,
+      ),
+    ]).animate(_heartScaleController);
+
+    _heartBurstController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 620),
+    );
+    _burstScale = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(begin: 0.35, end: 1.42)
+            .chain(CurveTween(curve: Curves.easeOutBack)),
+        weight: 34,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 1.42, end: 1.00)
+            .chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 22,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 1.00, end: 0.82)
+            .chain(CurveTween(curve: Curves.easeOutCubic)),
+        weight: 18,
+      ),
+      TweenSequenceItem(
+        tween:
+            Tween(begin: 0.82, end: 0.0).chain(CurveTween(curve: Curves.easeIn)),
+        weight: 26,
+      ),
+    ]).animate(_heartBurstController);
+    _burstOpacity = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(begin: 0.0, end: 1.0)
+            .chain(CurveTween(curve: Curves.easeOut)),
+        weight: 25,
+      ),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.0), weight: 38),
+      TweenSequenceItem(
+        tween:
+            Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeIn)),
+        weight: 37,
+      ),
+    ]).animate(_heartBurstController);
+  }
+
+  @override
+  void dispose() {
+    _heartScaleController.dispose();
+    _heartBurstController.dispose();
+    super.dispose();
+  }
+
+  void _handleLikeTap() {
+    // Pop animation icon — fire dulu sebelum onLike supaya parent yang
+    // optimistic toggle bisa di-paint di animation cycle yang sama.
+    if (!_heartScaleController.isAnimating) {
+      _heartScaleController.forward(from: 0);
+    }
+    widget.onLike();
+  }
+
+  void _handleDoubleTap() {
+    // Double-tap = LIKE only (Instagram behavior — tidak un-like).
+    // Kalau belum liked, fire onLike. Kalau sudah liked, skip toggle
+    // tapi tetap show burst (heart kedap-kedip jadi feedback bahwa
+    // user sudah suka).
+    AppHaptics.impact();
+    if (!widget.liked) {
+      _handleLikeTap();
+    }
+    if (!_heartBurstController.isAnimating) {
+      _heartBurstController.forward(from: 0);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final post = widget.post;
+    final memberName = widget.memberName;
+    final memberInitial = widget.memberInitial;
+    final memberPhotoUrl = widget.memberPhotoUrl;
+    final liked = widget.liked;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -492,9 +606,18 @@ class _PostFeedItem extends StatelessWidget {
         // comment / share) kepotong off-screen. Sekarang author overlay
         // di dalam media via Stack + dark gradient top supaya teks putih
         // tetap readable di atas konten media apapun.
-        Stack(
-          children: [
-            _PostMediaSurface(post: post),
+        //
+        // Double-tap detector wrap media: signature Instagram-feel "tap
+        // dua kali untuk like". Single tap ke media tetap fall-through
+        // ke gesture detector dalam (mis. _InlineVideoPlayer onTap →
+        // fullscreen). PageView swipe horizontal di carousel juga tetap
+        // jalan karena swipe ≠ tap gesture.
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onDoubleTap: _handleDoubleTap,
+          child: Stack(
+            children: [
+              _PostMediaSurface(post: post),
             Positioned(
               top: 0,
               left: 0,
@@ -550,7 +673,7 @@ class _PostFeedItem extends StatelessWidget {
                     ),
                   ),
                   IconButton(
-                    onPressed: onMenuTap,
+                    onPressed: widget.onMenuTap,
                     visualDensity: VisualDensity.compact,
                     icon: const Icon(
                       Icons.more_horiz_rounded,
@@ -567,7 +690,40 @@ class _PostFeedItem extends StatelessWidget {
                 ],
               ),
             ),
+            // Heart burst overlay — big white heart pop di tengah image
+            // saat double-tap. Signature Instagram-style. IgnorePointer
+            // supaya tidak intercept tap (gesture wrap di luar Stack udah
+            // handle double-tap).
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Center(
+                  child: AnimatedBuilder(
+                    animation: _heartBurstController,
+                    builder: (context, _) {
+                      if (_burstOpacity.value == 0) {
+                        return const SizedBox.shrink();
+                      }
+                      return Opacity(
+                        opacity: _burstOpacity.value,
+                        child: Transform.scale(
+                          scale: _burstScale.value,
+                          child: const Icon(
+                            Icons.favorite_rounded,
+                            color: Colors.white,
+                            size: 128,
+                            shadows: [
+                              Shadow(color: Colors.black54, blurRadius: 28),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
           ],
+          ),
         ),
         // Action row di-padding sedikit dari edge.
         // Count di-render inline samping icon (TikTok/Reels style) supaya
@@ -579,14 +735,21 @@ class _PostFeedItem extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
           child: Row(
             children: [
-              NataloPostActionButton(
-                type: NataloPostActionIconType.like,
-                isActive: liked,
-                iconSize: 28,
-                tapSize: 42,
-                count: post.likeCount,
-                semanticLabel: liked ? 'Batalkan suka' : 'Sukai postingan',
-                onTap: onLike,
+              // Heart icon dibungkus ScaleTransition supaya pop saat di-tap.
+              // _handleLikeTap fire animation + delegate ke widget.onLike
+              // (yang trigger optimistic update + API call di parent).
+              ScaleTransition(
+                scale: _heartScale,
+                child: NataloPostActionButton(
+                  type: NataloPostActionIconType.like,
+                  isActive: liked,
+                  iconSize: 28,
+                  tapSize: 42,
+                  count: post.likeCount,
+                  semanticLabel:
+                      liked ? 'Batalkan suka' : 'Sukai postingan',
+                  onTap: _handleLikeTap,
+                ),
               ),
               NataloPostActionButton(
                 type: NataloPostActionIconType.comment,
@@ -594,7 +757,7 @@ class _PostFeedItem extends StatelessWidget {
                 tapSize: 42,
                 count: post.commentCount,
                 semanticLabel: 'Buka komentar',
-                onTap: onComment,
+                onTap: widget.onComment,
               ),
               NataloPostActionButton(
                 type: NataloPostActionIconType.share,
@@ -602,7 +765,7 @@ class _PostFeedItem extends StatelessWidget {
                 tapSize: 42,
                 count: post.shareCount,
                 semanticLabel: 'Bagikan postingan',
-                onTap: onShare,
+                onTap: widget.onShare,
               ),
             ],
           ),
