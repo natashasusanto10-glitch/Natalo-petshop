@@ -93,6 +93,7 @@ class MyFeedPost {
   final int likeCount;
   final int commentCount;
   final int viewCount;
+
   /// True kalau viewer (session user) sudah pernah klik like post ini —
   /// source of truth dari backend (FeedLike row exists untuk session.sub).
   /// Dipakai initialize _likedCache di My Posts screen supaya tombol like
@@ -195,8 +196,10 @@ class MyFeedPost {
       mediaItems: mediaItems,
       blurhash: json['blurhash'] as String?,
       durationSec: durationSec,
-      aspectWidth: (json['aspectWidth'] as num?)?.toInt() ?? 9,
-      aspectHeight: (json['aspectHeight'] as num?)?.toInt() ?? 16,
+      aspectWidth: (json['aspectWidth'] as num?)?.toInt() ??
+          (type == MyFeedPostType.video ? 9 : 4),
+      aspectHeight: (json['aspectHeight'] as num?)?.toInt() ??
+          (type == MyFeedPostType.video ? 16 : 5),
       status: json['status'] as String? ?? 'PENDING_REVIEW',
       rejectionReason:
           _string(json['rejectionReason'] ?? json['moderationNote']),

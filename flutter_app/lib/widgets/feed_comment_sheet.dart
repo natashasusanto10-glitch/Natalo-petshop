@@ -467,6 +467,17 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     }
 
     final items = _buildDisplayItems();
+    // IG pattern — caption post di-render sebagai item pertama di atas
+    // comment list (dengan author tag "creator"). User langsung baca
+    // caption tanpa tutup sheet & balik ke feed.
+    final captionText =
+        widget.post.caption?.trim().isNotEmpty == true
+            ? widget.post.caption!.trim()
+            : widget.post.description.trim();
+    final hasCaption = captionText.isNotEmpty;
+    final captionOffset = hasCaption ? 1 : 0;
+    final totalCount =
+        items.length + captionOffset + (_loadingMore ? 1 : 0);
 
     return NataloPawRefreshIndicator(
       onRefresh: _refresh,
@@ -474,9 +485,17 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
         controller: widget.sheetScrollController,
         padding: const EdgeInsets.fromLTRB(0, 8, 0, 24),
         physics: const AlwaysScrollableScrollPhysics(),
-        itemCount: items.length + (_loadingMore ? 1 : 0),
+        itemCount: totalCount,
         itemBuilder: (context, index) {
-          if (index >= items.length) {
+          // Caption header — index 0 kalau hasCaption.
+          if (hasCaption && index == 0) {
+            return _CaptionTile(
+              post: widget.post,
+              captionText: captionText,
+            );
+          }
+          final adjustedIndex = index - captionOffset;
+          if (adjustedIndex >= items.length) {
             return const Padding(
               padding: EdgeInsets.symmetric(vertical: 16),
               child: Center(
@@ -491,7 +510,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
               ),
             );
           }
-          final item = items[index];
+          final item = items[adjustedIndex];
           return _CommentTile(
             comment: item.comment,
             isReply: item.isReply,
@@ -675,6 +694,100 @@ class _CommentDisplayItem {
   final FeedComment comment;
   final bool isReply;
   const _CommentDisplayItem({required this.comment, required this.isReply});
+}
+
+/// Caption header — render post caption sebagai "first comment" di top
+/// comment sheet. Match IG pattern: user buka comment → langsung lihat
+/// caption + author di atas sebelum komentar lain.
+///
+/// Visual: similar ke _CommentTile (avatar + name + body) tapi tanpa
+/// like/reply button (caption bukan comment, tidak interactive). Author
+/// name dapat verified badge kalau admin/official, plus subtle separator
+/// di bawah untuk visual hint "caption end, comments start".
+class _CaptionTile extends StatelessWidget {
+  final FeedPost post;
+  final String captionText;
+
+  const _CaptionTile({required this.post, required this.captionText});
+
+  @override
+  Widget build(BuildContext context) {
+    final author = post.author;
+    final name = author.name;
+    final avatarUrl = author.profilePhotoUrl ?? author.avatarUrl;
+    final initial = name.isNotEmpty ? name.substring(0, 1).toUpperCase() : 'N';
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: Colors.white.withValues(alpha: 0.08),
+            width: 0.5,
+          ),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 7, 16, 14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _CommentAvatar(size: 36, initial: initial, imageUrl: avatarUrl),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12.5,
+                          ),
+                        ),
+                      ),
+                      if (author.isOfficial || author.isAdmin) ...[
+                        const SizedBox(width: 4),
+                        const Icon(
+                          Icons.verified_rounded,
+                          size: 13,
+                          color: NataloColors.primary,
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    captionText,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13.5,
+                      height: 1.35,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    _timeAgo(post.createdAt),
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.55),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// Single comment row — avatar + name + content + meta + like button.
