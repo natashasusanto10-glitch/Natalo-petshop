@@ -12,7 +12,6 @@ import '../services/feed_service.dart';
 import '../state/member_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
-import '../utils/photo_filter.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/emoji_picker_panel.dart';
 import '../widgets/profile_avatar.dart';
@@ -88,13 +87,8 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
   List<Product> _visibleProducts = const [];
   bool _loadingProducts = true;
   bool _savingDraft = false;
-  bool _bakingFilters = false;
   String? _error;
   int _photoIndex = 0;
-  // Filter terpilih per-index foto di carousel. Default `none` (Original)
-  // untuk semua foto. State independen per index supaya user bisa pilih
-  // filter beda untuk tiap foto di 1 post (parity dengan Instagram).
-  final Map<int, PhotoFilter> _photoFilters = {};
 
   bool get _isVideo => widget.draft.type == NewPostMediaType.video;
 
@@ -342,33 +336,15 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
       return;
     }
 
-    // Bake filter ke bytes sebelum upload — supaya backend terima foto
-    // yang sudah berfiltter, bukan original. Skip kalau semua foto pilih
-    // Original (Map kosong = tidak ada filter aktif).
-    var filesToUpload = files;
-    if (_photoFilters.isNotEmpty) {
-      setState(() => _bakingFilters = true);
-      try {
-        // Process per-index dengan filter yang dipilih user. Index tanpa
-        // entry di map = Original, skip bake (return source asli).
-        final baked = <File>[];
-        for (var i = 0; i < files.length; i++) {
-          final filter = _photoFilters[i] ?? PhotoFilter.none;
-          final out = await applyPhotoFilter(files[i], filter);
-          baked.add(out);
-        }
-        filesToUpload = baked;
-      } finally {
-        if (mounted) setState(() => _bakingFilters = false);
-      }
-    }
-
     if (!mounted) return;
+    // Filter foto di-hapus per spec user — picker sudah produce foto
+    // ter-crop sesuai aspect ratio (4:5 / 1:1 / 1.91:1) dengan saturation
+    // boost di preview. Langsung upload files asli, tidak ada baking step.
     await Navigator.pushReplacement(
       context,
       MaterialPageRoute(
         builder: (_) => FeedPhotoUploadProgressScreen(
-          files: filesToUpload,
+          files: files,
           title: caption.isEmpty ? 'Postingan baru' : caption,
           productIds: productIds,
         ),
@@ -500,26 +476,6 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
                         onEditCover: _editCover,
                       ),
                     ),
-                    // Filter strip — hanya untuk foto, tidak untuk video.
-                    // Per-foto filter state (carousel mode): tap foto di
-                    // PageView → swipe → strip update ke filter foto aktif.
-                    if (!_isVideo && widget.draft.photoFiles.isNotEmpty) ...[
-                      const SizedBox(height: 14),
-                      _PhotoFilterStrip(
-                        sourceFile: widget.draft.photoFiles[_photoIndex],
-                        selected: _photoFilters[_photoIndex] ?? PhotoFilter.none,
-                        onSelected: (filter) {
-                          AppHaptics.selection();
-                          setState(() {
-                            if (filter == PhotoFilter.none) {
-                              _photoFilters.remove(_photoIndex);
-                            } else {
-                              _photoFilters[_photoIndex] = filter;
-                            }
-                          });
-                        },
-                      ),
-                    ],
                     const SizedBox(height: 24),
                     const _SectionTitle('Caption'),
                     const SizedBox(height: 10),
