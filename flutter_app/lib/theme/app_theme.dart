@@ -208,6 +208,14 @@ class AppTheme {
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
         ),
+        // Global drag handle — semua showModalBottomSheet() otomatis
+        // dapet visual handle pill di top center. Hint to user "this
+        // sheet is draggable". IG / Apple Maps / Spotify pattern.
+        // Color & size custom Natalo palette (default abu Material agak
+        // tebal, kita pakai light grey lebih subtle).
+        showDragHandle: true,
+        dragHandleColor: const Color(0xFFD1D5DB), // grey-300
+        dragHandleSize: const Size(40, 4),
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
@@ -368,6 +376,11 @@ class AppTheme {
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
         ),
+        // Dark theme drag handle — lebih terang supaya tetap visible
+        // di atas surface gelap. White 30% opacity.
+        showDragHandle: true,
+        dragHandleColor: const Color(0x4DFFFFFF), // white 30%
+        dragHandleSize: const Size(40, 4),
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,

@@ -1070,6 +1070,11 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
         minChildSize: 0.5,
         maxChildSize: 0.95,
         snap: true,
+        // Explicit snap points: tarik ke salah satu dari 3 size. Bukan
+        // free-drag. Match Apple Maps / Spotify pattern — bottom sheet
+        // selalu terasa "settled" di posisi yang jelas, bukan random
+        // height yang berubah-ubah.
+        snapSizes: const [0.5, 0.7, 0.95],
         builder: (_, scrollController) => FeedCommentSheet(
           post: widget.post,
           applyKeyboardInset: true,
