@@ -1,7 +1,6 @@
 import '../models/member_profile.dart';
 import '../utils/read_only_mode.dart';
 import 'api_client.dart';
-import 'member_service.dart';
 
 class AuthService {
   String? _lastSessionToken;
@@ -26,25 +25,7 @@ class AuthService {
     _lastSessionToken = _sessionTokenFrom(data);
     final user =
         _userFrom(data, fallbackMessage: 'Response login tidak valid.');
-
-    try {
-      final profile = await memberService.fetchProfile();
-      if (profile == null) {
-        throw const ApiException(
-          'Gagal load profile setelah login.',
-          statusCode: 500,
-        );
-      }
-      return profile;
-    } on ApiException catch (error) {
-      if (error.statusCode == 401) {
-        throw const ApiException(
-          'Sesi login belum tersimpan. Coba login ulang.',
-          statusCode: 401,
-        );
-      }
-      return MemberProfile.fromApiJson(user);
-    }
+    return MemberProfile.fromApiJson(user);
   }
 
   /// Step 1 register: kirim data tanpa OTP → server kirim kode ke email + WA.
@@ -63,9 +44,13 @@ class AuthService {
     // Register bikin user baru di DB production — block di read-only
     // supaya Capacitor admin tidak dapat user test dari Flutter.
     readOnlyMode.assertWritable('register');
+    final isVerifyStep = otp != null && otp.trim().isNotEmpty;
     final data = _expectMap(
       await apiClient.postJson(
         '/api/auth/member-register',
+        timeout: isVerifyStep
+            ? const Duration(seconds: 20)
+            : const Duration(seconds: 75),
         body: {
           'name': name.trim(),
           'email': email.trim().toLowerCase(),
@@ -126,25 +111,7 @@ class AuthService {
     _lastSessionToken = _sessionTokenFrom(data);
     final user =
         _userFrom(data, fallbackMessage: 'Response login OTP tidak valid.');
-
-    try {
-      final profile = await memberService.fetchProfile();
-      if (profile == null) {
-        throw const ApiException(
-          'Gagal load profile setelah login OTP.',
-          statusCode: 500,
-        );
-      }
-      return profile;
-    } on ApiException catch (error) {
-      if (error.statusCode == 401) {
-        throw const ApiException(
-          'Sesi login belum tersimpan. Coba login ulang.',
-          statusCode: 401,
-        );
-      }
-      return MemberProfile.fromApiJson(user);
-    }
+    return MemberProfile.fromApiJson(user);
   }
 
   /// Request reset password link. Match endpoint PWA POST /api/auth/forgot-password.

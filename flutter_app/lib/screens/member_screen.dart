@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../models/my_feed_post.dart';
+import '../services/api_client.dart';
 import '../services/feed_service.dart';
 import '../state/member_store.dart';
 import '../utils/haptics.dart';
@@ -106,6 +107,7 @@ class _ProfilePageState extends State<_ProfilePage>
   List<MyFeedPost> _allPosts = const [];
   bool _loadingPosts = true;
   int _likedPostsCount = 0;
+  String? _postsError;
 
   @override
   void initState() {
@@ -121,23 +123,47 @@ class _ProfilePageState extends State<_ProfilePage>
   }
 
   Future<void> _loadAll() async {
-    setState(() => _loadingPosts = true);
-    final results = await Future.wait<dynamic>([
-      feedService.fetchMyPosts(filter: 'all'),
-      feedService.fetchMyLikesCount(),
-    ]);
-    if (!mounted) return;
-    // fetchMyPosts return MyFeedPostPage (cursor-paginated). Untuk
-    // header summary di Akun (stat post count), kita pakai page pertama
-    // saja — tidak perlu fetch all pages. Total post count tetap akurat
-    // via len(items) untuk preview, atau ambil dari totalCount kalau
-    // butuh exact (future enhancement).
-    final page = results[0] as MyFeedPostPage;
+    if (!memberStore.isLoggedIn) return;
     setState(() {
-      _allPosts = page.items;
-      _likedPostsCount = results[1] as int;
-      _loadingPosts = false;
+      _loadingPosts = true;
+      _postsError = null;
     });
+    try {
+      final results = await Future.wait<dynamic>([
+        feedService.fetchMyPosts(filter: 'all'),
+        feedService.fetchMyLikesCount(),
+      ]);
+      if (!mounted) return;
+      // fetchMyPosts return MyFeedPostPage (cursor-paginated). Untuk
+      // header summary di Akun (stat post count), kita pakai page pertama
+      // saja — tidak perlu fetch all pages. Total post count tetap akurat
+      // via len(items) untuk preview, atau ambil dari totalCount kalau
+      // butuh exact (future enhancement).
+      final page = results[0] as MyFeedPostPage;
+      setState(() {
+        _allPosts = page.items;
+        _likedPostsCount = results[1] as int;
+        _loadingPosts = false;
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      if (error.isUnauthorized || error.isForbidden) {
+        await memberStore.logout();
+        return;
+      }
+      setState(() {
+        _loadingPosts = false;
+        _postsError = error.isNetworkError
+            ? 'Koneksi sedang lambat. Tarik ke bawah untuk coba lagi.'
+            : 'Postingan belum bisa dimuat. Tarik ke bawah untuk coba lagi.';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loadingPosts = false;
+        _postsError = 'Postingan belum bisa dimuat. Tarik ke bawah untuk coba lagi.';
+      });
+    }
   }
 
   Future<void> _refresh() async {
@@ -211,30 +237,36 @@ class _ProfilePageState extends State<_ProfilePage>
               _PostGrid(
                 posts: _allPosts,
                 loading: _loadingPosts,
+                errorText: _postsError,
                 emptyText: 'Belum ada postingan',
                 emptySubtext:
                     'Bagikan momen lucu hewan kesayanganmu di Feed Natalo.',
                 showCreateCta: true,
                 onCreateCta: _openCreatePost,
+                onRetry: _loadAll,
                 onTapPost: (idx) => _openPostDetail(_allPosts, idx),
               ),
               _PostGrid(
                 posts: _videoPosts,
                 loading: _loadingPosts,
+                errorText: _postsError,
                 emptyText: 'Belum ada video',
                 emptySubtext: 'Video yang kamu unggah akan muncul di sini.',
                 showCreateCta: false,
                 onCreateCta: _openCreatePost,
+                onRetry: _loadAll,
                 onTapPost: (idx) => _openPostDetail(_videoPosts, idx),
               ),
               _PostGrid(
                 posts: _taggedPosts,
                 loading: _loadingPosts,
+                errorText: _postsError,
                 emptyText: 'Belum ada produk ditag',
                 emptySubtext:
                     'Postingan dengan produk Natalo yang ditag akan muncul di sini.',
                 showCreateCta: false,
                 onCreateCta: _openCreatePost,
+                onRetry: _loadAll,
                 onTapPost: (idx) => _openPostDetail(_taggedPosts, idx),
               ),
             ],
@@ -544,19 +576,23 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
 class _PostGrid extends StatelessWidget {
   final List<MyFeedPost> posts;
   final bool loading;
+  final String? errorText;
   final String emptyText;
   final String emptySubtext;
   final bool showCreateCta;
   final VoidCallback onCreateCta;
+  final VoidCallback onRetry;
   final ValueChanged<int> onTapPost;
 
   const _PostGrid({
     required this.posts,
     required this.loading,
+    required this.errorText,
     required this.emptyText,
     required this.emptySubtext,
     required this.showCreateCta,
     required this.onCreateCta,
+    required this.onRetry,
     required this.onTapPost,
   });
 
@@ -571,6 +607,12 @@ class _PostGrid extends StatelessWidget {
             color: _brandBlue,
           ),
         ),
+      );
+    }
+    if ((errorText ?? '').isNotEmpty && posts.isEmpty) {
+      return _ErrorState(
+        text: errorText!,
+        onRetry: onRetry,
       );
     }
     if (posts.isEmpty) {
@@ -599,6 +641,69 @@ class _PostGrid extends StatelessWidget {
             onTap: () => onTapPost(index),
           );
         },
+      ),
+    );
+  }
+}
+
+class _ErrorState extends StatelessWidget {
+  final String text;
+  final VoidCallback onRetry;
+
+  const _ErrorState({
+    required this.text,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(32, 54, 32, 100),
+        child: Column(
+          children: [
+            Container(
+              width: 82,
+              height: 82,
+              decoration: BoxDecoration(
+                color: const Color(0xFFEAF5FF),
+                borderRadius: BorderRadius.circular(26),
+              ),
+              child: const Icon(
+                Icons.cloud_off_rounded,
+                color: _brandBlue,
+                size: 34,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              text,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: _textSecondary,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 18),
+            OutlinedButton(
+              onPressed: onRetry,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _brandBlue,
+                side: const BorderSide(color: _brandBlue),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'Coba Lagi',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

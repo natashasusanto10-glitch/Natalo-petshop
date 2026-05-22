@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
+  ADMIN_SESSION_COOKIE,
   createSessionToken,
   getSessionCookieOptions,
   MEMBER_SESSION_COOKIE,
@@ -111,9 +112,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Password salah" }, { status: 401 });
     }
 
+    const sessionRole = user.role === "ADMIN" ? "ADMIN" : "CUSTOMER";
+    const sessionCookie =
+      sessionRole === "ADMIN" ? ADMIN_SESSION_COOKIE : MEMBER_SESSION_COOKIE;
+
     const token = await createSessionToken({
       sub: user.id,
-      role: "CUSTOMER",
+      role: sessionRole,
       name: user.name,
       tv: user.tokenVersion,
     });
@@ -126,10 +131,11 @@ export async function POST(request: NextRequest) {
     // tanpa harus extra GET /api/auth/me.
     const response = NextResponse.json({
       ok: true,
-      role: "CUSTOMER",
+      role: sessionRole,
       token,
       user: {
         id: user.id,
+        role: sessionRole,
         name: user.name,
         email: user.email,
         phone: user.phone,
@@ -140,7 +146,7 @@ export async function POST(request: NextRequest) {
       },
     });
     response.cookies.set(
-      MEMBER_SESSION_COOKIE,
+      sessionCookie,
       token,
       getSessionCookieOptions(request)
     );

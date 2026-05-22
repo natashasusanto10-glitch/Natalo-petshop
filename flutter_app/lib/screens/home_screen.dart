@@ -226,9 +226,8 @@ class _HomeScreenState extends State<HomeScreen> {
       // duplikat — section di atas Jelajahi. Personalized endpoint cap 20
       // produk, jadi top 10 di Rekomendasi + next 10 di Jelajahi initial.
       if (initial) {
-        final excludeForPersonalized = _personalizedRecs
-            .map((p) => p.id)
-            .toList();
+        final excludeForPersonalized =
+            _personalizedRecs.map((p) => p.id).toList();
         final viewedIds = recentlyViewedStore.items.map((p) => p.id).toList();
         final personalized =
             await productService.fetchPersonalizedRecommendations(
@@ -254,13 +253,11 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         final existingIds = _exploreProducts.map((item) => item.id).toSet();
         // Juga exclude IDs dari Rekomendasi Untuk Kamu section.
-        final personalizedIds =
-            _personalizedRecs.map((p) => p.id).toSet();
+        final personalizedIds = _personalizedRecs.map((p) => p.id).toSet();
         _exploreProducts.addAll(
           nextProducts.where(
             (item) =>
-                !personalizedIds.contains(item.id) &&
-                existingIds.add(item.id),
+                !personalizedIds.contains(item.id) && existingIds.add(item.id),
           ),
         );
         _exploreNextCursor = page.nextCursor;
@@ -585,9 +582,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       onOpenSearch: () => _openHomeSearch(context),
                     ),
                   ),
-                  if (result?.fromApi == false && result?.error != null)
-                    SliverToBoxAdapter(
-                        child: _ApiFallbackNotice(error: result!.error!)),
+                  if (result?.fromApi == false)
+                    const SliverToBoxAdapter(child: _ApiFallbackNotice()),
                   // Trust marquee — TIDAK sticky. Ikut scroll bersama content
                   // di bawah sticky header (search bar). Saat user scroll
                   // ke bawah, trust strip hilang dari viewport, hanya search
@@ -829,18 +825,15 @@ class _ExploreFooter extends StatelessWidget {
 }
 
 class _ApiFallbackNotice extends StatelessWidget {
-  final String error;
-
-  const _ApiFallbackNotice({required this.error});
+  const _ApiFallbackNotice();
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(16, 10, 16, 0),
       child: AppInfoBanner(
         icon: Icons.cloud_off_outlined,
-        message: 'Koneksi ke server bermasalah. Tarik ke bawah untuk muat '
-            'ulang. ($error)',
+        message: 'Koneksi sedang lambat. Tarik ke bawah untuk coba lagi.',
       ),
     );
   }

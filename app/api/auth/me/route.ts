@@ -6,7 +6,7 @@ import { normalizeIndonesianPhone } from "@/lib/phone";
 export async function GET() {
   const session = await getSession("CUSTOMER");
 
-  if (!session || session.role !== "CUSTOMER") {
+  if (!session) {
     return NextResponse.json({});
   }
 
@@ -14,6 +14,7 @@ export async function GET() {
     where: { id: session.sub },
     select: {
       id: true,
+      role: true,
       name: true,
       email: true,
       phone: true,
@@ -41,7 +42,7 @@ export async function GET() {
  */
 export async function PATCH(request: NextRequest) {
   const session = await getSession("CUSTOMER");
-  if (!session || session.role !== "CUSTOMER") {
+  if (!session) {
     return NextResponse.json(
       { error: "Login member dulu." },
       { status: 401 },
@@ -133,12 +134,14 @@ export async function PATCH(request: NextRequest) {
       data: updates,
       select: {
         id: true,
+        role: true,
         name: true,
         email: true,
         phone: true,
         birthDate: true,
         createdAt: true,
         profilePhotoUrl: true,
+        bio: true,
       },
     });
     return NextResponse.json({ ok: true, user });

@@ -139,7 +139,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     } catch (error) {
       if (!mounted) return;
       AppHaptics.warning();
-      final message = error is ApiException ? error.message : error.toString();
+      final message = _friendlyRegisterError(error);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(message),
@@ -149,6 +149,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  String _friendlyRegisterError(Object error) {
+    if (error is ApiException) {
+      if (error.isNetworkError) {
+        if (!_otpSent) {
+          return 'Koneksi sedang lambat saat mengirim OTP. Coba lagi sebentar lagi.';
+        }
+        return 'Koneksi sedang lambat saat mendaftar. Coba lagi sebentar lagi.';
+      }
+      return error.message;
+    }
+    return 'Terjadi kendala. Coba lagi sebentar lagi.';
   }
 
   bool _validate() {

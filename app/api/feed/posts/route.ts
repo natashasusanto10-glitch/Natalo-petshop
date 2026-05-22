@@ -160,13 +160,14 @@ export async function POST(request: NextRequest) {
 
   if (isAdmin) {
     const rawKind = String(body.kind ?? "");
-    if (!(ADMIN_KINDS as ReadonlyArray<string>).includes(rawKind)) {
+    const normalizedKind = rawKind === "COMMUNITY" ? "VIDEO_ONLY" : rawKind;
+    if (!(ADMIN_KINDS as ReadonlyArray<string>).includes(normalizedKind)) {
       return NextResponse.json(
         { error: "Kind invalid untuk admin." },
         { status: 400 },
       );
     }
-    kind = rawKind as FeedPostKind;
+    kind = normalizedKind as FeedPostKind;
     // PROMO kind selalu masuk tab PROMO; lainnya admin pilih.
     if (kind === "PROMO") {
       tab = "PROMO";

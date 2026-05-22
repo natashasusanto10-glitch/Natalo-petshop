@@ -129,7 +129,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
 
   double _estimatedPostExtent(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
-    const mediaAspectRatio = 4 / 5;
+    const mediaAspectRatio = 9 / 14;
     const authorRowHeight = 52.0;
     const actionCaptionDateHeight = 118.0;
     final mediaHeight = width / mediaAspectRatio;
@@ -622,15 +622,15 @@ class _PostFeedItemState extends State<_PostFeedItem>
             child: _PostStatusBadge(post: post),
           ),
         ],
-        // Author row putih di atas media — Instagram posts style.
-        // Halaman Postingan Saya memakai list post, bukan Reels, jadi author
-        // tidak dioverlay di media agar image/video sama-sama jelas.
-        _PostAuthorRow(
-          memberName: memberName,
-          memberInitial: memberInitial,
-          memberPhotoUrl: memberPhotoUrl,
-          onMenuTap: widget.onMenuTap,
-        ),
+        // Photo/carousel: author row putih di atas media.
+        // Video: author masuk overlay di dalam video (IG video post style).
+        if (!post.isVideo)
+          _PostAuthorRow(
+            memberName: memberName,
+            memberInitial: memberInitial,
+            memberPhotoUrl: memberPhotoUrl,
+            onMenuTap: widget.onMenuTap,
+          ),
         // Double-tap detector wrap media: signature Instagram-feel "tap
         // dua kali untuk like". Single tap ke media tetap fall-through
         // ke gesture detector dalam (mis. _InlineVideoPlayer onTap →
@@ -642,6 +642,18 @@ class _PostFeedItemState extends State<_PostFeedItem>
           child: Stack(
             children: [
               _PostMediaSurface(post: post),
+              if (post.isVideo)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: _VideoPostAuthorOverlay(
+                    memberName: memberName,
+                    memberInitial: memberInitial,
+                    memberPhotoUrl: memberPhotoUrl,
+                    onMenuTap: widget.onMenuTap,
+                  ),
+                ),
               // Heart burst overlay — big white heart pop di tengah image
               // saat double-tap. Signature Instagram-style. IgnorePointer
               // supaya tidak intercept tap (gesture wrap di luar Stack udah
@@ -809,6 +821,78 @@ class _PostAuthorRow extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _VideoPostAuthorOverlay extends StatelessWidget {
+  final String memberName;
+  final String memberInitial;
+  final String? memberPhotoUrl;
+  final VoidCallback onMenuTap;
+
+  const _VideoPostAuthorOverlay({
+    required this.memberName,
+    required this.memberInitial,
+    required this.memberPhotoUrl,
+    required this.onMenuTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.black.withValues(alpha: 0.58),
+            Colors.black.withValues(alpha: 0.20),
+            Colors.transparent,
+          ],
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 6, 28),
+        child: Row(
+          children: [
+            ProfileAvatar(
+              initial: memberInitial,
+              imageUrl: memberPhotoUrl,
+              size: 36,
+              fontSize: 15,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                memberName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                  height: 1.15,
+                  shadows: [
+                    Shadow(color: Colors.black54, blurRadius: 10),
+                  ],
+                ),
+              ),
+            ),
+            IconButton(
+              onPressed: onMenuTap,
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(
+                Icons.more_horiz_rounded,
+                color: Colors.white,
+                shadows: [
+                  Shadow(color: Colors.black54, blurRadius: 10),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1338,6 +1422,7 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
   VideoPlayerController? _controller;
   bool _initializing = false;
   String? _error;
+  bool _muted = true;
   // Track viewport visibility to drive auto-play (≥60% visible).
   double _visibleFraction = 0;
 
@@ -1370,8 +1455,8 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
       await controller.initialize();
       if (!mounted || _controller != controller) return;
       // Muted by default (Instagram-style auto-play). User unmute via
-      // fullscreen player.
-      await controller.setVolume(0);
+      // sound button in the media corner.
+      await controller.setVolume(_muted ? 0 : 1);
       await controller.setLooping(true);
       setState(() => _initializing = false);
       // Apply current visibility — kalau sudah visible saat init selesai,
@@ -1411,28 +1496,14 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
     }
   }
 
-  Future<void> _openFullScreen() async {
+  Future<void> _toggleMute() async {
     final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
     AppHaptics.tap();
-    // Pause inline supaya audio tidak overlap.
-    final wasPlaying = controller?.value.isPlaying ?? false;
-    await controller?.pause();
-    await Navigator.of(context).push<void>(
-      PageRouteBuilder(
-        opaque: false,
-        barrierColor: Colors.black,
-        transitionDuration: const Duration(milliseconds: 220),
-        pageBuilder: (_, __, ___) => _FullScreenVideoRoute(
-          mediaUrl: widget.mediaUrl,
-          thumbnailUrl: widget.thumbnailUrl,
-        ),
-        transitionsBuilder: (_, anim, __, child) =>
-            FadeTransition(opacity: anim, child: child),
-      ),
-    );
+    final nextMuted = !_muted;
+    await controller.setVolume(nextMuted ? 0 : 1);
     if (!mounted) return;
-    // Resume inline kalau masih visible.
-    if (wasPlaying) _applyVisibility();
+    setState(() => _muted = nextMuted);
   }
 
   @override
@@ -1442,24 +1513,25 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
     return VisibilityDetector(
       key: ValueKey('inline-video-${widget.postId}'),
       onVisibilityChanged: _onVisibilityChanged,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: ready ? _openFullScreen : null,
+      child: AbsorbPointer(
+        absorbing: false,
         child: Stack(
           fit: StackFit.expand,
           children: [
             Container(color: Colors.black),
             if (ready)
-              FittedBox(
-                fit: BoxFit.cover,
-                child: SizedBox(
-                  width: controller.value.size.width > 0
-                      ? controller.value.size.width
-                      : 100,
-                  height: controller.value.size.height > 0
-                      ? controller.value.size.height
-                      : 100,
-                  child: VideoPlayer(controller),
+              ClipRect(
+                child: FittedBox(
+                  fit: BoxFit.cover,
+                  child: SizedBox(
+                    width: controller.value.size.width > 0
+                        ? controller.value.size.width
+                        : 100,
+                    height: controller.value.size.height > 0
+                        ? controller.value.size.height
+                        : 100,
+                    child: VideoPlayer(controller),
+                  ),
                 ),
               )
             else if (widget.thumbnailUrl != null &&
@@ -1501,22 +1573,28 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
                 ),
               ),
             // Muted indicator pojok kanan bawah — visual cue bahwa video
-            // bisa di-fullscreen untuk audio. Sembunyi saat error/loading.
+            // bisa di-tap untuk mute/unmute. Sembunyi saat error/loading.
             if (ready && _error == null)
               Positioned(
                 right: 10,
                 bottom: 10,
-                child: Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.55),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.volume_off_rounded,
-                    color: Colors.white,
-                    size: 16,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _toggleMute,
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      _muted
+                          ? Icons.volume_off_rounded
+                          : Icons.volume_up_rounded,
+                      color: Colors.white,
+                      size: 16,
+                    ),
                   ),
                 ),
               ),
@@ -2610,28 +2688,21 @@ class _RepliesToggle extends StatelessWidget {
 }
 
 /// Aspect ratio per media type — Postingan Saya memakai Instagram posts style:
-///   - Video: 4:5 (0.8) — konsisten dengan image feed post, bukan Reels.
-///   - Photo (single/carousel): 4:5 (0.8) — Instagram-spec standard.
-///     Sejak v1.0.62, picker actual crop file ke 4:5 sebelum upload
-///     (lihat _cropPhotoTo4x5 di feed_media_picker_screen.dart). Jadi
-///     post baru: source aspect ≈ 4:5 → frame 4:5 → BoxFit.cover no
-///     visible crop (WYSIWYG match IG).
-///
-///     Post lama (pre-v1.0.62) bisa punya aspect ratio apapun → clamp
-///     ke [0.8, 1.91] sebagai safety net. Kalau aspect di luar range,
-///     BoxFit.cover akan center-crop ke frame (acceptable fallback).
+///   - Video: 9:14 — lebih tinggi dari foto, mendekati Instagram video
+///     post portrait, tapi tidak sepanjang Reels 9:16.
+///     Instagram feed video post tanpa jadi Reels/fullscreen.
+///   - Photo/carousel: pakai rasio image asli dengan batas Instagram:
+///     portrait maksimum 4:5, landscape maksimum 1.91:1.
 ///
 /// Default fallback 4:5 kalau type tidak diketahui.
 double _safeAspectRatio(int width, int height, {MyFeedPostType? type}) {
-  // Video: fixed 4:5 — halaman ini list posts, bukan Reels.
+  // Video: fixed 9:14 — halaman ini list posts, bukan Reels, tetapi
+  // Instagram video post portrait terasa lebih tinggi dari foto 4:5.
   if (type == MyFeedPostType.video) {
-    return 4 / 5;
+    return 9 / 14;
   }
-  // Photo / carousel: clamp ke 4:5 portrait → 1.91:1 landscape.
-  // New posts (v1.0.62+) sudah 4:5 di upload-side → ratio = 0.8 = no-op
-  // clamp. Old posts: clamp untuk safety.
   if (width <= 0 || height <= 0) return 4 / 5;
   final ratio = width / height;
   if (ratio.isNaN || ratio.isInfinite || ratio <= 0) return 4 / 5;
-  return ratio.clamp(0.8, 1.91);
+  return ratio.clamp(4 / 5, 1.91).toDouble();
 }

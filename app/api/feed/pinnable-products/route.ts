@@ -7,8 +7,43 @@ const VALID_ORDER_STATUSES: OrderStatus[] = ["DELIVERED"];
 
 export async function GET() {
   const session = await getSession("CUSTOMER");
-  if (!session || session.role !== "CUSTOMER") {
+  if (!session) {
     return NextResponse.json({ error: "Login dulu." }, { status: 401 });
+  }
+
+  if (session.role === "ADMIN") {
+    const products = await prisma.product.findMany({
+      where: { isActive: true },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      take: 120,
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        price: true,
+        discountPrice: true,
+        stock: true,
+        imageUrl: true,
+        avgRating: true,
+        reviewCount: true,
+      },
+    });
+
+    return NextResponse.json({
+      products: products.map((product) => ({
+        productId: product.id,
+        slug: product.slug,
+        name: product.name,
+        imageUrl: product.imageUrl,
+        price: product.discountPrice ?? product.price,
+        originalPrice: product.price,
+        stock: product.stock,
+        avgRating: product.avgRating,
+        reviewCount: product.reviewCount,
+        purchasedAt: null,
+        orderNumber: null,
+      })),
+    });
   }
 
   const orderItems = await prisma.orderItem.findMany({

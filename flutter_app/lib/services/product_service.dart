@@ -153,14 +153,17 @@ class ProductService {
     bool inStock = false,
     bool hasPrice = false,
     bool withImage = false,
+
     /// Filter produk yang sedang diskon (Flash Sale aktif atau Promo
     /// Toko aktif). Server-side filter — lebih akurat dari client-side
     /// karena tidak terkubur di limit pagination.
     bool discountOnly = false,
+
     /// Filter HANYA produk dengan ID dalam list. Dipakai wishlist.
     /// Backend auto-bypass inStockOnly supaya produk stok 0 yang
     /// di-wishlist tetap muncul.
     List<String>? ids,
+
     /// Cursor untuk pagination — lanjut dari offset N (response
     /// `nextCursor`). Null = halaman pertama. Dipakai infinite scroll.
     String? cursor,
@@ -169,6 +172,7 @@ class ProductService {
       final keyword = query?.trim() ?? '';
       final data = await apiClient.getJson(
         '/api/products',
+        timeout: const Duration(seconds: 15),
         query: {
           if (keyword.isNotEmpty) 'search': keyword,
           if (brand != null && brand.trim().isNotEmpty) 'brand': brand.trim(),
@@ -192,17 +196,16 @@ class ProductService {
       final nextCursor = map?['nextCursor']?.toString();
       return ProductResult(
         products: products,
-        nextCursor: nextCursor != null && nextCursor.isNotEmpty
-            ? nextCursor
-            : null,
+        nextCursor:
+            nextCursor != null && nextCursor.isNotEmpty ? nextCursor : null,
         fromApi: map != null || data is List,
         total: map == null ? products.length : _asInt(map['total']),
       );
     } catch (error) {
-      return ProductResult(
-        products: const <Product>[],
+      return const ProductResult(
+        products: <Product>[],
         fromApi: false,
-        error: error.toString(),
+        error: 'Koneksi sedang lambat. Tarik ke bawah untuk coba lagi.',
       );
     }
   }

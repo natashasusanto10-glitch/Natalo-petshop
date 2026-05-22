@@ -14,7 +14,7 @@
  * Read-only. No mutation.
  */
 import { NextRequest, NextResponse } from "next/server";
-import type { Prisma } from "@prisma/client";
+import type { FeedPostKind, Prisma } from "@prisma/client";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
@@ -51,10 +51,15 @@ export async function GET(request: NextRequest) {
       ? Math.min(50, Math.max(1, Math.floor(rawLimit)))
       : 20;
 
+  const isAdmin = session.role === "ADMIN";
+  const visibleKinds: FeedPostKind[] = isAdmin
+    ? ["VIDEO_ONLY", "VIDEO_PRODUCT", "PROMO", "PHOTO_CAROUSEL", "COMMUNITY"]
+    : ["COMMUNITY", "PHOTO_CAROUSEL"];
+
   const baseWhere: Prisma.FeedPostWhereInput = {
     authorId: session.sub,
-    authorRole: "CUSTOMER",
-    kind: { in: ["COMMUNITY", "PHOTO_CAROUSEL"] },
+    authorRole: session.role,
+    kind: { in: visibleKinds },
     deletedAt: null,
     status: { in: [...MY_FEED_VISIBLE_STATUSES] },
   };

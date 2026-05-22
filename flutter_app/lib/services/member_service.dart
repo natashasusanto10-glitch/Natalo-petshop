@@ -17,7 +17,7 @@ class MemberService {
   MemberService._();
 
   Map<String, String> get _authHeaders {
-    final token = memberStore.sessionToken;
+    final token = memberStore.sessionToken ?? apiClient.lastSessionToken;
     return {
       'content-type': 'application/json',
       if (token != null) 'authorization': 'Bearer $token',

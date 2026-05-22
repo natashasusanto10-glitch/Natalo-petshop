@@ -191,7 +191,8 @@ class ApiClient {
     final setCookie = response.headers['set-cookie'];
     if (setCookie == null || setCookie.isEmpty) return;
     final match =
-        RegExp(r'(?:^|,\s*)member_session=([^;,\s]+)').firstMatch(setCookie);
+        RegExp(r'(?:^|,\s*)(?:member_session|admin_session)=([^;,\s]+)')
+            .firstMatch(setCookie);
     final token = match?.group(1);
     if (token == null || token.isEmpty) return;
     _lastSessionToken = token;

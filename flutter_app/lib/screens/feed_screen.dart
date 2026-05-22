@@ -1180,15 +1180,21 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                       minScale: 1,
                       maxScale: 4,
                       clipBehavior: Clip.none,
-                      child: CachedNetworkImage(
-                        imageUrl: photo.url,
-                        fit: BoxFit.contain,
-                        placeholder: (_, __) => const SizedBox.shrink(),
-                        errorWidget: (_, __, ___) => const Center(
-                          child: Icon(
-                            Icons.broken_image_outlined,
-                            color: Colors.white54,
-                            size: 48,
+                      child: AspectRatio(
+                        aspectRatio: _instagramImageAspectRatio(
+                          photo.width,
+                          photo.height,
+                        ),
+                        child: CachedNetworkImage(
+                          imageUrl: photo.url,
+                          fit: BoxFit.cover,
+                          placeholder: (_, __) => const SizedBox.shrink(),
+                          errorWidget: (_, __, ___) => const Center(
+                            child: Icon(
+                              Icons.broken_image_outlined,
+                              color: Colors.white54,
+                              size: 48,
+                            ),
                           ),
                         ),
                       ),
@@ -1256,33 +1262,6 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                           ),
                         );
                       }),
-                    ),
-                  ),
-                ),
-              ),
-            // Counter "X/Y" — top-right pill. Instagram pattern: kasih user
-            // referensi posisi yang explicit (lebih informative dari dots
-            // untuk carousel banyak foto). Hide kalau cuma 1 foto.
-            if (photos.length > 1 && !_hideOverlayForLongPress)
-              Positioned(
-                top: MediaQuery.paddingOf(context).top + 12,
-                right: 12,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.6),
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                  child: Text(
-                    '${_photoIndex + 1}/${photos.length}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      height: 1.1,
                     ),
                   ),
                 ),
@@ -3256,6 +3235,15 @@ bool _isHorizontalPost(FeedPost post) {
 bool _isHorizontalSize(Size size) {
   if (size.width <= 0 || size.height <= 0) return false;
   return size.width > size.height;
+}
+
+double _instagramImageAspectRatio(int? width, int? height) {
+  final w = width ?? 0;
+  final h = height ?? 0;
+  if (w <= 0 || h <= 0) return 4 / 5;
+  final ratio = w / h;
+  if (ratio.isNaN || ratio.isInfinite || ratio <= 0) return 4 / 5;
+  return ratio.clamp(4 / 5, 1.91).toDouble();
 }
 
 class _VideoRetryButton extends StatelessWidget {
