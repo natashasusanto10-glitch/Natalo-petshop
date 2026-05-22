@@ -386,25 +386,10 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
             ),
           ),
           centerTitle: true,
-          actions: [
-            // Preview button — tap untuk buka fullscreen preview yang
-            // nunjukin bagaimana post akan tampil di feed sebelum publish.
-            // Match Instagram "Edit" button di header New reel.
-            TextButton(
-              onPressed: _openPreview,
-              style: TextButton.styleFrom(
-                foregroundColor: _newPostBlue,
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-              ),
-              child: const Text(
-                'Preview',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-          ],
+          // Tombol "Preview" text di-hapus per Instagram pattern.
+          // Sekarang preview mode di-trigger via TAP image/video preview
+          // langsung. Lebih natural — user tap apa yang dia mau lihat
+          // fullscreen.
         ),
         body: SafeArea(
           child: Column(
@@ -413,16 +398,35 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
                   children: [
-                    _MediaPreview(
-                      draft: widget.draft,
-                      videoDraft: _videoDraft,
-                      videoController: _videoController,
-                      photoIndex: _photoIndex,
-                      photoPageController: _photoPageController,
-                      onPhotoChanged: (index) =>
-                          setState(() => _photoIndex = index),
-                      onToggleVideo: _toggleVideo,
-                      onEditCover: _editCover,
+                    // Tap media preview → buka fullscreen Preview Mode.
+                    // Match Instagram pattern: no "Preview" text button,
+                    // user tap image/video langsung. Tap routing:
+                    //  - Tap video      → open preview (via onToggleVideo
+                    //    callback yang sekarang rewire ke _openPreview,
+                    //    bukan toggle play/pause — video tetap auto-loop
+                    //    di editor)
+                    //  - Tap photo area → open preview (via outer
+                    //    GestureDetector — PageView swipe horizontal tetap
+                    //    work karena swipe ≠ tap gesture)
+                    //  - Tap "Edit cover" button → tetap edit cover (button
+                    //    capture tap lebih spesifik)
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _openPreview,
+                      child: _MediaPreview(
+                        draft: widget.draft,
+                        videoDraft: _videoDraft,
+                        videoController: _videoController,
+                        photoIndex: _photoIndex,
+                        photoPageController: _photoPageController,
+                        onPhotoChanged: (index) =>
+                            setState(() => _photoIndex = index),
+                        // Rewire: video tap → open preview (bukan toggle
+                        // play/pause). Video tetap auto-loop muted di
+                        // editor preview area.
+                        onToggleVideo: _openPreview,
+                        onEditCover: _editCover,
+                      ),
                     ),
                     const SizedBox(height: 24),
                     const _SectionTitle('Caption'),
@@ -472,17 +476,10 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
     );
   }
 
-  Future<void> _toggleVideo() async {
-    final controller = _videoController;
-    if (controller == null || !controller.value.isInitialized) return;
-    AppHaptics.tap();
-    if (controller.value.isPlaying) {
-      await controller.pause();
-    } else {
-      await controller.play();
-    }
-    if (mounted) setState(() {});
-  }
+  // _toggleVideo() di-remove karena video tap sekarang re-route ke
+  // _openPreview (lihat onToggleVideo: _openPreview di build()). Video
+  // tetap auto-loop muted di editor preview area; toggle play/pause
+  // manual hanya tersedia di fullscreen Preview Mode.
 }
 
 class _MediaPreview extends StatelessWidget {
