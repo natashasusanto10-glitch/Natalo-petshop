@@ -200,6 +200,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
   Future<void> _openComments(int index) async {
     AppHaptics.tap();
     final post = _posts[index];
+    final profile = memberStore.profile;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -207,7 +208,13 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _MyPostCommentSheet(postId: post.id),
+      builder: (_) => _MyPostCommentSheet(
+        post: post,
+        // Author info — di my-posts viewer = author = self,
+        // jadi pakai memberStore.profile sebagai source.
+        authorName: _memberName,
+        authorAvatarUrl: profile?.profilePhotoUrl,
+      ),
     );
   }
 
@@ -1873,9 +1880,15 @@ class _EditCaptionSheetState extends State<_EditCaptionSheet> {
 // ─── Comment sheet — MVP, fetch & post inline ───────────────────────
 
 class _MyPostCommentSheet extends StatefulWidget {
-  final String postId;
+  final MyFeedPost post;
+  final String authorName;
+  final String? authorAvatarUrl;
 
-  const _MyPostCommentSheet({required this.postId});
+  const _MyPostCommentSheet({
+    required this.post,
+    required this.authorName,
+    this.authorAvatarUrl,
+  });
 
   @override
   State<_MyPostCommentSheet> createState() => _MyPostCommentSheetState();
@@ -1885,6 +1898,21 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
   final TextEditingController _inputController = TextEditingController();
   late Future<List<_CommentRow>> _commentsFuture;
   bool _posting = false;
+
+  /// Caption ditampilkan sebagai pinned item pertama di list (kalau ada).
+  /// Synthesize _CommentRow virtual — bukan dari backend comment table,
+  /// jadi tidak masuk ke fetchComments / postComment lifecycle.
+  _CommentRow? get _captionRow {
+    final raw = (widget.post.caption ?? '').trim();
+    if (raw.isEmpty) return null;
+    return _CommentRow(
+      id: '__caption__${widget.post.id}',
+      authorName: widget.authorName,
+      authorAvatarUrl: widget.authorAvatarUrl,
+      content: raw,
+      createdAt: widget.post.createdAt,
+    );
+  }
 
   @override
   void initState() {
@@ -1900,7 +1928,7 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
 
   Future<List<_CommentRow>> _loadComments() async {
     try {
-      final page = await feedService.fetchComments(widget.postId, limit: 30);
+      final page = await feedService.fetchComments(widget.post.id, limit: 30);
       return page.items
           .map((c) => _CommentRow(
                 id: c.id,
@@ -1921,7 +1949,7 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
     setState(() => _posting = true);
     try {
       final comment = await feedService.postComment(
-        widget.postId,
+        widget.post.id,
         content: text,
       );
       if (!mounted) return;
@@ -2004,7 +2032,11 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
                       );
                     }
                     final items = snapshot.data ?? const [];
-                    if (items.isEmpty) {
+                    final captionRow = _captionRow;
+                    // Empty state: hanya kalau TIDAK ADA caption juga.
+                    // Kalau ada caption, render caption + "Belum ada
+                    // komentar" prompt biar feel-nya match IG.
+                    if (items.isEmpty && captionRow == null) {
                       return const Padding(
                         padding: EdgeInsets.symmetric(vertical: 28),
                         child: Center(
@@ -2021,15 +2053,22 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
                         ),
                       );
                     }
+                    // Caption pinned di atas (kalau ada), lalu list
+                    // comment normal. Caption tile = same widget,
+                    // tidak ada highlight khusus per IG convention.
+                    final visibleRows = <_CommentRow>[
+                      if (captionRow != null) captionRow,
+                      ...items,
+                    ];
                     return ListView.separated(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 14,
                         vertical: 8,
                       ),
-                      itemCount: items.length,
+                      itemCount: visibleRows.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 12),
                       itemBuilder: (context, index) {
-                        final c = items[index];
+                        final c = visibleRows[index];
                         return _CommentTile(comment: c);
                       },
                     );
