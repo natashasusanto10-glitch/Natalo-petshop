@@ -68,9 +68,47 @@ class SelectedMediaItem {
       );
 }
 
-class _PhotoCropTransform {
-  double scale = 1;
-  Offset offsetFraction = Offset.zero;
+/// Mutable transform state untuk pan/zoom crop preview. Extend
+/// `ChangeNotifier` supaya `ListenableBuilder` di `_PhotoCropPreview`
+/// bisa rebuild HANYA layer Transform saat user pinch — bukan whole
+/// LayoutBuilder subtree (Image widget, ClipRect, dst). Big win untuk
+/// smoothness gesture di lower-end devices.
+class _PhotoCropTransform extends ChangeNotifier {
+  double _scale = 1;
+  Offset _offsetFraction = Offset.zero;
+
+  double get scale => _scale;
+  set scale(double value) {
+    if (_scale == value) return;
+    _scale = value;
+    notifyListeners();
+  }
+
+  Offset get offsetFraction => _offsetFraction;
+  set offsetFraction(Offset value) {
+    if (_offsetFraction == value) return;
+    _offsetFraction = value;
+    notifyListeners();
+  }
+
+  /// Batch update — single notify untuk dua-duanya. Hindari double
+  /// rebuild per gesture frame.
+  void update({required double scale, required Offset offsetFraction}) {
+    var changed = false;
+    if (_scale != scale) {
+      _scale = scale;
+      changed = true;
+    }
+    if (_offsetFraction != offsetFraction) {
+      _offsetFraction = offsetFraction;
+      changed = true;
+    }
+    if (changed) notifyListeners();
+  }
+
+  void reset() {
+    update(scale: 1, offsetFraction: Offset.zero);
+  }
 }
 
 /// Inline gallery picker — Instagram-style.
@@ -1561,72 +1599,100 @@ class _PhotoCropPreviewState extends State<_PhotoCropPreview> {
             imageSize.width * coverScale,
             imageSize.height * coverScale,
           );
-          final scale = widget.cropTransform.scale.clamp(1.0, 4.0).toDouble();
-          final offsetPx = Offset(
-            widget.cropTransform.offsetFraction.dx * frameSize.width,
-            widget.cropTransform.offsetFraction.dy * frameSize.height,
-          );
-          final renderOffset = _clampOffsetPx(
-            offsetPx,
-            frameSize,
-            baseSize,
-            scale,
-          );
 
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onScaleStart: (_) {
-              _startScale = widget.cropTransform.scale;
-              _startOffsetFraction = widget.cropTransform.offsetFraction;
-            },
-            onScaleUpdate: (details) {
-              final nextScale =
-                  (_startScale * details.scale).clamp(1.0, 4.0).toDouble();
-              final startOffsetPx = Offset(
-                _startOffsetFraction.dx * frameSize.width,
-                _startOffsetFraction.dy * frameSize.height,
-              );
-              final nextOffsetPx = _clampOffsetPx(
-                startOffsetPx + details.focalPointDelta,
-                frameSize,
-                baseSize,
-                nextScale,
-              );
+          // PERF: decode image at sane resolution instead of full sensor
+          // (iPhone 12MP = 4032×3024). Target = frame px @ max zoom 4× ×
+          // device pixel ratio, capped 1920. Tanpa ini, GPU sampling
+          // dari 12MP texture tiap gesture frame → laggy pinch. Capped
+          // texture jauh lebih ringan & tetap sharp di max zoom.
+          final dpr = MediaQuery.devicePixelRatioOf(context);
+          final targetDecodeWidth = (frameSize.width * 4 * dpr)
+              .clamp(512.0, 1920.0)
+              .toInt();
+          final aspectImage = imageSize.width / imageSize.height;
+          final targetDecodeHeight =
+              (targetDecodeWidth / aspectImage).round();
 
-              setState(() {
-                widget.cropTransform.scale = nextScale;
-                widget.cropTransform.offsetFraction = Offset(
-                  nextOffsetPx.dx / frameSize.width,
-                  nextOffsetPx.dy / frameSize.height,
+          return RepaintBoundary(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onScaleStart: (_) {
+                _startScale = widget.cropTransform.scale;
+                _startOffsetFraction = widget.cropTransform.offsetFraction;
+              },
+              onScaleUpdate: (details) {
+                final nextScale =
+                    (_startScale * details.scale).clamp(1.0, 4.0).toDouble();
+                final startOffsetPx = Offset(
+                  _startOffsetFraction.dx * frameSize.width,
+                  _startOffsetFraction.dy * frameSize.height,
                 );
-              });
-            },
-            onDoubleTap: () {
-              setState(() {
-                widget.cropTransform.scale = 1;
-                widget.cropTransform.offsetFraction = Offset.zero;
-              });
-            },
-            child: ClipRect(
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Transform.translate(
-                    offset: renderOffset,
-                    child: Transform.scale(
-                      scale: scale,
-                      child: SizedBox(
-                        width: baseSize.width,
-                        height: baseSize.height,
-                        child: Image.file(
-                          widget.file,
-                          fit: BoxFit.fill,
-                          alignment: Alignment.center,
+                final nextOffsetPx = _clampOffsetPx(
+                  startOffsetPx + details.focalPointDelta,
+                  frameSize,
+                  baseSize,
+                  nextScale,
+                );
+                // NOTE: pakai .update tanpa setState — notify ke
+                // ListenableBuilder only → rebuild HANYA Transform layer,
+                // bukan LayoutBuilder + Image + ClipRect. Big perf win.
+                widget.cropTransform.update(
+                  scale: nextScale,
+                  offsetFraction: Offset(
+                    nextOffsetPx.dx / frameSize.width,
+                    nextOffsetPx.dy / frameSize.height,
+                  ),
+                );
+              },
+              onDoubleTap: widget.cropTransform.reset,
+              child: ClipRect(
+                child: ListenableBuilder(
+                  listenable: widget.cropTransform,
+                  builder: (context, _) {
+                    final scale =
+                        widget.cropTransform.scale.clamp(1.0, 4.0).toDouble();
+                    final offsetPx = Offset(
+                      widget.cropTransform.offsetFraction.dx * frameSize.width,
+                      widget.cropTransform.offsetFraction.dy * frameSize.height,
+                    );
+                    final renderOffset = _clampOffsetPx(
+                      offsetPx,
+                      frameSize,
+                      baseSize,
+                      scale,
+                    );
+                    // PERF: single Transform dengan combined Matrix4
+                    // (translate + scale dalam 1 layer composition).
+                    // Sebelumnya dua nested Transform widget = dua
+                    // separate compositing layer.
+                    final matrix = Matrix4.identity()
+                      ..translateByDouble(
+                          renderOffset.dx, renderOffset.dy, 0, 1)
+                      ..scaleByDouble(scale, scale, 1, 1);
+                    return Center(
+                      child: Transform(
+                        transform: matrix,
+                        alignment: Alignment.center,
+                        child: SizedBox(
+                          width: baseSize.width,
+                          height: baseSize.height,
+                          child: Image.file(
+                            widget.file,
+                            fit: BoxFit.fill,
+                            alignment: Alignment.center,
+                            cacheWidth: targetDecodeWidth,
+                            cacheHeight: targetDecodeHeight,
+                            // FilterQuality.low — bilinear cukup untuk
+                            // preview. Default `low` sebenarnya, set
+                            // explicit supaya jelas + future-proof.
+                            filterQuality: FilterQuality.low,
+                            gaplessPlayback: true,
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                ],
+                    );
+                  },
+                ),
               ),
             ),
           );
