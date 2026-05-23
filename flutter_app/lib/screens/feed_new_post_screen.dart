@@ -14,8 +14,8 @@ import '../state/member_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_product_image.dart';
-import '../widgets/emoji_picker_panel.dart';
 import '../widgets/profile_avatar.dart';
+import 'feed_caption_edit_screen.dart';
 
 const _newPostDraftKey = 'natalo-feed-upload-pending';
 const _newPostBlue = Color(0xFF1E5BFF);
@@ -71,13 +71,8 @@ class FeedNewPostScreen extends StatefulWidget {
 
 class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
   final _captionController = TextEditingController();
-  final _captionFocusNode = FocusNode();
   final _productSearchController = TextEditingController();
   final _photoPageController = PageController();
-  // Emoji picker visibility — toggle via 😀 button di caption field.
-  // Saat true, render EmojiPickerPanel di bawah caption. Auto-close
-  // saat caption field di-unfocus (mis. user fokus ke search produk).
-  bool _emojiVisible = false;
   final Set<String> _selectedProductIds = {};
 
   VideoPlayerController? _videoController;
@@ -120,27 +115,27 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
   @override
   void dispose() {
     _captionController.dispose();
-    _captionFocusNode.dispose();
     _productSearchController.dispose();
     _photoPageController.dispose();
     _videoController?.dispose();
     super.dispose();
   }
 
-  /// Toggle emoji panel — tap 😀 button di caption field.
-  /// Saat panel buka, force unfocus caption supaya soft keyboard close
-  /// (panel emoji ambil tempat di bawah, biar tidak overlap keyboard).
-  /// Saat panel close, refocus ke caption supaya user lanjut ketik.
-  void _toggleEmojiPicker() {
+  /// Buka Caption editor sebagai fade-modal — terpisah dari Post Baru.
+  /// Match Final Lock Spec: tap "Tulis caption..." trigger → fade overlay
+  /// dengan white sheet di atas + dim Post Baru di bawah. Return value
+  /// (caption baru) selalu di-commit ke controller — back/OK keduanya save.
+  Future<void> _editCaption() async {
     AppHaptics.tap();
-    final newState = !_emojiVisible;
-    setState(() => _emojiVisible = newState);
-    if (newState) {
-      // Hide keyboard supaya emoji panel pas di tempat.
-      FocusScope.of(context).unfocus();
-    } else {
-      // Show keyboard lagi.
-      _captionFocusNode.requestFocus();
+    final result = await showCaptionEditModal(
+      context,
+      initialCaption: _captionController.text,
+    );
+    if (!mounted) return;
+    if (result != null) {
+      _captionController.text = result;
+      // setState dihandle via _captionController listener (sudah ada di
+      // initState — auto rebuild trigger preview text).
     }
   }
 
@@ -415,7 +410,6 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final captionLength = _captionController.text.characters.length;
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
@@ -472,56 +466,41 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
                     //    work karena swipe ≠ tap gesture)
                     //  - Tap "Edit cover" button → tetap edit cover (button
                     //    capture tap lebih spesifik)
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: _openPreview,
-                      child: _MediaPreview(
-                        draft: widget.draft,
-                        videoDraft: _videoDraft,
-                        videoController: _videoController,
-                        photoIndex: _photoIndex,
-                        photoPageController: _photoPageController,
-                        onPhotoChanged: (index) =>
-                            setState(() => _photoIndex = index),
-                        // Rewire: video tap → open preview (bukan toggle
-                        // play/pause). Video tetap auto-loop muted di
-                        // editor preview area.
-                        onToggleVideo: _openPreview,
-                        onEditCover: _editCover,
+                    // Medium portrait preview center — Final Lock Spec.
+                    // widthFactor 0.62 = ~62% lebar layar, auto-scale per
+                    // device (iPhone SE ~220px, iPhone Pro Max ~260px).
+                    // Center alignment + ListView padding 20px tetap.
+                    Center(
+                      child: FractionallySizedBox(
+                        widthFactor: 0.62,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: _openPreview,
+                          child: _MediaPreview(
+                            draft: widget.draft,
+                            videoDraft: _videoDraft,
+                            videoController: _videoController,
+                            photoIndex: _photoIndex,
+                            photoPageController: _photoPageController,
+                            onPhotoChanged: (index) =>
+                                setState(() => _photoIndex = index),
+                            onToggleVideo: _openPreview,
+                            onEditCover: _editCover,
+                          ),
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 24),
-                    const _SectionTitle('Caption'),
-                    const SizedBox(height: 10),
-                    _CaptionField(
-                      controller: _captionController,
-                      focusNode: _captionFocusNode,
-                      counter: '$captionLength/1000',
-                      emojiActive: _emojiVisible,
-                      onToggleEmoji: _toggleEmojiPicker,
-                      onTap: () {
-                        // Saat user tap caption field, auto-hide emoji
-                        // panel supaya keyboard naik tanpa overlap.
-                        if (_emojiVisible) {
-                          setState(() => _emojiVisible = false);
-                        }
-                      },
-                    ),
-                    // Emoji panel — slide-down style. Visible toggle via
-                    // tombol 😀 di caption field.
-                    EmojiPickerPanel(
-                      controller: _captionController,
-                      visible: _emojiVisible,
+                    const SizedBox(height: 22),
+                    // Simple caption trigger — tap → buka fade-modal Caption
+                    // editor (separate page). Tidak ada border/box, tidak
+                    // ada counter, tidak ada emoji button. Match Final Lock
+                    // Spec.
+                    _CaptionTrigger(
+                      captionText: _captionController.text,
+                      onTap: _editCaption,
                     ),
                     const SizedBox(height: 26),
-                    const _SectionTitle(
-                      'Tag produk yang pernah dibeli',
-                      trailing: Icon(
-                        Icons.info_outline_rounded,
-                        size: 18,
-                        color: Color(0xFF98A2B3),
-                      ),
-                    ),
+                    const _SectionTitle('Tag Produk Pernah Dibeli'),
                     const SizedBox(height: 12),
                     _PurchasedProductSearch(
                       controller: _productSearchController,
@@ -811,116 +790,64 @@ class _DotIndicator extends StatelessWidget {
 
 class _SectionTitle extends StatelessWidget {
   final String text;
-  final Widget? trailing;
 
-  const _SectionTitle(this.text, {this.trailing});
+  const _SectionTitle(this.text);
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            text,
-            style: const TextStyle(
-              color: _newPostInk,
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ),
-        if (trailing != null) trailing!,
-      ],
+    return Text(
+      text,
+      style: const TextStyle(
+        color: _newPostInk,
+        fontSize: 18,
+        fontWeight: FontWeight.w900,
+      ),
     );
   }
 }
 
-class _CaptionField extends StatelessWidget {
-  final TextEditingController controller;
-  final FocusNode? focusNode;
-  final String counter;
-  final bool emojiActive;
-  final VoidCallback? onToggleEmoji;
-  final VoidCallback? onTap;
+/// Simple caption trigger — no box, no border, no counter, no emoji.
+/// Tap → buka fade-modal Caption editor (separate page).
+///
+/// Visual:
+///  - Saat caption kosong → "Tulis caption..." muted text
+///  - Saat caption ada    → tampilkan caption text (max 2 lines, ellipsis,
+///    Option 1 dari diskusi — match IG: langsung lihat content)
+///
+/// Tap area full-width supaya gampang tap (no missed taps di sisi).
+class _CaptionTrigger extends StatelessWidget {
+  final String captionText;
+  final VoidCallback onTap;
 
-  const _CaptionField({
-    required this.controller,
-    required this.counter,
-    this.focusNode,
-    this.emojiActive = false,
-    this.onToggleEmoji,
-    this.onTap,
+  const _CaptionTrigger({
+    required this.captionText,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        TextField(
-          controller: controller,
-          focusNode: focusNode,
-          onTap: onTap,
-          maxLength: 1000,
-          minLines: 2,
-          maxLines: 4,
-          style: const TextStyle(
-            color: _newPostInk,
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-          ),
-          decoration: InputDecoration(
-            hintText: 'Ceritakan momen lucu atau seru si kecil...',
-            hintStyle: const TextStyle(
-              color: Color(0xFF98A2B3),
-              fontWeight: FontWeight.w600,
-            ),
-            counterText: counter,
-            counterStyle: const TextStyle(
-              color: Color(0xFF98A2B3),
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-            ),
-            filled: true,
-            fillColor: Colors.white,
-            // Right padding extra 44 supaya text tidak tumpang tindih
-            // dengan 😀 button yang di-overlay di kanan atas.
-            contentPadding: const EdgeInsets.fromLTRB(16, 15, 52, 12),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(18),
-              borderSide: const BorderSide(color: _newPostBorder, width: 1.2),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(18),
-              borderSide: const BorderSide(color: _newPostBorder, width: 1.2),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(18),
-              borderSide: const BorderSide(color: _newPostBlue, width: 1.4),
+    final hasCaption = captionText.trim().isNotEmpty;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: SizedBox(
+          width: double.infinity,
+          child: Text(
+            hasCaption ? captionText : 'Tulis caption...',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: hasCaption ? _newPostInk : const Color(0xFF98A2B3),
+              fontSize: 15,
+              height: 1.4,
+              fontWeight:
+                  hasCaption ? FontWeight.w600 : FontWeight.w500,
             ),
           ),
         ),
-        // 😀 emoji toggle button — pojok kanan atas field.
-        // Pakai IconButton di-position absolute via Positioned supaya
-        // tidak ikut layout text (lebih konsisten visual).
-        Positioned(
-          top: 6,
-          right: 6,
-          child: IconButton(
-            onPressed: onToggleEmoji,
-            visualDensity: VisualDensity.compact,
-            padding: const EdgeInsets.all(8),
-            constraints: const BoxConstraints(),
-            icon: Icon(
-              emojiActive
-                  ? Icons.keyboard_rounded
-                  : Icons.emoji_emotions_outlined,
-              color: emojiActive ? _newPostBlue : const Color(0xFF98A2B3),
-              size: 24,
-            ),
-            tooltip: emojiActive ? 'Tutup emoji' : 'Buka emoji',
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -1199,7 +1126,7 @@ class _BottomActions extends StatelessWidget {
                       Text('Memproses foto...'),
                     ],
                   )
-                : const Text('Upload ke Feed'),
+                : const Text('Bagikan'),
           ),
         ),
       ),
@@ -1618,7 +1545,7 @@ class _FeedPostPreviewScreenState extends State<FeedPostPreviewScreen> {
                       ),
                     ),
                     child: const Text(
-                      'Upload ke Feed',
+                      'Bagikan',
                       style: TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 14,
