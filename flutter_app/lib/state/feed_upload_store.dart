@@ -444,7 +444,10 @@ class FeedUploadStore extends ChangeNotifier {
 
   void _scheduleAutoDismiss() {
     _cancelAutoDismiss();
-    _autoDismissTimer = Timer(const Duration(seconds: 3), () {
+    // Spec request: tahan success state 700-1200ms (compromise pakai
+    // 1500ms — cukup user notice "Postingan terkirim" tanpa terlalu
+    // lama nahan UI). Sebelumnya 3 detik = terlalu lama.
+    _autoDismissTimer = Timer(const Duration(milliseconds: 1500), () {
       final s = _task?.status;
       if (s == FeedUploadStatus.success || s == FeedUploadStatus.waitingReview) {
         _task = null;

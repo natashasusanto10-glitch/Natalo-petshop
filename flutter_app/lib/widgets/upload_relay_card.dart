@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../state/feed_upload_store.dart';
@@ -60,18 +62,102 @@ class UploadRelayCard extends StatelessWidget {
   }
 }
 
-class _RelayCardBody extends StatelessWidget {
+class _RelayCardBody extends StatefulWidget {
   final FeedUploadTask task;
   const _RelayCardBody({super.key, required this.task});
 
+  @override
+  State<_RelayCardBody> createState() => _RelayCardBodyState();
+}
+
+class _RelayCardBodyState extends State<_RelayCardBody> {
   static const _nataloBlue = Color(0xFF1E5BFF);
   static const _textDark = Color(0xFF111827);
   static const _textMuted = Color(0xFF6B7280);
   static const _border = Color(0xFFE5EAF2);
   static const _errorRed = Color(0xFFEF4444);
 
+  // ── Smooth progress (2-layer display) ──
+  //
+  // realProgress = widget.task.progress (source of truth dari upload).
+  // displayProgress = visual yang ditampilkan ke user — kejar realProgress
+  // dengan easing kecil per tick. Tujuan: hilangkan "10% → 20% → selesai"
+  // jumpy feel, ganti dengan motion 1-100% yang halus + premium tapi
+  // tetap jujur (tidak fake).
+  double _displayProgress = 0;
+  Timer? _smoother;
+
+  // Tick interval — 16ms ≈ 60fps. Cukup smooth untuk eye.
+  static const _tickInterval = Duration(milliseconds: 16);
+  // Coefficient kejar — diff × 0.18 per tick. Spec recommend.
+  // Lower = lebih halus tapi lebih lambat kejar realProgress.
+  // Higher = lebih responsive tapi terasa "snappy" / kurang halus.
+  static const _easeRate = 0.18;
+  // Min step per tick supaya display tetap kelihatan gerak (no static feel).
+  static const _minStep = 0.002;
+  // Max step per tick supaya tidak loncat kasar (cap 3% jump).
+  static const _maxStep = 0.03;
+
+  @override
+  void initState() {
+    super.initState();
+    // Init displayProgress dari realProgress di first build — kalau widget
+    // mount setelah upload progress sudah berjalan (mis. user balik dari
+    // tab lain), jangan reset ke 0.
+    _displayProgress = widget.task.progress;
+    _maybeStartSmoother();
+  }
+
+  @override
+  void didUpdateWidget(covariant _RelayCardBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Saat task baru / status berubah → kick off smoother kalau diff > 0.
+    _maybeStartSmoother();
+  }
+
+  @override
+  void dispose() {
+    _smoother?.cancel();
+    super.dispose();
+  }
+
+  /// Start ticker kalau displayProgress < realProgress (perlu kejar).
+  /// Idempotent — kalau timer sudah jalan, no-op.
+  void _maybeStartSmoother() {
+    final real = widget.task.progress.clamp(0.0, 1.0);
+    if (_displayProgress >= real - 0.001) return;
+    if (_smoother != null && _smoother!.isActive) return;
+
+    _smoother = Timer.periodic(_tickInterval, (_) {
+      if (!mounted) {
+        _smoother?.cancel();
+        return;
+      }
+      final realNow = widget.task.progress.clamp(0.0, 1.0);
+      final diff = realNow - _displayProgress;
+      if (diff <= 0.001) {
+        // Sudah kejar — kalau realProgress tetap 1.0 lock display 1.0
+        // dan stop ticker. Kalau masih in-progress (real < 1.0), stop
+        // tunggu next update via didUpdateWidget.
+        _smoother?.cancel();
+        _smoother = null;
+        if (realNow >= 0.999) {
+          setState(() => _displayProgress = 1.0);
+        }
+        return;
+      }
+      // Step = diff × 0.18, clamp min 0.002 max 0.03 supaya tidak terlalu
+      // pelan saat dekat target / tidak loncat kasar saat diff besar.
+      final step = (diff * _easeRate).clamp(_minStep, _maxStep);
+      setState(() {
+        _displayProgress = (_displayProgress + step).clamp(0.0, 1.0);
+      });
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final task = widget.task;
     final isFailed = task.status == FeedUploadStatus.failed;
     final isSuccess = task.status == FeedUploadStatus.success ||
         task.status == FeedUploadStatus.waitingReview;
@@ -132,9 +218,21 @@ class _RelayCardBody extends StatelessWidget {
   }
 
   Widget _buildContent(BuildContext context, bool isFailed, bool isUploading) {
+    final task = widget.task;
     final title = _titleText();
     final subtitle = _subtitleText();
-    final showPercent = task.status == FeedUploadStatus.uploading;
+    // Tampilkan percent saat uploading + processing — supaya transisi
+    // 90% → 95% (processing step) tetap visible smooth dari display layer.
+    final showPercent = task.status == FeedUploadStatus.uploading ||
+        task.status == FeedUploadStatus.processing;
+
+    // Display value untuk percent + bar — dari _displayProgress, BUKAN
+    // task.progress langsung. Saat success/waitingReview, force 1.0
+    // supaya tidak stuck di 99% kalau smoother belum sempat reach 1.0.
+    final isComplete = task.status == FeedUploadStatus.success ||
+        task.status == FeedUploadStatus.waitingReview;
+    final displayValue = isComplete ? 1.0 : _displayProgress;
+    final percentInt = (displayValue * 100).round().clamp(0, 100);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -155,9 +253,9 @@ class _RelayCardBody extends StatelessWidget {
                 ),
               ),
             ),
-            if (showPercent && task.progress > 0)
+            if (showPercent && displayValue > 0)
               Text(
-                '${(task.progress * 100).round()}%',
+                '$percentInt%',
                 style: const TextStyle(
                   color: _nataloBlue,
                   fontSize: 13,
@@ -206,7 +304,7 @@ class _RelayCardBody extends StatelessWidget {
             borderRadius: BorderRadius.circular(99),
             child: LinearProgressIndicator(
               minHeight: 4,
-              value: task.progress > 0 ? task.progress : null,
+              value: displayValue > 0 ? displayValue : null,
               backgroundColor: _border,
               valueColor: const AlwaysStoppedAnimation<Color>(_nataloBlue),
             ),
@@ -217,17 +315,20 @@ class _RelayCardBody extends StatelessWidget {
   }
 
   String _titleText() {
-    switch (task.status) {
+    switch (widget.task.status) {
       case FeedUploadStatus.preparing:
         return 'Menyiapkan postingan...';
       case FeedUploadStatus.uploading:
         return 'Mengirim postingan...';
       case FeedUploadStatus.processing:
-        return 'Memproses postingan...';
+        // Spec: saat upload selesai tapi server masih proses,
+        // tetap pakai pesan "Mengirim postingan..." supaya user tidak
+        // bingung dengan istilah "Memproses". Lihat: spec final.
+        return 'Mengirim postingan...';
       case FeedUploadStatus.success:
-        return 'Postingan berhasil dipublikasikan';
       case FeedUploadStatus.waitingReview:
-        return 'Postingan berhasil dikirim';
+        // Spec final state: "Postingan terkirim".
+        return 'Postingan terkirim';
       case FeedUploadStatus.failed:
         return 'Gagal mengirim postingan';
       case FeedUploadStatus.cancelled:
@@ -238,17 +339,17 @@ class _RelayCardBody extends StatelessWidget {
   }
 
   String _subtitleText() {
-    switch (task.status) {
+    switch (widget.task.status) {
       case FeedUploadStatus.waitingReview:
-        return 'Menunggu review admin';
       case FeedUploadStatus.success:
-        return 'Selesai';
+        // Spec final state: "Menunggu review admin" — match flow Natalo
+        // dimana customer post selalu PENDING_REVIEW sebelum visible.
+        return 'Menunggu review admin';
       case FeedUploadStatus.failed:
-        return task.errorMessage ?? 'Periksa koneksi lalu coba lagi';
+        return widget.task.errorMessage ?? 'Periksa koneksi lalu coba lagi';
       case FeedUploadStatus.cancelled:
         return 'Upload dibatalkan oleh sistem';
       case FeedUploadStatus.processing:
-        return 'Kamu tetap bisa lihat-lihat di Beranda';
       case FeedUploadStatus.uploading:
       case FeedUploadStatus.preparing:
       default:
