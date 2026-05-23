@@ -543,49 +543,49 @@ class _ProductHeroState extends State<_ProductHero> {
                                   // gallery viewer dengan native Flutter
                                   // InteractiveViewer (smooth + GPU-accelerated).
                                   onTap: () {
-                                      AppHaptics.tap();
-                                      Navigator.push<void>(
-                                        context,
-                                        PageRouteBuilder<void>(
-                                          opaque: true,
-                                          barrierColor: Colors.black,
-                                          transitionDuration:
-                                              const Duration(milliseconds: 280),
-                                          reverseTransitionDuration:
-                                              const Duration(milliseconds: 220),
-                                          pageBuilder: (_, __, ___) =>
-                                              ImageViewerScreen(
-                                            images: images,
-                                            initialIndex: _activeIndex,
-                                            productMediaViewer: true,
-                                            product: widget.product,
-                                            selectedVariant:
-                                                widget.selectedVariant,
-                                            needsVariantSelection:
-                                                widget.needsVariantSelection,
-                                            onSelectVariant:
-                                                widget.onSelectVariant,
-                                            onAddToCart: widget.onAddToCart,
-                                          ),
-                                          transitionsBuilder:
-                                              (_, animation, __, child) =>
-                                                  FadeTransition(
-                                            opacity: animation,
-                                            child: child,
-                                          ),
+                                    AppHaptics.tap();
+                                    Navigator.push<void>(
+                                      context,
+                                      PageRouteBuilder<void>(
+                                        opaque: true,
+                                        barrierColor: Colors.black,
+                                        transitionDuration:
+                                            const Duration(milliseconds: 280),
+                                        reverseTransitionDuration:
+                                            const Duration(milliseconds: 220),
+                                        pageBuilder: (_, __, ___) =>
+                                            ImageViewerScreen(
+                                          images: images,
+                                          initialIndex: _activeIndex,
+                                          productMediaViewer: true,
+                                          product: widget.product,
+                                          selectedVariant:
+                                              widget.selectedVariant,
+                                          needsVariantSelection:
+                                              widget.needsVariantSelection,
+                                          onSelectVariant:
+                                              widget.onSelectVariant,
+                                          onAddToCart: widget.onAddToCart,
                                         ),
-                                      );
-                                    },
-                                    child: AppProductImage(
-                                      imageUrl: images[index],
-                                      width: double.infinity,
-                                      height: double.infinity,
-                                      fit: BoxFit.contain,
-                                      borderRadius: BorderRadius.zero,
-                                    ),
-                                  );
-                                },
-                              ),
+                                        transitionsBuilder:
+                                            (_, animation, __, child) =>
+                                                FadeTransition(
+                                          opacity: animation,
+                                          child: child,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  child: AppProductImage(
+                                    imageUrl: images[index],
+                                    width: double.infinity,
+                                    height: double.infinity,
+                                    fit: BoxFit.contain,
+                                    borderRadius: BorderRadius.zero,
+                                  ),
+                                );
+                              },
+                            ),
                     ),
                     if (showIndicators)
                       Positioned(
@@ -1331,10 +1331,67 @@ class _VoucherSheetCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          Icon(
-            shipping ? Icons.local_shipping_rounded : Icons.percent_rounded,
-            color: tone,
-            size: 24,
+          shipping
+              ? Icon(
+                  Icons.local_shipping_rounded,
+                  color: tone,
+                  size: 24,
+                )
+              : const _DiscountVoucherIcon(),
+        ],
+      ),
+    );
+  }
+}
+
+class _DiscountVoucherIcon extends StatelessWidget {
+  const _DiscountVoucherIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 34,
+      height: 34,
+      decoration: BoxDecoration(
+        color: _discountRed,
+        borderRadius: BorderRadius.circular(11),
+        boxShadow: [
+          BoxShadow(
+            color: _discountRed.withValues(alpha: 0.18),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          const Icon(
+            Icons.confirmation_number_rounded,
+            color: Colors.white,
+            size: 22,
+          ),
+          Container(
+            width: 16,
+            height: 16,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: _discountRed,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: Colors.white,
+                width: 1.4,
+              ),
+            ),
+            child: const Text(
+              '%',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 10,
+                height: 1,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
           ),
         ],
       ),
