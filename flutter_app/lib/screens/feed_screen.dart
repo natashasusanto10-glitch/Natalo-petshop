@@ -1690,7 +1690,7 @@ class _FeedPostViewState extends State<_FeedPostView>
     with TickerProviderStateMixin {
   static const double _commentSheetMinExtent = 0.22;
   static const double _commentSheetInitialExtent = 0.60;
-  static const double _commentSheetMaxExtent = 0.90;
+  static const double _commentSheetMaxExtentCap = 0.82;
   static const double _commentSheetDismissExtent = 0.30;
 
   VideoPlayerController? _videoController;
@@ -2083,9 +2083,10 @@ class _FeedPostViewState extends State<_FeedPostView>
 
   void _syncCommentSheetProgress() {
     if (!_commentSheetController.isAttached) return;
+    final hostHeight = _commentSheetHostHeight(context);
+    final maxExtent = _commentSheetMaxExtentFor(hostHeight);
     final size = _commentSheetController.size;
-    final extent =
-        size.clamp(_commentSheetMinExtent, _commentSheetMaxExtent).toDouble();
+    final extent = size.clamp(_commentSheetMinExtent, maxExtent).toDouble();
     if ((_commentSheetExtent.value - extent).abs() > 0.002) {
       _commentSheetExtent.value = extent;
     }
@@ -2097,6 +2098,24 @@ class _FeedPostViewState extends State<_FeedPostView>
         if (mounted) _closeComments();
       });
     }
+  }
+
+  double _commentSheetHostHeight(BuildContext context) {
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    return math.max(1.0, screenHeight - keyboardInset);
+  }
+
+  double _commentMinVideoHeightFor(double hostHeight) {
+    return (hostHeight * 0.30).clamp(220.0, 280.0).toDouble();
+  }
+
+  double _commentSheetMaxExtentFor(double hostHeight) {
+    final minVideoHeight = _commentMinVideoHeightFor(hostHeight);
+    final extent = 1 - (minVideoHeight / math.max(1.0, hostHeight));
+    return extent
+        .clamp(_commentSheetInitialExtent, _commentSheetMaxExtentCap)
+        .toDouble();
   }
 
   List<FeedProductLink> _rotatingProductsForPost(FeedPost post) {
@@ -2254,8 +2273,10 @@ class _FeedPostViewState extends State<_FeedPostView>
     final delta = details.primaryDelta ?? 0;
     if (!_commentSheetController.isAttached || delta == 0) return;
     final screenHeight = math.max(1.0, MediaQuery.sizeOf(context).height);
+    final maxExtent =
+        _commentSheetMaxExtentFor(_commentSheetHostHeight(context));
     final nextSize = (_commentSheetController.size - (delta / screenHeight))
-        .clamp(_commentSheetMinExtent, _commentSheetMaxExtent)
+        .clamp(_commentSheetMinExtent, maxExtent)
         .toDouble();
     _commentSheetController.jumpTo(nextSize);
   }
@@ -2265,15 +2286,15 @@ class _FeedPostViewState extends State<_FeedPostView>
     final size = _commentSheetController.isAttached
         ? _commentSheetController.size
         : _commentSheetInitialExtent;
+    final maxExtent =
+        _commentSheetMaxExtentFor(_commentSheetHostHeight(context));
     if (velocity > 520 || size <= _commentSheetDismissExtent) {
       _closeComments();
       return;
     }
-    const expandThreshold =
-        (_commentSheetInitialExtent + _commentSheetMaxExtent) / 2;
-    final target = size >= expandThreshold
-        ? _commentSheetMaxExtent
-        : _commentSheetInitialExtent;
+    final expandThreshold = (_commentSheetInitialExtent + maxExtent) / 2;
+    final target =
+        size >= expandThreshold ? maxExtent : _commentSheetInitialExtent;
     _commentSheetController.animateTo(
       target,
       duration: const Duration(milliseconds: 220),
@@ -2649,6 +2670,10 @@ class _FeedPostViewState extends State<_FeedPostView>
       child: LayoutBuilder(
         builder: (context, constraints) {
           final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+          final commentSheetHostHeight =
+              math.max(1.0, constraints.biggest.height - keyboard);
+          final commentSheetMaxExtent =
+              _commentSheetMaxExtentFor(commentSheetHostHeight);
           // extendBody: false di Scaffold → body bottom = top edge bottom
           // nav (safeBottom sudah di-consume nav widget). Insets di sini
           // relatif ke body bottom, BUKAN screen bottom. Tidak perlu
@@ -2697,7 +2722,7 @@ class _FeedPostViewState extends State<_FeedPostView>
                         controller: _commentSheetController,
                         initialChildSize: FeedCommentSheet.reelsHeightFactor,
                         minChildSize: _commentSheetMinExtent,
-                        maxChildSize: _commentSheetMaxExtent,
+                        maxChildSize: commentSheetMaxExtent,
                         snap: false,
                         builder: (context, scrollController) {
                           return FeedCommentSheet(
@@ -3060,10 +3085,10 @@ class _CommentVideoFrame extends StatelessWidget {
           valueListenable: extentListenable,
           child: child,
           builder: (context, sheetExtent, child) {
-            // Pattern YouTube/Threads: video FILLS area di atas drawer,
-            // bukan floating preview di tengah. Saat drawer grow ke atas,
-            // video shrink vertically dari bawah. Saat drawer drag ke
-            // bawah, video expand lagi. Width selalu full screen.
+            // Pattern linked motion: video FILLS area di atas drawer,
+            // bukan floating rounded preview card. Saat drawer grow ke
+            // atas, video shrink vertically dari bawah. Saat drawer drag
+            // ke bawah, video expand lagi. Width selalu full screen.
             //
             // Drawer extent berasal langsung dari DraggableScrollableSheet.
             // Ini membuat video dan drawer bergerak 1:1 saat user drag,
@@ -3089,21 +3114,14 @@ class _CommentVideoFrame extends StatelessWidget {
               drawerTopY.clamp(0.0, height),
             );
             final rect = Rect.lerp(fullRect, aboveDrawerRect, openProgress)!;
-            final frameInset = 10.0 * openProgress;
-            final radius = 28.0 * openProgress;
-
             return Positioned.fromRect(
               rect: rect,
               child: DecoratedBox(
                 decoration: const BoxDecoration(color: Colors.black),
-                child: Padding(
-                  padding: EdgeInsets.all(frameInset),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(radius),
-                    child: DecoratedBox(
-                      decoration: const BoxDecoration(color: Colors.black),
-                      child: child,
-                    ),
+                child: ClipRect(
+                  child: DecoratedBox(
+                    decoration: const BoxDecoration(color: Colors.black),
+                    child: child,
                   ),
                 ),
               ),
@@ -4205,8 +4223,7 @@ class _ProductLinkChip extends StatelessWidget {
               decoration: BoxDecoration(
                 color: Colors.black.withValues(alpha: 0.55),
                 borderRadius: BorderRadius.circular(999),
-                border:
-                    Border.all(color: Colors.white.withValues(alpha: 0.18)),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.32),
@@ -4215,8 +4232,7 @@ class _ProductLinkChip extends StatelessWidget {
                   ),
                 ],
               ),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -4320,8 +4336,7 @@ class _FeedTaggedProductsSheet extends StatelessWidget {
     // Cek apakah ANY product punya diskon aktif → tampilkan banner promo
     // di atas list. Banner umum (highest discount %) supaya 1 sheet bisa
     // cover multi-product video tagging.
-    final discounted =
-        products.where((p) => p.hasActiveDiscount).toList();
+    final discounted = products.where((p) => p.hasActiveDiscount).toList();
     final bannerPercent = discounted.isEmpty
         ? 0
         : discounted
@@ -6148,7 +6163,8 @@ class _CtaBuyButton extends StatelessWidget {
         child: Text(
           enabled ? 'Beli' : 'Habis',
           style: TextStyle(
-            color: enabled ? Colors.white : Colors.white.withValues(alpha: 0.45),
+            color:
+                enabled ? Colors.white : Colors.white.withValues(alpha: 0.45),
             fontSize: 12.5,
             fontWeight: FontWeight.w900,
             letterSpacing: 0.2,
