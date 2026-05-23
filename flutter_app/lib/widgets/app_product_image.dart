@@ -39,10 +39,29 @@ class AppProductImage extends StatelessWidget {
     final r = _effectiveRadius();
     if (imageUrl == null || imageUrl!.isEmpty) return _placeholder(r);
 
+    // Detect asset path (bundled di assets/products/*.png untuk seed/dummy
+    // product). CachedNetworkImage hanya support HTTP URL — kalau dikasih
+    // asset path, akan error silently → placeholder kecil → kelihatan
+    // "blank" di fullscreen viewer. Pakai Image.asset untuk path lokal.
+    final url = imageUrl!;
+    final isAsset = url.startsWith('assets/');
+    if (isAsset) {
+      return ClipRRect(
+        borderRadius: r,
+        child: Image.asset(
+          url,
+          width: width,
+          height: height,
+          fit: fit,
+          errorBuilder: (_, __, ___) => _placeholder(r),
+        ),
+      );
+    }
+
     return ClipRRect(
       borderRadius: r,
       child: CachedNetworkImage(
-        imageUrl: imageUrl!,
+        imageUrl: url,
         width: width,
         height: height,
         fit: fit,

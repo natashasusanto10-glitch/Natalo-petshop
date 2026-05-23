@@ -79,7 +79,12 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
               itemBuilder: (context, i) => InteractiveViewer(
                 minScale: 1,
                 maxScale: 4,
-                child: Center(
+                // Wrap dengan SizedBox.expand supaya image (atau placeholder
+                // kalau fail load) fill full viewport area. Tanpa ini,
+                // AppProductImage tanpa width/height shrink ke child intrinsic
+                // size → kalau image fail load + placeholder render icon kecil,
+                // sisanya hitam → user lihat "blank screen".
+                child: SizedBox.expand(
                   child: AppProductImage(
                     imageUrl: images[i],
                     fit: BoxFit.contain,
