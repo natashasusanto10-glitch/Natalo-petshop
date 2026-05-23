@@ -175,6 +175,19 @@ export function bunnyPlaylistUrl(guid: string): string {
  * video meta's `availableResolutions` field (typically 240p/360p/480p/720p).
  * 720p is a safe default for portrait phone video — picture stays sharp,
  * file size stays small (~5-10 MB for a 15-second clip).
+ *
+ * ── Bunny encoding profile target (configured di dashboard, NOT di code) ──
+ * 720p HD (1280×720) @ 30fps, bitrate 2500 kbps (2.5 Mbps).
+ * Sweet spot match IG Reels / TikTok standard:
+ *   - Quality bagus di phone screen, imperceptible artifact
+ *   - File 30-detik ≈ 9.4 MB (vs 10.5 MB di 2800 kbps lama)
+ *   - Bunny CDN egress saving ~10% per session
+ *   - Initial buffer time ~1.0-1.2 detik di 4G Indonesia
+ * Range valid 1.5-2.5 Mbps untuk 720p phone content. Lower → blocky di motion,
+ * higher → diminishing returns (mata gak bedain di small screen).
+ *
+ * Untuk ubah: Bunny dashboard → Library Natalo → Settings → Encoding Profile
+ * → 720p → field "Bitrate". Update note ini juga supaya consistent.
  */
 export function bunnyMp4Url(
   guid: string,
