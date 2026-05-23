@@ -28,6 +28,12 @@ const _discountRed = Color(0xFFE53958);
 const _discountRedSoft = Color(0xFFFFF1F4);
 const _discountRedBorder = Color(0xFFFFB8C8);
 const _shippingGreen = Color(0xFF12A66A);
+// Loyalty (reward poin) — purple star, match checkout styling supaya
+// icon consistent antar layar. Sebelumnya cart pakai red ticket untuk
+// loyalty voucher juga → confusing user (di checkout muncul beda warna).
+const _loyaltyPurple = Color(0xFF7C3AED);
+const _loyaltyPurpleSoft = Color(0xFFF3E8FF);
+const _loyaltyPurpleBorder = Color(0xFFD9C4F5);
 const _shippingGreenSoft = Color(0xFFECFDF3);
 const _shippingGreenBorder = Color(0xFFA6F4C5);
 const _voucherBarHeight = 50.0;
@@ -2113,7 +2119,10 @@ class _StickyVoucherBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasDiscount = discountVoucher != null && discountAmount > 0;
+    // hasDiscount predicate hanya cek amount > 0 (sebelumnya juga cek
+    // discountVoucher != null, tapi sekarang loyalty voucher di-track
+    // di slot terpisah, jadi cuma cek total discount aja).
+    final hasDiscount = discountAmount > 0;
     final hasShipping = shippingSelected && shippingDiscount > 0;
     final leadingColor = hasSelection ? _discountRed : const Color(0xFF94A3B8);
     final leadingBackground =
@@ -2504,12 +2513,24 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                       _CartVoucherCard(
                         title: voucher.title,
                         subtitle: voucher.description,
-                        badge: 'Diskon',
+                        // Loyalty voucher = "Reward Poin" badge + star purple
+                        // match styling checkout. Product discount = "Diskon"
+                        // tag pink. Differentiate icon supaya user paham
+                        // type voucher langsung dari visual.
+                        badge: voucher.isLoyaltyClaim ? 'Reward Poin' : 'Diskon',
                         trailing: formatRupiah(voucher.discount),
-                        icon: Icons.local_offer_rounded,
-                        accent: _discountRed,
-                        background: _discountRedSoft,
-                        border: _discountRedBorder,
+                        icon: voucher.isLoyaltyClaim
+                            ? Icons.stars_rounded
+                            : Icons.local_offer_rounded,
+                        accent: voucher.isLoyaltyClaim
+                            ? _loyaltyPurple
+                            : _discountRed,
+                        background: voucher.isLoyaltyClaim
+                            ? _loyaltyPurpleSoft
+                            : _discountRedSoft,
+                        border: voucher.isLoyaltyClaim
+                            ? _loyaltyPurpleBorder
+                            : _discountRedBorder,
                         selected: _selectedDiscount?.code == voucher.code,
                         enabled: true,
                         onTap: () => _pickDiscount(voucher),
@@ -2567,12 +2588,18 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                           title: voucher.title,
                           subtitle: voucher.disabledReason ??
                               'Voucher belum memenuhi syarat.',
-                          badge: 'Diskon',
+                          badge: voucher.isLoyaltyClaim
+                              ? 'Reward Poin'
+                              : 'Diskon',
                           trailing: voucher.discount > 0
                               ? formatRupiah(voucher.discount)
                               : null,
-                          icon: Icons.local_offer_outlined,
-                          accent: _discountRed,
+                          icon: voucher.isLoyaltyClaim
+                              ? Icons.stars_rounded
+                              : Icons.local_offer_outlined,
+                          accent: voucher.isLoyaltyClaim
+                              ? _loyaltyPurple
+                              : _discountRed,
                           background: const Color(0xFFF8FAFC),
                           border: const Color(0xFFE2E8F0),
                           selected: false,
