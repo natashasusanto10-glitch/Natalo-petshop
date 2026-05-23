@@ -3,6 +3,8 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:video_compress/video_compress.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
 
 import '../models/feed_create_post_draft.dart';
 import '../services/api_client.dart';
@@ -226,8 +228,73 @@ class FeedUploadStore extends ChangeNotifier {
     if (task == null || draft == null) return;
 
     try {
-      // Step 1 — Thumbnail upload (kalau ada). Reuse feedService.
-      final thumbPath = draft.thumbnailPath;
+      final originalPath = draft.finalVideoPath;
+      if (originalPath == null) {
+        throw const FeedPhotoUploadException(
+          'Video tidak tersedia. Kembali ke detail postingan.',
+        );
+      }
+
+      // ── Step 0 — Compress video ke 720p ──
+      // CRITICAL: missed di first version background upload (v1.0.86) →
+      // user upload original video (50-300MB iPhone 4K) → Bunny encode
+      // lambat → URL .mp4 404 sampai encode selesai. Trip compress dulu:
+      // - Skip kalau sudah ada trimmedVideoPath (= sudah hasil
+      //   VideoCompress di trim screen).
+      // - Skip kalau compress gagal (fallback ke original).
+      // Match logic FeedUploadProgressScreen._startUpload() yang lama.
+      _update(status: FeedUploadStatus.preparing, progress: 0.05);
+      String videoPath = originalPath;
+      if (draft.trimmedVideoPath == null) {
+        try {
+          final info = await VideoCompress.compressVideo(
+            originalPath,
+            quality: VideoQuality.Res1280x720Quality,
+            deleteOrigin: false,
+            includeAudio: true,
+          );
+          final compressed = info?.file;
+          if (compressed != null && await compressed.exists()) {
+            videoPath = compressed.path;
+            if (kDebugMode) {
+              final origSize = await File(originalPath).length();
+              final newSize = await compressed.length();
+              debugPrint(
+                '[feed-upload-store] compressed: ${origSize ~/ 1024}KB → '
+                '${newSize ~/ 1024}KB '
+                '(${(100 - newSize / origSize * 100).round()}% reduction)',
+              );
+            }
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('[feed-upload-store] compress failed, fallback: $e');
+          }
+          // Tetap pakai original — Bunny bisa accept + re-encode.
+        }
+      }
+
+      // ── Step 1 — Generate thumbnail kalau belum ada ──
+      // Sebelumnya skip generate, hanya pakai existing thumbnailPath.
+      // Tapi kalau draft.thumbnailPath null (mis. user submit dari path
+      // yang lewat tanpa cover picker), upload tidak punya thumbnail.
+      // Generate sekarang dari frame 500ms.
+      String? thumbPath = draft.thumbnailPath;
+      if (thumbPath == null || !File(thumbPath).existsSync()) {
+        try {
+          thumbPath = await VideoThumbnail.thumbnailFile(
+            video: videoPath,
+            imageFormat: ImageFormat.JPEG,
+            maxWidth: 720,
+            timeMs: 500,
+            quality: 82,
+          );
+        } catch (_) {
+          // Thumbnail generation fail → Bunny auto-generate dari frame.
+        }
+      }
+
+      // ── Step 2 — Upload thumbnail ke feed-thumbnail bucket ──
       String? thumbnailUrl;
       if (thumbPath != null && File(thumbPath).existsSync()) {
         _update(status: FeedUploadStatus.uploading, progress: 0.1);
@@ -244,8 +311,8 @@ class FeedUploadStore extends ChangeNotifier {
         }
       }
 
-      // Step 2 — Bunny provision (create FeedPost placeholder + dapat
-      // TUS credentials).
+      // ── Step 3 — Bunny provision (create FeedPost placeholder + dapat
+      // TUS credentials). ──
       _update(status: FeedUploadStatus.uploading, progress: 0.2);
       final bunnyService = BunnyUploadService(
         apiClient: apiClient,
@@ -262,9 +329,11 @@ class FeedUploadStore extends ChangeNotifier {
         thumbnailUrl: thumbnailUrl,
       );
 
-      // Step 3 — TUS upload ke Bunny.
-      final videoPath = draft.finalVideoPath;
-      if (videoPath == null || !File(videoPath).existsSync()) {
+      // Step 4 — TUS upload ke Bunny. Pakai videoPath yang sudah ter-compress
+      // di Step 0 (kalau berhasil) atau original (kalau compress gagal /
+      // skipped karena trimmedVideoPath sudah ada). videoPath di-validate
+      // exists di Step 0 — defensive re-check di sini juga.
+      if (!File(videoPath).existsSync()) {
         throw const FeedPhotoUploadException('File video tidak ditemukan.');
       }
       final tusCreds = provision.tus;
