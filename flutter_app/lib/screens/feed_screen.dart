@@ -379,6 +379,39 @@ class _FeedScreenState extends State<FeedScreen> {
         url,
         userPreference: appSettingsStore.feedVideoQuality,
       );
+
+      // ── HLS bypass cache wrapper ──
+      // HLS (.m3u8) = manifest + multiple segments. CachedVideoPlayerPlus
+      // download single URL ke disk dan play dari local file — works
+      // untuk MP4 progressive (1 file = 1 video), TAPI rusak untuk HLS
+      // karena segments tidak ke-cache (cuma playlist file). Saat
+      // playback, video_player coba load segments dari local cache path
+      // → relative URL miss → fail.
+      //
+      // Solusi: kalau URL HLS, pakai plain VideoPlayerController.networkUrl
+      // langsung. HLS handle own caching at HTTP layer (range requests).
+      // MP4 tetap pakai CachedVideoPlayerPlus untuk repeat-view benefit
+      // (legacy support untuk post .mp4 yang belum di-migrate).
+      final isHls = resolvedUrl.contains('.m3u8');
+      if (isHls) {
+        final controller = VideoPlayerController.networkUrl(
+          Uri.parse(resolvedUrl),
+        );
+        _preloadedControllers[id] = controller;
+        initFutures.add(
+          controller.initialize().then((_) async {
+            await controller.setLooping(true);
+            await controller.setVolume(0);
+            await controller.seekTo(Duration.zero);
+          }).catchError((Object _) async {
+            _preloadedControllers.remove(id);
+            await controller.dispose();
+          }),
+        );
+        continue;
+      }
+
+      // MP4 path — keep cache wrapper.
       // Wrap dengan CachedVideoPlayerPlus → disk cache otomatis aktif.
       // Repeat-view video sama → load instant dari disk HP (0 data).
       // TTL 7 hari — cache invalidate kalau lebih lama (auto re-download).
@@ -1915,26 +1948,45 @@ class _FeedPostViewState extends State<_FeedPostView>
         url,
         userPreference: appSettingsStore.feedVideoQuality,
       );
-      // Wrap dengan CachedVideoPlayerPlus untuk disk cache — repeat-view
-      // load instant dari disk, 0 data dari network. TTL 7 hari.
-      final cachedPlayer = CachedVideoPlayerPlus.networkUrl(
-        Uri.parse(resolvedUrl),
-        invalidateCacheIfOlderThan: const Duration(days: 7),
-      );
-      _cachedPlayer = cachedPlayer;
+      // ── HLS bypass cache wrapper ──
+      // Lihat penjelasan di preload path (top of file). HLS .m3u8 tidak
+      // boleh di-wrap CachedVideoPlayerPlus karena segments tidak ke-cache.
+      final isHls = resolvedUrl.contains('.m3u8');
+      final VideoPlayerController controller;
+      if (isHls) {
+        controller = VideoPlayerController.networkUrl(Uri.parse(resolvedUrl));
+        _cachedPlayer = null;
+      } else {
+        // Wrap dengan CachedVideoPlayerPlus untuk disk cache — repeat-view
+        // load instant dari disk, 0 data dari network. TTL 7 hari.
+        final cachedPlayer = CachedVideoPlayerPlus.networkUrl(
+          Uri.parse(resolvedUrl),
+          invalidateCacheIfOlderThan: const Duration(days: 7),
+        );
+        _cachedPlayer = cachedPlayer;
+        controller = cachedPlayer.controller;
+      }
       // Schedule spinner muncul 1200ms dari sekarang. Kalau initialize keburu
       // selesai dalam window itu, _cancelLoadingSpinnerDelay() bawah cancel
       // timer → spinner tidak pernah render = perceived instant.
       _resetLoadingSpinnerTimer();
       if (mounted) setState(() {});
-      await cachedPlayer.initialize();
-      final controller = cachedPlayer.controller;
+      if (isHls) {
+        await controller.initialize();
+      } else {
+        await _cachedPlayer!.initialize();
+      }
       _videoController = controller;
       controller.addListener(_handleVideoPositionForCta);
       if (!mounted) {
-        // Dispose via wrapper supaya cache reference di-release proper.
-        await cachedPlayer.dispose();
-        _cachedPlayer = null;
+        // Dispose via wrapper kalau MP4 (release cache), atau direct
+        // dispose kalau HLS plain controller.
+        if (_cachedPlayer != null) {
+          await _cachedPlayer!.dispose();
+          _cachedPlayer = null;
+        } else {
+          await controller.dispose();
+        }
         _videoController = null;
         return;
       }
