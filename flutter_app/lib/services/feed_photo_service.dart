@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
+import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 
 import '../config/api_config.dart';
@@ -74,13 +75,26 @@ class FeedPhotoService {
     }
   }
 
+  Future<({int? width, int? height})> _readImageSize(File file) async {
+    try {
+      final bytes = await file.readAsBytes();
+      final image = img.decodeImage(bytes);
+      if (image == null) return (width: null, height: null);
+      return (width: image.width, height: image.height);
+    } catch (_) {
+      return (width: null, height: null);
+    }
+  }
+
   /// Upload 1 foto ke UploadThing via backend, return UploadThing URL +
   /// key. Throws kalau status != 200.
-  Future<({String url, String? key})> uploadSinglePhoto(File file) async {
+  Future<({String url, String? key, int? width, int? height})>
+      uploadSinglePhoto(File file) async {
     // Compress dulu supaya tidak kena Vercel 4.5MB request body limit.
     // Original file 4-6MB (iPhone HEIC + ProRAW + DSLR) di-compress ke
     // 1920×1920 JPEG quality 75 → ~500KB-1MB.
     final fileToUpload = await _compressForUpload(file);
+    final imageSize = await _readImageSize(fileToUpload);
 
     final uri = ApiConfig.uri('/api/feed/upload-photo');
     final request = http.MultipartRequest('POST', uri);
@@ -129,7 +143,12 @@ class FeedPhotoService {
     if (url == null || url.isEmpty) {
       throw const FeedPhotoUploadException('URL upload kosong.');
     }
-    return (url: url, key: key);
+    return (
+      url: url,
+      key: key,
+      width: imageSize.width,
+      height: imageSize.height,
+    );
   }
 
   /// Batch upload 1-8 foto dengan concurrency cap 4 — 4 upload paralel
@@ -150,13 +169,15 @@ class FeedPhotoService {
   /// tidak commit ke backend. UploadThing assets yang terlanjur upload
   /// dianggap orphan (cleanup periodik via UploadThing dashboard atau
   /// API delete-key).
-  Future<List<({String url, String? key})>> uploadAllPhotos(
+  Future<List<({String url, String? key, int? width, int? height})>>
+      uploadAllPhotos(
     List<File> files, {
     void Function(int done, int total)? onProgress,
   }) async {
     if (files.isEmpty) return [];
     const concurrency = 4;
-    final results = List<({String url, String? key})?>.filled(
+    final results =
+        List<({String url, String? key, int? width, int? height})?>.filled(
       files.length,
       null,
       growable: false,
@@ -187,7 +208,7 @@ class FeedPhotoService {
 
     // results sudah pasti non-null karena worker isi semua slot sebelum
     // return. Cast aman.
-    return results.cast<({String url, String? key})>();
+    return results.cast<({String url, String? key, int? width, int? height})>();
   }
 
   /// Create PHOTO_CAROUSEL FeedPost dengan media + caption + product tags.
@@ -195,7 +216,7 @@ class FeedPhotoService {
   /// Customer: status auto-PENDING_REVIEW, dispatch ke admin moderation.
   /// Admin: status auto-ACTIVE, langsung tayang di feed.
   Future<({String postId, String status})> createPhotoPost({
-    required List<({String url, String? key})> images,
+    required List<({String url, String? key, int? width, int? height})> images,
     required String title,
     String? description,
     List<String> productIds = const [],
@@ -221,6 +242,8 @@ class FeedPhotoService {
           .map((img) => {
                 'url': img.url,
                 if (img.key != null) 'key': img.key,
+                if (img.width != null) 'width': img.width,
+                if (img.height != null) 'height': img.height,
               })
           .toList(),
       if (productIds.isNotEmpty) 'productIds': productIds,

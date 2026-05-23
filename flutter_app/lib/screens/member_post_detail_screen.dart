@@ -1328,7 +1328,7 @@ class _CarouselSurfaceState extends State<_CarouselSurface> {
 
 // ─── Image / placeholder ────────────────────────────────────────────
 
-class _ImageSurface extends StatelessWidget {
+class _ImageSurface extends StatefulWidget {
   final String imageUrl;
   final IconData placeholderIcon;
 
@@ -1338,9 +1338,156 @@ class _ImageSurface extends StatelessWidget {
   });
 
   @override
+  State<_ImageSurface> createState() => _ImageSurfaceState();
+}
+
+class _ImageSurfaceState extends State<_ImageSurface>
+    with SingleTickerProviderStateMixin {
+  final GlobalKey _imageKey = GlobalKey();
+  late final TransformationController _transformationController;
+  late final AnimationController _snapBackController;
+
+  OverlayEntry? _zoomOverlay;
+  Rect? _sourceRect;
+  Matrix4 _overlayMatrix = Matrix4.identity();
+  Animation<Matrix4>? _snapBackAnimation;
+  bool _showOverlayImage = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _transformationController = TransformationController();
+    _snapBackController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 180),
+    )
+      ..addListener(_handleSnapBackTick)
+      ..addStatusListener(_handleSnapBackStatus);
+  }
+
+  @override
+  void dispose() {
+    _removeZoomOverlay(resetController: false, notify: false);
+    _snapBackController.dispose();
+    _transformationController.dispose();
+    super.dispose();
+  }
+
+  void _handleInteractionUpdate(ScaleUpdateDetails details) {
+    final matrix = Matrix4.copy(_transformationController.value);
+    final scale = matrix.getMaxScaleOnAxis();
+
+    if (scale <= 1.01 && _zoomOverlay == null) return;
+
+    _ensureZoomOverlay();
+    if (_zoomOverlay == null) return;
+
+    _overlayMatrix = matrix;
+    _zoomOverlay?.markNeedsBuild();
+  }
+
+  void _handleInteractionEnd(ScaleEndDetails details) {
+    if (_zoomOverlay == null) {
+      _transformationController.value = Matrix4.identity();
+      return;
+    }
+
+    _snapBackAnimation = Matrix4Tween(
+      begin: Matrix4.copy(_overlayMatrix),
+      end: Matrix4.identity(),
+    ).animate(
+      CurvedAnimation(
+        parent: _snapBackController,
+        curve: Curves.easeOutCubic,
+      ),
+    );
+    _snapBackController.forward(from: 0);
+  }
+
+  void _handleSnapBackTick() {
+    final animation = _snapBackAnimation;
+    if (animation == null) return;
+    _overlayMatrix = animation.value;
+    _zoomOverlay?.markNeedsBuild();
+  }
+
+  void _handleSnapBackStatus(AnimationStatus status) {
+    if (status != AnimationStatus.completed) return;
+    _removeZoomOverlay();
+  }
+
+  void _ensureZoomOverlay() {
+    if (_zoomOverlay != null) return;
+
+    final renderObject = _imageKey.currentContext?.findRenderObject();
+    if (renderObject is! RenderBox || !renderObject.hasSize) return;
+
+    final origin = renderObject.localToGlobal(Offset.zero);
+    _sourceRect = origin & renderObject.size;
+    _overlayMatrix = Matrix4.copy(_transformationController.value);
+
+    _zoomOverlay = OverlayEntry(
+      builder: (context) {
+        final rect = _sourceRect;
+        if (rect == null) return const SizedBox.shrink();
+
+        return Positioned.fill(
+          child: IgnorePointer(
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Positioned(
+                  left: rect.left,
+                  top: rect.top,
+                  width: rect.width,
+                  height: rect.height,
+                  child: Transform(
+                    transform: _overlayMatrix,
+                    alignment: Alignment.topLeft,
+                    child: RepaintBoundary(
+                      child: _PostNetworkImage(
+                        imageUrl: widget.imageUrl,
+                        placeholderIcon: widget.placeholderIcon,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    Overlay.of(context, rootOverlay: true).insert(_zoomOverlay!);
+    if (mounted) setState(() => _showOverlayImage = true);
+  }
+
+  void _removeZoomOverlay({
+    bool resetController = true,
+    bool notify = true,
+  }) {
+    _zoomOverlay?.remove();
+    _zoomOverlay = null;
+    _sourceRect = null;
+    _overlayMatrix = Matrix4.identity();
+    _snapBackAnimation = null;
+
+    if (resetController) {
+      _transformationController.value = Matrix4.identity();
+    }
+
+    if (mounted && notify) {
+      setState(() => _showOverlayImage = false);
+    } else {
+      _showOverlayImage = false;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (imageUrl.trim().isEmpty) {
-      return _MediaPlaceholder(icon: placeholderIcon);
+    if (widget.imageUrl.trim().isEmpty) {
+      return _MediaPlaceholder(icon: widget.placeholderIcon);
     }
     // BoxFit.cover — per spec sheet final dari user (post landscape, post
     // portrait, post video semua bilang "Object fit: cover"). Aspect
@@ -1357,28 +1504,49 @@ class _ImageSurface extends StatelessWidget {
     return Container(
       color: Colors.black,
       alignment: Alignment.center,
-      // InteractiveViewer wrap untuk pinch-zoom 1×→4× di photo detail.
-      // User expect bisa pinch foto pet untuk lihat detail (bulu, ekspresi).
-      // clipBehavior none supaya zoom keluar boundaries widget — parent
-      // Container yang handle clipping.
       child: InteractiveViewer(
+        key: _imageKey,
+        transformationController: _transformationController,
         minScale: 1,
         maxScale: 4,
-        clipBehavior: Clip.none,
-        child: CachedNetworkImage(
-          imageUrl: imageUrl,
-          width: double.infinity,
-          height: double.infinity,
-          fit: BoxFit.cover,
-          fadeInDuration: const Duration(milliseconds: 200),
-          placeholder: (_, __) => Shimmer.fromColors(
-            baseColor: const Color(0xFF1F2937),
-            highlightColor: const Color(0xFF374151),
-            child: Container(color: const Color(0xFF1F2937)),
+        clipBehavior: Clip.hardEdge,
+        onInteractionUpdate: _handleInteractionUpdate,
+        onInteractionEnd: _handleInteractionEnd,
+        child: Opacity(
+          opacity: _showOverlayImage ? 0 : 1,
+          child: _PostNetworkImage(
+            imageUrl: widget.imageUrl,
+            placeholderIcon: widget.placeholderIcon,
           ),
-          errorWidget: (_, __, ___) => _MediaPlaceholder(icon: placeholderIcon),
         ),
       ),
+    );
+  }
+}
+
+class _PostNetworkImage extends StatelessWidget {
+  final String imageUrl;
+  final IconData placeholderIcon;
+
+  const _PostNetworkImage({
+    required this.imageUrl,
+    required this.placeholderIcon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return CachedNetworkImage(
+      imageUrl: imageUrl,
+      width: double.infinity,
+      height: double.infinity,
+      fit: BoxFit.cover,
+      fadeInDuration: const Duration(milliseconds: 200),
+      placeholder: (_, __) => Shimmer.fromColors(
+        baseColor: const Color(0xFF1F2937),
+        highlightColor: const Color(0xFF374151),
+        child: Container(color: const Color(0xFF1F2937)),
+      ),
+      errorWidget: (_, __, ___) => _MediaPlaceholder(icon: placeholderIcon),
     );
   }
 }

@@ -199,10 +199,10 @@ export async function GET(request: NextRequest) {
         videoDurationSec: post.videoDurationSec,
         durationSec: post.videoDurationSec,
         aspectWidth: isPhotoPost
-          ? firstMedia?.width ?? 1
+          ? firstMedia?.width ?? 4
           : post.videoWidth ?? 9,
         aspectHeight: isPhotoPost
-          ? firstMedia?.height ?? 1
+          ? firstMedia?.height ?? 5
           : post.videoHeight ?? 16,
         createdAt: post.createdAt.toISOString(),
         status: post.status,
