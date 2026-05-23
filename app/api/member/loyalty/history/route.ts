@@ -24,19 +24,31 @@ export async function GET() {
       return NextResponse.json({ error: "Login dulu." }, { status: 401 });
     }
 
-    const rows = await prisma.customerPoint.findMany({
-      where: { userId: session.sub },
-      orderBy: { createdAt: "desc" },
-      take: 100,
-      select: {
-        id: true,
-        points: true,
-        source: true,
-        createdAt: true,
-      },
-    });
+    // Fetch entries (latest 100 untuk display) + total balance (aggregate
+    // semua rows) PARALLEL. Sebelumnya `balance` di-hitung dari rows
+    // limit-100 → kalau user punya >100 transaction, balance miss row
+    // lama. Aggregate query langsung di DB level lebih akurat + ringan
+    // (index userId, COUNT/SUM O(log n)). Clamp Math.max(0, ...) defensive
+    // negative balance kalau ada bug claim duplicate.
+    const [rows, balanceAgg] = await Promise.all([
+      prisma.customerPoint.findMany({
+        where: { userId: session.sub },
+        orderBy: { createdAt: "desc" },
+        take: 100,
+        select: {
+          id: true,
+          points: true,
+          source: true,
+          createdAt: true,
+        },
+      }),
+      prisma.customerPoint.aggregate({
+        where: { userId: session.sub },
+        _sum: { points: true },
+      }),
+    ]);
 
-    const balance = rows.reduce((sum, row) => sum + row.points, 0);
+    const balance = Math.max(0, balanceAgg._sum.points ?? 0);
     const entries = rows.map((row) => ({
       id: row.id,
       delta: row.points,

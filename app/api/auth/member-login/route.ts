@@ -129,6 +129,16 @@ export async function POST(request: NextRequest) {
     // → avatar fallback ke initial paw icon (foto user "hilang").
     // Client harus terima full snapshot supaya UI immediately akurat
     // tanpa harus extra GET /api/auth/me.
+    //
+    // Plus: aggregate total loyalty points dari CustomerPoint ledger.
+    // Tanpa ini, fresh login dapat points=0 sampai Flutter refresh
+    // /api/auth/me (next app open). User confused lihat 0 poin padahal
+    // history ada. Clamp Math.max(0, ...) defensive negative balance.
+    const pointsAgg = await prisma.customerPoint.aggregate({
+      where: { userId: user.id },
+      _sum: { points: true },
+    });
+    const points = Math.max(0, pointsAgg._sum.points ?? 0);
     const response = NextResponse.json({
       ok: true,
       role: sessionRole,
@@ -141,6 +151,7 @@ export async function POST(request: NextRequest) {
         phone: user.phone,
         profilePhotoUrl: user.profilePhotoUrl,
         bio: user.bio,
+        points,
         birthDate: user.birthDate?.toISOString() ?? null,
         createdAt: user.createdAt.toISOString(),
       },

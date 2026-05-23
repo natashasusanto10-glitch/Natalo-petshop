@@ -10,22 +10,36 @@ export async function GET() {
     return NextResponse.json({});
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.sub },
-    select: {
-      id: true,
-      role: true,
-      name: true,
-      email: true,
-      phone: true,
-      birthDate: true,
-      createdAt: true,
-      profilePhotoUrl: true,
-      bio: true,
-    },
-  });
+  // Parallel fetch user + total loyalty points dari CustomerPoint ledger.
+  // points = SUM(CustomerPoint.points) per userId. Clamp ke 0 kalau hasil
+  // negative (defensive — kalau ada bug claim duplicate, user tidak shock
+  // lihat angka minus). Index `userId` di CustomerPoint bikin aggregate
+  // ini O(log n) → reasonable performance bahkan untuk user >1000 tx.
+  const [user, pointsAgg] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: session.sub },
+      select: {
+        id: true,
+        role: true,
+        name: true,
+        email: true,
+        phone: true,
+        birthDate: true,
+        createdAt: true,
+        profilePhotoUrl: true,
+        bio: true,
+      },
+    }),
+    prisma.customerPoint.aggregate({
+      where: { userId: session.sub },
+      _sum: { points: true },
+    }),
+  ]);
 
-  return NextResponse.json(user ?? {});
+  if (!user) return NextResponse.json({});
+
+  const points = Math.max(0, pointsAgg._sum.points ?? 0);
+  return NextResponse.json({ ...user, points });
 }
 
 /**
@@ -129,22 +143,31 @@ export async function PATCH(request: NextRequest) {
   }
 
   try {
-    const user = await prisma.user.update({
-      where: { id: session.sub },
-      data: updates,
-      select: {
-        id: true,
-        role: true,
-        name: true,
-        email: true,
-        phone: true,
-        birthDate: true,
-        createdAt: true,
-        profilePhotoUrl: true,
-        bio: true,
-      },
-    });
-    return NextResponse.json({ ok: true, user });
+    const [user, pointsAgg] = await Promise.all([
+      prisma.user.update({
+        where: { id: session.sub },
+        data: updates,
+        select: {
+          id: true,
+          role: true,
+          name: true,
+          email: true,
+          phone: true,
+          birthDate: true,
+          createdAt: true,
+          profilePhotoUrl: true,
+          bio: true,
+        },
+      }),
+      // Same aggregate seperti GET — supaya Flutter yang replace profile
+      // object full setelah PATCH tidak nge-reset points ke 0.
+      prisma.customerPoint.aggregate({
+        where: { userId: session.sub },
+        _sum: { points: true },
+      }),
+    ]);
+    const points = Math.max(0, pointsAgg._sum.points ?? 0);
+    return NextResponse.json({ ok: true, user: { ...user, points } });
   } catch (error) {
     console.error("[auth/me PATCH] error:", error);
     return NextResponse.json(
