@@ -205,7 +205,7 @@ class ProductService {
       return const ProductResult(
         products: <Product>[],
         fromApi: false,
-        error: 'Koneksi sedang lambat. Tarik ke bawah untuk coba lagi.',
+        error: 'Belum berhasil memuat. Tarik ke bawah untuk coba lagi.',
       );
     }
   }

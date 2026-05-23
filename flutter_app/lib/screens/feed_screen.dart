@@ -30,6 +30,7 @@ import '../state/feed_local_store.dart';
 import '../state/member_store.dart';
 import '../state/settings_store.dart';
 import '../utils/formatters.dart';
+import '../utils/action_throttle.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/bottom_nav.dart';
@@ -372,8 +373,12 @@ class _FeedScreenState extends State<FeedScreen> {
         precacheImage(CachedNetworkImageProvider(thumb), context);
       }
 
-      // Network-aware quality rewrite (Sprint 2 #7).
-      final resolvedUrl = videoQualityService.resolvePlaybackUrl(url);
+      // Network-aware quality rewrite (Sprint 2 #7) + user preference dari
+      // Settings (data_saver → paksa 480p, high → cap 720p, auto → tier-based).
+      final resolvedUrl = videoQualityService.resolvePlaybackUrl(
+        url,
+        userPreference: appSettingsStore.feedVideoQuality,
+      );
       // Wrap dengan CachedVideoPlayerPlus → disk cache otomatis aktif.
       // Repeat-view video sama → load instant dari disk HP (0 data).
       // TTL 7 hari — cache invalidate kalau lebih lama (auto re-download).
@@ -1093,8 +1098,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
       (_) {
         if (!mounted || !widget.isActive) return;
         setState(() {
-          _featuredProductIndex =
-              (_featuredProductIndex + 1) % products.length;
+          _featuredProductIndex = (_featuredProductIndex + 1) % products.length;
         });
       },
     );
@@ -1582,11 +1586,9 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                       _ProductLinkChip(
                         products: products,
                         featuredProduct: featuredProduct!,
-                        featuredIndex:
-                            _featuredProductIndex % products.length,
+                        featuredIndex: _featuredProductIndex % products.length,
                         onTap: () => _onProductsTap(products),
-                        onQuickAdd: () =>
-                            _quickAddProduct(featuredProduct),
+                        onQuickAdd: () => _quickAddProduct(featuredProduct),
                       ),
                       const SizedBox(height: 9),
                     ],
@@ -1620,6 +1622,7 @@ class _FeedPostView extends StatefulWidget {
   final FeedPost post;
   final bool isActive;
   final VideoPlayerController? preloadedController;
+
   /// Wrapper instance dari CachedVideoPlayerPlus — null kalau controller
   /// adopt dari preload tapi wrapper sudah hilang (rare), atau kalau
   /// child create fresh via _maybeInitVideo. Disimpan supaya dispose
@@ -1647,6 +1650,7 @@ class _FeedPostViewState extends State<_FeedPostView>
   static const double _commentSheetDismissExtent = 0.30;
 
   VideoPlayerController? _videoController;
+
   /// Wrapper instance untuk lifecycle network video (disk cache). Null
   /// kalau ga ada wrapper (defensive). Disposed di dispose() lebih dulu
   /// dari _videoController supaya cache file di-release proper. Untuk
@@ -1905,9 +1909,12 @@ class _FeedPostViewState extends State<_FeedPostView>
     if (_dataSaverEnabled && !userInitiated) return;
     setState(() => _videoLoadFailed = false);
     try {
-      // Sprint 2 #7 — Network-aware quality rewrite. Same logic dgn
-      // preload path supaya consistent quality decision.
-      final resolvedUrl = videoQualityService.resolvePlaybackUrl(url);
+      // Sprint 2 #7 — Network-aware quality rewrite + user preference. Same
+      // logic dgn preload path supaya consistent quality decision.
+      final resolvedUrl = videoQualityService.resolvePlaybackUrl(
+        url,
+        userPreference: appSettingsStore.feedVideoQuality,
+      );
       // Wrap dengan CachedVideoPlayerPlus untuk disk cache — repeat-view
       // load instant dari disk, 0 data dari network. TTL 7 hari.
       final cachedPlayer = CachedVideoPlayerPlus.networkUrl(
@@ -3691,7 +3698,7 @@ class _PausedVideoControls extends StatelessWidget {
   }
 }
 
-class _ReelsAction extends StatelessWidget {
+class _ReelsAction extends StatefulWidget {
   final Widget iconChild;
   final int? count;
   final VoidCallback onTap;
@@ -3703,25 +3710,38 @@ class _ReelsAction extends StatelessWidget {
   });
 
   @override
+  State<_ReelsAction> createState() => _ReelsActionState();
+}
+
+class _ReelsActionState extends State<_ReelsAction> {
+  late final ActionThrottle _throttle;
+
+  @override
+  void initState() {
+    super.initState();
+    _throttle = ActionThrottle(interval: const Duration(milliseconds: 450));
+  }
+
+  @override
   Widget build(BuildContext context) {
     return SizedBox(
       width: 54,
       child: Material(
         color: Colors.transparent,
         child: InkResponse(
-          onTap: onTap,
+          onTap: () => _throttle.run(widget.onTap),
           radius: 28,
           child: SizedBox(
-            height: count == null ? 44 : 60,
+            height: widget.count == null ? 44 : 60,
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                iconChild,
-                if (count != null) ...[
+                widget.iconChild,
+                if (widget.count != null) ...[
                   const SizedBox(height: 2),
                   RepaintBoundary(
                     child: Text(
-                      _formatCount(count!),
+                      _formatCount(widget.count!),
                       style: const TextStyle(
                         color: _feedActionForegroundColor,
                         fontSize: _feedActionCountFontSize,

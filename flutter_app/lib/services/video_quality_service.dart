@@ -117,7 +117,7 @@ class VideoQualityService {
     }
   }
 
-  /// Rewrite Bunny URL berdasarkan network tier.
+  /// Rewrite Bunny URL berdasarkan network tier + user preference.
   ///
   /// IMPORTANT: Saat URL sudah mengandung signed token (`token=...&expires=...`)
   /// dari server, **rewrite di-skip** karena token Bunny CDN signature
@@ -125,17 +125,21 @@ class VideoQualityService {
   /// `/playlist.m3u8` atau quality lain bikin signature gak match path baru →
   /// CDN 403. Server sudah sign path 720p MP4 — pakai apa adanya.
   ///
-  /// Untuk legacy URL (tidak signed): rewrite sesuai network tier.
+  /// Untuk legacy URL (tidak signed): rewrite sesuai user preference (kalau
+  /// `data_saver` / `high`) atau network tier (kalau `auto` / null).
   ///
   /// Pattern matching:
   ///   - HLS playlist `<origin>/<guid>/playlist.m3u8` → keep as is (WiFi)
-  ///     atau rewrite ke MP4 `play_<NNN>p.mp4` (mobile)
+  ///     atau rewrite ke MP4 `play_<NNN>p.mp4` (mobile / data_saver)
   ///   - MP4 `<origin>/<guid>/play_<NNN>p.mp4` → rewrite quality digit
   ///   - Non-Bunny URL → return as-is (legacy / external)
   ///
-  /// WiFi: prefer HLS untuk adaptive bitrate. Mobile: prefer MP4 di
-  /// quality network-appropriate untuk minimize manifest overhead.
-  String resolvePlaybackUrl(String url) {
+  /// userPreference values (dari appSettingsStore.feedVideoQuality):
+  ///   - `null` / `'auto'`  → tier-based (WiFi HLS, Mobile 720p, dst)
+  ///   - `'data_saver'`     → paksa MP4 480p, skip HLS upgrade
+  ///   - `'high'`           → cap di MP4 720p (jangan upgrade ke HLS yang
+  ///                          bisa balloon ke 1080p adaptive)
+  String resolvePlaybackUrl(String url, {String? userPreference}) {
     if (url.isEmpty) return url;
 
     // Signed URL — server sudah pre-sign path SPECIFIC. Rewrite path bikin
@@ -144,6 +148,26 @@ class VideoQualityService {
       return url;
     }
 
+    // User override beats tier. data_saver = paksa 480p MP4 (no HLS).
+    if (userPreference == 'data_saver') {
+      final isHls = url.contains('.m3u8');
+      if (isHls) {
+        return _bunnyHlsToMp4(url, 480) ?? url;
+      }
+      return _rewriteBunnyMp4Quality(url, 480) ?? url;
+    }
+
+    // high = cap di 720p MP4, jangan upgrade HLS (HLS bisa adaptive ke 1080p
+    // di WiFi cepat — user pilih high biasanya mau predictable 720p).
+    if (userPreference == 'high') {
+      final isHls = url.contains('.m3u8');
+      if (isHls) {
+        return _bunnyHlsToMp4(url, 720) ?? url;
+      }
+      return _rewriteBunnyMp4Quality(url, 720) ?? url;
+    }
+
+    // auto / null → tier-based behavior lama.
     final tier = _currentTier;
     final quality = recommendedQuality();
 

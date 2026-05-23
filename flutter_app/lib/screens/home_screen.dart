@@ -14,6 +14,7 @@ import '../models/home_banner.dart';
 import '../models/home_category.dart';
 import '../models/product.dart';
 import '../services/app_analytics.dart';
+import '../services/connectivity_service.dart';
 import '../services/search_service.dart';
 import '../services/product_service.dart';
 import '../state/recently_viewed_store.dart';
@@ -829,17 +830,29 @@ class _ExploreFooter extends StatelessWidget {
   }
 }
 
+/// Banner saat fetch produk gagal. Cek ConnectivityService dulu — kalau
+/// device benar2 offline, tampilkan pesan koneksi; selain itu copy netral
+/// supaya user tidak otomatis menyalahkan internetnya (bisa jadi server
+/// lambat, timeout sementara, dsb).
 class _ApiFallbackNotice extends StatelessWidget {
   const _ApiFallbackNotice();
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.fromLTRB(16, 10, 16, 0),
-      child: AppInfoBanner(
-        icon: Icons.cloud_off_outlined,
-        message: 'Koneksi sedang lambat. Tarik ke bawah untuk coba lagi.',
-      ),
+    return ListenableBuilder(
+      listenable: connectivityService,
+      builder: (context, _) {
+        final offline = connectivityService.isOffline;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+          child: AppInfoBanner(
+            icon: offline ? Icons.wifi_off : Icons.refresh,
+            message: offline
+                ? 'Tidak ada koneksi internet. Coba lagi setelah online.'
+                : 'Belum berhasil memuat. Tarik ke bawah untuk coba lagi.',
+          ),
+        );
+      },
     );
   }
 }

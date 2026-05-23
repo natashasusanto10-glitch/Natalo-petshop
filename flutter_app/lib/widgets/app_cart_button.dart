@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../state/cart_store.dart';
 import '../theme/natalo_colors.dart';
+import '../utils/action_throttle.dart';
 
 /// Cart icon dengan badge jumlah item. Diletakkan di AppBar action.
 /// Auto-rebuild saat cartStore change.
@@ -44,6 +45,9 @@ class _AppCartButtonState extends State<AppCartButton>
   // Per-instance GlobalKey supaya tidak konflik dengan AppCartButton lain
   // yang concurrent alive di tab lain (IndexedStack).
   final GlobalKey _iconKey = GlobalKey(debugLabel: 'AppCartButton-icon');
+  final ActionThrottle _tapThrottle = ActionThrottle(
+    interval: const Duration(milliseconds: 450),
+  );
   int _prevCount = 0;
 
   @override
@@ -116,8 +120,9 @@ class _AppCartButtonState extends State<AppCartButton>
           children: [
             IconButton(
               tooltip: 'Keranjang',
-              onPressed: widget.onPressed ??
-                  () => Navigator.pushNamed(context, '/cart'),
+              onPressed: () => _tapThrottle.run(
+                widget.onPressed ?? () => Navigator.pushNamed(context, '/cart'),
+              ),
               // Wrap icon dgn KeyedSubtree(key: _iconKey) — per-instance
               // key supaya tidak konflik dengan AppCartButton di tab lain.
               // flyImageToCart() lookup via AppCartButton.activeIconKey

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../utils/action_throttle.dart';
+
 enum NataloPostActionIconType {
   like,
   comment,
@@ -48,7 +50,7 @@ class NataloPostActionIcon extends StatelessWidget {
   }
 }
 
-class NataloPostActionButton extends StatelessWidget {
+class NataloPostActionButton extends StatefulWidget {
   const NataloPostActionButton({
     super.key,
     required this.type,
@@ -63,6 +65,7 @@ class NataloPostActionButton extends StatelessWidget {
     this.semanticLabel,
     this.count,
     this.countColor = const Color(0xFF111111),
+    this.throttleDuration = const Duration(milliseconds: 450),
   });
 
   final NataloPostActionIconType type;
@@ -87,32 +90,47 @@ class NataloPostActionButton extends StatelessWidget {
   /// dark mode atau context khusus (mis. white kalau di atas image).
   final Color countColor;
 
+  final Duration throttleDuration;
+
+  @override
+  State<NataloPostActionButton> createState() => _NataloPostActionButtonState();
+}
+
+class _NataloPostActionButtonState extends State<NataloPostActionButton> {
+  late final ActionThrottle _throttle;
+
+  @override
+  void initState() {
+    super.initState();
+    _throttle = ActionThrottle(interval: widget.throttleDuration);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final showCount = count != null && count! > 0;
+    final showCount = widget.count != null && widget.count! > 0;
     final iconWidget = NataloPostActionIcon(
-      type: type,
-      size: iconSize,
-      color: color,
-      activeColor: activeColor,
-      disabledColor: disabledColor,
-      isActive: isActive,
-      isDisabled: isDisabled,
+      type: widget.type,
+      size: widget.iconSize,
+      color: widget.color,
+      activeColor: widget.activeColor,
+      disabledColor: widget.disabledColor,
+      isActive: widget.isActive,
+      isDisabled: widget.isDisabled,
     );
     return Semantics(
       button: true,
-      label: semanticLabel,
-      enabled: !isDisabled,
+      label: widget.semanticLabel,
+      enabled: !widget.isDisabled,
       child: InkResponse(
-        onTap: isDisabled ? null : onTap,
-        radius: tapSize / 2,
+        onTap: widget.isDisabled ? null : () => _throttle.run(widget.onTap),
+        radius: widget.tapSize / 2,
         containedInkWell: false,
         child: showCount
             // Inline mode: icon + spacer + count text. Tap area = icon
             // + text. Horizontal padding 6 ngasih breathing room antar
             // action group dalam Row di parent.
             ? Container(
-                constraints: BoxConstraints(minHeight: tapSize),
+                constraints: BoxConstraints(minHeight: widget.tapSize),
                 padding: const EdgeInsets.symmetric(horizontal: 6),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -144,10 +162,12 @@ class NataloPostActionButton extends StatelessWidget {
                         );
                       },
                       child: Text(
-                        _formatActionCount(count!),
-                        key: ValueKey<int>(count!),
+                        _formatActionCount(widget.count!),
+                        key: ValueKey<int>(widget.count!),
                         style: TextStyle(
-                          color: isDisabled ? disabledColor : countColor,
+                          color: widget.isDisabled
+                              ? widget.disabledColor
+                              : widget.countColor,
                           fontSize: 14,
                           fontWeight: FontWeight.w800,
                           height: 1.0,
@@ -159,7 +179,7 @@ class NataloPostActionButton extends StatelessWidget {
               )
             // Icon-only mode (count null/0): preserve existing square tap.
             : SizedBox.square(
-                dimension: tapSize,
+                dimension: widget.tapSize,
                 child: Center(child: iconWidget),
               ),
       ),

@@ -40,8 +40,7 @@ class AppSettingsStore extends ChangeNotifier {
   String get feedVideoQualityLabel {
     return switch (_feedVideoQuality) {
       'high' => 'Tinggi',
-      'medium' => 'Sedang',
-      'low' => 'Hemat data',
+      'data_saver' => 'Hemat Data',
       _ => 'Otomatis',
     };
   }

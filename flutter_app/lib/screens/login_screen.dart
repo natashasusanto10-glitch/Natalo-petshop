@@ -196,7 +196,7 @@ class _LoginScreenState extends State<LoginScreen> {
       return 'Tidak bisa connect ke server. Cek koneksi internet kamu.';
     }
     if (lower.contains('timeout')) {
-      return 'Koneksi lambat. Coba lagi atau pakai jaringan lain.';
+      return 'Server butuh waktu lebih lama. Coba lagi sebentar.';
     }
     return 'Login gagal: $raw';
   }

@@ -154,7 +154,7 @@ class _ProfilePageState extends State<_ProfilePage>
       setState(() {
         _loadingPosts = false;
         _postsError = error.isNetworkError
-            ? 'Koneksi sedang lambat. Tarik ke bawah untuk coba lagi.'
+            ? 'Belum berhasil memuat. Tarik ke bawah untuk coba lagi.'
             : 'Postingan belum bisa dimuat. Tarik ke bawah untuk coba lagi.';
       });
     } catch (_) {

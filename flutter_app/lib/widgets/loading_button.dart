@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../utils/action_throttle.dart';
 import '../utils/haptics.dart';
 
 /// Submit button yang menampilkan spinner saat loading.
@@ -9,13 +10,14 @@ import '../utils/haptics.dart';
 ///
 /// Pakai instead of ElevatedButton manual untuk semua form submit
 /// (login, register, checkout, address save, dll).
-class LoadingButton extends StatelessWidget {
+class LoadingButton extends StatefulWidget {
   final VoidCallback? onPressed;
   final bool loading;
   final Widget child;
   final ButtonStyle? style;
   final IconData? icon;
   final Color? color;
+  final Duration throttleDuration;
 
   const LoadingButton({
     super.key,
@@ -25,13 +27,35 @@ class LoadingButton extends StatelessWidget {
     this.style,
     this.icon,
     this.color,
+    this.throttleDuration = const Duration(milliseconds: 900),
   });
 
   @override
+  State<LoadingButton> createState() => _LoadingButtonState();
+}
+
+class _LoadingButtonState extends State<LoadingButton> {
+  late final ActionThrottle _throttle;
+
+  @override
+  void initState() {
+    super.initState();
+    _throttle = ActionThrottle(interval: widget.throttleDuration);
+  }
+
+  @override
+  void didUpdateWidget(covariant LoadingButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.loading && !widget.loading) {
+      _throttle.reset();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final effectiveStyle = style ??
+    final effectiveStyle = widget.style ??
         ElevatedButton.styleFrom(
-          backgroundColor: color ?? const Color(0xFF1E5FBF),
+          backgroundColor: widget.color ?? const Color(0xFF1E5FBF),
           foregroundColor: Colors.white,
           minimumSize: const Size.fromHeight(52),
           shape: RoundedRectangleBorder(
@@ -44,11 +68,13 @@ class LoadingButton extends StatelessWidget {
         );
 
     return ElevatedButton(
-      onPressed: loading
+      onPressed: widget.loading
           ? null
           : () {
-              AppHaptics.tap();
-              onPressed?.call();
+              _throttle.run(() {
+                AppHaptics.tap();
+                widget.onPressed?.call();
+              });
             },
       style: effectiveStyle,
       child: AnimatedSwitcher(
@@ -59,7 +85,7 @@ class LoadingButton extends StatelessWidget {
           opacity: anim,
           child: ScaleTransition(scale: anim, child: child),
         ),
-        child: loading
+        child: widget.loading
             ? const SizedBox(
                 key: ValueKey('loading'),
                 width: 22,
@@ -73,11 +99,11 @@ class LoadingButton extends StatelessWidget {
                 key: const ValueKey('label'),
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (icon != null) ...[
-                    Icon(icon, size: 18),
+                  if (widget.icon != null) ...[
+                    Icon(widget.icon, size: 18),
                     const SizedBox(width: 8),
                   ],
-                  child,
+                  widget.child,
                 ],
               ),
       ),

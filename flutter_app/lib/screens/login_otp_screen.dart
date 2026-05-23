@@ -236,7 +236,7 @@ class _LoginOtpScreenState extends State<LoginOtpScreen> {
       return 'Tidak bisa connect ke server. Cek koneksi internet kamu.';
     }
     if (raw.contains('timeout')) {
-      return 'Koneksi lambat. Coba lagi atau pakai jaringan lain.';
+      return 'Server butuh waktu lebih lama. Coba lagi sebentar.';
     }
     return 'Login OTP gagal: $error';
   }

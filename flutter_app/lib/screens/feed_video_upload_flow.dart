@@ -2673,7 +2673,7 @@ String _friendlyErrorMessage(Object error) {
     return 'Tidak bisa connect ke server. Cek koneksi internet.';
   }
   if (raw.contains('timeout')) {
-    return 'Koneksi lambat. Pakai WiFi yang lebih stabil.';
+    return 'Upload belum berhasil diproses. Coba lagi sebentar.';
   }
   if (raw.contains('handshake')) {
     return 'Masalah SSL/handshake. Coba lagi atau ganti jaringan.';

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/product.dart';
+import '../utils/action_throttle.dart';
 import '../utils/formatters.dart';
 import 'app_product_image.dart';
 
@@ -354,7 +355,7 @@ class _PriceBlock extends StatelessWidget {
   }
 }
 
-class _CartButton extends StatelessWidget {
+class _CartButton extends StatefulWidget {
   final bool enabled;
   final VoidCallback onTap;
 
@@ -364,12 +365,21 @@ class _CartButton extends StatelessWidget {
   });
 
   @override
+  State<_CartButton> createState() => _CartButtonState();
+}
+
+class _CartButtonState extends State<_CartButton> {
+  final ActionThrottle _throttle = ActionThrottle(
+    interval: const Duration(milliseconds: 650),
+  );
+
+  @override
   Widget build(BuildContext context) {
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
-        onTap: enabled ? onTap : null,
+        onTap: widget.enabled ? () => _throttle.run(widget.onTap) : null,
         borderRadius: BorderRadius.circular(14),
         child: Container(
           width: 42,
@@ -377,14 +387,14 @@ class _CartButton extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: enabled ? const Color(0xFFBFD5FF) : _borderSoft,
+              color: widget.enabled ? const Color(0xFFBFD5FF) : _borderSoft,
               width: 1.2,
             ),
           ),
           child: Icon(
-            enabled ? Icons.shopping_cart_outlined : Icons.block_rounded,
+            widget.enabled ? Icons.shopping_cart_outlined : Icons.block_rounded,
             size: 22,
-            color: enabled ? _cardBlue : const Color(0xFF9CA3AF),
+            color: widget.enabled ? _cardBlue : const Color(0xFF9CA3AF),
           ),
         ),
       ),
