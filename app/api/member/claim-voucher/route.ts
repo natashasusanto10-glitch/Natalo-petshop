@@ -92,6 +92,12 @@ export async function POST(request: NextRequest) {
         userId: session.sub,
         sourceType: "CUSTOMER",
         type: "LOYALTY_POINT_CLAIM",
+        // CRITICAL: harus set `kind` explicit. Default Prisma =
+        // `PRODUCT_DISCOUNT`, yang bikin loyalty voucher mismatched
+        // di `resolveCustomerSlot('loyalty')` di checkout/recalculate
+        // → "Voucher tidak bisa digunakan untuk slot ini" saat
+        // user explicit re-apply setelah release.
+        kind: "LOYALTY_CLAIM",
         visibility: "USER_OWNED",
         discountType: "FIXED_AMOUNT",
         discountScope: "PRODUCT",

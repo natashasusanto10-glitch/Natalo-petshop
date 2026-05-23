@@ -96,7 +96,31 @@ function describeDiscount(discount: number, kind?: VoucherKind) {
   return `Hemat Rp${new Intl.NumberFormat("id-ID").format(discount)}`;
 }
 
+// Legacy voucher rows kadang punya `kind` salah (mis. loyalty voucher
+// dengan `kind: PRODUCT_DISCOUNT` karena `/api/member/claim-voucher`
+// historis tidak set `kind` → ambil default Prisma). Type column (`type`)
+// adalah source of truth dari intent voucher karena selalu di-set
+// explicit di setiap create. Derive effective kind dari type supaya
+// slot resolver match dengan benar. Backfill migration sudah update
+// row lama, tapi tetap defensive supaya tidak regress.
+function effectiveKind(voucher: VoucherRow): VoucherKind {
+  const type = voucherTypeOf(voucher);
+  switch (type) {
+    case "LOYALTY_POINT_CLAIM":
+      return "LOYALTY_CLAIM";
+    case "PUBLIC_FREE_SHIPPING":
+      return "FREE_SHIPPING";
+    case "PRIVATE_MANUAL_CODE":
+      return "MANUAL_PRIVATE";
+    case "PUBLIC_PRODUCT_DISCOUNT":
+      return "PRODUCT_DISCOUNT";
+    default:
+      return voucher.kind;
+  }
+}
+
 function normalizeVoucher(voucher: VoucherRow, discount: number) {
+  const kind = effectiveKind(voucher);
   return {
     code: voucher.code,
     discount,
@@ -104,8 +128,8 @@ function normalizeVoucher(voucher: VoucherRow, discount: number) {
     minimumOrder: voucher.minimumOrder,
     expiresAt: voucher.expiresAt,
     sourceType: voucher.sourceType,
-    kind: voucher.kind,
-    slot: voucherSlotForKind(voucher.kind),
+    kind,
+    slot: voucherSlotForKind(kind),
     type: voucherTypeOf(voucher),
     discountScope: voucherScopeOf(voucher),
     targetUser: voucher.targetUser,
@@ -118,6 +142,7 @@ function normalizeUnavailable(
   reason: string,
   shortfall = 0,
 ) {
+  const kind = effectiveKind(voucher);
   return {
     code: voucher.code,
     description: voucher.description ?? "",
@@ -126,8 +151,8 @@ function normalizeUnavailable(
     expiresAt: voucher.expiresAt,
     reason,
     sourceType: voucher.sourceType,
-    kind: voucher.kind,
-    slot: voucherSlotForKind(voucher.kind),
+    kind,
+    slot: voucherSlotForKind(kind),
     type: voucherTypeOf(voucher),
     discountScope: voucherScopeOf(voucher),
     targetUser: voucher.targetUser,
