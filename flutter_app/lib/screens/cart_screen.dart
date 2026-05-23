@@ -591,6 +591,7 @@ class _CartScreenState extends State<CartScreen> {
         shippingEligible: _shippingVoucherEligible,
         shippingDiscount: _shippingEstimate.round(),
         selectedDiscountCode: _appliedDiscountVoucher?.code,
+        selectedLoyaltyCode: _appliedLoyaltyVoucher?.code,
         selectedShippingCode:
             _appliedShippingVoucher && _isManualVoucherSelected
                 ? _manualVoucherCode
@@ -603,9 +604,11 @@ class _CartScreenState extends State<CartScreen> {
     if (picked == null) return;
 
     AppHaptics.success();
+    final isRemove = picked.remove;
     setState(() {
-      if (picked.remove) {
+      if (isRemove) {
         _appliedDiscountVoucher = null;
+        _appliedLoyaltyVoucher = null;
         _appliedShippingVoucher = false;
         _isManualVoucherSelected = false;
         _manualVoucherCode = null;
@@ -613,11 +616,22 @@ class _CartScreenState extends State<CartScreen> {
       }
 
       _isManualVoucherSelected = true;
-      _manualVoucherCode = picked.discountVoucher?.code ?? picked.shippingCode;
+      // Manual override code untuk validation tracking — pakai code dari
+      // slot pertama yang ke-set (priority: product > loyalty > shipping).
+      _manualVoucherCode = picked.discountVoucher?.code ??
+          picked.loyaltyVoucher?.code ??
+          picked.shippingCode;
       _appliedDiscountVoucher = picked.discountVoucher;
+      _appliedLoyaltyVoucher = picked.loyaltyVoucher;
       _appliedShippingVoucher =
           picked.shippingSelected && _shippingVoucherEligible;
     });
+    // Setelah Hapus Voucher, re-run auto-apply supaya 3 slot ke-isi
+    // ulang dari best available (ongkir + diskon produk + reward poin).
+    // Tanpa ini, user harus toggle item cart dulu untuk trigger sync.
+    if (isRemove) {
+      _syncVouchersForSelection();
+    }
   }
 
   // _syncCart dihapus — cloud sync icon di-remove dari AppBar (per
@@ -2071,24 +2085,28 @@ MemberVoucher? _findSheetVoucherByCode(
 class _CartVoucherChoice {
   final String? shippingCode;
   final MemberVoucher? discountVoucher;
+  final MemberVoucher? loyaltyVoucher;
   final bool shippingSelected;
   final bool remove;
 
   const _CartVoucherChoice._({
     this.shippingCode,
     this.discountVoucher,
+    this.loyaltyVoucher,
     this.shippingSelected = false,
     this.remove = false,
   });
 
   factory _CartVoucherChoice.combined({
     required MemberVoucher? discountVoucher,
+    required MemberVoucher? loyaltyVoucher,
     required bool shippingSelected,
     String? shippingCode,
   }) {
     return _CartVoucherChoice._(
       shippingCode: shippingCode,
       discountVoucher: discountVoucher,
+      loyaltyVoucher: loyaltyVoucher,
       shippingSelected: shippingSelected,
     );
   }
@@ -2307,6 +2325,7 @@ class _CartVoucherSheet extends StatefulWidget {
   final bool shippingEligible;
   final int shippingDiscount;
   final String? selectedDiscountCode;
+  final String? selectedLoyaltyCode;
   final String? selectedShippingCode;
   final bool shippingSelected;
   final bool isManual;
@@ -2318,6 +2337,7 @@ class _CartVoucherSheet extends StatefulWidget {
     required this.shippingEligible,
     required this.shippingDiscount,
     required this.selectedDiscountCode,
+    required this.selectedLoyaltyCode,
     required this.selectedShippingCode,
     required this.shippingSelected,
     required this.isManual,
@@ -2329,8 +2349,14 @@ class _CartVoucherSheet extends StatefulWidget {
 }
 
 class _CartVoucherSheetState extends State<_CartVoucherSheet> {
+  // 3 slot terpisah supaya user bisa pakai 1 ongkir + 1 diskon produk +
+  // 1 reward poin bersamaan (sesuai business rule Natalo). Sebelumnya
+  // cuma punya 1 slot `_selectedDiscount` yang dipake bareng untuk
+  // product DAN loyalty → user tap reward poin auto-deselect diskon
+  // produk yang udah dipilih, dan vice versa.
   String? _selectedShippingCode;
-  MemberVoucher? _selectedDiscount;
+  MemberVoucher? _selectedProductDiscount;
+  MemberVoucher? _selectedLoyalty;
 
   @override
   void initState() {
@@ -2342,12 +2368,26 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
       );
       if (selectedVoucher != null && _isCartShippingVoucher(selectedVoucher)) {
         _selectedShippingCode = selectedVoucher.code;
+      } else if (selectedVoucher != null && selectedVoucher.isLoyaltyClaim) {
+        // Defensive — legacy code path bisa kirim loyalty voucher ke
+        // selectedDiscountCode. Route ke slot yang benar.
+        _selectedLoyalty = selectedVoucher;
       } else {
         for (final voucher in widget.availableDiscounts) {
           if (voucher.code == widget.selectedDiscountCode) {
-            _selectedDiscount = voucher;
+            _selectedProductDiscount = voucher;
             break;
           }
+        }
+      }
+    }
+
+    if (widget.selectedLoyaltyCode != null) {
+      for (final voucher in widget.availableDiscounts) {
+        if (voucher.code == widget.selectedLoyaltyCode &&
+            voucher.isLoyaltyClaim) {
+          _selectedLoyalty = voucher;
+          break;
         }
       }
     }
@@ -2365,12 +2405,23 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
     return widget.shippingEligible ? _shippingVoucherCode : null;
   }
 
+  /// Route pick ke slot yang sesuai type. Loyalty voucher masuk slot
+  /// loyalty, product discount masuk slot product. Tap-yang-sama =
+  /// deselect; tap-yang-beda di slot sama = swap.
   void _pickDiscount(MemberVoucher voucher) {
     setState(() {
-      if (_selectedDiscount?.code == voucher.code) {
-        _selectedDiscount = null;
+      if (voucher.isLoyaltyClaim) {
+        if (_selectedLoyalty?.code == voucher.code) {
+          _selectedLoyalty = null;
+        } else {
+          _selectedLoyalty = voucher;
+        }
       } else {
-        _selectedDiscount = voucher;
+        if (_selectedProductDiscount?.code == voucher.code) {
+          _selectedProductDiscount = null;
+        } else {
+          _selectedProductDiscount = voucher;
+        }
       }
     });
   }
@@ -2387,7 +2438,8 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
     Navigator.pop(
       context,
       _CartVoucherChoice.combined(
-        discountVoucher: _selectedDiscount,
+        discountVoucher: _selectedProductDiscount,
+        loyaltyVoucher: _selectedLoyalty,
         shippingSelected: _selectedShippingCode != null,
         shippingCode: _selectedShippingCode,
       ),
@@ -2531,7 +2583,9 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                         border: voucher.isLoyaltyClaim
                             ? _loyaltyPurpleBorder
                             : _discountRedBorder,
-                        selected: _selectedDiscount?.code == voucher.code,
+                        selected: voucher.isLoyaltyClaim
+                            ? _selectedLoyalty?.code == voucher.code
+                            : _selectedProductDiscount?.code == voucher.code,
                         enabled: true,
                         onTap: () => _pickDiscount(voucher),
                       ),
@@ -2623,7 +2677,8 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: FilledButton(
-                      onPressed: _selectedDiscount == null &&
+                      onPressed: _selectedProductDiscount == null &&
+                              _selectedLoyalty == null &&
                               _selectedShippingCode == null
                           ? null
                           : _applySelection,
