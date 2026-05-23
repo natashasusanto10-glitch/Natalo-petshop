@@ -276,6 +276,13 @@ export function bunnyThumbnailUrl(guid: string): string {
  * Bunny dashboard + env var. Reverse: kalau dashboard di-disable, signed
  * URL tetap bekerja (token diabaikan).
  *
+ * Untuk HLS (`playlist.m3u8`), token harus berlaku untuk seluruh folder video,
+ * bukan hanya file playlist utama. Player membuka child manifests dan segments
+ * relatif seperti `480p/video.m3u8` dan `audio/audio.m3u8`; kalau token hanya
+ * query-param di master playlist, request turunan akan 403. Jadi HLS memakai
+ * path-based directory token (`/bcdn_token=.../<guid>/playlist.m3u8`) agar
+ * semua request relatif mewarisi autentikasi yang sama.
+ *
  * Hanya sign URL yang host-nya match `BUNNY_CDN_HOSTNAME` — URL eksternal
  * atau legacy UploadThing return as-is supaya tidak rusak.
  */
@@ -299,18 +306,46 @@ export function signBunnyUrl(
   if (parsed.hostname !== cfg.cdnHostname) return url;
 
   const expires = Math.floor(Date.now() / 1000) + expirySeconds;
-  const hashInput = `${securityKey}${parsed.pathname}${expires}`;
-  const token = crypto
+  const isHlsPlaylist = parsed.pathname.endsWith("/playlist.m3u8");
+
+  if (isHlsPlaylist) {
+    const directoryPath = parsed.pathname.replace(/playlist\.m3u8$/, "");
+    const tokenPathParam = `token_path=${directoryPath}`;
+    const token = bunnyToken({
+      securityKey,
+      signaturePath: directoryPath,
+      expires,
+      parameterData: tokenPathParam,
+    });
+    const encodedTokenPath = encodeURIComponent(directoryPath);
+    return `${parsed.protocol}//${parsed.host}/bcdn_token=${token}&token_path=${encodedTokenPath}&expires=${expires}${parsed.pathname}`;
+  }
+
+  const token = bunnyToken({
+    securityKey,
+    signaturePath: parsed.pathname,
+    expires,
+  });
+
+  parsed.searchParams.set("token", token);
+  parsed.searchParams.set("expires", String(expires));
+  return parsed.toString();
+}
+
+function bunnyToken(params: {
+  securityKey: string;
+  signaturePath: string;
+  expires: number;
+  parameterData?: string;
+}): string {
+  const hashInput = `${params.securityKey}${params.signaturePath}${params.expires}${params.parameterData ?? ""}`;
+  return crypto
     .createHash("sha256")
     .update(hashInput)
     .digest("base64")
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=/g, "");
-
-  parsed.searchParams.set("token", token);
-  parsed.searchParams.set("expires", String(expires));
-  return parsed.toString();
 }
 
 /**
