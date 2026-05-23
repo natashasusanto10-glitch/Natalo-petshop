@@ -72,6 +72,9 @@ export function FeedVideoCard({
           // Legacy single-product fallback — no per-product promo set.
           promoPrice: null,
           hasVariants: product.hasVariants,
+          avgRating: product.avgRating,
+          reviewCount: product.reviewCount,
+          soldCount: product.soldCount,
         },
       ];
     }

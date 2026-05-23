@@ -118,6 +118,12 @@ export async function listFeedPosts({
           // langsung addItemToCart. Kalau true, harus buka variant picker
           // dulu (cart tidak boleh skip variant selection).
           hasVariants: true,
+          // Social proof — dipakai di popup preview + bottom sheet
+          // (Final Lock Spec). avgRating + reviewCount denormalized di
+          // Product table (di-update via review CRUD). soldCount tidak
+          // denormalized — di-hitung batched setelah query utama.
+          avgRating: true,
+          reviewCount: true,
         },
       },
       // Shop the Look — multi-tag carousel dengan per-product promoPrice.
@@ -137,6 +143,8 @@ export async function listFeedPosts({
               imageUrl: true,
               isActive: true,
               hasVariants: true,
+              avgRating: true,
+              reviewCount: true,
             },
           },
         },
@@ -171,6 +179,51 @@ export async function listFeedPosts({
     viewerLikedIds = new Set(likes.map((l) => l.postId));
   }
 
+  // Batched soldCount aggregate — kumpulkan semua productId dari main
+  // product + taggedProducts, lalu 1 query groupBy ambil _sum quantity
+  // sekaligus. Pattern sama dengan /api/products/[slug] (status filter:
+  // hanya order yang sudah PAID atau lebih lanjut → exclude PENDING/cart).
+  // Defensive catch → empty map kalau aggregate error (data tetap render
+  // dengan soldCount = 0, bukan crash seluruh feed).
+  const soldCountMap = new Map<string, number>();
+  if (posts.length > 0) {
+    const productIds = new Set<string>();
+    for (const p of posts) {
+      if (p.product?.id) productIds.add(p.product.id);
+      for (const tp of p.taggedProducts) {
+        if (tp.product?.id) productIds.add(tp.product.id);
+      }
+    }
+    if (productIds.size > 0) {
+      try {
+        const soldRows = await prisma.orderItem.groupBy({
+          by: ["productId"],
+          where: {
+            productId: { in: [...productIds] },
+            order: {
+              status: {
+                in: [
+                  "PAID",
+                  "PROCESSING",
+                  "READY_FOR_PICKUP",
+                  "SHIPPED",
+                  "DELIVERED",
+                ],
+              },
+            },
+          },
+          _sum: { quantity: true },
+        });
+        for (const row of soldRows) {
+          soldCountMap.set(row.productId, row._sum.quantity ?? 0);
+        }
+      } catch {
+        // Aggregate failure tidak boleh nge-break feed list. Map kosong
+        // → soldCount default 0 di serialization.
+      }
+    }
+  }
+
   const hasMore = posts.length > FEED_PAGE_SIZE;
   const sliced = hasMore ? posts.slice(0, FEED_PAGE_SIZE) : posts;
 
@@ -201,6 +254,9 @@ export async function listFeedPosts({
           isAvailable: p.product.isActive,
           imageUrl: p.product.imageUrl,
           hasVariants: p.product.hasVariants,
+          avgRating: p.product.avgRating ?? 0,
+          reviewCount: p.product.reviewCount ?? 0,
+          soldCount: soldCountMap.get(p.product.id) ?? 0,
         }
       : null,
     // Shop the Look: keep inactive tagged products visible for context, but
@@ -220,6 +276,9 @@ export async function listFeedPosts({
         position: tp.position,
         promoPrice: tp.promoPrice ?? null,
         hasVariants: tp.product!.hasVariants,
+        avgRating: tp.product!.avgRating ?? 0,
+        reviewCount: tp.product!.reviewCount ?? 0,
+        soldCount: soldCountMap.get(tp.product!.id) ?? 0,
       })),
     promo:
       p.kind === "PROMO" && p.promoOriginalPrice != null && p.promoDiscountPrice != null

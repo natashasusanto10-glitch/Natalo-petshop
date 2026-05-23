@@ -4160,11 +4160,25 @@ class _MoreGlyphPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
+/// Compact product pill — Final Lock Spec Feed Product Tag.
+///
+/// Layout: `[icon bag biru] [Diskon X% merah] | [Nama produk putih] [chevron]`
+/// - Icon bag biru Natalo + stroke putih (per spec mockup).
+/// - Diskon X% warna merah hanya tampil kalau hasActiveDiscount.
+/// - Separator `|` warna white32.
+/// - Nama produk 1 baris truncate.
+/// - Chevron bawah → onTap buka bottom sheet "Lihat Produk".
+/// - Background: dark translucent (Colors.black 0.55) + backdrop blur.
+/// - No quick-add button (removed per spec) — full pill area tap-to-open.
 class _ProductLinkChip extends StatelessWidget {
   final List<FeedProductLink> products;
   final FeedProductLink featuredProduct;
   final int featuredIndex;
   final VoidCallback onTap;
+  // onQuickAdd kept di signature untuk backward-compat dengan call sites
+  // di feed screen — TIDAK dirender di pill (per spec). Bisa di-remove
+  // belakangan setelah audit semua call sites.
+  // ignore: unused_element_parameter
   final VoidCallback? onQuickAdd;
 
   const _ProductLinkChip({
@@ -4178,202 +4192,108 @@ class _ProductLinkChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final product = featuredProduct;
-    final hasMultiple = products.length > 1;
-    final quickAddEnabled =
-        onQuickAdd != null && product.isAvailable && product.stock > 0;
-    final pricing = _feedProductPricing(product);
-    final promo = pricing.hasPromo ? pricing : null;
-    final kicker = hasMultiple
-        ? 'Produk ${featuredIndex + 1}/${products.length} di video'
-        : 'Produk di video';
-    // Glassy pill: BackdropFilter blur sigma 16 di belakang container
-    // translucent white. Border 1px soft highlight + inner gradient
-    // memberi efek "frosted glass" mirip Instagram Stories tag chip.
-    // Container content tetap render full opacity di atas blur.
     return Material(
       color: Colors.transparent,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(999),
         child: BackdropFilter(
           filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 316),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.white.withValues(alpha: 0.22),
-                  Colors.white.withValues(alpha: 0.10),
+          child: InkWell(
+            onTap: onTap,
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 320),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(999),
+                border:
+                    Border.all(color: Colors.white.withValues(alpha: 0.18)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.32),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
                 ],
               ),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.32)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.22),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Flexible(
-                  child: InkWell(
-                    onTap: onTap,
-                    borderRadius: const BorderRadius.horizontal(
-                        left: Radius.circular(14)),
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(7, 7, 7, 7),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // ── Icon bag biru Natalo + stroke putih ──
+                  Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E5BFF),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.white, width: 1.4),
+                    ),
+                    child: const Icon(
+                      Icons.shopping_bag_outlined,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                  ),
+                  const SizedBox(width: 9),
+                  // ── Diskon badge (kalau ada) + separator + nama produk ──
+                  Flexible(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 260),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      transitionBuilder: (child, animation) =>
+                          FadeTransition(opacity: animation, child: child),
                       child: Row(
+                        key: ValueKey(product.id),
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: SizedBox(
-                              height: 32,
-                              width: 32,
-                              child: product.imageUrl == null
-                                  ? Container(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.12),
-                                      child: const Icon(
-                                        Icons.shopping_bag_outlined,
-                                        color: Colors.white,
-                                        size: 17,
-                                      ),
-                                    )
-                                  : product.imageUrl!.startsWith('assets/')
-                                      ? Image.asset(product.imageUrl!,
-                                          fit: BoxFit.cover)
-                                      : CachedNetworkImage(
-                                          imageUrl: product.imageUrl!,
-                                          fit: BoxFit.cover,
-                                          errorWidget: (_, __, ___) =>
-                                              Container(
-                                            color: Colors.white
-                                                .withValues(alpha: 0.12),
-                                            child: const Icon(
-                                              Icons.shopping_bag_outlined,
-                                              color: Colors.white,
-                                              size: 17,
-                                            ),
-                                          ),
-                                        ),
+                          if (product.hasActiveDiscount) ...[
+                            Text(
+                              'Diskon ${product.discountPercent}%',
+                              style: const TextStyle(
+                                color: Color(0xFFFF4D4F),
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w900,
+                                height: 1,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          Flexible(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  kicker,
-                                  maxLines: 1,
-                                  style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w800,
-                                    height: 1,
-                                  ),
-                                ),
-                                const SizedBox(height: 3),
-                                AnimatedSwitcher(
-                                  duration: const Duration(milliseconds: 260),
-                                  switchInCurve: Curves.easeOutCubic,
-                                  switchOutCurve: Curves.easeInCubic,
-                                  transitionBuilder: (child, animation) {
-                                    return FadeTransition(
-                                      opacity: animation,
-                                      child: SlideTransition(
-                                        position: Tween<Offset>(
-                                          begin: const Offset(0, 0.18),
-                                          end: Offset.zero,
-                                        ).animate(animation),
-                                        child: child,
-                                      ),
-                                    );
-                                  },
-                                  child: Text(
-                                    product.name,
-                                    key: ValueKey(product.id),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 12.2,
-                                      fontWeight: FontWeight.w900,
-                                      height: 1,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (promo != null) ...[
-                            const SizedBox(width: 6),
+                            const SizedBox(width: 8),
                             Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 7,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFE94B5F)
-                                    .withValues(alpha: 0.88),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text(
-                                'PROMO ${promo.discountPercent}%',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 9.5,
-                                  fontWeight: FontWeight.w900,
-                                  height: 1,
-                                ),
+                              width: 1,
+                              height: 12,
+                              color: Colors.white.withValues(alpha: 0.32),
+                            ),
+                            const SizedBox(width: 8),
+                          ],
+                          Flexible(
+                            child: Text(
+                              product.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                                height: 1,
                               ),
                             ),
-                          ],
-                          const SizedBox(width: 4),
-                          const Icon(
-                            Icons.chevron_right_rounded,
-                            color: Colors.white70,
-                            size: 18,
                           ),
                         ],
                       ),
                     ),
                   ),
-                ),
-                Container(
-                  height: 46,
-                  width: 40,
-                  decoration: BoxDecoration(
-                    border: Border(
-                      left: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.14)),
-                    ),
+                  const SizedBox(width: 6),
+                  // ── Chevron arrow-down ── per spec mockup (bukan
+                  // chevron_right). Tap pill area = onTap (open sheet).
+                  const Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    color: Colors.white70,
+                    size: 20,
                   ),
-                  child: InkResponse(
-                    onTap: quickAddEnabled ? onQuickAdd : null,
-                    radius: 22,
-                    child: Icon(
-                      product.hasVariants
-                          ? Icons.tune_rounded
-                          : Icons.add_shopping_cart_rounded,
-                      color: quickAddEnabled
-                          ? Colors.white
-                          : Colors.white.withValues(alpha: 0.28),
-                      size: product.hasVariants ? 18 : 19,
-                      shadows: const [
-                        Shadow(color: Colors.black54, blurRadius: 6),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+                  const SizedBox(width: 2),
+                ],
+              ),
             ),
           ),
         ),
@@ -4397,6 +4317,16 @@ class _FeedTaggedProductsSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Cek apakah ANY product punya diskon aktif → tampilkan banner promo
+    // di atas list. Banner umum (highest discount %) supaya 1 sheet bisa
+    // cover multi-product video tagging.
+    final discounted =
+        products.where((p) => p.hasActiveDiscount).toList();
+    final bannerPercent = discounted.isEmpty
+        ? 0
+        : discounted
+            .map((p) => p.discountPercent)
+            .reduce((a, b) => a > b ? a : b);
     return FractionallySizedBox(
       heightFactor: 0.62,
       child: Container(
@@ -4432,25 +4362,103 @@ class _FeedTaggedProductsSheet extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Produk di Video',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  '${products.length} produk ditag di video ini.',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.58),
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
                 const SizedBox(height: 14),
+                // ── Header row: title (left) + cart icon + X close (right) ──
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Lihat Produk (${products.length})',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    // Cart icon dengan badge count — tap → close sheet
+                    // (user bisa lanjut buka cart di tab Akun/cart screen).
+                    AnimatedBuilder(
+                      animation: cartStore,
+                      builder: (context, _) {
+                        final count = cartStore.totalQuantity;
+                        return Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: Colors.transparent,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: const Color(0xFF1E5BFF),
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.shopping_bag_outlined,
+                                color: Color(0xFF1E5BFF),
+                                size: 20,
+                              ),
+                            ),
+                            if (count > 0)
+                              Positioned(
+                                top: -4,
+                                right: -4,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 5,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFFA726),
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(
+                                      color: const Color(0xFF0B0D12),
+                                      width: 1.4,
+                                    ),
+                                  ),
+                                  constraints: const BoxConstraints(
+                                    minWidth: 18,
+                                    minHeight: 18,
+                                  ),
+                                  child: Text(
+                                    count > 99 ? '99+' : '$count',
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w900,
+                                      height: 1.1,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        );
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      tooltip: 'Tutup',
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white,
+                        size: 22,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                // ── Banner promo (kalau ada produk diskon) ──
+                if (bannerPercent > 0) ...[
+                  _VideoPromoBanner(percent: bannerPercent),
+                  const SizedBox(height: 12),
+                ],
                 Expanded(
                   child: ListView.separated(
                     itemCount: products.length,
@@ -4475,6 +4483,100 @@ class _FeedTaggedProductsSheet extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Banner promo di atas product list bottom sheet.
+/// Layout: [icon discount oranye] [Diskon X% merah / "Khusus untuk produk
+/// di video ini" putih] [badge "Khusus Video" putih].
+class _VideoPromoBanner extends StatelessWidget {
+  final int percent;
+
+  const _VideoPromoBanner({required this.percent});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1F26),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF2A2F36)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFF4D4F).withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.local_offer_outlined,
+              color: Color(0xFFFF4D4F),
+              size: 19,
+            ),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Diskon $percent%',
+                  style: const TextStyle(
+                    color: Color(0xFFFF4D4F),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                    height: 1.1,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                const Text(
+                  'Khusus untuk produk di video ini',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    height: 1.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const _KhususVideoBadge(),
+        ],
+      ),
+    );
+  }
+}
+
+/// Badge `Khusus Video` putih — dipakai di banner + card.
+/// Outlined style: border + text putih, no fill (clean & kontras di atas
+/// dark background).
+class _KhususVideoBadge extends StatelessWidget {
+  const _KhususVideoBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.78)),
+      ),
+      child: const Text(
+        'Khusus Video',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 10.5,
+          fontWeight: FontWeight.w800,
+          height: 1,
         ),
       ),
     );
@@ -4520,6 +4622,7 @@ class _FeedTaggedProductCardState extends State<_FeedTaggedProductCard> {
   Widget build(BuildContext context) {
     final pricing = _feedProductPricing(product);
     final unavailable = !product.isAvailable || product.stock <= 0;
+    final hasRatingData = product.avgRating > 0 || product.soldCount > 0;
     return Material(
       color: Colors.transparent,
       child: Container(
@@ -4542,6 +4645,7 @@ class _FeedTaggedProductCardState extends State<_FeedTaggedProductCard> {
               onTap: widget.onOpenProduct,
               borderRadius: BorderRadius.circular(18),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _FeedProductThumb(url: product.imageUrl),
                   const SizedBox(width: 12),
@@ -4549,44 +4653,67 @@ class _FeedTaggedProductCardState extends State<_FeedTaggedProductCard> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        Text(
+                          product.name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13.8,
+                            fontWeight: FontWeight.w900,
+                            height: 1.16,
+                          ),
+                        ),
+                        // ── Badges row: Diskon X% merah + Khusus Video putih ──
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 5,
+                          crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
-                            Expanded(
-                              child: Text(
-                                product.name,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13.8,
-                                  fontWeight: FontWeight.w900,
-                                  height: 1.16,
+                            if (pricing.hasPromo)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 7,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.transparent,
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: const Color(0xFFFF4D4F),
+                                    width: 1.2,
+                                  ),
+                                ),
+                                child: Text(
+                                  'Diskon ${pricing.discountPercent}%',
+                                  style: const TextStyle(
+                                    color: Color(0xFFFF4D4F),
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w900,
+                                    height: 1,
+                                  ),
                                 ),
                               ),
-                            ),
-                            const Icon(
-                              Icons.chevron_right_rounded,
-                              color: Colors.white54,
-                              size: 20,
-                            ),
+                            const _KhususVideoBadge(),
                           ],
                         ),
+                        // ── Rating + terjual row ──
+                        if (hasRatingData) ...[
+                          const SizedBox(height: 7),
+                          _ProductRatingRow(
+                            avgRating: product.avgRating,
+                            soldCount: product.soldCount,
+                          ),
+                        ],
+                        // ── Harga row: original (coret grey) + display (merah) ──
                         const SizedBox(height: 7),
                         Wrap(
                           spacing: 7,
                           runSpacing: 5,
                           crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
-                            Text(
-                              formatRupiah(pricing.displayPrice),
-                              style: const TextStyle(
-                                color: _officialGold,
-                                fontSize: 15,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                            if (pricing.hasPromo) ...[
+                            if (pricing.hasPromo)
                               Text(
                                 formatRupiah(pricing.originalPrice),
                                 style: TextStyle(
@@ -4598,31 +4725,18 @@ class _FeedTaggedProductCardState extends State<_FeedTaggedProductCard> {
                                       Colors.white.withValues(alpha: 0.42),
                                 ),
                               ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 7,
-                                  vertical: 3,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFE94B5F)
-                                      .withValues(alpha: 0.16),
-                                  borderRadius: BorderRadius.circular(999),
-                                  border: Border.all(
-                                    color: const Color(0xFFE94B5F)
-                                        .withValues(alpha: 0.30),
-                                  ),
-                                ),
-                                child: Text(
-                                  'PROMO ${pricing.discountPercent}%',
-                                  style: const TextStyle(
-                                    color: Color(0xFFFECACA),
-                                    fontSize: 9.8,
-                                    fontWeight: FontWeight.w900,
-                                    height: 1,
-                                  ),
-                                ),
+                            Text(
+                              formatRupiah(pricing.displayPrice),
+                              style: TextStyle(
+                                // Spec: harga diskon merah, harga normal merah
+                                // juga (no separation). Konsisten satu warna.
+                                color: pricing.hasPromo
+                                    ? const Color(0xFFFF4D4F)
+                                    : const Color(0xFFFF4D4F),
+                                fontSize: 15,
+                                fontWeight: FontWeight.w900,
                               ),
-                            ],
+                            ),
                           ],
                         ),
                         if (unavailable) ...[
@@ -4800,28 +4914,112 @@ class _FeedSmallCartButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Cart icon button — blue line tema Natalo (spec ganti dari gold).
+    // Filled biru transparan saat enabled, outline aja saat disabled.
     return SizedBox(
       height: 45,
       width: 45,
       child: IconButton(
         onPressed: enabled ? onPressed : null,
         style: IconButton.styleFrom(
-          backgroundColor:
-              Colors.white.withValues(alpha: enabled ? 0.10 : 0.04),
-          foregroundColor:
-              Colors.white.withValues(alpha: enabled ? 0.92 : 0.28),
+          backgroundColor: enabled
+              ? const Color(0xFF1E5BFF).withValues(alpha: 0.10)
+              : Colors.white.withValues(alpha: 0.04),
+          foregroundColor: enabled
+              ? const Color(0xFF1E5BFF)
+              : Colors.white.withValues(alpha: 0.28),
           disabledForegroundColor: Colors.white.withValues(alpha: 0.28),
           side: BorderSide(
-            color: _officialGold.withValues(alpha: enabled ? 0.34 : 0.08),
+            color: const Color(0xFF1E5BFF)
+                .withValues(alpha: enabled ? 0.55 : 0.12),
+            width: 1.4,
           ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(17),
+            borderRadius: BorderRadius.circular(14),
           ),
         ),
-        icon: const Icon(Icons.add_shopping_cart_rounded, size: 20),
+        icon: const Icon(Icons.shopping_cart_outlined, size: 20),
       ),
     );
   }
+}
+
+/// Rating + terjual row — "★ 4.9 · 73,6 rb+ terjual" / hanya yang ada.
+/// Star kuning saturated, divider dot abu, text white70.
+class _ProductRatingRow extends StatelessWidget {
+  final double avgRating;
+  final int soldCount;
+
+  const _ProductRatingRow({
+    required this.avgRating,
+    required this.soldCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasRating = avgRating > 0;
+    final hasSold = soldCount > 0;
+    if (!hasRating && !hasSold) return const SizedBox.shrink();
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (hasRating) ...[
+          const Icon(
+            Icons.star_rounded,
+            color: Color(0xFFFFB400),
+            size: 14,
+          ),
+          const SizedBox(width: 3),
+          Text(
+            avgRating.toStringAsFixed(1).replaceAll('.', ','),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w800,
+              height: 1,
+            ),
+          ),
+        ],
+        if (hasRating && hasSold) ...[
+          const SizedBox(width: 8),
+          Container(
+            width: 1,
+            height: 10,
+            color: Colors.white.withValues(alpha: 0.22),
+          ),
+          const SizedBox(width: 8),
+        ],
+        if (hasSold)
+          Text(
+            '${_formatSoldShort(soldCount)} terjual',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.70),
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              height: 1,
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Format jumlah terjual: 73,6 rb+ / 1,2 jt+ / 250+ / 12.
+/// Local helper supaya tidak butuh import dari product_card.dart yang
+/// pulls in widget lain.
+String _formatSoldShort(int value) {
+  if (value >= 1000000) {
+    final d = value / 1000000;
+    final fixed = d >= 10 ? d.toStringAsFixed(0) : d.toStringAsFixed(1);
+    return '${fixed.replaceAll('.', ',').replaceAll(',0', '')} jt+';
+  }
+  if (value >= 1000) {
+    final d = value / 1000;
+    final fixed = d >= 10 ? d.toStringAsFixed(0) : d.toStringAsFixed(1);
+    return '${fixed.replaceAll('.', ',').replaceAll(',0', '')} rb+';
+  }
+  if (value >= 100) return '${(value ~/ 50) * 50}+';
+  return '$value';
 }
 
 class _FeedPrimaryProductButton extends StatelessWidget {
@@ -5700,6 +5898,14 @@ class _ProductMetaChip extends StatelessWidget {
 /// reminder produk dengan tombol "Beli" jelas. Hidden saat long-press
 /// preview atau comment sheet open. Dismissable via X icon (sticky sampai
 /// user swipe ke post lain).
+/// Popup preview produk — auto-show ~2s sebelum video berakhir (logic
+/// trigger di feed_screen line 1847). Layout Final Lock Spec:
+///  - Dark glass card dengan arrow pointing down ke pill
+///  - Thumbnail produk (kiri, 4:5 portrait)
+///  - Content right: nama + badges (Diskon merah + Khusus Video putih)
+///    + rating (★ 4.9 · 73,6 rb+ terjual) + harga (coret + display merah)
+///    + bottom row: cart icon biru + tombol Beli biru
+///  - Small X dismiss di kanan atas
 class _EndOfVideoProductCta extends StatelessWidget {
   final FeedProductLink product;
   final VoidCallback onTap;
@@ -5718,122 +5924,199 @@ class _EndOfVideoProductCta extends StatelessWidget {
     final pricing = _feedProductPricing(product);
     final canBuy = product.isAvailable && product.stock > 0;
     final imageUrl = product.imageUrl;
+    final hasRatingData = product.avgRating > 0 || product.soldCount > 0;
 
     return Material(
       color: Colors.transparent,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.97),
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.35),
-              blurRadius: 24,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(18),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(10, 10, 12, 10),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // Product image
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: SizedBox(
-                    width: 56,
-                    height: 56,
-                    child: imageUrl != null && imageUrl.isNotEmpty
-                        ? CachedNetworkImage(
-                            imageUrl: imageUrl,
-                            fit: BoxFit.cover,
-                            placeholder: (_, __) =>
-                                Container(color: const Color(0xFFF1F1F1)),
-                            errorWidget: (_, __, ___) =>
-                                Container(color: const Color(0xFFF1F1F1)),
-                          )
-                        : Container(color: const Color(0xFFF1F1F1)),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                // Name + price
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        product.name,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF111111),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                          height: 1.18,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            formatRupiah(pricing.displayPrice),
-                            style: const TextStyle(
-                              color: Color(0xFFEF4444),
-                              fontSize: 14,
-                              fontWeight: FontWeight.w900,
-                              height: 1,
-                            ),
-                          ),
-                          if (pricing.hasPromo) ...[
-                            const SizedBox(width: 6),
-                            Text(
-                              formatRupiah(pricing.originalPrice),
-                              style: const TextStyle(
-                                color: Color(0xFF9AA0A6),
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                decoration: TextDecoration.lineThrough,
-                                height: 1,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 10),
-                // Beli button (atau "Habis" kalau stok kosong)
-                _CtaBuyButton(enabled: canBuy, onTap: canBuy ? onBuy : null),
-                const SizedBox(width: 4),
-                // Dismiss
-                InkResponse(
-                  onTap: onDismiss,
-                  radius: 18,
-                  child: const Padding(
-                    padding: EdgeInsets.all(4),
-                    child: Icon(
-                      Icons.close_rounded,
-                      size: 18,
-                      color: Color(0xFF6B7280),
-                    ),
-                  ),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.72),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.40),
+                  blurRadius: 26,
+                  offset: const Offset(0, 10),
                 ),
               ],
             ),
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(18),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ── Thumbnail produk (4:5 portrait) ──
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: SizedBox(
+                        width: 72,
+                        height: 90,
+                        child: imageUrl != null && imageUrl.isNotEmpty
+                            ? CachedNetworkImage(
+                                imageUrl: imageUrl,
+                                fit: BoxFit.cover,
+                                placeholder: (_, __) =>
+                                    Container(color: const Color(0xFF2A2F36)),
+                                errorWidget: (_, __, ___) =>
+                                    Container(color: const Color(0xFF2A2F36)),
+                              )
+                            : Container(color: const Color(0xFF2A2F36)),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    // ── Content right ──
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Spacer kecil supaya beri ruang untuk X di top-right
+                          // tanpa overlap text. Padding right ~20 lewat
+                          // contentPadding gak available — pakai SizedBox.
+                          Padding(
+                            padding: const EdgeInsets.only(right: 22),
+                            child: Text(
+                              product.name,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w800,
+                                height: 1.18,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          // Badges row
+                          Wrap(
+                            spacing: 5,
+                            runSpacing: 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              if (pricing.hasPromo)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 5,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFF4D4F),
+                                    borderRadius: BorderRadius.circular(5),
+                                  ),
+                                  child: Text(
+                                    'Diskon ${pricing.discountPercent}%',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.w900,
+                                      height: 1,
+                                    ),
+                                  ),
+                                ),
+                              const _KhususVideoBadge(),
+                            ],
+                          ),
+                          // Rating row (conditional)
+                          if (hasRatingData) ...[
+                            const SizedBox(height: 5),
+                            _ProductRatingRow(
+                              avgRating: product.avgRating,
+                              soldCount: product.soldCount,
+                            ),
+                          ],
+                          const SizedBox(height: 6),
+                          // Harga row
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 3,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              if (pricing.hasPromo)
+                                Text(
+                                  formatRupiah(pricing.originalPrice),
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.45),
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700,
+                                    decoration: TextDecoration.lineThrough,
+                                    decorationColor:
+                                        Colors.white.withValues(alpha: 0.45),
+                                    height: 1,
+                                  ),
+                                ),
+                              Text(
+                                formatRupiah(pricing.displayPrice),
+                                style: const TextStyle(
+                                  color: Color(0xFFFF4D4F),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w900,
+                                  height: 1,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          // Cart icon + Beli button row
+                          Row(
+                            children: [
+                              _PopupCartButton(
+                                enabled: canBuy,
+                                onTap: canBuy ? onBuy : null,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _CtaBuyButton(
+                                  enabled: canBuy,
+                                  onTap: canBuy ? onBuy : null,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
-        ),
+          // ── X dismiss (top-right) ──
+          Positioned(
+            top: 6,
+            right: 6,
+            child: InkResponse(
+              onTap: onDismiss,
+              radius: 18,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.45),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.close_rounded,
+                  size: 14,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
+/// Tombol Beli di popup preview — spec: warna Natalo biru agak ringan
+/// (bukan merah). Match `_FeedPrimaryProductButton` style.
 class _CtaBuyButton extends StatelessWidget {
   final bool enabled;
   final VoidCallback? onTap;
@@ -5844,21 +6127,70 @@ class _CtaBuyButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(999),
+      borderRadius: BorderRadius.circular(10),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        height: 36,
+        alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: enabled ? const Color(0xFFEF4444) : const Color(0xFFE5E7EB),
-          borderRadius: BorderRadius.circular(999),
+          gradient: enabled
+              ? const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color(0xFF5FBFFF),
+                    Color(0xFF1E87FF),
+                  ],
+                )
+              : null,
+          color: enabled ? null : Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(10),
         ),
         child: Text(
           enabled ? 'Beli' : 'Habis',
           style: TextStyle(
-            color: enabled ? Colors.white : const Color(0xFF9CA3AF),
-            fontSize: 12,
+            color: enabled ? Colors.white : Colors.white.withValues(alpha: 0.45),
+            fontSize: 12.5,
             fontWeight: FontWeight.w900,
             letterSpacing: 0.2,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Cart icon button di popup preview — line biru tema Natalo.
+class _PopupCartButton extends StatelessWidget {
+  final bool enabled;
+  final VoidCallback? onTap;
+
+  const _PopupCartButton({required this.enabled, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: enabled
+              ? const Color(0xFF1E5BFF).withValues(alpha: 0.15)
+              : Colors.white.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: const Color(0xFF1E5BFF)
+                .withValues(alpha: enabled ? 0.65 : 0.15),
+            width: 1.4,
+          ),
+        ),
+        child: Icon(
+          Icons.shopping_cart_outlined,
+          color: enabled
+              ? const Color(0xFF1E5BFF)
+              : Colors.white.withValues(alpha: 0.28),
+          size: 18,
         ),
       ),
     );

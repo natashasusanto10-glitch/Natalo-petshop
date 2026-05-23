@@ -29,6 +29,12 @@ export type FeedPostProduct = {
   // hasVariants — saat true, in-feed quick add tidak boleh skip variant
   // picker (user harus pilih size/warna/dll). Saat false, +1 cart langsung.
   hasVariants: boolean;
+  // Social proof fields — di-tampilkan di popup preview + bottom sheet
+  // (Final Lock Spec Feed Product). Defensive default 0 di Flutter
+  // parser supaya backward-compat untuk old API response.
+  avgRating: number;
+  reviewCount: number;
+  soldCount: number;
 } | null;
 
 // Shop the Look — non-nullable variant. Setiap item di taggedProducts
@@ -50,6 +56,11 @@ export type FeedPostTaggedProduct = {
   promoPrice: number | null;
   // hasVariants — sama spt FeedPostProduct, gate quick-add path.
   hasVariants: boolean;
+  // Social proof — sama spt FeedPostProduct. Dipakai untuk render
+  // "★ 4.9 · 73,6 rb+ terjual" di popup preview + bottom sheet card.
+  avgRating: number;
+  reviewCount: number;
+  soldCount: number;
 };
 
 export type FeedPostListItem = {

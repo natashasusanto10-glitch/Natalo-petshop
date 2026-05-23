@@ -54,6 +54,12 @@ class FeedProductLink {
   final int weightGram;
   final bool hasVariants;
   final bool isActive;
+  // Social proof — dipakai di Feed video product flow (popup preview +
+  // bottom sheet card). Default 0 untuk backward-compat kalau backend
+  // belum kirim (old client / API rollback). UI hide section kalau 0.
+  final double avgRating;
+  final int reviewCount;
+  final int soldCount;
 
   const FeedProductLink({
     required this.id,
@@ -67,9 +73,35 @@ class FeedProductLink {
     this.weightGram = 500,
     this.hasVariants = false,
     this.isActive = true,
+    this.avgRating = 0,
+    this.reviewCount = 0,
+    this.soldCount = 0,
   });
 
   bool get isAvailable => isActive && stock > 0;
+
+  /// Diskon aktif → tampilkan badge "Diskon X%" + harga coret di UI.
+  bool get hasActiveDiscount {
+    final discount = discountPrice;
+    final promo = promoPrice;
+    final cheapest = [
+      if (discount != null && discount > 0) discount,
+      if (promo != null && promo > 0) promo,
+    ].fold<int?>(null, (acc, v) => acc == null || v < acc ? v : acc);
+    return cheapest != null && cheapest < price && price > 0;
+  }
+
+  /// Persentase diskon (1-99) — return 0 kalau no discount aktif.
+  int get discountPercent {
+    if (!hasActiveDiscount) return 0;
+    final discount = discountPrice;
+    final promo = promoPrice;
+    final cheapest = [
+      if (discount != null && discount > 0) discount,
+      if (promo != null && promo > 0) promo,
+    ].fold<int?>(null, (acc, v) => acc == null || v < acc ? v : acc)!;
+    return (((price - cheapest) / price) * 100).round().clamp(1, 99);
+  }
 
   factory FeedProductLink.fromJson(Map<String, dynamic> json) {
     return FeedProductLink(
@@ -84,6 +116,9 @@ class FeedProductLink {
       weightGram: (json['weightGram'] as num?)?.toInt() ?? 500,
       hasVariants: json['hasVariants'] as bool? ?? false,
       isActive: json['isActive'] as bool? ?? true,
+      avgRating: (json['avgRating'] as num?)?.toDouble() ?? 0,
+      reviewCount: (json['reviewCount'] as num?)?.toInt() ?? 0,
+      soldCount: (json['soldCount'] as num?)?.toInt() ?? 0,
     );
   }
 }
