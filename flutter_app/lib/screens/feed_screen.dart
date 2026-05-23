@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_blurhash/flutter_blurhash.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:cached_video_player_plus/cached_video_player_plus.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
@@ -68,7 +69,15 @@ class FeedScreen extends StatefulWidget {
 
 class _FeedScreenState extends State<FeedScreen> {
   final PageController _pageController = PageController();
+  // Parallel maps: _preloadedControllers untuk reads (.value, VideoPlayer
+  // widget, play/pause). _preloadedCachedPlayers untuk lifecycle (dispose
+  // via wrapper supaya cache file di-track properly oleh
+  // flutter_cache_manager). Wrapper instances 1:1 dengan controller di
+  // map sebelahnya — selalu created bersamaan via CachedVideoPlayerPlus
+  // pipeline. Pisah Map supaya existing code yang akses controller tidak
+  // perlu di-refactor.
   final Map<String, VideoPlayerController> _preloadedControllers = {};
+  final Map<String, CachedVideoPlayerPlus> _preloadedCachedPlayers = {};
   List<FeedPost> _posts = const [];
   String? _nextCursor;
   bool _loading = true;
@@ -112,9 +121,18 @@ class _FeedScreenState extends State<FeedScreen> {
   void dispose() {
     cartStore.removeListener(_syncTopCartCount);
     blockService.removeListener(_onBlocklistChanged);
-    for (final controller in _preloadedControllers.values) {
-      controller.dispose();
+    // Prefer dispose via wrapper — handles both underlying controller +
+    // cache file reference. Sisa controllers tanpa wrapper (shouldn't
+    // happen di prod tapi defensive) di-dispose langsung.
+    for (final player in _preloadedCachedPlayers.values) {
+      player.dispose();
     }
+    for (final id in _preloadedControllers.keys.toList()) {
+      if (!_preloadedCachedPlayers.containsKey(id)) {
+        _preloadedControllers[id]?.dispose();
+      }
+    }
+    _preloadedCachedPlayers.clear();
     _preloadedControllers.clear();
     _pageController.dispose();
     super.dispose();
@@ -310,11 +328,18 @@ class _FeedScreenState extends State<FeedScreen> {
 
     // Dispose controllers di luar window — free ~30MB per controller +
     // release native ExoPlayer/AVPlayer slot (limited 4-8 di Android).
+    // Dispose via wrapper kalau ada (handle cache properly), fallback ke
+    // controller dispose langsung. Cache file di disk TIDAK dihapus —
+    // tetap available untuk repeat-view (itu point disk cache).
     final staleIds = _preloadedControllers.keys
         .where((id) => !keepIds.contains(id))
         .toList();
     for (final id in staleIds) {
-      await _preloadedControllers.remove(id)?.dispose();
+      final cachedPlayer = _preloadedCachedPlayers.remove(id);
+      _preloadedControllers.remove(id);
+      if (cachedPlayer != null) {
+        await cachedPlayer.dispose();
+      }
     }
 
     if (!_shouldPreloadNext) return;
@@ -349,11 +374,20 @@ class _FeedScreenState extends State<FeedScreen> {
 
       // Network-aware quality rewrite (Sprint 2 #7).
       final resolvedUrl = videoQualityService.resolvePlaybackUrl(url);
-      final controller =
-          VideoPlayerController.networkUrl(Uri.parse(resolvedUrl));
-      _preloadedControllers[id] = controller;
+      // Wrap dengan CachedVideoPlayerPlus → disk cache otomatis aktif.
+      // Repeat-view video sama → load instant dari disk HP (0 data).
+      // TTL 7 hari — cache invalidate kalau lebih lama (auto re-download).
+      // .controller exposes underlying VideoPlayerController, jadi existing
+      // code yang akses .value / play() / pause() tetap work.
+      final cachedPlayer = CachedVideoPlayerPlus.networkUrl(
+        Uri.parse(resolvedUrl),
+        invalidateCacheIfOlderThan: const Duration(days: 7),
+      );
+      _preloadedCachedPlayers[id] = cachedPlayer;
       initFutures.add(
-        controller.initialize().then((_) async {
+        cachedPlayer.initialize().then((_) async {
+          final controller = cachedPlayer.controller;
+          _preloadedControllers[id] = controller;
           // Prepared state: paused, frame 0 ready, muted, looping prepped.
           // Saat widget attach via preloadedController prop, tinggal play()
           // — instant, no init lag.
@@ -361,7 +395,9 @@ class _FeedScreenState extends State<FeedScreen> {
           await controller.setVolume(0);
           await controller.seekTo(Duration.zero);
         }).catchError((Object _) async {
-          await _preloadedControllers.remove(id)?.dispose();
+          final p = _preloadedCachedPlayers.remove(id);
+          _preloadedControllers.remove(id);
+          if (p != null) await p.dispose();
         }),
       );
     }
@@ -477,6 +513,10 @@ class _FeedScreenState extends State<FeedScreen> {
                         isActive: index == _activeIndex,
                         preloadedController:
                             _preloadedControllers.remove(post.id),
+                        // Pass wrapper juga — child butuh wrapper untuk
+                        // dispose proper (release cache reference).
+                        preloadedCachedPlayer:
+                            _preloadedCachedPlayers.remove(post.id),
                         onOverlayStateChanged: _setFeedInteractionLocked,
                       );
                     },
@@ -1580,6 +1620,11 @@ class _FeedPostView extends StatefulWidget {
   final FeedPost post;
   final bool isActive;
   final VideoPlayerController? preloadedController;
+  /// Wrapper instance dari CachedVideoPlayerPlus — null kalau controller
+  /// adopt dari preload tapi wrapper sudah hilang (rare), atau kalau
+  /// child create fresh via _maybeInitVideo. Disimpan supaya dispose
+  /// proper handle cache file lifecycle via wrapper.dispose().
+  final CachedVideoPlayerPlus? preloadedCachedPlayer;
   final ValueChanged<bool> onOverlayStateChanged;
 
   const _FeedPostView({
@@ -1587,6 +1632,7 @@ class _FeedPostView extends StatefulWidget {
     required this.isActive,
     required this.preloadedController,
     required this.onOverlayStateChanged,
+    this.preloadedCachedPlayer,
   });
 
   @override
@@ -1601,6 +1647,12 @@ class _FeedPostViewState extends State<_FeedPostView>
   static const double _commentSheetDismissExtent = 0.30;
 
   VideoPlayerController? _videoController;
+  /// Wrapper instance untuk lifecycle network video (disk cache). Null
+  /// kalau ga ada wrapper (defensive). Disposed di dispose() lebih dulu
+  /// dari _videoController supaya cache file di-release proper. Untuk
+  /// adopt-from-parent path: copy dari widget.preloadedCachedPlayer.
+  /// Untuk fresh-create path: di-set di _maybeInitVideo.
+  CachedVideoPlayerPlus? _cachedPlayer;
   final DraggableScrollableController _commentSheetController =
       DraggableScrollableController();
   final ValueNotifier<double> _commentSheetExtent =
@@ -1717,6 +1769,10 @@ class _FeedPostViewState extends State<_FeedPostView>
     final controller = widget.preloadedController;
     if (controller == null) return;
     _videoController = controller;
+    // Adopt wrapper juga supaya child bisa dispose properly. Wrapper
+    // might be null (legacy or unwrapped). Either way, controller-level
+    // ops tetap work.
+    _cachedPlayer = widget.preloadedCachedPlayer;
     controller.addListener(_handleVideoPositionForCta);
     // Preloaded controller selalu sudah initialize() — timer reset di sini
     // cuma untuk kasus defensif (controller mungkin dispose dari luar). Kalau
@@ -1852,18 +1908,27 @@ class _FeedPostViewState extends State<_FeedPostView>
       // Sprint 2 #7 — Network-aware quality rewrite. Same logic dgn
       // preload path supaya consistent quality decision.
       final resolvedUrl = videoQualityService.resolvePlaybackUrl(url);
-      final controller =
-          VideoPlayerController.networkUrl(Uri.parse(resolvedUrl));
-      _videoController = controller;
-      controller.addListener(_handleVideoPositionForCta);
-      // Schedule spinner muncul 800ms dari sekarang. Kalau initialize keburu
+      // Wrap dengan CachedVideoPlayerPlus untuk disk cache — repeat-view
+      // load instant dari disk, 0 data dari network. TTL 7 hari.
+      final cachedPlayer = CachedVideoPlayerPlus.networkUrl(
+        Uri.parse(resolvedUrl),
+        invalidateCacheIfOlderThan: const Duration(days: 7),
+      );
+      _cachedPlayer = cachedPlayer;
+      // Schedule spinner muncul 1200ms dari sekarang. Kalau initialize keburu
       // selesai dalam window itu, _cancelLoadingSpinnerDelay() bawah cancel
       // timer → spinner tidak pernah render = perceived instant.
       _resetLoadingSpinnerTimer();
       if (mounted) setState(() {});
-      await controller.initialize();
+      await cachedPlayer.initialize();
+      final controller = cachedPlayer.controller;
+      _videoController = controller;
+      controller.addListener(_handleVideoPositionForCta);
       if (!mounted) {
-        controller.dispose();
+        // Dispose via wrapper supaya cache reference di-release proper.
+        await cachedPlayer.dispose();
+        _cachedPlayer = null;
+        _videoController = null;
         return;
       }
       _cancelLoadingSpinnerDelay();
@@ -1876,7 +1941,14 @@ class _FeedPostViewState extends State<_FeedPostView>
       setState(() {});
     } catch (_) {
       _cancelLoadingSpinnerDelay();
-      await _videoController?.dispose();
+      // Error path — dispose wrapper kalau ada, kalau ga ada controller
+      // dispose direct (defensive fallback).
+      if (_cachedPlayer != null) {
+        await _cachedPlayer!.dispose();
+        _cachedPlayer = null;
+      } else {
+        await _videoController?.dispose();
+      }
       _videoController = null;
       if (!mounted) return;
       setState(() => _videoLoadFailed = true);
@@ -1891,7 +1963,17 @@ class _FeedPostViewState extends State<_FeedPostView>
     _commentSheetController.dispose();
     _commentSheetExtent.dispose();
     _videoController?.removeListener(_handleVideoPositionForCta);
-    _videoController?.dispose();
+    // Prefer dispose via wrapper — handle cache reference cleanup.
+    // Wrapper.dispose() internally call controller.dispose() too, jadi
+    // tidak perlu double-dispose. Kalau wrapper null (defensive), fallback
+    // ke controller dispose direct.
+    if (_cachedPlayer != null) {
+      _cachedPlayer!.dispose();
+      _cachedPlayer = null;
+    } else {
+      _videoController?.dispose();
+    }
+    _videoController = null;
     _heartBurstController.dispose();
     super.dispose();
   }

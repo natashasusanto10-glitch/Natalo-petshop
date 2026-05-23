@@ -1,7 +1,7 @@
 name: natalo_petshop_flutter
 description: Native Flutter app for Natalo Petshop.
 publish_to: none
-version: 1.0.87+126
+version: 1.0.88+127
 environment:
   sdk: '>=3.0.0 <4.0.0'
   flutter: '>=3.7.0'
@@ -138,6 +138,15 @@ dependencies:
   # Saat tap Next, ambil bytes ter-crop sesuai posisi user via
   # CropController.croppedBitmap().
   crop_image: ^1.0.16
+  # Video disk cache — wraps video_player API, simpan video file di disk
+  # HP user setelah download pertama. Repeat-view feed → load dari disk
+  # (instant, 0 data). Backed by flutter_cache_manager. Compatible drop-in
+  # dengan video_player: CachedVideoPlayerPlus.networkUrl(uri) instead of
+  # VideoPlayerController.networkUrl(uri). Akses underlying controller
+  # via `.controller` property. TTL via invalidateCacheIfOlderThan.
+  # Hanya dipakai di feed_screen (network video). File-based video di
+  # composer/picker/my-posts tetap pakai VideoPlayerController.file().
+  cached_video_player_plus: ^4.1.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
