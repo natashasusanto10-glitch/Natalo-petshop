@@ -2,11 +2,23 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../utils/haptics.dart';
 import '../utils/phone_formatter.dart';
+
+/// SharedPreferences key untuk store deadline cooldown OTP resend.
+/// Value = `DateTime.millisecondsSinceEpoch` saat cooldown habis. Dipakai
+/// untuk restore countdown saat user balik ke register screen setelah
+/// navigate away atau app cold-restart selama cooldown masih berjalan.
+///
+/// Auto-clear saat:
+/// - Countdown reach 0 (timer tick clear).
+/// - Register success step 2 (akun jadi).
+/// - Stale (deadline sudah lewat saat dibaca).
+const _kRegisterOtpCooldownKey = 'register_otp_resend_until_ms';
 
 const _brandBlue = Color(0xFF0787F5);
 const _brandBlueDark = Color(0xFF075FCC);
@@ -54,6 +66,46 @@ class _RegisterScreenState extends State<RegisterScreen> {
     ]) {
       controller.addListener(_onFormChanged);
     }
+    // Restore cooldown dari SharedPreferences kalau ada deadline yang
+    // masih in-future. Handle edge case: user kill app saat cooldown,
+    // reopen dalam window 60s → countdown auto-resume dari nilai sisa
+    // (tidak reset ke 0 + tidak boost user bisa spam langsung).
+    _restoreCountdownFromPrefs();
+  }
+
+  Future<void> _restoreCountdownFromPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final until = prefs.getInt(_kRegisterOtpCooldownKey) ?? 0;
+      if (until <= 0) return;
+      final remainingMs = until - DateTime.now().millisecondsSinceEpoch;
+      if (remainingMs <= 1000) {
+        // Cooldown sudah lewat → cleanup stale value.
+        await prefs.remove(_kRegisterOtpCooldownKey);
+        return;
+      }
+      if (!mounted) return;
+      final remainingSeconds = (remainingMs / 1000).round();
+      setState(() => _resendCountdown = remainingSeconds);
+      _resendTimer = Timer.periodic(const Duration(seconds: 1), (t) async {
+        if (!mounted) {
+          t.cancel();
+          return;
+        }
+        if (_resendCountdown <= 1) {
+          t.cancel();
+          setState(() => _resendCountdown = 0);
+          try {
+            final p = await SharedPreferences.getInstance();
+            await p.remove(_kRegisterOtpCooldownKey);
+          } catch (_) {}
+        } else {
+          setState(() => _resendCountdown -= 1);
+        }
+      });
+    } catch (_) {
+      // Disk read fail → silent, cooldown stay at 0.
+    }
   }
 
   @override
@@ -81,10 +133,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
   /// Start 60-second cooldown setelah OTP terkirim (step 1 sukses atau
   /// resend tap). Selama countdown >0, button resend disabled +
   /// tampilkan "Tunggu Xs". Timer.periodic 1 detik, auto-cancel saat 0.
-  void _startResendCooldown() {
+  ///
+  /// Persist deadline ke SharedPreferences supaya kalau user navigate
+  /// keluar / app cold-restart selama cooldown, balik ke screen ini
+  /// countdown auto-resume (tidak reset).
+  Future<void> _startResendCooldown() async {
     _resendTimer?.cancel();
     setState(() => _resendCountdown = 60);
-    _resendTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+    // Tulis deadline ke prefs SEBELUM timer mulai — supaya kalau widget
+    // di-dispose mid-tick, value tetap ada di disk untuk restore.
+    final deadlineMs =
+        DateTime.now().millisecondsSinceEpoch + 60 * 1000;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_kRegisterOtpCooldownKey, deadlineMs);
+    } catch (_) {
+      // Disk write fail → in-memory cooldown tetap jalan. Tidak block UX.
+    }
+    _resendTimer = Timer.periodic(const Duration(seconds: 1), (t) async {
       if (!mounted) {
         t.cancel();
         return;
@@ -92,6 +158,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (_resendCountdown <= 1) {
         t.cancel();
         setState(() => _resendCountdown = 0);
+        // Cleanup disk value setelah cooldown selesai.
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove(_kRegisterOtpCooldownKey);
+        } catch (_) {}
       } else {
         setState(() => _resendCountdown -= 1);
       }
@@ -199,6 +270,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
       // Step 2 sukses — user dibuat. User tetap login manual supaya session
       // dan cart sync memakai flow login member yang sama.
       AppHaptics.success();
+      // Cleanup cooldown pref — flow register selesai, cooldown OTP
+      // resend tidak relevan lagi. Cancel timer juga untuk safety.
+      _resendTimer?.cancel();
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove(_kRegisterOtpCooldownKey);
+      } catch (_) {}
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -240,9 +318,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
       }
       if (error.isNetworkError) {
         if (!_otpSent) {
-          return 'Koneksi sedang lambat saat mengirim OTP. Coba lagi sebentar lagi.';
+          return 'Pengiriman OTP belum berhasil. Coba lagi sebentar.';
         }
-        return 'Koneksi sedang lambat saat mendaftar. Coba lagi sebentar lagi.';
+        return 'Pendaftaran belum berhasil. Coba lagi sebentar.';
       }
       return error.message;
     }
