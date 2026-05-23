@@ -66,7 +66,6 @@ class _FeedCaptionEditScreenState extends State<FeedCaptionEditScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
     return PopScope(
       // Intercept system back — commit caption changes (BACK = SAVE per UX
       // decision). Manual pop di handler.
@@ -77,8 +76,9 @@ class _FeedCaptionEditScreenState extends State<FeedCaptionEditScreen> {
       },
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        // resizeToAvoidBottomInset: false supaya kita yang manage keyboard
-        // avoid manually via padding bottom (lebih kontrol layout sheet).
+        // resizeToAvoidBottomInset: false supaya keyboard tidak push sheet
+        // ke atas — sheet tetap di top, keyboard naik di atas dim layer.
+        // Dim layer + Post Baru behind tetap visible di antara sheet & kbd.
         resizeToAvoidBottomInset: false,
         body: Stack(
           children: [
@@ -92,64 +92,66 @@ class _FeedCaptionEditScreenState extends State<FeedCaptionEditScreen> {
                 child: Container(color: Colors.black.withValues(alpha: 0.55)),
               ),
             ),
-            // ── White caption sheet ── absorbed pointer area, no tap-thru.
+            // ── White caption sheet ── di top, mainAxisSize.min supaya
+            // hanya setinggi konten (header + textfield). Tidak ada bottom
+            // padding keyboard — biar dim layer di bawah keliatan. Keyboard
+            // muncul OS-side di atas dim, tidak meng-cover sheet.
             Align(
               alignment: Alignment.topCenter,
               child: Material(
                 color: Colors.white,
                 child: SafeArea(
                   bottom: false,
-                  child: Padding(
-                    // Keyboard avoid — kasih ruang ke bottom equal keyboard
-                    // height supaya field tidak ke-cover saat keyboard naik.
-                    padding: EdgeInsets.only(bottom: keyboardInset),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _CaptionHeader(
-                          onBack: _commitAndPop,
-                          onOk: _commitAndPop,
-                        ),
-                        const Divider(
-                          height: 1,
-                          thickness: 0.6,
-                          color: Color(0xFFE5EAF2),
-                        ),
-                        // TextField plain — no border, no counter, no emoji.
-                        // minLines 6 supaya sheet ada visual weight even saat
-                        // user belum ngetik. maxLines null = auto grow.
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
-                          child: TextField(
-                            controller: _controller,
-                            focusNode: _focusNode,
-                            autofocus: true,
-                            minLines: 6,
-                            maxLines: 10,
-                            // iOS light keyboard match white sheet background.
-                            keyboardAppearance: Brightness.light,
-                            textInputAction: TextInputAction.newline,
-                            textCapitalization: TextCapitalization.sentences,
-                            cursorColor: _captionBlue,
-                            style: const TextStyle(
-                              color: _captionInk,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _CaptionHeader(
+                        onBack: _commitAndPop,
+                        onOk: _commitAndPop,
+                      ),
+                      const Divider(
+                        height: 1,
+                        thickness: 0.6,
+                        color: Color(0xFFE5EAF2),
+                      ),
+                      // TextField plain — no border, no counter, no emoji,
+                      // no box. minLines 4 supaya sheet ada visual weight
+                      // tapi tetap compact (~110px) — sisanya dim layer
+                      // di bawah keliatan Post Baru behind.
+                      Padding(
+                        padding:
+                            const EdgeInsets.fromLTRB(20, 14, 20, 18),
+                        child: TextField(
+                          controller: _controller,
+                          focusNode: _focusNode,
+                          autofocus: true,
+                          minLines: 4,
+                          maxLines: 8,
+                          // iOS light keyboard match white sheet background.
+                          keyboardAppearance: Brightness.light,
+                          textInputAction: TextInputAction.newline,
+                          textCapitalization: TextCapitalization.sentences,
+                          cursorColor: _captionBlue,
+                          style: const TextStyle(
+                            color: _captionInk,
+                            fontSize: 16,
+                            height: 1.45,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          // InputDecoration.collapsed → benar-benar plain,
+                          // NO border (enabled + focused + disabled state
+                          // semua None). InputDecoration.border = none
+                          // doang TIDAK cukup karena focusedBorder default
+                          // tetap render blue outline.
+                          decoration: const InputDecoration.collapsed(
+                            hintText: 'Tulis caption...',
+                            hintStyle: TextStyle(
+                              color: _captionMuted,
                               fontSize: 16,
-                              height: 1.45,
                               fontWeight: FontWeight.w500,
                             ),
-                            decoration: const InputDecoration(
-                              hintText: 'Tulis caption...',
-                              hintStyle: TextStyle(
-                                color: _captionMuted,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                              ),
-                              border: InputBorder.none,
-                              isCollapsed: true,
-                              contentPadding: EdgeInsets.zero,
-                              counterText: '',
-                            ),
+                          ),
                           ),
                         ),
                       ],
@@ -157,7 +159,6 @@ class _FeedCaptionEditScreenState extends State<FeedCaptionEditScreen> {
                   ),
                 ),
               ),
-            ),
           ],
         ),
       ),
