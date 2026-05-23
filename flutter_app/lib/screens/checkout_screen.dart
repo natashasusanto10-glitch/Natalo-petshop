@@ -548,6 +548,23 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _availableVouchers = recalc.availableVouchers;
         _unavailableVouchers = recalc.unavailableVouchers;
       });
+      // Defensive auto-apply fallback — kalau backend SKIP auto-apply
+      // untuk slot tertentu padahal availableVouchers punya match,
+      // Flutter pilih best voucher dari available list + trigger re-sync
+      // dengan explicit code. Cover edge case backend resolveCustomerSlot
+      // skip slot karena alasan apapun (subtotal threshold, eligibility,
+      // race condition). Per business rule Natalo: max 1 per type, semua
+      // 3 type auto-apply kalau eligible.
+      if (autoApply && !_autoVoucherSuppressed) {
+        final shouldReSync = _ensureAutoApplyFallback(recalc);
+        if (shouldReSync) {
+          // Re-sync dengan code yang baru dipilih supaya backend
+          // confirm + populate discount values. Set autoApply: false
+          // supaya backend tidak override pilihan kita.
+          await _syncCheckoutPricing(autoApply: false, resetRetry: false);
+          return;
+        }
+      }
       final voucherError =
           recalc.manualVoucherError ?? recalc.customerVoucherError;
       if (voucherError != null && voucherError.isNotEmpty && mounted) {
@@ -595,6 +612,59 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (code.isNotEmpty && _selectedManualVoucher != null) {
       AppHaptics.success();
     }
+  }
+
+  /// Defensive: scan availableVouchers + isi slot yang kosong dengan
+  /// best voucher per type. Per business rule Natalo: max 1 per type
+  /// (gratis ongkir / diskon produk / reward poin), semua auto-apply
+  /// kalau eligible. Backend `resolveCustomerSlot` sudah punya logic
+  /// auto-pick tapi kadang skip (race condition / data quirk). Helper
+  /// ini covers gap di client side.
+  ///
+  /// Return true kalau ada slot yang baru di-isi (caller harus re-sync
+  /// supaya backend confirm + kalkulasi discount).
+  bool _ensureAutoApplyFallback(CheckoutRecalcResult recalc) {
+    var changed = false;
+    final available = recalc.availableVouchers;
+
+    // Slot product: kalau kosong, pick best PUBLIC_PRODUCT_DISCOUNT.
+    if (_selectedProductVoucher == null) {
+      final candidate = available
+          .where((v) => v.isProductDiscount && !v.isLoyaltyClaim && !v.isPrivateManual)
+          .toList()
+        ..sort((a, b) => b.discount.compareTo(a.discount));
+      if (candidate.isNotEmpty) {
+        _selectedProductVoucher = candidate.first;
+        changed = true;
+      }
+    }
+
+    // Slot loyalty: kalau kosong, pick best LOYALTY_POINT_CLAIM.
+    if (_selectedLoyaltyVoucher == null) {
+      final candidate = available
+          .where((v) => v.isLoyaltyClaim)
+          .toList()
+        ..sort((a, b) => b.discount.compareTo(a.discount));
+      if (candidate.isNotEmpty) {
+        _selectedLoyaltyVoucher = candidate.first;
+        changed = true;
+      }
+    }
+
+    // Slot shipping: kalau kosong, pick best FREE_SHIPPING.
+    // Skip kalau Self-Pickup karena tidak butuh free shipping voucher.
+    if (_selectedFreeShippingVoucher == null && !_selectedRate.isSelfPickup) {
+      final candidate = available
+          .where((v) => v.isFreeShipping || v.isShippingDiscount)
+          .toList()
+        ..sort((a, b) => b.discount.compareTo(a.discount));
+      if (candidate.isNotEmpty) {
+        _selectedFreeShippingVoucher = candidate.first;
+        changed = true;
+      }
+    }
+
+    return changed;
   }
 
   Future<void> _applyVoucher(MemberVoucher voucher) async {
