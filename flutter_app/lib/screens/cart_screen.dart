@@ -65,7 +65,13 @@ class _CartScreenState extends State<CartScreen> {
   bool _showCartChrome = true;
   List<MemberVoucher> _availableDiscountVouchers = const [];
   List<MemberVoucher> _unavailableDiscountVouchers = const [];
+  // _appliedDiscountVoucher = slot product discount (PRODUCT_DISCOUNT only).
+  // Sebelumnya juga carry loyalty voucher (via _bestDiscountVoucher yang
+  // pick highest dari mixed list), tapi rule Natalo: 1 voucher per type
+  // applied bersamaan (1 product + 1 loyalty + 1 shipping). Sekarang
+  // dipisah jadi 2 slot supaya match behavior checkout.
   MemberVoucher? _appliedDiscountVoucher;
+  MemberVoucher? _appliedLoyaltyVoucher;
   bool _appliedShippingVoucher = false;
   bool _isManualVoucherSelected = false;
   String? _manualVoucherCode;
@@ -279,7 +285,14 @@ class _CartScreenState extends State<CartScreen> {
 
   double get _voucherDiscount {
     if (_selectedItems.isEmpty) return 0;
-    return _appliedDiscountVoucher?.discount.toDouble() ?? 0;
+    // Sum product + loyalty discount, capped at subtotal supaya tidak
+    // negative. Per business rule: 1 product + 1 loyalty bisa apply
+    // bersamaan, total tidak boleh exceed selected subtotal.
+    final productDiscount = _appliedDiscountVoucher?.discount.toDouble() ?? 0;
+    final loyaltyDiscount = _appliedLoyaltyVoucher?.discount.toDouble() ?? 0;
+    final total = productDiscount + loyaltyDiscount;
+    final cap = _selectedSubtotal;
+    return total > cap ? cap : total;
   }
 
   double get _shippingDiscount {
@@ -320,6 +333,7 @@ class _CartScreenState extends State<CartScreen> {
         _availableDiscountVouchers = const [];
         _unavailableDiscountVouchers = const [];
         _appliedDiscountVoucher = null;
+        _appliedLoyaltyVoucher = null;
         _appliedShippingVoucher = false;
         _isManualVoucherSelected = false;
         _manualVoucherCode = null;
@@ -350,8 +364,12 @@ class _CartScreenState extends State<CartScreen> {
       });
     }
 
-    final bestDiscount = _bestDiscountVoucher(available);
-    var nextDiscount = _appliedDiscountVoucher;
+    // Per business rule Natalo: 3 voucher type bisa apply bersamaan
+    // (1 ongkir + 1 produk + 1 reward poin). Pick best per type separately.
+    final bestProduct = _bestProductVoucher(available);
+    final bestLoyalty = _bestLoyaltyVoucher(available);
+    var nextProduct = _appliedDiscountVoucher;
+    var nextLoyalty = _appliedLoyaltyVoucher;
     var nextShipping = _appliedShippingVoucher && _shippingVoucherEligible;
     var manualStillEligible = false;
 
@@ -360,30 +378,41 @@ class _CartScreenState extends State<CartScreen> {
           _shippingVoucherEligible) {
         manualStillEligible = true;
         nextShipping = true;
-        nextDiscount = bestDiscount;
+        nextProduct = bestProduct;
+        nextLoyalty = bestLoyalty;
       } else {
         final manualVoucher =
             _findVoucherByCode(available, _manualVoucherCode!);
         if (manualVoucher != null && _isCartShippingVoucher(manualVoucher)) {
           manualStillEligible = true;
           nextShipping = true;
-          nextDiscount = bestDiscount;
+          nextProduct = bestProduct;
+          nextLoyalty = bestLoyalty;
         } else if (manualVoucher != null) {
           manualStillEligible = true;
-          nextDiscount = manualVoucher;
+          // Manual override pick — replace slot yang sesuai type.
+          if (manualVoucher.isLoyaltyClaim) {
+            nextLoyalty = manualVoucher;
+            nextProduct = bestProduct;
+          } else {
+            nextProduct = manualVoucher;
+            nextLoyalty = bestLoyalty;
+          }
           nextShipping = _shippingVoucherEligible;
         }
       }
     }
 
     if (!_isManualVoucherSelected || !manualStillEligible) {
-      nextDiscount = bestDiscount;
+      nextProduct = bestProduct;
+      nextLoyalty = bestLoyalty;
       nextShipping = _shippingVoucherEligible;
     }
 
     if (!mounted) return;
     setState(() {
-      _appliedDiscountVoucher = nextDiscount;
+      _appliedDiscountVoucher = nextProduct;
+      _appliedLoyaltyVoucher = nextLoyalty;
       _appliedShippingVoucher = nextShipping;
       if (_isManualVoucherSelected && !manualStillEligible) {
         _isManualVoucherSelected = false;
@@ -392,16 +421,33 @@ class _CartScreenState extends State<CartScreen> {
     });
   }
 
-  MemberVoucher? _bestDiscountVoucher(List<MemberVoucher> vouchers) {
+  /// Best PRODUCT_DISCOUNT voucher dari list. Exclude shipping + loyalty.
+  MemberVoucher? _bestProductVoucher(List<MemberVoucher> vouchers) {
     final eligible = vouchers
         .where(
-          (voucher) => voucher.discount > 0 && !_isCartShippingVoucher(voucher),
+          (voucher) =>
+              voucher.discount > 0 &&
+              !_isCartShippingVoucher(voucher) &&
+              !voucher.isLoyaltyClaim,
         )
         .toList();
     if (eligible.isEmpty) return null;
     eligible.sort((a, b) => b.discount.compareTo(a.discount));
     return eligible.first;
   }
+
+  /// Best LOYALTY_CLAIM voucher dari list. Loyalty type only.
+  MemberVoucher? _bestLoyaltyVoucher(List<MemberVoucher> vouchers) {
+    final eligible = vouchers
+        .where(
+          (voucher) => voucher.discount > 0 && voucher.isLoyaltyClaim,
+        )
+        .toList();
+    if (eligible.isEmpty) return null;
+    eligible.sort((a, b) => b.discount.compareTo(a.discount));
+    return eligible.first;
+  }
+
 
   MemberVoucher? _findVoucherByCode(List<MemberVoucher> vouchers, String code) {
     for (final voucher in vouchers) {
