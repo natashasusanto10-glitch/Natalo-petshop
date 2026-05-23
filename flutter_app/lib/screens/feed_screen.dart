@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_blurhash/flutter_blurhash.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:cached_video_player_plus/cached_video_player_plus.dart';
@@ -432,9 +433,22 @@ class _FeedScreenState extends State<FeedScreen> {
           await controller.setVolume(0);
           await controller.seekTo(Duration.zero);
         }).catchError((Object _) async {
+          // Init gagal — kemungkinan besar disk cache corrupt (force-kill
+          // mid-write left partial file). Invalidate cache entry supaya
+          // attempt berikutnya (e.g. preload pass berikutnya, atau saat
+          // user scroll ke post ini dan _maybeInitVideo run) bisa fresh-
+          // fetch dari network. Tanpa ini, cache wrapper tetap baca file
+          // corrupt setiap retry.
           final p = _preloadedCachedPlayers.remove(id);
           _preloadedControllers.remove(id);
-          if (p != null) await p.dispose();
+          if (p != null) {
+            try {
+              await p.dispose();
+            } catch (_) {}
+          }
+          try {
+            await DefaultCacheManager().removeFile(resolvedUrl);
+          } catch (_) {}
         }),
       );
     }
@@ -1938,76 +1952,109 @@ class _FeedPostViewState extends State<_FeedPostView>
     if (url.isEmpty) return;
     if (_dataSaverEnabled && !userInitiated) return;
     setState(() => _videoLoadFailed = false);
+    // Sprint 2 #7 — Network-aware quality rewrite + user preference.
+    final resolvedUrl = videoQualityService.resolvePlaybackUrl(
+      url,
+      userPreference: appSettingsStore.feedVideoQuality,
+    );
+    final isHls = resolvedUrl.contains('.m3u8');
+
+    // Attempt 1: pakai cached_video_player_plus wrapper kalau MP4
+    // (repeat-view benefit). HLS bypass karena segments tidak ke-cache.
+    final firstAttempt = await _tryInitVideoController(
+      resolvedUrl: resolvedUrl,
+      useCacheWrapper: !isHls,
+      userInitiated: userInitiated,
+    );
+    if (firstAttempt || !mounted) return;
+
+    // Attempt 2: bug recovery — cold-start setelah force-kill app kadang
+    // bikin cache wrapper punya partial file (force-kill mid-write).
+    // Wrapper baca SQLite entry "cached" → coba play dari local file
+    // corrupt → init throw. Solusi: invalidate cache untuk URL ini lalu
+    // re-init bypass wrapper (langsung network). Kalau ini juga gagal
+    // baru declare _videoLoadFailed (real network/codec error).
+    if (!isHls) {
+      try {
+        await DefaultCacheManager().removeFile(resolvedUrl);
+      } catch (_) {
+        // Ignore — cache entry mungkin tidak ada (race), retry tetap
+        // worth dicoba dengan plain controller.
+      }
+    }
+    final secondAttempt = await _tryInitVideoController(
+      resolvedUrl: resolvedUrl,
+      useCacheWrapper: false, // bypass wrapper di retry
+      userInitiated: userInitiated,
+    );
+    if (secondAttempt || !mounted) return;
+
+    setState(() => _videoLoadFailed = true);
+  }
+
+  /// Helper init satu attempt. Return true kalau sukses (controller
+  /// ready & assigned ke _videoController), false kalau exception.
+  /// Cleanup dispose dilakukan internal kalau gagal supaya caller tidak
+  /// perlu handle leak.
+  Future<bool> _tryInitVideoController({
+    required String resolvedUrl,
+    required bool useCacheWrapper,
+    required bool userInitiated,
+  }) async {
+    CachedVideoPlayerPlus? wrapper;
+    VideoPlayerController? controller;
     try {
-      // Sprint 2 #7 — Network-aware quality rewrite + user preference. Same
-      // logic dgn preload path supaya consistent quality decision.
-      final resolvedUrl = videoQualityService.resolvePlaybackUrl(
-        url,
-        userPreference: appSettingsStore.feedVideoQuality,
-      );
-      // ── HLS bypass cache wrapper ──
-      // Lihat penjelasan di preload path (top of file). HLS .m3u8 tidak
-      // boleh di-wrap CachedVideoPlayerPlus karena segments tidak ke-cache.
-      final isHls = resolvedUrl.contains('.m3u8');
-      final VideoPlayerController controller;
-      if (isHls) {
-        controller = VideoPlayerController.networkUrl(Uri.parse(resolvedUrl));
-        _cachedPlayer = null;
-      } else {
-        // Wrap dengan CachedVideoPlayerPlus untuk disk cache — repeat-view
-        // load instant dari disk, 0 data dari network. TTL 7 hari.
-        final cachedPlayer = CachedVideoPlayerPlus.networkUrl(
+      if (useCacheWrapper) {
+        wrapper = CachedVideoPlayerPlus.networkUrl(
           Uri.parse(resolvedUrl),
           invalidateCacheIfOlderThan: const Duration(days: 7),
         );
-        _cachedPlayer = cachedPlayer;
-        controller = cachedPlayer.controller;
+        controller = wrapper.controller;
+      } else {
+        controller = VideoPlayerController.networkUrl(Uri.parse(resolvedUrl));
       }
-      // Schedule spinner muncul 1200ms dari sekarang. Kalau initialize keburu
-      // selesai dalam window itu, _cancelLoadingSpinnerDelay() bawah cancel
-      // timer → spinner tidak pernah render = perceived instant.
+      _cachedPlayer = wrapper;
       _resetLoadingSpinnerTimer();
       if (mounted) setState(() {});
-      if (isHls) {
-        await controller.initialize();
+      if (useCacheWrapper) {
+        await wrapper!.initialize();
       } else {
-        await _cachedPlayer!.initialize();
+        await controller.initialize();
       }
-      _videoController = controller;
-      controller.addListener(_handleVideoPositionForCta);
       if (!mounted) {
-        // Dispose via wrapper kalau MP4 (release cache), atau direct
-        // dispose kalau HLS plain controller.
-        if (_cachedPlayer != null) {
-          await _cachedPlayer!.dispose();
-          _cachedPlayer = null;
+        if (wrapper != null) {
+          await wrapper.dispose();
         } else {
           await controller.dispose();
         }
-        _videoController = null;
-        return;
+        _cachedPlayer = null;
+        return true; // not failed, just unmounted; skip retry
       }
+      _videoController = controller;
+      controller.addListener(_handleVideoPositionForCta);
       _cancelLoadingSpinnerDelay();
-      controller.setLooping(true);
+      await controller.setLooping(true);
       await controller.setVolume(appSettingsStore.feedMuted ? 0 : 1);
       if (widget.isActive && (_shouldAutoplay || userInitiated)) {
         await controller.play();
       }
       _isPaused = !controller.value.isPlaying;
       setState(() {});
+      return true;
     } catch (_) {
       _cancelLoadingSpinnerDelay();
-      // Error path — dispose wrapper kalau ada, kalau ga ada controller
-      // dispose direct (defensive fallback).
-      if (_cachedPlayer != null) {
-        await _cachedPlayer!.dispose();
-        _cachedPlayer = null;
-      } else {
-        await _videoController?.dispose();
+      if (wrapper != null) {
+        try {
+          await wrapper.dispose();
+        } catch (_) {}
+      } else if (controller != null) {
+        try {
+          await controller.dispose();
+        } catch (_) {}
       }
+      _cachedPlayer = null;
       _videoController = null;
-      if (!mounted) return;
-      setState(() => _videoLoadFailed = true);
+      return false;
     }
   }
 
