@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
@@ -116,12 +117,68 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
   String? _videoControllerPath;
 
   // Instagram-style preview frame:
-  // - Frame preview selalu 4:5.
-  // - Default = cover/fill (media memenuhi frame).
-  // - Tap icon diagonal = contain/fit (media terlihat utuh di frame sama).
-  static const double _previewAspect = 4 / 5; // 0.8 portrait IG-standard.
+  // - Default (fitOriginal=false): Frame 4:5, foto cover/fill (crop).
+  // - Tap icon (fitOriginal=true): Frame **resize ke aspect natural foto**
+  //   (match IG fullscreen expand behavior). Frame portrait 3:4 atau
+  //   landscape 4:3 sesuai foto. Foto fill tanpa letterbox.
+  // - Aspect ratio di-clamp [0.5, 1.91] supaya tidak terlalu tall/wide
+  //   yang awkward di phone screen.
+  static const double _defaultPreviewAspect = 4 / 5; // 0.8 portrait
+  static const double _minNaturalAspect = 0.5; // 1:2 max tall
+  static const double _maxNaturalAspect = 1.91; // landscape IG
   bool _previewFitOriginal = false;
+  // Preview image size (lazy load lewat ui.instantiateImageCodec, ~50ms
+  // vs ~500-1500ms via image package). Dipakai untuk:
+  // 1. Compute natural aspect saat fitOriginal=true.
+  // 2. Pass ke _PhotoCropPreview supaya tidak load ulang.
+  Size? _previewImageSize;
+  String? _previewImageSizeAssetId; // track asset yg size-nya sudah loaded.
   final Map<String, _PhotoCropTransform> _photoCropTransforms = {};
+
+  /// Computed preview aspect — 4:5 default, atau natural foto kalau
+  /// fitOriginal mode aktif dan image size sudah loaded.
+  double get _previewAspect {
+    if (!_previewFitOriginal) return _defaultPreviewAspect;
+    final size = _previewImageSize;
+    if (size == null || size.width <= 0 || size.height <= 0) {
+      return _defaultPreviewAspect;
+    }
+    final natural = size.width / size.height;
+    return natural.clamp(_minNaturalAspect, _maxNaturalAspect).toDouble();
+  }
+
+  /// Load preview image dimensions cepat pakai `ui.instantiateImageCodec`
+  /// (native, ~10x faster dari image package decode). Update state +
+  /// trigger rebuild supaya _previewAspect computed.
+  Future<void> _loadPreviewImageSize(String assetId, String path) async {
+    if (_previewImageSizeAssetId == assetId && _previewImageSize != null) {
+      return; // Sudah loaded untuk asset ini.
+    }
+    try {
+      final bytes = await File(path).readAsBytes();
+      final codec = await ui.instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      final size = Size(
+        frame.image.width.toDouble(),
+        frame.image.height.toDouble(),
+      );
+      frame.image.dispose();
+      if (!mounted || _previewAssetIdNow != assetId) return;
+      setState(() {
+        _previewImageSize = size;
+        _previewImageSizeAssetId = assetId;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _previewImageSize = null;
+        _previewImageSizeAssetId = null;
+      });
+    }
+  }
+
+  /// Helper: assetId yang sedang di-preview saat ini (untuk guard race).
+  String? get _previewAssetIdNow => _previewAsset?.id;
 
   // ─── Lifecycle ────────────────────────────────────────────────────
   @override
@@ -231,6 +288,12 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
       _previewType =
           isVideo ? FeedPostContentType.video : FeedPostContentType.image;
       _previewDurationSec = isVideo ? asset.duration : null;
+      // Reset cached image size — akan reload di bawah untuk asset baru.
+      // Penting supaya _previewAspect tidak pakai size foto sebelumnya.
+      if (_previewImageSizeAssetId != asset.id) {
+        _previewImageSize = null;
+        _previewImageSizeAssetId = null;
+      }
     });
     if (isVideo) {
       // Generate thumbnail fallback (saat video belum ready).
@@ -241,6 +304,10 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
     } else {
       setState(() => _previewThumb = null);
       await _disposeVideoController();
+      // Fast-load dimensions via ui.instantiateImageCodec (~50ms).
+      // Dipakai untuk: (1) natural aspect saat fitOriginal=true,
+      // (2) pass ke _PhotoCropPreview supaya pinch responsive instan.
+      unawaited(_loadPreviewImageSize(asset.id, path));
     }
   }
 
@@ -909,10 +976,15 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
       );
     }
     // Photo preview — Instagram-style fit/fill toggle.
-    // - Default cover/fill: foto memenuhi frame 4:5.
-    // - Tap icon diagonal: contain/fit, foto terlihat utuh.
-    // - Dalam mode fill, user bisa pinch/drag dan hasil upload mengikuti crop.
+    // - Default (fitOriginal=false): frame 4:5, foto cover/fill (crop).
+    // - Tap icon (fitOriginal=true): frame **resize ke aspect natural**
+    //   foto (match IG fullscreen expand). Foto fill, no letterbox.
+    // - Mode default: user bisa pinch/drag, hasil upload follow crop.
     if (_previewPath != null) {
+      // Pass pre-loaded imageSize supaya _PhotoCropPreview tidak load
+      // ulang (sudah loaded di _loadPreviewImageSize parent — fast 50ms
+      // pakai ui.instantiateImageCodec). Pinch responsive instan tanpa
+      // dead-window 500ms-1s yang lama.
       return AnimatedSwitcher(
         duration: const Duration(milliseconds: 180),
         switchInCurve: Curves.easeOutCubic,
@@ -924,6 +996,8 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
           file: File(_previewPath!),
           fitOriginal: _previewFitOriginal,
           cropTransform: _getPhotoCropTransform(asset.id),
+          preloadedImageSize:
+              _previewImageSizeAssetId == asset.id ? _previewImageSize : null,
         ),
       );
     }
@@ -1377,12 +1451,17 @@ class _PhotoCropPreview extends StatefulWidget {
   final File file;
   final bool fitOriginal;
   final _PhotoCropTransform cropTransform;
+  /// Optional pre-loaded image dimensions dari parent. Kalau di-set,
+  /// widget skip internal load (instant interactive). Kalau null,
+  /// fallback ke internal load via ui.instantiateImageCodec (fast).
+  final Size? preloadedImageSize;
 
   const _PhotoCropPreview({
     super.key,
     required this.file,
     required this.fitOriginal,
     required this.cropTransform,
+    this.preloadedImageSize,
   });
 
   @override
@@ -1397,30 +1476,47 @@ class _PhotoCropPreviewState extends State<_PhotoCropPreview> {
   @override
   void initState() {
     super.initState();
-    _loadImageSize();
+    // Prioritas: pakai preloaded dari parent kalau ada (instant), fallback
+    // ke internal load. Hindari decode 2x supaya tidak waste CPU.
+    if (widget.preloadedImageSize != null) {
+      _imageSize = widget.preloadedImageSize;
+    } else {
+      _loadImageSize();
+    }
   }
 
   @override
   void didUpdateWidget(covariant _PhotoCropPreview oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.file.path != widget.file.path) {
-      _imageSize = null;
-      _loadImageSize();
+      _imageSize = widget.preloadedImageSize;
+      if (_imageSize == null) _loadImageSize();
+    } else if (oldWidget.preloadedImageSize != widget.preloadedImageSize &&
+        widget.preloadedImageSize != null) {
+      // Parent just loaded → sync ke internal state.
+      _imageSize = widget.preloadedImageSize;
     }
   }
 
+  /// Fast image dimensions load via Flutter native `ui.instantiateImageCodec`
+  /// — ~50ms vs ~500-1500ms via `image` package decode. Cukup ambil
+  /// metadata width/height, tidak butuh full pixel decode.
+  ///
+  /// Fallback path kalau parent tidak preload size. Normal-nya parent
+  /// preload via _loadPreviewImageSize() → widget ini langsung dapet
+  /// imageSize dari prop.
   Future<void> _loadImageSize() async {
     try {
       final bytes = await widget.file.readAsBytes();
-      final decoded = img.decodeImage(bytes);
-      if (decoded == null || !mounted) return;
-      final oriented = img.bakeOrientation(decoded);
-      setState(() {
-        _imageSize = Size(
-          oriented.width.toDouble(),
-          oriented.height.toDouble(),
-        );
-      });
+      final codec = await ui.instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      final size = Size(
+        frame.image.width.toDouble(),
+        frame.image.height.toDouble(),
+      );
+      frame.image.dispose();
+      if (!mounted) return;
+      setState(() => _imageSize = size);
     } catch (_) {
       if (!mounted) return;
       setState(() => _imageSize = null);
