@@ -31,6 +31,7 @@ import '../widgets/bottom_nav.dart';
 import '../widgets/flash_sale_countdown.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
+import '../widgets/upload_relay_card.dart';
 import 'home_search_page.dart';
 import '../widgets/skeleton_product_card.dart';
 
@@ -582,6 +583,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       onOpenSearch: () => _openHomeSearch(context),
                     ),
                   ),
+                  // Background upload relay card — visible HANYA saat ada
+                  // upload feed post aktif. AnimatedSize handle collapse
+                  // smooth saat task hilang (success auto-dismiss).
+                  const SliverToBoxAdapter(child: UploadRelayCard()),
                   if (result?.fromApi == false)
                     const SliverToBoxAdapter(child: _ApiFallbackNotice()),
                   // Trust marquee — TIDAK sticky. Ikut scroll bersama content

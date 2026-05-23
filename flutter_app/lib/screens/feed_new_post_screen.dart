@@ -9,14 +9,13 @@ import 'package:video_thumbnail/video_thumbnail.dart';
 import '../models/feed_create_post_draft.dart';
 import '../models/product.dart';
 import '../services/feed_service.dart';
+import '../state/feed_upload_store.dart';
 import '../state/member_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/emoji_picker_panel.dart';
 import '../widgets/profile_avatar.dart';
-import 'feed_photo_upload_flow.dart';
-import 'feed_video_upload_flow.dart';
 
 const _newPostDraftKey = 'natalo-feed-upload-pending';
 const _newPostBlue = Color(0xFF1E5BFF);
@@ -296,11 +295,31 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
     });
   }
 
+  /// Submit post — IG-style background upload.
+  ///
+  /// User tap "Upload" → langsung kembali ke Beranda + mini relay card
+  /// muncul di bawah search bar. Upload jalan via `feedUploadStore` di
+  /// background sambil user lanjut browsing. NO MORE full-screen progress.
+  ///
+  /// Hapus pattern lama: Navigator.pushReplacement → FeedUploadProgressScreen
+  /// / FeedPhotoUploadProgressScreen yang blocking user sampai upload kelar.
   Future<void> _upload() async {
     if (_error != null) return;
+    if (feedUploadStore.isUploading) {
+      // Double-submit guard — kalau ada upload sebelumnya yang masih
+      // jalan, kasih tau user lewat snackbar (jangan stack 2 upload).
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ada postingan yang masih dikirim. Tunggu sebentar.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
     AppHaptics.tap();
     final caption = _captionController.text.trim();
     final productIds = _selectedProductIds.toList();
+
     if (_isVideo) {
       final draft = _videoDraft;
       final videoPath = draft?.finalVideoPath;
@@ -315,17 +334,14 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
             _error = 'Media belum bisa diproses. Coba pilih ulang media.');
         return;
       }
-      await Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => FeedUploadProgressScreen(
-            draft: draft.copyWith(
-              caption: caption,
-              taggedProductIds: productIds,
-            ),
-          ),
-        ),
+      // Kick off background upload via store. Caller tidak await — task
+      // jalan di background. Caption + productIds di-baked ke draft.
+      final readyDraft = draft.copyWith(
+        caption: caption,
+        taggedProductIds: productIds,
       );
+      feedUploadStore.startVideoUpload(draft: readyDraft);
+      _goHome();
       return;
     }
 
@@ -336,20 +352,19 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
       return;
     }
 
-    if (!mounted) return;
-    // Filter foto di-hapus per spec user — picker sudah produce foto
-    // ter-crop sesuai aspect ratio (4:5 / 1:1 / 1.91:1) dengan saturation
-    // boost di preview. Langsung upload files asli, tidak ada baking step.
-    await Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => FeedPhotoUploadProgressScreen(
-          files: files,
-          title: caption.isEmpty ? 'Postingan baru' : caption,
-          productIds: productIds,
-        ),
-      ),
+    // Kick off background photo upload via store.
+    feedUploadStore.startPhotoUpload(
+      files: files,
+      caption: caption,
+      productIds: productIds,
     );
+    _goHome();
+  }
+
+  /// Navigate back to Beranda (home tab) — clear all create-post stack.
+  /// pushNamedAndRemoveUntil ke '/' = Home screen (initial route).
+  void _goHome() {
+    Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
   }
 
   Future<void> _saveDraftAndExit() async {
