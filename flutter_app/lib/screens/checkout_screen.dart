@@ -1124,13 +1124,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   /// - **Tanpa benefit aktif**: dialog ringan "Yakin kembali ke keranjang?"
   Future<bool> _confirmBackToCart(BuildContext context) async {
     final voucherDiscount = _voucherDiscount;
-    final hasActiveBenefit = voucherDiscount > 0;
+    // Loyalty earn formula match backend di /api/orders/route.ts:501 —
+    // Math.floor(total / 20000). Tetap konsisten supaya angka yang
+    // di-display di dialog sama persis dengan yang user akan dapat
+    // setelah order DELIVERED.
+    final earnedPoints = (_grandTotal / 20000).floor();
+    final hasActiveBenefit = voucherDiscount > 0 || earnedPoints > 0;
     final result = await showDialog<bool>(
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.35),
       builder: (context) => _BackToCartDialog(
         showBenefits: hasActiveBenefit,
         voucherDiscount: voucherDiscount,
+        earnedPoints: earnedPoints,
       ),
     );
     return result == true;
@@ -1138,174 +1144,268 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 }
 
 /// Modal "Voucher masih aktif" / "Yakin kembali ke keranjang" — match PWA
-/// confirmation pop-up. Saat ada benefit aktif, tampilkan rincian yang
-/// akan hilang. Saat tidak ada, konfirmasi ringan.
+/// confirmation pop-up + screenshot user (e-commerce convention).
+///
+/// Saat ada benefit aktif (voucher > 0 ATAU earnedPoints > 0), tampilkan
+/// rincian yang akan hilang:
+///   - Row "Hemat Voucher" (kalau voucherDiscount > 0)
+///   - Row "Poin yang didapat" (kalau earnedPoints > 0)
+/// Kedua row mungkin muncul bareng, atau salah satu, tergantung state.
+///
+/// Saat tidak ada benefit aktif, konfirmasi ringan tanpa detail.
 class _BackToCartDialog extends StatelessWidget {
   final bool showBenefits;
   final double voucherDiscount;
+  final int earnedPoints;
 
   const _BackToCartDialog({
     required this.showBenefits,
     required this.voucherDiscount,
+    this.earnedPoints = 0,
   });
 
   @override
   Widget build(BuildContext context) {
+    final hasVoucher = voucherDiscount > 0;
+    final hasPoints = earnedPoints > 0;
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header icon
-            if (showBenefits)
-              Container(
-                height: 72,
-                width: 72,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFEAF5FF),
-                  shape: BoxShape.circle,
-                ),
-                alignment: Alignment.center,
-                child: const Icon(
-                  Icons.confirmation_number_rounded,
-                  color: _brandBlue,
-                  size: 34,
-                ),
-              )
-            else
-              Container(
-                height: 72,
-                width: 72,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFEAF5FF),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.shopping_cart_outlined,
-                  color: _brandBlue,
-                  size: 34,
-                ),
-              ),
-            const SizedBox(height: 14),
-            Text(
-              showBenefits
-                  ? 'Voucher kamu masih aktif!'
-                  : 'Yakin kembali ke keranjang?',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Color(0xFF111111),
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 8),
-            if (showBenefits) ...[
-              Text.rich(
-                TextSpan(
-                  text: 'Kamu sedang hemat ',
-                  style: const TextStyle(
-                    color: Color(0xFF334155),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    height: 1.55,
+      child: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header icon.
+                Container(
+                  height: 72,
+                  width: 72,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFEAF5FF),
+                    shape: BoxShape.circle,
                   ),
-                  children: [
-                    TextSpan(
-                      text: formatRupiah(voucherDiscount),
-                      style: const TextStyle(
-                        color: NataloColors.discountRed,
-                        fontWeight: FontWeight.w900,
-                      ),
+                  alignment: Alignment.center,
+                  child: Icon(
+                    showBenefits
+                        ? Icons.confirmation_number_rounded
+                        : Icons.shopping_cart_outlined,
+                    color: _brandBlue,
+                    size: 34,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  showBenefits
+                      ? (hasVoucher
+                          ? 'Voucher kamu masih aktif!'
+                          : 'Lanjut order, dapat poin!')
+                      : 'Yakin kembali ke keranjang?',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Color(0xFF111111),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                if (showBenefits) ...[
+                  _BenefitSummaryText(
+                    voucherDiscount: voucherDiscount,
+                    earnedPoints: earnedPoints,
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(14),
                     ),
-                    const TextSpan(text: ' di checkout ini.\n'),
-                    const TextSpan(
-                      text: 'Lanjutkan pesanan agar voucher tidak terlewat.',
+                    child: Column(
+                      children: [
+                        if (hasVoucher)
+                          _BenefitRow(
+                            icon: Icons.confirmation_number_rounded,
+                            iconColor: const Color(0xFFEF5A47),
+                            iconBg: const Color(0xFFFDECE7),
+                            label: 'Hemat Voucher',
+                            value: formatRupiah(voucherDiscount),
+                            valueColor: NataloColors.discountRed,
+                          ),
+                        if (hasVoucher && hasPoints) const SizedBox(height: 10),
+                        if (hasPoints)
+                          _BenefitRow(
+                            icon: Icons.monetization_on_rounded,
+                            iconColor: const Color(0xFFE0A52E),
+                            iconBg: const Color(0xFFFFF4D6),
+                            label: 'Poin yang didapat',
+                            value: '$earnedPoints poin',
+                            valueColor: const Color(0xFFB45309),
+                          ),
+                      ],
                     ),
-                  ],
+                  ),
+                ] else
+                  const Text(
+                    'Pesanan kamu belum selesai.\nKamu bisa lanjut checkout atau kembali mengatur keranjang.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(0xFF6B7280),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      height: 1.55,
+                    ),
+                  ),
+                const SizedBox(height: 18),
+                // Primary CTA: Lanjut Checkout (close dialog, stay)
+                ElevatedButton(
+                  onPressed: () {
+                    AppHaptics.tap();
+                    Navigator.pop(context, false);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _brandBlue,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  child: const Text('Lanjut Checkout'),
                 ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 14),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(14),
+                const SizedBox(height: 4),
+                // Secondary: Kembali ke Keranjang — TEXT LINK style (no
+                // border) match screenshot reference. TextButton dengan
+                // bold + dark color supaya tetap discoverable tapi
+                // visually subordinate dari primary CTA.
+                TextButton(
+                  onPressed: () {
+                    AppHaptics.tap();
+                    Navigator.pop(context, true);
+                  },
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF334155),
+                    minimumSize: const Size.fromHeight(44),
+                    textStyle: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  child: const Text('Kembali ke Keranjang'),
                 ),
-                child: Column(
-                  children: [
-                    if (voucherDiscount > 0)
-                      _BenefitRow(
-                        icon: Icons.local_offer_rounded,
-                        iconColor: NataloColors.discountRed,
-                        label: 'Total Hemat',
-                        value: formatRupiah(voucherDiscount),
-                        valueColor: NataloColors.discountRed,
-                      ),
-                  ],
-                ),
-              ),
-            ] else
-              const Text(
-                'Pesanan kamu belum selesai.\nKamu bisa lanjut checkout atau kembali mengatur keranjang.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Color(0xFF6B7280),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  height: 1.55,
-                ),
-              ),
-            const SizedBox(height: 18),
-            // Primary CTA: Lanjut Checkout (close dialog, stay)
-            ElevatedButton(
-              onPressed: () {
-                AppHaptics.tap();
-                Navigator.pop(context, false);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _brandBlue,
-                foregroundColor: Colors.white,
-                minimumSize: const Size.fromHeight(48),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                textStyle: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              child: const Text('Lanjut Checkout'),
+              ],
             ),
-            const SizedBox(height: 8),
-            // Secondary: Kembali ke Keranjang (return true → caller pop)
-            OutlinedButton(
-              onPressed: () {
-                AppHaptics.tap();
-                Navigator.pop(context, true);
-              },
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFF334155),
-                minimumSize: const Size.fromHeight(48),
-                side: const BorderSide(color: Color(0xFFE5E7EB)),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                textStyle: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
+          ),
+          // Close (X) button top-right corner — match screenshot pattern.
+          // Tap → same dengan "Kembali ke Keranjang" (return true → pop
+          // checkout). Quick exit untuk user yang yakin keluar.
+          Positioned(
+            top: 8,
+            right: 8,
+            child: Material(
+              color: Colors.transparent,
+              shape: const CircleBorder(),
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: () {
+                  AppHaptics.tap();
+                  Navigator.pop(context, true);
+                },
+                child: const Padding(
+                  padding: EdgeInsets.all(8),
+                  child: Icon(
+                    Icons.close_rounded,
+                    size: 20,
+                    color: Color(0xFF94A3B8),
+                  ),
                 ),
               ),
-              child: const Text('Kembali ke Keranjang'),
             ),
-            // Close button top-right corner — match screenshot
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Subtitle text inside dialog — adaptasi pesan berdasar combo benefit.
+/// Cuma voucher: "Kamu sedang hemat Rp X di checkout ini..."
+/// Cuma poin:    "Kamu akan dapat X poin..."
+/// Keduanya:     "Kamu hemat Rp X + dapat X poin..."
+class _BenefitSummaryText extends StatelessWidget {
+  final double voucherDiscount;
+  final int earnedPoints;
+
+  const _BenefitSummaryText({
+    required this.voucherDiscount,
+    required this.earnedPoints,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasVoucher = voucherDiscount > 0;
+    final hasPoints = earnedPoints > 0;
+    const baseStyle = TextStyle(
+      color: Color(0xFF334155),
+      fontSize: 13,
+      fontWeight: FontWeight.w600,
+      height: 1.55,
+    );
+    final bold = baseStyle.copyWith(
+      color: NataloColors.discountRed,
+      fontWeight: FontWeight.w900,
+    );
+    final boldPoint = baseStyle.copyWith(
+      color: const Color(0xFFB45309),
+      fontWeight: FontWeight.w900,
+    );
+    if (hasVoucher && hasPoints) {
+      return Text.rich(
+        TextSpan(
+          text: 'Kamu sedang hemat ',
+          style: baseStyle,
+          children: [
+            TextSpan(text: formatRupiah(voucherDiscount), style: bold),
+            const TextSpan(text: ' + bakal dapat '),
+            TextSpan(text: '$earnedPoints poin', style: boldPoint),
+            const TextSpan(text: ' kalau lanjut checkout.'),
           ],
         ),
+        textAlign: TextAlign.center,
+      );
+    }
+    if (hasVoucher) {
+      return Text.rich(
+        TextSpan(
+          text: 'Kamu sedang hemat ',
+          style: baseStyle,
+          children: [
+            TextSpan(text: formatRupiah(voucherDiscount), style: bold),
+            const TextSpan(text: ' di checkout ini.\n'),
+            const TextSpan(text: 'Lanjutkan pesanan agar voucher tidak terlewat.'),
+          ],
+        ),
+        textAlign: TextAlign.center,
+      );
+    }
+    // Hanya poin (kasus rare — voucher null tapi total cukup besar untuk
+    // earn poin). Tetap show supaya user aware dapat poin loyalty.
+    return Text.rich(
+      TextSpan(
+        text: 'Lanjut checkout untuk dapat ',
+        style: baseStyle,
+        children: [
+          TextSpan(text: '$earnedPoints poin', style: boldPoint),
+          const TextSpan(text: ' Natalo.\nPoin bisa ditukar voucher di Akun.'),
+        ],
       ),
+      textAlign: TextAlign.center,
     );
   }
 }
@@ -1313,6 +1413,7 @@ class _BackToCartDialog extends StatelessWidget {
 class _BenefitRow extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
+  final Color? iconBg;
   final String label;
   final String value;
   final Color valueColor;
@@ -1323,6 +1424,7 @@ class _BenefitRow extends StatelessWidget {
     required this.label,
     required this.value,
     required this.valueColor,
+    this.iconBg,
   });
 
   @override
@@ -1333,7 +1435,7 @@ class _BenefitRow extends StatelessWidget {
           height: 32,
           width: 32,
           decoration: BoxDecoration(
-            color: iconColor.withValues(alpha: 0.12),
+            color: iconBg ?? iconColor.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(icon, color: iconColor, size: 18),
