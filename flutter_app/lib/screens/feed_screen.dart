@@ -1772,9 +1772,14 @@ class _FeedPostViewState extends State<_FeedPostView>
 
   /// Reset spinner-delay timer setelah controller di-set atau di-swap. Kalau
   /// controller sudah initialized (preload sukses), spinner tidak diperlukan
-  /// sama sekali — early return. Kalau belum, schedule spinner muncul 800ms
+  /// sama sekali — early return. Kalau belum, schedule spinner muncul 1200ms
   /// kemudian — kalau initialize keburu selesai sebelum timer fire,
   /// _cancelLoadingSpinnerDelay dipanggil dan spinner tidak pernah render.
+  ///
+  /// Delay 1200ms (sebelumnya 800ms) — match IG/TikTok pattern. Video load
+  /// fast di 4G/WiFi (~500-1000ms), spinner sebelum 1200ms cuma bikin user
+  /// anxious padahal video sebentar lagi siap. Kalau load >1.2 detik (4G
+  /// marginal / 3G), baru spinner muncul sebagai genuine feedback.
   void _resetLoadingSpinnerTimer() {
     _loadingSpinnerDelay?.cancel();
     _loadingSpinnerDelay = null;
@@ -1783,7 +1788,7 @@ class _FeedPostViewState extends State<_FeedPostView>
     }
     final ctrl = _videoController;
     if (ctrl == null || ctrl.value.isInitialized || _videoLoadFailed) return;
-    _loadingSpinnerDelay = Timer(const Duration(milliseconds: 800), () {
+    _loadingSpinnerDelay = Timer(const Duration(milliseconds: 1200), () {
       if (!mounted) return;
       final c = _videoController;
       if (c == null || c.value.isInitialized || _videoLoadFailed) return;
