@@ -100,7 +100,14 @@ class ApiClient {
   Future<dynamic> postJson(
     String path, {
     Object? body,
-    Duration timeout = const Duration(seconds: 10),
+    // Bumped 10s → 25s untuk akomodasi Vercel cold start (sering 8-12s
+    // di endpoint cold) + flow yang panggil sub-services lambat (OTP via
+    // WhatsApp Fonnte 2-5s, bcrypt hash 12 round ~0.5s, dll). User
+    // sering lihat "TimeoutException after 0:00:10" di register/login
+    // padahal backend sebenarnya akan respond 12-15s. Naikkan default
+    // = user happy path lebih banyak ke-cover. Caller masih bisa
+    // override explicit kalau butuh longer (mis. register step-1 75s).
+    Duration timeout = const Duration(seconds: 25),
   }) async {
     final uri = ApiConfig.uri(path);
     try {

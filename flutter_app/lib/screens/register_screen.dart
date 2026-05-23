@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -32,6 +34,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _obscureConfirm = true;
   bool _loading = false;
   bool _otpSent = false; // step 1 sukses → tampilkan field OTP
+  // Resend OTP countdown — disabled selama N detik setelah kirim OTP
+  // supaya user tidak spam request. Reset ke 60 setiap kali OTP terkirim
+  // (step 1 sukses + resend tap). 0 = enabled, >0 = disabled (display "Xs").
+  int _resendCountdown = 0;
+  Timer? _resendTimer;
+  bool _resendingOtp = false;
 
   @override
   void initState() {
@@ -66,7 +74,67 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _passwordController.dispose();
     _confirmController.dispose();
     _otpController.dispose();
+    _resendTimer?.cancel();
     super.dispose();
+  }
+
+  /// Start 60-second cooldown setelah OTP terkirim (step 1 sukses atau
+  /// resend tap). Selama countdown >0, button resend disabled +
+  /// tampilkan "Tunggu Xs". Timer.periodic 1 detik, auto-cancel saat 0.
+  void _startResendCooldown() {
+    _resendTimer?.cancel();
+    setState(() => _resendCountdown = 60);
+    _resendTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      if (_resendCountdown <= 1) {
+        t.cancel();
+        setState(() => _resendCountdown = 0);
+      } else {
+        setState(() => _resendCountdown -= 1);
+      }
+    });
+  }
+
+  /// Resend OTP — panggil register endpoint mode step-1 (otp=null) supaya
+  /// backend generate + kirim ulang kode. Reset cooldown setelah sukses.
+  Future<void> _resendOtp() async {
+    if (_resendCountdown > 0 || _resendingOtp) return;
+    AppHaptics.tap();
+    setState(() => _resendingOtp = true);
+    try {
+      final phoneRaw = _phoneController.text.replaceAll(RegExp(r'[^\d+]'), '');
+      await authService.register(
+        name: _nameController.text,
+        email: _emailController.text,
+        phone: phoneRaw,
+        password: _passwordController.text,
+        confirmPassword: _confirmController.text,
+        otp: null, // null = step 1, kirim OTP baru
+      );
+      if (!mounted) return;
+      AppHaptics.success();
+      _startResendCooldown();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Kode OTP baru sudah dikirim ke email & WhatsApp.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      AppHaptics.warning();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_friendlyRegisterError(error)),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _resendingOtp = false);
+    }
   }
 
   void _onFormChanged() {
@@ -111,9 +179,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (!mounted) return;
 
       if (result == null) {
-        // Step 1 sukses — OTP terkirim
+        // Step 1 sukses — OTP terkirim. Start 60s cooldown supaya user
+        // tidak bisa spam resend langsung; button "Kirim Ulang Kode" baru
+        // bisa di-tap setelah countdown selesai.
         AppHaptics.success();
         setState(() => _otpSent = true);
+        _startResendCooldown();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
@@ -153,6 +224,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   String _friendlyRegisterError(Object error) {
     if (error is ApiException) {
+      // Detect timeout — ApiException wrap TimeoutException dari .timeout()
+      // jadi message string "TimeoutException after 0:00:10.000000:
+      // Future not completed". Map ke pesan friendly khusus supaya user
+      // tahu ini bukan error fatal — tinggal coba lagi.
+      final msg = error.message;
+      final isTimeout = msg.contains('TimeoutException') ||
+          msg.contains('timeout') ||
+          msg.contains('Timeout');
+      if (isTimeout) {
+        if (!_otpSent) {
+          return 'Server lambat saat mengirim OTP. Coba lagi sebentar.';
+        }
+        return 'Server lambat saat mendaftar. Coba lagi sebentar.';
+      }
       if (error.isNetworkError) {
         if (!_otpSent) {
           return 'Koneksi sedang lambat saat mengirim OTP. Coba lagi sebentar lagi.';
@@ -161,6 +246,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       }
       return error.message;
     }
+    // Fallback untuk non-ApiException — generic friendly message.
     return 'Terjadi kendala. Coba lagi sebentar lagi.';
   }
 
@@ -315,6 +401,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         hint: 'Masukkan 6 digit kode',
                         icon: Icons.password_rounded,
                         keyboardType: TextInputType.number,
+                      ),
+                      const SizedBox(height: 8),
+                      // Destination hint — confirmasi ke user OTP dikirim
+                      // ke mana, supaya tidak bingung buka email vs WA.
+                      // Phone di-mask partial (0812***4567) untuk privacy
+                      // (kalau screen di-screenshot tidak expose nomor full).
+                      _OtpDestinationHint(
+                        email: _emailController.text.trim(),
+                        phone: _phoneController.text.trim(),
+                      ),
+                      const SizedBox(height: 10),
+                      // Resend OTP row — disabled selama countdown 60s.
+                      _ResendOtpRow(
+                        countdown: _resendCountdown,
+                        loading: _resendingOtp,
+                        onTap: _resendOtp,
                       ),
                     ],
                     const SizedBox(height: 22),
@@ -908,6 +1010,138 @@ class _BackToLoginLink extends StatelessWidget {
             ],
           ),
           textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
+}
+
+/// Destination hint — info ke user OTP dikirim ke email + WA mana.
+/// Phone di-mask partial untuk privacy: 0812***4567 (4 awal + 4 akhir
+/// visible, sisanya bintang). Match pattern IG/Tokopedia OTP screen.
+class _OtpDestinationHint extends StatelessWidget {
+  final String email;
+  final String phone;
+
+  const _OtpDestinationHint({required this.email, required this.phone});
+
+  String _maskPhone(String raw) {
+    final digits = raw.replaceAll(RegExp(r'[^\d]'), '');
+    if (digits.length <= 8) return digits;
+    final start = digits.substring(0, 4);
+    final end = digits.substring(digits.length - 4);
+    return '$start${'*' * (digits.length - 8)}$end';
+  }
+
+  String _maskEmail(String raw) {
+    final clean = raw.trim();
+    final at = clean.indexOf('@');
+    if (at <= 0) return clean;
+    final local = clean.substring(0, at);
+    final domain = clean.substring(at);
+    if (local.length <= 2) return clean;
+    final visible = local.substring(0, 2);
+    return '$visible${'*' * (local.length - 2)}$domain';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: RichText(
+        text: TextSpan(
+          style: const TextStyle(
+            color: _textSecondary,
+            fontSize: 12.5,
+            fontWeight: FontWeight.w600,
+            height: 1.4,
+          ),
+          children: [
+            const TextSpan(text: 'Kode dikirim ke '),
+            TextSpan(
+              text: _maskPhone(phone),
+              style: const TextStyle(
+                color: _darkNavy,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const TextSpan(text: ' dan '),
+            TextSpan(
+              text: _maskEmail(email),
+              style: const TextStyle(
+                color: _darkNavy,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Resend OTP row — disabled selama countdown >0 ("Tunggu 45s"), enabled
+/// kalau 0 ("Kirim Ulang Kode"). Tap → trigger parent _resendOtp().
+/// Loading state saat request in-flight (spinner kecil).
+class _ResendOtpRow extends StatelessWidget {
+  final int countdown;
+  final bool loading;
+  final VoidCallback onTap;
+
+  const _ResendOtpRow({
+    required this.countdown,
+    required this.loading,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final disabled = countdown > 0 || loading;
+    final label = loading
+        ? 'Mengirim ulang...'
+        : countdown > 0
+            ? 'Kirim ulang dalam ${countdown}s'
+            : 'Kirim Ulang Kode';
+    final color = disabled ? _textSecondary : _brandBlueDark;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: disabled ? null : onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (loading) ...[
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(_textSecondary),
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ] else ...[
+                Icon(
+                  Icons.refresh_rounded,
+                  size: 16,
+                  color: color,
+                ),
+                const SizedBox(width: 4),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
