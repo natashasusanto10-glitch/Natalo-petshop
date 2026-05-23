@@ -94,14 +94,269 @@ class _TransactionsBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 116),
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 116),
       children: const [
+        // Unpaid order alert banner — visible HANYA kalau ada pesanan
+        // status UNPAID/PENDING (non-cancelled + non-expired). Auto-hide
+        // sendiri kalau no data via SizedBox.shrink di build. Banner
+        // ini mengganti pola "Perlu Tindakan" section lama supaya UI
+        // halaman Transaksi tetap compact + premium.
+        _UnpaidOrderBanner(),
         _OrderStatusCard(),
         SizedBox(height: 24),
         _SectionTitle('Menu Transaksi'),
         SizedBox(height: 12),
         _MenuGrid(),
       ],
+    );
+  }
+}
+
+/// Compact banner di atas "Pesanan Saya" untuk surface pesanan yang
+/// belum dibayar (status UNPAID/PENDING) — dengan countdown sisa waktu
+/// pembayaran (24 jam dari createdAt).
+///
+/// Behavior:
+/// - Fetch orders sendiri via memberService.fetchOrders() — independent
+///   dari _OrderStatusCard (acceptable duplication karena 2 widget life
+///   cycle berbeda + cache memberStore.orders shared antar fetch).
+/// - Filter: paymentStatus UNPAID/PENDING ATAU status PENDING/UNPAID,
+///   skip CANCELLED/REFUNDED. Match logic _OrderStatusCounts.fromOrders.
+/// - Skip expired (>24h dari createdAt) — assume backend auto-cancel.
+/// - Sort ASC by createdAt → ambil paling urgent (paling dekat deadline).
+/// - Countdown ticker 30s — format "XXj YYm" cukup, no per-second update.
+/// - Tap routing: 1 unpaid → buka detail order; ≥2 unpaid → buka list
+///   filter status=unpaid.
+/// - Auto-hide kalau no valid unpaid order.
+class _UnpaidOrderBanner extends StatefulWidget {
+  const _UnpaidOrderBanner();
+
+  @override
+  State<_UnpaidOrderBanner> createState() => _UnpaidOrderBannerState();
+}
+
+class _UnpaidOrderBannerState extends State<_UnpaidOrderBanner> {
+  /// Total durasi pembayaran sejak order dibuat. Match server-side window.
+  static const _paymentWindow = Duration(hours: 24);
+
+  /// Refresh interval countdown display. 30 detik cukup karena format
+  /// jam+menit tidak butuh granularity per-detik.
+  static const _tickInterval = Duration(seconds: 30);
+
+  Future<List<OrderSummary>>? _ordersFuture;
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    if (memberStore.isLoggedIn) {
+      _ordersFuture = _loadOrders();
+    }
+    // Tick periodic supaya countdown update tanpa harus reload data.
+    _tick = Timer.periodic(_tickInterval, (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  Future<List<OrderSummary>> _loadOrders() async {
+    try {
+      return await memberService.fetchOrders();
+    } catch (_) {
+      return memberStore.orders;
+    }
+  }
+
+  /// Identifies orders dalam status belum bayar yang masih valid
+  /// (belum expired + bukan cancelled). Mirror _OrderStatusCounts logic
+  /// di-tambah expiration check.
+  List<OrderSummary> _unpaidOrders(List<OrderSummary> orders) {
+    final now = DateTime.now();
+    return orders.where((order) {
+      final status = order.status.toUpperCase();
+      final payment = order.paymentStatus.toUpperCase();
+      if (status == 'CANCELLED' || status == 'REFUNDED') return false;
+      final isUnpaid = status == 'PENDING' ||
+          status == 'UNPAID' ||
+          payment == 'UNPAID' ||
+          payment == 'PENDING';
+      if (!isUnpaid) return false;
+      // Skip expired — anggap backend auto-cancel order yang lewat 24h.
+      final deadline = order.createdAt.add(_paymentWindow);
+      return deadline.isAfter(now);
+    }).toList()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+  }
+
+  /// Format countdown "XXj YYm" untuk deadline pembayaran. Saat sisa <1
+  /// jam, ubah ke "YYm" supaya angka jam tidak "0j" awkward.
+  String _formatCountdown(Duration remaining) {
+    if (remaining.isNegative) return '0m';
+    final hours = remaining.inHours;
+    final minutes = remaining.inMinutes.remainder(60);
+    if (hours <= 0) return '${minutes}m';
+    return '${hours}j ${minutes}m';
+  }
+
+  void _handleTap(List<OrderSummary> unpaid) {
+    AppHaptics.tap();
+    if (unpaid.isEmpty) return;
+    if (unpaid.length == 1) {
+      // Single unpaid → langsung buka detail order.
+      Navigator.pushNamed(
+        context,
+        '/member/order-detail',
+        arguments: unpaid.first,
+      );
+    } else {
+      // Multiple unpaid → buka list filter status=unpaid.
+      Navigator.pushNamed(context, '/member/orders', arguments: 'unpaid');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!memberStore.isLoggedIn) return const SizedBox.shrink();
+    return FutureBuilder<List<OrderSummary>>(
+      future: _ordersFuture,
+      initialData: memberStore.orders,
+      builder: (context, snapshot) {
+        final orders = snapshot.data ?? const <OrderSummary>[];
+        final unpaid = _unpaidOrders(orders);
+        if (unpaid.isEmpty) return const SizedBox.shrink();
+
+        final mostUrgent = unpaid.first;
+        final deadline = mostUrgent.createdAt.add(_paymentWindow);
+        final remaining = deadline.difference(DateTime.now());
+        if (remaining.isNegative) {
+          // Defensive: edge case kalau order expire di antara filter +
+          // build (race condition). Hide banner.
+          return const SizedBox.shrink();
+        }
+
+        final count = unpaid.length;
+        return Padding(
+          padding: const EdgeInsets.only(top: 8, bottom: 16),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => _handleTap(unpaid),
+              borderRadius: BorderRadius.circular(16),
+              child: Ink(
+                decoration: BoxDecoration(
+                  // Soft warm tint (cream/orange) — match mockup user.
+                  // Tidak terlalu agresif seperti red error, tetap feel
+                  // premium + ramah.
+                  color: const Color(0xFFFFF7EC),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xFFFFE0B0),
+                    width: 1,
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // Icon wallet di kiri — soft orange container.
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFEBC9),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.account_balance_wallet_rounded,
+                          color: Color(0xFFF59E0B),
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      // Text column — main + secondary.
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '$count pesanan belum dibayar',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xFF0F172A),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w900,
+                                height: 1.2,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            const Text(
+                              'Selesaikan pembayaran dalam 24 jam',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Color(0xFF64748B),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                height: 1.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Countdown pill — orange emphasis.
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFE0B0),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.access_time_rounded,
+                              size: 14,
+                              color: Color(0xFFB45309),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              _formatCountdown(remaining),
+                              style: const TextStyle(
+                                color: Color(0xFFB45309),
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w900,
+                                height: 1,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        color: Color(0xFF94A3B8),
+                        size: 22,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
