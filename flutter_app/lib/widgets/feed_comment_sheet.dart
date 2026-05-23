@@ -167,7 +167,9 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     setState(() => _replyTarget = target);
     if (target != null) {
       // Kasih hint @username di input supaya feel native instagram.
-      final mention = target.author.username ?? target.author.name;
+      final mention = target.author.isOfficialAccount
+          ? target.author.displayName
+          : target.author.username ?? target.author.displayName;
       if (!_inputCtrl.text.startsWith('@$mention')) {
         _inputCtrl.text = '@$mention ';
         _inputCtrl.selection = TextSelection.fromPosition(
@@ -470,14 +472,12 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     // IG pattern — caption post di-render sebagai item pertama di atas
     // comment list (dengan author tag "creator"). User langsung baca
     // caption tanpa tutup sheet & balik ke feed.
-    final captionText =
-        widget.post.caption?.trim().isNotEmpty == true
-            ? widget.post.caption!.trim()
-            : widget.post.description.trim();
+    final captionText = widget.post.caption?.trim().isNotEmpty == true
+        ? widget.post.caption!.trim()
+        : widget.post.description.trim();
     final hasCaption = captionText.isNotEmpty;
     final captionOffset = hasCaption ? 1 : 0;
-    final totalCount =
-        items.length + captionOffset + (_loadingMore ? 1 : 0);
+    final totalCount = items.length + captionOffset + (_loadingMore ? 1 : 0);
 
     return NataloPawRefreshIndicator(
       onRefresh: _refresh,
@@ -524,7 +524,9 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
 
   Widget _buildReplyBanner() {
     final target = _replyTarget!;
-    final name = target.author.username ?? target.author.name;
+    final name = target.author.isOfficialAccount
+        ? target.author.displayName
+        : target.author.username ?? target.author.displayName;
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 8, 8, 8),
       decoration: BoxDecoration(
@@ -713,7 +715,7 @@ class _CaptionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final author = post.author;
-    final name = author.name;
+    final name = author.displayName;
     final avatarUrl = author.profilePhotoUrl ?? author.avatarUrl;
     final initial = name.isNotEmpty ? name.substring(0, 1).toUpperCase() : 'N';
 
@@ -751,7 +753,7 @@ class _CaptionTile extends StatelessWidget {
                           ),
                         ),
                       ),
-                      if (author.isOfficial || author.isAdmin) ...[
+                      if (author.isOfficialAccount) ...[
                         const SizedBox(width: 4),
                         const Icon(
                           Icons.verified_rounded,
@@ -807,8 +809,11 @@ class _CommentTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final author = comment.author;
-    final name =
-        author.username?.isNotEmpty == true ? author.username! : author.name;
+    final name = author.isOfficialAccount
+        ? author.displayName
+        : author.username?.isNotEmpty == true
+            ? author.username!
+            : author.displayName;
     final avatarUrl = author.profilePhotoUrl ?? author.avatarUrl;
     final initial = name.isNotEmpty ? name.substring(0, 1).toUpperCase() : 'N';
     final avatarSize = isReply ? 28.0 : 36.0;
@@ -873,7 +878,7 @@ class _CommentTile extends StatelessWidget {
                           ),
                         ),
                       ),
-                      if (author.isOfficial || author.isAdmin) ...[
+                      if (author.isOfficialAccount) ...[
                         const SizedBox(width: 4),
                         const Icon(
                           Icons.verified_rounded,

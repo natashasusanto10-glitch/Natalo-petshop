@@ -21,6 +21,10 @@ class FeedAuthor {
     this.isOfficial = false,
   });
 
+  bool get isOfficialAccount => isAdmin || isOfficial;
+
+  String get displayName => isOfficialAccount ? 'Natalo Petshop' : name;
+
   factory FeedAuthor.fromJson(Map<String, dynamic> json) {
     final avatar = json['avatarUrl'] as String?;
     final photo = json['profilePhotoUrl'] as String?;
@@ -88,6 +92,7 @@ class FeedProductLink {
 class FeedPost {
   final String id;
   final String slug;
+
   /// Non-nullable — default '' supaya screen yang akses `.isNotEmpty` aman.
   final String title;
   final String description;
@@ -112,6 +117,7 @@ class FeedPost {
   final bool isLiked;
   final bool viewerLiked;
   final DateTime createdAt;
+
   /// FeedMedia rows untuk PHOTO_CAROUSEL post — 1-8 foto ordered by
   /// sortOrder. Empty untuk VIDEO_ONLY / VIDEO_PRODUCT / COMMUNITY (video
   /// pakai videoUrl + thumbnailUrl).
@@ -164,7 +170,8 @@ class FeedPost {
                   : p,
             ))
         .toList();
-    final videoProductsJson = (json['productsInVideo'] as List?) ?? productsJson;
+    final videoProductsJson =
+        (json['productsInVideo'] as List?) ?? productsJson;
     final productsInVideo = videoProductsJson
         .whereType<Map<String, dynamic>>()
         .map((p) => FeedProductLink.fromJson(
@@ -173,7 +180,8 @@ class FeedPost {
                   : p,
             ))
         .toList();
-    final taggedProductsJson = (json['taggedProducts'] as List?) ?? productsJson;
+    final taggedProductsJson =
+        (json['taggedProducts'] as List?) ?? productsJson;
     final taggedProducts = taggedProductsJson
         .whereType<Map<String, dynamic>>()
         .map((p) => FeedProductLink.fromJson(
@@ -182,9 +190,9 @@ class FeedPost {
                   : p,
             ))
         .toList();
-    final liked = json['viewerLiked'] as bool? ?? json['isLiked'] as bool? ?? false;
-    final blurhash =
-        (json['thumbnailBlurhash'] ?? json['blurhash']) as String?;
+    final liked =
+        json['viewerLiked'] as bool? ?? json['isLiked'] as bool? ?? false;
+    final blurhash = (json['thumbnailBlurhash'] ?? json['blurhash']) as String?;
     final mediaJson = (json['media'] as List?) ?? const [];
     final media = mediaJson
         .whereType<Map<String, dynamic>>()

@@ -39,7 +39,6 @@ import '../widgets/feed_upload_sheet.dart';
 import '../widgets/moderation_action_sheet.dart';
 
 const _officialGold = Color(0xFFF4D47C);
-const _officialGoldMuted = Color(0xFFD7B55B);
 const _feedBlue = Color(0xFF0B7FEA);
 const _feedActionForegroundColor = Color(0xFFFFFFFF);
 const _feedActionShadowColor = Color(0x99000000);
@@ -158,7 +157,7 @@ class _FeedScreenState extends State<FeedScreen> {
     return _posts.where((p) {
       return !blockService.isUserBlocked(
         userId: p.author.id,
-        userName: p.author.name,
+        userName: p.author.displayName,
       );
     }).toList(growable: false);
   }
@@ -1411,9 +1410,9 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
       targetKind: ReportTargetKind.feedPost,
       targetId: widget.post.id,
       authorId: widget.post.author.id,
-      authorName: widget.post.author.isAdmin
-          ? 'Natalo Petshop'
-          : widget.post.author.name,
+      authorName: widget.post.author.isOfficialAccount
+          ? null
+          : widget.post.author.displayName,
       useFeedStyle: true,
     );
     if (result == null || !mounted) return;
@@ -1627,9 +1626,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                     ],
                     _FeedCreatorIdentity(
                       author: post.author,
-                      displayName: post.author.isAdmin
-                          ? 'Natalo Petshop'
-                          : post.author.name,
+                      displayName: post.author.displayName,
                     ),
                     const SizedBox(height: 7),
                     _ExpandableCaption(
@@ -2252,8 +2249,9 @@ class _FeedPostViewState extends State<_FeedPostView>
       targetKind: ReportTargetKind.feedPost,
       targetId: post.id,
       authorId: post.author.id,
-      authorName: post.author.isAdmin ? null : post.author.name,
-      allowBlock: !post.author.isAdmin,
+      authorName:
+          post.author.isOfficialAccount ? null : post.author.displayName,
+      allowBlock: !post.author.isOfficialAccount,
       useFeedStyle: true,
     );
     if (mounted) widget.onOverlayStateChanged(false);
@@ -2956,9 +2954,7 @@ class _FeedPostViewState extends State<_FeedPostView>
                                 ],
                                 _FeedCreatorIdentity(
                                   author: post.author,
-                                  displayName: post.author.isAdmin
-                                      ? 'Natalo Petshop'
-                                      : post.author.name,
+                                  displayName: post.author.displayName,
                                 ),
                                 const SizedBox(height: 7),
                                 _ExpandableCaption(
@@ -3098,7 +3094,7 @@ class _FeedCreatorIdentity extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: author.isAdmin ? _officialGold : Colors.white,
+              color: author.isOfficialAccount ? _officialGold : Colors.white,
               fontSize: 15.5,
               fontWeight: FontWeight.w800,
               height: 1.1,
@@ -3112,44 +3108,18 @@ class _FeedCreatorIdentity extends StatelessWidget {
             ),
           ),
         ),
-        if (author.isAdmin) ...[
+        if (author.isOfficialAccount) ...[
           const SizedBox(width: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-            decoration: BoxDecoration(
-              color: _officialGold.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(
-                color: _officialGoldMuted.withValues(alpha: 0.82),
-                width: 1.2,
+          const Icon(
+            Icons.verified_rounded,
+            color: _officialGold,
+            size: 17,
+            shadows: [
+              Shadow(
+                color: Colors.black54,
+                blurRadius: 5,
               ),
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.check_rounded,
-                  color: _officialGold,
-                  size: 12,
-                ),
-                SizedBox(width: 3),
-                Text(
-                  'Official',
-                  style: TextStyle(
-                    color: _officialGold,
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w700,
-                    height: 1,
-                    shadows: [
-                      Shadow(
-                        color: Colors.black54,
-                        blurRadius: 5,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+            ],
           ),
         ],
       ],

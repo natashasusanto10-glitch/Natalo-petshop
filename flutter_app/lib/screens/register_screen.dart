@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
+import '../utils/action_throttle.dart';
 import '../utils/haptics.dart';
 import '../utils/phone_formatter.dart';
 
@@ -142,8 +143,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _resendCountdown = 60);
     // Tulis deadline ke prefs SEBELUM timer mulai — supaya kalau widget
     // di-dispose mid-tick, value tetap ada di disk untuk restore.
-    final deadlineMs =
-        DateTime.now().millisecondsSinceEpoch + 60 * 1000;
+    final deadlineMs = DateTime.now().millisecondsSinceEpoch + 60 * 1000;
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_kRegisterOtpCooldownKey, deadlineMs);
@@ -818,7 +818,7 @@ class _RegisterTextField extends StatelessWidget {
   }
 }
 
-class _RegisterSubmitButton extends StatelessWidget {
+class _RegisterSubmitButton extends StatefulWidget {
   final VoidCallback? onPressed;
   final bool loading;
   final bool otpSent;
@@ -830,22 +830,40 @@ class _RegisterSubmitButton extends StatelessWidget {
   });
 
   @override
+  State<_RegisterSubmitButton> createState() => _RegisterSubmitButtonState();
+}
+
+class _RegisterSubmitButtonState extends State<_RegisterSubmitButton> {
+  final ActionThrottle _throttle = ActionThrottle(
+    interval: const Duration(milliseconds: 900),
+  );
+
+  @override
+  void didUpdateWidget(covariant _RegisterSubmitButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.loading && !widget.loading) {
+      _throttle.reset();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final label = loading
-        ? (otpSent ? 'Mendaftarkan...' : 'Mengirim OTP...')
-        : (otpSent ? 'Daftar' : 'Kirim OTP');
+    final label = widget.loading
+        ? (widget.otpSent ? 'Mendaftarkan...' : 'Mengirim OTP...')
+        : (widget.otpSent ? 'Daftar' : 'Kirim OTP');
 
     return SizedBox(
       width: double.infinity,
       height: 54,
       child: ElevatedButton(
-        onPressed: loading ? null : onPressed,
+        onPressed:
+            widget.loading ? null : () => _throttle.run(widget.onPressed),
         style: ElevatedButton.styleFrom(
           backgroundColor: _brandBlue,
           foregroundColor: Colors.white,
           disabledBackgroundColor: _brandBlue.withValues(alpha: 0.38),
           disabledForegroundColor: Colors.white.withValues(alpha: 0.86),
-          elevation: onPressed == null ? 0 : 8,
+          elevation: widget.onPressed == null ? 0 : 8,
           shadowColor: _brandBlue.withValues(alpha: 0.28),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(999),
@@ -858,7 +876,7 @@ class _RegisterSubmitButton extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              if (loading) ...[
+              if (widget.loading) ...[
                 const SizedBox(
                   width: 18,
                   height: 18,
