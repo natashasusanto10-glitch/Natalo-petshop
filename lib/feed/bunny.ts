@@ -336,21 +336,25 @@ export async function preWarmBunnyAssets(guid: string): Promise<void> {
   // Sign URL kalau token authentication aktif — kalau enggak, signBunnyUrl
   // return URL as-is. Tanpa signing, request bakal di-403 oleh Bunny kalau
   // hotlink/token protection on.
-  const mp4Url = signBunnyUrl(bunnyMp4Url(guid, 720)) ?? "";
+  //
+  // Pre-warm HLS playlist + thumbnail. Playlist .m3u8 file kecil (~1-2KB)
+  // tapi pre-warm membuat CDN edge cache playlist + initial TS segment
+  // saat user pertama tap. Match webhook handler yang sekarang set
+  // videoUrl ke HLS playlist (bukan MP4 lagi).
+  const playlistUrl = signBunnyUrl(bunnyPlaylistUrl(guid)) ?? "";
   const thumbUrl = signBunnyUrl(bunnyThumbnailUrl(guid)) ?? "";
-  if (!mp4Url || !thumbUrl) return;
+  if (!playlistUrl || !thumbUrl) return;
 
-  // Range request hanya untuk MP4 — thumbnail kecil (~20KB) jadi full GET.
+  // Full GET untuk playlist (kecil) + thumbnail (~20KB).
   // AbortController dengan timeout 8s supaya pre-warm tidak gantung webhook.
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8_000);
 
   try {
     await Promise.allSettled([
-      fetch(mp4Url, {
-        headers: { Range: "bytes=0-262143" },
-        signal: controller.signal,
-      }).then((r) => r.arrayBuffer()).catch(() => {}),
+      fetch(playlistUrl, { signal: controller.signal })
+        .then((r) => r.arrayBuffer())
+        .catch(() => {}),
       fetch(thumbUrl, { signal: controller.signal })
         .then((r) => r.arrayBuffer())
         .catch(() => {}),

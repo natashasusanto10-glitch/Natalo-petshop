@@ -28,7 +28,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   BUNNY_VIDEO_STATUS,
-  bunnyMp4Url,
+  bunnyPlaylistUrl,
   bunnyThumbnailUrl,
   getBunnyConfig,
   getBunnyVideo,
@@ -157,10 +157,16 @@ export async function POST(request: NextRequest) {
     where: { id: post.id },
     data: {
       encodingStatus: "ready",
-      videoUrl: bunnyMp4Url(guid, 720),
+      // HLS playlist URL instead of direct MP4 — selalu ada saat
+      // encoding selesai, tidak depend on "MP4 Fallback resolutions"
+      // config di library. Adaptive bitrate juga, otomatis pilih
+      // quality based on user network. Bunny library Singapore default
+      // tidak generate 720p MP4 (cuma 240/360/480) → playback 404.
+      // Switch ke HLS = always works.
+      videoUrl: bunnyPlaylistUrl(guid),
       thumbnailUrl,
       thumbnailBlurhash: blurhash,
-      videoMimeType: "video/mp4",
+      videoMimeType: "application/vnd.apple.mpegurl",
       videoDurationSec: meta?.length ? Math.round(meta.length) : null,
       videoWidth: meta?.width ?? null,
       videoHeight: meta?.height ?? null,

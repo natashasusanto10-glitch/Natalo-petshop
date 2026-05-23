@@ -18,7 +18,7 @@ import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
 import {
   BUNNY_VIDEO_STATUS,
-  bunnyMp4Url,
+  bunnyPlaylistUrl,
   bunnyThumbnailUrl,
   getBunnyVideo,
 } from "@/lib/feed/bunny";
@@ -38,19 +38,24 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => ({}))) as {
     postId?: string;
     debug?: boolean;
-    /** Rewrite legacy Bunny HLS rows to point at the MP4 progressive URL. */
+    /** DEPRECATED — kept for backward-compat. Use migrateMp4ToHls instead. */
     migrateHlsToMp4?: boolean;
+    /**
+     * Migrate existing posts dari `play_720p.mp4` URL → `playlist.m3u8` URL.
+     * Run sekali setelah deploy switch HLS supaya post lama playable lagi
+     * (MP4 720p sering 404 karena Bunny library tidak generate variant
+     * specific itu; HLS playlist selalu ada).
+     */
+    migrateMp4ToHls?: boolean;
   };
 
-  // One-shot: convert any existing posts whose videoUrl still points at
-  // `playlist.m3u8` over to the MP4 URL. Run once after deploying the
-  // MP4 switch so playback hits the much-better-cached MP4 path even for
-  // rows written before the change.
-  if (body.migrateHlsToMp4) {
+  // One-shot migration: convert posts yang masih punya videoUrl
+  // `play_720p.mp4` → `playlist.m3u8`. Trigger setelah deploy HLS switch.
+  if (body.migrateMp4ToHls) {
     const oldRows = await prisma.feedPost.findMany({
       where: {
         videoGuid: { not: null },
-        videoUrl: { endsWith: "playlist.m3u8" },
+        videoUrl: { endsWith: ".mp4" },
       },
       select: { id: true, videoGuid: true },
     });
@@ -60,13 +65,25 @@ export async function POST(request: NextRequest) {
       await prisma.feedPost.update({
         where: { id: row.id },
         data: {
-          videoUrl: bunnyMp4Url(row.videoGuid, 720),
-          videoMimeType: "video/mp4",
+          videoUrl: bunnyPlaylistUrl(row.videoGuid),
+          videoMimeType: "application/vnd.apple.mpegurl",
         },
       });
       migrated.push(row.id);
     }
-    return NextResponse.json({ ok: true, mode: "migrate-hls-to-mp4", migrated });
+    return NextResponse.json({ ok: true, mode: "migrate-mp4-to-hls", migrated });
+  }
+
+  // Legacy mode — DEPRECATED. Original intent was migrate HLS → MP4, tapi
+  // sekarang kita switch ke HLS lagi (per fix 404). Keep handler tapi noop
+  // dengan info message supaya admin tidak bingung kalau ke-trigger.
+  if (body.migrateHlsToMp4) {
+    return NextResponse.json({
+      ok: false,
+      mode: "deprecated",
+      message:
+        "migrateHlsToMp4 DEPRECATED — sekarang pakai HLS playlist. Gunakan migrateMp4ToHls untuk forward migration.",
+    });
   }
 
   // Debug mode: dump last 5 feed posts with their key state — no mutation.
@@ -131,9 +148,10 @@ export async function POST(request: NextRequest) {
         where: { id: post.id },
         data: {
           encodingStatus: "ready",
-          videoUrl: bunnyMp4Url(post.videoGuid, 720),
+          // HLS playlist (consistent dengan webhook + reconcile.ts).
+          videoUrl: bunnyPlaylistUrl(post.videoGuid),
           thumbnailUrl: bunnyThumbnailUrl(post.videoGuid),
-          videoMimeType: "video/mp4",
+          videoMimeType: "application/vnd.apple.mpegurl",
           videoDurationSec: meta.length ? Math.round(meta.length) : null,
           videoWidth: meta.width ?? null,
           videoHeight: meta.height ?? null,

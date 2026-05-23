@@ -23,7 +23,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   BUNNY_VIDEO_STATUS,
-  bunnyMp4Url,
+  bunnyPlaylistUrl,
   bunnyThumbnailUrl,
   getBunnyVideo,
 } from "@/lib/feed/bunny";
@@ -95,9 +95,9 @@ export async function GET(request: NextRequest) {
           where: { id: post.id },
           data: {
             encodingStatus: "ready",
-            videoUrl: bunnyMp4Url(post.videoGuid, 720),
+            videoUrl: bunnyPlaylistUrl(post.videoGuid),
             thumbnailUrl: bunnyThumbnailUrl(post.videoGuid),
-            videoMimeType: "video/mp4",
+            videoMimeType: "application/vnd.apple.mpegurl",
             videoDurationSec: meta.length ? Math.round(meta.length) : null,
             videoWidth: meta.width ?? null,
             videoHeight: meta.height ?? null,
@@ -121,24 +121,26 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 2. Migrate any HLS Bunny rows to MP4 progressive.
-    const hls = await prisma.feedPost.findMany({
+    // 2. Migrate any existing MP4 rows ke HLS playlist (forward
+    // migration setelah switch ke HLS — MP4 720p sering 404 karena
+    // Bunny library tidak generate variant itu).
+    const mp4Rows = await prisma.feedPost.findMany({
       where: {
         videoGuid: { not: null },
-        videoUrl: { endsWith: "playlist.m3u8" },
+        videoUrl: { endsWith: ".mp4" },
       },
       select: { id: true, videoGuid: true },
     });
-    for (const row of hls) {
+    for (const row of mp4Rows) {
       if (!row.videoGuid) continue;
       await prisma.feedPost.update({
         where: { id: row.id },
         data: {
-          videoUrl: bunnyMp4Url(row.videoGuid, 720),
-          videoMimeType: "video/mp4",
+          videoUrl: bunnyPlaylistUrl(row.videoGuid),
+          videoMimeType: "application/vnd.apple.mpegurl",
         },
       });
-      actions.push({ postId: row.id, action: "migrated-to-mp4" });
+      actions.push({ postId: row.id, action: "migrated-to-hls" });
     }
   }
 

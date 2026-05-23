@@ -12,7 +12,7 @@
 import { prisma } from "@/lib/prisma";
 import {
   BUNNY_VIDEO_STATUS,
-  bunnyMp4Url,
+  bunnyPlaylistUrl,
   bunnyThumbnailUrl,
   getBunnyVideo,
   preWarmBunnyAssets,
@@ -61,10 +61,12 @@ export async function reconcileFeedPost(
       where: { id: post.id },
       data: {
         encodingStatus: "ready",
-        videoUrl: bunnyMp4Url(post.videoGuid, 720),
+        // HLS playlist — match webhook handler. Selalu ada saat video
+        // ready, tidak depend on "MP4 Fallback 720p" library config.
+        videoUrl: bunnyPlaylistUrl(post.videoGuid),
         thumbnailUrl,
         thumbnailBlurhash: blurhash,
-        videoMimeType: "video/mp4",
+        videoMimeType: "application/vnd.apple.mpegurl",
         videoDurationSec: meta.length ? Math.round(meta.length) : null,
         videoWidth: meta.width ?? null,
         videoHeight: meta.height ?? null,
