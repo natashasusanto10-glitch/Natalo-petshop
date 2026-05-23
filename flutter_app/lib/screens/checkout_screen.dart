@@ -508,17 +508,43 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _pricingRetryScheduled = false;
         _pricingRetryAttempt = 0;
         _pricingSyncError = null;
-        _selectedFreeShippingVoucher = recalc.appliedFreeShippingVoucher;
-        _selectedProductVoucher = recalc.appliedProductVoucher ??
+        // Resolve each slot dari backend response (multi-field redundancy).
+        final freeShip = recalc.appliedFreeShippingVoucher;
+        final product = recalc.appliedProductVoucher ??
             (recalc.appliedCustomerVoucher?.isProductDiscount == true
                 ? recalc.appliedCustomerVoucher
                 : null);
-        _selectedLoyaltyVoucher = recalc.appliedLoyaltyVoucher ??
+        final loyalty = recalc.appliedLoyaltyVoucher ??
             (recalc.appliedCustomerVoucher?.isLoyaltyClaim == true
                 ? recalc.appliedCustomerVoucher
                 : null);
-        _selectedManualVoucher =
+        var manual =
             recalc.appliedPrivateVoucher ?? recalc.appliedManualVoucher;
+        // BUSINESS RULE: max 1 voucher per business-type (ongkir / produk /
+        // reward poin / manual). Backend kadang return manual voucher yang
+        // type-nya loyalty atau product (legacy / private grant) — kalau
+        // begitu, dia overlap dengan slot loyalty/product yang sudah ada
+        // → user lihat 2 voucher reward poin (atau 2 diskon produk) tampil
+        // bareng. Defensive drop manual kalau collides dengan slot lain
+        // yang punya business-type sama.
+        if (manual != null && loyalty != null && manual.isLoyaltyClaim) {
+          // Manual carries loyalty type, AND loyalty slot already filled →
+          // drop manual to enforce "max 1 reward poin" rule.
+          manual = null;
+        }
+        if (manual != null &&
+            product != null &&
+            manual.isProductDiscount &&
+            !manual.isPrivateManual) {
+          manual = null;
+        }
+        if (manual != null && freeShip != null && manual.isFreeShipping) {
+          manual = null;
+        }
+        _selectedFreeShippingVoucher = freeShip;
+        _selectedProductVoucher = product;
+        _selectedLoyaltyVoucher = loyalty;
+        _selectedManualVoucher = manual;
         _availableVouchers = recalc.availableVouchers;
         _unavailableVouchers = recalc.unavailableVouchers;
       });
@@ -4271,9 +4297,42 @@ class _AppliedVoucherSummaryCard extends StatelessWidget {
     required this.onRemove,
   });
 
+  /// Defensive dedup by business-type. Per business rule Natalo: max 1
+  /// voucher per type (gratis ongkir / diskon produk / reward poin /
+  /// manual code). Caller layer (_syncCheckoutPricing) sudah dedup slot,
+  /// tapi second-layer guard di sini supaya kalau ada source lain yang
+  /// inject duplicate (mis. legacy code path), display tetap show 1 per
+  /// type. Keep first occurrence per type, drop sisanya.
+  static List<MemberVoucher> _dedupeByType(List<MemberVoucher> input) {
+    final result = <MemberVoucher>[];
+    bool hasShipping = false;
+    bool hasProduct = false;
+    bool hasLoyalty = false;
+    bool hasManual = false;
+    for (final v in input) {
+      if (v.isFreeShipping || v.isShippingDiscount) {
+        if (hasShipping) continue;
+        hasShipping = true;
+      } else if (v.isLoyaltyClaim) {
+        if (hasLoyalty) continue;
+        hasLoyalty = true;
+      } else if (v.isPrivateManual) {
+        if (hasManual) continue;
+        hasManual = true;
+      } else {
+        // Default = product discount.
+        if (hasProduct) continue;
+        hasProduct = true;
+      }
+      result.add(v);
+    }
+    return result;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final totalSavings = vouchers.fold<int>(
+    final deduped = _dedupeByType(vouchers);
+    final totalSavings = deduped.fold<int>(
       0,
       (sum, voucher) => sum + voucher.discount,
     );
@@ -4309,7 +4368,7 @@ class _AppliedVoucherSummaryCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '${vouchers.length} voucher terpakai',
+                      '${deduped.length} voucher terpakai',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -4340,9 +4399,9 @@ class _AppliedVoucherSummaryCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          ...vouchers.map(
+          ...deduped.map(
             (voucher) {
-              final isLast = voucher == vouchers.last;
+              final isLast = voucher == deduped.last;
               return Padding(
                 padding: EdgeInsets.only(bottom: isLast ? 0 : 8),
                 child: _AppliedVoucherLine(
