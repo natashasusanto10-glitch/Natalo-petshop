@@ -37,6 +37,7 @@ const aasa = {
           { "/": "/wishlist", comment: "Wishlist" },
           { "/": "/cart", comment: "Shopping cart" },
           { "/": "/member/*", comment: "Member account pages" },
+          { "/": "/u/*", comment: "Public profile pages (@username)" },
           // Exclude paths yang harus tetap di browser (admin)
           { "/": "/admin/*", exclude: true, comment: "Admin tetap di browser" },
         ],

@@ -171,6 +171,73 @@ export async function checkUsernameAvailability(
 }
 
 /**
+ * Public profile resolution — resolve username string ke User row.
+ * Dipakai oleh /api/u/[username] + /u/[username] page untuk public
+ * profile lookup.
+ *
+ * Lookup order:
+ *   1. User.username = X (current owner) — most common.
+ *   2. UsernameHistory.username = X dengan reservedUntil > NOW
+ *      → anti-broken-link selama 30 hari grace period. User A ganti
+ *        handle dari `asiong` → `asiong2`, link lama `/u/asiong`
+ *        tetap resolve ke User A selama window 30 hari.
+ *      → setelah grace habis, kalau User B claim `asiong`, link
+ *        mengarah ke User B (step 1 match).
+ *
+ * Return null kalau tidak ada match — caller render 404.
+ */
+export async function resolveUserByUsername(
+  rawUsername: string,
+): Promise<{
+  id: string;
+  name: string;
+  username: string | null;
+  profilePhotoUrl: string | null;
+  bio: string | null;
+  createdAt: Date;
+} | null> {
+  const normalized = normalizeUsername(rawUsername);
+  if (normalized.length === 0) return null;
+
+  // Step 1: current owner
+  const current = await prisma.user.findUnique({
+    where: { username: normalized },
+    select: {
+      id: true,
+      name: true,
+      username: true,
+      profilePhotoUrl: true,
+      bio: true,
+      createdAt: true,
+    },
+  });
+  if (current) return current;
+
+  // Step 2: history reservation grace period
+  const now = new Date();
+  const reservation = await prisma.usernameHistory.findFirst({
+    where: {
+      username: normalized,
+      reservedUntil: { gt: now },
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          profilePhotoUrl: true,
+          bio: true,
+          createdAt: true,
+        },
+      },
+    },
+  });
+  return reservation?.user ?? null;
+}
+
+/**
  * Set/change username untuk user. Atomik dalam transaction:
  *   1. Validasi format (di caller, bukan disini)
  *   2. Validasi availability
