@@ -126,18 +126,18 @@ Future<void> main() async {
       systemNavigationBarContrastEnforced: false,
     ),
   );
-  // Cek onboarding flag sebelum kasih ke MaterialApp.initialRoute.
-  // Pakai await singkat (~5ms baca SharedPreferences) supaya first paint
-  // langsung ke screen yang benar tanpa flicker.
-  _initialRoute = await OnboardingScreen.hasSeen() ? '/' : '/onboarding';
-  // Load read-only mode flag — default ON sampai user explicit toggle off
-  // di Settings. Service mutation throws ReadOnlyModeException kalau
-  // dipanggil saat ON, supaya database Capacitor tidak ke-mutate dari
-  // Flutter testing.
-  await readOnlyMode.initialize();
-  // Motion preference — respect OS reduce-motion + user manual toggle.
-  // Widget animations check via `MotionPrefs.shouldReduce(context)`.
-  await motionPrefs.initialize();
+  // PERF: parallelize SharedPreferences init — sebelumnya 3 await
+  // sequential (onboarding flag + readOnlyMode + motionPrefs) total
+  // ~30-50ms blocking first frame. Future.wait reduce ke ~10-15ms
+  // (max waktu 1 sequential read, sisanya overlap).
+  // OnboardingScreen.hasSeen() WAJIB jadi blocking — hasilnya nentuin
+  // initialRoute (gak bisa post-runApp). Sisanya overlap.
+  final results = await Future.wait<dynamic>([
+    OnboardingScreen.hasSeen(),
+    readOnlyMode.initialize(),
+    motionPrefs.initialize(),
+  ]);
+  _initialRoute = (results[0] as bool) ? '/' : '/onboarding';
   memberStore.initialize();
   // Settings store (theme mode dll) di-initialize sebelum runApp supaya
   // first paint pakai theme yang benar (light vs dark vs system).

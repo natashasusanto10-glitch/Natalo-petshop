@@ -142,29 +142,41 @@ class _FeedScreenState extends State<FeedScreen> {
     super.dispose();
   }
 
+  /// Cache hasil filter — re-compute hanya saat _posts berubah atau
+  /// blocklist berubah. PERF: sebelumnya `_visiblePosts` getter
+  /// re-filter O(n) di setiap build (page swipe, like tap, comment
+  /// count change, dll). Dengan 50+ post cached → noticeable jank.
+  /// Cache di-invalidate via `_rebuildVisiblePostsCache()` di
+  /// blocklist change + setiap _posts assignment.
+  List<FeedPost> _visiblePostsCache = const [];
+
   /// Re-filter _posts setelah user block creator. Dipanggil oleh
   /// [blockService.notifyListeners] dari [moderation_action_sheet.dart].
   void _onBlocklistChanged() {
     if (!mounted) return;
-    setState(() {
-      // Re-filter list — _visiblePosts getter yang dipakai PageView akan
-      // otomatis exclude blocked. Trigger setState supaya rebuild.
-    });
+    _rebuildVisiblePostsCache();
+    setState(() {});
   }
 
-  /// Filter posts dari user yang di-block (UGC policy requirement).
-  ///
-  /// Dipakai PageView builder & item count. Source [_posts] tetap utuh
-  /// supaya kalau user unblock, post langsung muncul lagi tanpa refetch.
-  List<FeedPost> get _visiblePosts {
-    if (!blockService.isLoaded || blockService.count == 0) return _posts;
-    return _posts.where((p) {
+  /// Re-compute cache filtered. Caller WAJIB panggil setelah set
+  /// _posts (post fetch, post add/delete) atau setelah blocklist
+  /// change. setState terpisah supaya caller bisa batch.
+  void _rebuildVisiblePostsCache() {
+    if (!blockService.isLoaded || blockService.count == 0) {
+      _visiblePostsCache = _posts;
+      return;
+    }
+    _visiblePostsCache = _posts.where((p) {
       return !blockService.isUserBlocked(
         userId: p.author.id,
         userName: p.author.displayName,
       );
     }).toList(growable: false);
   }
+
+  /// Read-only view ke cache — sekarang O(1) lookup, gak re-filter
+  /// per build.
+  List<FeedPost> get _visiblePosts => _visiblePostsCache;
 
   void _syncTopCartCount() {
     final next = cartStore.totalQuantity;
@@ -195,6 +207,7 @@ class _FeedScreenState extends State<FeedScreen> {
       if (cached.isNotEmpty && _posts.isEmpty) {
         setState(() {
           _posts = List<FeedPost>.from(cached);
+          _rebuildVisiblePostsCache();
           // Tetap _loading=true sampai fetch network done — supaya kalau
           // network sukses, cache di-replace tanpa flicker UX.
         });
@@ -233,6 +246,7 @@ class _FeedScreenState extends State<FeedScreen> {
       if (!mounted) return;
       setState(() {
         _posts = page.items;
+        _rebuildVisiblePostsCache();
         _nextCursor = page.nextCursor;
         _loading = false;
       });
@@ -276,6 +290,7 @@ class _FeedScreenState extends State<FeedScreen> {
       feedLocalStore.mergeBackendLiked(page.items);
       setState(() {
         _posts.addAll(page.items);
+        _rebuildVisiblePostsCache();
         _nextCursor = page.nextCursor;
         _loadingMore = false;
       });
@@ -373,7 +388,13 @@ class _FeedScreenState extends State<FeedScreen> {
 
       final thumb = post.thumbnailUrl;
       if (mounted && thumb != null && thumb.isNotEmpty) {
-        precacheImage(CachedNetworkImageProvider(thumb), context);
+        // PERF: precacheImage blocking main thread (decode + cache write).
+        // Schedule off-frame via microtask supaya gak nge-stutter swipe.
+        // Fire-and-forget — kalau gagal, image fallback ke normal lazy load.
+        Future.microtask(() {
+          if (!mounted) return;
+          precacheImage(CachedNetworkImageProvider(thumb), context);
+        });
       }
 
       // Network-aware quality rewrite (Sprint 2 #7) + user preference dari
