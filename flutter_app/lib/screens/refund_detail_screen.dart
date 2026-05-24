@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/member_profile.dart';
 import '../services/api_client.dart';
 import '../utils/formatters.dart';
 import '../widgets/app_ui.dart';
@@ -530,18 +531,28 @@ class _OrderSummary extends StatelessWidget {
           height: 40,
           child: OutlinedButton.icon(
             onPressed: () {
-              // Navigate ke order detail. Pass orderId atau orderNumber
-              // sebagai argument — existing route handler `/member/order-detail`
-              // expect OrderSummary object. Untuk MVP, kasih hint manual:
-              // user buka Tab Transaksi → cari order ini di list.
-              //
-              // Future improvement: route `/member/order-detail` accept
-              // string orderId argument + auto-fetch order detail.
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Buka Tab Transaksi → cari pesanan #${order.orderNumber}'),
-                  behavior: SnackBarBehavior.floating,
-                ),
+              // Buat OrderSummary stub dari _RefundOrderRef (sudah ada
+              // orderNumber + status + createdAt). MemberOrderDetailScreen
+              // initState panggil `orderService.fetchOrderDetail(orderNumber)`
+              // yang langsung replace stub dengan data fresh dari server
+              // (items, customer info, address, shipping, payment, dll).
+              // User pengalaman "tap → loading sebentar → detail full"
+              // bukan "tap → snackbar useless".
+              final stub = OrderSummary(
+                id: order.id,
+                orderNumber: order.orderNumber,
+                status: order.status,
+                paymentStatus: 'PAID',
+                subtotal: order.subtotal.toDouble(),
+                discount:
+                    (order.productDiscount + order.shippingDiscount).toDouble(),
+                total: order.total.toDouble(),
+                createdAt: order.createdAt,
+              );
+              Navigator.pushNamed(
+                context,
+                '/member/order-detail',
+                arguments: stub,
               );
             },
             icon: const Icon(Icons.receipt_long_rounded, size: 18),
