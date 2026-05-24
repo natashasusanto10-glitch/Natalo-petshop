@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { normalizeIndonesianPhone } from "@/lib/phone";
 
 export async function GET() {
   const session = await getSession("CUSTOMER");
@@ -77,25 +76,18 @@ export async function PATCH(request: NextRequest) {
     }
     updates.name = name;
   }
-  if (typeof body.email === "string") {
-    const email = body.email.trim().toLowerCase();
-    if (email.length > 0 && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return NextResponse.json(
-        { error: "Format email tidak valid." },
-        { status: 400 },
-      );
-    }
-    updates.email = email.length > 0 ? email : null;
-  }
-  if (typeof body.phone === "string") {
-    const phone = normalizeIndonesianPhone(body.phone);
-    if (phone.length > 0 && phone.length < 8) {
-      return NextResponse.json(
-        { error: "Nomor handphone tidak valid." },
-        { status: 400 },
-      );
-    }
-    updates.phone = phone.length > 0 ? phone : null;
+  // Email + phone DI-LOCK setelah registrasi — silent ignore field
+  // ini di payload (anti voucher 1×/user abuse). User schema @unique
+  // di kolom email+phone, kalau dibiarkan diganti user bisa "lepas"
+  // identifier lama → daftar ulang akun baru dengan identifier itu →
+  // claim voucher BDAY/welcome/loyalty 1× lagi. Belt-and-suspenders
+  // di server bahkan kalau client lama / external tool kirim field
+  // ini. Legitimate change harus via admin (manual update di DB).
+  if (body.email !== undefined || body.phone !== undefined) {
+    console.warn(
+      "[auth/me PATCH] email/phone field ignored — locked after registration",
+      { userId: session.sub },
+    );
   }
   if (body.birthDate !== undefined) {
     if (body.birthDate === null || body.birthDate === "") {

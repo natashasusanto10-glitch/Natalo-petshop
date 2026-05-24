@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../config/natalo_store_config.dart';
 import '../services/member_service.dart';
 import '../state/member_store.dart';
 import '../utils/haptics.dart';
@@ -40,8 +41,6 @@ class MemberProfileScreen extends StatefulWidget {
 
 class _MemberProfileScreenState extends State<MemberProfileScreen> {
   late final TextEditingController _nameController;
-  late final TextEditingController _emailController;
-  late final TextEditingController _phoneController;
   late final TextEditingController _bioController;
 
   DateTime? _birthDate;
@@ -56,10 +55,8 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
     final profile = memberStore.profile;
     _nameController = TextEditingController(text: profile?.name ?? '')
       ..addListener(_markDirty);
-    _emailController = TextEditingController(text: profile?.email ?? '')
-      ..addListener(_markDirty);
-    _phoneController = TextEditingController(text: profile?.phone ?? '')
-      ..addListener(_markDirty);
+    // Email + phone DI-LOCK — display only via _LockedInfoTile. Tidak
+    // ada controller karena bukan TextField.
     _bioController = TextEditingController(text: profile?.bio ?? '')
       ..addListener(_markDirty);
     _birthDate = profile?.birthDate;
@@ -68,8 +65,6 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
   @override
   void dispose() {
     _nameController.dispose();
-    _emailController.dispose();
-    _phoneController.dispose();
     _bioController.dispose();
     super.dispose();
   }
@@ -117,18 +112,11 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
 
   Future<void> _save() async {
     final name = _nameController.text.trim();
-    final email = _emailController.text.trim();
-    final phone = _phoneController.text.trim();
     final bio = _bioController.text.trim();
 
     if (name.isEmpty) {
       AppHaptics.warning();
       AppToast.show(context, 'Nama tidak boleh kosong.', kind: ToastKind.error);
-      return;
-    }
-    if (email.isNotEmpty && !email.contains('@')) {
-      AppHaptics.warning();
-      AppToast.show(context, 'Format email tidak valid.', kind: ToastKind.error);
       return;
     }
     if (bio.length > _bioMaxLength) {
@@ -144,12 +132,12 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
     AppHaptics.tap();
     setState(() => _saving = true);
     try {
-      // Bio clear behavior: text kosong → clearBio=true (kirim null ke
-      // backend untuk hapus dari DB). Non-empty → kirim string.
+      // Email + phone TIDAK dikirim — locked di UI (Option C anti voucher
+      // abuse, lihat _LockedInfoTile di bawah). Backend /api/auth/me PATCH
+      // juga ignore field email/phone dari customer session sebagai
+      // belt-and-suspenders.
       final updated = await memberService.updateProfile(
         name: name,
-        email: email.isEmpty ? null : email,
-        phone: phone.isEmpty ? null : phone,
         birthDate: _birthDate,
         bio: bio.isEmpty ? null : bio,
         clearBio: bio.isEmpty,
@@ -169,8 +157,6 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
           await memberStore.persistProfileUpdate(
             current.copyWith(
               name: name,
-              email: email.isEmpty ? null : email,
-              phone: phone.isEmpty ? null : phone,
               birthDate: _birthDate,
               bio: bio.isEmpty ? null : bio,
               clearBio: bio.isEmpty,
@@ -328,30 +314,27 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
                           textCapitalization: TextCapitalization.words,
                         ),
                         const _FormDivider(),
-                        _ProfileFormField(
+                        // Email + Nomor WhatsApp DI-LOCK display-only (Option C
+                        // dari diskusi anti voucher-abuse). Identifier unique
+                        // di DB — kalau user ganti, lama jadi free → bisa
+                        // di-claim ulang lewat akun baru → multi-claim voucher
+                        // 1×/user. Lock di UI = block 90% kasus tanpa
+                        // implementasi cooldown flow yang kompleks. Untuk
+                        // legitimate change, user hubungi admin via WA.
+                        _LockedInfoTile(
                           label: 'Email',
-                          controller: _emailController,
+                          value: memberStore.profile?.email ?? '—',
                           icon: Icons.email_rounded,
                           iconColor: const Color(0xFF22C55E),
                           iconBg: const Color(0xFFE8F8EC),
-                          hint: 'nama@email.com',
-                          keyboardType: TextInputType.emailAddress,
                         ),
                         const _FormDivider(),
-                        _ProfileFormField(
+                        _LockedInfoTile(
                           label: 'Nomor WhatsApp',
-                          controller: _phoneController,
+                          value: memberStore.profile?.phone ?? '—',
                           icon: Icons.phone_iphone_rounded,
                           iconColor: const Color(0xFF8B5CF6),
                           iconBg: const Color(0xFFF3E8FF),
-                          hint: '08xxxxxxxxxx',
-                          keyboardType: TextInputType.phone,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(
-                              RegExp(r'[\d+\s-]'),
-                            ),
-                            LengthLimitingTextInputFormatter(20),
-                          ],
                         ),
                         const _FormDivider(),
                         _BirthDatePickerTile(
@@ -433,9 +416,7 @@ class _ProfileFormField extends StatelessWidget {
   final Color iconColor;
   final Color iconBg;
   final String hint;
-  final TextInputType? keyboardType;
   final TextCapitalization textCapitalization;
-  final List<TextInputFormatter>? inputFormatters;
   /// Multiline support — defaults to 1 line. Pass `maxLines: 3` untuk
   /// textarea-style field (mis. bio). `minLines` opsional supaya field
   /// start tinggi tertentu (anchor expand bottom-up).
@@ -457,9 +438,7 @@ class _ProfileFormField extends StatelessWidget {
     required this.iconColor,
     required this.iconBg,
     required this.hint,
-    this.keyboardType,
     this.textCapitalization = TextCapitalization.none,
-    this.inputFormatters,
     this.maxLines = 1,
     this.minLines,
     this.maxLength,
@@ -501,10 +480,8 @@ class _ProfileFormField extends StatelessWidget {
                 ),
                 TextField(
                   controller: controller,
-                  keyboardType: keyboardType ??
-                      (maxLines > 1 ? TextInputType.multiline : null),
+                  keyboardType: maxLines > 1 ? TextInputType.multiline : null,
                   textCapitalization: textCapitalization,
-                  inputFormatters: inputFormatters,
                   maxLines: maxLines,
                   minLines: minLines,
                   maxLength: maxLength,
@@ -697,6 +674,217 @@ class _UsernameTile extends StatelessWidget {
             const Icon(
               Icons.chevron_right_rounded,
               color: Color(0xFF94A3B8),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Read-only display tile dengan padlock indicator. Email + Nomor
+/// WhatsApp pake ini — visual sama dengan _ProfileFormField tapi TIDAK
+/// editable. Tap → bottom sheet jelaskan kenapa, plus tombol Hubungi
+/// Admin via WhatsApp untuk legitimate change request.
+///
+/// Rationale: identifier @unique di DB. Kalau user ganti, lama jadi
+/// free → bisa dipake daftar baru → exploit voucher 1×/user. Lock UI
+/// = pencegahan 90% kasus dengan effort minimal. Implementasi cooldown
+/// flow proper bisa ditambah nanti kalau perlu (Option B di doc).
+class _LockedInfoTile extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color iconColor;
+  final Color iconBg;
+
+  const _LockedInfoTile({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.iconColor,
+    required this.iconBg,
+  });
+
+  void _showInfoSheet(BuildContext context) {
+    AppHaptics.tap();
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (ctx) {
+        final bottomInset = MediaQuery.viewPaddingOf(ctx).bottom;
+        return Padding(
+          padding: EdgeInsets.fromLTRB(20, 6, 20, 16 + bottomInset),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: iconBg,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(icon, color: iconColor, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Ganti $label',
+                      style: const TextStyle(
+                        color: _darkNavy,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'Email dan nomor WhatsApp dikunci setelah pendaftaran '
+                'untuk mencegah penyalahgunaan voucher 1× pakai.',
+                style: TextStyle(
+                  color: _textSecondary,
+                  fontSize: 13.5,
+                  height: 1.45,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Kalau kamu butuh ganti (mis. pindah nomor, typo saat '
+                'daftar), hubungi admin lewat WhatsApp dengan menyertakan '
+                'data lama + data baru.',
+                style: TextStyle(
+                  color: _textSecondary,
+                  fontSize: 13.5,
+                  height: 1.45,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () async {
+                    AppHaptics.tap();
+                    final uri = NataloStoreConfig.whatsappUri(
+                      message:
+                          'Halo admin Natalo, saya butuh bantuan ganti '
+                          '$label akun saya.',
+                    );
+                    final ok = await launchUrl(
+                      uri,
+                      mode: LaunchMode.externalApplication,
+                    );
+                    if (!ctx.mounted) return;
+                    if (ok) {
+                      Navigator.of(ctx).maybePop();
+                    } else {
+                      AppToast.show(
+                        ctx,
+                        'Tidak bisa buka WhatsApp.',
+                        kind: ToastKind.error,
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.chat_rounded, size: 18),
+                  label: const Text('Hubungi Admin via WhatsApp'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF25D366),
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => Navigator.of(ctx).maybePop(),
+                style: TextButton.styleFrom(
+                  minimumSize: const Size.fromHeight(40),
+                  foregroundColor: _textSecondary,
+                ),
+                child: const Text(
+                  'Tutup',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => _showInfoSheet(context),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: iconBg,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: iconColor, size: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      color: _textSecondary,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: _darkNavy,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 6),
+            // Padlock indicator — visual cue "locked tapi tetap
+            // interaktif (tap untuk info + admin contact)".
+            const Icon(
+              Icons.lock_outline_rounded,
+              color: Color(0xFF94A3B8),
+              size: 18,
             ),
           ],
         ),
