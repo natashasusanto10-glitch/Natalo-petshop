@@ -715,7 +715,11 @@ class _NotificationErrorState extends StatelessWidget {
 }
 
 enum _NotificationFilter {
+  // Mention diletakkan di posisi #2 (priority tinggi) — match IG/TikTok
+  // pattern di mana notifikasi mention lebih penting daripada like/comment
+  // generic. User cek dulu siapa yang nyebutin sebelum browse lain.
   all('Semua', Icons.notifications_none_rounded),
+  mention('Disebut', Icons.alternate_email_rounded),
   order('Pesanan', Icons.receipt_long_rounded),
   promo('Promo', Icons.confirmation_number_rounded),
   feed('Feed', Icons.play_circle_outline_rounded),
@@ -729,7 +733,12 @@ enum _NotificationFilter {
   bool matches(AppNotification item) {
     if (this == _NotificationFilter.all) return true;
     final text = _notificationHaystack(item);
+    final isMention = _isMentionNotification(item);
     return switch (this) {
+      // Mention match: eventType (preferred, server-set "feed_mention")
+      // atau keyword fallback untuk backward-compat (notif lama tanpa
+      // eventType atau dari source lain).
+      _NotificationFilter.mention => isMention,
       _NotificationFilter.order => text.contains('order') ||
           text.contains('pesanan') ||
           text.contains('payment') ||
@@ -745,7 +754,9 @@ enum _NotificationFilter {
           text.contains('discount') ||
           text.contains('coupon') ||
           text.contains('gratis ongkir'),
-      _NotificationFilter.feed => text.contains('feed') ||
+      // Feed EXCLUDE mention — mention punya tab sendiri. Tanpa exclusion,
+      // 1 mention notif muncul di 2 tab (Disebut + Feed) → confusing.
+      _NotificationFilter.feed => !isMention && (text.contains('feed') ||
           text.contains('video') ||
           text.contains('post') ||
           text.contains('comment') ||
@@ -753,11 +764,22 @@ enum _NotificationFilter {
           text.contains('like') ||
           text.contains('share') ||
           text.contains('approved') ||
-          text.contains('rejected'),
+          text.contains('rejected')),
       _NotificationFilter.announcement => _isAnnouncementNotification(item),
       _NotificationFilter.all => true,
     };
   }
+}
+
+/// Detect notifikasi mention. Prefer eventType match (server-set
+/// "feed_mention" sejak Fase 3.1), fallback ke keyword match buat row
+/// lama / notif dari source lain yang gak set eventType.
+bool _isMentionNotification(AppNotification item) {
+  if (item.eventType?.toLowerCase() == 'feed_mention') return true;
+  final text = _notificationHaystack(item);
+  return text.contains('menyebut') ||
+      text.contains('mentioned') ||
+      text.contains('mention');
 }
 
 class _NotificationVisual {
@@ -772,6 +794,15 @@ class _NotificationVisual {
   });
 
   factory _NotificationVisual.from(AppNotification item) {
+    // Mention visual diutamakan — dedicated icon @ supaya user tau
+    // visual cepat ini notif sosial. Match brand violet.
+    if (_isMentionNotification(item)) {
+      return const _NotificationVisual(
+        icon: Icons.alternate_email_rounded,
+        color: Color(0xFF5B5BD6),
+        label: 'Disebut',
+      );
+    }
     if (_NotificationFilter.order.matches(item)) {
       return const _NotificationVisual(
         icon: Icons.receipt_long_rounded,
