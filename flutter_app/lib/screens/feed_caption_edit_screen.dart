@@ -139,18 +139,38 @@ class _FeedCaptionEditScreenState extends State<FeedCaptionEditScreen> {
                             height: 1.45,
                             fontWeight: FontWeight.w500,
                           ),
-                          // InputDecoration.collapsed → benar-benar plain,
-                          // NO border (enabled + focused + disabled state
-                          // semua None). InputDecoration.border = none
-                          // doang TIDAK cukup karena focusedBorder default
-                          // tetap render blue outline.
-                          decoration: const InputDecoration.collapsed(
+                          // Plain TextField — NO border, NO background.
+                          //
+                          // Catatan: TIDAK boleh pakai
+                          // `InputDecoration.collapsed` saja karena global
+                          // `inputDecorationTheme` di app_theme.dart punya
+                          // `enabledBorder`, `focusedBorder`, `filled:true`,
+                          // dll yang merge di atas decoration → outline
+                          // biru tetap render saat focus.
+                          //
+                          // Solusi: explicit override SEMUA border state
+                          // ke `InputBorder.none` + `filled: false` +
+                          // `fillColor: transparent` supaya theme tidak
+                          // menang. Pattern ini bypass theme global
+                          // untuk field spesifik ini saja.
+                          decoration: const InputDecoration(
                             hintText: 'Tulis caption...',
                             hintStyle: TextStyle(
                               color: _captionMuted,
                               fontSize: 16,
                               fontWeight: FontWeight.w500,
                             ),
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            disabledBorder: InputBorder.none,
+                            errorBorder: InputBorder.none,
+                            focusedErrorBorder: InputBorder.none,
+                            filled: false,
+                            fillColor: Colors.transparent,
+                            isCollapsed: true,
+                            contentPadding: EdgeInsets.zero,
+                            counterText: '',
                           ),
                           ),
                         ),
