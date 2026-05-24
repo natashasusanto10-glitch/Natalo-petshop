@@ -73,19 +73,35 @@ class _MemberVouchersScreenState extends State<MemberVouchersScreen> {
               ),
             );
           }
+          // Split jadi 2 section: bisa dipakai sekarang (applicable=true)
+          // vs belum bisa dipakai (publik admin yg user belum cukup belanja,
+          // upcoming, dll). Match Final Lock Spec — voucher tampil sampai
+          // benar-benar tidak bisa dipakai (expired, sudah pakai → hidden
+          // di backend).
+          final applicable = vouchers.where((v) => v.applicable).toList();
+          final unavailable = vouchers.where((v) => !v.applicable).toList();
+          final children = <Widget>[
+            _VoucherHeader(total: applicable.length),
+            ...applicable
+                .asMap()
+                .entries
+                .map((e) => _VoucherCard(voucher: e.value, index: e.key)),
+            if (unavailable.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              const _SectionDivider(label: 'Belum bisa dipakai'),
+              ...unavailable
+                  .asMap()
+                  .entries
+                  .map((e) => _VoucherCard(voucher: e.value, index: e.key)),
+            ],
+          ];
           return NataloPawRefreshIndicator(
             onRefresh: _refresh,
             child: ListView.separated(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-              itemCount: vouchers.length + 1,
+              itemCount: children.length,
               separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                if (index == 0) return _VoucherHeader(total: vouchers.length);
-                return _VoucherCard(
-                  voucher: vouchers[index - 1],
-                  index: index - 1,
-                );
-              },
+              itemBuilder: (context, index) => children[index],
             ),
           );
         },
@@ -273,7 +289,9 @@ class _VoucherHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '$total voucher tersedia',
+                  total > 0
+                      ? '$total voucher siap dipakai'
+                      : 'Belum ada voucher siap dipakai',
                   style: const TextStyle(
                     color: Color(0xFF17202A),
                     fontSize: 17,
@@ -281,9 +299,11 @@ class _VoucherHeader extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Text(
-                  'Gunakan voucher saat checkout untuk belanja lebih hemat.',
-                  style: TextStyle(
+                Text(
+                  total > 0
+                      ? 'Tap "Pakai" untuk salin kode, lalu tempel saat checkout.'
+                      : 'Voucher yang belum cukup belanja masih bisa kamu lihat di bawah.',
+                  style: const TextStyle(
                     color: Color(0xFF475569),
                     fontWeight: FontWeight.w700,
                     height: 1.35,
@@ -319,114 +339,221 @@ class _VoucherCard extends StatelessWidget {
           ),
         );
       },
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(26),
-          border: Border.all(color: const Color(0xFFBFDBFE)),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF1E5FBF).withValues(alpha: 0.06),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
+      child: Opacity(
+        // Voucher unavailable di-dim sedikit supaya user paham status-nya
+        // beda dari yang ready dipakai. Tetap visible (per spec — tampil
+        // sampai voucher tidak bisa dipakai sama sekali → hidden di backend).
+        opacity: voucher.applicable ? 1.0 : 0.65,
+        child: Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: voucher.applicable
+                ? Colors.white
+                : const Color(0xFFFAFAFA),
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(
+              color: voucher.applicable
+                  ? const Color(0xFFBFDBFE)
+                  : const Color(0xFFE5E7EB),
             ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              height: 56,
-              width: 56,
-              decoration: BoxDecoration(
-                color: const Color(0xFFEAF5FF),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Icon(Icons.confirmation_number_outlined,
-                  color: _brandBlue),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            boxShadow: voucher.applicable
+                ? [
+                    BoxShadow(
+                      color:
+                          const Color(0xFF1E5FBF).withValues(alpha: 0.06),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  Text(
-                    voucher.code,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: _brandBlue,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
+                  Container(
+                    height: 56,
+                    width: 56,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEAF5FF),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Icon(Icons.confirmation_number_outlined,
+                        color: _brandBlue),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          voucher.code,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: _brandBlue,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          voucher.title,
+                          style: const TextStyle(
+                            color: Color(0xFF17202A),
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          '${voucher.description} Berlaku sampai ${_formatDate(voucher.expiresAt)}.',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xFF6B7280),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    voucher.title,
-                    style: const TextStyle(
-                      color: Color(0xFF17202A),
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    '${voucher.description} Berlaku sampai ${_formatDate(voucher.expiresAt)}.',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF6B7280),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      height: 1.35,
+                  const SizedBox(width: 8),
+                  // Tombol Pakai: disabled kalau voucher belum bisa dipakai
+                  // (mis. belum cukup belanja, belum mulai, dst). Tetap show
+                  // supaya user paham aksinya — cuma di-grey-out.
+                  SizedBox(
+                    height: 36,
+                    child: ElevatedButton(
+                      onPressed: voucher.applicable
+                          ? () async {
+                              AppHaptics.success();
+                              await Clipboard.setData(
+                                ClipboardData(text: voucher.code),
+                              );
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Kode "${voucher.code}" disalin. Tempel saat checkout.',
+                                  ),
+                                  behavior: SnackBarBehavior.floating,
+                                  action: SnackBarAction(
+                                    label: 'Ke Keranjang',
+                                    onPressed: () => Navigator.pushNamed(
+                                        context, '/cart'),
+                                  ),
+                                ),
+                              );
+                            }
+                          : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _brandBlue,
+                        foregroundColor: Colors.white,
+                        disabledBackgroundColor: const Color(0xFFE5E7EB),
+                        disabledForegroundColor: const Color(0xFF9CA3AF),
+                        elevation: 0,
+                        padding:
+                            const EdgeInsets.symmetric(horizontal: 18),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      child: const Text('Pakai'),
                     ),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(width: 8),
-            // Pakai button — pill primary kecil. Tap: copy code voucher ke
-            // clipboard + snackbar dengan action "Ke Keranjang" supaya user
-            // bisa langsung pakai di checkout.
-            SizedBox(
-              height: 36,
-              child: ElevatedButton(
-                onPressed: () async {
-                  AppHaptics.success();
-                  await Clipboard.setData(
-                    ClipboardData(text: voucher.code),
-                  );
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Kode "${voucher.code}" disalin. Tempel saat checkout.',
-                      ),
-                      behavior: SnackBarBehavior.floating,
-                      action: SnackBarAction(
-                        label: 'Ke Keranjang',
-                        onPressed: () => Navigator.pushNamed(context, '/cart'),
-                      ),
-                    ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _brandBlue,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(horizontal: 18),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(999),
+              // Disabled reason banner — hanya muncul kalau voucher belum
+              // bisa dipakai. Kasih tau user kenapa (mis. "Belum memenuhi
+              // minimum belanja" / "Voucher belum berlaku").
+              if (!voucher.applicable && voucher.disabledReason != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
                   ),
-                  textStyle: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF7E0),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFFDE68A)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.info_outline_rounded,
+                        color: Color(0xFFB45309),
+                        size: 14,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          voucher.disabledReason!,
+                          style: const TextStyle(
+                            color: Color(0xFF92400E),
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w800,
+                            height: 1.3,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                child: const Text('Pakai'),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Divider antar section di list voucher — pisahin "bisa dipakai" dari
+/// "belum bisa dipakai". Simple horizontal line + label muted.
+class _SectionDivider extends StatelessWidget {
+  final String label;
+
+  const _SectionDivider({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              height: 1,
+              color: const Color(0xFFE5E7EB),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xFF6B7280),
+                fontSize: 11.5,
+                fontWeight: FontWeight.w800,
               ),
             ),
-          ],
-        ),
+          ),
+          Expanded(
+            child: Container(
+              height: 1,
+              color: const Color(0xFFE5E7EB),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -303,7 +303,7 @@ export function calculateFinalDiscount(input: {
  * Dipakai di:
  * - lib/product-vouchers.ts (filter eligible vouchers)
  * - app/api/cart/vouchers/validate-private/route.ts
- * - app/api/member/vouchers/route.ts
+ * - lib/voucher-list.ts (helper terpusat untuk listing)
  */
 export function isVoucherUsageLimitReached(
   voucher: {

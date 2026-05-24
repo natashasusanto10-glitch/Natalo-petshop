@@ -258,22 +258,18 @@ class MemberService {
     throw const ApiException('Response alamat tidak valid.');
   }
 
+  /// Fetch SEMUA voucher relevan untuk user (publik admin + owned).
+  ///
+  /// Reroute ke `/api/cart/vouchers` — endpoint `/api/member/vouchers` lama
+  /// di-deprecate karena duplicate logic + bug filter `userId` saja.
+  /// Sekarang 1 source of truth di backend (`lib/voucher-list.ts`).
+  ///
+  /// Return combined list: applicable dulu, lalu unavailable. Caller bisa
+  /// split via `.applicable` field kalau perlu render section terpisah.
   Future<List<MemberVoucher>> fetchVouchers() async {
     try {
-      final data = await apiClient.getJson(
-        '/api/member/vouchers',
-        query: {'subtotal': '${cartStore.subtotal.round()}'},
-      );
-      final list = <dynamic>[
-        ..._asList(data is Map ? data['eligible'] : null),
-        ..._asList(data is Map ? data['vouchers'] : null),
-        ..._asList(data is Map ? data['ineligible'] : null),
-        ..._asList(data is Map ? data['data'] : null),
-      ];
-      return list
-          .whereType<Map<String, dynamic>>()
-          .map(MemberVoucher.fromApiJson)
-          .toList();
+      final result = await fetchCartVouchers(cartStore.subtotal.round());
+      return [...result.available, ...result.unavailable];
     } catch (e) {
       if (kDebugMode) debugPrint('[memberService.fetchVouchers] $e');
       return const [];
