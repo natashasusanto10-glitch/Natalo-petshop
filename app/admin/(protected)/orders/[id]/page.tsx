@@ -7,6 +7,7 @@ import { SELF_PICKUP_STORE } from "@/lib/self-pickup";
 import {
   markAsCancelled,
   createShipment,
+  issueRefundToWallet,
   markAsDelivered,
   markAsPaid,
   markAsPickedUp,
@@ -70,13 +71,23 @@ export default async function AdminOrderDetailPage({
   const markAsCancelledAction = markAsCancelled.bind(null, id);
   const createShipmentAction = createShipment.bind(null, id);
 
+  const issueRefundToWalletAction = issueRefundToWallet.bind(null, id);
+
   // ── Data Fetch ──────────────────────────────────────────────
   const order = await prisma.order.findUnique({
     where: { id },
-    include: { items: true },
+    include: {
+      items: true,
+      refundCases: {
+        orderBy: { createdAt: "desc" },
+      },
+    },
   });
 
   if (!order) return notFound();
+  const totalRefunded = order.refundCases
+    .filter((rc) => rc.status === "CREDITED")
+    .reduce((sum, rc) => sum + rc.amount, 0);
   const isSelfPickup = order.orderType === "SELF_PICKUP";
 
   // Sanitize phone — strip non-digit, lalu normalisasi prefix 0/62/+62.
@@ -185,7 +196,135 @@ export default async function AdminOrderDetailPage({
               <span>Total</span>
               <span>{formatRupiah(order.total)}</span>
             </div>
+            {totalRefunded > 0 && (
+              <div className="flex justify-between text-blue-700">
+                <span>Sudah di-refund</span>
+                <span>-{formatRupiah(totalRefunded)}</span>
+              </div>
+            )}
           </div>
+
+          {/* ── Saldo Refund Section ── */}
+          <details className="mt-6 rounded-2xl border border-blue-200 bg-blue-50/50 p-4">
+            <summary className="cursor-pointer font-semibold text-blue-900">
+              💰 Refund ke Saldo Refund User
+            </summary>
+            <p className="mt-2 text-xs text-zinc-600">
+              Kredit saldo refund user untuk kasus produk kosong, partial
+              cancel, atau return approved. Saldo akan masuk instant dan
+              bisa user pakai di checkout berikutnya.
+            </p>
+            <form
+              action={issueRefundToWalletAction}
+              className="mt-3 space-y-3 text-sm"
+            >
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700">
+                  Item (opsional)
+                </label>
+                <select
+                  name="itemId"
+                  className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                  defaultValue=""
+                >
+                  <option value="">— Seluruh order —</option>
+                  {order.items.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name} ({item.quantity}× {formatRupiah(item.price)})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700">
+                  Nominal refund (Rp)
+                </label>
+                <input
+                  type="number"
+                  name="amount"
+                  min={1}
+                  step={1}
+                  required
+                  placeholder="32000"
+                  className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                />
+                <p className="mt-1 text-[11px] text-zinc-500">
+                  Tips: kurangi alokasi voucher proporsional kalau order
+                  pakai voucher (lihat spec rumus).
+                </p>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700">
+                  Alasan refund
+                </label>
+                <select
+                  name="reason"
+                  required
+                  defaultValue="OUT_OF_STOCK"
+                  className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                >
+                  <option value="OUT_OF_STOCK">Produk kosong</option>
+                  <option value="PARTIAL_CANCEL">Dibatalkan sebagian</option>
+                  <option value="RETURN_APPROVED">Return disetujui</option>
+                  <option value="ORDER_CANCELLED">Order dibatalkan</option>
+                  <option value="OTHER">Lainnya</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700">
+                  Catatan untuk user (opsional)
+                </label>
+                <textarea
+                  name="adminNote"
+                  maxLength={500}
+                  rows={2}
+                  placeholder="Stok kosong saat packing, maaf ya!"
+                  className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <button
+                type="submit"
+                className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                Kredit Saldo Refund
+              </button>
+            </form>
+
+            {/* History refund per order ini */}
+            {order.refundCases.length > 0 && (
+              <div className="mt-4 border-t border-blue-200 pt-3">
+                <p className="text-xs font-semibold text-blue-900">
+                  Riwayat refund order ini ({order.refundCases.length})
+                </p>
+                <ul className="mt-2 space-y-1.5 text-xs">
+                  {order.refundCases.map((rc) => (
+                    <li
+                      key={rc.id}
+                      className="flex items-center justify-between rounded bg-white px-3 py-2"
+                    >
+                      <span>
+                        <span
+                          className={`mr-2 inline-block rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                            rc.status === "CREDITED"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : rc.status === "REJECTED"
+                                ? "bg-red-100 text-red-700"
+                                : "bg-amber-100 text-amber-700"
+                          }`}
+                        >
+                          {rc.status}
+                        </span>
+                        {rc.reason.replace(/_/g, " ").toLowerCase()}
+                      </span>
+                      <span className="font-semibold text-zinc-900">
+                        {formatRupiah(rc.amount)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </details>
         </section>
 
         {/* ── Sidebar ── */}

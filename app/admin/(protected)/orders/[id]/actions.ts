@@ -7,6 +7,7 @@ import { createBiteshipShipment } from "@/lib/biteship";
 import { sendOrderStatusEmail } from "@/lib/email-order";
 import { assertCanTransitionOrderStatus, transitionOrderStatus } from "@/lib/order-transitions";
 import { sendOrderStatusPush } from "@/lib/push";
+import { creditWallet } from "@/lib/refund-wallet";
 import { SELF_PICKUP_METHOD, createPickupCode } from "@/lib/self-pickup";
 // Notifikasi order via WhatsApp dihapus — admin actions update status,
 // customer dapat info via sendOrderStatusEmail + sendOrderStatusPush.
@@ -346,6 +347,138 @@ export async function markAsCancelled(orderId: string) {
     } catch {
       // Search index sync gagal, tidak block cancel
     }
+  }
+
+  revalidateOrderAdmin(orderId);
+}
+
+/**
+ * Issue refund ke Saldo Refund user.
+ *
+ * Admin action — create RefundCase + credit RefundWallet atomically.
+ * Untuk MVP, admin input refund amount manual (auto-calc voucher
+ * allocation deferred — order schema belum track per-voucher breakdown).
+ *
+ * FormData:
+ *  - amount: number (Rupiah, > 0)
+ *  - reason: RefundCaseReason enum
+ *  - itemId: string | "" (kosong = whole order refund)
+ *  - adminNote: string (opsional, display ke user)
+ *
+ * Behavior:
+ *  - Validate session ADMIN
+ *  - Validate order exists + belongs to a user
+ *  - Validate amount > 0
+ *  - Create RefundCase + credit wallet atomic
+ *  - Link ledger entry ke RefundCase.ledgerEntryId untuk audit
+ *  - Revalidate admin order page
+ *
+ * Tidak send notif user di MVP — defer ke Phase 4.
+ */
+export async function issueRefundToWallet(
+  orderId: string,
+  formData: FormData,
+): Promise<void> {
+  const session = await requireAdmin();
+  const adminId = session.sub;
+
+  const amountRaw = formData.get("amount");
+  const reasonRaw = formData.get("reason");
+  const itemIdRaw = formData.get("itemId");
+  const adminNoteRaw = formData.get("adminNote");
+
+  const amount = parseInt(String(amountRaw ?? "0"), 10);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error("Nominal refund harus lebih dari Rp0.");
+  }
+  if (amount > 100_000_000) {
+    throw new Error("Nominal refund > Rp100jt — butuh approval level lebih tinggi.");
+  }
+
+  const VALID_REASONS = [
+    "OUT_OF_STOCK",
+    "PARTIAL_CANCEL",
+    "RETURN_APPROVED",
+    "ORDER_CANCELLED",
+    "OTHER",
+  ] as const;
+  const reason = String(reasonRaw ?? "") as (typeof VALID_REASONS)[number];
+  if (!VALID_REASONS.includes(reason)) {
+    throw new Error(`Reason tidak valid: ${reason}`);
+  }
+
+  const itemId = itemIdRaw ? String(itemIdRaw) : null;
+  const adminNote = adminNoteRaw ? String(adminNoteRaw).trim().slice(0, 500) : null;
+
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { id: true, userId: true },
+  });
+  if (!order) throw new Error("Order tidak ditemukan.");
+  if (!order.userId) {
+    throw new Error(
+      "Order ini guest checkout (tidak ter-asosiasi dengan user) — tidak bisa refund ke Saldo Refund. Pakai refund manual ke metode bayar asal.",
+    );
+  }
+  const refundUserId = order.userId;
+
+  if (itemId) {
+    const item = await prisma.orderItem.findUnique({
+      where: { id: itemId },
+      select: { orderId: true },
+    });
+    if (!item || item.orderId !== orderId) {
+      throw new Error("Item tidak ditemukan di order ini.");
+    }
+  }
+
+  // Create RefundCase as PENDING dulu. Kalau credit sukses → CREDITED.
+  // Kalau credit fail → REJECTED dengan error message di adminNote.
+  const refundCase = await prisma.refundCase.create({
+    data: {
+      orderId,
+      orderItemId: itemId,
+      userId: refundUserId,
+      reason,
+      amount,
+      destination: "REFUND_BALANCE",
+      status: "PENDING",
+      adminNote,
+      createdByAdminId: adminId,
+    },
+  });
+
+  try {
+    const credit = await creditWallet({
+      userId: refundUserId,
+      amount,
+      sourceOrderId: orderId,
+      sourceRefundCaseId: refundCase.id,
+      note: adminNote ?? `Refund ${reason.toLowerCase().replace(/_/g, " ")}`,
+      createdByAdminId: adminId,
+      type: "CREDIT",
+    });
+
+    await prisma.refundCase.update({
+      where: { id: refundCase.id },
+      data: {
+        status: "CREDITED",
+        approvedAt: new Date(),
+        creditedAt: new Date(),
+        ledgerEntryId: credit.ledgerEntryId,
+      },
+    });
+  } catch (err) {
+    await prisma.refundCase.update({
+      where: { id: refundCase.id },
+      data: {
+        status: "REJECTED",
+        adminNote: `${adminNote ?? ""}\n[SYSTEM] Credit failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`.trim(),
+      },
+    });
+    throw err;
   }
 
   revalidateOrderAdmin(orderId);
