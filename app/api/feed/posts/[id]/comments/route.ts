@@ -126,6 +126,7 @@ export async function POST(
           select: {
             id: true,
             name: true,
+            username: true,
             role: true,
             profilePhotoUrl: true,
           },
@@ -175,6 +176,7 @@ export async function POST(
       author: {
         id: result.author.id,
         name: result.author.name,
+        username: result.author.username ?? null,
         role: (result.author.role === "ADMIN" ? "ADMIN" : "CUSTOMER") as "ADMIN" | "CUSTOMER",
         // Include profilePhotoUrl di response — match shape dengan GET
         // listing supaya Flutter dapat tampil avatar foto user yang

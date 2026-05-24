@@ -1640,7 +1640,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                     ],
                     _FeedCreatorIdentity(
                       author: post.author,
-                      displayName: post.author.displayName,
+                      displayName: post.author.displayHandle,
                     ),
                     const SizedBox(height: 7),
                     _ExpandableCaption(
@@ -3092,7 +3092,7 @@ class _FeedPostViewState extends State<_FeedPostView>
                                 ],
                                 _FeedCreatorIdentity(
                                   author: post.author,
-                                  displayName: post.author.displayName,
+                                  displayName: post.author.displayHandle,
                                 ),
                                 const SizedBox(height: 7),
                                 _ExpandableCaption(

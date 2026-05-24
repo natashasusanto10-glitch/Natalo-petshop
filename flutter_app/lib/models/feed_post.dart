@@ -25,6 +25,18 @@ class FeedAuthor {
 
   String get displayName => isOfficialAccount ? 'Natalo Petshop' : name;
 
+  /// Public handle untuk feed/komentar header — `@username` kalau set,
+  /// fallback `displayName`. Official account selalu skip @ (brand
+  /// "Natalo Petshop" tampil sebagai-is). Match IG/TikTok pattern.
+  String get displayHandle {
+    if (isOfficialAccount) return displayName;
+    final u = username;
+    return (u != null && u.isNotEmpty) ? '@$u' : name;
+  }
+
+  bool get hasUsername =>
+      !isOfficialAccount && username != null && username!.isNotEmpty;
+
   factory FeedAuthor.fromJson(Map<String, dynamic> json) {
     final avatar = json['avatarUrl'] as String?;
     final photo = json['profilePhotoUrl'] as String?;

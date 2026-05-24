@@ -11,6 +11,10 @@ import type { FeedPostKind, FeedPostStatus, FeedPostTab } from "@prisma/client";
 export type FeedPostAuthor = {
   id: string;
   name: string;
+  // Public handle untuk @mention + URL profile. Nullable untuk user
+  // existing yang belum set username — UI Flutter fallback ke `name`
+  // di header feed/komentar.
+  username?: string | null;
   role: "ADMIN" | "CUSTOMER";
   profilePhotoUrl?: string | null;
   avatarUrl?: string | null;

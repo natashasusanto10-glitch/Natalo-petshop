@@ -715,9 +715,17 @@ class _CaptionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final author = post.author;
-    final name = author.displayName;
+    // Display = @username kalau set, fallback name. Official account
+    // pakai brand name "Natalo Petshop" (skip @).
+    final name = author.displayHandle;
     final avatarUrl = author.profilePhotoUrl ?? author.avatarUrl;
-    final initial = name.isNotEmpty ? name.substring(0, 1).toUpperCase() : 'N';
+    // Initial avatar fallback — pakai `name` raw (bukan @username) supaya
+    // huruf inisialnya tetap konsisten antara fresh user (belum set
+    // username) vs sudah set. Strip @ kalau ada di display.
+    final fallbackForInitial = author.name.isNotEmpty ? author.name : name;
+    final initial = fallbackForInitial.isNotEmpty
+        ? fallbackForInitial.substring(0, 1).toUpperCase()
+        : 'N';
 
     return Container(
       decoration: BoxDecoration(
@@ -809,13 +817,16 @@ class _CommentTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final author = comment.author;
-    final name = author.isOfficialAccount
-        ? author.displayName
-        : author.username?.isNotEmpty == true
-            ? author.username!
-            : author.displayName;
+    // Display = @username kalau set, fallback nama. Official account =
+    // "Natalo Petshop" brand (skip @). Konsisten dengan post header.
+    final name = author.displayHandle;
     final avatarUrl = author.profilePhotoUrl ?? author.avatarUrl;
-    final initial = name.isNotEmpty ? name.substring(0, 1).toUpperCase() : 'N';
+    // Avatar initial pakai `name` raw biar tetap konsisten antara user
+    // belum set username vs sudah set (jangan pakai @ sebagai initial).
+    final fallbackForInitial = author.name.isNotEmpty ? author.name : name;
+    final initial = fallbackForInitial.isNotEmpty
+        ? fallbackForInitial.substring(0, 1).toUpperCase()
+        : 'N';
     final avatarSize = isReply ? 28.0 : 36.0;
 
     return GestureDetector(
