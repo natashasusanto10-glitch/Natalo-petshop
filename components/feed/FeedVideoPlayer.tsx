@@ -30,14 +30,14 @@ function isHlsUrl(url: string | null | undefined): boolean {
  *                                      player switch quality mid-clip)
  *   4G / cellular-fast / unknown     → MP4 progressive di quality sesuai
  *                                      (single-file CDN cache, no manifest
- *                                      overhead — better untuk clip ≤45s)
+ *                                      overhead — better untuk clip ≤60s)
  *   3G / cellular-slow / save-data   → MP4 progressive di low quality
  *                                      (240/360/480p, hindari HLS overhead)
  *   Offline                          → return as-is, biar player error
  *                                      handler tangani fallback
  *
  * Rasional: HLS unggul untuk video panjang dengan kondisi network yang
- * berubah. Untuk feed ≤45s di network stabil, MP4 progressive lebih cepat
+ * berubah. Untuk feed ≤60s di network stabil, MP4 progressive lebih cepat
  * start play (1 file fetch, no manifest parse) dan lebih cache-friendly.
  * Cuma WiFi tier yang dapat HLS karena di sana adaptive bitrate worth
  * the overhead.

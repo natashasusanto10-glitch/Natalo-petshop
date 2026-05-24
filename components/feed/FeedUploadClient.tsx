@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Flow post Feed Natalo — video short 1–45 detik.
+ * Flow post Feed Natalo — video short 1–60 detik.
  *
  *   1. Pilih Video      → empty preview + Galeri/Kamera cards
  *   2. Preview Video    → cek hasil, Ganti Video / Putar Ulang
@@ -51,6 +51,7 @@ const MAX_CAPTION_LENGTH = 500;
 const ACCEPT_VIDEO = "video/mp4,video/quicktime,video/*";
 const THUMBNAIL_BACKGROUND_TIMEOUT_MS = 5000;
 const FILMSTRIP_FRAMES = 7;
+const VIDEO_DURATION_LABEL = `${USER_VIDEO_CONFIG.minDuration}–${USER_VIDEO_CONFIG.maxDuration} detik`;
 
 type Step =
   | "pick"
@@ -326,7 +327,7 @@ export function FeedUploadClient() {
         meta.durationSec > USER_VIDEO_CONFIG.maxDuration
       ) {
         resetVideo();
-        setPickError("Video harus berdurasi 1–45 detik.");
+        setPickError(`Video harus berdurasi ${VIDEO_DURATION_LABEL}.`);
         void hapticWarning();
         setAnalyzing(false);
         return;
@@ -830,7 +831,7 @@ function PickScreen({
                   Pilih video untuk Feed
                 </p>
                 <p className="mt-1 text-xs font-semibold text-white/55">
-                  Durasi video 1–45 detik
+                  Durasi video {VIDEO_DURATION_LABEL}
                 </p>
               </div>
               {analyzing && (
@@ -845,7 +846,7 @@ function PickScreen({
           {/* Info chip */}
           <div className="mx-auto mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full border border-natalo-500/25 bg-natalo-600/15 px-4 py-2 text-[12px] font-bold text-natalo-100">
             <FiInfo className="h-3.5 w-3.5" />
-            Pilih video berdurasi 1–45 detik
+            Pilih video berdurasi {VIDEO_DURATION_LABEL}
           </div>
 
           {error && (
@@ -1246,7 +1247,7 @@ function TrimScreen({
   const invalidMsg =
     finalDuration < USER_VIDEO_CONFIG.minDuration
       ? "Durasi terlalu pendek. Minimal 1 detik."
-      : "Durasi terlalu panjang. Maksimal 45 detik.";
+      : `Durasi terlalu panjang. Maksimal ${USER_VIDEO_CONFIG.maxDuration} detik.`;
 
   return (
     <div className="flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-black text-white">
@@ -1306,7 +1307,7 @@ function TrimScreen({
           <p className="mt-5 text-center text-[12px] font-semibold leading-relaxed text-white/55">
             Atur bagian video yang ingin diposting
             <br />
-            <span className="font-black text-white/80">1–45 detik</span>
+            <span className="font-black text-white/80">{VIDEO_DURATION_LABEL}</span>
           </p>
 
           {/* Time markers */}

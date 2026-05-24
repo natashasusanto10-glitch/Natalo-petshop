@@ -460,83 +460,23 @@ export function AdminFeedCreateClient() {
 
         // Done with PUT. Bunny will encode + fire webhook → encodingStatus=
         // ready. Admin gets ACTIVE+publishedAt set already by upload-url
-        // endpoint. Tapi Bunny webhook kadang miss → post stuck di
-        // encodingStatus="uploading". Auto-poll bunny-reconcile endpoint
-        // sampai ready/failed atau timeout.
+        // endpoint. Jangan tahan admin di layar ini menunggu encoding; untuk
+        // video besar, waiting 1-2 menit terasa seperti upload macet.
         const postId = provisionData.postId as string | undefined;
         if (postId) {
-          // Encoding window dinamis: file kecil (≤50 MB) butuh ~30-60s,
-          // file besar (>50 MB) bisa 1-3 menit di Bunny karena multi-
-          // variant encode (480/720/1080) + audio remux. Naikkan window
-          // ke 2 menit total untuk file besar supaya kebanyakan post bisa
-          // settle sebelum redirect.
-          //
-          // Copy: pakai kata "kompres" yang user pahami, bukan "encoding"
-          // yang jargon. Selama tahap ini Bunny convert raw video ke MP4
-          // H.264 720p ~3 Mbps + generate thumbnail.
-          setProgress(
-            isLargeFile
-              ? "Mohon tunggu, video sedang dikompres oleh sistem (1-2 menit)..."
-              : "Mohon tunggu, video sedang dikompres oleh sistem (sekitar 1 menit)...",
-          );
-          // Adaptive delay: cepat di awal (1.5s polling), melambat di
-          // akhir (5s polling). File kecil total ~62s, file besar ~125s.
-          const SHORT_DELAYS = [
-            1500, 2000, 2500, 3000, 3500, 4000, 5000, 5000, 5000, 5000,
-            5000, 5000, 5000, 5000, 5000,
-          ]; // total ~62s
-          const LONG_DELAYS = [
-            ...SHORT_DELAYS,
-            5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000,
-            5000, 5000, 5000,
-          ]; // total ~127s
-          const RETRY_DELAYS_MS = isLargeFile ? LONG_DELAYS : SHORT_DELAYS;
-          let settled = false;
-          for (const delay of RETRY_DELAYS_MS) {
-            await new Promise((r) => setTimeout(r, delay));
-            try {
-              const reconcileRes = await fetch(
-                "/api/admin/feed/bunny-reconcile",
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ postId }),
-                },
-              );
-              if (reconcileRes.ok) {
-                // Endpoint return shape: { ok, scanned, results: [{postId, action}] }
-                // Sebelumnya saya baca "reconciled" — wrong key, bug yang
-                // bikin loop tidak break early walau sudah ready.
-                const reconcileData = (await reconcileRes.json()) as {
-                  results?: Array<{ action?: string }>;
-                  scanned?: number;
-                };
-                const result = reconcileData.results?.[0]?.action;
-                if (result === "ready" || result === "failed") {
-                  settled = true;
-                  break;
-                }
-                // scanned=0 berarti post sudah ready sebelumnya (filter
-                // di endpoint cuma include encodingStatus=uploading). Anggap
-                // settled — webhook duluan menang race.
-                if (reconcileData.scanned === 0) {
-                  settled = true;
-                  break;
-                }
-              }
-            } catch {
-              // Network glitch — keep retrying.
-            }
-          }
-          if (!settled) {
-            // Window habis tapi belum ready. Tidak block redirect — post
-            // sudah ACTIVE di DB, cron weekly + manual reconcile via
-            // /api/feed/diag?force=1 akan handle nanti.
-            setProgress("Kompresi masih berjalan di background — post akan muncul otomatis di feed saat selesai.");
-            await new Promise((r) => setTimeout(r, 1000));
-          }
+          void fetch("/api/admin/feed/bunny-reconcile", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ postId }),
+          }).catch(() => {
+            // Webhook/reconcile berikutnya tetap akan menyelesaikan status.
+          });
         }
 
+        setProgress(
+          "Upload selesai. Video sedang diproses di background dan akan muncul otomatis saat siap.",
+        );
+        await new Promise((r) => setTimeout(r, 700));
         router.push("/admin/feed");
         router.refresh();
         return;

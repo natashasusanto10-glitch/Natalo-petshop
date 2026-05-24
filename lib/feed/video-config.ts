@@ -20,8 +20,8 @@ export type FeedVideoConfig = {
 // sinyal lemah bisa 15-25 menit.
 //
 // Kenapa 200 MB dan bukan lebih besar:
-//   - iPhone 1080p HD × 45s ≈ 80-120 MB → fit dengan headroom
-//   - iPhone 4K HEVC × 45s ≈ 200-300 MB → masih kena cap untuk kasus
+//   - iPhone 1080p HD × 60s ≈ 100-160 MB → fit dengan headroom
+//   - iPhone 4K HEVC × 60s ≈ 260-400 MB → masih kena cap untuk kasus
 //     ekstrem, user disarankan turunkan ke 1080p
 //   - XHR PUT belum resumable (no TUS) — file >200 MB upload putus di
 //     mid-way = mulai dari 0, UX-nya rusak
@@ -70,7 +70,7 @@ export const USER_VIDEO_CONFIG = {
   preset: "veryfast",
   audioCodec: "aac",
   audioBitrate: "128k",
-  // Target file size dengan 3 Mbps × 45s = ~16MB worst case.
+  // Target file size dengan 3 Mbps × 60s = ~22.5MB worst case.
   targetFileSize: 8 * 1024 * 1024,
   maxFileSize: 20 * 1024 * 1024,
 } satisfies FeedVideoConfig;

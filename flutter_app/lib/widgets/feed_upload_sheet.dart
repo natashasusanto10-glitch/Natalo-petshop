@@ -22,8 +22,8 @@ import '../screens/feed_media_picker_screen.dart';
 const _uploadSheetBg = Color(0xFFF7FBFF);
 const _uploadInk = Color(0xFF0F172A);
 const _uploadBlue = Color(0xFF1E5FBF);
-// Naik dari 20 MB → 200 MB. Alasan: iPhone 1080p × 45s ~80-120 MB,
-// iPhone 4K HEVC × 45s ~200-300 MB. Sebelumnya banyak user gagal upload
+// Naik dari 20 MB → 200 MB. Alasan: iPhone 1080p × 60s ~100-160 MB,
+// iPhone 4K HEVC × 60s ~260-400 MB. Sebelumnya banyak user gagal upload
 // karena native video iPhone melebihi 20 MB. 200 MB feasible karena
 // migrate ke Bunny direct (bypass Vercel 4.5 MB serverless limit) +
 // TUS resumable (koneksi putus = lanjut, bukan restart).
@@ -424,7 +424,7 @@ class _FeedUploadSheetState extends State<FeedUploadSheet>
       // dari kamera 720p) tidak perlu — save CPU device + waktu encode.
       //
       // Output: 720p H.264 ~3 Mbps (match Bunny target profile). Encode
-      // time di iPhone modern ~30-60 detik untuk 45s clip, Android mid
+      // time di iPhone modern ~30-75 detik untuk 60s clip, Android mid
       // mungkin 60-90 detik.
       //
       // Error handling: kalau compress gagal (codec tidak supported,

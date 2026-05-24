@@ -14,7 +14,7 @@ import 'package:flutter/foundation.dart';
 ///   - Mobile lemah / data-saver → MP4 480p
 ///
 /// HLS unggul saat koneksi stabil (WiFi) karena adaptive bitrate worth
-/// overhead manifest fetch. Untuk clip ≤45s di mobile, MP4 progressive
+/// overhead manifest fetch. Untuk clip ≤60s di mobile, MP4 progressive
 /// lebih efisien (1 file = 1 cache, no manifest parse latency).
 ///
 /// video_player package (Flutter) support HLS native di iOS (AVPlayer)

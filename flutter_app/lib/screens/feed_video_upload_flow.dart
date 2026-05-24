@@ -381,7 +381,7 @@ class FeedVideoTrimScreen extends StatefulWidget {
 
 class _FeedVideoTrimScreenState extends State<FeedVideoTrimScreen> {
   VideoPlayerController? _controller;
-  RangeValues _range = const RangeValues(0, 45);
+  RangeValues _range = RangeValues(0, _maxFeedVideoSeconds.toDouble());
   bool _loading = true;
   bool _exporting = false;
   bool _playing = false;

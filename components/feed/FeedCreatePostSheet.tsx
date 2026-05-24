@@ -421,7 +421,7 @@ export function FeedCreatePostSheet({ open, onClose }: Props) {
       natToast(
         !selectedVideo
           ? "Belum ada video terpilih."
-          : "Durasi video belum valid (1-45 detik).",
+          : `Durasi video belum valid (${DURATION_RANGE_LABEL}).`,
         { kind: "warn" },
       );
       void hapticWarning();
