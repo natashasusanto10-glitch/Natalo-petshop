@@ -3,6 +3,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../config/api_config.dart';
+import '../config/natalo_store_config.dart';
 import '../models/cart_item.dart';
 import '../models/product.dart';
 import '../models/review.dart';
@@ -3062,13 +3063,12 @@ class _StickyPurchaseBar extends StatelessWidget {
 
   void _onChatWa(BuildContext context) {
     AppHaptics.tap();
-    const waNumber = '6281330003880'; // brand WA Natalo
-    final text = Uri.encodeComponent(
-      'Halo Admin Natalo, saya ingin tanya tentang produk ${product.title}. Apakah ready?',
+    final uri = NataloStoreConfig.whatsappUri(
+      message:
+          'Halo Admin Natalo, saya ingin tanya tentang produk ${product.title}. Apakah ready?',
     );
-    final url = Uri.parse('https://wa.me/$waNumber?text=$text');
     // Best-effort — di mobile ini akan trigger WhatsApp intent.
-    launchUrl(url, mode: LaunchMode.externalApplication);
+    launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   void _onAddToCart(BuildContext context) {

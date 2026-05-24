@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../config/natalo_store_config.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_toast.dart';
@@ -79,7 +80,7 @@ class HelpCenterScreen extends StatelessWidget {
             iconColor: const Color(0xFF16A34A),
             iconBg: const Color(0xFFD1FAE5),
             title: 'WhatsApp',
-            subtitle: '+62 819 0773 7700',
+            subtitle: NataloStoreConfig.whatsappDisplay,
             onTap: () => _openWhatsApp(context),
           ),
           const SizedBox(height: 10),
@@ -88,7 +89,7 @@ class HelpCenterScreen extends StatelessWidget {
             iconColor: const Color(0xFF7C3AED),
             iconBg: const Color(0xFFEDE9FE),
             title: 'Email',
-            subtitle: 'natalopetshop@gmail.com',
+            subtitle: NataloStoreConfig.email,
             onTap: () => _openEmail(context),
           ),
           const SizedBox(height: 10),
@@ -97,7 +98,7 @@ class HelpCenterScreen extends StatelessWidget {
             iconColor: const Color(0xFFEC4899),
             iconBg: const Color(0xFFFCE7F3),
             title: 'Lokasi Toko',
-            subtitle: 'Jl. Sutomo No.45, Medan',
+            subtitle: NataloStoreConfig.address,
             onTap: () => _openMaps(context),
           ),
           const SizedBox(height: 20),
@@ -148,9 +149,7 @@ class HelpCenterScreen extends StatelessWidget {
 
   Future<void> _openWhatsApp(BuildContext context) async {
     AppHaptics.tap();
-    final uri = Uri.parse(
-      'https://wa.me/6281907737700?text=Halo%20Natalo,%20saya%20butuh%20bantuan%20tentang...',
-    );
+    final uri = NataloStoreConfig.whatsappUri();
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       if (context.mounted) {
         AppToast.show(
@@ -165,7 +164,7 @@ class HelpCenterScreen extends StatelessWidget {
   Future<void> _openEmail(BuildContext context) async {
     AppHaptics.tap();
     final uri = Uri.parse(
-      'mailto:natalopetshop@gmail.com?subject=Bantuan%20dari%20App',
+      'mailto:${NataloStoreConfig.email}?subject=Bantuan%20dari%20App',
     );
     if (!await launchUrl(uri)) {
       if (context.mounted) {
@@ -180,9 +179,7 @@ class HelpCenterScreen extends StatelessWidget {
 
   Future<void> _openMaps(BuildContext context) async {
     AppHaptics.tap();
-    final uri = Uri.parse(
-      'https://maps.google.com/?q=Natalo+Petshop+Medan',
-    );
+    final uri = Uri.parse(NataloStoreConfig.mapsUrl);
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       if (context.mounted) {
         AppToast.show(

@@ -1,3 +1,5 @@
+import '../config/natalo_store_config.dart';
+
 class ShippingRate {
   final String courierName;
   final String courierCode;
@@ -54,20 +56,18 @@ class ShippingRate {
     price: 0,
     duration: '09.00 - 17.00 WIB',
     available: true,
-    description:
-        'Natalo Petshop / Sinar Petstore, Jln MT. Haryono No 103 B C D, Pusat Pasar, Medan Kota.',
+    description: '${NataloStoreConfig.name}, ${NataloStoreConfig.address}.',
   );
 }
 
 class PickupStoreInfo {
   static const id = 'store_mt_haryono';
-  static const name = 'Natalo Petshop / Sinar Petstore';
-  static const address =
-      'Jln MT. Haryono No 103 B C D, Pusat Pasar, Medan Kota';
-  static const hours = '09.00 - 17.00 WIB';
+  static const name = NataloStoreConfig.name;
+  static const address = NataloStoreConfig.address;
+  static const hours = NataloStoreConfig.hours;
   // Direct share link toko Natalo Petshop / Sinar Petstore — lebih cepat
   // open di Google Maps app (versus search query yang kadang ambiguous).
-  static const mapsUrl = 'https://share.google/prsdmmPYZ6XYGyQV2';
+  static const mapsUrl = NataloStoreConfig.mapsUrl;
 }
 
 int _asInt(Object? value) {

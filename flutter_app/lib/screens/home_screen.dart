@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 // pure API-driven. Brand/produk yang muncul = data live dari Capacitor
 // admin dashboard via Next.js API. Loading state pakai skeleton, empty
 // state pakai widget dedicated.
+import '../config/natalo_store_config.dart';
 import '../models/brand.dart';
 import '../models/home_banner.dart';
 import '../models/home_category.dart';
@@ -1680,11 +1681,10 @@ class _TrustMarqueeState extends State<_TrustMarquee>
         showLinkIcon: true,
         onTap: () {
           AppHaptics.tap();
-          final text = Uri.encodeComponent(
-            'Halo Natalo Petshop, saya mau tanya...',
-          );
           launchUrl(
-            Uri.parse('https://wa.me/6281289997113?text=$text'),
+            NataloStoreConfig.whatsappUri(
+              message: 'Halo Natalo Petshop, saya mau tanya...',
+            ),
             mode: LaunchMode.externalApplication,
           );
         },
