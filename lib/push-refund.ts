@@ -18,7 +18,7 @@
 import { prisma } from "./prisma";
 import { sendApnsToUser } from "./apns";
 import { sendFcmToUser } from "./fcm";
-import { sendPushToUser, type PushPayload } from "./push";
+import type { PushPayload } from "./push";
 
 const REFUND_TAG_PREFIX = "refund-credited-";
 
@@ -96,8 +96,19 @@ export async function sendRefundIssuedPush(input: {
   };
 
   try {
+    // CHANNEL POLICY untuk refund notifications:
+    //  ✅ APNs (iOS native)       → user pakai Flutter app, refund is
+    //                              mobile-specific (saldo lives in app)
+    //  ✅ FCM (Android native)    → same reason
+    //  ✅ Announcement (in-app)   → notification center di Flutter app
+    //  ❌ Web Push (browser)      → SKIP per user request — refund flow
+    //                              fokus di mobile app, web push terlalu
+    //                              noisy untuk transaksi keuangan customer
+    //
+    // `sendPushToUser` di-remove dari dispatch list. Web user yang akses
+    // /pesanan via browser tetap bisa lihat refund di halaman saldo refund
+    // (data ada), cuma tidak dapat push notif real-time.
     await Promise.all([
-      sendPushToUser(input.userId, payload),
       sendApnsToUser(input.userId, payload),
       sendFcmToUser(input.userId, payload),
       // Save ke notification center (Announcement model) — supaya
