@@ -9,7 +9,9 @@ import '../services/report_service.dart';
 import '../state/member_store.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/haptics.dart';
+import '../utils/mention_text.dart';
 import 'app_toast.dart';
+import 'mention_picker.dart';
 import 'moderation_action_sheet.dart';
 import 'natalo_paw_refresh_indicator.dart';
 
@@ -68,6 +70,8 @@ class FeedCommentSheet extends StatefulWidget {
 class _FeedCommentSheetState extends State<FeedCommentSheet> {
   final TextEditingController _inputCtrl = TextEditingController();
   final FocusNode _inputFocus = FocusNode();
+  late final MentionPickerController _mentionCtrl =
+      MentionPickerController(textController: _inputCtrl);
 
   List<FeedComment> _comments = const [];
   String? _nextCursor;
@@ -94,6 +98,7 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
   @override
   void dispose() {
     widget.sheetScrollController?.removeListener(_handleScroll);
+    _mentionCtrl.dispose();
     _inputCtrl.dispose();
     _inputFocus.dispose();
     super.dispose();
@@ -472,9 +477,21 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     // IG pattern — caption post di-render sebagai item pertama di atas
     // comment list (dengan author tag "creator"). User langsung baca
     // caption tanpa tutup sheet & balik ke feed.
-    final captionText = widget.post.caption?.trim().isNotEmpty == true
+    // Caption priority order — fallback chain untuk handle legacy posts:
+    //   1. `caption` field (reserved untuk future kalau backend kirim)
+    //   2. `description` field (current behavior — photo & video upload
+    //      sama-sama simpan caption di sini sejak v1.0.106 fix)
+    //   3. `title` field (fallback untuk legacy photo post pre-fix yang
+    //      caption malah ke-simpan di title bukan description)
+    final rawCaption = widget.post.caption?.trim().isNotEmpty == true
         ? widget.post.caption!.trim()
-        : widget.post.description.trim();
+        : widget.post.description.trim().isNotEmpty
+            ? widget.post.description.trim()
+            : widget.post.title.trim();
+    // Skip placeholder "Postingan baru" — itu fallback default saat user
+    // tidak isi caption sama sekali, jangan render sebagai caption real.
+    final captionText =
+        rawCaption == 'Postingan baru' ? '' : rawCaption;
     final hasCaption = captionText.isNotEmpty;
     final captionOffset = hasCaption ? 1 : 0;
     final totalCount = items.length + captionOffset + (_loadingMore ? 1 : 0);
@@ -594,7 +611,25 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
         8,
         bottomPadding,
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // @mention autocomplete panel — render above input row. Auto-
+          // show saat user ketik `@partial`, hide saat exit mention mode
+          // atau cancel.
+          MentionSuggestionsPanel(
+            controller: _mentionCtrl,
+            darkTheme: true,
+            maxHeight: 220,
+          ),
+          _buildInputRow(profile, initial, isLoggedIn),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInputRow(dynamic profile, String initial, bool isLoggedIn) {
+    return Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           // Avatar user current — pakai foto profil kalau ada,
@@ -686,7 +721,6 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
             onPressed: _postComment,
           ),
         ],
-      ),
     );
   }
 }
@@ -772,7 +806,7 @@ class _CaptionTile extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 3),
-                  Text(
+                  MentionText(
                     captionText,
                     style: const TextStyle(
                       color: Colors.white,
@@ -780,6 +814,18 @@ class _CaptionTile extends StatelessWidget {
                       height: 1.35,
                       fontWeight: FontWeight.w500,
                     ),
+                    mentionStyle: const TextStyle(
+                      color: Color(0xFF60A5FA),
+                      fontSize: 13.5,
+                      height: 1.35,
+                      fontWeight: FontWeight.w800,
+                    ),
+                    onMentionTap: (handle) {
+                      Navigator.of(context).pushNamed(
+                        '/u',
+                        arguments: handle,
+                      );
+                    },
                   ),
                   const SizedBox(height: 5),
                   Text(
@@ -909,7 +955,7 @@ class _CommentTile extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 2),
-                  Text(
+                  MentionText(
                     comment.content,
                     style: TextStyle(
                       // White alpha 90% — primary content content readable
@@ -919,6 +965,20 @@ class _CommentTile extends StatelessWidget {
                       fontSize: 13.5,
                       height: 1.35,
                     ),
+                    // @username di komentar pakai biru terang supaya
+                    // pop di dark bg. Bold + tappable → /u/<handle>.
+                    mentionStyle: const TextStyle(
+                      color: Color(0xFF60A5FA),
+                      fontSize: 13.5,
+                      height: 1.35,
+                      fontWeight: FontWeight.w800,
+                    ),
+                    onMentionTap: (handle) {
+                      Navigator.of(context).pushNamed(
+                        '/u',
+                        arguments: handle,
+                      );
+                    },
                   ),
                   const SizedBox(height: 4),
                   Row(

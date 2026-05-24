@@ -170,9 +170,18 @@ class FeedUploadStore extends ChangeNotifier {
       );
 
       _update(status: FeedUploadStatus.processing, progress: 0.92);
+      // Pattern match video upload (line 322-326): title = short version
+      // (truncated 80 char untuk admin list view), description = full
+      // caption text yang dipakai untuk render di comment drawer +
+      // detail screen. Sebelumnya cuma title yang di-pass → description
+      // null → caption tidak muncul di comment sheet untuk photo post.
+      final caption = task.caption.trim();
       final result = await feedPhotoService.createPhotoPost(
         images: uploaded,
-        title: task.caption.isEmpty ? 'Postingan baru' : task.caption,
+        title: caption.isEmpty
+            ? 'Postingan baru'
+            : caption.substring(0, math.min(80, caption.length)),
+        description: caption.isEmpty ? null : caption,
         productIds: task.productIds,
       );
 
