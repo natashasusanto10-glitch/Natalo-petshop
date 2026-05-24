@@ -103,11 +103,20 @@ export default function RefundFormClient({
     ? netAmount
     : grossAmount;
 
-  const effectiveAmount = manualOverride
+  const requireManual = !selectedItem;
+
+  // effectiveAmount logic:
+  //  - Manual override checkbox ON  → pakai manualAmount input
+  //  - Tidak pilih item (seluruh order) → WAJIB manual (requireManual)
+  //  - Item dipilih + checkbox OFF   → pakai computed (gross/net)
+  //
+  // Bug fix: sebelumnya cuma cek `manualOverride`. Saat user pilih
+  // "Seluruh order", checkbox di-disabled tapi field manual tampil.
+  // User ngetik amount → submit button TETAP DISABLED karena
+  // effectiveAmount fallback ke computedAmount = 0 (no item).
+  const effectiveAmount = (manualOverride || requireManual)
     ? parseInt(manualAmount, 10) || 0
     : computedAmount;
-
-  const requireManual = !selectedItem;
 
   const handleItemChange = (newItemId: string) => {
     setItemId(newItemId);
