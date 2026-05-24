@@ -223,11 +223,10 @@ export default async function AdminOrderDetailPage({
                 price: it.price,
               }))}
               action={issueRefundToWalletAction}
-              orderHasVoucher={
-                (order.productDiscount ?? 0) > 0 ||
-                (order.shippingDiscount ?? 0) > 0 ||
-                !!order.voucherCode
-              }
+              orderSubtotal={order.subtotal ?? 0}
+              orderProductDiscount={order.productDiscount ?? 0}
+              orderShippingFee={order.shippingCost ?? 0}
+              orderShippingDiscount={order.shippingDiscount ?? 0}
             />
 
             {/* History refund per order ini */}
