@@ -25,6 +25,10 @@
     {
       "path": "/api/cron/voucher-abuse-detect",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/birthday-voucher",
+      "schedule": "0 2 * * *"
     }
   ]
 }
