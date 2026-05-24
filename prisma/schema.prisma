@@ -69,6 +69,17 @@ enum VoucherDiscountScope {
 model User {
   id                  String          @id @default(cuid())
   name                String
+  /// Public handle untuk @mention + URL profile (IG/TikTok style).
+  /// Format: 3-30 char lowercase alfanumerik + `_` + `.` (no `..`,
+  /// no leading/trailing `.`). Case-insensitive unique. Nullable
+  /// untuk user existing yang belum pilih — UI tampil banner prompt
+  /// + di feed fallback ke `name`. Mandatory di sign-up flow user
+  /// baru.
+  username            String?         @unique
+  /// Timestamp terakhir kali username di-set/ganti. Dipakai untuk
+  /// audit + future "min interval" rate limit. Nullable kalau user
+  /// belum pernah set.
+  usernameUpdatedAt   DateTime?
   phone               String?         @unique
   email               String?         @unique
   passwordHash        String?
@@ -110,8 +121,36 @@ model User {
   feedReportsFiled    FeedReport[]    @relation("FeedReporter")
   feedReportsResolved FeedReport[]    @relation("FeedReportResolver")
   feedModerationLogs  FeedModerationLog[] @relation("FeedModerationActor")
+  usernameHistory     UsernameHistory[]
   createdAt           DateTime        @default(now())
   updatedAt           DateTime        @updatedAt
+}
+
+/// History reservasi username — saat user ganti handle, handle lama
+/// di-"reserve" 30 hari supaya user lain tidak bisa claim handle yang
+/// sama. Anti @mention hijack. Setelah 30 hari, handle release dan
+/// boleh diambil siapa aja.
+///
+/// Lookup uniqueness check di set/change endpoint:
+///   - User.username = X → taken (currently owned)
+///   - UsernameHistory.username = X AND reservedUntil > NOW() → reserved
+model UsernameHistory {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Username lama yang di-reserve. Lowercased (sama dengan User.username
+  /// di-save lowercase). Bukan unique karena 1 user bisa ganti handle
+  /// berkali2 dan tiap ganti bikin row baru. 1 username bisa appear di
+  /// 2 row kalau user A pernah pake "asiong", user B pernah pake
+  /// "asiong" (setelah reservasi A expired).
+  username      String
+  /// Tanggal sampai kapan handle ini di-reserve. = changedAt + 30 hari.
+  reservedUntil DateTime
+  createdAt     DateTime @default(now())
+
+  @@index([username])
+  @@index([reservedUntil])
+  @@index([userId])
 }
 
 model CartItem {

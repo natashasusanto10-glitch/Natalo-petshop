@@ -147,6 +147,7 @@ export async function POST(request: NextRequest) {
         id: user.id,
         role: sessionRole,
         name: user.name,
+        username: user.username,
         email: user.email,
         phone: user.phone,
         profilePhotoUrl: user.profilePhotoUrl,
