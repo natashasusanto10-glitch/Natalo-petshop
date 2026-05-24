@@ -15,7 +15,7 @@ import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 import '../config/api_config.dart';
-import '../features/feed/widgets/feed_video_progress_bar.dart';
+import '../features/feed/widgets/feed_video_scrubber.dart';
 import '../models/cart_item.dart';
 import '../models/feed_post.dart';
 import '../models/product.dart';
@@ -1930,8 +1930,18 @@ class _FeedPostViewState extends State<_FeedPostView>
         // chance (dismissed flag clear, visible flag clear).
         _endOfVideoCtaVisible = false;
         _endOfVideoCtaDismissed = false;
+        // Reset long-press state (paused / 2x speed) + scrubber state.
+        // Defensive — pastikan video tidak stuck di 2x atau paused saat
+        // user swipe ke post lain di tengah long-press.
+        _longPressPaused = false;
+        _longPressSpeedActive = false;
+        _hideOverlayForLongPress = false;
+        _isScrubbing = false;
         widget.onOverlayStateChanged(false);
         _videoController?.pause();
+        try {
+          _videoController?.setPlaybackSpeed(1.0);
+        } catch (_) {}
         _videoController?.seekTo(Duration.zero);
         _stopProductRotation();
       }
@@ -2594,37 +2604,85 @@ class _FeedPostViewState extends State<_FeedPostView>
     }
   }
 
-  /// Sprint 4 #1 — Long-press to pause while holding (Instagram Reels
-  /// signature gesture). User tahan finger di video → pause sementara
-  /// + UI overlay hide. Lepas finger → resume + UI restore.
+  /// Long-press gesture with 3-zone behavior (TikTok/IG Reels signature):
+  ///   - Left third  → temporary 2x speed
+  ///   - Center third → temporary pause (existing behavior)
+  ///   - Right third → temporary 2x speed
   ///
-  /// Beda dengan tap toggle: long-press temporary, tidak persist state.
-  /// Cocok untuk "stop briefly to read text on video" pattern Reels.
+  /// Zone detection via `LongPressStartDetails.localPosition.dx` /
+  /// container width. State direset di `_onLongPressEnd` regardless of
+  /// zone. Hide overlay tetap aktif untuk semua zone supaya feels native.
+  ///
+  /// Scrubber guard: kalau `_isScrubbing` true (user lagi drag progress
+  /// bar), long-press di-skip — scrubber pegang gesture priority.
   bool _longPressPaused = false;
+  bool _longPressSpeedActive = false;
   bool _hideOverlayForLongPress = false;
+  // Last-known media area width (set di build LayoutBuilder). Dipakai
+  // untuk hitung zone dari localPosition.dx. Default screen width — akan
+  // di-update ke real value saat build pertama.
+  double _mediaAreaWidth = 0;
+
+  /// Scrubber state — true saat user lagi drag/tap progress bar.
+  /// Disable long-press handler supaya gesture tidak conflict.
+  bool _isScrubbing = false;
 
   void _onLongPressStart(LongPressStartDetails details) {
+    if (_isScrubbing) return; // Scrubber priority
     final ctrl = _videoController;
     if (ctrl == null || !ctrl.value.isInitialized) return;
-    if (!ctrl.value.isPlaying) return; // Hanya kalau lagi playing
-    AppHaptics.impact();
-    ctrl.pause();
-    setState(() {
-      _longPressPaused = true;
-      _hideOverlayForLongPress = true;
-    });
+
+    // Zone detection: 0-0.4 = left, 0.4-0.6 = center, 0.6-1.0 = right.
+    // Center zone dibuat lebih kecil supaya 2x speed lebih mudah
+    // di-trigger (zona kiri/kanan luas).
+    final width = _mediaAreaWidth > 0
+        ? _mediaAreaWidth
+        : MediaQuery.of(context).size.width;
+    final ratio = (details.localPosition.dx / width).clamp(0.0, 1.0);
+    final isCenterZone = ratio >= 0.4 && ratio <= 0.6;
+
+    if (isCenterZone) {
+      // Center: pause-while-held (existing behavior).
+      if (!ctrl.value.isPlaying) return; // Hanya kalau playing
+      AppHaptics.impact();
+      ctrl.pause();
+      setState(() {
+        _longPressPaused = true;
+        _hideOverlayForLongPress = true;
+      });
+    } else {
+      // Left or right: 2x speed-while-held.
+      if (!ctrl.value.isPlaying) return; // Hanya kalau playing
+      AppHaptics.impact();
+      ctrl.setPlaybackSpeed(2.0);
+      setState(() {
+        _longPressSpeedActive = true;
+        _hideOverlayForLongPress = true;
+      });
+    }
   }
 
   void _onLongPressEnd(LongPressEndDetails details) {
     final ctrl = _videoController;
-    if (!_longPressPaused) return;
-    setState(() {
-      _longPressPaused = false;
-      _hideOverlayForLongPress = false;
-    });
-    if (ctrl != null && !_isPaused) {
-      // Resume cuma kalau user tidak previously tap-paused juga.
-      ctrl.play();
+    if (_longPressPaused) {
+      setState(() {
+        _longPressPaused = false;
+        _hideOverlayForLongPress = false;
+      });
+      if (ctrl != null && !_isPaused) {
+        // Resume cuma kalau user tidak previously tap-paused juga.
+        ctrl.play();
+      }
+    } else if (_longPressSpeedActive) {
+      setState(() {
+        _longPressSpeedActive = false;
+        _hideOverlayForLongPress = false;
+      });
+      // Reset speed ke 1.0. Defensive try-catch — controller bisa di-
+      // dispose tengah jalan (mis. user swipe ke post lain).
+      try {
+        ctrl?.setPlaybackSpeed(1.0);
+      } catch (_) {}
     }
   }
 
@@ -2674,6 +2732,9 @@ class _FeedPostViewState extends State<_FeedPostView>
               math.max(1.0, constraints.biggest.height - keyboard);
           final commentSheetMaxExtent =
               _commentSheetMaxExtentFor(commentSheetHostHeight);
+          // Cache media area width untuk zone detection di long-press
+          // handler (left/center/right 2x speed vs pause).
+          _mediaAreaWidth = constraints.maxWidth;
           // extendBody: false di Scaffold → body bottom = top edge bottom
           // nav (safeBottom sudah di-consume nav widget). Insets di sini
           // relatif ke body bottom, BUKAN screen bottom. Tidak perlu
@@ -2907,8 +2968,13 @@ class _FeedPostViewState extends State<_FeedPostView>
                             left: 0,
                             right: 0,
                             bottom: 0,
-                            child: FeedVideoProgressBar(
+                            child: FeedVideoScrubber(
                               controller: _videoController!,
+                              isCurrent: widget.isActive,
+                              onScrubbingChanged: (scrubbing) {
+                                if (!mounted) return;
+                                setState(() => _isScrubbing = scrubbing);
+                              },
                             ),
                           ),
                         // ── Right action column (Reels-style: tight + minimal) ──
