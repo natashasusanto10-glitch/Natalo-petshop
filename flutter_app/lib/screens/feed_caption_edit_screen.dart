@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../utils/haptics.dart';
+import '../widgets/mention_picker.dart';
 
 const _captionBlue = Color(0xFF1E5BFF);
 const _captionInk = Color(0xFF101828);
@@ -39,12 +40,14 @@ class FeedCaptionEditScreen extends StatefulWidget {
 
 class _FeedCaptionEditScreenState extends State<FeedCaptionEditScreen> {
   late final TextEditingController _controller;
+  late final MentionPickerController _mentionCtrl;
   final FocusNode _focusNode = FocusNode();
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.initialCaption);
+    _mentionCtrl = MentionPickerController(textController: _controller);
     // Auto-focus caption field dengan slight delay supaya keyboard tidak
     // race dengan fade-in transition (180ms). Smoother UX.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -54,6 +57,7 @@ class _FeedCaptionEditScreenState extends State<FeedCaptionEditScreen> {
 
   @override
   void dispose() {
+    _mentionCtrl.dispose();
     _controller.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -172,6 +176,17 @@ class _FeedCaptionEditScreenState extends State<FeedCaptionEditScreen> {
                             contentPadding: EdgeInsets.zero,
                             counterText: '',
                           ),
+                          ),
+                        ),
+                        // @mention suggestions panel — light theme cocok
+                        // dengan white caption sheet. Maxheight 180 supaya
+                        // tidak nutupin TextField terlalu banyak.
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+                          child: MentionSuggestionsPanel(
+                            controller: _mentionCtrl,
+                            darkTheme: false,
+                            maxHeight: 180,
                           ),
                         ),
                       ],

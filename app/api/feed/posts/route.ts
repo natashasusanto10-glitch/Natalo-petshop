@@ -21,6 +21,11 @@ import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
 import { sendFeedPendingReviewNotification } from "@/lib/feed/notifications";
+import { sendMentionNotifications } from "@/lib/feed/activity-notifications";
+import {
+  extractMentionHandles,
+  resolveMentionedUsers,
+} from "@/lib/feed/mentions";
 import { listFeedPosts } from "@/lib/feed/queries";
 import { ADMIN_VIDEO_CONFIG, USER_VIDEO_CONFIG } from "@/lib/feed/video-config";
 
@@ -520,6 +525,31 @@ export async function POST(request: NextRequest) {
   if (!isAdmin && post.status === "PENDING_REVIEW") {
     void sendFeedPendingReviewNotification({ postId: post.id });
   }
+
+  // @mention notification — caption (title + description) di-parse,
+  // user yang di-mention dapat notif "@actor menyebut kamu di
+  // postingan". Fire kalau post ACTIVE (admin auto-publish) atau pending
+  // tetap (defer notif sampai approved? Untuk simplicity fire sekarang —
+  // user yang di-mention bisa lihat profile actor + post saat di-approve).
+  void (async () => {
+    try {
+      const captionText = `${title} ${description}`.trim();
+      const handles = extractMentionHandles(captionText);
+      if (handles.size === 0) return;
+      const mentioned = await resolveMentionedUsers(handles, session.sub);
+      if (mentioned.length === 0) return;
+      await sendMentionNotifications({
+        actorUserId: session.sub,
+        recipientUserIds: mentioned.map((u) => u.id),
+        source: "post",
+        postId: post.id,
+        commentId: null,
+        excerpt: captionText,
+      });
+    } catch (err) {
+      console.warn("[posts] mention notif failed:", err);
+    }
+  })();
 
   return NextResponse.json({ ok: true, post });
 }
