@@ -3421,8 +3421,7 @@ class _MediaBackground extends StatelessWidget {
         return Stack(
           fit: StackFit.expand,
           children: [
-            blurhashLayer,
-            _BlurredFeedBackdrop(thumbnailUrl: post.thumbnailUrl),
+            const ColoredBox(color: Colors.black),
             Center(
               child: FittedBox(
                 fit: BoxFit.contain,
@@ -3478,8 +3477,7 @@ class _MediaBackground extends StatelessWidget {
         return Stack(
           fit: StackFit.expand,
           children: [
-            blurhashLayer,
-            _BlurredFeedBackdrop(thumbnailUrl: thumb),
+            const ColoredBox(color: Colors.black),
             Center(
               child: CachedNetworkImage(
                 imageUrl: thumb,
