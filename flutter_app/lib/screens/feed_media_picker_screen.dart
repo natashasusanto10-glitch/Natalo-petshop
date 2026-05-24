@@ -2,9 +2,9 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
@@ -66,6 +66,125 @@ class SelectedMediaItem {
         durationSeconds: durationSeconds,
         orderIndex: newIndex,
       );
+}
+
+/// Args bundle untuk worker isolate `_processPhotoInIsolate`. Harus
+/// `@immutable` + plain types supaya bisa di-serialize cross-isolate
+/// boundary lewat `compute()`. File path di-pass sebagai string;
+/// worker baca file dari sana, decode, crop/resize, encode JPEG, dan
+/// tulis output ke `tmpDirPath` lalu return path output.
+@immutable
+class _PhotoProcessArgs {
+  final String sourcePath;
+  final String tmpDirPath;
+  final double targetAspect;
+  final double scale;
+  final double offsetFractionX;
+  final double offsetFractionY;
+  final bool preserveOriginal;
+  final int maxLongSide;
+  final int jpegQuality;
+  final int timestampSuffix;
+  final String pathSeparator;
+
+  const _PhotoProcessArgs({
+    required this.sourcePath,
+    required this.tmpDirPath,
+    required this.targetAspect,
+    required this.scale,
+    required this.offsetFractionX,
+    required this.offsetFractionY,
+    required this.preserveOriginal,
+    required this.maxLongSide,
+    required this.jpegQuality,
+    required this.timestampSuffix,
+    required this.pathSeparator,
+  });
+}
+
+/// Top-level (BUKAN method) supaya bisa dipanggil dari `compute()` —
+/// closures di method punya `this` reference yang tidak bisa di-serialize.
+/// Heavy work decode + bakeOrientation + crop + resize + encode JPEG
+/// semua jalan di background isolate; main thread tetap responsif.
+/// Return path file output JPEG di tmpDir.
+String _processPhotoInIsolate(_PhotoProcessArgs args) {
+  final source = File(args.sourcePath);
+  final bytes = source.readAsBytesSync();
+  final decoded = img.decodeImage(bytes);
+  if (decoded == null) {
+    // Fallback: tidak bisa decode → return source path apa adanya.
+    // Caller akan upload file original; backend tolak format kalau
+    // beneran corrupt.
+    return args.sourcePath;
+  }
+  final oriented = img.bakeOrientation(decoded);
+
+  img.Image processed;
+  if (args.preserveOriginal) {
+    processed = oriented;
+  } else {
+    final srcW = oriented.width;
+    final srcH = oriented.height;
+    final frameW = args.targetAspect;
+    const frameH = 1.0;
+    final coverScale = math.max(frameW / srcW, frameH / srcH);
+    final baseW = srcW * coverScale;
+    final baseH = srcH * coverScale;
+    final visualScale = args.scale.clamp(1.0, 4.0).toDouble();
+    final scaledW = baseW * visualScale;
+    final scaledH = baseH * visualScale;
+    final offsetX = args.offsetFractionX * frameW;
+    final offsetY = args.offsetFractionY * frameH;
+
+    final imageLeft = (frameW - scaledW) / 2 + offsetX;
+    final imageTop = (frameH - scaledH) / 2 + offsetY;
+    final cropX = (-imageLeft / scaledW) * srcW;
+    final cropY = (-imageTop / scaledH) * srcH;
+    final cropW = (frameW / scaledW) * srcW;
+    final cropH = (frameH / scaledH) * srcH;
+
+    final cropWInt = cropW.round().clamp(1, srcW).toInt();
+    final cropHInt = cropH.round().clamp(1, srcH).toInt();
+    final cropXInt =
+        cropX.round().clamp(0, math.max(0, srcW - cropWInt)).toInt();
+    final cropYInt =
+        cropY.round().clamp(0, math.max(0, srcH - cropHInt)).toInt();
+
+    processed = img.copyCrop(
+      oriented,
+      x: cropXInt,
+      y: cropYInt,
+      width: cropWInt,
+      height: cropHInt,
+    );
+  }
+
+  // Resize ke max long-side kalau perlu (output upload friendly).
+  final longSide = processed.width > processed.height
+      ? processed.width
+      : processed.height;
+  if (longSide > args.maxLongSide) {
+    if (processed.height >= processed.width) {
+      processed = img.copyResize(
+        processed,
+        height: args.maxLongSide,
+        interpolation: img.Interpolation.linear,
+      );
+    } else {
+      processed = img.copyResize(
+        processed,
+        width: args.maxLongSide,
+        interpolation: img.Interpolation.linear,
+      );
+    }
+  }
+
+  final jpegBytes = img.encodeJpg(processed, quality: args.jpegQuality);
+  final ts = DateTime.now().microsecondsSinceEpoch + args.timestampSuffix;
+  final outPath =
+      '${args.tmpDirPath}${args.pathSeparator}natalo_crop_$ts.jpg';
+  File(outPath).writeAsBytesSync(jpegBytes, flush: true);
+  return outPath;
 }
 
 /// Mutable transform state untuk pan/zoom crop preview. Extend
@@ -418,115 +537,41 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
   Future<List<File>> _preparePhotoFiles(
     List<SelectedMediaItem> items,
   ) async {
-    final results = <File>[];
-    for (final item in items) {
-      final source = File(item.localPath);
-      final prepared = _previewFitOriginal
-          ? await _preservePhoto(source)
-          : await _cropPhotoWithTransform(
-              source,
-              _previewAspect,
-              _photoCropTransforms[item.id] ?? _PhotoCropTransform(),
-            );
-      results.add(prepared);
-    }
-    return results;
-  }
-
-  /// Preserve original ratio + resize + encode JPEG. Return temp file.
-  Future<File> _preservePhoto(File source) async {
-    return _processPhoto(source);
-  }
-
-  /// Crop source supaya memenuhi target aspect 4:5, mengikuti pan/zoom
-  /// yang user atur di preview. Kalau user belum geser/zoom, hasilnya sama
-  /// seperti center-cover Instagram.
-  Future<File> _cropPhotoWithTransform(
-    File source,
-    double targetAspect,
-    _PhotoCropTransform transform,
-  ) async {
-    final bytes = await source.readAsBytes();
-    final decoded = img.decodeImage(bytes);
-    if (decoded == null) {
-      return source;
-    }
-    final oriented = img.bakeOrientation(decoded);
-    final srcW = oriented.width;
-    final srcH = oriented.height;
-    final frameW = targetAspect;
-    const frameH = 1.0;
-    final coverScale = math.max(frameW / srcW, frameH / srcH);
-    final baseW = srcW * coverScale;
-    final baseH = srcH * coverScale;
-    final visualScale = transform.scale.clamp(1.0, 4.0).toDouble();
-    final scaledW = baseW * visualScale;
-    final scaledH = baseH * visualScale;
-    final offsetX = transform.offsetFraction.dx * frameW;
-    final offsetY = transform.offsetFraction.dy * frameH;
-
-    final imageLeft = (frameW - scaledW) / 2 + offsetX;
-    final imageTop = (frameH - scaledH) / 2 + offsetY;
-    final cropX = (-imageLeft / scaledW) * srcW;
-    final cropY = (-imageTop / scaledH) * srcH;
-    final cropW = (frameW / scaledW) * srcW;
-    final cropH = (frameH / scaledH) * srcH;
-
-    final cropWInt = cropW.round().clamp(1, srcW).toInt();
-    final cropHInt = cropH.round().clamp(1, srcH).toInt();
-    final cropXInt =
-        cropX.round().clamp(0, math.max(0, srcW - cropWInt)).toInt();
-    final cropYInt =
-        cropY.round().clamp(0, math.max(0, srcH - cropHInt)).toInt();
-
-    img.Image cropped = img.copyCrop(
-      oriented,
-      x: cropXInt,
-      y: cropYInt,
-      width: cropWInt,
-      height: cropHInt,
-    );
-
-    return _writeProcessedPhoto(cropped);
-  }
-
-  Future<File> _processPhoto(File source) async {
-    final bytes = await source.readAsBytes();
-    final decoded = img.decodeImage(bytes);
-    if (decoded == null) return source;
-    return _writeProcessedPhoto(img.bakeOrientation(decoded));
-  }
-
-  Future<File> _writeProcessedPhoto(img.Image image) async {
-    var output = image;
-    // Resize ke max long-side 2160 kalau perlu. Cek mana dimensi
-    // terbesar (height untuk portrait/square, width untuk landscape).
-    final longSide =
-        output.width > output.height ? output.width : output.height;
-    if (longSide > _maxLongSide) {
-      if (output.height >= output.width) {
-        output = img.copyResize(
-          output,
-          height: _maxLongSide,
-          interpolation: img.Interpolation.linear,
-        );
-      } else {
-        output = img.copyResize(
-          output,
-          width: _maxLongSide,
-          interpolation: img.Interpolation.linear,
-        );
-      }
-    }
-
-    final jpegBytes = img.encodeJpg(output, quality: _jpegQuality);
+    // PERF: process semua foto PARALLEL via Future.wait + compute().
+    // Sebelumnya sequential di main isolate — decode + bakeOrientation +
+    // copyCrop + copyResize + encodeJpg semua di UI thread, blocking
+    // ~500-1500ms PER foto. 8 foto = ~20 detik UI freeze → tombol Next
+    // terasa "lagging". Sekarang tiap foto dispatch ke background
+    // isolate (`compute()`) dan jalan paralel; main thread tetap responsif
+    // selama spinner ditampilkan.
     final tmpDir = await getTemporaryDirectory();
-    final ts = DateTime.now().microsecondsSinceEpoch;
-    final out = File(
-      '${tmpDir.path}${Platform.pathSeparator}natalo_crop_$ts.jpg',
-    );
-    await out.writeAsBytes(jpegBytes, flush: true);
-    return out;
+    final tmpDirPath = tmpDir.path;
+    final aspect = _previewAspect;
+    final preserveOriginal = _previewFitOriginal;
+
+    final futures = items.asMap().entries.map((entry) {
+      final index = entry.key;
+      final item = entry.value;
+      final transform =
+          _photoCropTransforms[item.id] ?? _PhotoCropTransform();
+      final args = _PhotoProcessArgs(
+        sourcePath: item.localPath,
+        tmpDirPath: tmpDirPath,
+        targetAspect: aspect,
+        scale: transform.scale,
+        offsetFractionX: transform.offsetFraction.dx,
+        offsetFractionY: transform.offsetFraction.dy,
+        preserveOriginal: preserveOriginal,
+        maxLongSide: _maxLongSide,
+        jpegQuality: _jpegQuality,
+        timestampSuffix: index,
+        pathSeparator: Platform.pathSeparator,
+      );
+      return compute(_processPhotoInIsolate, args);
+    }).toList();
+
+    final paths = await Future.wait(futures);
+    return paths.map(File.new).toList();
   }
 
   // ─── Selection logic ─────────────────────────────────────────────
