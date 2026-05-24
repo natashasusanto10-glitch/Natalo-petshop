@@ -337,9 +337,14 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
         surfaceTintColor: Colors.white,
         leading: IconButton(
           onPressed: () => Navigator.maybePop(context),
+          // Back icon size 26 per spec Detail Postingan. Material Icon
+          // (arrow_back_rounded) tidak punya strokeWidth — rendering dari
+          // icon font, weight fixed. Visual thickness sudah mirip stroke
+          // 2.5 di NataloPostActionIcon karena rounded variant Material.
           icon: const Icon(
             Icons.arrow_back_rounded,
             color: NataloColors.textPrimary,
+            size: 26,
           ),
         ),
         centerTitle: true,
@@ -702,13 +707,18 @@ class _PostFeedItemState extends State<_PostFeedItem>
               // Heart icon dibungkus ScaleTransition supaya pop saat di-tap.
               // _handleLikeTap fire animation + delegate ke widget.onLike
               // (yang trigger optimistic update + API call di parent).
+              // Action icons per spec Final Icon Stroke Detail Postingan:
+              //   - iconSize: 30 (was 28)
+              //   - strokeWidth: 2.5 (was default 2.2)
+              // Target: clean, tegas, Instagram-style, tidak terlalu tipis.
               ScaleTransition(
                 scale: _heartScale,
                 child: NataloPostActionButton(
                   type: NataloPostActionIconType.like,
                   isActive: liked,
-                  iconSize: 28,
-                  tapSize: 42,
+                  iconSize: 30,
+                  strokeWidth: 2.5,
+                  tapSize: 44,
                   count: post.likeCount,
                   semanticLabel: liked ? 'Batalkan suka' : 'Sukai postingan',
                   onTap: _handleLikeTap,
@@ -716,16 +726,18 @@ class _PostFeedItemState extends State<_PostFeedItem>
               ),
               NataloPostActionButton(
                 type: NataloPostActionIconType.comment,
-                iconSize: 28,
-                tapSize: 42,
+                iconSize: 30,
+                strokeWidth: 2.5,
+                tapSize: 44,
                 count: post.commentCount,
                 semanticLabel: 'Buka komentar',
                 onTap: widget.onComment,
               ),
               NataloPostActionButton(
                 type: NataloPostActionIconType.share,
-                iconSize: 28,
-                tapSize: 42,
+                iconSize: 30,
+                strokeWidth: 2.5,
+                tapSize: 44,
                 count: post.shareCount,
                 semanticLabel: 'Bagikan postingan',
                 onTap: widget.onShare,
