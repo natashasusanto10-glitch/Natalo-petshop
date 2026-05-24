@@ -67,7 +67,7 @@ enum VoucherDiscountScope {
 }
 
 model User {
-  id                  String          @id @default(cuid())
+  id                  String               @id @default(cuid())
   name                String
   /// Public handle untuk @mention + URL profile (IG/TikTok style).
   /// Format: 3-30 char lowercase alfanumerik + `_` + `.` (no `..`,
@@ -75,16 +75,16 @@ model User {
   /// untuk user existing yang belum pilih — UI tampil banner prompt
   /// + di feed fallback ke `name`. Mandatory di sign-up flow user
   /// baru.
-  username            String?         @unique
+  username            String?              @unique
   /// Timestamp terakhir kali username di-set/ganti. Dipakai untuk
   /// audit + future "min interval" rate limit. Nullable kalau user
   /// belum pernah set.
   usernameUpdatedAt   DateTime?
-  phone               String?         @unique
-  email               String?         @unique
+  phone               String?              @unique
+  email               String?              @unique
   passwordHash        String?
-  role                String          @default("CUSTOMER")
-  tokenVersion        Int             @default(0)
+  role                String               @default("CUSTOMER")
+  tokenVersion        Int                  @default(0)
   birthDate           DateTime?
   birthdayVoucherYear Int?
   /// URL foto profil — disimpan ke UploadThing CDN. Nullable: user yang
@@ -99,31 +99,35 @@ model User {
   orders              Order[]
   points              CustomerPoint[]
   reviews             Review[]
-  reviewReplies       ReviewReply[]   @relation("AdminReplies")
-  reviewVotes         ReviewVote[]    @relation("ReviewVotes")
+  reviewReplies       ReviewReply[]        @relation("AdminReplies")
+  reviewVotes         ReviewVote[]         @relation("ReviewVotes")
   addresses           Address[]
   favorites           Favorite[]
   pets                Pet[]
-  chatThreads         ChatThread[]     @relation("CustomerChatThreads")
-  chatMessages        ChatMessage[]    @relation("ChatSender")
+  chatThreads         ChatThread[]         @relation("CustomerChatThreads")
+  chatMessages        ChatMessage[]        @relation("ChatSender")
   cartItems           CartItem[]
   stockNotifications  StockNotification[]
   productViews        UserProductView[]
   voucherUsages       VoucherUsage[]
   announcementReads   AnnouncementRead[]
+  // Refund wallet — 1:1 dengan user, lazy-init saat first credit.
+  refundWallet        RefundWallet?
+  refundLedgers       RefundWalletLedger[]
+  refundCases         RefundCase[]
   // Feed relations — admin post & user community video, plus engagement.
-  feedPosts           FeedPost[]      @relation("FeedAuthor")
-  moderatedFeedPosts  FeedPost[]      @relation("FeedModerator")
-  feedComments        FeedComment[]   @relation("FeedCommentAuthor")
-  hiddenComments      FeedComment[]   @relation("FeedCommentModerator")
+  feedPosts           FeedPost[]           @relation("FeedAuthor")
+  moderatedFeedPosts  FeedPost[]           @relation("FeedModerator")
+  feedComments        FeedComment[]        @relation("FeedCommentAuthor")
+  hiddenComments      FeedComment[]        @relation("FeedCommentModerator")
   feedLikes           FeedLike[]
   feedCommentLikes    FeedCommentLike[]
-  feedReportsFiled    FeedReport[]    @relation("FeedReporter")
-  feedReportsResolved FeedReport[]    @relation("FeedReportResolver")
-  feedModerationLogs  FeedModerationLog[] @relation("FeedModerationActor")
+  feedReportsFiled    FeedReport[]         @relation("FeedReporter")
+  feedReportsResolved FeedReport[]         @relation("FeedReportResolver")
+  feedModerationLogs  FeedModerationLog[]  @relation("FeedModerationActor")
   usernameHistory     UsernameHistory[]
-  createdAt           DateTime        @default(now())
-  updatedAt           DateTime        @updatedAt
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 }
 
 /// History reservasi username — saat user ganti handle, handle lama
@@ -154,24 +158,24 @@ model UsernameHistory {
 }
 
 model CartItem {
-  id           String   @id @default(cuid())
-  userId       String
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  productId    String
-  variantId    String?
-  variantLabel String?
-  name         String
-  price        Int
-  quantity     Int
-  weightGram   Int      @default(500)
-  imageUrl     String?
-  stock        Int?
+  id                  String    @id @default(cuid())
+  userId              String
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId           String
+  variantId           String?
+  variantLabel        String?
+  name                String
+  price               Int
+  quantity            Int
+  weightGram          Int       @default(500)
+  imageUrl            String?
+  stock               Int?
   // Track last abandoned-cart push notification — supaya cron tidak
   // spam user yang sama tiap jam. Set timestamp setelah push terkirim,
   // clear (set null) saat user checkout atau update cart.
   notifiedAbandonedAt DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   @@unique([userId, productId, variantId])
   @@index([userId])
@@ -204,9 +208,9 @@ model StockNotification {
 }
 
 model Category {
-  id        String    @id @default(cuid())
-  name      String
-  slug      String    @unique
+  id                String    @id @default(cuid())
+  name              String
+  slug              String    @unique
   // Consumable detection — produk dengan kategori `isConsumable=true`
   // dianggap habis pakai (mis. makanan, pasir, vitamin). Dipakai oleh
   // recommendation engine untuk:
@@ -237,61 +241,61 @@ model Brand {
 }
 
 model Product {
-  id                String             @id @default(cuid())
-  name              String
-  slug              String             @unique
+  id                    String                      @id @default(cuid())
+  name                  String
+  slug                  String                      @unique
   // SKU Induk — identifier opsional untuk produk single (tanpa varian)
   // atau sebagai master SKU di parent level. Beda namespace dari
   // ProductVariant.sku yang per-kombinasi varian. Nullable + unique.
-  sku               String?            @unique
-  description       String
-  price             Int
-  memberPrice       Int?
-  discountPrice     Int?
+  sku                   String?                     @unique
+  description           String
+  price                 Int
+  memberPrice           Int?
+  discountPrice         Int?
   // Flash Sale explicit timing — kalau di-set, produk ini WAJIB masuk
   // Flash Sale section di home apapun discount %-nya (admin explicit tag).
   // Kalau null, produk masuk Flash Sale section HANYA kalau discount >=
   // FLASH_SALE_MIN_DISCOUNT_PERCENT (default 20%). Saat flashSaleEndsAt <
   // now, query otomatis exclude produk dari section (auto-cleanup).
-  flashSaleEndsAt   DateTime?
-  stock             Int                @default(0)
-  weightGram        Int                @default(500)
-  imageUrl          String?
+  flashSaleEndsAt       DateTime?
+  stock                 Int                         @default(0)
+  weightGram            Int                         @default(500)
+  imageUrl              String?
   // Galeri tambahan (max 4 gambar). imageUrl tetap jadi thumbnail utama,
   // gallery dipakai di halaman detail produk untuk carousel.
-  gallery           String[]           @default([])
-  isActive          Boolean            @default(true)
-  hasVariants       Boolean            @default(false)
-  brandAutoAssigned Boolean            @default(false)
-  avgRating         Float              @default(0)
-  reviewCount       Int                @default(0)
-  ratingBreakdown   Json?
+  gallery               String[]                    @default([])
+  isActive              Boolean                     @default(true)
+  hasVariants           Boolean                     @default(false)
+  brandAutoAssigned     Boolean                     @default(false)
+  avgRating             Float                       @default(0)
+  reviewCount           Int                         @default(0)
+  ratingBreakdown       Json?
   // Denormalized search text (name + brand + variant names + sku codes).
   // Di-maintain oleh app code (lib/search.ts syncProduct) + script backfill.
   // GIN trigram index ada di migration product_search_text_trgm.
-  searchText        String             @default("") @map("searchText")
-  categoryId        String?
-  category          Category?          @relation(fields: [categoryId], references: [id])
-  brandId           String?
-  brand             Brand?             @relation(fields: [brandId], references: [id])
-  orderItems        OrderItem[]
-  reviews           Review[]
-  variants          ProductVariant[]
-  variantAttrs      VariantAttribute[]
-  favorites         Favorite[]
-  stockNotifications StockNotification[]
-  viewedBy          UserProductView[]
+  searchText            String                      @default("") @map("searchText")
+  categoryId            String?
+  category              Category?                   @relation(fields: [categoryId], references: [id])
+  brandId               String?
+  brand                 Brand?                      @relation(fields: [brandId], references: [id])
+  orderItems            OrderItem[]
+  reviews               Review[]
+  variants              ProductVariant[]
+  variantAttrs          VariantAttribute[]
+  favorites             Favorite[]
+  stockNotifications    StockNotification[]
+  viewedBy              UserProductView[]
   // Promo Toko campaign items yang ikut produk ini.
-  discountItems     ProductDiscountItem[]
+  discountItems         ProductDiscountItem[]
   recommendationSources ProductRecommendationRule[] @relation("RecommendationSource")
   recommendationTargets ProductRecommendationRule[] @relation("RecommendationTarget")
   // Feed posts yang tag/link ke produk ini (admin product card, promo, video+product).
-  feedPosts         FeedPost[]
+  feedPosts             FeedPost[]
   // Shop the Look back-relation — semua feed post (multi-tag) yang
   // pakai produk ini, untuk product page "Postingan Pelanggan" tab.
-  feedPostTags      FeedPostProduct[]
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
+  feedPostTags          FeedPostProduct[]
+  createdAt             DateTime                    @default(now())
+  updatedAt             DateTime                    @updatedAt
 }
 
 model UserProductView {
@@ -312,15 +316,15 @@ model UserProductView {
 
 model ProductRecommendationRule {
   id                   String   @id @default(cuid())
-  sourceProductId       String   @map("source_product_id")
-  sourceProduct         Product  @relation("RecommendationSource", fields: [sourceProductId], references: [id], onDelete: Cascade)
-  recommendedProductId  String   @map("recommended_product_id")
-  recommendedProduct    Product  @relation("RecommendationTarget", fields: [recommendedProductId], references: [id], onDelete: Cascade)
-  relationType          String   @default("complementary") @map("relation_type")
-  priority              Int      @default(0)
-  isActive              Boolean  @default(true) @map("is_active")
-  createdAt             DateTime @default(now()) @map("created_at")
-  updatedAt             DateTime @updatedAt @map("updated_at")
+  sourceProductId      String   @map("source_product_id")
+  sourceProduct        Product  @relation("RecommendationSource", fields: [sourceProductId], references: [id], onDelete: Cascade)
+  recommendedProductId String   @map("recommended_product_id")
+  recommendedProduct   Product  @relation("RecommendationTarget", fields: [recommendedProductId], references: [id], onDelete: Cascade)
+  relationType         String   @default("complementary") @map("relation_type")
+  priority             Int      @default(0)
+  isActive             Boolean  @default(true) @map("is_active")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
 
   @@unique([sourceProductId, recommendedProductId, relationType])
   @@index([sourceProductId, isActive, priority])
@@ -329,72 +333,73 @@ model ProductRecommendationRule {
 }
 
 model Order {
-  id                  String          @id @default(cuid())
-  orderNumber          String          @unique
-  userId               String?
-  user                 User?           @relation(fields: [userId], references: [id])
-  customerName         String
-  customerPhone        String
-  customerEmail        String?
-  shippingAddress      String
-  shippingCity         String?
-  shippingPostalCode   String?
-  shippingLatitude     Float?
-  shippingLongitude    Float?
+  id                      String          @id @default(cuid())
+  orderNumber             String          @unique
+  userId                  String?
+  user                    User?           @relation(fields: [userId], references: [id])
+  customerName            String
+  customerPhone           String
+  customerEmail           String?
+  shippingAddress         String
+  shippingCity            String?
+  shippingPostalCode      String?
+  shippingLatitude        Float?
+  shippingLongitude       Float?
   shippingPinpointAddress String?
-  shippingAreaId       String?
-  shippingAreaLabel    String?
-  shippingProvinceName String?
-  shippingDistrictName String?
-  orderType            String          @default("DELIVERY")
-  shippingMethod       String          @default("DELIVERY")
-  courierCode          String?
-  courierService       String?
-  trackingNumber       String?
-  trackingToken        String?         @unique
-  biteshipOrderId      String?
-  biteshipTrackingUrl  String?
-  shipmentStatus       String?
-  biteshipRequest      Json?
-  biteshipResponse     Json?
-  biteshipError        String?
-  pickupStoreName      String?
-  pickupStoreAddress   String?
-  pickupStoreLatitude  Float?
-  pickupStoreLongitude Float?
-  pickupHours          String?
-  pickupCode           String?         @unique
-  pickupQrCode         String?
-  pickupStatus         String?
-  readyForPickupAt     DateTime?
-  pickedUpAt           DateTime?
-  pickedUpByAdminId    String?
-  subtotal             Int
-  shippingCost         Int             @default(0)
-  discount             Int             @default(0)
-  total                Int
-  status               OrderStatus     @default(PENDING)
-  paymentProvider      PaymentProvider @default(MANUAL)
-  paymentStatus        PaymentStatus   @default(UNPAID)
-  paymentReference     String?
-  paymentUrl           String?
-  paymentProofUrl      String?
-  manualBank           String?
-  uniqueCode           Int?
-  voucherCode          String? // Customer voucher (CUSTOMER source type)
-  manualVoucherCode    String? // Seller manual voucher (SELLER_MANUAL)
+  shippingAreaId          String?
+  shippingAreaLabel       String?
+  shippingProvinceName    String?
+  shippingDistrictName    String?
+  orderType               String          @default("DELIVERY")
+  shippingMethod          String          @default("DELIVERY")
+  courierCode             String?
+  courierService          String?
+  trackingNumber          String?
+  trackingToken           String?         @unique
+  biteshipOrderId         String?
+  biteshipTrackingUrl     String?
+  shipmentStatus          String?
+  biteshipRequest         Json?
+  biteshipResponse        Json?
+  biteshipError           String?
+  pickupStoreName         String?
+  pickupStoreAddress      String?
+  pickupStoreLatitude     Float?
+  pickupStoreLongitude    Float?
+  pickupHours             String?
+  pickupCode              String?         @unique
+  pickupQrCode            String?
+  pickupStatus            String?
+  readyForPickupAt        DateTime?
+  pickedUpAt              DateTime?
+  pickedUpByAdminId       String?
+  subtotal                Int
+  shippingCost            Int             @default(0)
+  discount                Int             @default(0)
+  total                   Int
+  status                  OrderStatus     @default(PENDING)
+  paymentProvider         PaymentProvider @default(MANUAL)
+  paymentStatus           PaymentStatus   @default(UNPAID)
+  paymentReference        String?
+  paymentUrl              String?
+  paymentProofUrl         String?
+  manualBank              String?
+  uniqueCode              Int?
+  voucherCode             String? // Customer voucher (CUSTOMER source type)
+  manualVoucherCode       String? // Seller manual voucher (SELLER_MANUAL)
   freeShippingVoucherCode String?
-  shippingVoucherCode  String? // Generic shipping voucher slot (from migration 20260518010000)
-  productVoucherCode   String?
-  loyaltyVoucherCode   String?
-  privateVoucherCode   String?
-  productDiscount      Int             @default(0)
-  shippingDiscount     Int             @default(0)
-  notes                String?
-  items                OrderItem[]
-  voucherUsages        VoucherUsage[]
-  createdAt            DateTime        @default(now())
-  updatedAt            DateTime        @updatedAt
+  shippingVoucherCode     String? // Generic shipping voucher slot (from migration 20260518010000)
+  productVoucherCode      String?
+  loyaltyVoucherCode      String?
+  privateVoucherCode      String?
+  productDiscount         Int             @default(0)
+  shippingDiscount        Int             @default(0)
+  notes                   String?
+  items                   OrderItem[]
+  voucherUsages           VoucherUsage[]
+  refundCases             RefundCase[]
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
 
   @@index([biteshipOrderId])
   @@index([shipmentStatus])
@@ -416,6 +421,7 @@ model OrderItem {
   quantity     Int
   weightGram   Int             @default(500)
   reviews      Review[] // multiple kalau user soft-delete & resubmit
+  refundCases  RefundCase[]
 }
 
 // Promo Toko campaign metadata — ala Shopee Seller. Diskon per-produk
@@ -436,7 +442,7 @@ model ProductDiscount {
   isActive  Boolean               @default(true)
   items     ProductDiscountItem[]
   createdAt DateTime              @default(now())
-  updatedAt DateTime               @updatedAt
+  updatedAt DateTime              @updatedAt
 
   @@index([startsAt, endsAt])
   @@index([isActive])
@@ -494,41 +500,41 @@ enum VoucherUserUsageLimitPeriod {
 }
 
 model Voucher {
-  id              String    @id @default(cuid())
-  name            String?
-  code            String    @unique
-  description     String?
-  discountPercent Int?
-  discountAmount  Int?
-  maxDiscountAmount Int?
-  minimumOrder    Int       @default(0)
-  maxUsage        Int?
-  usedCount       Int       @default(0)
-  usageLimitPerUser Int     @default(1)
-  usageLimitPeriod VoucherUserUsageLimitPeriod @default(LIFETIME)
-  startsAt        DateTime  @default(now())
-  expiresAt       DateTime?
-  isActive        Boolean   @default(true)
+  id                                String                      @id @default(cuid())
+  name                              String?
+  code                              String                      @unique
+  description                       String?
+  discountPercent                   Int?
+  discountAmount                    Int?
+  maxDiscountAmount                 Int?
+  minimumOrder                      Int                         @default(0)
+  maxUsage                          Int?
+  usedCount                         Int                         @default(0)
+  usageLimitPerUser                 Int                         @default(1)
+  usageLimitPeriod                  VoucherUserUsageLimitPeriod @default(LIFETIME)
+  startsAt                          DateTime                    @default(now())
+  expiresAt                         DateTime?
+  isActive                          Boolean                     @default(true)
   // Voucher milik user spesifik (BDAY, POIN claim). NULL = voucher publik (admin promo).
-  userId          String?
+  userId                            String?
   // Source type: CUSTOMER (visible di daftar pembeli) vs SELLER_MANUAL
   // (tersembunyi, hanya via input kode manual). Default CUSTOMER untuk
   // backward compat semua voucher existing.
-  sourceType      VoucherSourceType @default(CUSTOMER)
-  type            VoucherType @default(PUBLIC_PRODUCT_DISCOUNT)
-  kind            VoucherKind @default(PRODUCT_DISCOUNT)
-  visibility      VoucherVisibility @default(PUBLIC)
-  discountType    VoucherDiscountType @default(FIXED_AMOUNT)
-  discountScope   VoucherDiscountScope @default(PRODUCT)
-  targetUser      VoucherTargetUser @default(ALL_MEMBERS)
-  newMemberMaxAccountAgeDays Int?
-  newMemberRequireNoSuccessfulOrder Boolean @default(false)
-  eligibleUserIds String[] @default([])
-  eligibleProductIds String[] @default([])
-  eligibleCategoryIds String[] @default([])
-  usages          VoucherUsage[]
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  sourceType                        VoucherSourceType           @default(CUSTOMER)
+  type                              VoucherType                 @default(PUBLIC_PRODUCT_DISCOUNT)
+  kind                              VoucherKind                 @default(PRODUCT_DISCOUNT)
+  visibility                        VoucherVisibility           @default(PUBLIC)
+  discountType                      VoucherDiscountType         @default(FIXED_AMOUNT)
+  discountScope                     VoucherDiscountScope        @default(PRODUCT)
+  targetUser                        VoucherTargetUser           @default(ALL_MEMBERS)
+  newMemberMaxAccountAgeDays        Int?
+  newMemberRequireNoSuccessfulOrder Boolean                     @default(false)
+  eligibleUserIds                   String[]                    @default([])
+  eligibleProductIds                String[]                    @default([])
+  eligibleCategoryIds               String[]                    @default([])
+  usages                            VoucherUsage[]
+  createdAt                         DateTime                    @default(now())
+  updatedAt                         DateTime                    @updatedAt
 
   @@index([userId])
   @@index([type, visibility])
@@ -547,10 +553,10 @@ model VoucherUsage {
   voucherType    String
   usedAt         DateTime @default(now())
 
+  @@unique([voucherId, orderId])
   @@index([voucherId])
   @@index([userId])
   @@index([orderId])
-  @@unique([voucherId, orderId])
 }
 
 model PushSubscription {
@@ -600,12 +606,12 @@ model CustomerPoint {
 }
 
 model PasswordResetToken {
-  id        String   @id @default(cuid())
-  token     String   @unique
+  id        String    @id @default(cuid())
+  token     String    @unique
   userId    String
   expiresAt DateTime
-  usedAt    DateTime?            // null = belum dipakai
-  createdAt DateTime @default(now())
+  usedAt    DateTime? // null = belum dipakai
+  createdAt DateTime  @default(now())
 
   @@index([userId])
   @@index([expiresAt])
@@ -748,23 +754,23 @@ model VariantOption {
 }
 
 model ProductVariant {
-  id         String                 @id @default(cuid())
-  productId  String
-  product    Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
-  sku        String?                @unique
-  price      Int
-  stock      Int                    @default(0)
-  weightGram Int                    @default(500)
-  imageUrl   String?
-  isActive   Boolean                @default(true)
-  deletedAt  DateTime?
-  options    ProductVariantOption[]
-  orderItems OrderItem[]
+  id                 String                 @id @default(cuid())
+  productId          String
+  product            Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sku                String?                @unique
+  price              Int
+  stock              Int                    @default(0)
+  weightGram         Int                    @default(500)
+  imageUrl           String?
+  isActive           Boolean                @default(true)
+  deletedAt          DateTime?
+  options            ProductVariantOption[]
+  orderItems         OrderItem[]
   stockNotifications StockNotification[]
   // Promo Toko items yang target varian ini specifically.
-  discountItems ProductDiscountItem[]
-  createdAt  DateTime               @default(now())
-  updatedAt  DateTime               @updatedAt
+  discountItems      ProductDiscountItem[]
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
 
   @@index([productId])
 }
@@ -818,18 +824,18 @@ model Favorite {
 }
 
 model Pet {
-  id                  String    @id @default(cuid())
-  userId              String
-  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name                String
-  type                String // Kucing, Anjing, Ikan, Burung, Reptil, Lainnya
-  breed               String?
-  birthDate           DateTime?
-  vaccineReminderAt   DateTime?
-  groomingReminderAt  DateTime?
-  notes               String?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  id                 String    @id @default(cuid())
+  userId             String
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name               String
+  type               String // Kucing, Anjing, Ikan, Burung, Reptil, Lainnya
+  breed              String?
+  birthDate          DateTime?
+  vaccineReminderAt  DateTime?
+  groomingReminderAt DateTime?
+  notes              String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@index([userId])
 }
@@ -851,8 +857,8 @@ model Announcement {
   id           String             @id @default(cuid())
   title        String
   body         String
-  url          String?            // deep link (default "/")
-  segment      String             @default("all")  // "all" | "members" | "active30d"
+  url          String? // deep link (default "/")
+  segment      String             @default("all") // "all" | "members" | "active30d"
   type         String             @default("announcement") // "order" | "promo" | "feed" | "announcement"
   ctaLabel     String?
   startsAt     DateTime?
@@ -917,25 +923,25 @@ model AnnouncementRead {
 // ─────────────────────────────────────────────────────────────────────
 
 enum FeedPostKind {
-  VIDEO_ONLY      // Admin: konten edukasi/informasi tanpa produk
-  PRODUCT_ONLY    // Admin: card produk ringan (tanpa video) di feed
-  VIDEO_PRODUCT   // Admin: video jualan dgn produk terkait
-  PROMO           // Admin: banner/video promo dgn pricing diskon
-  COMMUNITY       // User: video komunitas (review/pengalaman/tips)
-  PHOTO_CAROUSEL  // User/Admin: 1-8 foto, single image atau carousel
+  VIDEO_ONLY // Admin: konten edukasi/informasi tanpa produk
+  PRODUCT_ONLY // Admin: card produk ringan (tanpa video) di feed
+  VIDEO_PRODUCT // Admin: video jualan dgn produk terkait
+  PROMO // Admin: banner/video promo dgn pricing diskon
+  COMMUNITY // User: video komunitas (review/pengalaman/tips)
+  PHOTO_CAROUSEL // User/Admin: 1-8 foto, single image atau carousel
 }
 
 enum FeedPostTab {
-  REKOMENDASI     // Mix admin content + approved community
-  PROMO           // Admin promo official
-  KOMUNITAS       // User-uploaded community videos
+  REKOMENDASI // Mix admin content + approved community
+  PROMO // Admin promo official
+  KOMUNITAS // User-uploaded community videos
 }
 
 enum FeedPostStatus {
-  PENDING_REVIEW  // User upload menunggu moderasi admin
-  ACTIVE          // Publik, tampil di feed
-  REJECTED        // Admin tolak (alasan di moderationNote)
-  HIDDEN          // Sebelumnya ACTIVE, di-hide admin (bisa di-unhide)
+  PENDING_REVIEW // User upload menunggu moderasi admin
+  ACTIVE // Publik, tampil di feed
+  REJECTED // Admin tolak (alasan di moderationNote)
+  HIDDEN // Sebelumnya ACTIVE, di-hide admin (bisa di-unhide)
 }
 
 enum FeedReportTargetType {
@@ -953,32 +959,32 @@ enum FeedReportReason {
 
 enum FeedReportStatus {
   PENDING
-  RESOLVED        // Admin took action (hide/delete)
-  DISMISSED       // Admin reviewed, no violation
+  RESOLVED // Admin took action (hide/delete)
+  DISMISSED // Admin reviewed, no violation
 }
 
 model FeedPost {
-  id              String          @id @default(cuid())
-  authorId        String
-  author          User            @relation("FeedAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  id         String         @id @default(cuid())
+  authorId   String
+  author     User           @relation("FeedAuthor", fields: [authorId], references: [id], onDelete: Cascade)
   // Snapshot author role at post time. Sebenarnya derive dari author.role,
   // tapi cache di sini supaya moderation query tidak join User tiap kali.
-  authorRole      String          // "ADMIN" | "CUSTOMER"
-  kind            FeedPostKind
-  tab             FeedPostTab
-  status          FeedPostStatus  @default(ACTIVE)
+  authorRole String // "ADMIN" | "CUSTOMER"
+  kind       FeedPostKind
+  tab        FeedPostTab
+  status     FeedPostStatus @default(ACTIVE)
 
-  title           String
-  description     String?
+  title       String
+  description String?
 
   // Video fields — nullable untuk PRODUCT_ONLY (kind tanpa video).
-  videoUrl        String?
-  videoMimeType   String?
-  videoSizeBytes  Int?
-  videoDurationSec Int?
-  videoWidth      Int?
-  videoHeight     Int?
-  thumbnailUrl    String?         // Wajib kalau ada videoUrl
+  videoUrl          String?
+  videoMimeType     String?
+  videoSizeBytes    Int?
+  videoDurationSec  Int?
+  videoWidth        Int?
+  videoHeight       Int?
+  thumbnailUrl      String? // Wajib kalau ada videoUrl
   // Blurhash LQIP — string ~30 byte yang di-decode ke canvas 32x32 di
   // client sebagai placeholder instan sebelum thumbnailUrl fully decoded.
   // Generated server-side di Bunny webhook saat thumbnail tersedia.
@@ -988,18 +994,18 @@ model FeedPost {
   // Bunny Stream integration. NULL = post pakai UploadThing direct URL
   // (legacy). Saat di-set, videoUrl menyimpan playlist.m3u8 dari Bunny CDN
   // dan playback pakai HLS adaptive bitrate.
-  videoGuid       String?         @unique
+  videoGuid         String? @unique
   // Encoding lifecycle untuk Bunny videos.
   //   "ready"      — playable (default untuk UploadThing legacy posts)
   //   "uploading"  — user sedang upload raw file ke Bunny
   //   "processing" — Bunny sedang encode HLS variants
   //   "failed"     — Bunny encode gagal, post tidak boleh tayang
-  encodingStatus  String          @default("ready")
+  encodingStatus    String  @default("ready")
 
   // Product linkage — nullable untuk VIDEO_ONLY + COMMUNITY tanpa tag.
   // COMMUNITY user yg tag produk: arahkan ke produk resmi (bukan toko user).
-  productId       String?
-  product         Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
 
   // Promo-specific (kind == PROMO). Skip kalau bukan promo.
   promoOriginalPrice Int?
@@ -1009,41 +1015,41 @@ model FeedPost {
 
   // Denormalized engagement counters — maintained oleh service layer.
   // Pakai @default(0) supaya tidak null saat insert.
-  likeCount       Int             @default(0)
-  commentCount    Int             @default(0)
-  viewCount       Int             @default(0)
+  likeCount    Int @default(0)
+  commentCount Int @default(0)
+  viewCount    Int @default(0)
   // Increment via POST /api/feed/posts/[id]/share after the platform's
   // native share dialog resolves successfully. Cancelled/failed shares
   // do not count.
-  shareCount      Int             @default(0)
+  shareCount   Int @default(0)
 
   // Moderation trail
-  moderatedById   String?
-  moderatedBy     User?           @relation("FeedModerator", fields: [moderatedById], references: [id], onDelete: SetNull)
-  moderatedAt     DateTime?
-  moderationNote  String?         // Reason kalau REJECTED/HIDDEN
+  moderatedById  String?
+  moderatedBy    User?     @relation("FeedModerator", fields: [moderatedById], references: [id], onDelete: SetNull)
+  moderatedAt    DateTime?
+  moderationNote String? // Reason kalau REJECTED/HIDDEN
 
-  publishedAt     DateTime?       // Saat status pertama kali ACTIVE
+  publishedAt DateTime? // Saat status pertama kali ACTIVE
   // Soft-delete marker. NULL = post masih ada. Saat di-set, row tetap di
   // DB (untuk audit + restore) tapi feed listing query harus filter out.
   // Cleanup helper masih boleh wipe UploadThing assets — restore akan
   // re-upload kalau benar-benar perlu.
-  deletedAt       DateTime?
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  comments        FeedComment[]
-  likes           FeedLike[]
-  reports         FeedReport[]
-  moderationLogs  FeedModerationLog[]
+  comments       FeedComment[]
+  likes          FeedLike[]
+  reports        FeedReport[]
+  moderationLogs FeedModerationLog[]
   // Shop the Look: many-to-many ke Product (up to 3 tags per post).
   // FeedPost.productId tetap dipertahankan untuk legacy + primary product
   // display. taggedProducts adalah source of truth untuk multi-tag carousel.
-  taggedProducts  FeedPostProduct[]
+  taggedProducts FeedPostProduct[]
   // PHOTO_CAROUSEL kind: 1-8 image media. Untuk video kind, field ini
   // empty (video tetap stored di FeedPost.videoUrl / thumbnailUrl /
   // videoGuid sebagai single-asset legacy fields).
-  media           FeedMedia[]
+  media          FeedMedia[]
 
   // Index utama untuk feed listing (filter by tab + status + sorted).
   @@index([tab, status, publishedAt])
@@ -1066,28 +1072,28 @@ model FeedPost {
 /// Storage: UploadThing (sama dengan profile photo + admin uploads),
 /// uploadthingKey disimpan untuk cleanup saat post di-delete.
 model FeedMedia {
-  id              String   @id @default(cuid())
-  postId          String
-  post            FeedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  id             String   @id @default(cuid())
+  postId         String
+  post           FeedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
   /// "image" | "video" — discriminator untuk future-proof. Sekarang
   /// hanya "image" yang dipakai (PHOTO_CAROUSEL). Video tetap di
   /// FeedPost.videoUrl.
-  mediaType       String   @default("image")
-  url             String
+  mediaType      String   @default("image")
+  url            String
   /// Optional — untuk image biasanya null (URL itself adalah final),
   /// untuk video bisa dipakai sebagai poster thumbnail.
-  thumbnailUrl    String?
+  thumbnailUrl   String?
   /// UploadThing file key — disimpan untuk hard-delete asset saat post
   /// di-delete via /admin/feed/posts/[id]/cleanup.
-  uploadthingKey  String?
+  uploadthingKey String?
   /// Order index untuk carousel display — 0 = first/cover, 1, 2, ...
   /// User pilih foto urutan tertentu, sortOrder mempertahankan urutan.
-  sortOrder       Int      @default(0)
+  sortOrder      Int      @default(0)
   /// Optional dimensions — untuk pre-compute aspect ratio di client
   /// sebelum image fully loaded (better UX, no layout shift).
-  width           Int?
-  height          Int?
-  createdAt       DateTime @default(now())
+  width          Int?
+  height         Int?
+  createdAt      DateTime @default(now())
 
   @@index([postId, sortOrder])
 }
@@ -1098,15 +1104,15 @@ model FeedMedia {
 // promoPrice: optional discount price per produk untuk PROMO video.
 // Original price ambil dari Product.price (no need to denormalize).
 model FeedPostProduct {
-  id          String   @id @default(cuid())
-  feedPostId  String
-  feedPost    FeedPost @relation(fields: [feedPostId], references: [id], onDelete: Cascade)
-  productId   String
-  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  position    Int      @default(0) // 0..2 untuk urutan tampilan
-  promoPrice  Int?     // Discount price untuk produk ini di video PROMO.
-                       // null = no per-product discount (gunakan price normal).
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  feedPostId String
+  feedPost   FeedPost @relation(fields: [feedPostId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  position   Int      @default(0) // 0..2 untuk urutan tampilan
+  promoPrice Int? // Discount price untuk produk ini di video PROMO.
+  // null = no per-product discount (gunakan price normal).
+  createdAt  DateTime @default(now())
 
   // Tidak boleh tag produk sama dua kali di post yang sama.
   @@unique([feedPostId, productId])
@@ -1120,16 +1126,16 @@ model FeedPostProduct {
 // admin tidak boleh edit/delete entries (Prisma client + UI block update).
 // Setiap row mencatat siapa lakukan apa, kapan, dengan note opsional.
 model FeedModerationLog {
-  id          String         @id @default(cuid())
-  postId      String
-  post        FeedPost       @relation(fields: [postId], references: [id], onDelete: Cascade)
-  actorId     String
-  actor       User           @relation("FeedModerationActor", fields: [actorId], references: [id], onDelete: Restrict)
-  action      String         // "approve" | "reject" | "hide" | "unhide" | "delete" | "restore"
-  fromStatus  String?        // Status sebelum action (null kalau create)
-  toStatus    String?        // Status sesudah action
-  note        String?        // Reason kalau reject/hide
-  createdAt   DateTime       @default(now())
+  id         String   @id @default(cuid())
+  postId     String
+  post       FeedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  actorId    String
+  actor      User     @relation("FeedModerationActor", fields: [actorId], references: [id], onDelete: Restrict)
+  action     String // "approve" | "reject" | "hide" | "unhide" | "delete" | "restore"
+  fromStatus String? // Status sebelum action (null kalau create)
+  toStatus   String? // Status sesudah action
+  note       String? // Reason kalau reject/hide
+  createdAt  DateTime @default(now())
 
   @@index([postId, createdAt])
   @@index([actorId, createdAt])
@@ -1150,21 +1156,21 @@ model FeedComment {
   content         String
   // Flag admin official reply — UI render dgn badge "Natalo Official".
   // Cache di sini supaya tidak harus join User.role tiap kali.
-  isAdminOfficial Boolean       @default(false)
+  isAdminOfficial Boolean @default(false)
 
   // Moderation
-  isHidden        Boolean       @default(false)
-  hiddenById      String?
-  hiddenBy        User?         @relation("FeedCommentModerator", fields: [hiddenById], references: [id], onDelete: SetNull)
-  hiddenAt        DateTime?
-  hiddenReason    String?
+  isHidden     Boolean   @default(false)
+  hiddenById   String?
+  hiddenBy     User?     @relation("FeedCommentModerator", fields: [hiddenById], references: [id], onDelete: SetNull)
+  hiddenAt     DateTime?
+  hiddenReason String?
 
-  likeCount       Int           @default(0)
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  likeCount Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  likes           FeedCommentLike[]
-  reports         FeedReport[]
+  likes   FeedCommentLike[]
+  reports FeedReport[]
 
   @@index([postId, isHidden, createdAt])
   @@index([authorId])
@@ -1174,10 +1180,10 @@ model FeedComment {
 /// Composite PK (userId, postId) — natural unique, idempotent like toggle.
 model FeedLike {
   userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   postId    String
-  post      FeedPost  @relation(fields: [postId], references: [id], onDelete: Cascade)
-  createdAt DateTime  @default(now())
+  post      FeedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
 
   @@id([userId, postId])
   @@index([postId])
@@ -1187,10 +1193,10 @@ model FeedLike {
 /// punya counter berbeda). Mirip pattern ReviewVote.
 model FeedCommentLike {
   userId    String
-  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   commentId String
-  comment   FeedComment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
-  createdAt DateTime     @default(now())
+  comment   FeedComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  createdAt DateTime    @default(now())
 
   @@id([userId, commentId])
   @@index([commentId])
@@ -1198,25 +1204,25 @@ model FeedCommentLike {
 
 /// Report user untuk post atau comment. Admin queue lewat status=PENDING.
 model FeedReport {
-  id          String                @id @default(cuid())
-  reporterId  String
-  reporter    User                  @relation("FeedReporter", fields: [reporterId], references: [id], onDelete: Cascade)
-  targetType  FeedReportTargetType
+  id         String               @id @default(cuid())
+  reporterId String
+  reporter   User                 @relation("FeedReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  targetType FeedReportTargetType
   // Exactly one of postId/commentId terisi (constraint di service layer).
-  postId      String?
-  post        FeedPost?             @relation(fields: [postId], references: [id], onDelete: Cascade)
-  commentId   String?
-  comment     FeedComment?          @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  postId     String?
+  post       FeedPost?            @relation(fields: [postId], references: [id], onDelete: Cascade)
+  commentId  String?
+  comment    FeedComment?         @relation(fields: [commentId], references: [id], onDelete: Cascade)
 
-  reason      FeedReportReason
-  detail      String?
+  reason FeedReportReason
+  detail String?
 
-  status      FeedReportStatus      @default(PENDING)
+  status       FeedReportStatus @default(PENDING)
   resolvedById String?
-  resolvedBy  User?                 @relation("FeedReportResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
-  resolvedAt  DateTime?
+  resolvedBy   User?            @relation("FeedReportResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  resolvedAt   DateTime?
 
-  createdAt   DateTime              @default(now())
+  createdAt DateTime @default(now())
 
   @@index([status, createdAt])
   @@index([reporterId])
@@ -1228,10 +1234,161 @@ model FeedReport {
 // overlay. Append-only; cleanup periodic via cron jika perlu.
 model SearchLog {
   id        String   @id @default(cuid())
-  keyword   String   // normalized lowercase
+  keyword   String // normalized lowercase
   userId    String?
   createdAt DateTime @default(now())
 
   @@index([createdAt])
   @@index([keyword, createdAt])
+}
+
+// ────────────────────────────────────────────────────────────────────
+// REFUND WALLET — Saldo Refund untuk dana pengembalian dari admin.
+//
+// Bukan e-wallet umum: TIDAK ada user top-up, transfer antar user,
+// atau tarik dana. Hanya admin yang bisa credit (saat produk kosong,
+// partial cancel, return approved). User bisa pakai saldo di checkout
+// sebagai pengurang sisa pembayaran.
+//
+// Atomic guarantee: setiap perubahan balance HARUS via
+// `lib/refund-wallet.ts` helper yang wrap di prisma.$transaction +
+// create RefundWalletLedger entry. Direct mutate balance = forbidden
+// (no audit trail).
+// ────────────────────────────────────────────────────────────────────
+
+enum RefundWalletStatus {
+  ACTIVE
+  // Admin lock — kalau ada fraud suspicion, freeze wallet supaya
+  // user tidak bisa pakai saldo. Existing balance tetap tersimpan.
+  FROZEN
+}
+
+enum RefundLedgerType {
+  // Saldo bertambah dari refund admin (kasus: produk kosong, return).
+  CREDIT
+  // Saldo dipakai user saat checkout pesanan.
+  DEBIT
+  // Saldo balik karena order yang pakai saldo di-cancel/refund.
+  REVERSAL
+  // Admin manual adjustment (correction, bonus, dll).
+  ADJUSTMENT
+}
+
+enum RefundCaseReason {
+  // Produk kosong saat packing — admin tidak bisa fulfill.
+  OUT_OF_STOCK
+  // Admin cancel sebagian item dari order (mis. logistik issue).
+  PARTIAL_CANCEL
+  // User request return dan admin approve setelah produk diterima.
+  RETURN_APPROVED
+  // Full order di-cancel admin (semua item issue).
+  ORDER_CANCELLED
+  // Alasan lain (admin manual override dengan catatan).
+  OTHER
+}
+
+enum RefundCaseStatus {
+  // Refund case dibuat tapi belum di-process (admin draft).
+  PENDING
+  // Admin approve — siap di-credit.
+  APPROVED
+  // Sudah credit ke wallet (ledger entry exists).
+  CREDITED
+  // Admin reject (mis. user fraud detected).
+  REJECTED
+}
+
+enum RefundCaseDestination {
+  // Default — credit ke saldo refund user (instant, in-app).
+  REFUND_BALANCE
+  // V2 future — refund balik ke metode pembayaran original
+  // (bank/wallet, 3-7 hari). Belum di-implement di MVP.
+  ORIGINAL_PAYMENT
+}
+
+model RefundWallet {
+  id               String               @id @default(cuid())
+  userId           String               @unique
+  user             User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Rupiah, no decimal. Always >= 0. Atomic update via helper.
+  availableBalance Int                  @default(0)
+  // Reserved untuk in-flight refund yang belum complete (mis. saldo
+  // dipakai di order PAID tapi belum DELIVERED). Tidak dipakai di MVP,
+  // reserved untuk V2.
+  pendingBalance   Int                  @default(0)
+  status           RefundWalletStatus   @default(ACTIVE)
+  ledgers          RefundWalletLedger[]
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+model RefundWalletLedger {
+  id                 String           @id @default(cuid())
+  walletId           String
+  wallet             RefundWallet     @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  // Denormalized userId untuk query speed (avoid join wallet).
+  userId             String
+  user               User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type               RefundLedgerType
+  // Always positive — type defines direction (CREDIT/DEBIT/REVERSAL).
+  amount             Int
+  // Snapshot balance untuk audit (recompute & verify integrity).
+  balanceBefore      Int
+  balanceAfter       Int
+  // Reference ke order yang trigger (CREDIT dari refund / DEBIT dari pesanan).
+  sourceOrderId      String?
+  // Reference ke RefundCase (CREDIT entry punya ini).
+  sourceRefundCaseId String?
+  // Free-text untuk display di user history.
+  note               String?
+  // Admin yang trigger entry ini (CREDIT/ADJUSTMENT). Null untuk DEBIT
+  // (user action) atau REVERSAL (system-triggered).
+  createdByAdminId   String?
+  createdAt          DateTime         @default(now())
+
+  @@index([walletId, createdAt])
+  @@index([userId, createdAt])
+  @@index([sourceOrderId])
+  @@index([sourceRefundCaseId])
+}
+
+model RefundCase {
+  id                 String                @id @default(cuid())
+  orderId            String
+  order              Order                 @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  // Null untuk full-order refund. Set untuk per-item refund.
+  orderItemId        String?
+  orderItem          OrderItem?            @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+  userId             String
+  user               User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reason             RefundCaseReason
+  // Final refund amount setelah voucher allocation calculation.
+  amount             Int
+  // Snapshot per-voucher allocation untuk audit + dispute.
+  // Format: { "DISKON15": 6000, "POIN50K": 20000 }
+  voucherAllocations Json?
+  // Snapshot saldo refund allocation kalau order ini pakai saldo.
+  // Format: { "wasUsedAmount": 20000, "reversalAmount": 8000 }
+  saldoAllocation    Json?
+  destination        RefundCaseDestination @default(REFUND_BALANCE)
+  status             RefundCaseStatus      @default(PENDING)
+  // Catatan dari admin untuk user (display di history).
+  adminNote          String?
+  // Admin yang create case (untuk audit).
+  createdByAdminId   String?
+  // Ledger entry yang di-create saat status jadi CREDITED.
+  // Null sampai status berubah ke CREDITED.
+  ledgerEntryId      String?
+  createdAt          DateTime              @default(now())
+  approvedAt         DateTime?
+  creditedAt         DateTime?
+
+  @@index([orderId])
+  @@index([orderItemId])
+  @@index([userId, createdAt])
+  @@index([status])
+  @@index([reason])
 }
