@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { VoucherType, VoucherUserUsageLimitPeriod } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import AIVoucherSuggestButton from "./AIVoucherSuggestButton";
 
 export default async function AdminVoucherNewPage() {
   async function createVoucher(formData: FormData) {
@@ -163,7 +164,11 @@ export default async function AdminVoucherNewPage() {
         Buat Voucher
       </h1>
 
-      <form action={createVoucher} className="mt-5 space-y-5 md:mt-8">
+      <div className="mt-5">
+        <AIVoucherSuggestButton />
+      </div>
+
+      <form action={createVoucher} className="mt-2 space-y-5">
         <Field
           label="Nama voucher"
           name="name"
