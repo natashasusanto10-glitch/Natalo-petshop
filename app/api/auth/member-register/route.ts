@@ -13,6 +13,7 @@ import {
   validateUsernameFormat,
   checkUsernameAvailability,
 } from "@/lib/username";
+import { grantWelcomeVoucher } from "@/lib/welcome-voucher";
 import bcrypt from "bcryptjs";
 
 const OTP_EXPIRES_MS = 10 * 60_000;
@@ -242,6 +243,11 @@ export async function POST(request: NextRequest) {
         },
       });
     });
+
+    // Welcome voucher — auto-grant Rp25k (min belanja Rp100k) ke user
+    // baru. Fire-and-forget — kalau grant gagal, register tetap sukses,
+    // user bisa dapat voucher manual nanti via admin grant.
+    void grantWelcomeVoucher(createdUser.id);
 
     return NextResponse.json({
       ok: true,
