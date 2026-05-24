@@ -76,18 +76,38 @@ export async function PATCH(request: NextRequest) {
     }
     updates.name = name;
   }
-  // Email + phone DI-LOCK setelah registrasi — silent ignore field
-  // ini di payload (anti voucher 1×/user abuse). User schema @unique
-  // di kolom email+phone, kalau dibiarkan diganti user bisa "lepas"
-  // identifier lama → daftar ulang akun baru dengan identifier itu →
-  // claim voucher BDAY/welcome/loyalty 1× lagi. Belt-and-suspenders
-  // di server bahkan kalau client lama / external tool kirim field
-  // ini. Legitimate change harus via admin (manual update di DB).
-  if (body.email !== undefined || body.phone !== undefined) {
+  // Email + phone DI-LOCK setelah registrasi (anti voucher 1×/user
+  // abuse — identifier @unique, kalau di-lepas bisa dipake daftar
+  // akun baru). Kalau client kirim field ini, kasih error EXPLICIT
+  // supaya user paham kenapa "update" gak jalan — bukan silent ignore
+  // yang bikin confused ("kok aku kirim email tapi gak masuk?").
+  // Legitimate change harus via admin (hubungi WA support).
+  const attemptingLockedFieldChange =
+    body.email !== undefined || body.phone !== undefined;
+  if (attemptingLockedFieldChange) {
     console.warn(
-      "[auth/me PATCH] email/phone field ignored — locked after registration",
+      "[auth/me PATCH] email/phone field rejected — locked after registration",
       { userId: session.sub },
     );
+    // Kalau payload CUMA email/phone (no other field) → 400 explicit.
+    // Kalau payload juga punya field lain (name, bio, dll), continue
+    // update field lain tapi kasih `lockedFields` di response biar
+    // client tahu mana yang skipped.
+    const otherFieldsCount = Object.keys(body).filter(
+      (k) => k !== "email" && k !== "phone",
+    ).length;
+    if (otherFieldsCount === 0) {
+      return NextResponse.json(
+        {
+          error:
+            "Email dan nomor WA tidak bisa diubah setelah registrasi. Hubungi admin untuk perubahan.",
+          lockedFields: ["email", "phone"].filter(
+            (f) => body[f] !== undefined,
+          ),
+        },
+        { status: 400 },
+      );
+    }
   }
   if (body.birthDate !== undefined) {
     if (body.birthDate === null || body.birthDate === "") {
@@ -161,7 +181,18 @@ export async function PATCH(request: NextRequest) {
       }),
     ]);
     const points = Math.max(0, pointsAgg._sum.points ?? 0);
-    return NextResponse.json({ ok: true, user: { ...user, points } });
+    // Kalau user kirim email/phone bareng field lain (e.g. update name +
+    // ganti email), field lain ke-update normal tapi email/phone skip.
+    // Return `lockedFields` di response biar client bisa show warning
+    // toast "Email/Phone gak ke-update karena di-lock setelah register".
+    const lockedFields = attemptingLockedFieldChange
+      ? ["email", "phone"].filter((f) => (body as Record<string, unknown>)[f] !== undefined)
+      : undefined;
+    return NextResponse.json({
+      ok: true,
+      user: { ...user, points },
+      ...(lockedFields && lockedFields.length > 0 ? { lockedFields } : {}),
+    });
   } catch (error) {
     console.error("[auth/me PATCH] error:", error);
     return NextResponse.json(

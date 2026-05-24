@@ -32,6 +32,24 @@ import { prisma } from "@/lib/prisma";
 const MENTION_REGEX = /@([a-z0-9_]+(?:\.[a-z0-9_]+)*)/gi;
 
 /**
+ * Max mention per single text (comment or caption). Cegah spam abuse —
+ * user mention 100 orang dalam 1 komentar buat DDoS notif. Match IG
+ * convention: max 10 user di-tag per komentar. Caller pakai
+ * `validateMentionCount` SEBELUM `resolveMentionedUsers` supaya block
+ * dini sebelum query DB.
+ */
+export const MAX_MENTIONS_PER_TEXT = 10;
+
+export class MentionLimitExceededError extends Error {
+  constructor(public readonly count: number) {
+    super(
+      `Terlalu banyak mention dalam 1 komentar/caption (${count}). Maksimal ${MAX_MENTIONS_PER_TEXT}.`,
+    );
+    this.name = "MentionLimitExceededError";
+  }
+}
+
+/**
  * Extract handle string mentah dari text. Return Set unique lowercased
  * handle. NO DB lookup — caller resolve via resolveMentionedUsers.
  */
@@ -68,6 +86,12 @@ export async function resolveMentionedUsers(
   excludeUserId?: string,
 ): Promise<MentionedUser[]> {
   if (handles.size === 0) return [];
+  // Throw early kalau melebihi limit — caller harus catch atau check
+  // dulu via `validateMentionCount`. Belt-and-suspenders supaya endpoint
+  // yang lupa validate gak DDoS notif.
+  if (handles.size > MAX_MENTIONS_PER_TEXT) {
+    throw new MentionLimitExceededError(handles.size);
+  }
   const users = await prisma.user.findMany({
     where: {
       username: { in: [...handles] },

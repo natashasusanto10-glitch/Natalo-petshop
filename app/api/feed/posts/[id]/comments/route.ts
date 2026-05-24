@@ -92,6 +92,20 @@ export async function POST(
       { status: 400 },
     );
   }
+
+  // Anti-spam: max 10 unique @mention per komentar. Cegah DDoS notif
+  // via mention flooding (e.g. 100 user di-tag sekaligus). Block sebelum
+  // create comment supaya gak waste DB row + notif worker time.
+  const mentionHandlesEarly = extractMentionHandles(content);
+  if (mentionHandlesEarly.size > 10) {
+    return NextResponse.json(
+      {
+        error: `Maksimal 10 mention per komentar (kamu pakai ${mentionHandlesEarly.size}).`,
+      },
+      { status: 400 },
+    );
+  }
+
   const rawParent = (body as { parentCommentId?: unknown }).parentCommentId;
   const parentCommentId = typeof rawParent === "string" && rawParent ? rawParent : null;
 

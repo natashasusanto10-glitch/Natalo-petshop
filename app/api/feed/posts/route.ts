@@ -157,6 +157,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Anti-spam: max 10 unique @mention di caption (title + description
+  // combined). Sejalan dengan limit komentar.
+  const captionMentions = extractMentionHandles(`${title} ${description ?? ""}`);
+  if (captionMentions.size > 10) {
+    return NextResponse.json(
+      {
+        error: `Maksimal 10 mention per postingan (kamu pakai ${captionMentions.size}).`,
+      },
+      { status: 400 },
+    );
+  }
+
   const isAdmin = session.role === "ADMIN";
 
   // ── Determine kind + tab berdasarkan role ─────────────────────────

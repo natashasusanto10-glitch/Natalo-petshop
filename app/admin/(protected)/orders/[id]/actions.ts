@@ -431,7 +431,7 @@ export async function issueRefundToWallet(
 
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    select: { id: true, userId: true },
+    select: { id: true, userId: true, total: true },
   });
   if (!order) throw new Error("Order tidak ditemukan.");
   if (!order.userId) {
@@ -441,14 +441,61 @@ export async function issueRefundToWallet(
   }
   const refundUserId = order.userId;
 
+  // ── Validasi max refund amount per item / per order ────────────────
+  // Cegah admin over-refund (typo nominal, atau bug client side). Logic:
+  //   - Partial refund (itemId): max = item.lineTotal − sum(existing CREDITED
+  //     refund for same item). Multiple partial refund allowed selama
+  //     cumulative <= line total.
+  //   - Whole order refund (no itemId): max = order.total − sum(existing
+  //     CREDITED refund for whole order). Item-specific refund SEPARATE
+  //     dari order-level refund — ini guard order-level only.
+  //
+  // Anti-abuse: kalau admin punya akses dashboard tapi malicious / typo
+  // ngetik Rp50jt buat item Rp5rb, validation block sebelum credit wallet.
+  let maxAllowedRefund: number;
+  let validationContext: string;
   if (itemId) {
     const item = await prisma.orderItem.findUnique({
       where: { id: itemId },
-      select: { orderId: true },
+      select: { orderId: true, price: true, quantity: true, name: true },
     });
     if (!item || item.orderId !== orderId) {
       throw new Error("Item tidak ditemukan di order ini.");
     }
+    const itemLineTotal = item.price * item.quantity;
+    const existingItemRefund = await prisma.refundCase.aggregate({
+      where: {
+        orderId,
+        orderItemId: itemId,
+        status: "CREDITED",
+      },
+      _sum: { amount: true },
+    });
+    const alreadyRefunded = existingItemRefund._sum.amount ?? 0;
+    maxAllowedRefund = itemLineTotal - alreadyRefunded;
+    validationContext = `item "${item.name}" (line total ${itemLineTotal}, sudah ke-refund ${alreadyRefunded})`;
+  } else {
+    const existingOrderRefund = await prisma.refundCase.aggregate({
+      where: {
+        orderId,
+        orderItemId: null, // whole-order refund only
+        status: "CREDITED",
+      },
+      _sum: { amount: true },
+    });
+    const alreadyRefunded = existingOrderRefund._sum.amount ?? 0;
+    maxAllowedRefund = order.total - alreadyRefunded;
+    validationContext = `order ini (total ${order.total}, sudah ke-refund ${alreadyRefunded})`;
+  }
+  if (amount > maxAllowedRefund) {
+    if (maxAllowedRefund <= 0) {
+      throw new Error(
+        `Refund untuk ${validationContext} sudah penuh. Tidak bisa refund tambahan.`,
+      );
+    }
+    throw new Error(
+      `Nominal refund (Rp${amount.toLocaleString("id-ID")}) melebihi maksimum (Rp${maxAllowedRefund.toLocaleString("id-ID")}) untuk ${validationContext}.`,
+    );
   }
 
   // Create RefundCase as PENDING dulu. Kalau credit sukses → CREDITED.
