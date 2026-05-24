@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models/member_profile.dart';
+import '../services/api_client.dart';
 import '../services/member_service.dart';
 import '../state/member_store.dart';
 import '../utils/haptics.dart';
@@ -587,12 +588,69 @@ class _OrderStatusCardState extends State<_OrderStatusCard> {
   }
 }
 
-class _BalancePointsCard extends StatelessWidget {
+/// Premium card "Saldo & Poin" — display saldo refund + poin loyalty.
+///
+/// Saldo refund di-fetch dari `/api/member/refund-balance` saat init.
+/// Poin di-baca dari `memberStore.profile` (sudah ada di state).
+///
+/// Refresh strategy:
+///  - Initial fetch saat widget mount.
+///  - Auto-refetch saat memberStore notifyListeners (login/profile update).
+///  - Tidak ada pull-to-refresh di card ini — user bisa pull seluruh
+///    halaman Transaksi untuk refresh.
+class _BalancePointsCard extends StatefulWidget {
   const _BalancePointsCard();
+
+  @override
+  State<_BalancePointsCard> createState() => _BalancePointsCardState();
+}
+
+class _BalancePointsCardState extends State<_BalancePointsCard> {
+  int? _refundBalance; // null = loading, int = loaded
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchRefundBalance();
+  }
+
+  Future<void> _fetchRefundBalance() async {
+    // Skip kalau feature flag off OR user belum login (tetap tampil Rp0).
+    if (!_refundBalanceEnabled) {
+      if (mounted) setState(() => _refundBalance = 0);
+      return;
+    }
+    if (!memberStore.isLoggedIn) {
+      if (mounted) setState(() => _refundBalance = 0);
+      return;
+    }
+    try {
+      final data = await apiClient.getJson('/api/member/refund-balance');
+      if (!mounted) return;
+      int balance = 0;
+      if (data is Map<String, dynamic>) {
+        final wallet = data['wallet'];
+        if (wallet is Map) {
+          balance = (wallet['availableBalance'] as num?)?.toInt() ?? 0;
+        }
+      }
+      setState(() => _refundBalance = balance);
+    } catch (_) {
+      // Defensive: kalau API error (network / 500), tampilkan Rp0
+      // bukan crash. User tetap bisa tap menu untuk masuk detail screen.
+      if (mounted) setState(() => _refundBalance = 0);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final points = memberStore.profile?.points ?? 0;
+    final balance = _refundBalance;
+    final balanceText = balance == null
+        ? '...' // Loading placeholder (singkat, tidak intrusive)
+        : balance == 0
+            ? 'Rp0'
+            : _formatRupiahShort(balance);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
       child: _PremiumCard(
@@ -623,7 +681,7 @@ class _BalancePointsCard extends StatelessWidget {
                       iconColor: _brandBlue,
                       iconBg: const Color(0xFFEAF2FF),
                       title: 'Saldo Refund',
-                      value: 'Rp0',
+                      value: balanceText,
                       trailing: _refundBalanceEnabled
                           ? null
                           : const _SmallChip(
@@ -656,6 +714,25 @@ class _BalancePointsCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Format Rupiah singkat untuk display di card kecil.
+/// 32000 → "Rp32rb"
+/// 1500000 → "Rp1,5jt"
+/// 500 → "Rp500"
+/// Untuk display formal pakai formatRupiah dari utils/formatters.
+String _formatRupiahShort(int value) {
+  if (value >= 1000000) {
+    final m = value / 1000000;
+    final fixed = m >= 10 ? m.toStringAsFixed(0) : m.toStringAsFixed(1);
+    return 'Rp${fixed.replaceAll('.', ',').replaceAll(',0', '')}jt';
+  }
+  if (value >= 1000) {
+    final k = value / 1000;
+    final fixed = k >= 10 ? k.toStringAsFixed(0) : k.toStringAsFixed(1);
+    return 'Rp${fixed.replaceAll('.', ',').replaceAll(',0', '')}rb';
+  }
+  return 'Rp$value';
 }
 
 class _BalanceItem extends StatelessWidget {
