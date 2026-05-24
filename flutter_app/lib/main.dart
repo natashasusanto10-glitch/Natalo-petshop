@@ -25,6 +25,7 @@ import 'screens/login_otp_screen.dart';
 import 'screens/member_addresses_screen.dart';
 import 'screens/member_loyalty_history_screen.dart';
 import 'screens/member_loyalty_screen.dart';
+import 'screens/refund_balance_screen.dart';
 import 'screens/member_order_detail_screen.dart';
 import 'screens/member_orders_screen.dart';
 import 'screens/member_post_detail_screen.dart';
@@ -320,6 +321,7 @@ class NataloPetshopApp extends StatelessWidget {
                 MemberOrderDetailScreen(
                     order: settings.arguments as OrderSummary),
               '/member/vouchers' => const MemberVouchersScreen(),
+              '/member/refund-balance' => const RefundBalanceScreen(),
               '/product-detail' when settings.arguments is Product =>
                 ProductDetailScreen(product: settings.arguments as Product),
               _ => const HomeScreen(),

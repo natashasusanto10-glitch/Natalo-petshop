@@ -18,7 +18,10 @@ const _textMuted = Color(0xFF64748B);
 const _border = Color(0xFFE5EAF2);
 const _danger = Color(0xFFEF4444);
 const _warning = Color(0xFFF97316);
-const _refundBalanceEnabled = false;
+// Feature flag — Saldo Refund sekarang AKTIF (backend phase 1+2 ready).
+// User bisa tap menu → masuk halaman aktif RefundBalanceScreen.
+// Admin issue refund via /admin/orders/[id] page.
+const _refundBalanceEnabled = true;
 
 class TransactionsScreen extends StatelessWidget {
   const TransactionsScreen({super.key});
