@@ -131,6 +131,84 @@ export async function sendReplyNotification(params: {
 }
 
 /**
+ * @mention di komentar atau caption postingan. Fires ONCE per recipient
+ * unik per source (komentar atau post), regardless multiple mentions
+ * sama text. Skip self-mention (actor == recipient).
+ *
+ * Source bisa COMMENT atau POST CAPTION:
+ *   - source = 'comment' → router pakai postId dari parent post
+ *   - source = 'post'    → notif route ke post detail
+ */
+export async function sendMentionNotifications(params: {
+  actorUserId: string;
+  recipientUserIds: string[]; // already-resolved user IDs (dedupe + non-self)
+  source: "comment" | "post";
+  postId: string;
+  commentId?: string | null;
+  excerpt: string; // text excerpt (comment content atau caption)
+}) {
+  if (params.recipientUserIds.length === 0) return;
+  try {
+    const [actor, post] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: params.actorUserId },
+        select: { name: true, username: true },
+      }),
+      prisma.feedPost.findUnique({
+        where: { id: params.postId },
+        select: { id: true, title: true, thumbnailUrl: true },
+      }),
+    ]);
+    if (!post) return;
+    const actorName =
+      actor?.username && actor.username.length > 0
+        ? `@${actor.username}`
+        : actor?.name?.trim() || "Seseorang";
+
+    const isComment = params.source === "comment";
+    const title = isComment
+      ? `${actorName} menyebut kamu di komentar`
+      : `${actorName} menyebut kamu di postingan`;
+    const message = truncateFeedText(params.excerpt);
+
+    // Filter actor sendiri (defensive — caller seharusnya sudah skip).
+    const recipients = params.recipientUserIds.filter(
+      (id) => id !== params.actorUserId,
+    );
+
+    // Fire in parallel — tiap recipient dapat notif row sendiri.
+    await Promise.allSettled(
+      recipients.map((recipientUserId) =>
+        createFeedNotification({
+          userId: recipientUserId,
+          eventType: "feed_mention",
+          title,
+          message,
+          feedPostId: post.id,
+          thumbnailUrl: post.thumbnailUrl,
+          url: feedPostOwnerUrl(post.id),
+          ctaLabel: isComment ? "Lihat Komentar" : "Lihat Postingan",
+          // Tag dedupe — kalau 1 user di-mention 2x di komentar yang
+          // sama (e.g. "@asiong cek ini @asiong"), cuma 1 notif keluar.
+          tag: isComment
+            ? `feed-mention-comment-${params.commentId}-${recipientUserId}`
+            : `feed-mention-post-${params.postId}-${recipientUserId}`,
+          data: {
+            mention_source: params.source,
+            post_id: params.postId,
+            ...(params.commentId
+              ? { comment_id: params.commentId }
+              : {}),
+          },
+        }),
+      ),
+    );
+  } catch (err) {
+    console.warn("[feed-activity] sendMentionNotifications:", err);
+  }
+}
+
+/**
  * Was a milestone crossed between two likeCount snapshots? Returns the
  * milestone value, or null if no boundary in (prev, next].
  */

@@ -12,7 +12,8 @@ export type FeedNotificationEventType =
   | "feed_post_rejected"
   | "feed_new_comment"
   | "feed_new_like"
-  | "feed_new_share";
+  | "feed_new_share"
+  | "feed_mention";
 
 export type FeedNotificationStatus = "pending" | "approved" | "rejected";
 

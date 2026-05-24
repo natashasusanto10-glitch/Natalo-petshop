@@ -14,8 +14,13 @@ import { prisma } from "@/lib/prisma";
 import { listFeedComments } from "@/lib/feed/queries";
 import {
   sendCommentNotification,
+  sendMentionNotifications,
   sendReplyNotification,
 } from "@/lib/feed/activity-notifications";
+import {
+  extractMentionHandles,
+  resolveMentionedUsers,
+} from "@/lib/feed/mentions";
 
 const MAX_COMMENT_LENGTH = 1000;
 
@@ -161,6 +166,30 @@ export async function POST(
       content,
     });
   }
+
+  // @mention notification — separate dari reply/comment notif supaya user
+  // yang di-mention dapat alert spesifik "@asiong menyebut kamu", bukan
+  // notif post-author generic. Fire ke SEMUA user yang di-mention di
+  // text. Dedup via tag di sendMentionNotifications. Skip kalau actor
+  // sendiri ada di list (self-mention).
+  void (async () => {
+    try {
+      const handles = extractMentionHandles(content);
+      if (handles.size === 0) return;
+      const mentioned = await resolveMentionedUsers(handles, session.sub);
+      if (mentioned.length === 0) return;
+      await sendMentionNotifications({
+        actorUserId: session.sub,
+        recipientUserIds: mentioned.map((u) => u.id),
+        source: "comment",
+        postId,
+        commentId: result.id,
+        excerpt: content,
+      });
+    } catch (err) {
+      console.warn("[comments] mention notif failed:", err);
+    }
+  })();
 
   return NextResponse.json({
     ok: true,
