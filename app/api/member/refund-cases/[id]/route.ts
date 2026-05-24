@@ -84,18 +84,18 @@ export async function GET(
     );
   }
 
-  // Fetch admin info — display "issued by Admin Natalo" kalau available.
-  // Skip kalau createdByAdminId null (system-generated atau legacy).
-  let admin: { name: string } | null = null;
-  if (refundCase.createdByAdminId) {
-    const adminUser = await prisma.user.findUnique({
-      where: { id: refundCase.createdByAdminId },
-      select: { name: true },
-    });
-    if (adminUser) {
-      admin = { name: adminUser.name };
-    }
-  }
+  // Admin attribution — TAMPILKAN SEBAGAI BRAND, bukan nama individual.
+  // Customer-facing surface harus konsisten "— Natalo Petshop", bukan
+  // nama admin tertentu (e.g. "Natasha") karena:
+  //   1. Brand consistency — customer komunikasi dengan toko, bukan
+  //      staff perseorangan.
+  //   2. Privacy — nama admin internal tidak perlu di-expose ke customer.
+  //   3. Continuity — staff bisa rotasi, brand fixed.
+  // Tetap nullable kalau gak ada createdByAdminId (system-generated /
+  // legacy refund) supaya UI bisa skip signature line.
+  const admin: { name: string } | null = refundCase.createdByAdminId
+    ? { name: "Natalo Petshop" }
+    : null;
 
   return NextResponse.json({
     case: {
