@@ -18,6 +18,7 @@ import 'product_service.dart';
 ///   /feed                  → /feed
 ///   /cart, /keranjang      → /cart
 ///   /wishlist              → /wishlist
+///   /u/<username>          → public profile (PublicProfileScreen)
 class DeepLinkService {
   DeepLinkService._();
 
@@ -75,6 +76,17 @@ class DeepLinkService {
           await _openProductBySlug(nav, segments[1]);
         } else {
           nav.pushNamed('/products');
+        }
+        break;
+      case 'u':
+        // Public profile — /u/<username> deep link target. Lowercase
+        // di sini supaya konsisten dengan format DB (username always
+        // lowercase). Empty segment → fallback ke /feed (open feed
+        // sebagai entry point reasonable).
+        if (segments.length > 1 && segments[1].isNotEmpty) {
+          nav.pushNamed('/u', arguments: segments[1].toLowerCase());
+        } else {
+          nav.pushNamed('/feed');
         }
         break;
       default:

@@ -3216,7 +3216,13 @@ class _FeedCreatorIdentity extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    // Identity tap-able buat user dengan username — buka public profile
+    // /u/{username}. Official account tetap non-tappable (admin = brand
+    // tunggal, gak ada profile page sendiri). User tanpa username
+    // (existing yang belum set) gak tappable juga supaya gak nge-route
+    // ke handle null.
+    final canOpenProfile = author.hasUsername;
+    final row = Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         _FeedCreatorAvatar(
@@ -3259,6 +3265,19 @@ class _FeedCreatorIdentity extends StatelessWidget {
           ),
         ],
       ],
+    );
+    if (!canOpenProfile) return row;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        AppHaptics.tap();
+        Navigator.pushNamed(
+          context,
+          '/u',
+          arguments: author.username!.toLowerCase(),
+        );
+      },
+      child: row,
     );
   }
 }

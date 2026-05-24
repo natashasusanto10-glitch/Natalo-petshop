@@ -31,6 +31,7 @@ import 'screens/member_post_detail_screen.dart';
 import 'screens/member_post_edit_screen.dart';
 import 'screens/member_posts_screen.dart';
 import 'screens/member_profile_screen.dart';
+import 'screens/public_profile_screen.dart';
 import 'screens/username_setup_screen.dart';
 import 'screens/member_reviews_screen.dart';
 import 'screens/member_screen.dart';
@@ -295,6 +296,11 @@ class NataloPetshopApp extends StatelessWidget {
               '/member/forgot-password' => const ForgotPasswordScreen(),
               '/member/profile' => const MemberProfileScreen(),
               '/member/username' => const UsernameSetupScreen(),
+              // Public profile target untuk deep link /u/{username}.
+              // Arg = handle string (lowercase). Deep link service +
+              // tap @mention nanti dispatch ke route ini.
+              '/u' when settings.arguments is String =>
+                PublicProfileScreen(username: settings.arguments as String),
               '/member/addresses' => const MemberAddressesScreen(),
               '/member/orders' =>
                 MemberOrdersScreen(initialFilterArgument: settings.arguments),
