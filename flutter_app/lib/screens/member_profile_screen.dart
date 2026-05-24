@@ -639,7 +639,7 @@ class _UsernameTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    hasUsername ? '@$username' : 'Belum diatur',
+                    hasUsername ? username! : 'Belum diatur',
                     style: TextStyle(
                       color: hasUsername
                           ? _darkNavy

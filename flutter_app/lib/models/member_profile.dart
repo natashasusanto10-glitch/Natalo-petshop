@@ -51,11 +51,12 @@ class MemberProfile {
       name.trim().isEmpty ? 'N' : name.trim()[0].toUpperCase();
   DateTime get memberSince => createdAt ?? DateTime.now();
 
-  /// Display handle untuk feed/komentar/profile. `@username` kalau set,
-  /// fallback `name` kalau user belum set username. Konsisten di semua
-  /// surface yang public-social.
+  /// Display handle untuk feed/komentar/profile. Bare `username` kalau
+  /// set, fallback `name` kalau user belum set. Match IG/TikTok pattern
+  /// — identity label TIDAK pakai `@`. Prefix `@` hanya saat dipakai
+  /// sebagai mention di dalam body text (composer + rendered links).
   String get displayHandle =>
-      (username != null && username!.isNotEmpty) ? '@$username' : name;
+      (username != null && username!.isNotEmpty) ? username! : name;
 
   bool get hasUsername => username != null && username!.isNotEmpty;
 

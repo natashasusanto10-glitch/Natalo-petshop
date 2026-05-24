@@ -328,8 +328,11 @@ class _SuggestionTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // IG pattern: suggestion row tampil bare `username`.
+                  // `@` cuma muncul setelah user tap → insertMention()
+                  // yang prepend `@` saat inject ke TextField.
                   Text(
-                    '@${user.username}',
+                    user.username,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(

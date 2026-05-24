@@ -26,10 +26,11 @@ class PublicProfile {
   String get initial =>
       name.trim().isEmpty ? 'N' : name.trim()[0].toUpperCase();
 
-  /// Public handle untuk header — `@username` kalau set, fallback
+  /// Public handle untuk header — bare `username` kalau set, fallback
   /// nama. URL path tetap pakai username yang asli (lowercase).
+  /// Match IG/TikTok pattern: identity label TIDAK pakai `@`.
   String get displayHandle =>
-      (username != null && username!.isNotEmpty) ? '@$username' : name;
+      (username != null && username!.isNotEmpty) ? username! : name;
 
   factory PublicProfile.fromJson(
     Map<String, dynamic> json, {

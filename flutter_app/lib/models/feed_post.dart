@@ -25,13 +25,15 @@ class FeedAuthor {
 
   String get displayName => isOfficialAccount ? 'Natalo Petshop' : name;
 
-  /// Public handle untuk feed/komentar header — `@username` kalau set,
-  /// fallback `displayName`. Official account selalu skip @ (brand
-  /// "Natalo Petshop" tampil sebagai-is). Match IG/TikTok pattern.
+  /// Public handle untuk feed/komentar header — bare `username` kalau
+  /// set, fallback ke `displayName`. Official account tampil brand
+  /// name. Match IG/TikTok: identity label TIDAK pakai `@` — `@` cuma
+  /// muncul saat username dipakai sebagai mention di dalam text body
+  /// (lihat MentionText widget + buildMentionSpans helper).
   String get displayHandle {
     if (isOfficialAccount) return displayName;
     final u = username;
-    return (u != null && u.isNotEmpty) ? '@$u' : name;
+    return (u != null && u.isNotEmpty) ? u : name;
   }
 
   bool get hasUsername =>

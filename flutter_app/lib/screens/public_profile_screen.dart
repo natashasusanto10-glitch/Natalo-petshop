@@ -90,7 +90,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         _loading = false;
         _notFound = e.statusCode == 404;
         _errorText = e.statusCode == 404
-            ? 'User @${widget.username} tidak ditemukan.'
+            ? 'User ${widget.username} tidak ditemukan.'
             : 'Gagal memuat profil. Tarik untuk coba lagi.';
       });
     } catch (_) {
@@ -130,10 +130,13 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     if (p == null) return;
     final handle = p.username ?? widget.username.toLowerCase();
     final url = 'https://natalopetshop.com/u/$handle';
+    // Share text: identity label = bare username (IG pattern, no `@`).
+    // URL path tetap pakai handle apa adanya. `@` cuma untuk mention
+    // di dalam body text.
     final text = p.bio != null && p.bio!.isNotEmpty
-        ? 'Cek profil @$handle di Natalo Petshop\n\n${p.bio}\n\n$url'
-        : 'Cek profil @$handle di Natalo Petshop\n\n$url';
-    Share.share(text, subject: '@$handle di Natalo Petshop');
+        ? 'Cek profil $handle di Natalo Petshop\n\n${p.bio}\n\n$url'
+        : 'Cek profil $handle di Natalo Petshop\n\n$url';
+    Share.share(text, subject: '$handle di Natalo Petshop');
   }
 
   void _openPost(int index) {
@@ -162,7 +165,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           tooltip: 'Kembali',
         ),
         title: Text(
-          _profile?.displayHandle ?? '@${widget.username}',
+          _profile?.displayHandle ?? widget.username,
           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
         ),
         actions: [
@@ -288,9 +291,7 @@ class _Header extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Text(
-            profile.username != null
-                ? '@${profile.username}'
-                : profile.name,
+            profile.username ?? profile.name,
             style: const TextStyle(
               color: _darkNavy,
               fontSize: 16,
@@ -580,7 +581,7 @@ class _NotFoundView extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              'User @$handle tidak ditemukan',
+              'User $handle tidak ditemukan',
               style: const TextStyle(
                 color: _darkNavy,
                 fontSize: 16,

@@ -160,9 +160,12 @@ export async function sendMentionNotifications(params: {
       }),
     ]);
     if (!post) return;
+    // IG/TikTok pattern: notif title pakai bare username sebagai
+    // identity label, bukan `@username`. Konsisten dengan rule
+    // "identity = no @, mention in text = @".
     const actorName =
       actor?.username && actor.username.length > 0
-        ? `@${actor.username}`
+        ? actor.username
         : actor?.name?.trim() || "Seseorang";
 
     const isComment = params.source === "comment";

@@ -40,7 +40,9 @@ export async function generateMetadata({
   }
 
   const handle = user.username ?? username.toLowerCase();
-  const titleHandle = user.username ? `@${user.username}` : user.name;
+  // Title handle bare (no `@`) — IG/TikTok pattern, identity label gak
+  // pakai `@`. `@` cuma untuk mention di dalam body text.
+  const titleHandle = user.username ?? user.name;
   const description = user.bio
     ? user.bio.replace(/\s+/g, " ").trim().slice(0, 160)
     : `Lihat profil ${user.name} di Natalo Petshop — komunitas pet lovers Medan.`;
@@ -145,7 +147,7 @@ export default async function PublicProfilePage({ params }: PageProps) {
         <div className="flex-1">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <h1 className="text-2xl font-black text-slate-900">
-              @{handle}
+              {handle}
             </h1>
             {user.username && user.name !== user.username && (
               <span className="text-sm font-medium text-slate-500">
@@ -175,7 +177,7 @@ export default async function PublicProfilePage({ params }: PageProps) {
       <div className="mt-6 rounded-2xl border border-blue-100 bg-blue-50/70 p-4">
         <p className="text-sm font-semibold text-blue-900">
           Buka di aplikasi Natalo Petshop untuk pengalaman lebih baik —
-          like, komentar, dan ikuti @{handle}.
+          like, komentar, dan ikuti {handle}.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Link
