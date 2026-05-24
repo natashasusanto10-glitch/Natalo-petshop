@@ -127,6 +127,8 @@ model User {
   feedModerationLogs  FeedModerationLog[]  @relation("FeedModerationActor")
   usernameHistory     UsernameHistory[]
   adminActionLogs     AdminActionLog[]
+  abuseFlags          AbuseFlag[]          @relation("AbuseFlagTarget")
+  reviewedAbuseFlags  AbuseFlag[]          @relation("AbuseFlagReviewer")
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 }
@@ -1436,4 +1438,37 @@ model RefundCase {
   @@index([userId, createdAt])
   @@index([status])
   @@index([reason])
+}
+
+/// Voucher abuse flag — di-create oleh cron detection job saat
+/// nemu pola mencurigakan. Admin review via /admin/abuse-flags.
+///
+/// Rule codes (lihat lib/abuse-detection.ts):
+///   - BURST_VOUCHER_CLAIM — user claim >3 voucher dalam 1 jam
+///   - GMAIL_ALIAS_DUPLICATE — email gmail alias (dot/plus) → multi-akun
+///   - DUPLICATE_SHIPPING_ADDRESS — same address dipakai 3+ user
+///   - NEW_ACCOUNT_INSTANT_CLAIM — register lalu claim <5 menit
+///
+/// Severity:
+///   - LOW  — pola weak signal, mungkin coincidence
+///   - MEDIUM — pola jelas tapi belum confirmed abuse
+///   - HIGH — strong signal, butuh review urgent
+model AbuseFlag {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation("AbuseFlagTarget", fields: [userId], references: [id], onDelete: Cascade)
+  ruleCode          String
+  severity          String   @default("MEDIUM")
+  details           Json?
+  status            String   @default("OPEN")
+  reviewedAt        DateTime?
+  reviewedByAdminId String?
+  reviewedBy        User?    @relation("AbuseFlagReviewer", fields: [reviewedByAdminId], references: [id])
+  adminNote         String?
+  createdAt         DateTime @default(now())
+
+  @@index([userId, status])
+  @@index([status, severity, createdAt])
+  @@index([ruleCode, createdAt])
+  @@index([createdAt])
 }

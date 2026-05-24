@@ -249,12 +249,20 @@ export default async function AdminDashboardPage() {
             Masuk sebagai {session?.name ?? "Admin"}. Fokus utama: order masuk dan stok kritis.
           </p>
         </div>
-        <Link
-          href="/admin/audit-log"
-          className="shrink-0 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs font-semibold text-zinc-700 hover:bg-zinc-50"
-        >
-          📋 Audit Log
-        </Link>
+        <div className="flex shrink-0 gap-2">
+          <Link
+            href="/admin/abuse-flags"
+            className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100"
+          >
+            🚨 Abuse Flags
+          </Link>
+          <Link
+            href="/admin/audit-log"
+            className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs font-semibold text-zinc-700 hover:bg-zinc-50"
+          >
+            📋 Audit Log
+          </Link>
+        </div>
       </div>
 
       {paidUnshippedCount > 0 && (
