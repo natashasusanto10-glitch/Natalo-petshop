@@ -158,6 +158,28 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return;
     }
 
+    // Refund detail — URL format `/member/refund-detail?caseId=XXX`.
+    // Cek SEBELUM `/orders` matcher karena URL refund juga contain
+    // `/member/` yang bisa false-match ke order handler.
+    if (url.contains('/member/refund-detail') ||
+        url.contains('refund-detail')) {
+      // Extract caseId dari query string. Defensive parse — kalau gak
+      // ada caseId, fallback ke list saldo refund (user bisa cari
+      // entry yang dimaksud manual).
+      final uri = Uri.tryParse(url);
+      final caseId = uri?.queryParameters['caseId']?.trim();
+      if (caseId != null && caseId.isNotEmpty) {
+        await Navigator.pushNamed(
+          context,
+          '/member/refund-detail',
+          arguments: caseId,
+        );
+      } else {
+        await Navigator.pushNamed(context, '/member/refund-balance');
+      }
+      return;
+    }
+
     if (url.contains('/member/orders') ||
         url.contains('/orders') ||
         haystack.contains('pesanan') ||
@@ -782,6 +804,22 @@ bool _isMentionNotification(AppNotification item) {
       text.contains('mention');
 }
 
+/// Detect refund notif (saldo refund masuk dari admin). URL pattern
+/// `/member/refund-detail?caseId=...` + category "refund" di push
+/// payload + title biasanya "Refund Rp...".
+bool _isRefundNotification(AppNotification item) {
+  final url = item.url?.toLowerCase() ?? '';
+  if (url.contains('refund-detail') || url.contains('refund_detail')) {
+    return true;
+  }
+  if (item.category?.toLowerCase() == 'refund') return true;
+  if (item.eventType?.toLowerCase().contains('refund') == true) return true;
+  final text = _notificationHaystack(item);
+  // Match pattern title "Refund Rp..." atau "Refund X sudah masuk".
+  return text.contains('refund') && text.contains('saldo') ||
+      text.contains('refund') && text.contains('masuk');
+}
+
 class _NotificationVisual {
   final IconData icon;
   final Color color;
@@ -801,6 +839,16 @@ class _NotificationVisual {
         icon: Icons.alternate_email_rounded,
         color: Color(0xFF5B5BD6),
         label: 'Disebut',
+      );
+    }
+    // Refund notif — URL pakai `/member/refund-detail` atau title
+    // contain "Refund Rp...". Dedicated icon money + label hijau
+    // supaya user paham langsung ini saldo masuk.
+    if (_isRefundNotification(item)) {
+      return const _NotificationVisual(
+        icon: Icons.account_balance_wallet_rounded,
+        color: Color(0xFF10B981),
+        label: 'Refund',
       );
     }
     if (_NotificationFilter.order.matches(item)) {
