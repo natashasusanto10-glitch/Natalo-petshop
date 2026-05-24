@@ -707,17 +707,15 @@ class _PostFeedItemState extends State<_PostFeedItem>
               // Heart icon dibungkus ScaleTransition supaya pop saat di-tap.
               // _handleLikeTap fire animation + delegate ke widget.onLike
               // (yang trigger optimistic update + API call di parent).
-              // Action icons per spec Final Icon Stroke Detail Postingan:
-              //   - iconSize: 30 (was 28)
-              //   - strokeWidth: 2.5 (was default 2.2)
-              // Target: clean, tegas, Instagram-style, tidak terlalu tipis.
+              // Action icons: thin outline, close to Instagram's lighter
+              // stroke while keeping Natalo's custom shape.
               ScaleTransition(
                 scale: _heartScale,
                 child: NataloPostActionButton(
                   type: NataloPostActionIconType.like,
                   isActive: liked,
                   iconSize: 30,
-                  strokeWidth: 2.5,
+                  strokeWidth: 2.05,
                   tapSize: 44,
                   count: post.likeCount,
                   semanticLabel: liked ? 'Batalkan suka' : 'Sukai postingan',
@@ -727,7 +725,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
               NataloPostActionButton(
                 type: NataloPostActionIconType.comment,
                 iconSize: 30,
-                strokeWidth: 2.5,
+                strokeWidth: 2.05,
                 tapSize: 44,
                 count: post.commentCount,
                 semanticLabel: 'Buka komentar',
@@ -736,7 +734,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
               NataloPostActionButton(
                 type: NataloPostActionIconType.share,
                 iconSize: 30,
-                strokeWidth: 2.5,
+                strokeWidth: 2.05,
                 tapSize: 44,
                 count: post.shareCount,
                 semanticLabel: 'Bagikan postingan',

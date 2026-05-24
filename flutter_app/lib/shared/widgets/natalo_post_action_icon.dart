@@ -16,7 +16,7 @@ class NataloPostActionIcon extends StatelessWidget {
     this.color = const Color(0xFF111111),
     this.activeColor = const Color(0xFFE53935),
     this.disabledColor = const Color(0xFFBDBDBD),
-    this.strokeWidth = 2.2,
+    this.strokeWidth = 2.05,
     this.isActive = false,
     this.isDisabled = false,
   });
@@ -62,7 +62,7 @@ class NataloPostActionButton extends StatefulWidget {
     this.color = const Color(0xFF111111),
     this.activeColor = const Color(0xFFE53935),
     this.disabledColor = const Color(0xFFBDBDBD),
-    this.strokeWidth = 2.2,
+    this.strokeWidth = 2.05,
     this.semanticLabel,
     this.count,
     this.countColor = const Color(0xFF111111),
@@ -78,8 +78,8 @@ class NataloPostActionButton extends StatefulWidget {
   final Color color;
   final Color activeColor;
   final Color disabledColor;
-  /// Stroke weight icon — default 2.2 (subtle). Untuk Instagram-style
-  /// tegas, override ke 2.5 per spec Detail Postingan.
+
+  /// Stroke weight icon — light outline for an Instagram-like action row.
   final double strokeWidth;
   final String? semanticLabel;
 
