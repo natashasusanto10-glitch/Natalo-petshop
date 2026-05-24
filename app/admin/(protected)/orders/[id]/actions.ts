@@ -321,6 +321,24 @@ export async function markAsCancelled(orderId: string) {
       where: { source: `ORDER:${order.orderNumber}` },
     });
 
+    // Reversal saldo refund — kalau order pakai saldo, balikin ke wallet.
+    // Atomic dalam transaction yang sama dengan order update, supaya
+    // cancel + reversal sukses/gagal bersama. Tanpa ini, saldo user
+    // "hilang" saat order yang pakai saldo di-cancel admin.
+    if (order.refundBalanceUsed > 0 && order.userId) {
+      await creditWallet(
+        {
+          userId: order.userId,
+          amount: order.refundBalanceUsed,
+          sourceOrderId: orderId,
+          note: `Pembatalan pesanan ${order.orderNumber}`,
+          type: "REVERSAL",
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        tx as any,
+      );
+    }
+
     const result = await tx.order.updateMany({
       where: { id: orderId, status: order.status },
       data: { status: "CANCELLED" },

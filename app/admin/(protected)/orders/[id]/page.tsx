@@ -15,6 +15,7 @@ import {
   markAsReadyForPickup,
   markAsShipped,
 } from "./actions";
+import RefundFormClient from "./RefundFormClient";
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: "Order Baru",
@@ -214,81 +215,20 @@ export default async function AdminOrderDetailPage({
               cancel, atau return approved. Saldo akan masuk instant dan
               bisa user pakai di checkout berikutnya.
             </p>
-            <form
+            <RefundFormClient
+              items={order.items.map((it) => ({
+                id: it.id,
+                name: it.name,
+                quantity: it.quantity,
+                price: it.price,
+              }))}
               action={issueRefundToWalletAction}
-              className="mt-3 space-y-3 text-sm"
-            >
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700">
-                  Item (opsional)
-                </label>
-                <select
-                  name="itemId"
-                  className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-                  defaultValue=""
-                >
-                  <option value="">— Seluruh order —</option>
-                  {order.items.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name} ({item.quantity}× {formatRupiah(item.price)})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700">
-                  Nominal refund (Rp)
-                </label>
-                <input
-                  type="number"
-                  name="amount"
-                  min={1}
-                  step={1}
-                  required
-                  placeholder="32000"
-                  className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-                />
-                <p className="mt-1 text-[11px] text-zinc-500">
-                  Tips: kurangi alokasi voucher proporsional kalau order
-                  pakai voucher (lihat spec rumus).
-                </p>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700">
-                  Alasan refund
-                </label>
-                <select
-                  name="reason"
-                  required
-                  defaultValue="OUT_OF_STOCK"
-                  className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-                >
-                  <option value="OUT_OF_STOCK">Produk kosong</option>
-                  <option value="PARTIAL_CANCEL">Dibatalkan sebagian</option>
-                  <option value="RETURN_APPROVED">Return disetujui</option>
-                  <option value="ORDER_CANCELLED">Order dibatalkan</option>
-                  <option value="OTHER">Lainnya</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700">
-                  Catatan untuk user (opsional)
-                </label>
-                <textarea
-                  name="adminNote"
-                  maxLength={500}
-                  rows={2}
-                  placeholder="Stok kosong saat packing, maaf ya!"
-                  className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-                />
-              </div>
-              <button
-                type="submit"
-                className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-              >
-                Kredit Saldo Refund
-              </button>
-            </form>
+              orderHasVoucher={
+                (order.productDiscount ?? 0) > 0 ||
+                (order.shippingDiscount ?? 0) > 0 ||
+                !!order.voucherCode
+              }
+            />
 
             {/* History refund per order ini */}
             {order.refundCases.length > 0 && (
