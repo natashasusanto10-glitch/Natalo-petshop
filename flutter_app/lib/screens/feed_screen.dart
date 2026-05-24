@@ -2765,7 +2765,7 @@ class _FeedPostViewState extends State<_FeedPostView>
                           child: _MediaBackground(
                             post: post,
                             videoController: _videoController,
-                            forceBlackBackdrop: _commentDrawerMounted,
+                            compactPreview: _commentDrawerMounted,
                           ),
                         ),
                       ),
@@ -3114,11 +3114,16 @@ class _CommentVideoFrame extends StatelessWidget {
               drawerTopY.clamp(0.0, height),
             );
             final rect = Rect.lerp(fullRect, aboveDrawerRect, openProgress)!;
+            final bottomRadius = 22.0 * openProgress;
             return Positioned.fromRect(
               rect: rect,
               child: DecoratedBox(
                 decoration: const BoxDecoration(color: Colors.black),
-                child: ClipRect(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.only(
+                    bottomLeft: Radius.circular(bottomRadius),
+                    bottomRight: Radius.circular(bottomRadius),
+                  ),
                   child: DecoratedBox(
                     decoration: const BoxDecoration(color: Colors.black),
                     child: child,
@@ -3326,12 +3331,12 @@ class _ExpandableCaption extends StatelessWidget {
 class _MediaBackground extends StatelessWidget {
   final FeedPost post;
   final VideoPlayerController? videoController;
-  final bool forceBlackBackdrop;
+  final bool compactPreview;
 
   const _MediaBackground({
     required this.post,
     required this.videoController,
-    this.forceBlackBackdrop = false,
+    this.compactPreview = false,
   });
 
   @override
@@ -3346,16 +3351,33 @@ class _MediaBackground extends StatelessWidget {
 
     if (ctrl != null && ctrl.value.isInitialized) {
       final size = ctrl.value.size;
+      if (compactPreview) {
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            blurhashLayer,
+            _BlurredFeedBackdrop(thumbnailUrl: post.thumbnailUrl),
+            Center(
+              child: FittedBox(
+                fit: BoxFit.contain,
+                child: SizedBox(
+                  width: size.width,
+                  height: size.height,
+                  child: VideoPlayer(ctrl),
+                ),
+              ),
+            ),
+          ],
+        );
+      }
+
       final horizontal = _isHorizontalSize(size) || _isHorizontalPost(post);
       if (horizontal) {
         return Stack(
           fit: StackFit.expand,
           children: [
-            forceBlackBackdrop
-                ? const ColoredBox(color: Colors.black)
-                : blurhashLayer,
-            if (!forceBlackBackdrop)
-              _BlurredFeedBackdrop(thumbnailUrl: post.thumbnailUrl),
+            blurhashLayer,
+            _BlurredFeedBackdrop(thumbnailUrl: post.thumbnailUrl),
             Center(
               child: FittedBox(
                 fit: BoxFit.contain,
@@ -3386,14 +3408,30 @@ class _MediaBackground extends StatelessWidget {
     }
     final thumb = post.thumbnailUrl;
     if (thumb != null) {
+      if (compactPreview) {
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            blurhashLayer,
+            _BlurredFeedBackdrop(thumbnailUrl: thumb),
+            Center(
+              child: CachedNetworkImage(
+                imageUrl: thumb,
+                fit: BoxFit.contain,
+                placeholder: (_, __) => const SizedBox.shrink(),
+                errorWidget: (_, __, ___) => const SizedBox.shrink(),
+              ),
+            ),
+          ],
+        );
+      }
+
       if (_isHorizontalPost(post)) {
         return Stack(
           fit: StackFit.expand,
           children: [
-            forceBlackBackdrop
-                ? const ColoredBox(color: Colors.black)
-                : blurhashLayer,
-            if (!forceBlackBackdrop) _BlurredFeedBackdrop(thumbnailUrl: thumb),
+            blurhashLayer,
+            _BlurredFeedBackdrop(thumbnailUrl: thumb),
             Center(
               child: CachedNetworkImage(
                 imageUrl: thumb,
