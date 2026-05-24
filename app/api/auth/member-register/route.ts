@@ -198,7 +198,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Kode OTP salah." }, { status: 400 });
     }
 
-    await prisma.$transaction(async (tx) => {
+    // Transaction return user yang baru dibuat — supaya response bisa
+    // include user data. Flutter `authService.register()` parse field
+    // `user` di response untuk detect Step 2 sukses. Tanpa field user,
+    // Flutter salah anggap masih di Step 1 → snackbar "Kode OTP dikirim"
+    // muncul lagi → user kira gagal → klik Daftar lagi → 409 "sudah
+    // terdaftar" → confused.
+    const createdUser = await prisma.$transaction(async (tx) => {
       await tx.registrationOtp.update({
         where: { id: pending.id },
         data: { verifiedAt: new Date() },
@@ -210,7 +216,7 @@ export async function POST(request: NextRequest) {
       // payload.username konsisten dengan input user.
       const finalUsername = pending.username ?? payload.username;
       const now = new Date();
-      await tx.user.create({
+      return tx.user.create({
         data: {
           name: pending.name,
           username: finalUsername,
@@ -220,10 +226,28 @@ export async function POST(request: NextRequest) {
           passwordHash: pending.passwordHash,
           role: "CUSTOMER",
         },
+        // Select explicit — JANGAN return passwordHash / sensitive
+        // field ke client. Match shape MemberProfile.fromApiJson di
+        // Flutter side (perlu id, name, username, email, phone, role).
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          email: true,
+          phone: true,
+          role: true,
+          profilePhotoUrl: true,
+          bio: true,
+          createdAt: true,
+        },
       });
     });
 
-    return NextResponse.json({ ok: true, registered: true });
+    return NextResponse.json({
+      ok: true,
+      registered: true,
+      user: createdUser,
+    });
   }
 
   const ip = getClientIpFromHeaders(request.headers);
