@@ -18,6 +18,7 @@ const _textMuted = Color(0xFF64748B);
 const _border = Color(0xFFE5EAF2);
 const _danger = Color(0xFFEF4444);
 const _warning = Color(0xFFF97316);
+const _refundBalanceEnabled = false;
 
 class TransactionsScreen extends StatelessWidget {
   const TransactionsScreen({super.key});
@@ -618,14 +619,16 @@ class _BalancePointsCard extends StatelessWidget {
                       icon: Icons.account_balance_wallet_rounded,
                       iconColor: _brandBlue,
                       iconBg: const Color(0xFFEAF2FF),
-                      title: 'Deposit',
+                      title: 'Saldo Refund',
                       value: 'Rp0',
-                      trailing: const _SmallChip(
-                        text: 'Segera hadir',
-                        color: _brandBlue,
-                        background: Color(0xFFEFF6FF),
-                      ),
-                      onTap: () => _showDepositInfo(context),
+                      trailing: _refundBalanceEnabled
+                          ? null
+                          : const _SmallChip(
+                              text: 'Segera hadir',
+                              color: _brandBlue,
+                              background: Color(0xFFEFF6FF),
+                            ),
+                      onTap: () => _openRefundBalance(context),
                     ),
                   ),
                   const VerticalDivider(width: 24, color: _border),
@@ -768,15 +771,17 @@ class _TransactionMenuList extends StatelessWidget {
               icon: Icons.account_balance_wallet_rounded,
               iconColor: _brandBlue,
               iconBg: const Color(0xFFEAF2FF),
-              title: 'Deposit',
-              subtitle: 'Saldo pengembalian dana',
-              chip: const _SmallChip(
-                text: 'Segera hadir',
-                color: _brandBlue,
-                background: Color(0xFFEFF6FF),
-              ),
-              muted: true,
-              onTap: () => _showDepositInfo(context),
+              title: 'Saldo Refund',
+              subtitle: 'Dana pengembalian pesanan',
+              chip: _refundBalanceEnabled
+                  ? null
+                  : const _SmallChip(
+                      text: 'Segera hadir',
+                      color: _brandBlue,
+                      background: Color(0xFFEFF6FF),
+                    ),
+              muted: !_refundBalanceEnabled,
+              onTap: () => _openRefundBalance(context),
             ),
             const _TransactionMenuItem(
               route: '/member/loyalty',
@@ -1342,7 +1347,15 @@ String _formatNumber(int value) {
   return buffer.toString();
 }
 
-void _showDepositInfo(BuildContext context) {
+void _openRefundBalance(BuildContext context) {
+  if (_refundBalanceEnabled) {
+    Navigator.pushNamed(context, '/member/refund-balance');
+    return;
+  }
+  _showRefundBalanceInfo(context);
+}
+
+void _showRefundBalanceInfo(BuildContext context) {
   showModalBottomSheet<void>(
     context: context,
     backgroundColor: Colors.transparent,
@@ -1372,7 +1385,7 @@ void _showDepositInfo(BuildContext context) {
               ),
               const SizedBox(height: 22),
               const Text(
-                'Deposit segera hadir',
+                'Saldo Refund',
                 style: TextStyle(
                   color: _textDark,
                   fontSize: 20,
@@ -1381,7 +1394,7 @@ void _showDepositInfo(BuildContext context) {
               ),
               const SizedBox(height: 10),
               const Text(
-                'Saldo deposit akan digunakan untuk menyimpan dana pengembalian jika ada produk kosong atau pesanan perlu direfund oleh admin.\n\nNantinya saldo ini bisa digunakan kembali untuk belanja di Natalo Petshop.',
+                'Saldo Refund adalah dana pengembalian dari pesanan Natalo, misalnya jika produk kosong, pesanan dibatalkan sebagian, atau refund disetujui admin.\n\nSaldo ini nantinya dapat digunakan untuk mengurangi pembayaran pesanan berikutnya.',
                 style: TextStyle(
                   color: _textMuted,
                   fontSize: 14,
