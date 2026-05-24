@@ -235,38 +235,45 @@ export async function getOrCreateWallet(
 }
 
 /**
- * Credit saldo refund (admin issue refund). Atomic — wrap di transaction
- * + create ledger entry.
+ * Credit saldo refund (admin issue refund / reversal saat cancel order).
+ * Atomic — wrap di transaction + create ledger entry.
+ *
+ * Bisa di-call inside existing transaction via `tx` parameter — supaya
+ * credit + parent operation atomic (mis. cancel order + reversal saldo
+ * harus succeed/fail bersama).
  *
  * @throws Error kalau wallet FROZEN atau amount <= 0.
  */
-export async function creditWallet(input: {
-  userId: string;
-  amount: number;
-  sourceOrderId?: string | null;
-  sourceRefundCaseId?: string | null;
-  note?: string | null;
-  createdByAdminId?: string | null;
-  type?: "CREDIT" | "REVERSAL" | "ADJUSTMENT";
-}): Promise<{
+export async function creditWallet(
+  input: {
+    userId: string;
+    amount: number;
+    sourceOrderId?: string | null;
+    sourceRefundCaseId?: string | null;
+    note?: string | null;
+    createdByAdminId?: string | null;
+    type?: "CREDIT" | "REVERSAL" | "ADJUSTMENT";
+  },
+  tx?: TransactionClient,
+): Promise<{
   newBalance: number;
   ledgerEntryId: string;
 }> {
   if (input.amount <= 0) {
     throw new Error("Credit amount must be positive");
   }
-  return prisma.$transaction(async (tx) => {
-    const wallet = await getOrCreateWallet(input.userId, tx);
+  const runner = async (client: TransactionClient) => {
+    const wallet = await getOrCreateWallet(input.userId, client);
     if (wallet.status === "FROZEN") {
       throw new Error("Wallet is frozen, cannot credit");
     }
     const balanceBefore = wallet.availableBalance;
     const balanceAfter = balanceBefore + input.amount;
-    await tx.refundWallet.update({
+    await client.refundWallet.update({
       where: { id: wallet.id },
       data: { availableBalance: balanceAfter },
     });
-    const ledger = await tx.refundWalletLedger.create({
+    const ledger = await client.refundWalletLedger.create({
       data: {
         walletId: wallet.id,
         userId: input.userId,
@@ -281,7 +288,11 @@ export async function creditWallet(input: {
       },
     });
     return { newBalance: balanceAfter, ledgerEntryId: ledger.id };
-  });
+  };
+  if (tx) {
+    return runner(tx);
+  }
+  return prisma.$transaction(runner);
 }
 
 /**

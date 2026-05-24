@@ -279,6 +279,10 @@ class OrderSummary {
   final double subtotal;
   final double shippingCost;
   final double discount;
+  // Saldo Refund yang dipakai untuk bayar order ini. > 0 = user pakai
+  // saldo. Kalau total = 0 dan refundBalanceUsed > 0 → full saldo
+  // payment (UI hide button "Bayar Sekarang", tampilkan badge).
+  final double refundBalanceUsed;
   final double total;
   final int? uniqueCode;
 
@@ -332,6 +336,7 @@ class OrderSummary {
     this.subtotal = 0,
     this.shippingCost = 0,
     this.discount = 0,
+    this.refundBalanceUsed = 0,
     this.total = 0,
     this.uniqueCode,
     required this.status,
@@ -453,6 +458,7 @@ class OrderSummary {
       subtotal: _asDouble(json['subtotal']),
       shippingCost: _asDouble(json['shippingCost']),
       discount: _asDouble(json['discount']),
+      refundBalanceUsed: _asDouble(json['refundBalanceUsed']),
       total: _asDouble(json['total']),
       items: orderItems,
     );

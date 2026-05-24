@@ -478,6 +478,12 @@ class _OrderCard extends StatelessWidget {
 
   bool get _isUnpaid {
     if (_isFinalized) return false;
+    // Order full saldo refund (total 0 + paid status) — TIDAK butuh
+    // pembayaran. Defensive guard: kalau total === 0 dan paymentStatus
+    // PAID, skip "Belum Bayar" detection (sudah lunas via saldo).
+    if (order.total == 0 && order.paymentStatus.toUpperCase() == 'PAID') {
+      return false;
+    }
     final status = order.status.toUpperCase();
     final payment = order.paymentStatus.toUpperCase();
 
@@ -600,6 +606,45 @@ class _OrderCard extends StatelessWidget {
                                   fontWeight: FontWeight.w900,
                                 ),
                               ),
+                              // Badge "💰 Saldo Refund Rp{X}" kalau order
+                              // pakai saldo refund. Useful untuk user
+                              // track penggunaan saldo + jelas kenapa
+                              // total bisa Rp0 (tanpa badge ini confusing).
+                              if (order.refundBalanceUsed > 0) ...[
+                                const SizedBox(height: 4),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFEAF2FF),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(
+                                      color: const Color(0xFFBFDBFE),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.account_balance_wallet_rounded,
+                                        size: 12,
+                                        color: _brandBlue,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'Saldo Refund ${formatRupiah(order.refundBalanceUsed)}',
+                                        style: const TextStyle(
+                                          color: _brandBlue,
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ),

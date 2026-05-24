@@ -648,7 +648,18 @@ export async function POST(request: Request) {
           uniqueCode,
           notes: input.notes,
           paymentProvider: input.paymentProvider,
-          paymentStatus: input.paymentProvider === "MANUAL" ? "PENDING" : "UNPAID",
+          // Order full saldo refund (total = 0): auto-PAID + status
+          // PROCESSING. Saldo refund = uang internal yang sudah debited
+          // atomic di transaction — tidak perlu verify payment manual.
+          // Skip "Belum Bayar" + "PAID intermediate" — langsung masuk
+          // tab Diproses (match Shopee/Tokopedia pattern).
+          //
+          // Partial saldo (saldo > 0 tapi total > 0): tetap PENDING +
+          // UNPAID/PENDING — user masih harus transfer sisa.
+          paymentStatus: total === 0
+              ? "PAID"
+              : (input.paymentProvider === "MANUAL" ? "PENDING" : "UNPAID"),
+          status: total === 0 ? "PROCESSING" : "PENDING",
           items: {
             create: checkoutItems.map((item) => ({
               productId: item.productId,
