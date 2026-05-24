@@ -1776,10 +1776,20 @@ class _PaymentSummary extends StatelessWidget {
             label: 'Ongkir',
             value: formatRupiah(order.shippingCost),
           ),
-          _SummaryLine(
-            label: 'Diskon',
-            value: '-${formatRupiah(order.discount)}',
-          ),
+          if (order.discount > 0)
+            _SummaryLine(
+              label: 'Diskon',
+              value: '-${formatRupiah(order.discount)}',
+            ),
+          // Saldo Refund line — tampil hanya kalau order pakai saldo.
+          // Tanpa line ini, math tidak nyambung: subtotal - diskon ≠ total
+          // (selisih = saldo) → user bingung kenapa total Rp1.7jt padahal
+          // subtotal Rp2.7jt - diskon Rp80k = Rp2.7jt. Spec audit trail.
+          if (order.refundBalanceUsed > 0)
+            _SummaryLine(
+              label: 'Saldo Refund Digunakan',
+              value: '-${formatRupiah(order.refundBalanceUsed)}',
+            ),
           const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.all(14),
