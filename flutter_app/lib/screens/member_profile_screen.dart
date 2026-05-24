@@ -295,6 +295,29 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
                     ),
                     child: Column(
                       children: [
+                        // Username tile — public handle @kamu untuk feed/
+                        // komentar + URL profile. Diletakkan paling atas
+                        // (match IG/TikTok edit profile pattern) supaya
+                        // jadi first impression user. Tap → buka dedicated
+                        // setup screen dengan live availability check.
+                        // Tidak bundled dengan tombol "Simpan Profil" di
+                        // bawah karena flow-nya butuh validation server-
+                        // side terpisah.
+                        AnimatedBuilder(
+                          animation: memberStore,
+                          builder: (context, _) {
+                            final username =
+                                memberStore.profile?.username;
+                            return _UsernameTile(
+                              username: username,
+                              onTap: () => Navigator.pushNamed(
+                                context,
+                                '/member/username',
+                              ),
+                            );
+                          },
+                        ),
+                        const _FormDivider(),
                         _ProfileFormField(
                           label: 'Nama Lengkap',
                           controller: _nameController,
@@ -579,6 +602,98 @@ class _BirthDatePickerTile extends StatelessWidget {
                 ],
               ),
             ),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: Color(0xFF94A3B8),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Username row — visual match _BirthDatePickerTile (tile pattern,
+/// bukan inline form field) karena set/change username butuh flow
+/// validation tersendiri (live availability check + reservation 30
+/// hari) yang tidak cocok bundled dengan "Simpan Profil".
+class _UsernameTile extends StatelessWidget {
+  final String? username;
+  final VoidCallback onTap;
+
+  const _UsernameTile({required this.username, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasUsername = username != null && username!.isNotEmpty;
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE0F2FE),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.alternate_email_rounded,
+                color: Color(0xFF0369A1),
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Username',
+                    style: TextStyle(
+                      color: _textSecondary,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    hasUsername ? '@$username' : 'Belum diatur',
+                    style: TextStyle(
+                      color: hasUsername
+                          ? _darkNavy
+                          : const Color(0xFFB6BEC9),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (!hasUsername)
+              Container(
+                margin: const EdgeInsets.only(right: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 3,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE0F2FE),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: const Text(
+                  'BARU',
+                  style: TextStyle(
+                    color: Color(0xFF0369A1),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
             const Icon(
               Icons.chevron_right_rounded,
               color: Color(0xFF94A3B8),
