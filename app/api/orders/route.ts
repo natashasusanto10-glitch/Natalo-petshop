@@ -7,6 +7,7 @@ import { createOrderSchema } from "@/lib/validation";
 import type { CheckedOutItem } from "@/lib/checkout-items";
 import { InvalidCustomerSessionError, resolveOrderIdentity } from "@/lib/order-identity";
 import { buildOrderDetailPath, buildOrderSuccessUrl, createTrackingToken } from "@/lib/order-detail";
+import { debitWallet, getOrCreateWallet } from "@/lib/refund-wallet";
 import { SELF_PICKUP_METHOD, SELF_PICKUP_STORE } from "@/lib/self-pickup";
 // Catatan: notifikasi order via WhatsApp sudah dihapus (per keputusan
 // product owner). Customer dapat info order via email + push notification.
@@ -481,7 +482,52 @@ export async function POST(request: Request) {
     );
     const shippingCost = Math.max(0, originalShippingCost - shippingDiscount);
     const discount = productDiscount;
-    const total = Math.max(subtotal + shippingCost - discount, 0);
+    const totalBeforeRefund = Math.max(subtotal + shippingCost - discount, 0);
+
+    // ── Saldo Refund validation ──
+    // User bisa pakai saldo refund sebagai pengurang sisa bayar.
+    // Constraints:
+    //   - Hanya untuk logged-in user (effectiveUserId truthy)
+    //   - Tidak boleh > wallet balance (avoid race via debit transaction)
+    //   - Tidak boleh > totalBeforeRefund (max = bayar order penuh, sisa
+    //     saldo tetap di wallet)
+    // Pre-validation di sini agar response 400 cepat sebelum order create.
+    // Final atomic debit di-handle di transaction.
+    let refundBalanceUsed = 0;
+    const requestedRefundBalance = Math.max(0, input.refundBalanceUsed ?? 0);
+    if (requestedRefundBalance > 0) {
+      if (!effectiveUserId) {
+        return NextResponse.json(
+          {
+            message:
+              "Saldo Refund hanya bisa dipakai oleh member login. Login dulu untuk pakai saldo.",
+          },
+          { status: 400 },
+        );
+      }
+      const wallet = await getOrCreateWallet(effectiveUserId);
+      if (wallet.status === "FROZEN") {
+        return NextResponse.json(
+          {
+            message:
+              "Saldo Refund kamu sedang di-freeze. Hubungi admin untuk info lebih lanjut.",
+          },
+          { status: 400 },
+        );
+      }
+      if (requestedRefundBalance > wallet.availableBalance) {
+        return NextResponse.json(
+          {
+            message: `Saldo Refund tidak cukup. Saldo kamu Rp${wallet.availableBalance.toLocaleString("id-ID")}.`,
+          },
+          { status: 400 },
+        );
+      }
+      // Clamp ke total (saldo > total = sisa saldo tetap di wallet).
+      refundBalanceUsed = Math.min(requestedRefundBalance, totalBeforeRefund);
+    }
+
+    const total = Math.max(totalBeforeRefund - refundBalanceUsed, 0);
 
     const appliedVouchers: AppliedVoucher[] = [
       appliedFreeShippingVoucher,
@@ -586,6 +632,7 @@ export async function POST(request: Request) {
           discount,
           productDiscount,
           shippingDiscount,
+          refundBalanceUsed,
           total,
           voucherCode:
             appliedProductVoucher?.code ??
@@ -624,6 +671,23 @@ export async function POST(request: Request) {
             source: `ORDER:${orderNumber}`,
           },
         });
+      }
+
+      // Debit saldo refund kalau user pakai. Atomic inside transaction —
+      // kalau wallet balance kurang (race condition antara pre-validation
+      // dan transaction), debitWallet throw → transaction rollback,
+      // order tidak ke-create. Helper handle ledger entry creation juga.
+      if (refundBalanceUsed > 0 && effectiveUserId) {
+        await debitWallet(
+          {
+            userId: effectiveUserId,
+            amount: refundBalanceUsed,
+            sourceOrderId: createdOrder.id,
+            note: `Dipakai untuk pesanan ${orderNumber}`,
+          },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          tx as any,
+        );
       }
 
       // Claim voucher atomically — guard against race jika maxUsage tercapai

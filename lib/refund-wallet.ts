@@ -287,22 +287,29 @@ export async function creditWallet(input: {
 /**
  * Debit saldo refund (user pakai saldo di checkout). Atomic + ledger.
  *
+ * Bisa di-call inside existing transaction via `tx` parameter — supaya
+ * debit + order creation atomic (avoid race condition saat user place
+ * 2 order simultan dengan balance terbatas).
+ *
  * @throws Error kalau wallet FROZEN, insufficient balance, atau amount <= 0.
  */
-export async function debitWallet(input: {
-  userId: string;
-  amount: number;
-  sourceOrderId: string;
-  note?: string | null;
-}): Promise<{
+export async function debitWallet(
+  input: {
+    userId: string;
+    amount: number;
+    sourceOrderId: string;
+    note?: string | null;
+  },
+  tx?: TransactionClient,
+): Promise<{
   newBalance: number;
   ledgerEntryId: string;
 }> {
   if (input.amount <= 0) {
     throw new Error("Debit amount must be positive");
   }
-  return prisma.$transaction(async (tx) => {
-    const wallet = await getOrCreateWallet(input.userId, tx);
+  const runner = async (client: TransactionClient) => {
+    const wallet = await getOrCreateWallet(input.userId, client);
     if (wallet.status === "FROZEN") {
       throw new Error("Wallet is frozen, cannot debit");
     }
@@ -313,11 +320,11 @@ export async function debitWallet(input: {
     }
     const balanceBefore = wallet.availableBalance;
     const balanceAfter = balanceBefore - input.amount;
-    await tx.refundWallet.update({
+    await client.refundWallet.update({
       where: { id: wallet.id },
       data: { availableBalance: balanceAfter },
     });
-    const ledger = await tx.refundWalletLedger.create({
+    const ledger = await client.refundWalletLedger.create({
       data: {
         walletId: wallet.id,
         userId: input.userId,
@@ -330,5 +337,9 @@ export async function debitWallet(input: {
       },
     });
     return { newBalance: balanceAfter, ledgerEntryId: ledger.id };
-  });
+  };
+  if (tx) {
+    return runner(tx);
+  }
+  return prisma.$transaction(runner);
 }

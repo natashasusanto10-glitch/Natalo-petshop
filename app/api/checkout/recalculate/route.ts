@@ -58,6 +58,9 @@ const recalculateSchema = z.object({
     })
     .optional(),
   paymentProvider: z.enum(["MANUAL", "MIDTRANS"]).optional().nullable(),
+  // Saldo Refund — nominal yang user mau pakai untuk pengurang bayar.
+  // 0 = tidak pakai. Server clamp ke wallet balance + ke total.
+  refundBalanceUsed: z.number().int().nonnegative().optional().default(0),
 });
 
 type VoucherSourceType = "CUSTOMER" | "SELLER_MANUAL";
@@ -565,7 +568,38 @@ export async function POST(request: NextRequest) {
     shippingFee,
   );
   const totalDiscount = productDiscount + shippingDiscount;
-  const total = Math.max(subtotal + shippingFee - totalDiscount, 0);
+  const totalBeforeRefund = Math.max(subtotal + shippingFee - totalDiscount, 0);
+
+  // Saldo Refund preview — server fetch wallet balance + clamp ke
+  // total. Pre-validation supaya UI tampilkan jumlah saldo yang BISA
+  // dipakai (mis. user toggle ON tapi saldo > total → tampilkan
+  // "Saldo digunakan: Rp{totalBeforeRefund}" bukan full saldo).
+  // Final validation tetap di /api/orders POST atomic transaction.
+  let refundBalanceUsed = 0;
+  let refundBalanceAvailable = 0;
+  const requestedRefundBalance = Math.max(0, input.refundBalanceUsed ?? 0);
+  const refundSession = await getSession("CUSTOMER");
+  if (refundSession) {
+    try {
+      const wallet = await prisma.refundWallet.findUnique({
+        where: { userId: refundSession.sub },
+        select: { availableBalance: true, status: true },
+      });
+      if (wallet && wallet.status === "ACTIVE") {
+        refundBalanceAvailable = wallet.availableBalance;
+        if (requestedRefundBalance > 0) {
+          refundBalanceUsed = Math.min(
+            requestedRefundBalance,
+            wallet.availableBalance,
+            totalBeforeRefund,
+          );
+        }
+      }
+    } catch {
+      // Wallet fetch fail → tetap proceed dengan refundBalanceUsed=0.
+    }
+  }
+  const total = Math.max(totalBeforeRefund - refundBalanceUsed, 0);
 
   return NextResponse.json({
     subtotal,
@@ -573,6 +607,8 @@ export async function POST(request: NextRequest) {
     discount: totalDiscount,
     productDiscount,
     shippingDiscount,
+    refundBalanceUsed,
+    refundBalanceAvailable,
     total,
     // Legacy fields mirror product voucher agar klien lama tidak break.
     auto_applied_voucher:

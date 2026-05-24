@@ -38,6 +38,9 @@ export const createOrderSchema = z.object({
   // Seller manual voucher (SELLER_MANUAL source type — kode rahasia
   // yang hanya bisa di-apply via input manual)
   manualVoucherCode: z.string().optional(),
+  // Saldo Refund — nominal yang user mau pakai untuk bayar order ini.
+  // Default 0 = tidak pakai. Validation di server: must be <= wallet balance.
+  refundBalanceUsed: z.number().int().nonnegative().default(0),
   notes: z.string().optional(),
   paymentProvider: z.enum(["MANUAL", "MIDTRANS"]).default("MANUAL"),
   // Untuk TT manual: bank tujuan transfer

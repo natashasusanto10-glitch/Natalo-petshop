@@ -100,6 +100,11 @@ class CheckoutRecalcResult {
   final num protectionFee;
   final num tax;
   final num total;
+  // Saldo Refund — server snapshot dari wallet user + jumlah yang
+  // di-apply ke order ini. UI pakai untuk render section "Saldo Refund
+  // Tersedia" + breakdown di payment summary.
+  final num refundBalanceAvailable;
+  final num refundBalanceUsed;
   final MemberVoucher? appliedCustomerVoucher;
   final MemberVoucher? appliedManualVoucher;
   final MemberVoucher? appliedFreeShippingVoucher;
@@ -125,6 +130,8 @@ class CheckoutRecalcResult {
     required this.protectionFee,
     required this.tax,
     required this.total,
+    this.refundBalanceAvailable = 0,
+    this.refundBalanceUsed = 0,
     this.appliedCustomerVoucher,
     this.appliedManualVoucher,
     this.appliedFreeShippingVoucher,
@@ -181,6 +188,8 @@ class CheckoutRecalcResult {
       protectionFee: pick('protectionFee'),
       tax: pick('tax'),
       total: pick('total'),
+      refundBalanceAvailable: pick('refundBalanceAvailable'),
+      refundBalanceUsed: pick('refundBalanceUsed'),
       appliedCustomerVoucher: parseVoucher(
         json['applied_customer_voucher'] ?? json['applied_voucher'],
       ),
@@ -221,6 +230,7 @@ class CheckoutService {
     ShippingRate? shippingRate,
     String? paymentProvider,
     bool? useProtection,
+    int? refundBalanceUsed,
   }) async {
     try {
       lastRecalculateError = null;
@@ -251,6 +261,8 @@ class CheckoutService {
           },
           'paymentProvider': paymentProvider,
           if (useProtection != null) 'useProtection': useProtection,
+          if (refundBalanceUsed != null && refundBalanceUsed > 0)
+            'refundBalanceUsed': refundBalanceUsed,
         },
       );
       return CheckoutRecalcResult.fromJson(data);

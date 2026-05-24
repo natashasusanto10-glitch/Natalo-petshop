@@ -69,6 +69,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   int _pricingRetryAttempt = 0;
   String? _pricingSyncError;
   bool _autoVoucherSuppressed = false;
+  // Saldo Refund toggle — default ON sesuai UX best practice (Tokopedia/
+  // Shopee pattern: saldo refund available langsung dipakai). User bisa
+  // toggle OFF kalau mau saving. Recompute pricing saat toggle change.
+  bool _useRefundBalance = true;
   CheckoutRecalcResult? _checkoutPricing;
   bool _isNearBottom = false;
   // Catatan pesanan ke admin.
@@ -493,6 +497,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         address: _selectedAddress,
         shippingRate: _selectedRate,
         paymentProvider: _paymentProvider,
+        // Saldo Refund — kirim nilai sangat besar kalau toggle ON;
+        // server clamp ke min(wallet, totalBeforeRefund). Server return
+        // refundBalanceAvailable + refundBalanceUsed di response.
+        refundBalanceUsed: _useRefundBalance ? 999999999 : 0,
       );
       if (!mounted || recalc == null) {
         _schedulePricingRetry(
@@ -856,6 +864,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         address: address,
         shippingRate: _selectedRate,
         paymentProvider: _paymentProvider,
+        refundBalanceUsed: _useRefundBalance ? 999999999 : 0,
       );
       if (!mounted) return;
       if (recalc != null) {
@@ -913,6 +922,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         productVoucherCode: _selectedProductVoucher?.code,
         loyaltyVoucherCode: _selectedLoyaltyVoucher?.code,
         privateVoucherCode: _selectedManualVoucher?.code,
+        // Saldo Refund — pass server-validated value dari recalc (sudah
+        // clamped ke wallet balance + total). Kalau toggle OFF, value 0.
+        refundBalanceUsed: _useRefundBalance
+            ? (_checkoutPricing?.refundBalanceUsed.toInt() ?? 0)
+            : 0,
         notes: _noteController.text,
       );
       if (!mounted) return;
@@ -1167,6 +1181,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         payment: _payment,
                         onTap: _openPaymentSheet,
                       ),
+                      // Saldo Refund — render hanya kalau user punya saldo
+                      // available. Toggle ON/OFF recompute pricing.
+                      if ((_checkoutPricing?.refundBalanceAvailable ?? 0) > 0) ...[
+                        const SizedBox(height: 12),
+                        _RefundBalanceCard(
+                          available:
+                              _checkoutPricing!.refundBalanceAvailable.toDouble(),
+                          used: _useRefundBalance
+                              ? _checkoutPricing!.refundBalanceUsed.toDouble()
+                              : 0,
+                          enabled: _useRefundBalance,
+                          syncing: _syncingPricing,
+                          onChanged: (value) {
+                            setState(() => _useRefundBalance = value);
+                            _syncCheckoutPricing(
+                              autoApply: !_autoVoucherSuppressed,
+                            );
+                          },
+                        ),
+                      ],
                       const SizedBox(height: 12),
                       _PaymentSummaryCard(
                         subtotal: _itemsSubtotal,
@@ -1174,6 +1208,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         shippingCost: _shippingCost,
                         productDiscount: _productDiscount,
                         shippingDiscount: _shippingDiscount,
+                        refundBalanceUsed: _useRefundBalance
+                            ? (_checkoutPricing?.refundBalanceUsed.toDouble() ?? 0)
+                            : 0,
                         grandTotal: _grandTotal,
                         syncing: _syncingPricing,
                         syncRetrying: _pricingRetryScheduled,
@@ -3210,12 +3247,106 @@ class _PaymentMethodTile extends StatelessWidget {
   }
 }
 
+/// Card "Saldo Refund Tersedia" di checkout — toggle untuk pakai/skip
+/// saldo refund sebagai pengurang sisa bayar.
+///
+/// Visual:
+///  - Icon wallet biru + label "Saldo Refund"
+///  - Available balance (font besar)
+///  - Subtitle "Tersedia untuk pesanan ini"
+///  - Switch toggle (kanan)
+///  - Saat ON + used > 0: section "Digunakan -Rp{used}" tampil
+///
+/// Default ON (per UX best practice) — saldo refund yang available
+/// langsung dipakai. User bisa toggle OFF kalau mau saving untuk
+/// pesanan lain.
+class _RefundBalanceCard extends StatelessWidget {
+  final double available;
+  final double used;
+  final bool enabled;
+  final bool syncing;
+  final ValueChanged<bool> onChanged;
+
+  const _RefundBalanceCard({
+    required this.available,
+    required this.used,
+    required this.enabled,
+    required this.syncing,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _CheckoutCardShell(
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: const Color(0xFFEAF2FF),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              Icons.account_balance_wallet_rounded,
+              color: _brandBlue,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Saldo Refund',
+                  style: TextStyle(
+                    color: Color(0xFF17202A),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Tersedia ${formatRupiah(available)}',
+                  style: const TextStyle(
+                    color: _brandBlue,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                if (enabled && used > 0) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    'Digunakan -${formatRupiah(used)}',
+                    style: const TextStyle(
+                      color: Color(0xFFEF4444),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          Switch.adaptive(
+            value: enabled,
+            onChanged: syncing ? null : onChanged,
+            activeTrackColor: _brandBlue,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _PaymentSummaryCard extends StatelessWidget {
   final double subtotal;
   final double shippingBaseCost;
   final double shippingCost;
   final double productDiscount;
   final double shippingDiscount;
+  final double refundBalanceUsed;
   final double grandTotal;
   final bool syncing;
   final bool syncRetrying;
@@ -3230,6 +3361,7 @@ class _PaymentSummaryCard extends StatelessWidget {
     required this.productDiscount,
     required this.shippingDiscount,
     required this.grandTotal,
+    this.refundBalanceUsed = 0,
     this.syncing = false,
     this.syncRetrying = false,
     this.syncFailed = false,
@@ -3351,6 +3483,12 @@ class _PaymentSummaryCard extends StatelessWidget {
               label: 'Ongkir setelah diskon',
               value: shippingCost == 0 ? 'Gratis' : formatRupiah(shippingCost),
               freeShipping: shippingCost == 0,
+            ),
+          if (refundBalanceUsed > 0)
+            _SummaryLine(
+              label: 'Saldo Refund Digunakan',
+              value: '-${formatRupiah(refundBalanceUsed)}',
+              discount: true,
             ),
           const Divider(height: 24),
           _SummaryLine(

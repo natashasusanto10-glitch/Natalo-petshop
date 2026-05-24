@@ -394,6 +394,10 @@ model Order {
   privateVoucherCode      String?
   productDiscount         Int             @default(0)
   shippingDiscount        Int             @default(0)
+  // Saldo refund yang user pakai untuk bayar order ini. Dikurangkan
+  // setelah subtotal + ongkir - diskon (lihat spec rumus). Saat order
+  // di-create, di-debit dari RefundWallet via helper atomic + ledger.
+  refundBalanceUsed       Int             @default(0)
   notes                   String?
   items                   OrderItem[]
   voucherUsages           VoucherUsage[]

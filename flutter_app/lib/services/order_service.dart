@@ -43,6 +43,7 @@ class OrderService {
     String? productVoucherCode,
     String? loyaltyVoucherCode,
     String? privateVoucherCode,
+    int refundBalanceUsed = 0,
     String? notes,
   }) async {
     // Guard: blok di read-only mode supaya Capacitor database tidak
@@ -93,6 +94,7 @@ class OrderService {
           'loyaltyVoucherCode': loyaltyVoucherCode,
         if (privateVoucherCode != null && privateVoucherCode.isNotEmpty)
           'privateVoucherCode': privateVoucherCode,
+        if (refundBalanceUsed > 0) 'refundBalanceUsed': refundBalanceUsed,
         if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
         'items': items.map((item) {
           // Pakai effectivePrice + variant.weightGram kalau varian dipilih,
