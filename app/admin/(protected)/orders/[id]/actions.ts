@@ -571,3 +571,171 @@ export async function issueRefundToWallet(
 
   revalidateOrderAdmin(orderId);
 }
+
+/**
+ * Quick action: tandai item kosong saat packing → auto-refund.
+ *
+ * Pattern UX: admin tap tombol di item card → input qty pcs yang
+ * missing → submit. Sistem otomatis:
+ *   1. Hitung refund amount = missingQty × itemPrice × (1 − voucher_ratio)
+ *      (net-of-voucher proportional, sama logic dengan RefundFormClient)
+ *   2. Create RefundCase reason=OUT_OF_STOCK
+ *   3. Credit wallet user
+ *   4. Auto-fill admin note "Item kosong saat packing"
+ *   5. Fire push notif
+ *
+ * Bedanya dengan issueRefundToWallet manual: admin TIDAK perlu hitung
+ * sendiri atau pilih dari dropdown — tinggal klik per-item + qty.
+ * Internally panggil flow yang sama (reuse credit logic), cuma form
+ * inputs auto-derived.
+ *
+ * Validation: max missingQty = item.quantity. Block kalau item udah
+ * pernah di-refund full (via max-refund guard di issueRefundToWallet).
+ */
+export async function markItemPartiallyOutOfStock(
+  orderId: string,
+  formData: FormData,
+): Promise<void> {
+  const session = await requireAdmin();
+  const adminId = session.sub;
+
+  const itemId = String(formData.get("itemId") ?? "");
+  const missingQtyRaw = formData.get("missingQty");
+  const missingQty = parseInt(String(missingQtyRaw ?? "0"), 10);
+  const customNote = String(formData.get("adminNote") ?? "").trim();
+
+  if (!itemId) throw new Error("Item ID kosong.");
+  if (!Number.isFinite(missingQty) || missingQty <= 0) {
+    throw new Error("Jumlah pcs yang kosong harus lebih dari 0.");
+  }
+
+  // Fetch item + order untuk validasi + voucher allocation.
+  const item = await prisma.orderItem.findUnique({
+    where: { id: itemId },
+    select: {
+      orderId: true,
+      name: true,
+      price: true,
+      quantity: true,
+    },
+  });
+  if (!item || item.orderId !== orderId) {
+    throw new Error("Item tidak ditemukan di order ini.");
+  }
+  if (missingQty > item.quantity) {
+    throw new Error(
+      `Qty kosong (${missingQty}) melebihi qty di order (${item.quantity}).`,
+    );
+  }
+
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: {
+      id: true,
+      userId: true,
+      subtotal: true,
+      productDiscount: true,
+    },
+  });
+  if (!order) throw new Error("Order tidak ditemukan.");
+  if (!order.userId) {
+    throw new Error(
+      "Order guest checkout — tidak bisa refund ke Saldo. Refund manual ke metode bayar asal.",
+    );
+  }
+  const refundUserId = order.userId;
+
+  // Auto-calc net-of-voucher amount — sama formula dengan RefundFormClient.
+  const discountRatio =
+    order.subtotal > 0 ? Math.min(1, order.productDiscount / order.subtotal) : 0;
+  const grossAmount = item.price * missingQty;
+  const netAmount = Math.round(grossAmount * (1 - discountRatio));
+  // Default mode: net (recommended). Kalau order tanpa voucher,
+  // netAmount === grossAmount jadi sama aja.
+  const amount = netAmount;
+
+  if (amount <= 0) {
+    throw new Error("Nominal refund 0 setelah voucher allocation — cek manual via form refund.");
+  }
+
+  // Cek max allowed refund (cumulative existing) — defensive walau
+  // qty udah di-bound oleh item.quantity. Bisa overflow kalau ada
+  // refund sebelumnya.
+  const existingItemRefund = await prisma.refundCase.aggregate({
+    where: {
+      orderId,
+      orderItemId: itemId,
+      status: "CREDITED",
+    },
+    _sum: { amount: true },
+  });
+  const alreadyRefunded = existingItemRefund._sum.amount ?? 0;
+  const itemMaxRefund = item.price * item.quantity * (1 - discountRatio);
+  const maxAllowedRefund = Math.round(itemMaxRefund - alreadyRefunded);
+  if (amount > maxAllowedRefund) {
+    throw new Error(
+      `Refund (Rp${amount.toLocaleString("id-ID")}) melebihi sisa (Rp${maxAllowedRefund.toLocaleString("id-ID")}) untuk item ini. Sudah ke-refund Rp${alreadyRefunded.toLocaleString("id-ID")}.`,
+    );
+  }
+
+  const adminNote = customNote.length > 0
+    ? customNote.slice(0, 500)
+    : `${missingQty} pcs "${item.name}" kosong saat packing.`;
+
+  const refundCase = await prisma.refundCase.create({
+    data: {
+      orderId,
+      orderItemId: itemId,
+      userId: refundUserId,
+      reason: "OUT_OF_STOCK",
+      amount,
+      destination: "REFUND_BALANCE",
+      status: "PENDING",
+      adminNote,
+      createdByAdminId: adminId,
+    },
+  });
+
+  try {
+    const credit = await creditWallet({
+      userId: refundUserId,
+      amount,
+      sourceOrderId: orderId,
+      sourceRefundCaseId: refundCase.id,
+      note: adminNote,
+      createdByAdminId: adminId,
+      type: "CREDIT",
+    });
+    await prisma.refundCase.update({
+      where: { id: refundCase.id },
+      data: {
+        status: "CREDITED",
+        approvedAt: new Date(),
+        creditedAt: new Date(),
+        ledgerEntryId: credit.ledgerEntryId,
+      },
+    });
+
+    void sendRefundIssuedPush({
+      userId: refundUserId,
+      caseId: refundCase.id,
+      amount,
+      reason: "OUT_OF_STOCK",
+      itemName: item.name,
+      adminNote,
+    });
+  } catch (err) {
+    await prisma.refundCase.update({
+      where: { id: refundCase.id },
+      data: {
+        status: "REJECTED",
+        adminNote: `${adminNote}\n[SYSTEM] Credit failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      },
+    });
+    throw err;
+  }
+
+  revalidateOrderAdmin(orderId);
+}

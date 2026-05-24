@@ -14,7 +14,9 @@ import {
   markAsProcessing,
   markAsReadyForPickup,
   markAsShipped,
+  markItemPartiallyOutOfStock,
 } from "./actions";
+import ItemOutOfStockButton from "./ItemOutOfStockButton";
 import RefundFormClient from "./RefundFormClient";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -73,6 +75,7 @@ export default async function AdminOrderDetailPage({
   const createShipmentAction = createShipment.bind(null, id);
 
   const issueRefundToWalletAction = issueRefundToWallet.bind(null, id);
+  const markItemOutOfStockAction = markItemPartiallyOutOfStock.bind(null, id);
 
   // ── Data Fetch ──────────────────────────────────────────────
   const order = await prisma.order.findUnique({
@@ -163,17 +166,37 @@ export default async function AdminOrderDetailPage({
             {order.items.map((item) => (
               <div
                 key={item.id}
-                className="flex justify-between gap-4 rounded-2xl bg-zinc-50 p-4 text-sm"
+                className="rounded-2xl bg-zinc-50 p-4 text-sm"
               >
-                <div>
-                  <p className="font-semibold text-zinc-950">{item.name}</p>
-                  <p className="mt-1 text-zinc-500">
-                    {item.quantity} × {formatRupiah(item.price)}
+                <div className="flex justify-between gap-4">
+                  <div>
+                    <p className="font-semibold text-zinc-950">{item.name}</p>
+                    <p className="mt-1 text-zinc-500">
+                      {item.quantity} × {formatRupiah(item.price)}
+                    </p>
+                  </div>
+                  <p className="font-bold text-zinc-950">
+                    {formatRupiah(item.price * item.quantity)}
                   </p>
                 </div>
-                <p className="font-bold text-zinc-950">
-                  {formatRupiah(item.price * item.quantity)}
-                </p>
+                {/* Quick action: tandai item kosong saat packing → auto-
+                    refund. Cuma muncul kalau order belum FINAL (DELIVERED
+                    /CANCELLED). Reuse RefundFormClient untuk kasus
+                    kompleks (full form di section bawah). */}
+                {order.status !== "CANCELLED" &&
+                  order.status !== "REFUNDED" && (
+                    <div className="mt-2 flex justify-end">
+                      <ItemOutOfStockButton
+                        itemId={item.id}
+                        itemName={item.name}
+                        itemPrice={item.price}
+                        itemQuantity={item.quantity}
+                        orderSubtotal={order.subtotal ?? 0}
+                        orderProductDiscount={order.productDiscount ?? 0}
+                        action={markItemOutOfStockAction}
+                      />
+                    </div>
+                  )}
               </div>
             ))}
           </div>
