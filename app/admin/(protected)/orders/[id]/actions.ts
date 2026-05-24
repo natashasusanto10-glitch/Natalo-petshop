@@ -7,6 +7,7 @@ import { createBiteshipShipment } from "@/lib/biteship";
 import { sendOrderStatusEmail } from "@/lib/email-order";
 import { assertCanTransitionOrderStatus, transitionOrderStatus } from "@/lib/order-transitions";
 import { sendOrderStatusPush } from "@/lib/push";
+import { sendRefundIssuedPush } from "@/lib/push-refund";
 import { creditWallet } from "@/lib/refund-wallet";
 import { SELF_PICKUP_METHOD, createPickupCode } from "@/lib/self-pickup";
 // Notifikasi order via WhatsApp dihapus — admin actions update status,
@@ -467,6 +468,28 @@ export async function issueRefundToWallet(
         creditedAt: new Date(),
         ledgerEntryId: credit.ledgerEntryId,
       },
+    });
+
+    // Push notification ke user — fire-and-forget supaya admin action
+    // tidak block kalau push service down. Fetch item name kalau partial
+    // refund (untuk display di notif body).
+    let itemName: string | null = null;
+    if (itemId) {
+      const item = await prisma.orderItem
+        .findUnique({
+          where: { id: itemId },
+          select: { name: true },
+        })
+        .catch(() => null);
+      itemName = item?.name ?? null;
+    }
+    void sendRefundIssuedPush({
+      userId: refundUserId,
+      caseId: refundCase.id,
+      amount,
+      reason,
+      itemName,
+      adminNote,
     });
   } catch (err) {
     await prisma.refundCase.update({

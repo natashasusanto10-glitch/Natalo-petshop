@@ -282,6 +282,38 @@ class _LedgerCard extends StatelessWidget {
 
   const _LedgerCard(this.entry);
 
+  /// Tap behavior:
+  ///   - CREDIT / REVERSAL (refund masuk / dikembalikan) — navigate ke
+  ///     RefundDetailScreen via sourceRefundCaseId (kalau ada).
+  ///   - DEBIT (saldo dipakai di checkout) — navigate ke order detail.
+  ///     Untuk MVP, snackbar arahkan user ke Tab Transaksi (existing
+  ///     route /member/order-detail butuh OrderSummary object).
+  ///   - Entry tanpa sourceId — disable tap (visual hint: no chevron).
+  void _onTap(BuildContext context) {
+    final isCredit = entry.type == 'CREDIT' || entry.type == 'REVERSAL';
+    if (isCredit && entry.sourceRefundCaseId != null) {
+      Navigator.pushNamed(
+        context,
+        '/member/refund-detail',
+        arguments: entry.sourceRefundCaseId,
+      );
+      return;
+    }
+    if (!isCredit && entry.sourceOrderId != null) {
+      // DEBIT entry — arahkan ke detail order. Future improvement:
+      // route accept orderId, fetch order on-the-fly.
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Buka Tab Transaksi → cari pesanan terkait di list "Pesanan Saya".',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isCredit = entry.type == 'CREDIT' || entry.type == 'REVERSAL';
@@ -291,15 +323,23 @@ class _LedgerCard extends StatelessWidget {
         ? const Color(0xFFD1FAE5)
         : const Color(0xFFFEE2E2);
     final iconColor = isCredit ? _success : _danger;
+    // Determine if entry is clickable — credit dengan refundCaseId atau
+    // debit dengan orderId.
+    final clickable = (isCredit && entry.sourceRefundCaseId != null) ||
+        (!isCredit && entry.sourceOrderId != null);
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: const Color(0xFFE5E7EB)),
       ),
-      child: Row(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: clickable ? () => _onTap(context) : null,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
@@ -370,7 +410,17 @@ class _LedgerCard extends StatelessWidget {
               ],
             ),
           ),
+          if (clickable) ...[
+            const SizedBox(width: 4),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: Color(0xFF98A2B3),
+              size: 18,
+            ),
+          ],
         ],
+      ),
+        ),
       ),
     );
   }
