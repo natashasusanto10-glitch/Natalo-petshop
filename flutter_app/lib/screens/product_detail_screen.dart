@@ -101,9 +101,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   /// True kalau produk multi-varian tapi belum semua attribute terpilih.
   bool get _needsVariantSelection {
-    return product.hasVariants &&
-        product.variantAttrs.isNotEmpty &&
-        _selectedVariant == null;
+    return product.hasVariants && _selectedVariant == null;
   }
 
   @override
@@ -201,6 +199,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     ProductVariant? variant,
     int quantity = 1,
   }) {
+    if (product.hasVariants && variant == null) {
+      _openVariantSheet();
+      return;
+    }
     AppHaptics.success();
     // Fire fly-to-cart animation dulu (Overlay-based, tidak block UI).
     // Mini product image fly dari posisi hero image → cart icon di AppBar
@@ -227,6 +229,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     ProductVariant? variant,
     int quantity = 1,
   }) {
+    if (product.hasVariants && variant == null) {
+      _openVariantSheet();
+      return;
+    }
     AppHaptics.impact();
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
@@ -249,6 +255,35 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   Future<void> _openVariantSheet() async {
     AppHaptics.tap();
+    var sheetProduct = product;
+    if (sheetProduct.hasVariants && sheetProduct.variantAttrs.isEmpty) {
+      final full = await productService.fetchProductBySlug(sheetProduct.slug);
+      if (!mounted) return;
+      if (full == null || full.variantAttrs.isEmpty) {
+        AppToast.show(
+          context,
+          'Varian produk belum siap. Coba lagi sebentar.',
+          kind: ToastKind.warning,
+        );
+        return;
+      }
+      setState(() {
+        _product = full;
+        if (full.hasVariants && full.variants.length == 1) {
+          final only = full.variants.first;
+          _selectedOptions.clear();
+          for (final id in only.optionIds) {
+            for (final attr in full.variantAttrs) {
+              if (attr.options.any((opt) => opt.id == id)) {
+                _selectedOptions[attr.id] = id;
+                break;
+              }
+            }
+          }
+        }
+      });
+      sheetProduct = full;
+    }
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -256,7 +291,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       barrierColor: Colors.black.withValues(alpha: 0.38),
       builder: (sheetContext) {
         return _ProductVariantBottomSheet(
-          product: product,
+          product: sheetProduct,
           initialSelectedOptions: _selectedOptions,
           onSelectionChanged: _syncVariantSelection,
           onAddToCart: (variant, quantity) {

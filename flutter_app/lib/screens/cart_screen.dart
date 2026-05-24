@@ -454,7 +454,6 @@ class _CartScreenState extends State<CartScreen> {
     return eligible.first;
   }
 
-
   MemberVoucher? _findVoucherByCode(List<MemberVoucher> vouchers, String code) {
     for (final voucher in vouchers) {
       if (voucher.code == code) return voucher;
@@ -2569,7 +2568,8 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                         // match styling checkout. Product discount = "Diskon"
                         // tag pink. Differentiate icon supaya user paham
                         // type voucher langsung dari visual.
-                        badge: voucher.isLoyaltyClaim ? 'Reward Poin' : 'Diskon',
+                        badge:
+                            voucher.isLoyaltyClaim ? 'Reward Poin' : 'Diskon',
                         trailing: formatRupiah(voucher.discount),
                         icon: voucher.isLoyaltyClaim
                             ? Icons.stars_rounded
@@ -2642,9 +2642,8 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                           title: voucher.title,
                           subtitle: voucher.disabledReason ??
                               'Voucher belum memenuhi syarat.',
-                          badge: voucher.isLoyaltyClaim
-                              ? 'Reward Poin'
-                              : 'Diskon',
+                          badge:
+                              voucher.isLoyaltyClaim ? 'Reward Poin' : 'Diskon',
                           trailing: voucher.discount > 0
                               ? formatRupiah(voucher.discount)
                               : null,
@@ -2933,6 +2932,20 @@ class _CartRecommendationsSection extends StatelessWidget {
                       );
                     },
                     onAddToCart: () {
+                      if (product.hasVariants) {
+                        AppHaptics.tap();
+                        Navigator.pushNamed(
+                          context,
+                          '/product-detail',
+                          arguments: product,
+                        );
+                        AppToast.show(
+                          context,
+                          'Pilih varian produk dulu.',
+                          kind: ToastKind.info,
+                        );
+                        return;
+                      }
                       AppHaptics.success();
                       cartStore.addProduct(product);
                       AppToast.showCartAdded(
@@ -3102,6 +3115,20 @@ class _EmptyCartState extends StatelessWidget {
               );
             },
             onAddToCart: (product) {
+              if (product.hasVariants) {
+                AppHaptics.tap();
+                Navigator.pushNamed(
+                  context,
+                  '/product-detail',
+                  arguments: product,
+                );
+                AppToast.show(
+                  context,
+                  'Pilih varian produk dulu.',
+                  kind: ToastKind.info,
+                );
+                return;
+              }
               cartStore.addProduct(product);
               AppToast.showCartAdded(
                 context,
@@ -3127,6 +3154,20 @@ class _EmptyCartState extends StatelessWidget {
               );
             },
             onAddToCart: (product) {
+              if (product.hasVariants) {
+                AppHaptics.tap();
+                Navigator.pushNamed(
+                  context,
+                  '/product-detail',
+                  arguments: product,
+                );
+                AppToast.show(
+                  context,
+                  'Pilih varian produk dulu.',
+                  kind: ToastKind.info,
+                );
+                return;
+              }
               cartStore.addProduct(product);
               AppToast.showCartAdded(
                 context,

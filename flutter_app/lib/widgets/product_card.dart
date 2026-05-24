@@ -53,6 +53,16 @@ class ProductCard extends StatelessWidget {
           product: product,
           onOpenDetail: onTap,
           onAddToCart: () {
+            if (product.hasVariants) {
+              AppHaptics.tap();
+              onTap();
+              AppToast.show(
+                context,
+                'Pilih varian produk dulu.',
+                kind: ToastKind.info,
+              );
+              return;
+            }
             cartStore.addProduct(product);
             AppToast.showCartAdded(
               context,
@@ -222,7 +232,7 @@ class ProductCard extends StatelessWidget {
               if (showAddToCart) ...[
                 const Spacer(),
                 const SizedBox(height: AppSpacing.sm),
-                _GridCartButton(product: product),
+                _GridCartButton(product: product, onOpenDetail: onTap),
               ],
             ],
           ),
@@ -756,8 +766,12 @@ String _compactDecimal(double value) {
 /// action, tapi teks stok tidak ditampilkan di card grid.
 class _GridCartButton extends StatelessWidget {
   final Product product;
+  final VoidCallback onOpenDetail;
 
-  const _GridCartButton({required this.product});
+  const _GridCartButton({
+    required this.product,
+    required this.onOpenDetail,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -771,6 +785,16 @@ class _GridCartButton extends StatelessWidget {
           onTap: outOfStock
               ? null
               : () {
+                  if (product.hasVariants) {
+                    AppHaptics.tap();
+                    onOpenDetail();
+                    AppToast.show(
+                      context,
+                      'Pilih varian produk dulu.',
+                      kind: ToastKind.info,
+                    );
+                    return;
+                  }
                   AppHaptics.success();
                   cartStore.addProduct(product);
                   AppToast.showCartAdded(

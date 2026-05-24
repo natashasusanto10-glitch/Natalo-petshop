@@ -124,7 +124,7 @@ class CartStore extends ChangeNotifier {
 
   /// Add product langsung — convenience wrapper sekitar [addItem].
   /// Boleh pass `variant` (full ProductVariant) atau `variantId`/`variantLabel`.
-  Future<void> addProduct(
+  Future<bool> addProduct(
     Product product, {
     int quantity = 1,
     ProductVariant? variant,
@@ -133,19 +133,38 @@ class CartStore extends ChangeNotifier {
     int? overridePrice,
     int? overrideStock,
   }) async {
+    final resolvedVariant = variant ??
+        (variantId != null && variantId.trim().isNotEmpty
+            ? ProductVariant(
+                id: variantId.trim(),
+                price: overridePrice ?? product.finalPrice.round(),
+                stock: overrideStock ?? product.stock,
+                weightGram: product.weightGram,
+              )
+            : null);
+    if (product.hasVariants && resolvedVariant == null) {
+      if (kDebugMode) {
+        debugPrint(
+          '[CartStore.addProduct] blocked variant product without variant: '
+          '${product.id} ${product.title}',
+        );
+      }
+      return false;
+    }
     final unitPrice = overridePrice ??
-        (variant == null
+        (resolvedVariant == null
             ? product.finalPrice.round()
-            : effectiveCartVariantPrice(product, variant));
+            : effectiveCartVariantPrice(product, resolvedVariant));
     final item = CartItem(
       product: product,
-      variant: variant,
+      variant: resolvedVariant,
       variantLabel: variantLabel,
       unitPrice: unitPrice,
       quantity: quantity,
-      effectiveStock: overrideStock ?? variant?.stock ?? product.stock,
+      effectiveStock: overrideStock ?? resolvedVariant?.stock ?? product.stock,
     );
     await addItem(item);
+    return true;
   }
 
   /// Add cart line (atau increment qty kalau sudah ada).
