@@ -614,6 +614,13 @@ model PasswordResetToken {
 model RegistrationOtp {
   id           String    @id @default(cuid())
   name         String
+  /// Public handle dipilih user di register flow — wajib untuk user
+  /// baru (mandatory di sign-up). Disimpan disini supaya pas step-2
+  /// (verify OTP) langsung di-set ke User.username dalam transaction
+  /// yang sama. Validasi format + uniqueness done di register endpoint
+  /// sebelum row ini di-create. Nullable untuk backward-compat row
+  /// lama yang dibuat sebelum fitur username live.
+  username     String?
   email        String
   phone        String
   passwordHash String

@@ -9,6 +9,10 @@ import {
   getClientIp as getClientIpFromHeaders,
   getOtpLimiter,
 } from "@/lib/rate-limit";
+import {
+  validateUsernameFormat,
+  checkUsernameAvailability,
+} from "@/lib/username";
 import bcrypt from "bcryptjs";
 
 const OTP_EXPIRES_MS = 10 * 60_000;
@@ -24,19 +28,31 @@ function isValidEmail(email: string) {
 
 function parsePayload(body: Record<string, unknown>) {
   const name = String(body.name || "").trim();
+  // Username dipilih user di register form, mandatory untuk user baru.
+  // Di-lowercase + trim disini supaya konsisten dengan format validation
+  // di lib/username.ts. Empty string kalau client lama (pre-Fase 1.4)
+  // yang belum kirim field ini — validasi handle di validatePayload.
+  const username = String(body.username || "").trim().toLowerCase();
   const email = String(body.email || "").trim().toLowerCase();
   const phone = normalizeIndonesianPhone(String(body.phone || ""));
   const password = String(body.password || "");
   const confirmPassword = String(body.confirmPassword || "");
   const otp = String(body.otp || "").replace(/\D/g, "");
 
-  return { name, email, phone, password, confirmPassword, otp };
+  return { name, username, email, phone, password, confirmPassword, otp };
 }
 
 function validatePayload(payload: ReturnType<typeof parsePayload>) {
   if (!payload.name || !payload.email || !payload.phone || !payload.password || !payload.confirmPassword) {
     return "Semua field wajib diisi";
   }
+
+  if (!payload.username) {
+    return "Username wajib diisi";
+  }
+
+  const formatError = validateUsernameFormat(payload.username);
+  if (formatError) return formatError.message;
 
   if (!isValidEmail(payload.email)) {
     return "Format email tidak valid";
@@ -134,6 +150,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Email atau no. handphone sudah terdaftar" }, { status: 409 });
   }
 
+  // Username uniqueness check — server-side, baik di step-1 (send OTP)
+  // maupun step-2 (verify OTP). Stop early kalau username taken/reserved
+  // supaya user tidak waste OTP step dengan handle yang konflik. Skip
+  // `excludeUserId` karena user belum ada (sign-up flow).
+  const usernameStatus = await checkUsernameAvailability(payload.username);
+  if (!usernameStatus.available) {
+    return NextResponse.json(
+      {
+        error: usernameStatus.reason === "TAKEN"
+          ? "Username sudah dipakai. Coba yang lain."
+          : "Username ini baru saja dilepas. Pilih yang lain (reservasi 30 hari).",
+        field: "username",
+      },
+      { status: 409 },
+    );
+  }
+
   if (payload.otp) {
     const pending = await prisma.registrationOtp.findFirst({
       where: {
@@ -171,9 +204,17 @@ export async function POST(request: NextRequest) {
         data: { verifiedAt: new Date() },
       });
 
+      // Defensive: pending.username bisa null (row legacy pre-Fase 1.4).
+      // Fallback ke payload.username yang current (sudah re-validated di
+      // atas). Step-2 verifyOtp dipanggil setelah validation pass, jadi
+      // payload.username konsisten dengan input user.
+      const finalUsername = pending.username ?? payload.username;
+      const now = new Date();
       await tx.user.create({
         data: {
           name: pending.name,
+          username: finalUsername,
+          usernameUpdatedAt: now,
           email: pending.email,
           phone: pending.phone,
           passwordHash: pending.passwordHash,
@@ -212,6 +253,7 @@ export async function POST(request: NextRequest) {
     await tx.registrationOtp.create({
       data: {
         name: payload.name,
+        username: payload.username,
         email: payload.email,
         phone: payload.phone,
         passwordHash,

@@ -14,6 +14,7 @@ import '../widgets/feed_upload_sheet.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/profile_avatar.dart';
 import '../widgets/update_profile_photo_sheet.dart';
+import '../widgets/username_prompt_banner.dart';
 import 'member_post_detail_screen.dart';
 
 /// Halaman Akun — social profile + galeri postingan user.
@@ -217,6 +218,12 @@ class _ProfilePageState extends State<_ProfilePage>
         onRefresh: _refresh,
         child: NestedScrollView(
           headerSliverBuilder: (context, innerScrolled) => [
+            // Banner reminder pilih @username — auto-hide kalau user
+            // sudah set atau pernah snooze 7 hari. Above header supaya
+            // user lihat dulu sebelum scroll ke content.
+            const SliverToBoxAdapter(
+              child: UsernamePromptBanner(),
+            ),
             SliverToBoxAdapter(
               child: _ProfileSection(
                 profile: profile,

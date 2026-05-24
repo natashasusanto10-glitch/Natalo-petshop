@@ -38,6 +38,7 @@ class RegisterScreen extends StatefulWidget {
 
 class _RegisterScreenState extends State<RegisterScreen> {
   final _nameController = TextEditingController();
+  final _usernameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -59,6 +60,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.initState();
     for (final controller in [
       _nameController,
+      _usernameController,
       _emailController,
       _phoneController,
       _passwordController,
@@ -113,6 +115,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   void dispose() {
     for (final controller in [
       _nameController,
+      _usernameController,
       _emailController,
       _phoneController,
       _passwordController,
@@ -122,6 +125,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       controller.removeListener(_onFormChanged);
     }
     _nameController.dispose();
+    _usernameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
     _passwordController.dispose();
@@ -179,6 +183,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       final phoneRaw = _phoneController.text.replaceAll(RegExp(r'[^\d+]'), '');
       await authService.register(
         name: _nameController.text,
+        username: _usernameController.text.trim().toLowerCase(),
         email: _emailController.text,
         phone: phoneRaw,
         password: _passwordController.text,
@@ -221,7 +226,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _phoneController.text.replaceAll(RegExp(r'[^\d]'), '').length >= 8;
 
   bool get _canSubmit {
+    final usernameRaw = _usernameController.text.trim().toLowerCase();
+    final hasValidUsername =
+        usernameRaw.isNotEmpty && _validateUsernameFormat(usernameRaw) == null;
     final baseValid = _nameController.text.trim().isNotEmpty &&
+        hasValidUsername &&
         _hasValidEmail &&
         _hasValidPhone &&
         _passwordController.text.length >= 8 &&
@@ -241,6 +250,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       final phoneRaw = _phoneController.text.replaceAll(RegExp(r'[^\d+]'), '');
       final result = await authService.register(
         name: _nameController.text,
+        username: _usernameController.text.trim().toLowerCase(),
         email: _emailController.text,
         phone: phoneRaw,
         password: _passwordController.text,
@@ -328,9 +338,36 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return 'Terjadi kendala. Coba lagi sebentar lagi.';
   }
 
+  /// Client-side username format validation — mirror lib/username.ts.
+  /// Server tetap re-validate, ini cuma feedback cepat. Return error
+  /// message string atau null kalau valid.
+  String? _validateUsernameFormat(String raw) {
+    if (raw.length < 3) return 'Username minimal 3 karakter.';
+    if (raw.length > 30) return 'Username maksimal 30 karakter.';
+    if (!RegExp(r'^[a-z0-9_.]+$').hasMatch(raw)) {
+      return 'Username hanya boleh huruf kecil, angka, _, dan titik.';
+    }
+    if (raw.startsWith('.')) return 'Username tidak boleh diawali titik.';
+    if (raw.endsWith('.')) return 'Username tidak boleh diakhiri titik.';
+    if (raw.contains('..')) {
+      return 'Username tidak boleh punya dua titik berurutan.';
+    }
+    return null;
+  }
+
   bool _validate() {
     if (_nameController.text.trim().isEmpty) {
       _showError('Nama lengkap harus diisi.');
+      return false;
+    }
+    final usernameRaw = _usernameController.text.trim().toLowerCase();
+    if (usernameRaw.isEmpty) {
+      _showError('Username wajib diisi.');
+      return false;
+    }
+    final usernameError = _validateUsernameFormat(usernameRaw);
+    if (usernameError != null) {
+      _showError(usernameError);
       return false;
     }
     if (_emailController.text.trim().isEmpty) {
@@ -432,6 +469,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       hint: 'Contoh: Andi Setiawan',
                       icon: Icons.person_outline_rounded,
                     ),
+                    const SizedBox(height: 14),
+                    const _FieldLabel('Username'),
+                    _RegisterTextField(
+                      controller: _usernameController,
+                      hint: 'Contoh: andi_setiawan',
+                      icon: Icons.alternate_email_rounded,
+                      keyboardType: TextInputType.text,
+                      // Filter input live: hanya lowercase a-z, 0-9, _, .
+                      // Match server-side validateUsernameFormat rules.
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(
+                            RegExp(r'[a-z0-9_.]')),
+                        LengthLimitingTextInputFormatter(30),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    const _UsernameHint(),
                     const SizedBox(height: 14),
                     const _FieldLabel('Email'),
                     _RegisterTextField(
@@ -1239,6 +1293,41 @@ class _ResendOtpRow extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Inline hint di bawah field username — kasih tau aturan format
+/// kasarnya supaya user tahu sebelum tap Daftar. Tidak ada live
+/// availability check disini (no auth = no /api/me/username/check),
+/// validation full di server saat submit.
+class _UsernameHint extends StatelessWidget {
+  const _UsernameHint();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.only(left: 4, right: 4),
+      child: Row(
+        children: [
+          Icon(
+            Icons.info_outline_rounded,
+            color: Color(0xFF94A3B8),
+            size: 14,
+          ),
+          SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              'Huruf kecil, angka, _ dan . (min 3 char). Bisa diganti nanti.',
+              style: TextStyle(
+                color: Color(0xFF64748B),
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
