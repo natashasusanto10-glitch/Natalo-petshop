@@ -1971,16 +1971,26 @@ String _formatDate(DateTime date) {
 }
 
 bool _shouldShowPaymentProof(OrderSummary order) {
+  if (_isFinalizedOrder(order)) return false;
   final manual = order.paymentProvider.toUpperCase() == 'MANUAL';
   final paid = order.paymentStatus.toUpperCase() == 'PAID';
   return manual && !paid;
 }
 
 bool _shouldShowPaymentAction(OrderSummary order) {
+  if (_isFinalizedOrder(order)) return false;
   final paid = order.paymentStatus.toUpperCase() == 'PAID';
   if (paid) return false;
   if (order.paymentProvider.toUpperCase() == 'MANUAL') return true;
   return order.paymentUrl?.isNotEmpty ?? false;
+}
+
+bool _isFinalizedOrder(OrderSummary order) {
+  final status = order.status.toUpperCase();
+  return status == 'CANCELLED' ||
+      status == 'CANCELED' ||
+      status == 'REFUNDED' ||
+      status == 'EXPIRED';
 }
 
 /// Order bisa dibatalkan customer kalau:

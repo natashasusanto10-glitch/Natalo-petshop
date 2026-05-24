@@ -5,6 +5,7 @@ import '../models/member_profile.dart';
 import '../models/product.dart';
 import '../services/home_widget_service.dart';
 import '../services/member_service.dart';
+import '../services/product_service.dart';
 import '../state/cart_store.dart';
 import '../state/member_store.dart';
 import '../utils/formatters.dart';
@@ -352,49 +353,140 @@ class _OrderCard extends StatelessWidget {
     if (!opened) _showSnack(context, 'Tidak bisa membuka pembayaran.');
   }
 
-  void _buyAgain(BuildContext context) {
+  Future<void> _buyAgain(BuildContext context) async {
     if (order.items.isEmpty) {
       _openOrderDetail(context);
       return;
     }
 
+    final productIds = order.items
+        .map((item) => item.productId)
+        .where((id) => id.trim().isNotEmpty)
+        .toSet()
+        .toList();
+
+    final result = await productService.fetchProducts(
+      ids: productIds,
+      limit: productIds.isEmpty ? 1 : productIds.length,
+      hasPrice: true,
+      withImage: true,
+    );
+    if (!context.mounted) return;
+
+    final productsById = {
+      for (final product in result.products) product.id: product,
+    };
+    final productsBySlug = {
+      for (final product in result.products) product.slug: product,
+    };
+
+    var added = 0;
+    var skipped = 0;
+    var adjusted = false;
+
     for (final item in order.items) {
-      cartStore.addProduct(
-        Product(
-          id: item.productId,
-          slug: item.productId,
-          title: item.name,
-          category: item.categoryName ?? '',
-          brand: 'Natalo',
-          imageUrl: item.imageUrl ?? '',
-          price: item.price.toDouble(),
-          rating: 0,
-          reviewCount: 0,
-          stock: 999,
-          description: item.variantLabel ?? '',
-        ),
-        quantity: item.quantity,
+      var product = productsById[item.productId] ??
+          (item.productSlug == null ? null : productsBySlug[item.productSlug]);
+
+      if (product == null &&
+          item.productSlug != null &&
+          item.productSlug!.isNotEmpty) {
+        product = await productService.fetchProductBySlug(item.productSlug!);
+        if (!context.mounted) return;
+      }
+
+      if (product == null) {
+        skipped++;
+        continue;
+      }
+
+      ProductVariant? variant;
+      if (item.variantId != null && item.variantId!.isNotEmpty) {
+        if (product.variants.isEmpty && product.slug.isNotEmpty) {
+          final full = await productService.fetchProductBySlug(product.slug);
+          if (!context.mounted) return;
+          if (full != null) product = full;
+        }
+        for (final candidate in product.variants) {
+          if (candidate.id == item.variantId && candidate.isActive) {
+            variant = candidate;
+            break;
+          }
+        }
+      }
+
+      final currentStock = variant?.stock ?? product.stock;
+      if (currentStock <= 0) {
+        skipped++;
+        continue;
+      }
+
+      final quantity = item.quantity.clamp(1, currentStock);
+      if (quantity < item.quantity) adjusted = true;
+
+      final ok = await cartStore.addProduct(
+        product,
+        quantity: quantity,
+        variant: variant,
+        variantId: variant == null ? item.variantId : null,
+        variantLabel: item.variantLabel,
+        overrideStock: currentStock,
       );
+      if (ok) {
+        added++;
+      } else {
+        skipped++;
+      }
+      if (!context.mounted) return;
     }
+
+    if (added <= 0) {
+      _showSnack(context, 'Produk belum tersedia atau stok habis.');
+      return;
+    }
+
+    final message = skipped > 0
+        ? 'Sebagian produk masuk keranjang. Ada yang stoknya habis.'
+        : adjusted
+            ? 'Produk masuk keranjang sesuai stok tersedia.'
+            : 'Produk masuk keranjang';
+
     AppToast.showCartAdded(
       context,
-      'Produk masuk keranjang',
+      message,
       onTap: () => Navigator.pushNamed(context, '/cart'),
     );
   }
 
+  bool get _isFinalized {
+    final status = order.status.toUpperCase();
+    return status == 'CANCELLED' ||
+        status == 'CANCELED' ||
+        status == 'REFUNDED' ||
+        status == 'EXPIRED';
+  }
+
+  bool get _isCancelled {
+    final status = order.status.toUpperCase();
+    return status == 'CANCELLED' || status == 'CANCELED';
+  }
+
+  bool get _isReorderable {
+    final status = order.status.toUpperCase();
+    return _isCancelled || status == 'DELIVERED' || status == 'COMPLETED';
+  }
+
   bool get _isUnpaid {
+    if (_isFinalized) return false;
     final status = order.status.toUpperCase();
     final payment = order.paymentStatus.toUpperCase();
 
     return payment == 'UNPAID' || payment == 'PENDING' || status == 'PENDING';
   }
 
-  bool get _isDelivered => order.status.toUpperCase() == 'DELIVERED';
-
   String? get _actionLabel {
     if (_isUnpaid) return 'Bayar Sekarang';
-    if (_isDelivered) return 'Beli Lagi';
+    if (_isReorderable) return 'Beli Lagi';
     return null;
   }
 
@@ -403,7 +495,7 @@ class _OrderCard extends StatelessWidget {
       _openPayment(context);
       return;
     }
-    if (_isDelivered) {
+    if (_isReorderable) {
       _buyAgain(context);
     }
   }
@@ -862,9 +954,13 @@ String _statusLabel(String status) {
     'PENDING' => 'Belum Bayar',
     'PAID' => 'Lunas',
     'PROCESSING' => 'Diproses',
+    'READY_TO_PICKUP' || 'READY_FOR_PICKUP' || 'READY_PICKUP' => 'Siap Diambil',
     'SHIPPED' => 'Dikirim',
     'DELIVERED' => 'Selesai',
-    'CANCELLED' => 'Dibatalkan',
+    'COMPLETED' => 'Selesai',
+    'CANCELLED' || 'CANCELED' => 'Dibatalkan',
+    'REFUNDED' => 'Refund',
+    'EXPIRED' => 'Kedaluwarsa',
     _ => status,
   };
 }
@@ -909,9 +1005,14 @@ Color _statusColor(String status) {
   return switch (status.toUpperCase()) {
     'UNPAID' || 'PENDING' => const Color(0xFFF59E0B),
     'PAID' || 'PROCESSING' => _brandBlue,
+    'READY_TO_PICKUP' || 'READY_FOR_PICKUP' || 'READY_PICKUP' => _brandBlue,
     'SHIPPED' => _brandBlue,
-    'DELIVERED' => const Color(0xFF16A34A),
-    'CANCELLED' => const Color(0xFFEF4444),
+    'DELIVERED' || 'COMPLETED' => const Color(0xFF16A34A),
+    'CANCELLED' ||
+    'CANCELED' ||
+    'REFUNDED' ||
+    'EXPIRED' =>
+      const Color(0xFFEF4444),
     _ => const Color(0xFF6B7280),
   };
 }

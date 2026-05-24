@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -33,6 +35,7 @@ import '../state/settings_store.dart';
 import '../utils/formatters.dart';
 import '../utils/action_throttle.dart';
 import '../utils/haptics.dart';
+import '../utils/mention_text.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/feed_comment_sheet.dart';
@@ -3361,7 +3364,7 @@ class _AvatarFallback extends StatelessWidget {
   }
 }
 
-class _ExpandableCaption extends StatelessWidget {
+class _ExpandableCaption extends StatefulWidget {
   final String text;
   final bool expanded;
   final VoidCallback onToggle;
@@ -3373,30 +3376,72 @@ class _ExpandableCaption extends StatelessWidget {
   });
 
   @override
+  State<_ExpandableCaption> createState() => _ExpandableCaptionState();
+}
+
+class _ExpandableCaptionState extends State<_ExpandableCaption> {
+  final List<TapGestureRecognizer> _recognizers = [];
+
+  @override
+  void dispose() {
+    for (final r in _recognizers) {
+      r.dispose();
+    }
+    _recognizers.clear();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final text = widget.text;
     if (text.isEmpty) return const SizedBox.shrink();
     const limit = 90;
     final isLong = text.length > limit;
-    final visible = expanded || !isLong
+    final visible = widget.expanded || !isLong
         ? text
         : '${text.substring(0, limit).trimRight()}... ';
 
+    // Dispose recognizers lama tiap rebuild — fresh per render.
+    for (final r in _recognizers) {
+      r.dispose();
+    }
+    _recognizers.clear();
+
+    const baseStyle = TextStyle(
+      color: Colors.white,
+      fontSize: 13.2,
+      fontWeight: FontWeight.w600,
+      height: 1.38,
+      shadows: [Shadow(color: Colors.black54, blurRadius: 6)],
+    );
+    const mentionStyle = TextStyle(
+      color: Color(0xFF60A5FA),
+      fontSize: 13.2,
+      fontWeight: FontWeight.w900,
+      height: 1.38,
+      shadows: [Shadow(color: Colors.black54, blurRadius: 6)],
+    );
+
+    final mentionSpans = buildMentionSpans(
+      visible,
+      onMentionTap: (handle) {
+        Navigator.of(context).pushNamed('/u', arguments: handle);
+      },
+      defaultStyle: baseStyle,
+      mentionStyle: mentionStyle,
+      collectRecognizers: _recognizers,
+    );
+
     return GestureDetector(
-      onTap: isLong ? onToggle : null,
+      onTap: isLong ? widget.onToggle : null,
       child: Text.rich(
         TextSpan(
-          text: visible,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 13.2,
-            fontWeight: FontWeight.w600,
-            height: 1.38,
-            shadows: [Shadow(color: Colors.black54, blurRadius: 6)],
-          ),
+          style: baseStyle,
           children: [
+            ...mentionSpans,
             if (isLong)
               TextSpan(
-                text: expanded ? '  lebih sedikit' : 'selengkapnya',
+                text: widget.expanded ? '  lebih sedikit' : 'selengkapnya',
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.78),
                   fontSize: 12.8,
@@ -3405,8 +3450,8 @@ class _ExpandableCaption extends StatelessWidget {
               ),
           ],
         ),
-        maxLines: expanded ? null : 2,
-        overflow: expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+        maxLines: widget.expanded ? null : 2,
+        overflow: widget.expanded ? TextOverflow.visible : TextOverflow.ellipsis,
       ),
     );
   }
