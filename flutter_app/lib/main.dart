@@ -31,6 +31,7 @@ import 'screens/member_post_detail_screen.dart';
 import 'screens/member_post_edit_screen.dart';
 import 'screens/member_posts_screen.dart';
 import 'screens/member_profile_screen.dart';
+import 'screens/username_setup_screen.dart';
 import 'screens/member_reviews_screen.dart';
 import 'screens/member_screen.dart';
 import 'screens/member_vouchers_screen.dart';
@@ -293,6 +294,7 @@ class NataloPetshopApp extends StatelessWidget {
               '/member/register' => const RegisterScreen(),
               '/member/forgot-password' => const ForgotPasswordScreen(),
               '/member/profile' => const MemberProfileScreen(),
+              '/member/username' => const UsernameSetupScreen(),
               '/member/addresses' => const MemberAddressesScreen(),
               '/member/orders' =>
                 MemberOrdersScreen(initialFilterArgument: settings.arguments),

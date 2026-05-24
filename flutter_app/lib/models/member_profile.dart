@@ -16,6 +16,10 @@ export 'member_voucher.dart';
 class MemberProfile {
   final String id;
   final String name;
+  /// Public handle (IG/TikTok-style). 3-30 char, lowercase alfanum +
+  /// `_` + `.`. Nullable buat user existing yang belum set — UI
+  /// fallback ke `name` di feed/komentar, plus banner prompt di home.
+  final String? username;
   final String? email;
   final String? phone;
   final String role;
@@ -31,6 +35,7 @@ class MemberProfile {
   const MemberProfile({
     required this.id,
     required this.name,
+    this.username,
     this.email,
     this.phone,
     this.role = 'CUSTOMER',
@@ -46,10 +51,19 @@ class MemberProfile {
       name.trim().isEmpty ? 'N' : name.trim()[0].toUpperCase();
   DateTime get memberSince => createdAt ?? DateTime.now();
 
+  /// Display handle untuk feed/komentar/profile. `@username` kalau set,
+  /// fallback `name` kalau user belum set username. Konsisten di semua
+  /// surface yang public-social.
+  String get displayHandle =>
+      (username != null && username!.isNotEmpty) ? '@$username' : name;
+
+  bool get hasUsername => username != null && username!.isNotEmpty;
+
   factory MemberProfile.fromJson(Map<String, dynamic> json) {
     return MemberProfile(
       id: json['id'] as String,
       name: json['name'] as String? ?? '',
+      username: _nullableString(json['username']),
       email: json['email'] as String?,
       phone: json['phone'] as String?,
       role: json['role'] as String? ?? 'CUSTOMER',
@@ -77,6 +91,7 @@ class MemberProfile {
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
+        'username': username,
         'email': email,
         'phone': phone,
         'role': role,
@@ -89,6 +104,8 @@ class MemberProfile {
 
   MemberProfile copyWith({
     String? name,
+    String? username,
+    bool clearUsername = false,
     String? email,
     String? phone,
     String? role,
@@ -103,6 +120,7 @@ class MemberProfile {
     return MemberProfile(
       id: id,
       name: name ?? this.name,
+      username: clearUsername ? null : username ?? this.username,
       email: email ?? this.email,
       phone: phone ?? this.phone,
       role: role ?? this.role,

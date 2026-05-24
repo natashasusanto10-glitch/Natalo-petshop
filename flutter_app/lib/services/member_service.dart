@@ -127,6 +127,70 @@ class MemberService {
     }
   }
 
+  /// Cek availability username live (debounced di UI). Return:
+  ///   - `available: true` → bebas
+  ///   - `available: false` + `reason` → TAKEN | RESERVED |
+  ///     INVALID_FORMAT | RESERVED_KEYWORD
+  Future<UsernameAvailability> checkUsernameAvailable(String raw) async {
+    try {
+      final uri = ApiConfig.uri('/api/me/username/check')
+          .replace(queryParameters: {'username': raw});
+      final res = await http
+          .get(uri, headers: _authHeaders)
+          .timeout(const Duration(seconds: 6));
+      if (res.statusCode == 401 || res.statusCode == 403) {
+        return const UsernameAvailability(
+          available: false,
+          reason: 'AUTH',
+          message: 'Login dulu untuk cek username.',
+        );
+      }
+      if (res.statusCode != 200) {
+        return const UsernameAvailability(
+          available: false,
+          reason: 'NETWORK',
+          message: 'Gagal cek username. Coba lagi.',
+        );
+      }
+      final json = jsonDecode(res.body);
+      if (json is Map<String, dynamic>) {
+        return UsernameAvailability(
+          available: json['available'] == true,
+          reason: json['reason'] as String?,
+          message: json['message'] as String?,
+        );
+      }
+      return const UsernameAvailability(available: false, reason: 'NETWORK');
+    } catch (e) {
+      if (kDebugMode) debugPrint('[memberService.checkUsername] $e');
+      return const UsernameAvailability(
+        available: false,
+        reason: 'NETWORK',
+        message: 'Gagal cek username. Coba lagi.',
+      );
+    }
+  }
+
+  /// Set / change username. Server validate + reserve 30 hari handle
+  /// lama. Return updated username pada sukses, throw ApiException
+  /// kalau gagal (caller display error.message).
+  Future<String> setUsername(String username) async {
+    readOnlyMode.assertWritable('username_set');
+    try {
+      final data = await apiClient.patchJson(
+        '/api/me/username',
+        body: {'username': username},
+      );
+      if (data is Map<String, dynamic> && data['username'] is String) {
+        return data['username'] as String;
+      }
+      throw const ApiException('Format response username invalid');
+    } catch (e) {
+      if (kDebugMode) debugPrint('[memberService.setUsername] $e');
+      rethrow;
+    }
+  }
+
   Future<MemberProfile?> fetchProfile() async {
     try {
       final uri = ApiConfig.uri('/api/auth/me');
@@ -372,4 +436,24 @@ class LoyaltyHistoryEntry {
       createdAt: DateTime.tryParse(rawDate?.toString() ?? '') ?? DateTime.now(),
     );
   }
+}
+
+
+/// Hasil cek availability username dari /api/me/username/check.
+/// reason values dari backend: TAKEN, RESERVED, INVALID_FORMAT,
+/// RESERVED_KEYWORD. Local-only values: AUTH, NETWORK.
+class UsernameAvailability {
+  final bool available;
+  final String? reason;
+  final String? message;
+
+  const UsernameAvailability({
+    required this.available,
+    this.reason,
+    this.message,
+  });
+
+  bool get isTaken => reason == "TAKEN" || reason == "RESERVED";
+  bool get isInvalidFormat =>
+      reason == "INVALID_FORMAT" || reason == "RESERVED_KEYWORD";
 }

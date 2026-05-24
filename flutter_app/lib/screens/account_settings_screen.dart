@@ -63,6 +63,47 @@ class _SettingsContent extends StatelessWidget {
               subtitle: 'Atur identitas dan foto profil kamu',
               onTap: () => Navigator.pushNamed(context, '/member/profile'),
             ),
+            // Username — public handle untuk @mention + URL profile.
+            // Subtitle dinamis dari memberStore: tampilkan @username
+            // kalau sudah set, atau "Belum diatur" supaya user lihat
+            // CTA jelas.
+            AnimatedBuilder(
+              animation: memberStore,
+              builder: (context, _) {
+                final username = memberStore.profile?.username;
+                final hasUsername =
+                    username != null && username.isNotEmpty;
+                return SettingsListItem(
+                  icon: Icons.alternate_email_rounded,
+                  title: 'Username',
+                  subtitle: hasUsername
+                      ? '@$username'
+                      : 'Belum diatur — pilih untuk fitur @mention',
+                  trailing: hasUsername
+                      ? null
+                      : Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE0F2FE),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: const Text(
+                            'BARU',
+                            style: TextStyle(
+                              color: Color(0xFF0369A1),
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                  onTap: () =>
+                      Navigator.pushNamed(context, '/member/username'),
+                );
+              },
+            ),
             SettingsListItem(
               icon: Icons.location_on_outlined,
               title: 'Daftar Alamat',
