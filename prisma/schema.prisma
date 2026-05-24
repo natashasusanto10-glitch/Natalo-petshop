@@ -126,8 +126,49 @@ model User {
   feedReportsResolved FeedReport[]         @relation("FeedReportResolver")
   feedModerationLogs  FeedModerationLog[]  @relation("FeedModerationActor")
   usernameHistory     UsernameHistory[]
+  adminActionLogs     AdminActionLog[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
+}
+
+/// Audit log untuk semua admin action critical — refund, order status
+/// changes, voucher creation/edit, user actions, dll. Dipakai untuk:
+///   1. Compliance / dispute resolution ("siapa yang refund order ini?")
+///   2. Detect rogue admin actions (anomaly: 1 admin issue 50 refund
+///      dalam 1 jam)
+///   3. Onboarding staff baru ("history lama untuk konteks")
+///   4. Customer support: "kapan dan kenapa order ini di-cancel?"
+///
+/// Fire-and-forget — logging failure tidak boleh block admin action.
+/// Field `summary` human-readable, `metadata` JSON untuk detail terstruktur.
+model AdminActionLog {
+  id           String   @id @default(cuid())
+  actorUserId  String
+  actor        User     @relation(fields: [actorUserId], references: [id])
+  /// Action category enum-like string. Convention SCREAMING_SNAKE_CASE.
+  /// Examples: ORDER_MARK_PAID, ORDER_CANCELLED, REFUND_ISSUED,
+  /// VOUCHER_CREATED, USER_ROLE_CHANGED.
+  action       String
+  /// Entity type yang di-affect. Examples: Order, RefundCase, Voucher,
+  /// User, FeedPost.
+  targetType   String
+  /// ID record yang di-affect. Pakai untuk join lookup atau filter.
+  targetId     String
+  /// Short human-readable description untuk display di log feed.
+  /// Example: "Issue refund Rp1.626.000 ke order ORD-20260524-M8LKOW"
+  summary      String
+  /// Optional structured detail JSON. Example untuk refund:
+  /// { "amount": 1626000, "reason": "OUT_OF_STOCK", "itemId": "..." }
+  metadata     Json?
+  /// IP address request untuk audit trail. Nullable kalau request
+  /// dari internal worker / cron yang gak punya client IP.
+  ipAddress    String?
+  createdAt    DateTime @default(now())
+
+  @@index([actorUserId, createdAt])
+  @@index([targetType, targetId])
+  @@index([action, createdAt])
+  @@index([createdAt])
 }
 
 /// History reservasi username — saat user ganti handle, handle lama

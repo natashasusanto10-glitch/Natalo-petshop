@@ -10,6 +10,7 @@ import { sendOrderStatusPush } from "@/lib/push";
 import { sendRefundIssuedPush } from "@/lib/push-refund";
 import { creditWallet } from "@/lib/refund-wallet";
 import { SELF_PICKUP_METHOD, createPickupCode } from "@/lib/self-pickup";
+import { AdminAction, logAdminAction } from "@/lib/admin-audit";
 // Notifikasi order via WhatsApp dihapus — admin actions update status,
 // customer dapat info via sendOrderStatusEmail + sendOrderStatusPush.
 // Fonnte hanya dipakai untuk OTP (register & login).
@@ -19,6 +20,13 @@ import { SELF_PICKUP_METHOD, createPickupCode } from "@/lib/self-pickup";
  * tapi server action bisa di-invoke langsung lewat POST. Tanpa check ini, customer
  * bisa eksekusi action admin (mark paid, cancel, dll) kalau tahu endpoint-nya.
  */
+// Helper format Rp untuk audit log summary — concise tanpa import
+// utility besar. `n` accepted as number atau null (defensive).
+function formatRupiahLog(n: number | null | undefined): string {
+  if (n === null || n === undefined) return "Rp—";
+  return `Rp${new Intl.NumberFormat("id-ID").format(Math.round(n))}`;
+}
+
 async function requireAdmin() {
   const session = await getSession("ADMIN");
   if (!session || session.role !== "ADMIN") {
@@ -53,10 +61,10 @@ async function getEmailContext(orderId: string) {
 }
 
 export async function markAsPaid(orderId: string) {
-  await requireAdmin();
+  const session = await requireAdmin();
   const current = await prisma.order.findUnique({
     where: { id: orderId },
-    select: { status: true, paymentStatus: true, orderType: true },
+    select: { status: true, paymentStatus: true, orderType: true, orderNumber: true, total: true },
   });
   if (!current) return;
 
@@ -105,6 +113,16 @@ export async function markAsPaid(orderId: string) {
       console.error("[biteship] create shipment after manual payment failed", error);
     });
   }
+
+  logAdminAction({
+    actorUserId: session.sub,
+    action: AdminAction.ORDER_MARK_PAID,
+    targetType: "Order",
+    targetId: orderId,
+    summary: `Konfirmasi pembayaran order #${current.orderNumber} (${formatRupiahLog(current.total)})`,
+    metadata: { total: current.total, orderType: current.orderType },
+  });
+
   revalidateOrderAdmin(orderId);
 }
 
@@ -250,10 +268,14 @@ export async function markAsPickedUp(orderId: string) {
 }
 
 export async function markAsCancelled(orderId: string) {
-  await requireAdmin();
+  const session = await requireAdmin();
   const variantProductIdsToSync = new Set<string>();
   const nonVariantProductIdsToSync = new Set<string>();
   let didCancel = false;
+  let cancelledOrderNumber: string | null = null;
+  let cancelledOrderTotal: number | null = null;
+  let restoredStock = false;
+  let reversedSaldo: number = 0;
 
   await prisma.$transaction(async (tx) => {
     const order = await tx.order.findUnique({
@@ -262,11 +284,14 @@ export async function markAsCancelled(orderId: string) {
     });
     if (!order || order.status === "CANCELLED") return;
     assertCanTransitionOrderStatus(order.status, "CANCELLED");
+    cancelledOrderNumber = order.orderNumber;
+    cancelledOrderTotal = order.total;
 
     const shouldRestoreStock =
       order.status === "PENDING" ||
       order.status === "PAID" ||
       order.status === "PROCESSING";
+    restoredStock = shouldRestoreStock;
 
     if (shouldRestoreStock) {
       for (const item of order.items) {
@@ -337,6 +362,7 @@ export async function markAsCancelled(orderId: string) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         tx as any,
       );
+      reversedSaldo = order.refundBalanceUsed;
     }
 
     const result = await tx.order.updateMany({
@@ -366,6 +392,22 @@ export async function markAsCancelled(orderId: string) {
     } catch {
       // Search index sync gagal, tidak block cancel
     }
+  }
+
+  if (didCancel && cancelledOrderNumber) {
+    logAdminAction({
+      actorUserId: session.sub,
+      action: AdminAction.ORDER_CANCELLED,
+      targetType: "Order",
+      targetId: orderId,
+      summary: `Cancel order #${cancelledOrderNumber} (${formatRupiahLog(cancelledOrderTotal)})`,
+      metadata: {
+        orderNumber: cancelledOrderNumber,
+        total: cancelledOrderTotal,
+        restoredStock,
+        reversedSaldo,
+      },
+    });
   }
 
   revalidateOrderAdmin(orderId);
@@ -556,6 +598,21 @@ export async function issueRefundToWallet(
       itemName,
       adminNote,
     });
+
+    logAdminAction({
+      actorUserId: adminId,
+      action: AdminAction.REFUND_ISSUED,
+      targetType: "RefundCase",
+      targetId: refundCase.id,
+      summary: `Issue refund ${formatRupiahLog(amount)} ke order ${orderId.slice(0, 8)} (${reason}${itemId ? ` · item: ${itemName ?? itemId}` : " · seluruh order"})`,
+      metadata: {
+        orderId,
+        itemId: itemId ?? null,
+        amount,
+        reason,
+        adminNote,
+      },
+    });
   } catch (err) {
     await prisma.refundCase.update({
       where: { id: refundCase.id },
@@ -723,6 +780,22 @@ export async function markItemPartiallyOutOfStock(
       reason: "OUT_OF_STOCK",
       itemName: item.name,
       adminNote,
+    });
+
+    logAdminAction({
+      actorUserId: adminId,
+      action: AdminAction.REFUND_ITEM_OOS,
+      targetType: "RefundCase",
+      targetId: refundCase.id,
+      summary: `Item kosong: ${missingQty} pcs "${item.name}" → refund ${formatRupiahLog(amount)}`,
+      metadata: {
+        orderId,
+        itemId,
+        itemName: item.name,
+        missingQty,
+        amount,
+        discountRatio,
+      },
     });
   } catch (err) {
     await prisma.refundCase.update({

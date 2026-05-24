@@ -240,13 +240,21 @@ export default async function AdminDashboardPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-5 md:py-8">
-      <div>
-        <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">
-          Dashboard Admin
-        </h1>
-        <p className="mt-1.5 text-sm text-zinc-600 md:mt-2">
-          Masuk sebagai {session?.name ?? "Admin"}. Fokus utama: order masuk dan stok kritis.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">
+            Dashboard Admin
+          </h1>
+          <p className="mt-1.5 text-sm text-zinc-600 md:mt-2">
+            Masuk sebagai {session?.name ?? "Admin"}. Fokus utama: order masuk dan stok kritis.
+          </p>
+        </div>
+        <Link
+          href="/admin/audit-log"
+          className="shrink-0 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs font-semibold text-zinc-700 hover:bg-zinc-50"
+        >
+          📋 Audit Log
+        </Link>
       </div>
 
       {paidUnshippedCount > 0 && (
