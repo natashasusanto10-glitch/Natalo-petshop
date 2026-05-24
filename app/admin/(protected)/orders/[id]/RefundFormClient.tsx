@@ -24,7 +24,8 @@
  *  5. Toggle "Override nominal manual" untuk kasus kompleks.
  *  6. Submit via server action — kirim hidden `amount` field.
  */
-import { useState, useMemo } from "react";
+import { useState, useMemo, useActionState, useEffect } from "react";
+import type { RefundActionResult } from "./actions";
 
 const reasons = [
   { value: "OUT_OF_STOCK", label: "Produk kosong" },
@@ -45,6 +46,8 @@ function formatRupiah(n: number): string {
   return `Rp${new Intl.NumberFormat("id-ID").format(Math.max(0, Math.round(n)))}`;
 }
 
+const INITIAL_STATE: RefundActionResult = { ok: false, message: "" };
+
 export default function RefundFormClient({
   items,
   action,
@@ -54,7 +57,14 @@ export default function RefundFormClient({
   orderShippingDiscount,
 }: {
   items: RefundFormItem[];
-  action: (formData: FormData) => void;
+  /**
+   * Server action signature: (prevState, formData) => Promise<RefundActionResult>.
+   * Caller `.bind(null, orderId)` di page.tsx.
+   */
+  action: (
+    prevState: RefundActionResult,
+    formData: FormData,
+  ) => Promise<RefundActionResult>;
   orderSubtotal: number;
   orderProductDiscount: number;
   orderShippingFee: number;
@@ -67,6 +77,26 @@ export default function RefundFormClient({
   const [manualAmount, setManualAmount] = useState<string>("");
   const [reason, setReason] = useState<string>("OUT_OF_STOCK");
   const [adminNote, setAdminNote] = useState<string>("");
+
+  // useActionState — wrap server action supaya admin dapat success/error
+  // banner feedback langsung di form (no page reload, no error boundary).
+  const [actionState, formAction, isPending] = useActionState(
+    action,
+    INITIAL_STATE,
+  );
+
+  // Reset form fields setelah success — supaya admin bisa langsung issue
+  // refund berikutnya tanpa stale data. Trigger pakai timestamp change.
+  useEffect(() => {
+    if (actionState.ok && actionState.timestamp) {
+      setItemId("");
+      setRefundQty(0);
+      setManualOverride(false);
+      setManualAmount("");
+      setReason("OUT_OF_STOCK");
+      setAdminNote("");
+    }
+  }, [actionState.ok, actionState.timestamp]);
 
   const selectedItem = useMemo(
     () => items.find((it) => it.id === itemId) ?? null,
@@ -125,10 +155,55 @@ export default function RefundFormClient({
     setManualOverride(false);
   };
 
-  const canSubmit = effectiveAmount > 0 && !!reason;
+  const canSubmit = effectiveAmount > 0 && !!reason && !isPending;
 
   return (
-    <form action={action} className="mt-3 space-y-3 text-sm">
+    <form action={formAction} className="mt-3 space-y-3 text-sm">
+      {/* Success/error banner — muncul setelah submit complete */}
+      {actionState.message && (
+        <div
+          className={
+            actionState.ok
+              ? "rounded-lg border border-emerald-200 bg-emerald-50 p-3"
+              : "rounded-lg border border-red-200 bg-red-50 p-3"
+          }
+        >
+          <div className="flex items-start gap-2">
+            <span className="text-base leading-none">
+              {actionState.ok ? "✅" : "⚠️"}
+            </span>
+            <div className="flex-1">
+              <p
+                className={
+                  actionState.ok
+                    ? "text-xs font-bold text-emerald-900"
+                    : "text-xs font-bold text-red-900"
+                }
+              >
+                {actionState.ok ? "Refund Berhasil" : "Gagal Refund"}
+              </p>
+              <p
+                className={
+                  actionState.ok
+                    ? "mt-0.5 text-[11px] text-emerald-800"
+                    : "mt-0.5 text-[11px] text-red-800"
+                }
+              >
+                {actionState.message}
+              </p>
+              {actionState.ok && actionState.timestamp && (
+                <p className="mt-1 text-[10px] text-emerald-600">
+                  {new Date(actionState.timestamp).toLocaleString("id-ID", {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Item picker */}
       <div>
         <label className="block text-xs font-semibold text-zinc-700">
@@ -385,7 +460,7 @@ export default function RefundFormClient({
         disabled={!canSubmit}
         className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-zinc-300"
       >
-        Kredit Saldo Refund
+        {isPending ? "Memproses refund..." : "Kredit Saldo Refund"}
       </button>
 
       {/* Order context untuk debugging admin */}

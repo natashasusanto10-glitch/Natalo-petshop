@@ -414,6 +414,23 @@ export async function markAsCancelled(orderId: string) {
 }
 
 /**
+ * Result type untuk `issueRefundToWallet` server action.
+ * Dipakai dengan `useActionState` di RefundFormClient supaya admin
+ * dapat success/error banner tanpa reload page atau error boundary.
+ *
+ * ok=true → tampil banner hijau dengan amount + timestamp.
+ * ok=false → tampil banner merah dengan message.
+ * Initial state (sebelum first submit): { ok: false, message: '' }.
+ */
+export type RefundActionResult = {
+  ok: boolean;
+  message: string;
+  amount?: number;
+  /** ISO timestamp untuk client-side date format. */
+  timestamp?: string;
+};
+
+/**
  * Issue refund ke Saldo Refund user.
  *
  * Admin action — create RefundCase + credit RefundWallet atomically.
@@ -426,20 +443,20 @@ export async function markAsCancelled(orderId: string) {
  *  - itemId: string | "" (kosong = whole order refund)
  *  - adminNote: string (opsional, display ke user)
  *
- * Behavior:
- *  - Validate session ADMIN
- *  - Validate order exists + belongs to a user
- *  - Validate amount > 0
- *  - Create RefundCase + credit wallet atomic
- *  - Link ledger entry ke RefundCase.ledgerEntryId untuk audit
- *  - Revalidate admin order page
+ * Signature compatible dengan `useActionState`:
+ *   (orderId, prevState, formData) => Promise<RefundActionResult>
+ * Setelah `.bind(null, orderId)`:
+ *   (prevState, formData) => Promise<RefundActionResult>
  *
- * Tidak send notif user di MVP — defer ke Phase 4.
+ * Validation/business errors di-return sebagai { ok: false, message }
+ * supaya client bisa display di banner. Auth/system errors tetap throw
+ * (akan triggered error boundary — itu kasus exceptional).
  */
 export async function issueRefundToWallet(
   orderId: string,
+  _prevState: RefundActionResult,
   formData: FormData,
-): Promise<void> {
+): Promise<RefundActionResult> {
   const session = await requireAdmin();
   const adminId = session.sub;
 
@@ -450,10 +467,13 @@ export async function issueRefundToWallet(
 
   const amount = parseInt(String(amountRaw ?? "0"), 10);
   if (!Number.isFinite(amount) || amount <= 0) {
-    throw new Error("Nominal refund harus lebih dari Rp0.");
+    return { ok: false, message: "Nominal refund harus lebih dari Rp0." };
   }
   if (amount > 100_000_000) {
-    throw new Error("Nominal refund > Rp100jt — butuh approval level lebih tinggi.");
+    return {
+      ok: false,
+      message: "Nominal refund > Rp100jt — butuh approval level lebih tinggi.",
+    };
   }
 
   const VALID_REASONS = [
@@ -465,7 +485,7 @@ export async function issueRefundToWallet(
   ] as const;
   const reason = String(reasonRaw ?? "") as (typeof VALID_REASONS)[number];
   if (!VALID_REASONS.includes(reason)) {
-    throw new Error(`Reason tidak valid: ${reason}`);
+    return { ok: false, message: `Reason tidak valid: ${reason}` };
   }
 
   const itemId = itemIdRaw ? String(itemIdRaw) : null;
@@ -475,11 +495,13 @@ export async function issueRefundToWallet(
     where: { id: orderId },
     select: { id: true, userId: true, total: true },
   });
-  if (!order) throw new Error("Order tidak ditemukan.");
+  if (!order) return { ok: false, message: "Order tidak ditemukan." };
   if (!order.userId) {
-    throw new Error(
-      "Order ini guest checkout (tidak ter-asosiasi dengan user) — tidak bisa refund ke Saldo Refund. Pakai refund manual ke metode bayar asal.",
-    );
+    return {
+      ok: false,
+      message:
+        "Order ini guest checkout — tidak bisa refund ke Saldo Refund. Pakai refund manual ke metode bayar asal.",
+    };
   }
   const refundUserId = order.userId;
 
@@ -502,7 +524,7 @@ export async function issueRefundToWallet(
       select: { orderId: true, price: true, quantity: true, name: true },
     });
     if (!item || item.orderId !== orderId) {
-      throw new Error("Item tidak ditemukan di order ini.");
+      return { ok: false, message: "Item tidak ditemukan di order ini." };
     }
     const itemLineTotal = item.price * item.quantity;
     const existingItemRefund = await prisma.refundCase.aggregate({
@@ -531,13 +553,15 @@ export async function issueRefundToWallet(
   }
   if (amount > maxAllowedRefund) {
     if (maxAllowedRefund <= 0) {
-      throw new Error(
-        `Refund untuk ${validationContext} sudah penuh. Tidak bisa refund tambahan.`,
-      );
+      return {
+        ok: false,
+        message: `Refund untuk ${validationContext} sudah penuh. Tidak bisa refund tambahan.`,
+      };
     }
-    throw new Error(
-      `Nominal refund (Rp${amount.toLocaleString("id-ID")}) melebihi maksimum (Rp${maxAllowedRefund.toLocaleString("id-ID")}) untuk ${validationContext}.`,
-    );
+    return {
+      ok: false,
+      message: `Nominal refund (Rp${amount.toLocaleString("id-ID")}) melebihi maksimum (Rp${maxAllowedRefund.toLocaleString("id-ID")}) untuk ${validationContext}.`,
+    };
   }
 
   // Create RefundCase as PENDING dulu. Kalau credit sukses → CREDITED.
@@ -614,19 +638,27 @@ export async function issueRefundToWallet(
       },
     });
   } catch (err) {
+    const errMessage = err instanceof Error ? err.message : String(err);
     await prisma.refundCase.update({
       where: { id: refundCase.id },
       data: {
         status: "REJECTED",
-        adminNote: `${adminNote ?? ""}\n[SYSTEM] Credit failed: ${
-          err instanceof Error ? err.message : String(err)
-        }`.trim(),
+        adminNote: `${adminNote ?? ""}\n[SYSTEM] Credit failed: ${errMessage}`.trim(),
       },
     });
-    throw err;
+    return {
+      ok: false,
+      message: `Gagal kredit saldo: ${errMessage}`,
+    };
   }
 
   revalidateOrderAdmin(orderId);
+  return {
+    ok: true,
+    message: `Refund Rp${amount.toLocaleString("id-ID")} berhasil dikredit ke Saldo Refund user.`,
+    amount,
+    timestamp: new Date().toISOString(),
+  };
 }
 
 /**
