@@ -15,7 +15,7 @@ import '../utils/haptics.dart';
 /// Mechanics:
 /// - NotificationListener detect overscroll di top scrollable
 /// - Drag offset di-accumulate dari `OverscrollNotification.overscroll`
-/// - Threshold @ `triggerOffset` (default 42px): haptic tap fire,
+/// - Threshold @ `triggerOffset` (default 48px): haptic tap fire,
 ///   indicator "armed" — kalau user lepas, refresh trigger
 /// - During refresh: paw spin continuous (900ms loop) + freeze offset
 ///   di triggerOffset supaya tetap visible
@@ -53,7 +53,7 @@ class NataloPawRefreshIndicator extends StatefulWidget {
   final Future<void> Function() onRefresh;
 
   /// Berapa pull pixel sebelum indicator "armed" + refresh trigger.
-  /// Default 42 — lebih ringan dari Material default supaya pull tidak
+  /// Default 48 — lebih ringan dari Material default supaya pull tidak
   /// terasa berhenti setengah jalan di CustomScrollView + pinned header.
   final double triggerOffset;
 
@@ -74,7 +74,7 @@ class NataloPawRefreshIndicator extends StatefulWidget {
     super.key,
     required this.child,
     required this.onRefresh,
-    this.triggerOffset = 42,
+    this.triggerOffset = 48,
     this.topPadding = 8,
     this.translateChild = false,
     this.maxChildOffset = 34,
@@ -200,7 +200,7 @@ class _NataloPawRefreshIndicatorState extends State<NataloPawRefreshIndicator>
     // Sedikit toleran saat release: beberapa scrollable (terutama detail
     // screen dengan ListView pendek) tidak selalu memberi update frame tepat
     // di threshold, padahal user sudah menarik cukup jauh secara visual.
-    final releaseTrigger = widget.triggerOffset * 0.56;
+    final releaseTrigger = widget.triggerOffset * 0.72;
     if ((_armed && _overscroll >= widget.triggerOffset) ||
         _overscroll >= releaseTrigger ||
         _maxOverscroll >= releaseTrigger) {
