@@ -15,9 +15,13 @@ import {
   markAsReadyForPickup,
   markAsShipped,
   markItemPartiallyOutOfStock,
+  approveCancellationRequest,
+  rejectCancellationRequest,
 } from "./actions";
 import ItemOutOfStockButton from "./ItemOutOfStockButton";
 import RefundFormClient from "./RefundFormClient";
+import CancelOrderButton from "./CancelOrderButton";
+import CancellationRequestBanner from "./CancellationRequestBanner";
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: "Order Baru",
@@ -72,6 +76,8 @@ export default async function AdminOrderDetailPage({
   const markAsShippedAction = markAsShipped.bind(null, id);
   const markAsDeliveredAction = markAsDelivered.bind(null, id);
   const markAsCancelledAction = markAsCancelled.bind(null, id);
+  const approveCancellationAction = approveCancellationRequest.bind(null, id);
+  const rejectCancellationAction = rejectCancellationRequest.bind(null, id);
   const createShipmentAction = createShipment.bind(null, id);
 
   const issueRefundToWalletAction = issueRefundToWallet.bind(null, id);
@@ -157,6 +163,22 @@ export default async function AdminOrderDetailPage({
         </div>
       </div>
 
+      {/* Cancellation request banner — muncul kalau customer sudah submit
+          request batal (paymentStatus=PAID flow). Untuk status APPROVED/
+          REJECTED tampil sebagai history view (audit trail). PENDING
+          tampil actionable dengan tombol Setujui/Tolak. */}
+      {order.cancellationRequestStatus && (
+        <CancellationRequestBanner
+          status={order.cancellationRequestStatus as "PENDING" | "APPROVED" | "REJECTED"}
+          reason={order.cancellationReason}
+          requestedAt={order.cancellationRequestedAt?.toISOString() ?? null}
+          respondedAt={order.cancellationRespondedAt?.toISOString() ?? null}
+          rejectReason={order.cancellationRejectReason}
+          approveAction={approveCancellationAction}
+          rejectAction={rejectCancellationAction}
+        />
+      )}
+
       <div className="mt-5 grid gap-4 md:mt-8 md:gap-6 lg:grid-cols-[1fr_340px]">
         {/* ── Produk ── */}
         <section className="rounded-2xl border border-zinc-200 p-4 md:rounded-3xl md:p-5">
@@ -228,37 +250,83 @@ export default async function AdminOrderDetailPage({
             )}
           </div>
 
-          {/* ── Saldo Refund Section ── */}
-          <details className="mt-6 rounded-2xl border border-blue-200 bg-blue-50/50 p-4">
-            <summary className="cursor-pointer font-semibold text-blue-900">
-              💰 Refund ke Saldo Refund User
-            </summary>
-            <p className="mt-2 text-xs text-zinc-600">
-              Kredit saldo refund user untuk kasus produk kosong, partial
-              cancel, atau return approved. Saldo akan masuk instant dan
-              bisa user pakai di checkout berikutnya.
-            </p>
-            <RefundFormClient
-              items={order.items.map((it) => ({
-                id: it.id,
-                name: it.name,
-                quantity: it.quantity,
-                price: it.price,
-              }))}
-              action={issueRefundToWalletAction}
-              orderSubtotal={order.subtotal ?? 0}
-              orderProductDiscount={order.productDiscount ?? 0}
-              orderShippingFee={order.shippingCost ?? 0}
-              orderShippingDiscount={order.shippingDiscount ?? 0}
-            />
+          {/* ── Saldo Refund Section ──
+              Form kredit baru disembunyikan kalau order udah final
+              (DELIVERED/CANCELLED/REFUNDED) — match dengan guard di
+              server action issueRefundToWallet. Kalau CANCELLED, saldo
+              udah otomatis di-reverse via markAsCancelled — refund manual
+              di sini akan double-refund. History tetap dirender untuk
+              audit trail (kalau ada). */}
+          {!isDone ? (
+            <details className="mt-6 rounded-2xl border border-blue-200 bg-blue-50/50 p-4">
+              <summary className="cursor-pointer font-semibold text-blue-900">
+                💰 Refund ke Saldo Refund User
+              </summary>
+              <p className="mt-2 text-xs text-zinc-600">
+                Kredit saldo refund user untuk kasus produk kosong, partial
+                cancel, atau return approved. Saldo akan masuk instant dan
+                bisa user pakai di checkout berikutnya.
+              </p>
+              <RefundFormClient
+                items={order.items.map((it) => ({
+                  id: it.id,
+                  name: it.name,
+                  quantity: it.quantity,
+                  price: it.price,
+                }))}
+                action={issueRefundToWalletAction}
+                orderSubtotal={order.subtotal ?? 0}
+                orderProductDiscount={order.productDiscount ?? 0}
+                orderShippingFee={order.shippingCost ?? 0}
+                orderShippingDiscount={order.shippingDiscount ?? 0}
+              />
 
-            {/* History refund per order ini */}
-            {order.refundCases.length > 0 && (
-              <div className="mt-4 border-t border-blue-200 pt-3">
-                <p className="text-xs font-semibold text-blue-900">
+              {/* History refund per order ini */}
+              {order.refundCases.length > 0 && (
+                <div className="mt-4 border-t border-blue-200 pt-3">
+                  <p className="text-xs font-semibold text-blue-900">
+                    Riwayat refund order ini ({order.refundCases.length})
+                  </p>
+                  <ul className="mt-2 space-y-1.5 text-xs">
+                    {order.refundCases.map((rc) => (
+                      <li
+                        key={rc.id}
+                        className="flex items-center justify-between rounded bg-white px-3 py-2"
+                      >
+                        <span>
+                          <span
+                            className={`mr-2 inline-block rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                              rc.status === "CREDITED"
+                                ? "bg-emerald-100 text-emerald-700"
+                                : rc.status === "REJECTED"
+                                  ? "bg-red-100 text-red-700"
+                                  : "bg-amber-100 text-amber-700"
+                            }`}
+                          >
+                            {rc.status}
+                          </span>
+                          {rc.reason.replace(/_/g, " ").toLowerCase()}
+                        </span>
+                        <span className="font-semibold text-zinc-900">
+                          {formatRupiah(rc.amount)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </details>
+          ) : (
+            order.refundCases.length > 0 && (
+              <div className="mt-6 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                <p className="text-xs font-semibold text-zinc-700">
                   Riwayat refund order ini ({order.refundCases.length})
                 </p>
-                <ul className="mt-2 space-y-1.5 text-xs">
+                <p className="mt-1 text-[11px] text-zinc-500">
+                  Order sudah {order.status === "CANCELLED" ? "dibatalkan" : order.status === "REFUNDED" ? "di-refund penuh" : "selesai"} —
+                  refund baru tidak bisa dilakukan dari sini.
+                </p>
+                <ul className="mt-3 space-y-1.5 text-xs">
                   {order.refundCases.map((rc) => (
                     <li
                       key={rc.id}
@@ -285,8 +353,8 @@ export default async function AdminOrderDetailPage({
                   ))}
                 </ul>
               </div>
-            )}
-          </details>
+            )
+          )}
         </section>
 
         {/* ── Sidebar ── */}
@@ -601,15 +669,18 @@ export default async function AdminOrderDetailPage({
                   </form>
                 )}
 
-                {/* Batalkan */}
-                <form action={markAsCancelledAction}>
-                  <button
-                    type="submit"
-                    className="w-full rounded-full border border-red-300 bg-red-50 px-5 py-3 text-sm font-bold text-red-700 hover:bg-red-100"
-                  >
-                    Batalkan order
-                  </button>
-                </form>
+                {/* Batalkan order — wrapped in CancelOrderButton (client)
+                    untuk konfirmasi dialog yang surface nominal auto-refund
+                    sebelum eksekusi. markAsCancelled sekarang otomatis
+                    kredit Saldo Refund customer (lihat actions.ts). */}
+                <CancelOrderButton
+                  action={markAsCancelledAction}
+                  orderTotal={order.total}
+                  alreadyRefunded={totalRefunded}
+                  refundBalanceUsed={order.refundBalanceUsed}
+                  paymentStatus={order.paymentStatus}
+                  orderNumber={order.orderNumber}
+                />
               </div>
             </section>
           )}
