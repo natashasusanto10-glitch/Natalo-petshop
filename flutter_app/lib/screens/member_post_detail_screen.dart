@@ -715,7 +715,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
                   type: NataloPostActionIconType.like,
                   isActive: liked,
                   iconSize: 30,
-                  strokeWidth: 2.05,
+                  strokeWidth: 1.75,
                   tapSize: 44,
                   count: post.likeCount,
                   semanticLabel: liked ? 'Batalkan suka' : 'Sukai postingan',
@@ -725,7 +725,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
               NataloPostActionButton(
                 type: NataloPostActionIconType.comment,
                 iconSize: 30,
-                strokeWidth: 2.05,
+                strokeWidth: 1.75,
                 tapSize: 44,
                 count: post.commentCount,
                 semanticLabel: 'Buka komentar',
@@ -734,7 +734,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
               NataloPostActionButton(
                 type: NataloPostActionIconType.share,
                 iconSize: 30,
-                strokeWidth: 2.05,
+                strokeWidth: 1.75,
                 tapSize: 44,
                 count: post.shareCount,
                 semanticLabel: 'Bagikan postingan',
@@ -817,7 +817,7 @@ class _PostAuthorRow extends StatelessWidget {
               style: const TextStyle(
                 color: NataloColors.textPrimary,
                 fontSize: 15,
-                fontWeight: FontWeight.w900,
+                fontWeight: FontWeight.w700,
                 height: 1.15,
               ),
             ),
@@ -882,7 +882,7 @@ class _VideoPostAuthorOverlay extends StatelessWidget {
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 15,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w700,
                   height: 1.15,
                   shadows: [
                     Shadow(color: Colors.black54, blurRadius: 10),
