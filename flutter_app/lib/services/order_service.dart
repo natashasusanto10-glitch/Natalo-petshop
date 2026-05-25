@@ -210,6 +210,31 @@ class OrderService {
     );
   }
 
+  /// User konfirmasi paket sudah diterima. Match endpoint POST
+  /// /api/orders/{number}/confirm-delivered. Server transit status
+  /// SHIPPED → DELIVERED, kirim notif "Pesanan selesai" ke email + push.
+  ///
+  /// Idempotent: kalau order sudah DELIVERED, return result dengan
+  /// `alreadyConfirmed = true` (bukan error) — client jangan show pesan
+  /// gagal kalau user double-tap tombolnya.
+  Future<ConfirmDeliveredResult> confirmDelivered({
+    required String orderNumber,
+  }) async {
+    readOnlyMode.assertWritable('confirm_delivered');
+    final response = await apiClient.postJson(
+      '/api/orders/${Uri.encodeComponent(orderNumber)}/confirm-delivered',
+    );
+    final data = response is Map<String, dynamic>
+        ? response
+        : const <String, dynamic>{};
+    return ConfirmDeliveredResult(
+      alreadyConfirmed: data['alreadyConfirmed'] == true,
+      message: data['message'] is String
+          ? data['message'] as String
+          : 'Pesanan ditandai selesai.',
+    );
+  }
+
   /// Bulk status check untuk multiple orders. Match endpoint PWA
   /// GET /api/orders/status?numbers=NAT-001,NAT-002,...
   ///
@@ -413,6 +438,20 @@ class MidtransPaymentToken {
   const MidtransPaymentToken({
     this.token,
     required this.redirectUrl,
+  });
+}
+
+/// Result dari [OrderService.confirmDelivered].
+/// - [alreadyConfirmed]: true kalau order sudah DELIVERED sebelumnya (idempotent
+///   response — bukan error). UI bisa skip toast atau pakai message yang beda.
+/// - [message]: text dari server untuk toast / dialog success.
+class ConfirmDeliveredResult {
+  final bool alreadyConfirmed;
+  final String message;
+
+  const ConfirmDeliveredResult({
+    required this.alreadyConfirmed,
+    required this.message,
   });
 }
 

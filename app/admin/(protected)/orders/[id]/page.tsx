@@ -635,16 +635,37 @@ export default async function AdminOrderDetailPage({
                   </form>
                 )}
 
-                {/* 5. Tandai selesai (SHIPPED) */}
+                {/* 5. Tandai selesai (SHIPPED) — OVERRIDE
+                    Primary flow sekarang user-driven: customer pencet
+                    "Pesanan Sudah Diterima" di app Flutter setelah paket
+                    sampai → status auto DELIVERED. Tombol admin ini cuma
+                    backup buat kasus:
+                      - User offline lama / tidak pakai app
+                      - Kurir lapor delivered tapi customer gak konfirmasi
+                      - Customer minta admin tutup manual via WA
+                    Note: setelah DELIVERED, window komplain/refund tutup,
+                    jadi pakai dengan hati-hati. */}
                 {order.status === "SHIPPED" && !isSelfPickup && (
-                  <form action={markAsDeliveredAction}>
-                    <button
-                      type="submit"
-                      className="w-full rounded-full bg-emerald-600 px-5 py-3 text-sm font-bold text-white hover:bg-emerald-700"
-                    >
-                      ✅ Tandai selesai
-                    </button>
-                  </form>
+                  <details className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+                    <summary className="cursor-pointer text-xs font-bold text-zinc-600 hover:text-zinc-900">
+                      Override: tandai selesai manual
+                    </summary>
+                    <p className="mt-2 text-xs text-zinc-600">
+                      Sebaiknya customer yang tap &quot;Pesanan Sudah Diterima&quot; di
+                      app. Pakai tombol ini hanya kalau customer tidak bisa
+                      konfirmasi sendiri (offline, gak pakai app, dll).
+                      Setelah selesai, refund/komplain tidak bisa dilakukan
+                      lagi.
+                    </p>
+                    <form action={markAsDeliveredAction} className="mt-2">
+                      <button
+                        type="submit"
+                        className="w-full rounded-full border border-emerald-300 bg-white px-5 py-2.5 text-xs font-bold text-emerald-700 hover:bg-emerald-50"
+                      >
+                        Tandai selesai (override)
+                      </button>
+                    </form>
+                  </details>
                 )}
 
                 {isSelfPickup && order.paymentStatus === "PAID" && order.status === "PROCESSING" && (

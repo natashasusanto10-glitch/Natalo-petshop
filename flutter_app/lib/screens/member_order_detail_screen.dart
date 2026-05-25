@@ -58,6 +58,7 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
   late Future<OrderSummary> _orderFuture;
   bool _reordering = false;
   bool _cancelling = false;
+  bool _confirmingDelivered = false;
 
   @override
   void initState() {
@@ -231,6 +232,124 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
     }
   }
 
+  /// User konfirmasi paket sudah diterima (Shopee/Tokopedia pattern).
+  /// Tombol tampil saat status SHIPPED. Setelah confirm:
+  ///   - status berubah DELIVERED
+  ///   - window refund / komplain TUTUP (admin tidak bisa refund lagi)
+  ///   - email + push "Pesanan selesai" dikirim ke user
+  /// Confirm dialog dipakai supaya user tidak accidentally tap → kehilangan
+  /// window komplain.
+  Future<void> _confirmDelivered(
+    BuildContext context,
+    OrderSummary order,
+  ) async {
+    if (_confirmingDelivered) return;
+    AppHaptics.tap();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        icon: Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: const Color(0xFFD1FAE5),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: const Icon(
+            Icons.check_circle_outline_rounded,
+            color: Color(0xFF059669),
+            size: 28,
+          ),
+        ),
+        title: const Text(
+          'Sudah terima pesanan?',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Konfirmasi pesanan sudah sampai dan kondisinya OK. Setelah ini, '
+              'pesanan akan ditandai selesai dan window komplain/refund akan '
+              'tutup.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Color(0xFF374151),
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                height: 1.5,
+              ),
+            ),
+            SizedBox(height: 10),
+            Text(
+              'Kalau ada masalah dengan paket, jangan tap dulu — hubungi admin '
+              'via WhatsApp.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Color(0xFF6B7280),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: const Text('Belum'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF059669),
+            ),
+            child: const Text('Ya, Sudah Terima'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _executeConfirmDelivered(order);
+  }
+
+  Future<void> _executeConfirmDelivered(OrderSummary order) async {
+    setState(() => _confirmingDelivered = true);
+    try {
+      final result = await orderService.confirmDelivered(
+        orderNumber: order.orderNumber,
+      );
+      if (!mounted) return;
+      AppHaptics.success();
+      await _refreshOrder();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.alreadyConfirmed
+                ? 'Pesanan sudah ditandai selesai.'
+                : result.message,
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      AppHaptics.warning();
+      final message = error.toString().replaceFirst('Exception: ', '');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Konfirmasi gagal: $message'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _confirmingDelivered = false);
+    }
+  }
+
   Future<void> _buyAgain(BuildContext context, OrderSummary order) async {
     if (_reordering) return;
 
@@ -357,6 +476,18 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
                   _CancelOrderCard(
                     loading: _cancelling,
                     onCancel: () => _confirmCancel(context, order),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                // Tombol "Pesanan Sudah Diterima" — tampil hanya kalau status
+                // SHIPPED (paket sudah di kurir, user nunggu sampai). Setelah
+                // tap → status DELIVERED, window refund tutup. Self-pickup
+                // tidak pakai tombol ini (admin handle via markAsPickedUp).
+                if (order.status.toUpperCase() == 'SHIPPED' &&
+                    !order.isSelfPickup) ...[
+                  _ConfirmDeliveredCard(
+                    loading: _confirmingDelivered,
+                    onConfirm: () => _confirmDelivered(context, order),
                   ),
                   const SizedBox(height: 12),
                 ],
@@ -2273,6 +2404,106 @@ class _CancelOrderCard extends StatelessWidget {
                       ),
                     )
                   : const Text('Batalkan'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Card "Pesanan Sudah Diterima" — tombol prominent hijau yang muncul
+/// kalau status SHIPPED (paket sudah dikirim ke kurir). Tap → confirm
+/// dialog → status DELIVERED + window refund tutup.
+///
+/// Style: lebih prominent dari Cancel Card (primary action di stage ini).
+/// Customer ekspektasi: "kalau sudah terima, tap di sini" — analog dengan
+/// "Pesanan Diterima" di Shopee/Tokopedia.
+class _ConfirmDeliveredCard extends StatelessWidget {
+  final bool loading;
+  final VoidCallback onConfirm;
+
+  const _ConfirmDeliveredCard({
+    required this.loading,
+    required this.onConfirm,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFECFDF5),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFA7F3D0), width: 1.5),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: const Color(0xFFD1FAE5),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              Icons.check_circle_outline_rounded,
+              color: Color(0xFF059669),
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Pesanan sudah sampai?',
+                  style: TextStyle(
+                    color: Color(0xFF065F46),
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Konfirmasi untuk selesaikan pesanan.',
+                  style: TextStyle(
+                    color: Color(0xFF047857),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            height: 38,
+            child: FilledButton(
+              onPressed: loading ? null : onConfirm,
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF059669),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                textStyle: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              child: loading
+                  ? const SizedBox(
+                      height: 16,
+                      width: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Sudah Diterima'),
             ),
           ),
         ],
