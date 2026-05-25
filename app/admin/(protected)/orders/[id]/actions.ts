@@ -276,6 +276,14 @@ export async function markAsCancelled(orderId: string) {
   let cancelledOrderTotal: number | null = null;
   let restoredStock = false;
   let reversedSaldo: number = 0;
+  // Nominal yang otomatis di-refund ke Saldo Refund user pas cancel.
+  // Selain reversedSaldo (saldo yang DIPAKAI bayar, dibalikin ke wallet),
+  // ini cover sisa nominal yang user bayar via Midtrans/transfer/etc.
+  // Sebelumnya: admin harus manual buka form refund + pilih reason
+  // ORDER_CANCELLED + input nominal. Sekarang otomatis dalam transaction
+  // yang sama supaya tidak ada celah "lupa refund setelah cancel" yang
+  // berakibat duit user mengambang di kas Natalo.
+  let autoRefundedAmount: number = 0;
 
   await prisma.$transaction(async (tx) => {
     const order = await tx.order.findUnique({
@@ -283,6 +291,28 @@ export async function markAsCancelled(orderId: string) {
       include: { items: true },
     });
     if (!order || order.status === "CANCELLED") return;
+
+    // Status guard ramah-pengguna sebelum hit assertCanTransitionOrderStatus
+    // yang error message-nya generic ("Transisi status order tidak valid").
+    // SHIPPED & DELIVERED memang sudah di-block oleh transition matrix di
+    // lib/order-transitions.ts, ini cuma supaya admin dapat penjelasan yang
+    // actionable.
+    if (order.status === "SHIPPED") {
+      throw new Error(
+        `Order #${order.orderNumber} sudah dikirim. Paket sudah di kurir — tidak bisa dibatalkan. Kalau bermasalah, tunggu paket sampai lalu proses sebagai retur.`,
+      );
+    }
+    if (order.status === "DELIVERED") {
+      throw new Error(
+        `Order #${order.orderNumber} sudah ditandai SELESAI. Pesanan yang sudah selesai tidak bisa dibatalkan.`,
+      );
+    }
+    if (order.status === "REFUNDED") {
+      throw new Error(
+        `Order #${order.orderNumber} sudah ditandai REFUNDED — tidak perlu cancel ulang.`,
+      );
+    }
+
     assertCanTransitionOrderStatus(order.status, "CANCELLED");
     cancelledOrderNumber = order.orderNumber;
     cancelledOrderTotal = order.total;
@@ -365,6 +395,68 @@ export async function markAsCancelled(orderId: string) {
       reversedSaldo = order.refundBalanceUsed;
     }
 
+    // ── Auto-refund nominal yang user bayar (non-saldo) ──────────────
+    // Sebelum patch ini, admin harus manual buka form refund + pilih
+    // ORDER_CANCELLED + input nominal. Kalau lupa → duit user mengambang.
+    //
+    // Logika:
+    //   - Hanya kalau paymentStatus === "PAID" (user beneran udah bayar)
+    //   - Hanya kalau ada userId (guest checkout di-skip — tidak punya
+    //     wallet, refund manual ke metode bayar asal)
+    //   - Hitung sisa refundable = order.total − sum(existing CREDITED refund)
+    //     supaya kalau admin sudah refund sebagian sebelumnya (mis. OOS
+    //     per-item), cancel hanya nge-refund sisanya (no double-credit)
+    //   - Skip kalau sisa ≤ 0 (sudah full refunded sebelum di-cancel)
+    if (order.paymentStatus === "PAID" && order.userId) {
+      const existing = await tx.refundCase.aggregate({
+        where: { orderId, status: "CREDITED" },
+        _sum: { amount: true },
+      });
+      const alreadyRefunded = existing._sum.amount ?? 0;
+      const amountToRefund = order.total - alreadyRefunded;
+
+      if (amountToRefund > 0) {
+        const refundCase = await tx.refundCase.create({
+          data: {
+            orderId,
+            userId: order.userId,
+            reason: "ORDER_CANCELLED",
+            amount: amountToRefund,
+            destination: "REFUND_BALANCE",
+            status: "PENDING",
+            adminNote: `Auto-refund pembatalan order ${order.orderNumber}`,
+            createdByAdminId: session.sub,
+          },
+        });
+
+        const credit = await creditWallet(
+          {
+            userId: order.userId,
+            amount: amountToRefund,
+            sourceOrderId: orderId,
+            sourceRefundCaseId: refundCase.id,
+            note: `Auto-refund pembatalan order ${order.orderNumber}`,
+            createdByAdminId: session.sub,
+            type: "CREDIT",
+          },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          tx as any,
+        );
+
+        await tx.refundCase.update({
+          where: { id: refundCase.id },
+          data: {
+            status: "CREDITED",
+            approvedAt: new Date(),
+            creditedAt: new Date(),
+            ledgerEntryId: credit.ledgerEntryId,
+          },
+        });
+
+        autoRefundedAmount = amountToRefund;
+      }
+    }
+
     const result = await tx.order.updateMany({
       where: { id: orderId, status: order.status },
       data: { status: "CANCELLED" },
@@ -394,18 +486,50 @@ export async function markAsCancelled(orderId: string) {
     }
   }
 
+  // Push notif user — auto-refund jadi instant feedback ke customer.
+  // Fire-and-forget: kalau push service down, cancel tetap tercatat.
+  // Kirim hanya kalau ada auto-refund (kalau cuma cancel PENDING tanpa
+  // bayar, user gak perlu notif refund — sudah dapat notif cancel via
+  // sendOrderStatusPush di atas).
+  if (didCancel && autoRefundedAmount > 0 && cancelledOrderNumber) {
+    const orderInfo = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { userId: true },
+    });
+    if (orderInfo?.userId) {
+      void sendRefundIssuedPush({
+        userId: orderInfo.userId,
+        caseId: orderId, // not the refundCase id but order id is enough for deep link
+        amount: autoRefundedAmount,
+        reason: "ORDER_CANCELLED",
+        itemName: null,
+        adminNote: `Pembatalan order ${cancelledOrderNumber}`,
+      });
+    }
+  }
+
   if (didCancel && cancelledOrderNumber) {
+    const summaryParts: string[] = [
+      `Cancel order #${cancelledOrderNumber} (${formatRupiahLog(cancelledOrderTotal)})`,
+    ];
+    if (autoRefundedAmount > 0) {
+      summaryParts.push(`+auto-refund ${formatRupiahLog(autoRefundedAmount)} ke Saldo`);
+    }
+    if (reversedSaldo > 0) {
+      summaryParts.push(`reversal saldo ${formatRupiahLog(reversedSaldo)}`);
+    }
     logAdminAction({
       actorUserId: session.sub,
       action: AdminAction.ORDER_CANCELLED,
       targetType: "Order",
       targetId: orderId,
-      summary: `Cancel order #${cancelledOrderNumber} (${formatRupiahLog(cancelledOrderTotal)})`,
+      summary: summaryParts.join(" · "),
       metadata: {
         orderNumber: cancelledOrderNumber,
         total: cancelledOrderTotal,
         restoredStock,
         reversedSaldo,
+        autoRefundedAmount,
       },
     });
   }
@@ -493,7 +617,7 @@ export async function issueRefundToWallet(
 
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    select: { id: true, userId: true, total: true },
+    select: { id: true, userId: true, total: true, status: true, orderNumber: true },
   });
   if (!order) return { ok: false, message: "Order tidak ditemukan." };
   if (!order.userId) {
@@ -503,6 +627,35 @@ export async function issueRefundToWallet(
         "Order ini guest checkout — tidak bisa refund ke Saldo Refund. Pakai refund manual ke metode bayar asal.",
     };
   }
+
+  // ── Status guard: cegah refund pada order yang sudah final ──────────
+  // Spec dari owner: kalau order udah DELIVERED (sampai di customer dan
+  // ditandai selesai), refund tidak boleh dilakukan lagi — komplain harus
+  // sebelum mark selesai. CANCELLED & REFUNDED juga terminal: tidak ada
+  // saldo / barang yang bisa di-refund tambah lagi.
+  //
+  // Ini patch pertama dari rencana refactor "user-driven completion"
+  // (Shopee/Tokopedia pattern). Fase berikutnya: pindahkan trigger
+  // markAsDelivered dari admin ke user + auto-confirm cron 3 hari.
+  if (order.status === "DELIVERED") {
+    return {
+      ok: false,
+      message: `Order #${order.orderNumber} sudah ditandai SELESAI. Refund hanya bisa sebelum pesanan ditandai selesai oleh customer.`,
+    };
+  }
+  if (order.status === "CANCELLED") {
+    return {
+      ok: false,
+      message: `Order #${order.orderNumber} sudah dibatalkan — refund saldo tidak bisa dilakukan di order CANCELLED. Cancel sudah otomatis me-reverse saldo yang dipakai.`,
+    };
+  }
+  if (order.status === "REFUNDED") {
+    return {
+      ok: false,
+      message: `Order #${order.orderNumber} sudah ditandai REFUNDED (full refund). Tidak bisa refund tambahan.`,
+    };
+  }
+
   const refundUserId = order.userId;
 
   // ── Validasi max refund amount per item / per order ────────────────
@@ -724,6 +877,8 @@ export async function markItemPartiallyOutOfStock(
       userId: true,
       subtotal: true,
       productDiscount: true,
+      status: true,
+      orderNumber: true,
     },
   });
   if (!order) throw new Error("Order tidak ditemukan.");
@@ -732,6 +887,26 @@ export async function markItemPartiallyOutOfStock(
       "Order guest checkout — tidak bisa refund ke Saldo. Refund manual ke metode bayar asal.",
     );
   }
+
+  // Status guard sama dengan issueRefundToWallet — refund (termasuk OOS
+  // quick action) tidak boleh dilakukan setelah order DELIVERED / CANCELLED
+  // / REFUNDED. Lihat catatan panjang di issueRefundToWallet.
+  if (order.status === "DELIVERED") {
+    throw new Error(
+      `Order #${order.orderNumber} sudah SELESAI. Refund item kosong harus dilakukan sebelum pesanan ditandai selesai oleh customer.`,
+    );
+  }
+  if (order.status === "CANCELLED") {
+    throw new Error(
+      `Order #${order.orderNumber} sudah dibatalkan — refund item tidak bisa dilakukan. Cancel sudah otomatis me-reverse saldo yang dipakai.`,
+    );
+  }
+  if (order.status === "REFUNDED") {
+    throw new Error(
+      `Order #${order.orderNumber} sudah ditandai REFUNDED. Tidak bisa refund tambahan.`,
+    );
+  }
+
   const refundUserId = order.userId;
 
   // Auto-calc net-of-voucher amount — sama formula dengan RefundFormClient.
@@ -841,6 +1016,136 @@ export async function markItemPartiallyOutOfStock(
     });
     throw err;
   }
+
+  revalidateOrderAdmin(orderId);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Cancellation request approval (Shopee/Tokopedia pattern)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Saat order udah PAID dan user pencet "Batalkan" di app, order TIDAK
+// langsung di-cancel — request masuk antrian (lihat
+// app/api/orders/[orderNumber]/cancel/route.ts). Dua action di bawah ini
+// yang admin pakai untuk merespons:
+//   - approveCancellationRequest: jalankan flow markAsCancelled standar
+//     (auto-refund + restore stock + voucher rollback) + tandai request
+//     APPROVED.
+//   - rejectCancellationRequest: tandai REJECTED + simpan reject reason
+//     + notif ke user. Status order tidak berubah.
+
+export async function approveCancellationRequest(orderId: string) {
+  const session = await requireAdmin();
+  const current = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: {
+      orderNumber: true,
+      cancellationRequestStatus: true,
+      cancellationReason: true,
+    },
+  });
+  if (!current) throw new Error("Order tidak ditemukan.");
+  if (current.cancellationRequestStatus !== "PENDING") {
+    throw new Error(
+      "Tidak ada permintaan pembatalan PENDING untuk order ini.",
+    );
+  }
+
+  // Mark request as APPROVED first (so subsequent UI render shows the
+  // response timestamp + admin id correctly), then run cancel flow.
+  await prisma.order.update({
+    where: { id: orderId },
+    data: {
+      cancellationRequestStatus: "APPROVED",
+      cancellationRespondedAt: new Date(),
+      cancellationRespondedByAdminId: session.sub,
+    },
+  });
+
+  // markAsCancelled handles: stock restore, voucher rollback, points
+  // delete, saldo reversal, auto-refund (kalau paymentStatus=PAID, which
+  // is the precondition untuk request mode), status → CANCELLED,
+  // push notif, audit log. Reuse penuh — DRY.
+  await markAsCancelled(orderId);
+
+  logAdminAction({
+    actorUserId: session.sub,
+    action: AdminAction.ORDER_CANCEL_REQUEST_APPROVED,
+    targetType: "Order",
+    targetId: orderId,
+    summary: `Approve cancel request order #${current.orderNumber}${
+      current.cancellationReason ? ` (${current.cancellationReason})` : ""
+    }`,
+    metadata: {
+      orderNumber: current.orderNumber,
+      userReason: current.cancellationReason,
+    },
+  });
+
+  // revalidate sudah dilakukan markAsCancelled, tapi panggil lagi defensive
+  // setelah audit log (no-op kalau path udah re-validated dalam request).
+  revalidateOrderAdmin(orderId);
+}
+
+export async function rejectCancellationRequest(
+  orderId: string,
+  formData: FormData,
+): Promise<void> {
+  const session = await requireAdmin();
+  const rejectReason = String(formData.get("rejectReason") ?? "")
+    .trim()
+    .slice(0, 500);
+  if (rejectReason.length === 0) {
+    throw new Error("Alasan penolakan wajib diisi.");
+  }
+
+  const current = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: {
+      orderNumber: true,
+      userId: true,
+      cancellationRequestStatus: true,
+      cancellationReason: true,
+    },
+  });
+  if (!current) throw new Error("Order tidak ditemukan.");
+  if (current.cancellationRequestStatus !== "PENDING") {
+    throw new Error(
+      "Tidak ada permintaan pembatalan PENDING untuk order ini.",
+    );
+  }
+
+  await prisma.order.update({
+    where: { id: orderId },
+    data: {
+      cancellationRequestStatus: "REJECTED",
+      cancellationRespondedAt: new Date(),
+      cancellationRespondedByAdminId: session.sub,
+      cancellationRejectReason: rejectReason,
+    },
+  });
+
+  // TODO: push notif ke user "Permintaan pembatalan ditolak. Alasan: ..."
+  // — sementara pakai console log + user akan lihat banner reject di
+  // order detail saat refresh. Push handler khusus cancel-rejected belum
+  // ada di lib/push-refund (yang ada hanya REFUND_ISSUED). Bisa ditambah
+  // setelah flow ini settle dipakai.
+  console.log(
+    `[cancel-reject] order=${current.orderNumber} user=${current.userId} reason="${rejectReason}"`,
+  );
+
+  logAdminAction({
+    actorUserId: session.sub,
+    action: AdminAction.ORDER_CANCEL_REQUEST_REJECTED,
+    targetType: "Order",
+    targetId: orderId,
+    summary: `Tolak cancel request order #${current.orderNumber} — "${rejectReason.slice(0, 80)}${rejectReason.length > 80 ? "…" : ""}"`,
+    metadata: {
+      orderNumber: current.orderNumber,
+      userReason: current.cancellationReason,
+      rejectReason,
+    },
+  });
 
   revalidateOrderAdmin(orderId);
 }

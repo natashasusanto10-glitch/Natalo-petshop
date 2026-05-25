@@ -311,6 +311,20 @@ class OrderSummary {
   /// Detail URL — direct link ke /pesanan/[orderNumber] di web.
   final String? detailUrl;
 
+  // ── Cancellation request (Shopee/Tokopedia pattern) ──
+  // Diisi server di endpoint /api/orders/[orderNumber] (lihat
+  // lib/order-detail.ts serializeOrderDetail). null = order belum pernah
+  // di-request batal. Status:
+  //   - PENDING: user submit, menunggu admin
+  //   - APPROVED: admin setujui, order udah CANCELLED (lihat status field)
+  //   - REJECTED: admin tolak, order tetap aktif, rejectReason berisi
+  //     alasan dari admin
+  final String? cancellationRequestStatus;
+  final String? cancellationReason;
+  final String? cancellationRejectReason;
+  final DateTime? cancellationRequestedAt;
+  final DateTime? cancellationRespondedAt;
+
   const OrderSummary({
     required this.id,
     required this.orderNumber,
@@ -355,7 +369,21 @@ class OrderSummary {
     this.completedAt,
     this.statusUpdatedAt,
     this.detailUrl,
+    this.cancellationRequestStatus,
+    this.cancellationReason,
+    this.cancellationRejectReason,
+    this.cancellationRequestedAt,
+    this.cancellationRespondedAt,
   });
+
+  /// True kalau order ada permintaan pembatalan PENDING dari user yang
+  /// belum di-respond admin.
+  bool get hasPendingCancellationRequest =>
+      cancellationRequestStatus?.toUpperCase() == 'PENDING';
+
+  /// True kalau permintaan pembatalan terakhir dari user ditolak admin.
+  bool get cancellationRejected =>
+      cancellationRequestStatus?.toUpperCase() == 'REJECTED';
 
   /// Jumlah unit produk (sum quantities). Pakai `itemCountFromApi` kalau
   /// items[] kosong tapi server kasih count (list endpoint compact).
@@ -462,6 +490,19 @@ class OrderSummary {
       refundBalanceUsed: _asDouble(json['refundBalanceUsed']),
       total: _asDouble(json['total']),
       items: orderItems,
+      cancellationRequestStatus: _nullableString(
+        json['cancellationRequestStatus'],
+      ),
+      cancellationReason: _nullableString(json['cancellationReason']),
+      cancellationRejectReason: _nullableString(
+        json['cancellationRejectReason'],
+      ),
+      cancellationRequestedAt: _asDateTimeOrNull(
+        json['cancellationRequestedAt'],
+      ),
+      cancellationRespondedAt: _asDateTimeOrNull(
+        json['cancellationRespondedAt'],
+      ),
     );
   }
 

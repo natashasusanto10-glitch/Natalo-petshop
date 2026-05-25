@@ -168,21 +168,45 @@ class OrderService {
     );
   }
 
-  /// Cancel pesanan user. Match endpoint PWA POST /api/orders/{number}/cancel
-  /// dengan body `{reason}`. Server validate status (hanya PENDING/PAID
-  /// yang bisa di-cancel; SHIPPED/DELIVERED ditolak).
+  /// Cancel pesanan user. Match endpoint POST /api/orders/{number}/cancel
+  /// dengan body `{reason}`. Server validate status (hanya PENDING/PAID/
+  /// PROCESSING — "sebelum paket dikirim" — yang bisa di-cancel;
+  /// SHIPPED/DELIVERED ditolak).
   ///
-  /// Return updated OrderSummary dengan status='CANCELLED'.
-  Future<void> cancelOrder({
+  /// Return [CancelOrderResult] dengan `autoRefundedAmount` dan
+  /// `reversedSaldo`:
+  ///   - kalau paymentStatus != "PAID" saat cancel, autoRefundedAmount = 0
+  ///     (user belum bayar / admin belum konfirmasi → no refund)
+  ///   - kalau paymentStatus == "PAID", server otomatis kredit total
+  ///     order ke Saldo Refund user; nominal di field autoRefundedAmount.
+  /// UI pakai value ini untuk tampilkan toast informatif.
+  Future<CancelOrderResult> cancelOrder({
     required String orderNumber,
     String? reason,
   }) async {
     readOnlyMode.assertWritable('cancel_order');
-    await apiClient.postJson(
+    final response = await apiClient.postJson(
       '/api/orders/${Uri.encodeComponent(orderNumber)}/cancel',
       body: {
         if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
       },
+    );
+    final data = response is Map<String, dynamic> ? response : const <String, dynamic>{};
+    final auto = data['autoRefundedAmount'];
+    final reversed = data['reversedSaldo'];
+    final modeRaw = data['mode'];
+    final awaitingApproval = data['awaitingApproval'] == true;
+    final alreadyRequested = data['alreadyRequested'] == true;
+    final message = data['message'];
+    final mode = modeRaw is String
+        ? modeRaw
+        : (awaitingApproval ? 'requested' : 'instant');
+    return CancelOrderResult(
+      mode: mode,
+      autoRefundedAmount: auto is num ? auto.toInt() : 0,
+      reversedSaldo: reversed is num ? reversed.toInt() : 0,
+      alreadyRequested: alreadyRequested,
+      serverMessage: message is String ? message : null,
     );
   }
 
@@ -390,4 +414,47 @@ class MidtransPaymentToken {
     this.token,
     required this.redirectUrl,
   });
+}
+
+/// Result dari [OrderService.cancelOrder]. Dua mode possible:
+///
+/// 1) `mode == "instant"` (paymentStatus belum PAID):
+///    Order langsung di-cancel server. [autoRefundedAmount] biasanya 0
+///    (tidak ada duit masuk), [reversedSaldo] bisa > 0 kalau user pakai
+///    saldo untuk order yang belum dikonfirmasi bayar.
+///
+/// 2) `mode == "requested"` (paymentStatus === PAID):
+///    Server bikin pending request, status order BELUM berubah. User
+///    nunggu admin Approve/Reject. UI tampilkan banner "Menunggu
+///    konfirmasi admin". Kalau request sebelumnya udah PENDING,
+///    [alreadyRequested] = true (response idempotent).
+class CancelOrderResult {
+  /// "instant" atau "requested". Lihat doc di atas.
+  final String mode;
+  final int autoRefundedAmount;
+  final int reversedSaldo;
+  final bool alreadyRequested;
+
+  /// Pesan dari server (kalau ada) — untuk requested mode biasanya
+  /// "Permintaan pembatalan dikirim. Menunggu konfirmasi admin."
+  final String? serverMessage;
+
+  const CancelOrderResult({
+    required this.mode,
+    required this.autoRefundedAmount,
+    required this.reversedSaldo,
+    this.alreadyRequested = false,
+    this.serverMessage,
+  });
+
+  /// True kalau pembatalan instan (langsung sukses di server). False
+  /// untuk request mode (menunggu approval admin).
+  bool get isInstant => mode == 'instant';
+
+  /// True kalau pembatalan butuh approval admin (paymentStatus PAID).
+  bool get isRequested => mode == 'requested';
+
+  /// Total kredit ke saldo dari instant cancel (auto-refund + reversal
+  /// saldo). Selalu 0 untuk request mode (belum ada cancel actual).
+  int get totalCredited => autoRefundedAmount + reversedSaldo;
 }

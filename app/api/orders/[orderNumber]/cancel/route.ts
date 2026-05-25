@@ -1,26 +1,44 @@
 /**
  * POST /api/orders/[orderNumber]/cancel
  *
- * User-initiated order cancellation. Berbeda dengan admin cancel
- * (app/admin/(protected)/orders/[id]/actions.ts:markAsCancelled),
- * customer hanya boleh cancel order:
- *   - yang dia OWN (matching session userId)
- *   - status PENDING dan paymentStatus belum PAID
+ * User-initiated order cancellation. DUA MODE berdasarkan paymentStatus:
  *
- * Setelah cancel sukses:
- *   - status → CANCELLED
- *   - Stock di-restore (product + variant)
- *   - Voucher usage di-rollback (decrement usedCount)
- *   - CustomerPoint yang granted dari order ini di-delete
+ * 1) INSTANT (paymentStatus !== "PAID"):
+ *    User belum bayar / admin belum konfirmasi bayar → cancel langsung
+ *    diterima tanpa approval admin. Stock/voucher/points rollback dilakukan
+ *    saat itu juga. Tidak ada refund karena tidak ada duit masuk.
+ *    Response: { ok: true, mode: "instant", status: "CANCELLED" }
  *
- * Body opsional: `{ reason?: string }` — saat ini di-log saja
- * (Order.cancelReason field belum ada di schema; bisa ditambah belakangan).
+ * 2) REQUESTED (paymentStatus === "PAID"):
+ *    User sudah bayar dan admin sudah konfirmasi → cancel TIDAK langsung
+ *    diterapkan. Sebagai gantinya, request masuk antrian approval admin:
+ *      - order.cancellationRequestStatus = "PENDING"
+ *      - order.cancellationReason = reason (kalau ada)
+ *      - order.cancellationRequestedAt = now
+ *      - order.status TIDAK berubah (tetap PAID/PROCESSING)
+ *    Admin lihat banner di order detail → klik [Setujui & Refund] atau
+ *    [Tolak]. Approve jalanin flow markAsCancelled (auto-refund). Reject
+ *    set field cancellationRejectReason.
+ *    Response: { ok: true, mode: "requested", awaitingApproval: true }
+ *
+ * Status guard (sama untuk dua mode):
+ *   - Allowed: PENDING, PAID, PROCESSING
+ *   - Disallowed: READY_FOR_PICKUP, SHIPPED, DELIVERED, CANCELLED, REFUNDED
+ *
+ * Idempotency:
+ *   - Kalau sudah ada pending request, return 409 dengan pesan "sudah
+ *     diajukan, tunggu konfirmasi admin" — bukan duplicate.
+ *
+ * Body opsional: `{ reason?: string }` — alasan user, di-store di
+ * cancellationReason field untuk request mode, di-log untuk instant mode.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { assertSameOrigin } from "@/lib/csrf";
+import { creditWallet } from "@/lib/refund-wallet";
+import { sendRefundIssuedPush } from "@/lib/push-refund";
 
 export async function POST(
   request: NextRequest,
@@ -72,33 +90,96 @@ export async function POST(
       );
     }
 
-    // Hanya order PENDING yang belum dibayar yang boleh di-cancel customer.
-    // Kalau sudah PAID/PROCESSING/SHIPPED/dst — harus kontak admin
-    // (mereka punya markAsCancelled action yang restore + refund manual).
-    if (order.status !== "PENDING") {
+    // Status guard: user boleh cancel "sebelum paket dikirim".
+    // Allowed: PENDING, PAID, PROCESSING.
+    // Disallowed: READY_FOR_PICKUP (paket sudah disiapkan di toko, harus
+    // datang ambil atau request void manual), SHIPPED (paket di kurir),
+    // DELIVERED (sudah selesai), CANCELLED/REFUNDED (terminal).
+    const CANCELLABLE_BY_USER = ["PENDING", "PAID", "PROCESSING"] as const;
+    if (!CANCELLABLE_BY_USER.includes(order.status as typeof CANCELLABLE_BY_USER[number])) {
+      const reasonByStatus: Record<string, string> = {
+        READY_FOR_PICKUP:
+          "Pesanan sudah disiapkan untuk pickup — hubungi admin via WhatsApp untuk batalkan.",
+        SHIPPED:
+          "Paket sudah dikirim ke kurir — tidak bisa dibatalkan. Tunggu paket sampai lalu proses retur jika ada masalah.",
+        DELIVERED:
+          "Pesanan sudah selesai. Untuk masalah barang, ajukan retur via fitur komplain.",
+        CANCELLED: "Pesanan sudah dibatalkan sebelumnya.",
+        REFUNDED: "Pesanan sudah ditandai refunded.",
+      };
       return NextResponse.json(
         {
           error:
-            "Pesanan tidak bisa dibatalkan karena status sudah berubah. " +
-            "Hubungi admin via WhatsApp untuk bantuan.",
+            reasonByStatus[order.status] ??
+            "Pesanan tidak bisa dibatalkan karena status saat ini.",
         },
         { status: 409 }
       );
     }
-    if (order.paymentStatus === "PAID") {
-      return NextResponse.json(
-        {
-          error:
-            "Pembayaran sudah diterima — hubungi admin untuk proses refund.",
-        },
-        { status: 409 }
-      );
-    }
-    // Note: tidak perlu cek order.status === "CANCELLED" — sudah di-cover
-    // oleh check `status !== "PENDING"` di atas.
 
+    // ── MODE 2: Request mode (paymentStatus === PAID) ──────────────────
+    // User sudah bayar dan admin sudah konfirmasi → tidak boleh cancel
+    // langsung. Bikin pending request supaya admin bisa review.
+    //
+    // Idempotency: kalau sudah ada request PENDING, return info "sudah
+    // diajukan" (bukan duplicate). Kalau status REJECTED sebelumnya, user
+    // boleh submit ulang (overwrite jadi PENDING).
+    if (order.paymentStatus === "PAID") {
+      if (order.cancellationRequestStatus === "PENDING") {
+        return NextResponse.json(
+          {
+            ok: true,
+            mode: "requested",
+            awaitingApproval: true,
+            alreadyRequested: true,
+            requestedAt: order.cancellationRequestedAt,
+            message:
+              "Permintaan pembatalan sudah diajukan sebelumnya. Tunggu konfirmasi admin.",
+          },
+          { status: 200 }
+        );
+      }
+
+      await prisma.order.update({
+        where: { id: order.id },
+        data: {
+          cancellationRequestStatus: "PENDING",
+          cancellationReason: reason.length > 0 ? reason : null,
+          cancellationRequestedAt: new Date(),
+          // Reset response fields kalau user submit ulang setelah reject.
+          cancellationRespondedAt: null,
+          cancellationRespondedByAdminId: null,
+          cancellationRejectReason: null,
+        },
+      });
+
+      // TODO: notify admin via push/email/dashboard count badge.
+      // Saat ini admin lihat via order detail saja — fitur "Pending
+      // Cancellation Requests" filter di admin list bisa ditambah nanti.
+      console.log(
+        `[order-cancel-request] order=${order.orderNumber} user=${session.sub} reason=${reason || "(none)"}`,
+      );
+
+      return NextResponse.json({
+        ok: true,
+        mode: "requested",
+        awaitingApproval: true,
+        requestedAt: new Date().toISOString(),
+        message:
+          "Permintaan pembatalan dikirim. Menunggu konfirmasi admin.",
+      });
+    }
+
+    // ── MODE 1: Instant cancel (paymentStatus !== PAID) ────────────────
+    // User belum bayar → cancel langsung. Tidak ada refund karena tidak
+    // ada duit yang masuk.
     const variantProductIdsToSync = new Set<string>();
     const nonVariantProductIdsToSync = new Set<string>();
+    // Tracking nominal refund untuk response + push notif setelah commit.
+    // Untuk instant mode kedua tetap 0 (tidak ada duit yang masuk +
+    // tidak boleh pakai saldo untuk order yang belum konfirm bayar).
+    let reversedSaldo = 0;
+    let autoRefundedAmount = 0;
 
     await prisma.$transaction(async (tx) => {
       // 1. Restore stock — increment back product + variant counts.
@@ -157,7 +238,83 @@ export async function POST(
         where: { source: `ORDER:${order.orderNumber}` },
       });
 
-      // 4. Update order ke CANCELLED. Reason di-log saja untuk audit
+      // 4. Reversal saldo refund — kalau order pakai saldo, balikin ke
+      // wallet. Atomic dengan order update supaya tidak hilang.
+      if (order.refundBalanceUsed > 0 && order.userId) {
+        await creditWallet(
+          {
+            userId: order.userId,
+            amount: order.refundBalanceUsed,
+            sourceOrderId: order.id,
+            note: `Pembatalan pesanan ${order.orderNumber}`,
+            type: "REVERSAL",
+          },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          tx as any,
+        );
+        reversedSaldo = order.refundBalanceUsed;
+      }
+
+      // 5. Auto-refund nominal yang user bayar (non-saldo).
+      //
+      // Aturan dari spec owner:
+      //   - paymentStatus === "PAID" → ada duit yang masuk → auto-refund
+      //     full sisa ke Saldo Refund user
+      //   - paymentStatus !== "PAID" (UNPAID/PENDING/FAILED/EXPIRED) →
+      //     admin belum konfirmasi bayar / user belum bayar → no refund
+      //
+      // Logic mirror dengan admin markAsCancelled supaya admin/user flow
+      // konsisten. Sum existing CREDITED refund dulu supaya kalau ada
+      // partial refund sebelumnya (mis. OOS), cancel hanya kredit sisa.
+      if (order.paymentStatus === "PAID" && order.userId) {
+        const existing = await tx.refundCase.aggregate({
+          where: { orderId: order.id, status: "CREDITED" },
+          _sum: { amount: true },
+        });
+        const alreadyRefunded = existing._sum.amount ?? 0;
+        const amountToRefund = order.total - alreadyRefunded;
+
+        if (amountToRefund > 0) {
+          const refundCase = await tx.refundCase.create({
+            data: {
+              orderId: order.id,
+              userId: order.userId,
+              reason: "ORDER_CANCELLED",
+              amount: amountToRefund,
+              destination: "REFUND_BALANCE",
+              status: "PENDING",
+              adminNote: `Pembatalan oleh customer (order ${order.orderNumber})`,
+            },
+          });
+
+          const credit = await creditWallet(
+            {
+              userId: order.userId,
+              amount: amountToRefund,
+              sourceOrderId: order.id,
+              sourceRefundCaseId: refundCase.id,
+              note: `Auto-refund pembatalan order ${order.orderNumber}`,
+              type: "CREDIT",
+            },
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            tx as any,
+          );
+
+          await tx.refundCase.update({
+            where: { id: refundCase.id },
+            data: {
+              status: "CREDITED",
+              approvedAt: new Date(),
+              creditedAt: new Date(),
+              ledgerEntryId: credit.ledgerEntryId,
+            },
+          });
+
+          autoRefundedAmount = amountToRefund;
+        }
+      }
+
+      // 6. Update order ke CANCELLED. Reason di-log saja untuk audit
       // (Order.cancelReason field belum ada di schema; bisa di-add via
       // migration belakangan tanpa break flow).
       await tx.order.update({
@@ -170,6 +327,18 @@ export async function POST(
         );
       }
     });
+
+    // Push notif user — auto-refund jadi instant feedback. Fire-and-forget.
+    if (autoRefundedAmount > 0 && order.userId) {
+      void sendRefundIssuedPush({
+        userId: order.userId,
+        caseId: order.id,
+        amount: autoRefundedAmount,
+        reason: "ORDER_CANCELLED",
+        itemName: null,
+        adminNote: `Pembatalan order ${order.orderNumber}`,
+      });
+    }
 
     // Search index sync (best-effort, non-blocking).
     const allIdsToSync = [
@@ -187,8 +356,16 @@ export async function POST(
 
     return NextResponse.json({
       ok: true,
+      mode: "instant",
       orderNumber: order.orderNumber,
       status: "CANCELLED",
+      // Nominal yang otomatis kredit ke Saldo Refund. Untuk instant mode
+      // selalu 0 (paymentStatus belum PAID di branch ini).
+      autoRefundedAmount,
+      // Saldo refund yang DIPAKAI bayar dan otomatis dikembalikan ke wallet
+      // (terpisah dari autoRefundedAmount). Bisa > 0 kalau user pakai saldo
+      // untuk order yang manual-bayar dan belum dikonfirmasi admin.
+      reversedSaldo,
     });
   } catch (error) {
     console.error("[order-cancel] error:", error);

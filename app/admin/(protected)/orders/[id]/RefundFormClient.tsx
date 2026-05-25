@@ -27,11 +27,15 @@
 import { useState, useMemo, useActionState, useEffect } from "react";
 import type { RefundActionResult } from "./actions";
 
+// Reason list untuk MANUAL refund (form ini). ORDER_CANCELLED sengaja
+// di-exclude — pembatalan order otomatis trigger auto-refund di
+// markAsCancelled (lihat actions.ts). Admin tinggal klik "Batalkan order"
+// dan saldo refund user auto-credit. Form manual hanya untuk partial /
+// return / OOS / kasus edge.
 const reasons = [
   { value: "OUT_OF_STOCK", label: "Produk kosong" },
   { value: "PARTIAL_CANCEL", label: "Dibatalkan sebagian" },
   { value: "RETURN_APPROVED", label: "Return disetujui" },
-  { value: "ORDER_CANCELLED", label: "Order dibatalkan" },
   { value: "OTHER", label: "Lainnya" },
 ] as const;
 

@@ -87,6 +87,21 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
   Future<void> _confirmCancel(BuildContext context, OrderSummary order) async {
     if (_cancelling) return;
     AppHaptics.tap();
+    // Preview message disesuaikan dengan paymentStatus supaya user tahu
+    // apa yang akan terjadi:
+    //   - Belum bayar → cancel instan, no refund (sesuai spec owner)
+    //   - Sudah bayar (PAID) → kirim permintaan ke admin (Shopee pattern).
+    //     Pembatalan TIDAK langsung jadi, butuh approval. Admin Approve →
+    //     refund full ke Saldo. Admin Reject → order tetap aktif.
+    final paymentStatus = order.paymentStatus.toUpperCase();
+    final hasPaid = paymentStatus == 'PAID';
+    final refundText = hasPaid
+        ? 'Pesanan sudah dibayar, jadi pembatalan butuh konfirmasi '
+            'admin dulu. Setelah disetujui, total '
+            '${_formatRupiahShort(order.total)} akan dikembalikan '
+            'ke Saldo Refund kamu.'
+        : 'Pesanan belum dibayar, jadi pembatalan langsung diproses dan '
+            'tidak ada nominal yang perlu di-refund.';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogCtx) => AlertDialog(
@@ -109,16 +124,27 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
           textAlign: TextAlign.center,
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
-        content: const Column(
+        content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Pesanan ini akan dibatalkan. Voucher atau promo yang dipakai '
-              'pada pesanan ini mungkin tidak bisa digunakan kembali.',
+              refundText,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Color(0xFF17202A),
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Voucher atau promo yang dipakai akan dibebaskan dan stok '
+              'produk dikembalikan. Aksi ini tidak bisa dibatalkan.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Color(0xFF6B7280),
-                fontSize: 13,
+                fontSize: 12,
                 fontWeight: FontWeight.w600,
                 height: 1.5,
               ),
@@ -144,18 +170,49 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
     await _executeCancel(order);
   }
 
+  /// Format Rp ringkas (tanpa decimal, dengan thousand separator).
+  /// Accept num supaya bisa dipakai untuk int (refund amount) maupun
+  /// double (order.total). Dibulatkan ke integer dulu sebelum format.
+  String _formatRupiahShort(num amount) {
+    final s = amount.round().toString();
+    final buf = StringBuffer();
+    for (int i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) buf.write('.');
+      buf.write(s[i]);
+    }
+    return 'Rp${buf.toString()}';
+  }
+
   Future<void> _executeCancel(OrderSummary order) async {
     setState(() => _cancelling = true);
     try {
-      await orderService.cancelOrder(orderNumber: order.orderNumber);
+      final result =
+          await orderService.cancelOrder(orderNumber: order.orderNumber);
       if (!mounted) return;
       AppHaptics.success();
       // Refresh order detail dari server supaya status update ke CANCELLED.
       await _refreshOrder();
       if (!mounted) return;
+      // Toast disesuaikan dengan mode:
+      //   - requested (paymentStatus=PAID): permintaan dikirim ke admin,
+      //     order BELUM cancel. Tampilkan pesan dari server (atau default).
+      //   - instant + ada credited: cancel + ada nominal balik ke saldo.
+      //   - instant + no credited: cancel + tidak ada duit yang balik.
+      final String message;
+      if (result.isRequested) {
+        message = result.alreadyRequested
+            ? 'Permintaan pembatalan sudah pernah diajukan. Tunggu konfirmasi admin.'
+            : (result.serverMessage ??
+                'Permintaan pembatalan dikirim. Menunggu konfirmasi admin.');
+      } else {
+        final credited = result.totalCredited;
+        message = credited > 0
+            ? 'Pesanan dibatalkan. Saldo Refund +${_formatRupiahShort(credited)}.'
+            : 'Pesanan berhasil dibatalkan.';
+      }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Pesanan berhasil dibatalkan.'),
+        SnackBar(
+          content: Text(message),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -276,6 +333,24 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
                 ],
                 if (_shouldShowPaymentProof(order)) ...[
                   _PaymentProofCard(order: order, onUploaded: _refreshOrder),
+                  const SizedBox(height: 12),
+                ],
+                // Banner state pembatalan: PENDING (menunggu admin) atau
+                // REJECTED (ditolak admin) — tampil di atas tombol cancel.
+                // Untuk PENDING, tombol cancel disembunyikan oleh
+                // _canCancelOrder (anti double-submit).
+                if (order.hasPendingCancellationRequest) ...[
+                  _CancellationPendingBanner(
+                    reason: order.cancellationReason,
+                    requestedAt: order.cancellationRequestedAt,
+                  ),
+                  const SizedBox(height: 12),
+                ] else if (order.cancellationRejected) ...[
+                  _CancellationRejectedBanner(
+                    userReason: order.cancellationReason,
+                    rejectReason: order.cancellationRejectReason,
+                    respondedAt: order.cancellationRespondedAt,
+                  ),
                   const SizedBox(height: 12),
                 ],
                 if (_canCancelOrder(order)) ...[
@@ -2078,14 +2153,27 @@ bool _isFinalizedOrder(OrderSummary order) {
       status == 'EXPIRED';
 }
 
-/// Order bisa dibatalkan customer kalau:
-/// - Status masih PENDING (belum diproses admin)
-/// - Belum dibayar (paymentStatus != PAID)
-/// Setelah masuk PROCESSING/SHIPPED/dst, harus kontak admin manual.
+/// Order bisa dibatalkan customer kalau status "sebelum paket dikirim":
+/// PENDING, PAID, atau PROCESSING. Begitu masuk READY_FOR_PICKUP /
+/// SHIPPED / DELIVERED → tidak bisa cancel sendiri (paket sudah di kurir
+/// atau sudah dianggap selesai).
+///
+/// Cancel flow (Shopee/Tokopedia pattern):
+///   - paymentStatus != "PAID" → INSTANT cancel, tidak ada refund
+///   - paymentStatus == "PAID" → REQUEST mode, butuh approval admin
+///     (server cuma create pending request, status order belum berubah)
+///
+/// Tombol cancel disembunyikan kalau sudah ada request PENDING (anti
+/// double-submit) — user diarahkan ke banner "Menunggu konfirmasi admin"
+/// yang render di atas.
 bool _canCancelOrder(OrderSummary order) {
   final status = order.status.toUpperCase();
-  final paymentStatus = order.paymentStatus.toUpperCase();
-  return status == 'PENDING' && paymentStatus != 'PAID';
+  if (status != 'PENDING' && status != 'PAID' && status != 'PROCESSING') {
+    return false;
+  }
+  // Sudah ada pending request → jangan tampilin tombol cancel lagi.
+  if (order.hasPendingCancellationRequest) return false;
+  return true;
 }
 
 /// Pesanan siap diambil — toko sudah konfirmasi item ready, tinggal
@@ -2148,7 +2236,7 @@ class _CancelOrderCard extends StatelessWidget {
                 ),
                 SizedBox(height: 2),
                 Text(
-                  'Bisa dibatalkan sebelum dibayar.',
+                  'Bisa dibatalkan sebelum paket dikirim.',
                   style: TextStyle(
                     color: Color(0xFF6B7280),
                     fontSize: 12,
@@ -2185,6 +2273,237 @@ class _CancelOrderCard extends StatelessWidget {
                       ),
                     )
                   : const Text('Batalkan'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Banner "Permintaan Pembatalan Menunggu Admin". Muncul saat user sudah
+/// submit cancel request (paymentStatus=PAID) dan admin belum approve /
+/// reject. Tombol cancel di order detail otomatis disembunyikan
+/// (_canCancelOrder return false).
+class _CancellationPendingBanner extends StatelessWidget {
+  final String? reason;
+  final DateTime? requestedAt;
+
+  const _CancellationPendingBanner({
+    required this.reason,
+    required this.requestedAt,
+  });
+
+  String _formatTime(DateTime dt) {
+    final months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+      'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des',
+    ];
+    return '${dt.day} ${months[dt.month - 1]} ${dt.year}, '
+        '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBEB),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFFCD34D), width: 1.5),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFEF3C7),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              Icons.hourglass_top_rounded,
+              color: Color(0xFFB45309),
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Menunggu konfirmasi admin',
+                  style: TextStyle(
+                    color: Color(0xFF92400E),
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Pembatalan kamu sedang ditinjau. Kalau disetujui, total '
+                  'pesanan akan dikembalikan ke Saldo Refund.',
+                  style: TextStyle(
+                    color: Color(0xFF78350F),
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    height: 1.45,
+                  ),
+                ),
+                if (reason != null && reason!.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.7),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      'Alasan kamu: "${reason!}"',
+                      style: const TextStyle(
+                        color: Color(0xFF422006),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ],
+                if (requestedAt != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Diajukan ${_formatTime(requestedAt!)}',
+                    style: const TextStyle(
+                      color: Color(0xFFB45309),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Banner "Permintaan Pembatalan Ditolak". Muncul kalau request user
+/// di-reject admin. Tombol cancel akan muncul kembali (_canCancelOrder
+/// allow PENDING/PAID/PROCESSING tanpa cek rejected) supaya user bisa
+/// re-submit kalau perlu.
+class _CancellationRejectedBanner extends StatelessWidget {
+  final String? userReason;
+  final String? rejectReason;
+  final DateTime? respondedAt;
+
+  const _CancellationRejectedBanner({
+    required this.userReason,
+    required this.rejectReason,
+    required this.respondedAt,
+  });
+
+  String _formatTime(DateTime dt) {
+    final months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+      'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des',
+    ];
+    return '${dt.day} ${months[dt.month - 1]} ${dt.year}, '
+        '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF2F2),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFFCA5A5), width: 1.5),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFEE2E2),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              Icons.block_rounded,
+              color: Color(0xFFB91C1C),
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Permintaan pembatalan ditolak',
+                  style: TextStyle(
+                    color: Color(0xFF7F1D1D),
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                if (rejectReason != null && rejectReason!.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.7),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      'Alasan admin: "${rejectReason!}"',
+                      style: const TextStyle(
+                        color: Color(0xFF7F1D1D),
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        height: 1.45,
+                      ),
+                    ),
+                  ),
+                ],
+                if (userReason != null && userReason!.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Alasan kamu sebelumnya: "${userReason!}"',
+                    style: const TextStyle(
+                      color: Color(0xFF991B1B),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+                if (respondedAt != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Ditolak ${_formatTime(respondedAt!)}',
+                    style: const TextStyle(
+                      color: Color(0xFFB91C1C),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
         ],

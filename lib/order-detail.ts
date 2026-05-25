@@ -146,6 +146,15 @@ export function serializeOrderDetail(order: OrderDetailRecord) {
     pickedUpAt: order.pickedUpAt?.toISOString() ?? null,
     pickupMapsUrl: buildSelfPickupMapsUrl(),
     notes: order.notes,
+    // Cancellation request fields — null untuk order yang belum pernah
+    // di-request batal. Status: PENDING (menunggu approval admin),
+    // APPROVED (sudah disetujui, order udah CANCELLED), REJECTED (ditolak,
+    // order tetap aktif).
+    cancellationRequestStatus: order.cancellationRequestStatus,
+    cancellationReason: order.cancellationReason,
+    cancellationRequestedAt: order.cancellationRequestedAt?.toISOString() ?? null,
+    cancellationRespondedAt: order.cancellationRespondedAt?.toISOString() ?? null,
+    cancellationRejectReason: order.cancellationRejectReason,
     createdAt: order.createdAt.toISOString(),
     updatedAt: order.updatedAt.toISOString(),
     items: order.items.map((item) => ({

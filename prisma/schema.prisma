@@ -442,6 +442,28 @@ model Order {
   // di-create, di-debit dari RefundWallet via helper atomic + ledger.
   refundBalanceUsed       Int             @default(0)
   notes                   String?
+
+  // ── Cancellation request (Shopee/Tokopedia pattern) ──────────────────
+  // Saat user pencet "Batalkan" di app setelah order udah PAID
+  // (paymentStatus === "PAID"), order TIDAK langsung berubah ke CANCELLED.
+  // Sebagai gantinya, request di-record di field-field ini, lalu admin
+  // bisa Approve (run markAsCancelled flow yang sama) atau Reject.
+  //
+  // Kalau paymentStatus belum PAID, user cancel langsung di-accept tanpa
+  // mengisi field-field ini (instant cancel).
+  //
+  // Kenapa pakai field bukan tabel terpisah: 1 order paling banyak 1
+  // pending request aktif. Kalau admin reject, field tetep terisi
+  // (status=REJECTED) supaya user lihat reject reason; kalau user submit
+  // ulang, field di-overwrite. Bisa di-migrate ke OrderCancellationRequest
+  // model nanti kalau butuh history multi-attempt.
+  cancellationRequestStatus     String?   // null | "PENDING" | "APPROVED" | "REJECTED"
+  cancellationReason            String?   // alasan dari user (opsional)
+  cancellationRequestedAt       DateTime?
+  cancellationRespondedAt       DateTime?
+  cancellationRespondedByAdminId String?
+  cancellationRejectReason      String?   // diisi kalau admin tolak
+
   items                   OrderItem[]
   voucherUsages           VoucherUsage[]
   refundCases             RefundCase[]
@@ -452,6 +474,9 @@ model Order {
   @@index([shipmentStatus])
   @@index([orderType])
   @@index([pickupStatus])
+  // Admin filter "Pending Cancellation Requests" — fast lookup tanpa
+  // full table scan. Cardinality kecil (most orders punya null).
+  @@index([cancellationRequestStatus])
 }
 
 model OrderItem {
