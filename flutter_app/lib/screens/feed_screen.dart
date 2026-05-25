@@ -2708,7 +2708,7 @@ class _FeedPostViewState extends State<_FeedPostView>
     }
   }
 
-  void _onLongPressEnd(LongPressEndDetails details) {
+  Future<void> _onLongPressEnd(LongPressEndDetails details) async {
     final ctrl = _videoController;
     if (_longPressPaused) {
       setState(() {
@@ -2724,10 +2724,26 @@ class _FeedPostViewState extends State<_FeedPostView>
         _longPressSpeedActive = false;
         _hideOverlayForLongPress = false;
       });
-      // Reset speed ke 1.0. Defensive try-catch — controller bisa di-
-      // dispose tengah jalan (mis. user swipe ke post lain).
+      // Reset speed ke 1.0 + force position resync. AVPlayer di iOS
+      // (dan kemungkinan ExoPlayer di Android) drift internal time
+      // tracking setelah rate change → release ke 1.0 = position
+      // reporter "lompat" ke posisi yang dia hitung based on
+      // rate × elapsed, sementara visible frame ketinggalan. Player
+      // resync visible → keliatan LONCAT.
+      //
+      // Fix: capture position SEBELUM rate change, set 1.0, seek
+      // explicit ke captured position. Force player re-sync internal
+      // time tracking ke actual rendered frame. SeekTo ke posisi
+      // yang frame-nya masih di buffer (sama persis) biasanya
+      // instant — no visible decode delay.
+      // Defensive try-catch — controller bisa di-dispose tengah
+      // jalan (mis. user swipe ke post lain saat masih long-press).
       try {
+        final pos = ctrl?.value.position;
         ctrl?.setPlaybackSpeed(1.0);
+        if (pos != null && ctrl != null && ctrl.value.isInitialized) {
+          await ctrl.seekTo(pos);
+        }
       } catch (_) {}
     }
   }
