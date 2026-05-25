@@ -42,7 +42,10 @@ export function DangerZoneClient() {
   const [result, setResult] = useState<ResetResult | null>(null);
   const [showFinal, setShowFinal] = useState(false);
 
-  const phraseMatch = phrase.trim() === CONFIRM_PHRASE;
+  // Case-insensitive compare — user gak perlu mikir caps lock atau
+  // mobile auto-correct yang lower-case. Underlying API call tetap
+  // kirim CONFIRM_PHRASE persis (server validate exact).
+  const phraseMatch = phrase.trim().toUpperCase() === CONFIRM_PHRASE;
   const canSubmit = phraseMatch && confirmedRisk && !busy;
 
   async function executeReset() {
