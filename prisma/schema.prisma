@@ -443,6 +443,14 @@ model Order {
   refundBalanceUsed       Int             @default(0)
   notes                   String?
 
+  // Timestamp saat admin tandai SHIPPED (markAsShipped action). Dipakai
+  // oleh cron /api/cron/auto-confirm-delivered untuk auto-mark DELIVERED
+  // setelah 7 hari kalau user belum konfirmasi terima sendiri. Tidak
+  // pakai updatedAt karena field itu kena trigger update setiap kali
+  // order touched (cancellation request, refund case, dll) → cron bisa
+  // gak pernah jalan.
+  shippedAt               DateTime?
+
   // ── Cancellation request (Shopee/Tokopedia pattern) ──────────────────
   // Saat user pencet "Batalkan" di app setelah order udah PAID
   // (paymentStatus === "PAID"), order TIDAK langsung berubah ke CANCELLED.
@@ -477,6 +485,10 @@ model Order {
   // Admin filter "Pending Cancellation Requests" — fast lookup tanpa
   // full table scan. Cardinality kecil (most orders punya null).
   @@index([cancellationRequestStatus])
+  // Composite index untuk cron auto-confirm-delivered query:
+  // WHERE status='SHIPPED' AND shippedAt < threshold. Status pertama
+  // karena selectivity tinggi (hanya beberapa order yang SHIPPED).
+  @@index([status, shippedAt])
 }
 
 model OrderItem {

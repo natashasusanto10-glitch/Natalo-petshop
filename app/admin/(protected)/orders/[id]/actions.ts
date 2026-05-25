@@ -165,9 +165,14 @@ export async function markAsShipped(orderId: string, formData: FormData) {
   if (current.status !== "SHIPPED") {
     await transitionOrderStatus(orderId, "SHIPPED", {
       trackingNumber: trackingNumber || null,
+      // Mark waktu shipped untuk cron auto-confirm-delivered.
+      shippedAt: new Date(),
     });
     didTransition = true;
   } else {
+    // Re-shipped (update tracking number aja) — JANGAN reset shippedAt
+    // supaya counter 7 hari tetap dari tanggal shipped pertama. Cuma
+    // update tracking number.
     await prisma.order.updateMany({
       where: { id: orderId, status: "SHIPPED" },
       data: { trackingNumber: trackingNumber || null },
