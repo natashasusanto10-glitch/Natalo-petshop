@@ -684,92 +684,102 @@ class _CartScreenState extends State<CartScreen> {
 
           final showVoucherArea = memberStore.isLoggedIn;
 
-          // Column body — auto-hide chrome (top + bottom) sandwich main
-          // ListView. Selection row + voucher bar share `_showCartChrome`
-          // state untuk gerakan 1:1 sinkron saat user scroll. Checkout
-          // bar di paling bawah, SELALU visible (tidak ikut auto-hide).
+          // Main area pakai Stack supaya selection row atas tetap auto-hide
+          // secara visual, tapi tidak mengubah tinggi layout ListView.
+          // Sebelumnya height 42 → 0 membuat layar terasa terdorong dari
+          // atas ke bawah saat chrome muncul kembali.
           return Column(
             children: [
-              // ── Auto-hide top: selection row compact ──
-              ClipRect(
-                child: AnimatedContainer(
-                  height: _showCartChrome ? _selectionRowHeight : 0,
-                  duration: _cartChromeAnimDuration,
-                  curve: _cartChromeAnimCurve,
-                  child: AnimatedSlide(
-                    offset: _showCartChrome ? Offset.zero : const Offset(0, -1),
-                    duration: _cartChromeAnimDuration,
-                    curve: _cartChromeAnimCurve,
-                    child: AnimatedOpacity(
-                      opacity: _showCartChrome ? 1 : 0,
-                      duration: _cartChromeAnimDuration,
-                      curve: _cartChromeAnimCurve,
-                      child: IgnorePointer(
-                        ignoring: !_showCartChrome,
-                        child: _CartSelectedRow(
-                          selectedCount: _selectedItems.length,
-                          onDeleteSelected: _selectedItems.isEmpty
-                              ? null
-                              : _confirmRemoveSelected,
+              Expanded(
+                child: Stack(
+                  children: [
+                    Listener(
+                      onPointerDown: (_) => _hideCartChrome(),
+                      onPointerMove: (_) => _hideCartChrome(),
+                      onPointerUp: (_) => _showCartChromeAfterStop(),
+                      onPointerCancel: (_) => _showCartChromeAfterStop(),
+                      child: NotificationListener<ScrollNotification>(
+                        onNotification: _handleScrollNotification,
+                        child: ListView(
+                          controller: _scrollController,
+                          padding: const EdgeInsets.fromLTRB(
+                            16,
+                            _selectionRowHeight + 12,
+                            16,
+                            12,
+                          ),
+                          children: [
+                            // Cart items dengan checkbox per item.
+                            for (var i = 0; i < items.length; i++) ...[
+                              _CartItemCard(
+                                item: items[i],
+                                index: i,
+                                selected: _selectedIds.contains(items[i].key),
+                                onToggleSelected: () =>
+                                    _toggleItem(items[i].key),
+                              ),
+                              // Divider indented dari kiri checkbox — start setelah
+                              // checkbox area supaya garis tidak full-width.
+                              // Tokopedia style: divider sejajar dengan image kiri.
+                              if (i < items.length - 1)
+                                const Padding(
+                                  padding: EdgeInsets.only(left: 42),
+                                  child: Divider(
+                                    height: 1,
+                                    thickness: 1,
+                                    color: Color(0xFFEEF2F6),
+                                  ),
+                                )
+                              else
+                                const SizedBox(height: 8),
+                            ],
+                            _CartRecommendationsSection(
+                              title: 'Yuk dilihat lagi',
+                              products: _recentlyViewed,
+                              loading: _loadingRecentlyViewed,
+                              showLoadingPlaceholder: false,
+                            ),
+                            const SizedBox(height: 18),
+                            _CartRecommendationsSection(
+                              title: 'Ayoo diborong bossku',
+                              products: _bossProducts,
+                              loading: _loadingBossProducts,
+                              loadingMore: _loadingMoreBossProducts,
+                              showLoadingPlaceholder: false,
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                  ),
-                ),
-              ),
-              // ── Scrollable content (cart items + recommendations) ──
-              Expanded(
-                child: Listener(
-                  onPointerDown: (_) => _hideCartChrome(),
-                  onPointerMove: (_) => _hideCartChrome(),
-                  onPointerUp: (_) => _showCartChromeAfterStop(),
-                  onPointerCancel: (_) => _showCartChromeAfterStop(),
-                  child: NotificationListener<ScrollNotification>(
-                    onNotification: _handleScrollNotification,
-                    child: ListView(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                      children: [
-                        // Cart items dengan checkbox per item.
-                        for (var i = 0; i < items.length; i++) ...[
-                          _CartItemCard(
-                            item: items[i],
-                            index: i,
-                            selected: _selectedIds.contains(items[i].key),
-                            onToggleSelected: () => _toggleItem(items[i].key),
-                          ),
-                          // Divider indented dari kiri checkbox — start setelah
-                          // checkbox area supaya garis tidak full-width.
-                          // Tokopedia style: divider sejajar dengan image kiri.
-                          if (i < items.length - 1)
-                            const Padding(
-                              padding: EdgeInsets.only(left: 42),
-                              child: Divider(
-                                height: 1,
-                                thickness: 1,
-                                color: Color(0xFFEEF2F6),
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: ClipRect(
+                        child: AnimatedSlide(
+                          offset: _showCartChrome
+                              ? Offset.zero
+                              : const Offset(0, -1),
+                          duration: _cartChromeAnimDuration,
+                          curve: _cartChromeAnimCurve,
+                          child: AnimatedOpacity(
+                            opacity: _showCartChrome ? 1 : 0,
+                            duration: _cartChromeAnimDuration,
+                            curve: _cartChromeAnimCurve,
+                            child: IgnorePointer(
+                              ignoring: !_showCartChrome,
+                              child: _CartSelectedRow(
+                                selectedCount: _selectedItems.length,
+                                onDeleteSelected: _selectedItems.isEmpty
+                                    ? null
+                                    : _confirmRemoveSelected,
                               ),
-                            )
-                          else
-                            const SizedBox(height: 8),
-                        ],
-                        _CartRecommendationsSection(
-                          title: 'Yuk dilihat lagi',
-                          products: _recentlyViewed,
-                          loading: _loadingRecentlyViewed,
-                          showLoadingPlaceholder: false,
+                            ),
+                          ),
                         ),
-                        const SizedBox(height: 18),
-                        _CartRecommendationsSection(
-                          title: 'Ayoo diborong bossku',
-                          products: _bossProducts,
-                          loading: _loadingBossProducts,
-                          loadingMore: _loadingMoreBossProducts,
-                          showLoadingPlaceholder: false,
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ),
               // ── Auto-hide bottom: voucher bar ──
