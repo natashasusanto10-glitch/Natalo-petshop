@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../theme/natalo_colors.dart';
 import '../utils/haptics.dart';
@@ -14,7 +15,7 @@ import '../utils/haptics.dart';
 /// Mechanics:
 /// - NotificationListener detect overscroll di top scrollable
 /// - Drag offset di-accumulate dari `OverscrollNotification.overscroll`
-/// - Threshold @ `triggerOffset` (default 70px): haptic tap fire,
+/// - Threshold @ `triggerOffset` (default 42px): haptic tap fire,
 ///   indicator "armed" — kalau user lepas, refresh trigger
 /// - During refresh: paw spin continuous (900ms loop) + freeze offset
 ///   di triggerOffset supaya tetap visible
@@ -52,19 +53,31 @@ class NataloPawRefreshIndicator extends StatefulWidget {
   final Future<void> Function() onRefresh;
 
   /// Berapa pull pixel sebelum indicator "armed" + refresh trigger.
-  /// Default 70 — match Material RefreshIndicator displacement.
+  /// Default 42 — lebih ringan dari Material default supaya pull tidak
+  /// terasa berhenti setengah jalan di CustomScrollView + pinned header.
   final double triggerOffset;
 
   /// Selisih top dari SafeArea sebelum paw mulai muncul.
   /// Default 8 — small gap supaya indicator tidak nempel status bar.
   final double topPadding;
 
+  /// IG-style pull behavior: child ikut turun sedikit saat user menarik
+  /// dari top. Default false supaya halaman lain yang sudah pakai widget ini
+  /// tidak berubah rasa/interaksinya.
+  final bool translateChild;
+
+  /// Maksimal jarak child turun saat pull. Dipakai hanya jika
+  /// [translateChild] true.
+  final double maxChildOffset;
+
   const NataloPawRefreshIndicator({
     super.key,
     required this.child,
     required this.onRefresh,
-    this.triggerOffset = 70,
+    this.triggerOffset = 42,
     this.topPadding = 8,
+    this.translateChild = false,
+    this.maxChildOffset = 34,
   });
 
   @override
@@ -76,6 +89,11 @@ class _NataloPawRefreshIndicatorState extends State<NataloPawRefreshIndicator>
     with TickerProviderStateMixin {
   /// Accumulated pull offset (0 .. triggerOffset+30).
   double _overscroll = 0;
+
+  /// Pull terdalam selama satu gesture. Beberapa scrollable mengirim
+  /// ScrollEnd setelah bounce mulai balik ke 0, jadi nilai current overscroll
+  /// bisa sudah mengecil saat user lepas.
+  double _maxOverscroll = 0;
 
   /// Apakah pull sudah lewat threshold — kalau user lepas sekarang,
   /// refresh akan fire.
@@ -133,7 +151,8 @@ class _NataloPawRefreshIndicatorState extends State<NataloPawRefreshIndicator>
     final pullFromOverscroll =
         (n is OverscrollNotification && pixels <= 0) ? n.overscroll.abs() : 0.0;
 
-    if (pullFromBouncing > 0 || pullFromOverscroll > 0) {
+    final hasPull = pullFromBouncing > 0 || pullFromOverscroll > 0;
+    if (hasPull) {
       // BouncingScrollPhysics: pakai absolute -pixels (current scroll
       // position) dengan friction 0.8 supaya gerakan terasa subtle.
       // Clamping: accumulate dari overscroll delta * 0.5.
@@ -145,24 +164,28 @@ class _NataloPawRefreshIndicatorState extends State<NataloPawRefreshIndicator>
       if (newOverscroll != _overscroll) {
         setState(() => _overscroll = newOverscroll);
       }
+      if (newOverscroll > _maxOverscroll) {
+        _maxOverscroll = newOverscroll;
+      }
       // Threshold reached — haptic tap "armed".
       if (!_armed && _overscroll >= widget.triggerOffset) {
         _armed = true;
         AppHaptics.tap();
       }
-    } else if (n is ScrollUpdateNotification && pixels > 0) {
+    }
+
+    // Pada BouncingScrollPhysics, ScrollEnd kadang datang saat metrics.pixels
+    // masih negatif. Versi lama masuk ke cabang `hasPull` di atas dan tidak
+    // pernah mengeksekusi refresh, sehingga icon terlihat "setengah ketarik"
+    // tapi onRefresh tidak jalan.
+    if (n is ScrollEndNotification ||
+        (n is UserScrollNotification &&
+            n.direction == ScrollDirection.idle &&
+            _overscroll > 0)) {
+      _finishPull();
+    } else if (!hasPull && n is ScrollUpdateNotification && pixels > 0) {
       // User scroll ke bawah past 0 (positive) → batal pull.
       if (_overscroll > 0) {
-        setState(() {
-          _overscroll = 0;
-          _armed = false;
-        });
-      }
-    } else if (n is ScrollEndNotification) {
-      // Release — kalau armed → fire refresh, kalau tidak → snap back.
-      if (_armed && _overscroll >= widget.triggerOffset) {
-        _doRefresh();
-      } else if (_overscroll > 0) {
         setState(() {
           _overscroll = 0;
           _armed = false;
@@ -172,11 +195,31 @@ class _NataloPawRefreshIndicatorState extends State<NataloPawRefreshIndicator>
     return false;
   }
 
+  void _finishPull() {
+    // Release — kalau armed → fire refresh, kalau tidak → snap back.
+    // Sedikit toleran saat release: beberapa scrollable (terutama detail
+    // screen dengan ListView pendek) tidak selalu memberi update frame tepat
+    // di threshold, padahal user sudah menarik cukup jauh secara visual.
+    final releaseTrigger = widget.triggerOffset * 0.56;
+    if ((_armed && _overscroll >= widget.triggerOffset) ||
+        _overscroll >= releaseTrigger ||
+        _maxOverscroll >= releaseTrigger) {
+      _doRefresh();
+    } else if (_overscroll > 0) {
+      setState(() {
+        _overscroll = 0;
+        _armed = false;
+      });
+      _maxOverscroll = 0;
+    }
+  }
+
   Future<void> _doRefresh() async {
     setState(() {
       _isRefreshing = true;
       _overscroll = widget.triggerOffset;
     });
+    _maxOverscroll = widget.triggerOffset;
     _fadeCtrl.value = 1.0;
     _spinCtrl.repeat();
     AppHaptics.success();
@@ -197,6 +240,7 @@ class _NataloPawRefreshIndicatorState extends State<NataloPawRefreshIndicator>
       _overscroll = 0;
       _armed = false;
     });
+    _maxOverscroll = 0;
     _fadeCtrl.value = 1.0; // reset untuk next pull
   }
 
@@ -204,6 +248,11 @@ class _NataloPawRefreshIndicatorState extends State<NataloPawRefreshIndicator>
   Widget build(BuildContext context) {
     final visible = _overscroll > 0 || _isRefreshing;
     final progress = (_overscroll / widget.triggerOffset).clamp(0.0, 1.0);
+    final childOffset = widget.translateChild
+        ? (_isRefreshing
+            ? widget.maxChildOffset
+            : widget.maxChildOffset * Curves.easeOutCubic.transform(progress))
+        : 0.0;
 
     return Stack(
       fit: StackFit.expand,
@@ -211,11 +260,16 @@ class _NataloPawRefreshIndicatorState extends State<NataloPawRefreshIndicator>
         // ScrollConfiguration force bouncing physics di Android supaya
         // OverscrollNotification fire saat user drag past top (default
         // ClampingScrollPhysics tidak fire → paw tidak armed di Android).
-        ScrollConfiguration(
-          behavior: const _NataloPawScrollBehavior(),
-          child: NotificationListener<ScrollNotification>(
-            onNotification: _handleScroll,
-            child: widget.child,
+        AnimatedContainer(
+          duration: Duration(milliseconds: _isRefreshing ? 180 : 0),
+          curve: Curves.easeOutCubic,
+          transform: Matrix4.translationValues(0, childOffset, 0),
+          child: ScrollConfiguration(
+            behavior: const _NataloPawScrollBehavior(),
+            child: NotificationListener<ScrollNotification>(
+              onNotification: _handleScroll,
+              child: widget.child,
+            ),
           ),
         ),
         if (visible)
