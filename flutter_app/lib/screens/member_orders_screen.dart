@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/member_profile.dart';
-import '../models/product.dart';
 import '../services/home_widget_service.dart';
 import '../services/member_service.dart';
-import '../services/product_service.dart';
+import '../services/order_service.dart';
 import '../state/cart_store.dart';
 import '../state/member_store.dart';
 import '../utils/formatters.dart';
@@ -353,109 +352,59 @@ class _OrderCard extends StatelessWidget {
     if (!opened) _showSnack(context, 'Tidak bisa membuka pembayaran.');
   }
 
+  /// Beli Lagi handler — unified pakai backend reorder endpoint.
+  ///
+  /// Sebelumnya pattern ini client-side: fetch products + manual stock
+  /// check + variant matching. Banyak edge case bug (mis. stok 0 untuk
+  /// produk yang sebenarnya tersedia). Detail Pesanan screen pakai
+  /// backend reorder dan WORKS, jadi kita unify ke pattern yang sama
+  /// — single source of truth + auto-fix bug.
+  ///
+  /// Backend handle: stock check, variant matching, partial fulfillment,
+  /// friendly error message (lihat lib/reorder.ts).
   Future<void> _buyAgain(BuildContext context) async {
     if (order.items.isEmpty) {
       _openOrderDetail(context);
       return;
     }
 
-    final productIds = order.items
-        .map((item) => item.productId)
-        .where((id) => id.trim().isNotEmpty)
-        .toSet()
-        .toList();
-
-    final result = await productService.fetchProducts(
-      ids: productIds,
-      limit: productIds.isEmpty ? 1 : productIds.length,
-      hasPrice: true,
-      withImage: true,
-    );
-    if (!context.mounted) return;
-
-    final productsById = {
-      for (final product in result.products) product.id: product,
-    };
-    final productsBySlug = {
-      for (final product in result.products) product.slug: product,
-    };
-
-    var added = 0;
-    var skipped = 0;
-    var adjusted = false;
-
-    for (final item in order.items) {
-      var product = productsById[item.productId] ??
-          (item.productSlug == null ? null : productsBySlug[item.productSlug]);
-
-      if (product == null &&
-          item.productSlug != null &&
-          item.productSlug!.isNotEmpty) {
-        product = await productService.fetchProductBySlug(item.productSlug!);
-        if (!context.mounted) return;
-      }
-
-      if (product == null) {
-        skipped++;
-        continue;
-      }
-
-      ProductVariant? variant;
-      if (item.variantId != null && item.variantId!.isNotEmpty) {
-        if (product.variants.isEmpty && product.slug.isNotEmpty) {
-          final full = await productService.fetchProductBySlug(product.slug);
-          if (!context.mounted) return;
-          if (full != null) product = full;
-        }
-        for (final candidate in product.variants) {
-          if (candidate.id == item.variantId && candidate.isActive) {
-            variant = candidate;
-            break;
-          }
-        }
-      }
-
-      final currentStock = variant?.stock ?? product.stock;
-      if (currentStock <= 0) {
-        skipped++;
-        continue;
-      }
-
-      final quantity = item.quantity.clamp(1, currentStock);
-      if (quantity < item.quantity) adjusted = true;
-
-      final ok = await cartStore.addProduct(
-        product,
-        quantity: quantity,
-        variant: variant,
-        variantId: variant == null ? item.variantId : null,
-        variantLabel: item.variantLabel,
-        overrideStock: currentStock,
+    try {
+      final result = await orderService.reorder(
+        orderNumber: order.orderNumber,
       );
-      if (ok) {
-        added++;
-      } else {
-        skipped++;
-      }
       if (!context.mounted) return;
+
+      if (result.items.isEmpty) {
+        // Semua item skipped — pakai friendly message dari backend.
+        final reasons = result.skippedReasons;
+        final message = reasons.isEmpty
+            ? 'Tidak ada item yang bisa dibeli lagi.'
+            : reasons.length == 1
+                ? reasons.first
+                : '${reasons.length} produk tidak bisa dibeli lagi (stok habis / tidak tersedia).';
+        _showSnack(context, message);
+        return;
+      }
+
+      for (final item in result.items) {
+        cartStore.addProduct(item.product, quantity: item.quantity);
+      }
+      await cartStore.syncToServer();
+      if (!context.mounted) return;
+
+      final message = result.hasPartialChanges
+          ? 'Sebagian produk masuk keranjang. Ada yang stok habis.'
+          : 'Produk masuk keranjang';
+      AppToast.showCartAdded(
+        context,
+        message,
+        onTap: () => Navigator.pushNamed(context, '/cart'),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      final message = error.toString().replaceFirst('Exception: ', '');
+      _showSnack(context, 'Beli lagi gagal: $message');
     }
-
-    if (added <= 0) {
-      _showSnack(context, 'Produk belum tersedia atau stok habis.');
-      return;
-    }
-
-    final message = skipped > 0
-        ? 'Sebagian produk masuk keranjang. Ada yang stoknya habis.'
-        : adjusted
-            ? 'Produk masuk keranjang sesuai stok tersedia.'
-            : 'Produk masuk keranjang';
-
-    AppToast.showCartAdded(
-      context,
-      message,
-      onTap: () => Navigator.pushNamed(context, '/cart'),
-    );
   }
 
   bool get _isFinalized {

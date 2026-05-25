@@ -4,8 +4,10 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/member_profile.dart';
+import '../models/product.dart';
 import '../models/shipping_rate.dart';
 import '../services/order_service.dart';
+import '../services/product_service.dart';
 import '../state/cart_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
@@ -1539,7 +1541,7 @@ class _OrderItemsCard extends StatelessWidget {
   }
 }
 
-class _OrderProductTile extends StatelessWidget {
+class _OrderProductTile extends StatefulWidget {
   final OrderItemSummary item;
   final bool canReviewOrder;
   final bool canReview;
@@ -1551,17 +1553,80 @@ class _OrderProductTile extends StatelessWidget {
   });
 
   @override
+  State<_OrderProductTile> createState() => _OrderProductTileState();
+}
+
+class _OrderProductTileState extends State<_OrderProductTile> {
+  bool _navigating = false;
+
+  /// Tap item → fetch Product detail + push ke ProductDetailScreen.
+  /// Defensive: kalau produk sudah ke-archive / deleted, kasih friendly
+  /// snackbar instead of crash.
+  Future<void> _openProductDetail() async {
+    if (_navigating) return; // Double-tap guard
+    setState(() => _navigating = true);
+    try {
+      final slug = widget.item.productSlug;
+      Product? product;
+      if (slug != null && slug.isNotEmpty) {
+        product = await productService.fetchProductBySlug(slug);
+      }
+      product ??= (await productService.fetchProducts(
+        ids: [widget.item.productId],
+        limit: 1,
+      ))
+          .products
+          .firstOrNull;
+
+      if (!mounted) return;
+      if (product == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Produk sudah tidak tersedia.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+      await Navigator.pushNamed(
+        context,
+        '/product-detail',
+        arguments: product,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Gagal buka detail produk. Coba lagi.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _navigating = false);
+    }
+  }
+
+  OrderItemSummary get item => widget.item;
+  bool get canReviewOrder => widget.canReviewOrder;
+  bool get canReview => widget.canReview;
+
+  @override
   Widget build(BuildContext context) {
     final subtotal = item.price * item.quantity;
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _navigating ? null : _openProductDetail,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE7EEF7)),
-      ),
-      child: Column(
+        child: Ink(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFFE7EEF7)),
+          ),
+          child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Row(
@@ -1674,6 +1739,8 @@ class _OrderProductTile extends StatelessWidget {
             ),
           ],
         ],
+          ),
+        ),
       ),
     );
   }
