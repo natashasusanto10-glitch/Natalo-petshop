@@ -46,7 +46,7 @@ export default async function MyFeedPostDetailPage({ params }: PageProps) {
       id,
       authorId: session.sub,
       authorRole: "CUSTOMER",
-      kind: "COMMUNITY",
+      kind: { in: ["COMMUNITY", "PHOTO_CAROUSEL"] },
       deletedAt: null,
       status: { in: [...MY_FEED_VISIBLE_STATUSES] },
     },

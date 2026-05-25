@@ -268,10 +268,17 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
     if (result == null || !mounted) return;
     final newCaption = result.trim();
     if (newCaption == (post.caption ?? '').trim()) return;
+    final syncedTitle = newCaption.isEmpty
+        ? 'Postingan baru'
+        : newCaption.substring(
+            0, newCaption.length > 80 ? 80 : newCaption.length);
     try {
       await apiClient.patchJson(
         '/api/feed/posts/${Uri.encodeComponent(post.id)}',
-        body: {'description': newCaption},
+        body: {
+          'title': syncedTitle,
+          'description': newCaption,
+        },
       );
       if (!mounted) return;
       setState(() {

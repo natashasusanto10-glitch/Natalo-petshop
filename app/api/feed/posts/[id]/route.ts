@@ -52,8 +52,9 @@ export async function PATCH(
 
   const isAdmin = session.role === "ADMIN";
 
-  // Cari post — customer hanya boleh edit OWN COMMUNITY post yang visible
-  // di "My Posts". Admin boleh edit OWN post regardless of kind.
+  // Cari post — customer boleh edit OWN user-generated post yang visible
+  // di "My Posts". Community video lama pakai COMMUNITY, flow foto baru
+  // pakai PHOTO_CAROUSEL; keduanya harus bisa edit caption.
   const post = await prisma.feedPost.findFirst({
     where: {
       id: postId,
@@ -63,7 +64,7 @@ export async function PATCH(
         ? { authorRole: "ADMIN" }
         : {
             authorRole: "CUSTOMER",
-            kind: "COMMUNITY",
+            kind: { in: ["COMMUNITY", "PHOTO_CAROUSEL"] },
             status: { in: [...MY_FEED_VISIBLE_STATUSES] },
           }),
     },

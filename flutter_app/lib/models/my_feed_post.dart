@@ -188,8 +188,8 @@ class MyFeedPost {
       id: json['id'] as String,
       slug: json['slug'] as String? ?? json['id'] as String,
       caption: _string(json['caption']) ??
-          _string(json['title']) ??
-          _string(json['description']),
+          _string(json['description']) ??
+          _string(json['title']),
       mediaUrl: mediaUrl,
       thumbnailUrl: _string(json['thumbnailUrl']),
       type: type,

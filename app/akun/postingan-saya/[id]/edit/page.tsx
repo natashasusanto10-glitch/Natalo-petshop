@@ -49,7 +49,7 @@ export default async function EditMyFeedPostPage({ params }: PageProps) {
       id: postId,
       authorId: session.sub,
       authorRole: "CUSTOMER",
-      kind: "COMMUNITY",
+      kind: { in: ["COMMUNITY", "PHOTO_CAROUSEL"] },
       deletedAt: null,
       status: { in: [...MY_FEED_VISIBLE_STATUSES] },
     },
