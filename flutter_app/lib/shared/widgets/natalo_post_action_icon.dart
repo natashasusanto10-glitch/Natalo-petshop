@@ -16,7 +16,7 @@ class NataloPostActionIcon extends StatelessWidget {
     this.color = const Color(0xFF111111),
     this.activeColor = const Color(0xFFE53935),
     this.disabledColor = const Color(0xFFBDBDBD),
-    this.strokeWidth = 1.75,
+    this.strokeWidth = 1.6,
     this.isActive = false,
     this.isDisabled = false,
   });
@@ -62,7 +62,7 @@ class NataloPostActionButton extends StatefulWidget {
     this.color = const Color(0xFF111111),
     this.activeColor = const Color(0xFFE53935),
     this.disabledColor = const Color(0xFFBDBDBD),
-    this.strokeWidth = 1.75,
+    this.strokeWidth = 1.6,
     this.semanticLabel,
     this.count,
     this.countColor = const Color(0xFF111111),

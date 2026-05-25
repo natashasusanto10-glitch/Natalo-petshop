@@ -363,7 +363,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
               style: TextStyle(
                 color: NataloColors.textPrimary,
                 fontSize: 16,
-                fontWeight: FontWeight.w900,
+                fontWeight: FontWeight.w800,
                 height: 1.0,
               ),
             ),
@@ -722,7 +722,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
                   type: NataloPostActionIconType.like,
                   isActive: liked,
                   iconSize: 30,
-                  strokeWidth: 1.75,
+                  strokeWidth: 1.6,
                   tapSize: 44,
                   count: post.likeCount,
                   semanticLabel: liked ? 'Batalkan suka' : 'Sukai postingan',
@@ -732,7 +732,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
               NataloPostActionButton(
                 type: NataloPostActionIconType.comment,
                 iconSize: 30,
-                strokeWidth: 1.75,
+                strokeWidth: 1.6,
                 tapSize: 44,
                 count: post.commentCount,
                 semanticLabel: 'Buka komentar',
@@ -741,7 +741,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
               NataloPostActionButton(
                 type: NataloPostActionIconType.share,
                 iconSize: 30,
-                strokeWidth: 1.75,
+                strokeWidth: 1.6,
                 tapSize: 44,
                 count: post.shareCount,
                 semanticLabel: 'Bagikan postingan',
