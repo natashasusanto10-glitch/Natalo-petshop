@@ -32,6 +32,7 @@ import '../state/cart_store.dart';
 import '../state/feed_local_store.dart';
 import '../state/member_store.dart';
 import '../state/settings_store.dart';
+import '../utils/android_back_overlays.dart';
 import '../utils/formatters.dart';
 import '../utils/action_throttle.dart';
 import '../utils/haptics.dart';
@@ -2096,6 +2097,10 @@ class _FeedPostViewState extends State<_FeedPostView>
   void dispose() {
     _loadingSpinnerDelay?.cancel();
     _stopProductRotation();
+    // Defensive: kalau widget unmount sebelum drawer close (mis. user
+    // scroll ke post lain saat drawer open), cleanup back closer
+    // supaya gak ghost ke widget yang udah dispose.
+    popAndroidBackOverlayCloser(_androidBackCommentCloser);
     _commentSheetController.removeListener(_syncCommentSheetProgress);
     _commentSheetController.dispose();
     _commentSheetExtent.dispose();
@@ -2262,6 +2267,11 @@ class _FeedPostViewState extends State<_FeedPostView>
     AppHaptics.tap();
     FocusScope.of(context).unfocus();
     widget.onOverlayStateChanged(true);
+    // Register closer ke Android back coordinator — Samsung Back press
+    // di MainNavigationScreen akan call ini DULU sebelum tab nav /
+    // double-back exit. Closer dipanggil ulang via _closeComments,
+    // sehingga state UI + back stack sync.
+    pushAndroidBackOverlayCloser(_androidBackCommentCloser);
     setState(() {
       _commentDrawerMounted = true;
       _commentAddedCount = 0;
@@ -2278,10 +2288,22 @@ class _FeedPostViewState extends State<_FeedPostView>
     });
   }
 
+  /// Stable reference closer untuk Android back coordinator. Method
+  /// (bukan variable assignment ke lambda) supaya consistent reference
+  /// + lint-clean. Identitas reference match via tear-off di push/pop.
+  void _androidBackCommentCloser() {
+    if (_commentDrawerMounted) _closeComments();
+  }
+
   void _closeComments([int addedCount = 0]) {
     if (!_commentDrawerMounted) return;
     FocusScope.of(context).unfocus();
     AppHaptics.tap();
+    // Cleanup Android back closer reference — defensive double-pop
+    // dilindungi oleh identical() check di popAndroidBackOverlayCloser.
+    // Aman dipanggil walau closer udah ke-consume oleh back press
+    // (consumeAndroidBackOverlay sudah removeLast SEBELUM call closer).
+    popAndroidBackOverlayCloser(_androidBackCommentCloser);
     final countDelta = math.max(addedCount, _commentAddedCount);
     setState(() {
       _commentSheetOpen = false;
