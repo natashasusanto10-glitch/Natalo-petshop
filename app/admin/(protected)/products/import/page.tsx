@@ -474,7 +474,15 @@ export default function ImportProductsPage() {
               <input
                 type="text"
                 value={resetConfirmText}
-                onChange={(e) => setResetConfirmText(e.target.value)}
+                // BUG FIX: CSS `uppercase` cuma visual transform — tidak
+                // ubah underlying value. User ngetik "hapus" lihat di
+                // layar "HAPUS" tapi state tetap "hapus" → button stay
+                // disabled. Auto-uppercase di onChange supaya state
+                // match display, button enable saat user ngetik 5 huruf
+                // apapun case-nya.
+                onChange={(e) =>
+                  setResetConfirmText(e.target.value.toUpperCase())
+                }
                 placeholder="HAPUS"
                 disabled={resetLoading}
                 autoFocus
