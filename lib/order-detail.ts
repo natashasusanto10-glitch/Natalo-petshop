@@ -110,6 +110,7 @@ export function serializeOrderDetail(order: OrderDetailRecord) {
     subtotal: order.subtotal,
     shippingCost: order.shippingCost,
     discount: order.discount,
+    refundBalanceUsed: order.refundBalanceUsed,
     total: order.total,
     manualBank: order.manualBank,
     uniqueCode: order.uniqueCode,
