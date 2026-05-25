@@ -296,9 +296,44 @@ List<OrderItemSummary> _parseReorderEntries(dynamic raw,
   return result;
 }
 
+/// Parse backend skipped reorder items menjadi friendly Indonesian message.
+///
+/// Bug fix: sebelumnya `e.toString()` di Map JS-style produce raw JSON
+/// dump yang user-hostile:
+///   "{status: skipped, productId: cmpb..., reason: Stok habis.,
+///     reasonCode: OUT_OF_STOCK, availableStock: 0}"
+///
+/// Sekarang extract field `name` + `reason` jadi clean message:
+///   "Akari Premium Blue Red Yellow 160g — Stok habis."
+///
+/// Backend schema (lib/reorder.ts ReorderSkippedResult):
+///   { status, productId, variantId, variantLabel, name, reason,
+///     reasonCode, availableStock? }
 List<String> _parseSkippedReasons(dynamic raw) {
   if (raw is! List) return const [];
-  return raw.map((e) => e.toString()).toList();
+  return raw
+      .map((e) {
+        if (e is Map) {
+          final name = (e['name'] ?? '').toString().trim();
+          final reason =
+              (e['reason'] ?? 'Tidak bisa dibeli lagi').toString().trim();
+          // Variant info kalau ada (e.g. "4kg / Beef") supaya user tau
+          // varian spesifik yang gak available.
+          final variant = (e['variantLabel'] ?? '').toString().trim();
+          final productLabel = variant.isNotEmpty && name.isNotEmpty
+              ? '$name ($variant)'
+              : name;
+          if (productLabel.isEmpty) return reason;
+          // Strip trailing period dari reason supaya format konsisten dgn dash.
+          final cleanReason = reason.endsWith('.')
+              ? reason.substring(0, reason.length - 1)
+              : reason;
+          return '$productLabel — $cleanReason';
+        }
+        return e.toString();
+      })
+      .where((s) => s.isNotEmpty)
+      .toList();
 }
 
 String _mimeTypeFromPath(String path) {

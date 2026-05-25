@@ -182,8 +182,16 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
       );
 
       if (result.items.isEmpty) {
-        final reason = result.skippedReasons.firstOrNull;
-        throw Exception(reason ?? 'Tidak ada item yang bisa dibeli lagi.');
+        // Semua item skipped — kasih friendly message.
+        // Pakai first reason kalau cuma 1, summary count kalau multiple
+        // (avoid super-long toast yang ke-truncate di small screen).
+        final reasons = result.skippedReasons;
+        final message = reasons.isEmpty
+            ? 'Tidak ada item yang bisa dibeli lagi.'
+            : reasons.length == 1
+                ? reasons.first
+                : '${reasons.length} produk tidak bisa dibeli lagi (stok habis / tidak tersedia).';
+        throw Exception(message);
       }
 
       for (final item in result.items) {
