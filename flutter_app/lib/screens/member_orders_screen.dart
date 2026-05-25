@@ -8,6 +8,7 @@ import '../services/order_service.dart';
 import '../state/cart_store.dart';
 import '../state/member_store.dart';
 import '../utils/formatters.dart';
+import '../utils/haptics.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
@@ -170,6 +171,7 @@ class _MemberOrdersScreenState extends State<MemberOrdersScreen> {
                         itemBuilder: (context, index) => _OrderCard(
                           order: filteredOrders[index],
                           index: index,
+                          onRefresh: _refresh,
                         ),
                       ),
                     );
@@ -320,11 +322,29 @@ class _LoginRequiredScaffold extends StatelessWidget {
   }
 }
 
-class _OrderCard extends StatelessWidget {
+class _OrderCard extends StatefulWidget {
   final OrderSummary order;
   final int index;
+  /// Callback untuk re-fetch list dari parent setelah action yang ubah
+  /// status (mis. konfirmasi terima → DELIVERED). Tanpa ini, card stuck
+  /// nampilin status lama sampai user refresh manual.
+  final Future<void> Function() onRefresh;
 
-  const _OrderCard({required this.order, required this.index});
+  const _OrderCard({
+    required this.order,
+    required this.index,
+    required this.onRefresh,
+  });
+
+  @override
+  State<_OrderCard> createState() => _OrderCardState();
+}
+
+class _OrderCardState extends State<_OrderCard> {
+  bool _confirming = false;
+
+  OrderSummary get order => widget.order;
+  int get index => widget.index;
 
   void _openOrderDetail(BuildContext context) {
     Navigator.pushNamed(
@@ -407,6 +427,104 @@ class _OrderCard extends StatelessWidget {
     }
   }
 
+  /// User konfirmasi paket sudah diterima (langsung dari list card,
+  /// tidak harus drill ke detail dulu). Confirm dialog → POST endpoint
+  /// → refresh list. Dialog dipakai supaya user tidak accidentally
+  /// kehilangan window refund/komplain.
+  Future<void> _confirmDelivered(BuildContext context) async {
+    if (_confirming) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        icon: Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: const Color(0xFFD1FAE5),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: const Icon(
+            Icons.check_circle_outline_rounded,
+            color: Color(0xFF059669),
+            size: 28,
+          ),
+        ),
+        title: const Text(
+          'Sudah terima pesanan?',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Konfirmasi pesanan sudah sampai dan kondisinya OK. '
+              'Window komplain/refund akan tutup setelah ini.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Color(0xFF374151),
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                height: 1.5,
+              ),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Kalau ada masalah, jangan tap dulu — hubungi admin via WA.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Color(0xFF6B7280),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: const Text('Belum'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF059669),
+            ),
+            child: const Text('Ya, Sudah Terima'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _confirming = true);
+    try {
+      final result =
+          await orderService.confirmDelivered(orderNumber: order.orderNumber);
+      if (!context.mounted) return;
+      AppHaptics.success();
+      // Refresh list dari parent supaya status card update ke DELIVERED
+      // dan card pindah dari tab "Dikirim" ke tab "Selesai".
+      await widget.onRefresh();
+      if (!context.mounted) return;
+      _showSnack(
+        context,
+        result.alreadyConfirmed
+            ? 'Pesanan sudah ditandai selesai.'
+            : result.message,
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      AppHaptics.warning();
+      final message = error.toString().replaceFirst('Exception: ', '');
+      _showSnack(context, 'Konfirmasi gagal: $message');
+    } finally {
+      if (mounted) setState(() => _confirming = false);
+    }
+  }
+
   bool get _isFinalized {
     final status = order.status.toUpperCase();
     return status == 'CANCELLED' ||
@@ -439,15 +557,35 @@ class _OrderCard extends StatelessWidget {
     return payment == 'UNPAID' || payment == 'PENDING' || status == 'PENDING';
   }
 
+  /// Order yang udah SHIPPED + bukan self-pickup → user butuh konfirmasi
+  /// "Sudah Diterima". Self-pickup tidak transit SHIPPED (PROCESSING →
+  /// READY_FOR_PICKUP → DELIVERED via admin scan), jadi skip.
+  bool get _needsDeliveryConfirmation {
+    final status = order.status.toUpperCase();
+    return status == 'SHIPPED' && !order.isSelfPickup;
+  }
+
   String? get _actionLabel {
     if (_isUnpaid) return 'Bayar Sekarang';
+    if (_needsDeliveryConfirmation) return 'Sudah Diterima';
     if (_isReorderable) return 'Beli Lagi';
     return null;
+  }
+
+  /// Warna CTA button — hijau emerald untuk konfirmasi diterima (primary
+  /// action di stage SHIPPED, beda dari blue brand untuk action lain).
+  Color get _actionColor {
+    if (_needsDeliveryConfirmation) return const Color(0xFF059669);
+    return _brandBlue;
   }
 
   void _handleOrderAction(BuildContext context) {
     if (_isUnpaid) {
       _openPayment(context);
+      return;
+    }
+    if (_needsDeliveryConfirmation) {
+      _confirmDelivered(context);
       return;
     }
     if (_isReorderable) {
@@ -600,12 +738,15 @@ class _OrderCard extends StatelessWidget {
                         if (actionLabel != null) ...[
                           const SizedBox(width: 12),
                           ElevatedButton(
-                            onPressed: () => _handleOrderAction(context),
+                            // Disable saat lagi proses konfirmasi terima.
+                            onPressed: _confirming
+                                ? null
+                                : () => _handleOrderAction(context),
                             style: ElevatedButton.styleFrom(
                               minimumSize: const Size(0, 40),
                               padding:
                                   const EdgeInsets.symmetric(horizontal: 16),
-                              backgroundColor: _brandBlue,
+                              backgroundColor: _actionColor,
                               foregroundColor: Colors.white,
                               elevation: 0,
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -613,12 +754,21 @@ class _OrderCard extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            child: Text(
-                              actionLabel,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
+                            child: _confirming
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : Text(
+                                    actionLabel,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
                           ),
                         ],
                       ],
