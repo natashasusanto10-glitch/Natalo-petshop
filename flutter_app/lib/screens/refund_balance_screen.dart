@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/member_profile.dart';
 import '../services/api_client.dart';
 import '../state/member_store.dart';
 import '../utils/formatters.dart';
@@ -285,10 +286,10 @@ class _LedgerCard extends StatelessWidget {
   /// Tap behavior:
   ///   - CREDIT / REVERSAL (refund masuk / dikembalikan) — navigate ke
   ///     RefundDetailScreen via sourceRefundCaseId (kalau ada).
-  ///   - DEBIT (saldo dipakai di checkout) — navigate ke order detail.
-  ///     Untuk MVP, snackbar arahkan user ke Tab Transaksi (existing
-  ///     route /member/order-detail butuh OrderSummary object).
-  ///   - Entry tanpa sourceId — disable tap (visual hint: no chevron).
+  ///   - DEBIT (saldo dipakai di checkout) — navigate ke MemberOrderDetail
+  ///     via stub OrderSummary (id + orderNumber dari backend, sisanya
+  ///     di-replace fresh oleh initState `fetchOrderDetail(orderNumber)`).
+  ///   - Entry tanpa source resolvable — disable tap (visual hint: no chevron).
   void _onTap(BuildContext context) {
     final isCredit = entry.type == 'CREDIT' || entry.type == 'REVERSAL';
     if (isCredit && entry.sourceRefundCaseId != null) {
@@ -299,16 +300,26 @@ class _LedgerCard extends StatelessWidget {
       );
       return;
     }
-    if (!isCredit && entry.sourceOrderId != null) {
-      // DEBIT entry — arahkan ke detail order. Future improvement:
-      // route accept orderId, fetch order on-the-fly.
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Buka Tab Transaksi → cari pesanan terkait di list "Pesanan Saya".',
-          ),
-          behavior: SnackBarBehavior.floating,
-        ),
+    if (!isCredit &&
+        entry.sourceOrderId != null &&
+        entry.sourceOrderNumber != null) {
+      // Stub OrderSummary — MemberOrderDetailScreen.initState langsung
+      // call orderService.fetchOrderDetail(orderNumber) yang replace stub
+      // dengan data fresh (items, address, shipping, payment, dll).
+      // Status + paymentStatus default placeholder, ke-overwrite saat
+      // fetch selesai (~200ms). Total dari amount ledger (DEBIT positive).
+      final stub = OrderSummary(
+        id: entry.sourceOrderId!,
+        orderNumber: entry.sourceOrderNumber!,
+        status: 'PROCESSING',
+        paymentStatus: 'PAID',
+        total: entry.amount.toDouble(),
+        createdAt: entry.createdAt,
+      );
+      Navigator.pushNamed(
+        context,
+        '/member/order-detail',
+        arguments: stub,
       );
       return;
     }
@@ -324,9 +335,12 @@ class _LedgerCard extends StatelessWidget {
         : const Color(0xFFFEE2E2);
     final iconColor = isCredit ? _success : _danger;
     // Determine if entry is clickable — credit dengan refundCaseId atau
-    // debit dengan orderId.
+    // debit dengan orderNumber (resolved server-side dari sourceOrderId).
+    // Order yang udah ke-delete cascade → sourceOrderNumber null → disable.
     final clickable = (isCredit && entry.sourceRefundCaseId != null) ||
-        (!isCredit && entry.sourceOrderId != null);
+        (!isCredit &&
+            entry.sourceOrderId != null &&
+            entry.sourceOrderNumber != null);
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
@@ -432,6 +446,7 @@ class _LedgerEntry {
   final int amount;
   final int balanceAfter;
   final String? sourceOrderId;
+  final String? sourceOrderNumber;
   final String? sourceRefundCaseId;
   final String? note;
   final DateTime createdAt;
@@ -443,6 +458,7 @@ class _LedgerEntry {
     required this.balanceAfter,
     required this.createdAt,
     this.sourceOrderId,
+    this.sourceOrderNumber,
     this.sourceRefundCaseId,
     this.note,
   });
@@ -454,6 +470,7 @@ class _LedgerEntry {
       amount: (json['amount'] as num?)?.toInt() ?? 0,
       balanceAfter: (json['balanceAfter'] as num?)?.toInt() ?? 0,
       sourceOrderId: json['sourceOrderId']?.toString(),
+      sourceOrderNumber: json['sourceOrderNumber']?.toString(),
       sourceRefundCaseId: json['sourceRefundCaseId']?.toString(),
       note: json['note']?.toString(),
       createdAt: DateTime.tryParse(
