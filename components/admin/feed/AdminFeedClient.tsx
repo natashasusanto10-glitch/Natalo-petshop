@@ -48,6 +48,10 @@ type AdminFeedItem = {
   description: string | null;
   videoUrl: string | null;
   thumbnailUrl: string | null;
+  /** First media URL untuk PHOTO_CAROUSEL — fallback thumbnail. */
+  firstMediaUrl: string | null;
+  /** Total media count — display "Foto (N)" badge. */
+  mediaCount: number;
   videoDurationSec: number | null;
   product: { id: string; slug: string; name: string } | null;
   promo: {
@@ -695,22 +699,76 @@ function AdminFeedRow({
           )}
         </button>
 
-        {/* Thumbnail kecil */}
-        <div className="relative h-24 w-16 shrink-0 overflow-hidden rounded-xl bg-gray-100">
-          {post.thumbnailUrl ? (
-            <Image
-              src={post.thumbnailUrl}
-              alt=""
-              fill
-              sizes="64px"
-              className="object-cover"
-            />
-          ) : (
-            <div className="grid h-full place-items-center text-[10px] font-bold text-gray-300">
-              No thumb
+        {/* Thumbnail kecil — fallback chain:
+            1. thumbnailUrl (video poster, Bunny generate)
+            2. firstMediaUrl (PHOTO_CAROUSEL first image)
+            3. Placeholder dengan icon kind */}
+        {(() => {
+          const thumb = post.thumbnailUrl || post.firstMediaUrl;
+          const isVideo = post.kind === "VIDEO_PRODUCT" ||
+            post.kind === "USER_VIDEO" ||
+            post.kind === "VIDEO_ONLY";
+          const isPhoto = post.kind === "PHOTO_CAROUSEL";
+          const ringClass = isVideo
+            ? "ring-2 ring-blue-200"
+            : isPhoto
+              ? "ring-2 ring-emerald-200"
+              : "ring-1 ring-gray-200";
+          return (
+            <div
+              className={`relative h-24 w-16 shrink-0 overflow-hidden rounded-xl bg-gray-100 ${ringClass}`}
+            >
+              {thumb ? (
+                <>
+                  <Image
+                    src={thumb}
+                    alt=""
+                    fill
+                    sizes="64px"
+                    className="object-cover"
+                  />
+                  {/* Play icon overlay untuk video — visual cue thumbnail = video */}
+                  {isVideo && (
+                    <div className="absolute inset-0 grid place-items-center bg-black/20">
+                      <div className="grid h-7 w-7 place-items-center rounded-full bg-white/90">
+                        <svg
+                          className="h-3.5 w-3.5 text-gray-900"
+                          fill="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      </div>
+                    </div>
+                  )}
+                  {/* Counter badge untuk multi-photo */}
+                  {isPhoto && post.mediaCount > 1 && (
+                    <div className="absolute right-1 top-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                      {post.mediaCount}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="grid h-full place-items-center text-gray-300">
+                  {isPhoto ? (
+                    <svg className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <rect x="3" y="3" width="18" height="18" rx="2" />
+                      <circle cx="8.5" cy="8.5" r="1.5" />
+                      <path d="m21 15-5-5L5 21" />
+                    </svg>
+                  ) : isVideo ? (
+                    <svg className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <rect x="3" y="6" width="14" height="12" rx="2" />
+                      <path d="m17 10 4-2v8l-4-2" />
+                    </svg>
+                  ) : (
+                    <span className="text-[10px] font-bold">No thumb</span>
+                  )}
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          );
+        })()}
 
         {/* Info */}
         <div className="min-w-0 flex-1">
@@ -733,14 +791,47 @@ function AdminFeedRow({
               )}
             </div>
           </div>
-          <p className="mt-1 truncate text-[11px] font-semibold text-gray-500">
-            {post.kind} · {post.author.role === "ADMIN" ? "Admin" : "User"} {post.author.name} ·{" "}
-            {new Date(post.createdAt).toLocaleDateString("id-ID", {
-              day: "numeric",
-              month: "short",
-              year: "numeric",
-            })}
-          </p>
+          {/* Kind badge dengan icon + Indonesian label */}
+          <div className="mt-1 flex items-center gap-1.5 text-[11px] font-semibold text-gray-500">
+            <span className="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 font-bold text-gray-700">
+              {(() => {
+                switch (post.kind) {
+                  case "VIDEO_PRODUCT":
+                    return <>🎥 Video Produk</>;
+                  case "USER_VIDEO":
+                  case "VIDEO_ONLY":
+                    return <>🎥 Video</>;
+                  case "PHOTO_CAROUSEL":
+                    return (
+                      <>
+                        📷 Foto
+                        {post.mediaCount > 1 && ` (${post.mediaCount})`}
+                      </>
+                    );
+                  case "COMMUNITY":
+                    return <>💬 Diskusi</>;
+                  case "PRODUCT_ONLY":
+                    return <>🏷️ Produk</>;
+                  case "PROMO":
+                    return <>🎁 Promo</>;
+                  default:
+                    return <>{post.kind}</>;
+                }
+              })()}
+            </span>
+            <span>·</span>
+            <span className="truncate">
+              {post.author.role === "ADMIN" ? "Admin" : "User"} {post.author.name}
+            </span>
+            <span>·</span>
+            <span className="shrink-0">
+              {new Date(post.createdAt).toLocaleDateString("id-ID", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              })}
+            </span>
+          </div>
           <p className="mt-0.5 text-[11px] font-bold text-gray-500">
             ♥ {post.likeCount} · 💬 {post.commentCount} · 👁 {post.viewCount}
           </p>
