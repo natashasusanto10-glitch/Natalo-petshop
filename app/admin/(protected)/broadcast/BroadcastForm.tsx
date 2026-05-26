@@ -43,6 +43,50 @@ const CTA_OPTIONS: Record<BroadcastType, string[]> = {
   announcement: ["Lihat Detail", "Cek Info", "Mengerti", "Perbarui Sekarang"],
 };
 
+/**
+ * Mapping CTA label → URL deep link target.
+ *
+ * Saat admin pilih CTA dari dropdown, URL field auto-update ke value
+ * yang sesuai. Cegah misconfiguration: dulu admin pilih "Pakai Voucher"
+ * tapi URL tetap `/products` → user tap tombol Voucher justru masuk
+ * halaman produk (atau Flutter pakai fallback CTA-label detection, tapi
+ * tidak 100% reliable).
+ *
+ * Sekarang CTA → URL preset eksplisit, admin tetap bisa override manual
+ * kalau perlu (mis. promo voucher spesifik kategori produk tertentu).
+ *
+ * Routes ini juga match dengan Flutter Navigator routes di main.dart.
+ */
+const CTA_TO_URL: Record<string, string> = {
+  // Promo CTAs
+  "Lihat Promo": "/products",
+  "Pakai Voucher": "/member/vouchers", // ← Tap tombol = buka halaman voucher
+  "Belanja Sekarang": "/products",
+  "Lihat Detail": "/notifications",
+  // Announcement CTAs
+  "Cek Info": "/notifications",
+  Mengerti: "/notifications",
+  "Perbarui Sekarang": "/notifications",
+};
+
+/**
+ * Friendly label untuk target URL — preview yang admin lihat saat pilih
+ * CTA. "User akan dibawa ke: 🎁 Halaman Voucher" daripada URL teknis.
+ */
+function urlPreviewLabel(url: string): string {
+  if (url.startsWith("/member/vouchers")) return "🎁 Voucher Saya";
+  if (url.startsWith("/member/refund-balance")) return "💰 Saldo Refund";
+  if (url.startsWith("/member/orders")) return "📦 Pesanan Saya";
+  if (url.startsWith("/member/loyalty")) return "⭐ Poin Loyalty";
+  if (url.startsWith("/products")) return "🛍️ Katalog Produk";
+  if (url.startsWith("/notifications")) return "🔔 Pengumuman Detail";
+  if (url.startsWith("/feed")) return "🎬 Feed";
+  if (url.startsWith("/cart")) return "🛒 Keranjang";
+  if (url.startsWith("http")) return "🔗 Link Eksternal";
+  if (!url) return "Tidak diatur";
+  return url;
+}
+
 function defaultTarget(type: BroadcastType) {
   return type === "promo" ? "/products" : "/notifications";
 }
@@ -261,7 +305,17 @@ export function BroadcastForm() {
           <label className="block text-sm font-bold text-zinc-700">CTA Label</label>
           <select
             value={ctaLabel}
-            onChange={(event) => setCtaLabel(event.target.value)}
+            onChange={(event) => {
+              const next = event.target.value;
+              setCtaLabel(next);
+              // Auto-update URL berdasarkan CTA. Cegah misconfig
+              // "Pakai Voucher" → URL salah. Admin tetep bisa override
+              // manual setelah ini dengan ngetik di field URL.
+              const presetUrl = CTA_TO_URL[next];
+              if (presetUrl !== undefined) {
+                setUrl(presetUrl);
+              }
+            }}
             className="mt-1 block w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold outline-none focus:border-natalo-400"
           >
             {CTA_OPTIONS[type].map((label) => (
@@ -280,6 +334,15 @@ export function BroadcastForm() {
             placeholder={defaultTarget(type)}
             className="mt-1 block w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-natalo-400"
           />
+          {/* Preview chip — show admin tujuan akhir user saat tap CTA.
+              Useful supaya admin gak salah set URL (mis. typo, atau lupa
+              ubah default). */}
+          <p className="mt-1 text-xs font-semibold text-zinc-500">
+            User akan dibawa ke:{" "}
+            <span className="font-bold text-natalo-700">
+              {urlPreviewLabel(url)}
+            </span>
+          </p>
         </div>
       </div>
 
