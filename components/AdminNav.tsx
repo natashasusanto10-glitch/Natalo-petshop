@@ -87,6 +87,14 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Reviews",
         icon: <Glyph d="m12 2 3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2Z" />,
       },
+      {
+        // CS tool: override tgl lahir customer yang ke-lock setelah dapat
+        // voucher ultah. Anti-abuse lock di sistem otomatis, tapi genuine
+        // cases (salah input) butuh manual override dengan audit log.
+        href: "/admin/birth-date-overrides",
+        label: "Override Tgl Lahir",
+        icon: <Glyph d="M12 8v4l3 3M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0z" />,
+      },
     ],
   },
   {
