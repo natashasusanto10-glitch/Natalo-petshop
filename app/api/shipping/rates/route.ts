@@ -24,6 +24,7 @@ import {
   resolveOriginAreaId,
   SHIPPING_ORIGIN_UNAVAILABLE_MESSAGE,
 } from "@/lib/shipping-origin";
+import { isBiteshipEnabled } from "@/lib/biteship";
 
 export type ShippingItem = {
   name: string;
@@ -72,17 +73,26 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!apiKey) {
-    if (process.env.NODE_ENV === "production") {
-      console.error("[shipping] BITESHIP_API_KEY missing in production — refusing to return dummy rates");
-      return NextResponse.json(
-        { message: "Layanan pengiriman belum tersedia. Silakan hubungi admin." },
-        { status: 503 }
-      );
-    }
+  // Biteship disabled (launch fase awal) → kasih flat rates dari
+  // dummyRates(). Admin tetep bisa book manual via platform kurir
+  // sendiri (JNE/JNT/SiCepat/Gojek/Grab). Customer lihat estimasi
+  // ongkir realistic, admin konfirmasi/adjust kalau perlu saat invoice.
+  //
+  // Note: dummyRates() return flat price tanpa hitung jarak/berat asli.
+  // Untuk akurat, set ulang nominal di function dummyRates() atau
+  // aktifkan Biteship untuk dynamic pricing.
+  if (!isBiteshipEnabled()) {
     return NextResponse.json({
       rates: dummyRates(),
-      message: "BITESHIP_API_KEY belum diisi — pakai data dummy (dev only).",
+      message: "Pengiriman dihitung dengan tarif flat. Admin akan konfirmasi ongkir final setelah order dibuat.",
+    });
+  }
+  // Defensive: theoretically unreachable karena isBiteshipEnabled
+  // sudah check apiKey, tapi keep untuk type-safety.
+  if (!apiKey) {
+    return NextResponse.json({
+      rates: dummyRates(),
+      message: "Tarif pengiriman estimasi.",
     });
   }
   const items: ShippingItem[] = Array.isArray(body.items) ? body.items : [];

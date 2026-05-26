@@ -7,6 +7,37 @@ import {
   SHIPPING_ORIGIN_UNAVAILABLE_MESSAGE,
 } from "@/lib/shipping-origin";
 
+/**
+ * Single source of truth: apakah integrasi Biteship aktif?
+ *
+ * Natalo opt to skip Biteship saat awal launch karena:
+ *   - Aktivasi butuh test orders + verifikasi 1-2 hari
+ *   - Kurir instant (Gojek/Grab) tidak ke-cover Biteship anyway
+ *   - Volume awal kecil — manual booking masih scalable
+ *
+ * Logic disable:
+ *   - Explicit: env BITESHIP_ENABLED=false → disabled (force-off
+ *     walaupun API key ada)
+ *   - Implicit: env BITESHIP_API_KEY tidak ada / kosong → disabled
+ *     (no key = tidak mungkin call API)
+ *
+ * Dipakai di:
+ *   - createBiteshipShipment / createBiteshipShipmentIfReady (early return)
+ *   - app/api/payment/midtrans webhook (skip auto-create)
+ *   - app/admin/(protected)/orders/[id]/actions.ts markAsPaid (skip)
+ *   - app/api/shipping/rates (fallback ke manual ongkir input)
+ *   - app/api/shipping/areas (return empty)
+ *   - Admin UI (hide error banner, tampilkan note "manual shipping")
+ *
+ * Kapan re-enable: set BITESHIP_ENABLED=true + ensure BITESHIP_API_KEY
+ * valid + sudah lewat proses aktivasi di dashboard Biteship.
+ */
+export function isBiteshipEnabled(): boolean {
+  if (process.env.BITESHIP_ENABLED === "false") return false;
+  if (!process.env.BITESHIP_API_KEY) return false;
+  return true;
+}
+
 type BiteshipItem = {
   name: string;
   description: string;
@@ -111,6 +142,13 @@ async function getCreateOrderPayload(order: OrderWithItems) {
 }
 
 export async function createBiteshipShipment(orderId: string) {
+  // Skip kalau Biteship belum aktif (lihat isBiteshipEnabled comment).
+  // Natalo dalam fase awal launch pakai manual flow: admin book di
+  // platform kurir sendiri, lalu input resi via form markAsShipped.
+  if (!isBiteshipEnabled()) {
+    return { skipped: true, reason: "biteship_disabled" } as const;
+  }
+
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     include: { items: true },

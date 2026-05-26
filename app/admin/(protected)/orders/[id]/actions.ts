@@ -131,7 +131,14 @@ export async function markAsPaid(orderId: string) {
 
 export async function createShipment(orderId: string) {
   await requireAdmin();
-  await createBiteshipShipment(orderId);
+  const result = await createBiteshipShipment(orderId);
+  // Kalau Biteship disabled, kasih feedback admin via error supaya
+  // tidak diam-diam (button "Booking Kurir" tidak ada effect = confusing).
+  if ("reason" in result && result.reason === "biteship_disabled") {
+    throw new Error(
+      "Integrasi Biteship belum aktif. Booking kurir dilakukan manual: pakai aplikasi/website kurir (JNE/JNT/SiCepat/dll), lalu input nomor resi via tombol 'Tandai sudah dikirim'.",
+    );
+  }
   revalidateOrderAdmin(orderId);
 }
 

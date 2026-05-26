@@ -460,31 +460,44 @@ export default async function AdminOrderDetailPage({
                   <span className="text-zinc-400">-</span>
                 )}
               </p>
-              {order.biteshipOrderId && (
-                <p>
-                  <span className="font-semibold">Biteship ID:</span>{" "}
-                  <span className="font-mono">{order.biteshipOrderId}</span>
-                </p>
-              )}
-              {order.shipmentStatus && (
-                <p>
-                  <span className="font-semibold">Status shipment:</span>{" "}
-                  {order.shipmentStatus}
-                </p>
-              )}
-              {order.biteshipTrackingUrl && (
-                <a
-                  href={order.biteshipTrackingUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex text-sm font-bold text-natalo-700 hover:underline"
-                >
-                  Lacak via Biteship →
-                </a>
-              )}
-              {order.biteshipError && (
-                <p className="rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
-                  Biteship: {order.biteshipError}
+              {/* Biteship section — tampil HANYA kalau ada biteshipOrderId
+                  (artinya beneran sukses di-book via Biteship). Untuk order
+                  yang biteshipError-only (mis. "Key has not been activated")
+                  hide karena bukan info actionable untuk admin — Biteship
+                  sengaja di-skip saat launch fase awal, admin book manual
+                  via platform kurir + input resi via form di atas. */}
+              {order.biteshipOrderId ? (
+                <>
+                  <p>
+                    <span className="font-semibold">Biteship ID:</span>{" "}
+                    <span className="font-mono">{order.biteshipOrderId}</span>
+                  </p>
+                  {order.shipmentStatus && (
+                    <p>
+                      <span className="font-semibold">Status shipment:</span>{" "}
+                      {order.shipmentStatus}
+                    </p>
+                  )}
+                  {order.biteshipTrackingUrl && (
+                    <a
+                      href={order.biteshipTrackingUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex text-sm font-bold text-natalo-700 hover:underline"
+                    >
+                      Lacak via Biteship →
+                    </a>
+                  )}
+                  {order.biteshipError && (
+                    <p className="rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                      Biteship: {order.biteshipError}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="rounded-xl bg-zinc-50 px-3 py-2 text-xs font-semibold text-zinc-600">
+                  Pengiriman manual — book via aplikasi kurir, lalu input
+                  resi/info driver via form &quot;Tandai sudah dikirim&quot;.
                 </p>
               )}
             </div>
