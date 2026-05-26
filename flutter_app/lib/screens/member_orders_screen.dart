@@ -67,18 +67,18 @@ class _MemberOrdersScreenState extends State<MemberOrdersScreen> {
 
   Future<List<OrderSummary>> _loadOrders() async {
     if (!memberStore.isLoggedIn) return [];
-    try {
-      final orders = await memberService.fetchOrders();
-      // Sync most-recent order ke Android home widget (silent no-op iOS).
-      if (orders.isNotEmpty) {
-        AppHomeWidgetService.updateLastOrder(orders.first);
-      } else {
-        AppHomeWidgetService.updateLastOrder(null);
-      }
-      return orders;
-    } catch (_) {
-      return [];
+    // Sengaja TIDAK try-catch — biar exception bubble ke FutureBuilder
+    // (snapshot.hasError) → render AppErrorState dengan retry button.
+    // Sebelum perbaikan: silent catch return [] bikin user lihat "Belum
+    // ada pesanan" padahal sebenarnya network error (confusing UX).
+    final orders = await memberService.fetchOrders();
+    // Sync most-recent order ke Android home widget (silent no-op iOS).
+    if (orders.isNotEmpty) {
+      AppHomeWidgetService.updateLastOrder(orders.first);
+    } else {
+      AppHomeWidgetService.updateLastOrder(null);
     }
+    return orders;
   }
 
   Future<void> _refresh() async {
@@ -149,6 +149,30 @@ class _MemberOrdersScreenState extends State<MemberOrdersScreen> {
                       setState(() => _selectedFilter = filter),
                 ),
                 const Expanded(child: AppSkeletonList(itemCount: 5)),
+              ],
+            );
+          }
+
+          // Error state — network down / server 5xx. Sebelum perbaikan
+          // silent-catch, kasus ini render "Belum ada pesanan" (confusing).
+          // Sekarang user dapat retry button yang jelas.
+          if (snapshot.hasError) {
+            return Column(
+              children: [
+                _OrderFilterTabs(
+                  selected: _selectedFilter,
+                  onChanged: (filter) =>
+                      setState(() => _selectedFilter = filter),
+                ),
+                Expanded(
+                  child: AppErrorState(
+                    variant: AppErrorVariant.network,
+                    title: 'Gagal memuat pesanan',
+                    description:
+                        'Periksa koneksi internet kamu lalu coba lagi.',
+                    onRetry: _refresh,
+                  ),
+                ),
               ],
             );
           }

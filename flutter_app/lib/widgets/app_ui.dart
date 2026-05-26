@@ -574,6 +574,192 @@ class AppEmptyState extends StatelessWidget {
   }
 }
 
+/// Variant untuk AppErrorState — masing-masing punya icon + copy default
+/// yang sesuai jenis error. Kalau tone-nya gak match (mis. server error
+/// di-default sopan tapi context kamu butuh urgent), override via title/
+/// description prop.
+enum AppErrorVariant {
+  /// Network offline / koneksi putus. Icon: cloud_off.
+  network,
+
+  /// Server error (5xx) / endpoint down. Icon: error_outline.
+  server,
+
+  /// 404 — resource gak ditemukan. Icon: search_off.
+  notFound,
+
+  /// Generic / unknown error. Icon: error_outline.
+  generic,
+}
+
+/// Inline error state — gantiin ad-hoc "Gagal memuat" plain text yang
+/// muncul di puluhan screen. Wajib pakai untuk semua API error in-flow
+/// supaya user punya retry button konsisten.
+///
+/// Beda dari [AppErrorWidget] (catastrophic Flutter render error):
+///   - [AppErrorWidget] = global crash boundary di MaterialApp.builder
+///   - [AppErrorState]  = inline state di FutureBuilder / FetchView /
+///                        Provider error case
+///
+/// Pattern recommend:
+/// ```dart
+/// if (snapshot.hasError) {
+///   return AppErrorState(
+///     variant: AppErrorVariant.network,
+///     onRetry: () => setState(() => _future = _loadData()),
+///   );
+/// }
+/// ```
+class AppErrorState extends StatelessWidget {
+  /// Variant nentuin icon + copy default. Override via [title]/[description]
+  /// kalau perlu custom.
+  final AppErrorVariant variant;
+
+  /// Override title default. Kalau null, ambil dari variant.
+  final String? title;
+
+  /// Override description default. Kalau null, ambil dari variant.
+  final String? description;
+
+  /// Override icon default. Kalau null, ambil dari variant.
+  final IconData? icon;
+
+  /// Callback retry. **WAJIB** untuk semua error state — user harus
+  /// punya jalan keluar. Set ke null hanya kalau retry truly impossible
+  /// (mis. resource permanently gone) — tapi case itu pakai [AppEmptyState]
+  /// bukan ErrorState.
+  final VoidCallback? onRetry;
+
+  /// Label retry button. Default "Coba lagi".
+  final String retryLabel;
+
+  /// Optional secondary action (mis. "Hubungi support", "Buka WhatsApp").
+  final Widget? secondaryAction;
+
+  /// Compact mode — padding lebih kecil + icon lebih kecil. Untuk error
+  /// inline di section kecil (mis. card di list). Default false = full.
+  final bool compact;
+
+  const AppErrorState({
+    super.key,
+    this.variant = AppErrorVariant.generic,
+    this.title,
+    this.description,
+    this.icon,
+    required this.onRetry,
+    this.retryLabel = 'Coba lagi',
+    this.secondaryAction,
+    this.compact = false,
+  });
+
+  IconData get _resolvedIcon {
+    if (icon != null) return icon!;
+    switch (variant) {
+      case AppErrorVariant.network:
+        return Icons.cloud_off_outlined;
+      case AppErrorVariant.server:
+        return Icons.error_outline_rounded;
+      case AppErrorVariant.notFound:
+        return Icons.search_off_rounded;
+      case AppErrorVariant.generic:
+        return Icons.error_outline_rounded;
+    }
+  }
+
+  String get _resolvedTitle {
+    if (title != null) return title!;
+    switch (variant) {
+      case AppErrorVariant.network:
+        return 'Tidak ada koneksi';
+      case AppErrorVariant.server:
+        return 'Server bermasalah';
+      case AppErrorVariant.notFound:
+        return 'Tidak ditemukan';
+      case AppErrorVariant.generic:
+        return 'Gagal memuat';
+    }
+  }
+
+  String get _resolvedDescription {
+    if (description != null) return description!;
+    switch (variant) {
+      case AppErrorVariant.network:
+        return 'Cek koneksi internet kamu lalu coba lagi.';
+      case AppErrorVariant.server:
+        return 'Tim kami sudah dapat laporan. Coba lagi sebentar lagi.';
+      case AppErrorVariant.notFound:
+        return 'Data yang kamu cari tidak ada atau sudah dihapus.';
+      case AppErrorVariant.generic:
+        return 'Terjadi kesalahan. Coba lagi atau hubungi support kalau berulang.';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pad = compact ? AppSpacing.lg : AppSpacing.xxl;
+    final iconSize = compact ? 44.0 : 56.0;
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(pad),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: EdgeInsets.all(compact ? 14 : 18),
+              decoration: BoxDecoration(
+                color: NataloColors.danger.withValues(alpha: 0.08),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                _resolvedIcon,
+                size: iconSize,
+                color: NataloColors.danger,
+              ),
+            ),
+            SizedBox(height: compact ? AppSpacing.md : AppSpacing.lg),
+            Text(
+              _resolvedTitle,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: compact ? 15 : 17,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              _resolvedDescription,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: NataloColors.textSecondary,
+                fontSize: compact ? 12.5 : 13.5,
+                height: 1.4,
+              ),
+            ),
+            if (onRetry != null) ...[
+              SizedBox(height: compact ? AppSpacing.md : AppSpacing.lg),
+              ElevatedButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: Text(retryLabel),
+                style: ElevatedButton.styleFrom(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: compact ? 20 : 28,
+                    vertical: compact ? 10 : 12,
+                  ),
+                ),
+              ),
+            ],
+            if (secondaryAction != null) ...[
+              const SizedBox(height: AppSpacing.sm),
+              secondaryAction!,
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Mapping konstanta untuk Lottie asset paths — single source of truth
 /// supaya rename file Lottie tidak butuh hunt semua call site.
 class AppLottiePaths {
