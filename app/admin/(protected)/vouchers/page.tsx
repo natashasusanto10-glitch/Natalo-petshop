@@ -10,6 +10,12 @@ import {
   voucherKindLabel,
   voucherTargetUserLabel,
 } from "@/lib/voucher-kind";
+import {
+  PageHeader,
+  StatCard,
+  EmptyState,
+  Badge,
+} from "@/components/admin/ui";
 
 export default async function AdminVouchersPage() {
   const vouchers = await prisma.voucher.findMany({
@@ -56,48 +62,55 @@ export default async function AdminVouchersPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-5 md:py-10">
-      <div className="flex flex-wrap items-end justify-between gap-3 md:gap-4">
-        <div className="min-w-0">
-          <Link href="/admin" className="hidden text-sm font-bold text-zinc-500 hover:text-zinc-950 md:inline">
-            ← Kembali ke admin
+      <PageHeader
+        title="Voucher"
+        subtitle={`${vouchers.length} voucher total · kelola promo & loyalty reward`}
+        actions={
+          <Link
+            href="/admin/vouchers/new"
+            className="inline-flex items-center gap-1.5 rounded-full bg-natalo-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-natalo-700 md:text-sm"
+          >
+            + Buat voucher
           </Link>
-          <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:mt-2 md:text-3xl">Voucher</h1>
-          <p className="mt-1 text-sm text-zinc-500">{vouchers.length} voucher</p>
-        </div>
-        <Link
-          href="/admin/vouchers/new"
-          className="shrink-0 rounded-full bg-zinc-950 px-4 py-2 text-xs font-bold text-white md:px-5 md:py-3 md:text-sm"
-        >
-          + Buat voucher
-        </Link>
-      </div>
+        }
+      />
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          ["Diskon Produk", counts.PRODUCT_DISCOUNT],
-          ["Gratis Ongkir", counts.FREE_SHIPPING],
-          ["Claim Loyalty", counts.LOYALTY_CLAIM],
-          ["Manual / Private", counts.MANUAL_PRIVATE],
-        ].map(([label, value]) => (
-          <div key={String(label)} className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-            <p className="text-xs font-bold uppercase tracking-wide text-zinc-400">{label}</p>
-            <p className="mt-1 text-2xl font-black text-zinc-950">{value}</p>
-          </div>
-        ))}
-      </div>
+      <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          label="Diskon Produk"
+          value={counts.PRODUCT_DISCOUNT}
+          helper="Voucher potongan produk"
+          variant="primary"
+        />
+        <StatCard
+          label="Gratis Ongkir"
+          value={counts.FREE_SHIPPING}
+          helper="Voucher free shipping"
+          variant="success"
+        />
+        <StatCard
+          label="Claim Loyalty"
+          value={counts.LOYALTY_CLAIM}
+          helper="Reward dari point"
+          variant="accent"
+        />
+        <StatCard
+          label="Manual / Private"
+          value={counts.MANUAL_PRIVATE}
+          helper="Seller-issued private"
+          variant="warning"
+        />
+      </section>
 
-      <div className="mt-5 overflow-hidden rounded-2xl border border-zinc-200 md:mt-8 md:rounded-3xl">
+      <div className="mt-5 overflow-hidden rounded-2xl border border-zinc-200 bg-white md:mt-8">
         {vouchers.length === 0 ? (
-          <div className="p-12 text-center text-sm text-zinc-500">
-            <p className="text-2xl">🎟️</p>
-            <p className="mt-3 font-semibold text-zinc-700">Belum ada voucher</p>
-            <Link
-              href="/admin/vouchers/new"
-              className="mt-4 inline-flex rounded-full bg-zinc-950 px-5 py-2.5 text-sm font-bold text-white"
-            >
-              Buat sekarang
-            </Link>
-          </div>
+          <EmptyState
+            icon="🎟️"
+            title="Belum ada voucher"
+            description="Buat voucher pertama untuk mulai campaign promo atau loyalty reward."
+            action={{ label: "Buat voucher pertama", href: "/admin/vouchers/new" }}
+            size="full"
+          />
         ) : (
           <div className="divide-y divide-zinc-100">
             {vouchers.map((v) => {
@@ -121,33 +134,35 @@ export default async function AdminVouchersPage() {
                 v.discountScope === "SHIPPING" ? "Ongkir" : "Produk";
 
               return (
-                <div key={v.id} className="flex flex-col gap-4 p-4 md:flex-row md:flex-wrap md:items-start md:justify-between md:p-5">
+                <div key={v.id} className="flex flex-col gap-4 p-4 transition hover:bg-zinc-50/60 md:flex-row md:flex-wrap md:items-start md:justify-between md:p-5">
                   <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-base font-bold text-zinc-950">{v.code}</span>
-                      <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-blue-700">
-                        {typeLabel}
-                      </span>
-                      <span
-                        className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-base font-black text-zinc-950">{v.code}</span>
+                      <Badge variant="info">{typeLabel}</Badge>
+                      <Badge
+                        variant={
                           statusOk
-                            ? "bg-green-100 text-green-700"
+                            ? "success"
                             : expired
-                            ? "bg-zinc-100 text-zinc-500"
-                            : maxed
-                            ? "bg-amber-100 text-amber-700"
-                            : "bg-red-100 text-red-600"
-                        }`}
+                              ? "neutral"
+                              : maxed
+                                ? "warning"
+                                : "danger"
+                        }
                       >
-                        {statusOk ? "Aktif" : expired ? "Kedaluwarsa" : maxed ? "Habis" : "Nonaktif"}
-                      </span>
-                      <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-blue-700">
-                        {kindLabel}
-                      </span>
+                        {statusOk
+                          ? "Aktif"
+                          : expired
+                            ? "Kedaluwarsa"
+                            : maxed
+                              ? "Habis"
+                              : "Nonaktif"}
+                      </Badge>
+                      <Badge variant="info">{kindLabel}</Badge>
                       {v.kind === "PRODUCT_DISCOUNT" && (
-                        <span className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-bold text-indigo-700">
+                        <Badge variant="purple">
                           Target: {voucherTargetUserLabel(v.targetUser)}
-                        </span>
+                        </Badge>
                       )}
                     </div>
 

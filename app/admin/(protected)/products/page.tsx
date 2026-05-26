@@ -6,6 +6,7 @@ import { formatRupiah } from "@/lib/format";
 import { InlineEditCell } from "@/components/admin/InlineEditCell";
 import { VariantInlineEditCell } from "@/components/admin/VariantInlineEditCell";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
+import { PageHeader, EmptyState } from "@/components/admin/ui";
 
 const PAGE_SIZE = 50;
 
@@ -146,37 +147,26 @@ export default async function AdminProductsPage({
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-5 md:py-10">
-      {/* Header */}
-      <div className="flex flex-wrap items-end justify-between gap-3 md:gap-4">
-        <div className="min-w-0">
-          <Link href="/admin" className="hidden text-sm font-bold text-zinc-500 hover:text-zinc-950 md:inline">
-            Kembali ke dashboard
-          </Link>
-          <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:mt-2 md:text-3xl">Produk</h1>
-          <p className="mt-1 text-xs text-zinc-500 md:text-sm">
-            {totalAll} total · {totalReady} ready · {totalOut} habis · {totalArchived} arsip
-            {activeCategory && (
-              <span className="ml-2 rounded-full bg-natalo-100 px-2 py-0.5 text-xs font-bold text-natalo-700">
-                {activeCategory.name}
-              </span>
-            )}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <Link
-            href="/admin/products/import"
-            className="rounded-full border border-zinc-300 bg-white px-3 py-2 text-xs font-bold text-zinc-700 transition hover:border-natalo-400 hover:bg-natalo-50 hover:text-natalo-700 md:px-4 md:py-3 md:text-sm"
-          >
-            ↧ Import
-          </Link>
-          <Link
-            href="/admin/products/new"
-            className="rounded-full bg-zinc-950 px-4 py-2 text-xs font-bold text-white md:px-5 md:py-3 md:text-sm"
-          >
-            + Tambah
-          </Link>
-        </div>
-      </div>
+      <PageHeader
+        title="Produk"
+        subtitle={`${totalAll} total · ${totalReady} ready · ${totalOut} habis · ${totalArchived} arsip${activeCategory ? ` · ${activeCategory.name}` : ""}`}
+        actions={
+          <>
+            <Link
+              href="/admin/products/import"
+              className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-2 text-xs font-bold text-zinc-700 transition hover:border-natalo-400 hover:bg-natalo-50 hover:text-natalo-700"
+            >
+              ↧ Import
+            </Link>
+            <Link
+              href="/admin/products/new"
+              className="inline-flex items-center gap-1.5 rounded-full bg-natalo-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-natalo-700 md:text-sm"
+            >
+              + Tambah Produk
+            </Link>
+          </>
+        }
+      />
 
       {/* Search & Filter bar */}
       <form action="/admin/products" method="get" className="mt-5 space-y-3 md:mt-6">
@@ -325,41 +315,43 @@ export default async function AdminProductsPage({
         </div>
 
         {products.length === 0 ? (
-          <div className="p-12 text-center">
-            <span className="text-4xl">
-              {stockFilter === "out" ? "📭"
-                : stockFilter === "ready" ? "✨"
-                : stockFilter === "archived" ? "🗄️"
-                : "🐾"}
-            </span>
-            <p className="mt-3 text-sm text-zinc-500">
-              {stockFilter === "out"
-                ? "Tidak ada produk dengan stok habis."
+          <EmptyState
+            icon={
+              stockFilter === "out"
+                ? "📭"
                 : stockFilter === "ready"
-                ? "Tidak ada produk yang siap dijual."
-                : stockFilter === "archived"
-                ? "Tidak ada produk di arsip."
-                : hasActiveFilter
-                ? "Tidak ada produk yang cocok dengan filter ini."
-                : "Belum ada produk."}
-            </p>
-            {!hasActiveFilter && stockFilter === "all" && (
-              <Link
-                href="/admin/products/new"
-                className="mt-4 inline-flex rounded-full bg-zinc-950 px-5 py-2.5 text-sm font-bold text-white"
-              >
-                Tambah sekarang
-              </Link>
-            )}
-            {hasActiveFilter && (
-              <Link
-                href="/admin/products"
-                className="mt-4 inline-flex rounded-full border border-zinc-300 px-5 py-2.5 text-sm font-semibold text-zinc-700 hover:bg-zinc-50"
-              >
-                Reset semua filter
-              </Link>
-            )}
-          </div>
+                  ? "✨"
+                  : stockFilter === "archived"
+                    ? "🗄️"
+                    : "🐾"
+            }
+            title={
+              stockFilter === "out"
+                ? "Tidak ada produk dengan stok habis"
+                : stockFilter === "ready"
+                  ? "Tidak ada produk yang siap dijual"
+                  : stockFilter === "archived"
+                    ? "Tidak ada produk di arsip"
+                    : hasActiveFilter
+                      ? "Tidak ada produk cocok dengan filter"
+                      : "Belum ada produk"
+            }
+            description={
+              hasActiveFilter
+                ? "Coba reset filter atau ubah kriteria pencarian."
+                : stockFilter === "all"
+                  ? "Tambahkan produk pertama untuk mulai jualan."
+                  : undefined
+            }
+            action={
+              hasActiveFilter
+                ? { label: "Reset semua filter", href: "/admin/products" }
+                : !hasActiveFilter && stockFilter === "all"
+                  ? { label: "Tambah produk pertama", href: "/admin/products/new" }
+                  : undefined
+            }
+            size="full"
+          />
         ) : (
           products.map((product) => {
             const hasDiscount =

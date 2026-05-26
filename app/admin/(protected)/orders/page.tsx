@@ -1,6 +1,14 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
+import {
+  PageHeader,
+  EmptyState,
+  Badge,
+  STATUS_BADGE_VARIANT,
+  PAY_BADGE_VARIANT,
+  type BadgeVariant,
+} from "@/components/admin/ui";
 
 const STATUS_LABELS: Record<string, string> = {
   NEED_PACKING: "Siap packing",
@@ -14,18 +22,6 @@ const STATUS_LABELS: Record<string, string> = {
   REFUNDED: "Refund",
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  NEED_PACKING: "bg-emerald-100 text-emerald-700",
-  PENDING: "bg-amber-100 text-amber-700",
-  PAID: "bg-emerald-100 text-emerald-700",
-  PROCESSING: "bg-natalo-100 text-natalo-700",
-  READY_FOR_PICKUP: "bg-green-100 text-green-700",
-  SHIPPED: "bg-indigo-100 text-indigo-700",
-  DELIVERED: "bg-emerald-100 text-emerald-700",
-  CANCELLED: "bg-red-100 text-red-700",
-  REFUNDED: "bg-zinc-100 text-zinc-600",
-};
-
 const PAY_LABELS: Record<string, string> = {
   WAITING: "Menunggu bayar",
   UNPAID: "Belum bayar",
@@ -36,14 +32,17 @@ const PAY_LABELS: Record<string, string> = {
   REFUNDED: "Refund",
 };
 
-const PAY_COLORS: Record<string, string> = {
-  WAITING: "bg-amber-100 text-amber-700",
-  UNPAID: "bg-red-100 text-red-700",
-  PENDING: "bg-amber-100 text-amber-700",
-  PAID: "bg-green-100 text-green-700",
-  FAILED: "bg-red-100 text-red-700",
-  EXPIRED: "bg-zinc-100 text-zinc-600",
-  REFUNDED: "bg-zinc-100 text-zinc-600",
+// Special variant override untuk NEED_PACKING (bukan order.status real, tapi
+// filter combine PAID + status ∈ {PENDING,PAID,PROCESSING}). Treat as success.
+// Explicit type biar TS gak narrow ke literal saat spread.
+const EXTRA_STATUS_VARIANT: Record<string, BadgeVariant> = {
+  ...STATUS_BADGE_VARIANT,
+  NEED_PACKING: "success",
+};
+
+const EXTRA_PAY_VARIANT: Record<string, BadgeVariant> = {
+  ...PAY_BADGE_VARIANT,
+  WAITING: "warning",
 };
 
 const PAGE_SIZE = 20;
@@ -134,19 +133,21 @@ export default async function AdminOrdersPage({
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-5 md:py-10">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <Link href="/admin" className="hidden text-sm font-bold text-zinc-500 hover:text-zinc-950 md:inline">
-            ← Kembali ke admin
+      <PageHeader
+        title="Manajemen Order"
+        subtitle={`${total} order ditemukan${activeStatus !== "ALL" ? " dengan filter aktif" : ""}.`}
+        actions={
+          <Link
+            href="/admin/dashboard"
+            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-2 text-xs font-bold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50"
+          >
+            ← Dashboard
           </Link>
-          <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:mt-2 md:text-3xl">Manajemen Order</h1>
-          <p className="mt-1 text-sm text-zinc-500">{total} order ditemukan</p>
-        </div>
-      </div>
+        }
+      />
 
-      {/* Type tabs */}
-      <div className="-mx-4 mt-5 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:mt-8 md:flex-wrap md:overflow-visible md:px-0">
+      {/* Type tabs — pill style natalo blue saat aktif */}
+      <div className="-mx-4 mt-5 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:mt-6 md:flex-wrap md:overflow-visible md:px-0">
         {[
           { key: "ALL", label: "Semua" },
           { key: "DELIVERY", label: "Delivery" },
@@ -157,8 +158,8 @@ export default async function AdminOrdersPage({
             href={buildUrl({ type: tab.key })}
             className={`inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-bold transition ${
               activeType === tab.key
-                ? "bg-natalo-600 text-white"
-                : "border border-zinc-200 text-zinc-600 hover:border-zinc-400"
+                ? "bg-natalo-600 text-white shadow-[0_4px_12px_-2px_rgba(30,95,191,0.4)]"
+                : "border border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400"
             }`}
           >
             {tab.label}
@@ -166,7 +167,7 @@ export default async function AdminOrdersPage({
         ))}
       </div>
 
-      {/* Status tabs */}
+      {/* Status tabs — dark zinc saat aktif (clear hierarchy vs type tabs) */}
       <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:mt-4 md:flex-wrap md:overflow-visible md:px-0">
         {tabs.map((tab) => (
           <Link
@@ -174,14 +175,16 @@ export default async function AdminOrdersPage({
             href={buildUrl({ status: tab.key })}
             className={`inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-bold transition ${
               activeStatus === tab.key
-                ? "bg-zinc-950 text-white"
-                : "border border-zinc-200 text-zinc-600 hover:border-zinc-400"
+                ? "bg-zinc-950 text-white shadow-sm"
+                : "border border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400"
             }`}
           >
             {tab.label}
             <span
               className={`rounded-full px-2 py-0.5 text-xs font-black ${
-                activeStatus === tab.key ? "bg-white/20 text-white" : "bg-zinc-100 text-zinc-600"
+                activeStatus === tab.key
+                  ? "bg-white/20 text-white"
+                  : "bg-zinc-100 text-zinc-600"
               }`}
             >
               {tab.count}
@@ -190,30 +193,37 @@ export default async function AdminOrdersPage({
         ))}
       </div>
 
-      {/* Payment filter */}
+      {/* Payment filter — smaller pills, secondary axis */}
       <div className="-mx-4 mt-3 flex items-center gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:mt-4 md:flex-wrap md:overflow-visible md:px-0">
-        <span className="shrink-0 text-xs font-semibold text-zinc-500">Pembayaran:</span>
-        {(["ALL", "WAITING", "UNPAID", "PENDING", "PAID", "FAILED", "EXPIRED"] as const).map((p) => (
-          <Link
-            key={p}
-            href={buildUrl({ pay: p })}
-            className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold transition ${
-              activePay === p
-                ? "bg-zinc-950 text-white"
-                : "border border-zinc-200 text-zinc-600 hover:border-zinc-400"
-            }`}
-          >
-            {p === "ALL" ? "Semua" : PAY_LABELS[p]}
-          </Link>
-        ))}
+        <span className="shrink-0 text-xs font-semibold text-zinc-500">
+          Pembayaran:
+        </span>
+        {(["ALL", "WAITING", "UNPAID", "PENDING", "PAID", "FAILED", "EXPIRED"] as const).map(
+          (p) => (
+            <Link
+              key={p}
+              href={buildUrl({ pay: p })}
+              className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold transition ${
+                activePay === p
+                  ? "bg-zinc-950 text-white"
+                  : "border border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400"
+              }`}
+            >
+              {p === "ALL" ? "Semua" : PAY_LABELS[p]}
+            </Link>
+          ),
+        )}
       </div>
 
       {/* Empty state */}
       {orders.length === 0 ? (
-        <div className="mt-6 overflow-hidden rounded-2xl border border-zinc-200 p-12 text-center text-sm text-zinc-500 md:rounded-3xl">
-          <p className="text-2xl">📦</p>
-          <p className="mt-3 font-semibold text-zinc-700">Tidak ada order</p>
-          <p className="mt-1">Coba ganti filter di atas.</p>
+        <div className="mt-6 overflow-hidden rounded-2xl border border-zinc-200 bg-white">
+          <EmptyState
+            icon="📦"
+            title="Tidak ada order"
+            description="Coba ganti filter di atas untuk lihat order lain."
+            size="full"
+          />
         </div>
       ) : (
         <>
@@ -221,23 +231,31 @@ export default async function AdminOrdersPage({
           <div className="mt-5 space-y-3 md:hidden">
             {orders.map((order) => {
               const totalQty = order.items.reduce((s, i) => s + i.quantity, 0);
+              const initial = order.customerName?.[0]?.toUpperCase() ?? "?";
               return (
                 <Link
                   key={order.id}
                   href={`/admin/orders/${order.id}`}
-                  className="block rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm transition active:scale-[0.99]"
+                  className="block rounded-2xl border border-zinc-200 bg-white p-4 transition active:scale-[0.99] hover:border-zinc-300 hover:shadow-sm"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate font-black text-zinc-950">{order.orderNumber}</p>
-                      <p className="mt-0.5 text-xs text-zinc-500">
-                        {new Date(order.createdAt).toLocaleString("id-ID", {
-                          day: "numeric",
-                          month: "short",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </p>
+                    <div className="flex min-w-0 items-start gap-2.5">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-natalo-50 text-sm font-black text-natalo-700">
+                        {initial}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate font-black text-zinc-950">
+                          {order.orderNumber}
+                        </p>
+                        <p className="mt-0.5 text-xs text-zinc-500">
+                          {new Date(order.createdAt).toLocaleString("id-ID", {
+                            day: "numeric",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                      </div>
                     </div>
                     <span className="shrink-0 text-base font-black text-zinc-950">
                       {formatRupiah(order.total)}
@@ -246,29 +264,28 @@ export default async function AdminOrdersPage({
 
                   <div className="mt-2.5 flex items-center justify-between gap-3 text-sm">
                     <div className="min-w-0">
-                      <p className="truncate font-semibold text-zinc-800">{order.customerName}</p>
-                      <p className="truncate text-xs text-zinc-500">{order.customerPhone}</p>
+                      <p className="truncate font-semibold text-zinc-800">
+                        {order.customerName}
+                      </p>
+                      <p className="truncate text-xs text-zinc-500">
+                        {order.customerPhone}
+                      </p>
                     </div>
                     <span className="shrink-0 text-[11px] font-bold text-zinc-500">
-                      {totalQty} item · {order.orderType === "SELF_PICKUP" ? "Pickup" : "Delivery"}
+                      {totalQty} item ·{" "}
+                      {order.orderType === "SELF_PICKUP" ? "Pickup" : "Delivery"}
                     </span>
                   </div>
 
                   <div className="mt-3 flex flex-wrap gap-1.5">
-                    <span
-                      className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
-                        STATUS_COLORS[order.status] ?? "bg-zinc-100 text-zinc-600"
-                      }`}
-                    >
+                    <Badge variant={EXTRA_STATUS_VARIANT[order.status] ?? "neutral"}>
                       {STATUS_LABELS[order.status] ?? order.status}
-                    </span>
-                    <span
-                      className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
-                        PAY_COLORS[order.paymentStatus] ?? "bg-zinc-100 text-zinc-600"
-                      }`}
+                    </Badge>
+                    <Badge
+                      variant={EXTRA_PAY_VARIANT[order.paymentStatus] ?? "neutral"}
                     >
                       {PAY_LABELS[order.paymentStatus] ?? order.paymentStatus}
-                    </span>
+                    </Badge>
                   </div>
                 </Link>
               );
@@ -276,67 +293,99 @@ export default async function AdminOrdersPage({
           </div>
 
           {/* Desktop table */}
-          <div className="mt-6 hidden overflow-hidden rounded-3xl border border-zinc-200 md:block">
+          <div className="mt-6 hidden overflow-hidden rounded-2xl border border-zinc-200 bg-white md:block">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-zinc-100 bg-zinc-50">
-                    <th className="px-5 py-4 text-left font-semibold text-zinc-600">Order</th>
-                    <th className="px-5 py-4 text-left font-semibold text-zinc-600">Customer</th>
-                    <th className="px-5 py-4 text-left font-semibold text-zinc-600">Total</th>
-                    <th className="px-5 py-4 text-left font-semibold text-zinc-600">Pembayaran</th>
-                    <th className="px-5 py-4 text-left font-semibold text-zinc-600">Status</th>
-                    <th className="px-5 py-4 text-left font-semibold text-zinc-600 hidden lg:table-cell">
+                  <tr className="border-b border-zinc-100 bg-zinc-50/50">
+                    <th className="px-5 py-3.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-500">
+                      Order
+                    </th>
+                    <th className="px-5 py-3.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-500">
+                      Customer
+                    </th>
+                    <th className="px-5 py-3.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-500">
+                      Total
+                    </th>
+                    <th className="px-5 py-3.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-500">
+                      Pembayaran
+                    </th>
+                    <th className="px-5 py-3.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-500">
+                      Status
+                    </th>
+                    <th className="hidden px-5 py-3.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-500 lg:table-cell">
                       Tanggal
                     </th>
-                    <th className="px-5 py-4" />
+                    <th className="px-5 py-3.5" />
                   </tr>
                 </thead>
                 <tbody>
                   {orders.map((order) => {
-                    const totalQty = order.items.reduce((s, i) => s + i.quantity, 0);
+                    const totalQty = order.items.reduce(
+                      (s, i) => s + i.quantity,
+                      0,
+                    );
+                    const initial =
+                      order.customerName?.[0]?.toUpperCase() ?? "?";
                     return (
                       <tr
                         key={order.id}
-                        className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50 transition"
+                        className="group border-b border-zinc-100 last:border-0 transition hover:bg-natalo-50/40"
                       >
                         <td className="px-5 py-4">
-                          <p className="font-bold text-zinc-950">{order.orderNumber}</p>
-                          <p className="text-zinc-400">{totalQty} item</p>
-                          <p className="mt-1 text-xs font-bold text-zinc-500">
+                          <p className="font-black text-zinc-950">
+                            {order.orderNumber}
+                          </p>
+                          <p className="mt-0.5 text-xs text-zinc-500">
+                            {totalQty} item
+                          </p>
+                          <p className="mt-1 text-[11px] font-bold text-zinc-500">
                             {order.orderType === "SELF_PICKUP"
                               ? "Ambil Sendiri di Toko"
                               : "Delivery"}
                           </p>
                         </td>
                         <td className="px-5 py-4">
-                          <p className="font-semibold text-zinc-950">{order.customerName}</p>
-                          <p className="text-zinc-400">{order.customerPhone}</p>
+                          <div className="flex items-center gap-2.5">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-natalo-50 text-xs font-black text-natalo-700">
+                              {initial}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="truncate font-semibold text-zinc-950">
+                                {order.customerName}
+                              </p>
+                              <p className="truncate text-xs text-zinc-500">
+                                {order.customerPhone}
+                              </p>
+                            </div>
+                          </div>
                         </td>
                         <td className="px-5 py-4">
-                          <span className="font-bold text-zinc-950">
+                          <span className="font-black text-zinc-950">
                             {formatRupiah(order.total)}
                           </span>
                         </td>
                         <td className="px-5 py-4">
-                          <span
-                            className={`rounded-full px-3 py-1 text-xs font-bold ${
-                              PAY_COLORS[order.paymentStatus] ?? "bg-zinc-100 text-zinc-600"
-                            }`}
+                          <Badge
+                            variant={
+                              EXTRA_PAY_VARIANT[order.paymentStatus] ?? "neutral"
+                            }
+                            size="md"
                           >
                             {PAY_LABELS[order.paymentStatus] ?? order.paymentStatus}
-                          </span>
+                          </Badge>
                         </td>
                         <td className="px-5 py-4">
-                          <span
-                            className={`rounded-full px-3 py-1 text-xs font-bold ${
-                              STATUS_COLORS[order.status] ?? "bg-zinc-100 text-zinc-600"
-                            }`}
+                          <Badge
+                            variant={
+                              EXTRA_STATUS_VARIANT[order.status] ?? "neutral"
+                            }
+                            size="md"
                           >
                             {STATUS_LABELS[order.status] ?? order.status}
-                          </span>
+                          </Badge>
                         </td>
-                        <td className="px-5 py-4 text-zinc-400 hidden lg:table-cell">
+                        <td className="hidden px-5 py-4 text-xs text-zinc-500 lg:table-cell">
                           {new Date(order.createdAt).toLocaleDateString("id-ID", {
                             day: "numeric",
                             month: "short",
@@ -346,9 +395,9 @@ export default async function AdminOrdersPage({
                         <td className="px-5 py-4">
                           <Link
                             href={`/admin/orders/${order.id}`}
-                            className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-bold hover:border-zinc-400 transition"
+                            className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-bold text-zinc-700 transition hover:border-natalo-400 hover:bg-natalo-50 hover:text-natalo-700 group-hover:border-natalo-300"
                           >
-                            Detail
+                            Detail →
                           </Link>
                         </td>
                       </tr>
@@ -365,13 +414,14 @@ export default async function AdminOrdersPage({
       {totalPages > 1 && (
         <div className="mt-5 flex items-center justify-between gap-3 md:mt-6">
           <p className="text-sm text-zinc-500">
-            Hal. {page}/{totalPages}
+            Halaman <span className="font-black text-zinc-950">{page}</span> dari{" "}
+            <span className="font-black text-zinc-950">{totalPages}</span>
           </p>
           <div className="flex gap-2">
             {page > 1 && (
               <Link
                 href={buildUrl({ page: String(page - 1) })}
-                className="rounded-full border border-zinc-200 px-4 py-2 text-sm font-bold hover:border-zinc-400"
+                className="rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm font-bold text-zinc-700 transition hover:border-zinc-400"
               >
                 ← Sebelumnya
               </Link>
@@ -379,7 +429,7 @@ export default async function AdminOrdersPage({
             {page < totalPages && (
               <Link
                 href={buildUrl({ page: String(page + 1) })}
-                className="rounded-full bg-zinc-950 px-4 py-2 text-sm font-bold text-white"
+                className="rounded-full bg-natalo-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-natalo-700"
               >
                 Berikutnya →
               </Link>
