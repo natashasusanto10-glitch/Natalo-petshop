@@ -17,7 +17,7 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
 
-    const review = await editReview({
+    const result = await editReview({
       reviewId: id,
       userId: session.sub,
       rating: body.rating !== undefined ? Number(body.rating) : undefined,
@@ -26,7 +26,12 @@ export async function PATCH(
       imageUrls: Array.isArray(body.imageUrls) ? body.imageUrls : undefined,
     });
 
-    return NextResponse.json({ review });
+    // pointsAwarded > 0 = user upgrade review jadi LENGKAP via edit
+    // (retroactive). Flutter pakai untuk snackbar "Selamat! +5 poin loyal".
+    return NextResponse.json({
+      review: result.review,
+      pointsAwarded: result.pointsAwarded,
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Gagal edit review" },
@@ -44,8 +49,13 @@ export async function DELETE(
     if (!session) return NextResponse.json({ error: "Login dulu" }, { status: 401 });
 
     const { id } = await params;
-    await softDeleteReview(id, session.sub);
-    return NextResponse.json({ ok: true });
+    const result = await softDeleteReview(id, session.sub);
+    // pointsRolledBack > 0 = user kehilangan poin karena delete review
+    // lengkap yang sebelumnya dapat 5 poin. Flutter pakai untuk warn user.
+    return NextResponse.json({
+      ok: true,
+      pointsRolledBack: result.pointsRolledBack,
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Gagal hapus review" },

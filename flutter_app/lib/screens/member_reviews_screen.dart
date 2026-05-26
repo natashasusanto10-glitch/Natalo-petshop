@@ -99,10 +99,20 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
       );
       _itemsFuture = _loadItems();
     });
+    // Snackbar conditional based on pointsAwarded:
+    //   - >0 (review LENGKAP) → celebration "Selamat! +5 poin loyal"
+    //   - 0 (review minimal) → nudge "Tambah foto+deskripsi untuk +5 poin"
+    final earnedBonus = submitted.pointsAwarded > 0;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Review berhasil dikirim'),
+      SnackBar(
+        content: Text(
+          earnedBonus
+              ? '🎁 Review terkirim. +${submitted.pointsAwarded} poin loyal masuk akunmu!'
+              : 'Review terkirim. Tambah foto + deskripsi (min 10 huruf) untuk dapat 5 poin loyal.',
+        ),
         behavior: SnackBarBehavior.floating,
+        backgroundColor: earnedBonus ? const Color(0xFF059669) : null,
+        duration: const Duration(seconds: 4),
       ),
     );
   }
@@ -757,7 +767,22 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
   bool _uploadingPhoto = false;
 
   @override
+  void initState() {
+    super.initState();
+    // Listen text changes supaya _ReviewBonusHint reactive — saat user
+    // ngetik, check "Deskripsi >= 10 huruf" auto-update.
+    _contentController.addListener(_onContentChanged);
+  }
+
+  void _onContentChanged() {
+    // setState minimal — cuma trigger rebuild untuk hint banner.
+    // TextField sendiri tetap controlled, gak ada flicker.
+    if (mounted) setState(() {});
+  }
+
+  @override
   void dispose() {
+    _contentController.removeListener(_onContentChanged);
     _contentController.dispose();
     super.dispose();
   }
@@ -857,7 +882,7 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
     if (_rating == 0 || _submitting) return;
     setState(() => _submitting = true);
     try {
-      await reviewService.submitReview(
+      final result = await reviewService.submitReview(
         productId: widget.item.productId,
         orderItemId: widget.item.orderItemId,
         rating: _rating,
@@ -873,6 +898,7 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
         _SubmittedReview(
           rating: _rating,
           content: _contentController.text.trim(),
+          pointsAwarded: result.pointsAwarded,
         ),
       );
     } on ApiException catch (error) {
@@ -942,7 +968,17 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _ReviewSheetProductPreview(item: widget.item),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 14),
+                      // Reward hint banner — kasih incentive visual ke user.
+                      // Reactive: check items (rating/desk/foto) berubah warna
+                      // saat user isi → user lihat progress real-time menuju
+                      // bonus poin.
+                      _ReviewBonusHint(
+                        hasRating: _rating > 0,
+                        hasContent: _contentController.text.trim().length >= 10,
+                        hasPhoto: _imageUrls.isNotEmpty,
+                      ),
+                      const SizedBox(height: 16),
                       const Text(
                         'Bagaimana pengalamanmu dengan produk ini?',
                         style: TextStyle(
@@ -1386,13 +1422,157 @@ class _MiniStars extends StatelessWidget {
   }
 }
 
+/// Reward hint banner di review form — kasih incentive visual ke user
+/// untuk lengkapi review demi 5 poin loyal.
+///
+/// 3 check items dengan icon + warna conditional:
+///   ⭐ Beri bintang
+///   📝 Tulis deskripsi (min 10 huruf)
+///   📸 Tambah min 1 foto
+///
+/// Saat satu check terpenuhi, icon berubah warna jadi hijau + checkmark.
+/// Saat semua 3 terpenuhi, banner berubah jadi hijau celebration
+/// "Siap dapat 5 poin loyal!". Memberi visual reinforcement progress.
+class _ReviewBonusHint extends StatelessWidget {
+  final bool hasRating;
+  final bool hasContent;
+  final bool hasPhoto;
+
+  const _ReviewBonusHint({
+    required this.hasRating,
+    required this.hasContent,
+    required this.hasPhoto,
+  });
+
+  bool get _isComplete => hasRating && hasContent && hasPhoto;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = _isComplete
+        ? const Color(0xFF059669) // emerald saat lengkap
+        : const Color(0xFFFBBF24); // amber saat masih ada yang kosong
+    final bg = _isComplete
+        ? const Color(0xFFECFDF5)
+        : const Color(0xFFFFFBEB);
+    final borderColor = _isComplete
+        ? const Color(0xFFA7F3D0)
+        : const Color(0xFFFCD34D);
+    final headlineColor = _isComplete
+        ? const Color(0xFF065F46)
+        : const Color(0xFF92400E);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: borderColor, width: 1.2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 26,
+                height: 26,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  _isComplete
+                      ? Icons.celebration_rounded
+                      : Icons.card_giftcard_rounded,
+                  color: accent,
+                  size: 16,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _isComplete
+                      ? 'Siap dapat +5 poin loyal setelah submit!'
+                      : 'Lengkapi review = +5 poin loyal',
+                  style: TextStyle(
+                    color: headlineColor,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _BonusCheckRow(
+            label: 'Beri bintang',
+            checked: hasRating,
+          ),
+          const SizedBox(height: 3),
+          _BonusCheckRow(
+            label: 'Tulis deskripsi (min 10 huruf)',
+            checked: hasContent,
+          ),
+          const SizedBox(height: 3),
+          _BonusCheckRow(
+            label: 'Tambah min 1 foto',
+            checked: hasPhoto,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BonusCheckRow extends StatelessWidget {
+  final String label;
+  final bool checked;
+
+  const _BonusCheckRow({required this.label, required this.checked});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = checked ? const Color(0xFF059669) : const Color(0xFF9CA3AF);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          checked
+              ? Icons.check_circle_rounded
+              : Icons.radio_button_unchecked_rounded,
+          color: color,
+          size: 14,
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: TextStyle(
+            color: checked ? const Color(0xFF065F46) : const Color(0xFF6B7280),
+            fontSize: 11.5,
+            fontWeight: checked ? FontWeight.w800 : FontWeight.w600,
+            decoration: checked
+                ? TextDecoration.lineThrough
+                : TextDecoration.none,
+            decorationColor: color.withValues(alpha: 0.4),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _SubmittedReview {
   final int rating;
   final String? content;
+  /// Bonus poin yang di-award oleh server kalau review LENGKAP
+  /// (rating + deskripsi >= 10 char + min 1 foto). 0 kalau belum lengkap.
+  /// Parent snackbar tampilkan feedback conditional.
+  final int pointsAwarded;
 
   const _SubmittedReview({
     required this.rating,
     this.content,
+    this.pointsAwarded = 0,
   });
 }
 

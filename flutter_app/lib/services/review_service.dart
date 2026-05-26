@@ -84,7 +84,11 @@ class ReviewService {
         .toList();
   }
 
-  Future<void> submitReview({
+  /// Submit review baru. Return [ReviewSubmitResult] yang include
+  /// `pointsAwarded` — 5 kalau review LENGKAP (bintang + deskripsi min 10
+  /// char + min 1 foto), 0 kalau belum lengkap. UI pakai untuk snackbar
+  /// conditional.
+  Future<ReviewSubmitResult> submitReview({
     required String productId,
     required String orderItemId,
     required int rating,
@@ -93,7 +97,7 @@ class ReviewService {
     List<String> imageUrls = const [],
   }) async {
     readOnlyMode.assertWritable('review_submit');
-    await apiClient.postJson(
+    final response = await apiClient.postJson(
       '/api/reviews',
       body: {
         'productId': productId,
@@ -103,6 +107,14 @@ class ReviewService {
         'content': content,
         'imageUrls': imageUrls,
       },
+    );
+    final data = response is Map<String, dynamic>
+        ? response
+        : const <String, dynamic>{};
+    final points = data['pointsAwarded'];
+    return ReviewSubmitResult(
+      reviewId: (data['id'] ?? '').toString(),
+      pointsAwarded: points is num ? points.toInt() : 0,
     );
   }
 
@@ -125,10 +137,10 @@ class ReviewService {
     return 'image/jpeg';
   }
 
-  /// Update review user (judul/isi/rating). Match endpoint PWA
-  /// PATCH /api/reviews/{id} dengan body partial fields.
-  /// Server validate ownership (review.userId == session.sub).
-  Future<void> updateReview({
+  /// Update review user (judul/isi/rating). Match endpoint PATCH
+  /// /api/reviews/{id}. Return pointsAwarded — kalau user upgrade
+  /// review jadi lengkap (retroactive), dapat 5 poin baru.
+  Future<ReviewUpdateResult> updateReview({
     required String reviewId,
     String? title,
     String? content,
@@ -136,7 +148,7 @@ class ReviewService {
     List<String>? imageUrls,
   }) async {
     readOnlyMode.assertWritable('review_update');
-    await apiClient.patchJson(
+    final response = await apiClient.patchJson(
       '/api/reviews/${Uri.encodeComponent(reviewId)}',
       body: {
         if (title != null) 'title': title,
@@ -145,15 +157,63 @@ class ReviewService {
         if (imageUrls != null) 'imageUrls': imageUrls,
       },
     );
-  }
-
-  /// Hapus review user sendiri. Match endpoint PWA DELETE /api/reviews/{id}.
-  Future<void> deleteReview(String reviewId) async {
-    readOnlyMode.assertWritable('review_delete');
-    await apiClient.deleteJson(
-      '/api/reviews/${Uri.encodeComponent(reviewId)}',
+    final data = response is Map<String, dynamic>
+        ? response
+        : const <String, dynamic>{};
+    final points = data['pointsAwarded'];
+    return ReviewUpdateResult(
+      pointsAwarded: points is num ? points.toInt() : 0,
     );
   }
+
+  /// Hapus review user sendiri. Return pointsRolledBack > 0 kalau user
+  /// kehilangan poin karena delete review yang sebelumnya lengkap.
+  Future<ReviewDeleteResult> deleteReview(String reviewId) async {
+    readOnlyMode.assertWritable('review_delete');
+    final response = await apiClient.deleteJson(
+      '/api/reviews/${Uri.encodeComponent(reviewId)}',
+    );
+    final data = response is Map<String, dynamic>
+        ? response
+        : const <String, dynamic>{};
+    final points = data['pointsRolledBack'];
+    return ReviewDeleteResult(
+      pointsRolledBack: points is num ? points.toInt() : 0,
+    );
+  }
+}
+
+/// Result dari [ReviewService.submitReview].
+/// - [reviewId]: id review yang baru dibuat
+/// - [pointsAwarded]: 5 kalau review LENGKAP (bintang+desk>=10char+foto),
+///   0 kalau belum lengkap. UI pakai untuk snackbar conditional.
+class ReviewSubmitResult {
+  final String reviewId;
+  final int pointsAwarded;
+
+  const ReviewSubmitResult({
+    required this.reviewId,
+    required this.pointsAwarded,
+  });
+
+  /// True kalau user dapat bonus poin dari submission ini.
+  bool get earnedBonus => pointsAwarded > 0;
+}
+
+/// Result dari [ReviewService.updateReview]. pointsAwarded > 0 = user
+/// upgrade review jadi lengkap via edit (retroactive award).
+class ReviewUpdateResult {
+  final int pointsAwarded;
+  const ReviewUpdateResult({required this.pointsAwarded});
+  bool get earnedBonus => pointsAwarded > 0;
+}
+
+/// Result dari [ReviewService.deleteReview]. pointsRolledBack > 0 = user
+/// kehilangan poin yang pernah di-award karena delete review lengkap.
+class ReviewDeleteResult {
+  final int pointsRolledBack;
+  const ReviewDeleteResult({required this.pointsRolledBack});
+  bool get lostPoints => pointsRolledBack > 0;
 }
 
 final reviewService = ReviewService();

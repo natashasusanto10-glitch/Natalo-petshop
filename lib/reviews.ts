@@ -10,6 +10,97 @@ import type { Prisma, ReviewStatus } from "@prisma/client";
 
 const EDIT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // 30 hari
 
+/**
+ * Bonus loyalty point untuk user yang submit review LENGKAP.
+ * "Lengkap" = rating + content >= 10 char + min 1 foto. Lihat
+ * isCompleteReview() untuk detail rule.
+ *
+ * Award flow:
+ *   - createReview: award kalau submission udah lengkap saat first save
+ *   - editReview: award retroactive kalau user upgrade review jadi lengkap
+ *     (dari minimal/incomplete jadi lengkap)
+ *   - softDeleteReview: rollback point (delete CustomerPoint dengan
+ *     source = REVIEW:{id})
+ *
+ * Idempotency: source format "REVIEW:{reviewId}" unique per review.
+ * awardReviewPoints cek dulu sebelum create — kalau sudah ada entry,
+ * skip (return false). Cegah double-award kalau code path call ulang
+ * (mis. edit yang trigger re-award padahal udah awarded).
+ *
+ * Minimum panjang content 10 char = cegah spam "ok"/"a"/"good"/dst.
+ * Cukup meaningful untuk dianggap real description.
+ */
+export const REVIEW_POINTS_BONUS = 5;
+const REVIEW_MIN_CONTENT_LENGTH = 10;
+const REVIEW_POINTS_SOURCE_PREFIX = "REVIEW:";
+
+/**
+ * Cek apakah review memenuhi kriteria "lengkap" untuk dapat bonus poin.
+ * Return true kalau ALL TIGA terisi:
+ *   - rating > 0 (selalu true kalau review valid karena validated 1-5)
+ *   - content.trim().length >= 10 (deskripsi meaningful)
+ *   - imageCount >= 1 (min 1 foto)
+ */
+export function isCompleteReview(input: {
+  rating: number;
+  content: string | null;
+  imageCount: number;
+}): boolean {
+  if (input.rating <= 0) return false;
+  if ((input.content?.trim().length ?? 0) < REVIEW_MIN_CONTENT_LENGTH) return false;
+  if (input.imageCount < 1) return false;
+  return true;
+}
+
+/**
+ * Award bonus loyalty point untuk review LENGKAP.
+ * Idempotent: kalau review.id sudah pernah dapat point, skip (return false).
+ *
+ * Harus dipanggil DI DALAM transaction (tx parameter) bersama dengan
+ * review create/update — supaya atomic dengan operasi review-nya.
+ *
+ * @returns true kalau point baru di-award, false kalau sudah pernah / skip
+ */
+export async function awardReviewPoints(
+  tx: Prisma.TransactionClient,
+  reviewId: string,
+  userId: string,
+): Promise<boolean> {
+  const source = `${REVIEW_POINTS_SOURCE_PREFIX}${reviewId}`;
+  const existing = await tx.customerPoint.findFirst({
+    where: { source },
+    select: { id: true },
+  });
+  if (existing) return false; // already awarded — defensive guard
+
+  await tx.customerPoint.create({
+    data: {
+      userId,
+      points: REVIEW_POINTS_BONUS,
+      source,
+    },
+  });
+  return true;
+}
+
+/**
+ * Rollback poin yang udah di-award untuk review tertentu.
+ * Dipanggil saat review dihapus (soft-delete) supaya user tidak keep
+ * poin untuk review yang sudah tidak ada.
+ *
+ * @returns jumlah CustomerPoint entry yang dihapus (0 atau 1 dalam normal flow)
+ */
+export async function rollbackReviewPoints(
+  tx: Prisma.TransactionClient,
+  reviewId: string,
+): Promise<number> {
+  const source = `${REVIEW_POINTS_SOURCE_PREFIX}${reviewId}`;
+  const result = await tx.customerPoint.deleteMany({
+    where: { source },
+  });
+  return result.count;
+}
+
 // ── Helpers ────────────────────────────────────────────────────
 
 /**
@@ -68,7 +159,21 @@ interface CreateReviewInput {
   imageUrls?: string[];
 }
 
-export async function createReview(input: CreateReviewInput) {
+/**
+ * Result type untuk createReview.
+ * - review: data review yang baru dibuat (dengan images)
+ * - pointsAwarded: 5 kalau review lengkap, 0 kalau belum lengkap
+ *   (rating+content>=10char+min1foto). Flutter pakai untuk show snackbar
+ *   conditional.
+ */
+export type CreateReviewResult = {
+  review: Prisma.ReviewGetPayload<{ include: { images: true } }>;
+  pointsAwarded: number;
+};
+
+export async function createReview(
+  input: CreateReviewInput,
+): Promise<CreateReviewResult> {
   const { userId, orderItemId, rating, title, content, imageUrls = [] } = input;
 
   if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
@@ -125,7 +230,23 @@ export async function createReview(input: CreateReviewInput) {
     });
 
     await recomputeProductAggregate(tx, orderItem.productId);
-    return review;
+
+    // Award 5 poin loyal kalau submission udah lengkap (rating + content
+    // min 10 char + min 1 foto). Atomic dalam transaction yang sama supaya
+    // review + point award sukses/gagal bersama.
+    let pointsAwarded = 0;
+    if (
+      isCompleteReview({
+        rating,
+        content: content ?? null,
+        imageCount: imageUrls.length,
+      })
+    ) {
+      const awarded = await awardReviewPoints(tx, review.id, userId);
+      if (awarded) pointsAwarded = REVIEW_POINTS_BONUS;
+    }
+
+    return { review, pointsAwarded };
   });
 }
 
@@ -140,7 +261,14 @@ interface EditReviewInput {
   imageUrls?: string[];
 }
 
-export async function editReview(input: EditReviewInput) {
+export type EditReviewResult = {
+  review: Prisma.ReviewGetPayload<{}>;
+  /** Poin yang baru di-award via edit (retroactive). 0 kalau sudah pernah
+   *  dapat sebelumnya atau masih belum lengkap. */
+  pointsAwarded: number;
+};
+
+export async function editReview(input: EditReviewInput): Promise<EditReviewResult> {
   const { reviewId, userId, rating, title, content, imageUrls } = input;
 
   return prisma.$transaction(async (tx) => {
@@ -190,19 +318,62 @@ export async function editReview(input: EditReviewInput) {
       await recomputeProductAggregate(tx, review.productId);
     }
 
-    return updated;
+    // Retroactive point award — kalau review sebelumnya belum lengkap
+    // (dapat 0 poin saat create), lalu user edit jadi lengkap (tambah
+    // foto/deskripsi), award 5 poin sekarang. awardReviewPoints
+    // idempotent — kalau udah pernah award, skip.
+    //
+    // Hitung kelengkapan berdasarkan state SETELAH edit:
+    //   - rating: dari input atau dari existing
+    //   - content: dari input atau dari existing
+    //   - imageCount: dari input length atau dari existing count
+    const effectiveRating = rating !== undefined ? rating : review.rating;
+    const effectiveContent =
+      content !== undefined ? content : review.content;
+    let effectiveImageCount: number;
+    if (imageUrls !== undefined) {
+      effectiveImageCount = imageUrls.length;
+    } else {
+      effectiveImageCount = await tx.reviewImage.count({ where: { reviewId } });
+    }
+
+    let pointsAwarded = 0;
+    if (
+      isCompleteReview({
+        rating: effectiveRating,
+        content: effectiveContent,
+        imageCount: effectiveImageCount,
+      })
+    ) {
+      const awarded = await awardReviewPoints(tx, reviewId, userId);
+      if (awarded) pointsAwarded = REVIEW_POINTS_BONUS;
+    }
+
+    return { review: updated, pointsAwarded };
   });
 }
 
 // ── Soft delete ────────────────────────────────────────────────
 
-export async function softDeleteReview(reviewId: string, userId: string) {
+export type DeleteReviewResult = {
+  review: Prisma.ReviewGetPayload<{}>;
+  /** Jumlah poin yang di-rollback (5 kalau ada, 0 kalau review sebelumnya
+   *  belum pernah dapat poin). Flutter pakai untuk feedback. */
+  pointsRolledBack: number;
+};
+
+export async function softDeleteReview(
+  reviewId: string,
+  userId: string,
+): Promise<DeleteReviewResult> {
   return prisma.$transaction(async (tx) => {
     const review = await tx.review.findUnique({ where: { id: reviewId } });
     if (!review) throw new Error("Review tidak ditemukan.");
     if (review.userId !== userId)
       throw new Error("Anda tidak berhak menghapus review ini.");
-    if (review.status === "DELETED") return review;
+    if (review.status === "DELETED") {
+      return { review, pointsRolledBack: 0 };
+    }
 
     const updated = await tx.review.update({
       where: { id: reviewId },
@@ -210,7 +381,15 @@ export async function softDeleteReview(reviewId: string, userId: string) {
     });
 
     await recomputeProductAggregate(tx, review.productId);
-    return updated;
+
+    // Rollback poin yang pernah di-award untuk review ini (kalau ada).
+    // Pattern: user submit review lengkap → dapat 5 poin → delete → poin
+    // -5 lewat deleteMany (CustomerPoint entry source REVIEW:{id} dihapus).
+    // Saldo poin user otomatis kurang via aggregate sum.
+    const rollbackCount = await rollbackReviewPoints(tx, reviewId);
+    const pointsRolledBack = rollbackCount > 0 ? REVIEW_POINTS_BONUS : 0;
+
+    return { review: updated, pointsRolledBack };
   });
 }
 

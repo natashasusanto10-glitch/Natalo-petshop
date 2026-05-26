@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const review = await createReview({
+    const result = await createReview({
       userId: session.sub,
       orderItemId,
       rating: Math.round(rating),
@@ -58,7 +58,15 @@ export async function POST(req: NextRequest) {
       imageUrls: Array.isArray(imageUrls) ? imageUrls.map(String) : [],
     });
 
-    return NextResponse.json({ id: review.id }, { status: 201 });
+    // pointsAwarded = 5 kalau review LENGKAP (bintang+desk min 10 char+min 1 foto),
+    // 0 kalau belum. Flutter pakai untuk snackbar conditional.
+    return NextResponse.json(
+      {
+        id: result.review.id,
+        pointsAwarded: result.pointsAwarded,
+      },
+      { status: 201 },
+    );
   } catch (error) {
     return NextResponse.json(
       {
