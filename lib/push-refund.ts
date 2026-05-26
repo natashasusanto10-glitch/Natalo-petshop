@@ -137,3 +137,81 @@ export async function sendRefundIssuedPush(input: {
     return false;
   }
 }
+
+const CANCEL_REJECT_TAG_PREFIX = "cancel-rejected-";
+
+/**
+ * Send notification ke customer saat admin REJECT permintaan pembatalan
+ * pesanan. User lihat alasan langsung di push body — gak perlu buka app
+ * untuk tahu kenapa cancel-nya ditolak.
+ *
+ * Trigger: dipanggil dari rejectCancellationRequest server action di
+ * app/admin/(protected)/orders/[id]/actions.ts setelah status di-set
+ * REJECTED. Fire-and-forget supaya admin action gak block kalau push
+ * service down.
+ *
+ * Tap notif → deep link ke order detail supaya user bisa lihat reject
+ * reason lengkap di banner (kalau push body terpotong).
+ *
+ * @returns true kalau push dispatched.
+ */
+export async function sendCancellationRejectedPush(input: {
+  userId: string;
+  orderId: string;
+  orderNumber: string;
+  rejectReason: string;
+}): Promise<boolean> {
+  const title = `Permintaan pembatalan #${input.orderNumber} ditolak`;
+  // Cap body 120 char supaya tidak overflow push notif limit, append
+  // "..." kalau truncated. Full reason tetap accessible di app banner.
+  const reasonTrimmed =
+    input.rejectReason.length > 120
+      ? `${input.rejectReason.slice(0, 117)}...`
+      : input.rejectReason;
+  const body = `Alasan: "${reasonTrimmed}"`;
+
+  // Deep link ke order detail — Flutter app_links handler buka order
+  // detail screen, user lihat banner reject lengkap dengan reason.
+  const url = `/member/order-detail?orderNumber=${input.orderNumber}`;
+
+  const payload: PushPayload = {
+    title,
+    body,
+    url,
+    tag: `${CANCEL_REJECT_TAG_PREFIX}${input.orderId}`,
+    category: "order",
+    data: {
+      type: "cancellation_rejected",
+      orderId: input.orderId,
+      orderNumber: input.orderNumber,
+    },
+  };
+
+  try {
+    await Promise.all([
+      sendApnsToUser(input.userId, payload),
+      sendFcmToUser(input.userId, payload),
+      // Notification center entry untuk audit + in-app history.
+      prisma.announcement
+        .create({
+          data: {
+            title,
+            body,
+            url,
+            segment: "all",
+            type: "warning",
+            ctaLabel: "Lihat Pesanan",
+            publishedAt: new Date(),
+            targetUserId: input.userId,
+          },
+        })
+        .catch((err) => {
+          console.warn("[push-refund] cancel-reject announcement:", err);
+        }),
+    ]);
+    return true;
+  } catch (err) {
+    console.error("[push-refund] cancel-reject dispatch failed:", err);
+    return false;
+  }
+}

@@ -79,12 +79,30 @@ export type BirthdayIssueResult = {
  * non-leap year (defensive — alternatif: 1-Mar, tapi 28-Feb lebih
  * konservatif).
  */
+/**
+ * WIB offset (UTC+7) dalam ms. Natalo target market = Indonesia, jadi
+ * "ulang tahun hari ini" = "hari ini di WIB", bukan UTC.
+ *
+ * Tanpa offset ini: kalau cron jalan misal di 23:30 UTC (= 06:30 WIB
+ * besok), `today.getDate()` return tgl UTC = besok-di-WIB-1, sehingga
+ * user yang ulang tahun "hari ini di WIB" akan ke-miss.
+ *
+ * Vercel schedule "0 2 * * *" = 02:00 UTC = 09:00 WIB, normally safe.
+ * Tapi kalau cron delay / re-trigger di waktu lain, offset explicit
+ * ini ensure benar.
+ */
+const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
+
 async function findTodayBirthdayUsers(today: Date): Promise<
   Array<{ id: string; name: string; birthDate: Date; birthdayVoucherYear: number | null }>
 > {
-  const month = today.getMonth() + 1; // 1-12
-  const day = today.getDate();
-  const currentYear = today.getFullYear();
+  // Shift UTC ke WIB sebelum extract calendar components. Pakai UTC
+  // getter setelah shift supaya tidak double-apply local timezone offset
+  // (server bisa di region apa saja, biar deterministic).
+  const wibTime = new Date(today.getTime() + WIB_OFFSET_MS);
+  const month = wibTime.getUTCMonth() + 1; // 1-12
+  const day = wibTime.getUTCDate();
+  const currentYear = wibTime.getUTCFullYear();
   const minAccountDays = getMinAccountDays();
   const accountAgeThreshold = new Date(
     today.getTime() - minAccountDays * 24 * 60 * 60 * 1000,

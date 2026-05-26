@@ -434,6 +434,13 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
                           iconBg: const Color(0xFFF3E8FF),
                         ),
                         const _FormDivider(),
+                        // Acquisition nudge — banner kuning muncul kalau
+                        // user belum set tgl lahir + belum locked. Jelas
+                        // value prop "isi → dapat voucher". Tap → trigger
+                        // picker (sama dengan tap tile). Hilang setelah
+                        // user set tgl lahir.
+                        if (_birthDate == null && !_isBirthDateLocked)
+                          _BirthdayPromoBanner(onTap: _pickBirthDate),
                         _BirthDatePickerTile(
                           birthDate: _birthDate,
                           onTap: _pickBirthDate,
@@ -617,6 +624,93 @@ class _ProfileFormField extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Banner promo "isi tgl lahir = dapat voucher Rp50k" — onboarding nudge
+/// di Profile screen. Tampil hanya kalau user belum set tgl lahir dan
+/// belum locked (kebanyakan kasus = user baru / customer lama yang skip
+/// fill saat register).
+///
+/// Tap → langsung trigger picker flow yang sama dengan tile bawah,
+/// supaya user gak perlu scroll dan tahu apa yang harus di-tap.
+class _BirthdayPromoBanner extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _BirthdayPromoBanner({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+      child: Material(
+        color: const Color(0xFFFFF6CC),
+        borderRadius: BorderRadius.circular(14),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: const Color(0xFFFBBF24).withValues(alpha: 0.4),
+                width: 1,
+              ),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Center(
+                    child: Text(
+                      '🎁',
+                      style: TextStyle(fontSize: 18),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Dapat voucher Rp50.000 saat ulang tahun!',
+                        style: TextStyle(
+                          color: Color(0xFF92400E),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'Isi tanggal lahir kamu sekarang.',
+                        style: TextStyle(
+                          color: Color(0xFFB45309),
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: Color(0xFFB45309),
+                  size: 22,
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

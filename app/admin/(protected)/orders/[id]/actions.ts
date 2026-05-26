@@ -7,7 +7,10 @@ import { createBiteshipShipment } from "@/lib/biteship";
 import { sendOrderStatusEmail } from "@/lib/email-order";
 import { assertCanTransitionOrderStatus, transitionOrderStatus } from "@/lib/order-transitions";
 import { sendOrderStatusPush } from "@/lib/push";
-import { sendRefundIssuedPush } from "@/lib/push-refund";
+import {
+  sendCancellationRejectedPush,
+  sendRefundIssuedPush,
+} from "@/lib/push-refund";
 import { creditWallet } from "@/lib/refund-wallet";
 import { SELF_PICKUP_METHOD, createPickupCode } from "@/lib/self-pickup";
 import { AdminAction, logAdminAction } from "@/lib/admin-audit";
@@ -1170,14 +1173,21 @@ export async function rejectCancellationRequest(
     },
   });
 
-  // TODO: push notif ke user "Permintaan pembatalan ditolak. Alasan: ..."
-  // — sementara pakai console log + user akan lihat banner reject di
-  // order detail saat refresh. Push handler khusus cancel-rejected belum
-  // ada di lib/push-refund (yang ada hanya REFUND_ISSUED). Bisa ditambah
-  // setelah flow ini settle dipakai.
-  console.log(
-    `[cancel-reject] order=${current.orderNumber} user=${current.userId} reason="${rejectReason}"`,
-  );
+  // Push notif ke user — informasi reject + alasan. Fire-and-forget,
+  // kalau gagal admin action tetap commit. User juga akan lihat banner
+  // reject di order detail saat refresh (defense-in-depth).
+  if (current.userId) {
+    void sendCancellationRejectedPush({
+      userId: current.userId,
+      orderId,
+      orderNumber: current.orderNumber,
+      rejectReason,
+    });
+  } else {
+    console.log(
+      `[cancel-reject] guest order=${current.orderNumber} (no userId, skip push)`,
+    );
+  }
 
   logAdminAction({
     actorUserId: session.sub,
