@@ -22,6 +22,7 @@ import ItemOutOfStockButton from "./ItemOutOfStockButton";
 import RefundFormClient from "./RefundFormClient";
 import CancelOrderButton from "./CancelOrderButton";
 import CancellationRequestBanner from "./CancellationRequestBanner";
+import ShippingForm from "./ShippingForm";
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: "Order Baru",
@@ -602,37 +603,30 @@ export default async function AdminOrderDetailPage({
                   </form>
                 )}
 
-                {/* 3. Tandai sudah dikirim (PROCESSING → SHIPPED) */}
+                {/* 3. Tandai sudah dikirim (PROCESSING → SHIPPED)
+                    Pakai ShippingForm dengan toggle Regular / Instant supaya
+                    kurir instant (Gojek/Grab/Lalamove) yang tidak punya resi
+                    bisa tetap tercatat info driver-nya. Server validate salah
+                    satu wajib diisi sesuai courierType. */}
                 {order.status === "PROCESSING" && !isSelfPickup && (
-                  <form action={markAsShippedAction} className="space-y-3">
-                    <input
-                      name="trackingNumber"
-                      placeholder="Nomor resi (opsional)"
-                      defaultValue={order.trackingNumber || ""}
-                      className="w-full rounded-2xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-600"
-                    />
-                    <button className="w-full rounded-full bg-indigo-600 px-5 py-3 text-sm font-bold text-white hover:bg-indigo-700">
-                      🚚 Tandai sudah dikirim
-                    </button>
-                  </form>
+                  <ShippingForm
+                    action={markAsShippedAction}
+                    defaultTrackingNumber={order.trackingNumber || ""}
+                    defaultDriverInfo={order.shippingDriverInfo || ""}
+                    submitLabel="Tandai sudah dikirim"
+                    variant="primary"
+                  />
                 )}
 
-                {/* 4. Update resi (SHIPPED) */}
+                {/* 4. Update info pengiriman (SHIPPED) */}
                 {order.status === "SHIPPED" && !isSelfPickup && (
-                  <form action={markAsShippedAction} className="space-y-3">
-                    <input
-                      name="trackingNumber"
-                      placeholder="Update nomor resi"
-                      defaultValue={order.trackingNumber || ""}
-                      className="w-full rounded-2xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-600"
-                    />
-                    <button
-                      type="submit"
-                      className="w-full rounded-full border border-zinc-300 px-5 py-3 text-sm font-bold hover:border-zinc-500"
-                    >
-                      Update resi
-                    </button>
-                  </form>
+                  <ShippingForm
+                    action={markAsShippedAction}
+                    defaultTrackingNumber={order.trackingNumber || ""}
+                    defaultDriverInfo={order.shippingDriverInfo || ""}
+                    submitLabel="Update info pengiriman"
+                    variant="secondary"
+                  />
                 )}
 
                 {/* 5. Tandai selesai (SHIPPED) — OVERRIDE

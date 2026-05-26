@@ -262,6 +262,11 @@ class OrderSummary {
   final String? courierCode;
   final String? courierService;
   final String? trackingNumber;
+  /// Info driver untuk kurir INSTANT (Gojek/Grab/Lalamove) yang tidak
+  /// punya resi tradisional. Free-form text dari admin — biasanya berisi
+  /// nama driver, HP, plat nomor, atau link GPS. Mutually exclusive
+  /// dengan trackingNumber (cuma salah satu yang terisi per order).
+  final String? shippingDriverInfo;
   final String? trackingToken;
   final String? biteshipTrackingUrl;
   final String? shipmentStatus;
@@ -337,6 +342,7 @@ class OrderSummary {
     this.courierCode,
     this.courierService,
     this.trackingNumber,
+    this.shippingDriverInfo,
     this.trackingToken,
     this.biteshipTrackingUrl,
     this.shipmentStatus,
@@ -431,6 +437,7 @@ class OrderSummary {
       courierCode: _nullableString(json['courierCode']),
       courierService: _nullableString(json['courierService']),
       trackingNumber: _nullableString(json['trackingNumber']),
+      shippingDriverInfo: _nullableString(json['shippingDriverInfo']),
       trackingToken: _nullableString(json['trackingToken']),
       biteshipTrackingUrl: _nullableString(json['biteshipTrackingUrl']),
       shipmentStatus: _nullableString(json['shipmentStatus']),

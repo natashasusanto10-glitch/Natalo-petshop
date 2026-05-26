@@ -153,7 +153,34 @@ export async function markAsProcessing(orderId: string) {
 
 export async function markAsShipped(orderId: string, formData: FormData) {
   await requireAdmin();
+  const courierType = String(formData.get("courierType") || "REGULAR")
+    .trim()
+    .toUpperCase();
   const trackingNumber = String(formData.get("trackingNumber") || "").trim();
+  const shippingDriverInfo = String(formData.get("shippingDriverInfo") || "")
+    .trim()
+    .slice(0, 500); // cap length untuk keamanan + storage
+
+  // ── Validation ──────────────────────────────────────────────────────
+  // Cegah admin "tandai shipped" tanpa bukti pengiriman apapun.
+  // - REGULAR (JNE, JNT, SiCepat, Pos, Anteraja, dll) → wajib resi
+  // - INSTANT (Gojek, Grab, Lalamove, Borzo, dll) → wajib info driver
+  //   karena kurir instant tidak punya resi tradisional
+  if (courierType === "INSTANT") {
+    if (shippingDriverInfo.length === 0) {
+      throw new Error(
+        "Info driver wajib diisi untuk kurir instant. Contoh: 'Nama: Pak Budi | HP: 0812xxxx | Plat: B 1234 ABC'.",
+      );
+    }
+  } else {
+    // REGULAR (default)
+    if (trackingNumber.length === 0) {
+      throw new Error(
+        "Nomor resi wajib diisi untuk kurir regular (JNE/JNT/SiCepat/dst). Kalau pakai kurir instant (Gojek/Grab), pilih 'Kurir Instant' di form.",
+      );
+    }
+  }
+
   const current = await prisma.order.findUnique({
     where: { id: orderId },
     select: { status: true },
@@ -162,20 +189,33 @@ export async function markAsShipped(orderId: string, formData: FormData) {
 
   let didTransition = false;
 
+  // Untuk REGULAR: simpan trackingNumber + clear driverInfo (defensive,
+  // kalau admin sebelumnya isi keduanya lalu switch ke regular). Sebaliknya
+  // untuk INSTANT: simpan driverInfo + clear resi.
+  const shippingData =
+    courierType === "INSTANT"
+      ? {
+          trackingNumber: null,
+          shippingDriverInfo: shippingDriverInfo,
+        }
+      : {
+          trackingNumber: trackingNumber,
+          shippingDriverInfo: null,
+        };
+
   if (current.status !== "SHIPPED") {
     await transitionOrderStatus(orderId, "SHIPPED", {
-      trackingNumber: trackingNumber || null,
+      ...shippingData,
       // Mark waktu shipped untuk cron auto-confirm-delivered.
       shippedAt: new Date(),
     });
     didTransition = true;
   } else {
-    // Re-shipped (update tracking number aja) — JANGAN reset shippedAt
-    // supaya counter 7 hari tetap dari tanggal shipped pertama. Cuma
-    // update tracking number.
+    // Re-shipped (update tracking info aja) — JANGAN reset shippedAt
+    // supaya counter 7 hari tetap dari tanggal shipped pertama.
     await prisma.order.updateMany({
       where: { id: orderId, status: "SHIPPED" },
-      data: { trackingNumber: trackingNumber || null },
+      data: shippingData,
     });
   }
 

@@ -444,6 +444,13 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
                 // atau belum diperlukan oleh status order tertentu.
                 _OrderItemsCard(order: order),
                 const SizedBox(height: 12),
+                // Info pengiriman — tampil mulai dari status SHIPPED.
+                // Display kondisional: nomor resi (kurir regular) atau
+                // info driver (kurir instant Gojek/Grab/dst).
+                if (_shouldShowShippingInfo(order)) ...[
+                  _ShippingInfoCard(order: order),
+                  const SizedBox(height: 12),
+                ],
                 _PaymentSummary(order: order),
                 const SizedBox(height: 12),
                 if (_shouldShowPaymentAction(order)) ...[
@@ -2406,6 +2413,172 @@ class _CancelOrderCard extends StatelessWidget {
                   : const Text('Batalkan'),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Decide kapan card "Info Pengiriman" tampil:
+/// - Status SHIPPED / DELIVERED — paket sudah dikirim, info kurir relevant
+/// - Bukan self-pickup — pickup gak ada kurir
+/// - Ada salah satu data: trackingNumber ATAU shippingDriverInfo
+bool _shouldShowShippingInfo(OrderSummary order) {
+  final status = order.status.toUpperCase();
+  if (status != 'SHIPPED' && status != 'DELIVERED') return false;
+  if (order.isSelfPickup) return false;
+  final hasResi =
+      order.trackingNumber != null && order.trackingNumber!.trim().isNotEmpty;
+  final hasDriver = order.shippingDriverInfo != null &&
+      order.shippingDriverInfo!.trim().isNotEmpty;
+  return hasResi || hasDriver;
+}
+
+/// Card "Info Pengiriman" — display kondisional resi vs info driver.
+/// Untuk kurir regular (JNE/JNT/dst): tampilkan nomor resi.
+/// Untuk kurir instant (Gojek/Grab/dst): tampilkan info driver yang
+/// admin isi (nama/HP/plat/link GPS — format bebas, mono font supaya
+/// rapih kalau ada line break).
+class _ShippingInfoCard extends StatelessWidget {
+  final OrderSummary order;
+
+  const _ShippingInfoCard({required this.order});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasResi = order.trackingNumber != null &&
+        order.trackingNumber!.trim().isNotEmpty;
+    final hasDriver = order.shippingDriverInfo != null &&
+        order.shippingDriverInfo!.trim().isNotEmpty;
+    final courierLabel =
+        order.courierService ?? order.courierCode ?? 'Kurir';
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEAF2FF),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  hasDriver
+                      ? Icons.two_wheeler_rounded
+                      : Icons.local_shipping_rounded,
+                  color: const Color(0xFF1E5FBF),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Info Pengiriman',
+                      style: TextStyle(
+                        color: Color(0xFF17202A),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    Text(
+                      hasDriver
+                          ? '$courierLabel · Same-day delivery'
+                          : courierLabel,
+                      style: const TextStyle(
+                        color: Color(0xFF6B7280),
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (hasResi)
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF9FAFB),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE5E7EB)),
+              ),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Nomor Resi',
+                      style: TextStyle(
+                        color: Color(0xFF6B7280),
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    order.trackingNumber!,
+                    style: const TextStyle(
+                      color: Color(0xFF17202A),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else if (hasDriver) ...[
+            const Text(
+              'Info Driver',
+              style: TextStyle(
+                color: Color(0xFF6B7280),
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF9FAFB),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE5E7EB)),
+              ),
+              // SelectableText supaya user bisa copy nomor HP / link GPS.
+              child: SelectableText(
+                order.shippingDriverInfo!,
+                style: const TextStyle(
+                  color: Color(0xFF17202A),
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  height: 1.5,
+                  fontFamily: 'monospace',
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

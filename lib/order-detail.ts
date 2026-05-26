@@ -128,6 +128,11 @@ export function serializeOrderDetail(order: OrderDetailRecord) {
     courierCode: order.courierCode,
     courierService: order.courierService,
     trackingNumber: order.trackingNumber,
+    // Info driver untuk kurir instant (Gojek/Grab/Lalamove). Diisi
+    // sebagai alternatif trackingNumber. Customer UI tampilin kondisional:
+    // kalau ada resi → tampilkan resi, else kalau ada driverInfo →
+    // tampilkan info driver.
+    shippingDriverInfo: order.shippingDriverInfo,
     shipmentStatus: order.shipmentStatus,
     biteshipTrackingUrl: order.biteshipTrackingUrl,
     pickupStoreName: isSelfPickup

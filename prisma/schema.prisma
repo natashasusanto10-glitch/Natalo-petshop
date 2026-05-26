@@ -398,6 +398,12 @@ model Order {
   courierCode             String?
   courierService          String?
   trackingNumber          String?
+  // Info driver untuk kurir INSTANT (Gojek/Grab/Lalamove/Borzo) yang
+  // tidak punya resi tradisional. Format bebas — biasanya admin isi
+  // "Nama: ... | HP: ... | Plat: ..." atau link share GPS dari aplikasi
+  // kurir. Lihat markAsShipped validation: salah satu dari trackingNumber
+  // atau shippingDriverInfo wajib diisi saat tandai SHIPPED.
+  shippingDriverInfo      String?
   trackingToken           String?         @unique
   biteshipOrderId         String?
   biteshipTrackingUrl     String?
