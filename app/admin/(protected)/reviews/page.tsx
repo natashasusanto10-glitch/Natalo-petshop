@@ -6,6 +6,18 @@ import { setReviewStatus, upsertAdminReply } from "@/lib/reviews";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import type { ReviewStatus } from "@prisma/client";
+import {
+  PageHeader,
+  EmptyState,
+  Badge,
+  type BadgeVariant,
+} from "@/components/admin/ui";
+
+const REVIEW_STATUS_VARIANT: Record<string, BadgeVariant> = {
+  VISIBLE: "success",
+  HIDDEN: "danger",
+  DELETED: "neutral",
+};
 
 const PAGE_SIZE = 20;
 
@@ -85,13 +97,18 @@ export default async function AdminReviewsPage({
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-5 md:py-10">
-      <Link href="/admin" className="hidden text-sm font-bold text-zinc-500 hover:text-zinc-950 md:inline">
-        ← Kembali ke dashboard
-      </Link>
-      <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:mt-2 md:text-3xl">Moderasi Review</h1>
-      <p className="mt-1 text-sm text-zinc-500">
-        Kelola review pembeli dari pelanggan toko.
-      </p>
+      <PageHeader
+        title="Moderasi Review"
+        subtitle={`Kelola ${total} review pembeli — approve, hide, atau balas.`}
+        actions={
+          <Link
+            href="/admin/dashboard"
+            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-2 text-xs font-bold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50"
+          >
+            ← Dashboard
+          </Link>
+        }
+      />
 
       {/* Filter tabs */}
       <div className="-mx-4 mt-5 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:mt-6 md:flex-wrap md:overflow-visible md:px-0">
@@ -125,8 +142,17 @@ export default async function AdminReviewsPage({
       {/* Review list */}
       <div className="mt-6 space-y-4">
         {reviews.length === 0 ? (
-          <div className="rounded-2xl border border-zinc-200 bg-white p-12 text-center">
-            <p className="text-zinc-500">Belum ada review.</p>
+          <div className="rounded-2xl border border-zinc-200 bg-white">
+            <EmptyState
+              icon="⭐"
+              title="Belum ada review"
+              description={
+                filterStatus
+                  ? "Tidak ada review dengan status ini. Coba ganti filter."
+                  : "Customer akan kasih review setelah order DELIVERED."
+              }
+              size="full"
+            />
           </div>
         ) : (
           reviews.map((r) => (
@@ -167,17 +193,12 @@ export default async function AdminReviewsPage({
                     </p>
                   </div>
                 </div>
-                <span
-                  className={`rounded-full px-3 py-1 text-xs font-bold ${
-                    r.status === "VISIBLE"
-                      ? "bg-green-100 text-green-700"
-                      : r.status === "HIDDEN"
-                      ? "bg-red-100 text-red-700"
-                      : "bg-zinc-200 text-zinc-600"
-                  }`}
+                <Badge
+                  variant={REVIEW_STATUS_VARIANT[r.status] ?? "neutral"}
+                  size="md"
                 >
                   {r.status}
-                </span>
+                </Badge>
               </div>
 
               {/* Body */}

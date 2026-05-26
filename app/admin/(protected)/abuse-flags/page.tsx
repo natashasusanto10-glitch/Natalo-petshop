@@ -18,18 +18,25 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { AbuseRule } from "@/lib/abuse-detection";
 import { reviewAbuseFlag } from "./actions";
+import {
+  PageHeader,
+  StatCard,
+  EmptyState,
+  Badge,
+  type BadgeVariant,
+} from "@/components/admin/ui";
 
-const SEVERITY_BADGE: Record<string, string> = {
-  HIGH: "bg-red-100 text-red-700 ring-red-200",
-  MEDIUM: "bg-amber-100 text-amber-700 ring-amber-200",
-  LOW: "bg-zinc-100 text-zinc-600 ring-zinc-200",
+const SEVERITY_VARIANT: Record<string, BadgeVariant> = {
+  HIGH: "danger",
+  MEDIUM: "warning",
+  LOW: "neutral",
 };
 
-const STATUS_BADGE: Record<string, string> = {
-  OPEN: "bg-red-100 text-red-700 ring-red-200",
-  REVIEWED: "bg-blue-100 text-blue-700 ring-blue-200",
-  DISMISSED: "bg-zinc-100 text-zinc-600 ring-zinc-200",
-  BLOCKED: "bg-purple-100 text-purple-800 ring-purple-200",
+const STATUS_VARIANT: Record<string, BadgeVariant> = {
+  OPEN: "danger",
+  REVIEWED: "info",
+  DISMISSED: "neutral",
+  BLOCKED: "purple",
 };
 
 const RULE_LABELS: Record<string, string> = {
@@ -98,64 +105,57 @@ export default async function AbuseFlagsPage({
     ]);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6">
-      <div className="mb-4 flex items-center gap-3">
-        <Link
-          href="/admin/dashboard"
-          className="text-sm text-zinc-600 hover:text-zinc-900"
-        >
-          ← Dashboard
-        </Link>
-      </div>
+    <div className="mx-auto max-w-6xl px-4 py-5 md:py-10">
+      <PageHeader
+        title="🚨 Abuse Flags"
+        subtitle="Cron daily scan suspicious pattern (burst claim, gmail alias, alamat duplikat, instant claim). Review flagged user + decide action. Daily 03:00 WIB."
+        actions={
+          <Link
+            href="/admin/dashboard"
+            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-2 text-xs font-bold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50"
+          >
+            ← Dashboard
+          </Link>
+        }
+      />
 
-      <div className="mb-5">
-        <h1 className="text-xl font-bold text-zinc-950">
-          Abuse Flags — Voucher Abuse Detection
-        </h1>
-        <p className="mt-1 text-sm text-zinc-600">
-          Cron daily scan suspicious pattern (burst claim, gmail alias,
-          alamat duplikat, instant claim). Review flagged user + decide
-          action. Daily 03:00 WIB.
-        </p>
-      </div>
-
-      {/* Status counts */}
-      <div className="mb-5 grid grid-cols-2 gap-2 md:grid-cols-4">
-        <StatusCard
+      {/* Status counts — pakai StatCard primitives */}
+      <section className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <StatCard
           label="Open (review queue)"
-          count={openCount}
-          accent="red"
+          value={openCount}
+          helper="Belum di-review"
           href="/admin/abuse-flags?status=OPEN"
-          active={statusFilter === "OPEN"}
+          variant="danger"
         />
-        <StatusCard
+        <StatCard
           label="Reviewed"
-          count={reviewedCount}
-          accent="blue"
+          value={reviewedCount}
+          helper="Sudah ditinjau"
           href="/admin/abuse-flags?status=REVIEWED"
-          active={statusFilter === "REVIEWED"}
+          variant="primary"
         />
-        <StatusCard
+        <StatCard
           label="Dismissed"
-          count={dismissedCount}
-          accent="zinc"
+          value={dismissedCount}
+          helper="False positive"
           href="/admin/abuse-flags?status=DISMISSED"
-          active={statusFilter === "DISMISSED"}
+          variant="default"
         />
-        <StatusCard
+        <StatCard
           label="Blocked"
-          count={blockedCount}
-          accent="purple"
+          value={blockedCount}
+          helper="User di-block"
           href="/admin/abuse-flags?status=BLOCKED"
-          active={statusFilter === "BLOCKED"}
+          variant="warning"
         />
-      </div>
+      </section>
 
       {/* Filter form */}
       <form
         action="/admin/abuse-flags"
         method="get"
-        className="mb-5 grid gap-3 rounded-2xl border border-zinc-200 bg-white p-4 md:grid-cols-3"
+        className="mt-6 mb-5 grid gap-3 rounded-2xl border border-zinc-200 bg-white p-4 md:grid-cols-3 md:p-5"
       >
         <div>
           <label className="block text-xs font-semibold text-zinc-700">
@@ -208,7 +208,7 @@ export default async function AbuseFlagsPage({
         <div className="md:col-span-3">
           <button
             type="submit"
-            className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700"
+            className="rounded-full bg-natalo-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-natalo-700"
           >
             Apply filter
           </button>
@@ -217,10 +217,21 @@ export default async function AbuseFlagsPage({
 
       {/* Flag list */}
       {flags.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 p-12 text-center text-sm text-zinc-500">
-          {statusFilter === "OPEN"
-            ? "🎉 Tidak ada open flag — sistem clean!"
-            : "Tidak ada flag untuk filter ini."}
+        <div className="rounded-2xl border border-zinc-200 bg-white">
+          <EmptyState
+            icon={statusFilter === "OPEN" ? "🎉" : "🔍"}
+            title={
+              statusFilter === "OPEN"
+                ? "Tidak ada open flag — sistem clean!"
+                : "Tidak ada flag untuk filter ini"
+            }
+            description={
+              statusFilter === "OPEN"
+                ? "Cron scan harian belum nge-detect pola abuse. Aman!"
+                : "Coba reset filter atau pilih status lain."
+            }
+            size="full"
+          />
         </div>
       ) : (
         <div className="space-y-3">
@@ -230,38 +241,6 @@ export default async function AbuseFlagsPage({
         </div>
       )}
     </div>
-  );
-}
-
-function StatusCard({
-  label,
-  count,
-  accent,
-  href,
-  active,
-}: {
-  label: string;
-  count: number;
-  accent: string;
-  href: string;
-  active: boolean;
-}) {
-  const accentColors: Record<string, string> = {
-    red: "border-red-300 bg-red-50 text-red-900",
-    blue: "border-blue-300 bg-blue-50 text-blue-900",
-    zinc: "border-zinc-300 bg-zinc-50 text-zinc-900",
-    purple: "border-purple-300 bg-purple-50 text-purple-900",
-  };
-  return (
-    <Link
-      href={href}
-      className={`rounded-xl border-2 p-3 transition ${
-        active ? accentColors[accent] : "border-zinc-200 bg-white text-zinc-700"
-      }`}
-    >
-      <p className="text-xs font-semibold uppercase">{label}</p>
-      <p className="mt-1 text-2xl font-black">{count}</p>
-    </Link>
   );
 }
 
@@ -280,19 +259,15 @@ type FlagWithUser = Awaited<ReturnType<typeof prisma.abuseFlag.findMany>>[number
 function FlagCard({ flag }: { flag: FlagWithUser }) {
   const reviewAction = reviewAbuseFlag.bind(null, flag.id);
   return (
-    <article className="rounded-2xl border border-zinc-200 bg-white p-4">
+    <article className="rounded-2xl border border-zinc-200 bg-white p-4 md:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <span
-            className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ring-1 ${SEVERITY_BADGE[flag.severity] ?? SEVERITY_BADGE.LOW}`}
-          >
+          <Badge variant={SEVERITY_VARIANT[flag.severity] ?? "neutral"}>
             {flag.severity}
-          </span>
-          <span
-            className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ring-1 ${STATUS_BADGE[flag.status] ?? ""}`}
-          >
+          </Badge>
+          <Badge variant={STATUS_VARIANT[flag.status] ?? "neutral"}>
             {flag.status}
-          </span>
+          </Badge>
           <span className="text-sm font-bold text-zinc-900">
             {RULE_LABELS[flag.ruleCode] ?? flag.ruleCode}
           </span>

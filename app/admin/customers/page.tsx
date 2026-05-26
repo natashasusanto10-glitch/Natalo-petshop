@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/session-guards";
+import Link from "next/link";
+import { PageHeader, EmptyState, Badge } from "@/components/admin/ui";
 
 const PAGE_SIZE = 20;
 
@@ -28,101 +30,142 @@ export default async function AdminCustomersPage({
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-5 md:py-10">
-      <div>
-        <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">
-          Customer
-        </h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          {total} customer terdaftar.
-        </p>
-      </div>
+      <PageHeader
+        title="Customer"
+        subtitle={`${total} customer terdaftar.`}
+        actions={
+          <Link
+            href="/admin/dashboard"
+            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-2 text-xs font-bold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50"
+          >
+            ← Dashboard
+          </Link>
+        }
+      />
 
       {customers.length === 0 ? (
-        <div className="mt-5 rounded-2xl border border-zinc-200 bg-white p-12 text-center md:mt-6 md:rounded-3xl">
-          <p className="text-2xl">👥</p>
-          <p className="mt-3 font-semibold text-zinc-700">
-            Belum ada customer
-          </p>
+        <div className="mt-6 rounded-2xl border border-zinc-200 bg-white">
+          <EmptyState
+            icon="👥"
+            title="Belum ada customer"
+            description="Customer akan terdaftar setelah mereka register dari mobile app."
+            size="full"
+          />
         </div>
       ) : (
         <>
           {/* Mobile card list */}
-          <div className="mt-5 space-y-3 md:hidden">
-            {customers.map((customer) => (
-              <div key={customer.id} className="rounded-2xl border border-zinc-200 bg-white p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate font-semibold text-zinc-900">{customer.name}</p>
-                    {customer.email && (
-                      <p className="mt-0.5 truncate text-xs text-zinc-500">{customer.email}</p>
-                    )}
-                    {customer.phone && (
-                      <p className="mt-0.5 truncate text-xs text-zinc-500">{customer.phone}</p>
-                    )}
-                  </div>
-                  <span className="shrink-0 rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-bold text-zinc-700">
-                    {customer._count.orders}× order
-                  </span>
-                </div>
-                <p className="mt-2 text-[11px] text-zinc-400">
-                  Bergabung {new Date(customer.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
-                </p>
-              </div>
-            ))}
-          </div>
-
-          {/* Desktop table */}
-          <div className="mt-6 hidden overflow-hidden rounded-3xl border border-zinc-200 bg-white md:block">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-zinc-100 bg-zinc-50">
-                    <th className="px-5 py-4 text-left font-semibold text-zinc-600">
-                      Nama
-                    </th>
-                    <th className="px-5 py-4 text-left font-semibold text-zinc-600">
-                      Email / HP
-                    </th>
-                    <th className="px-5 py-4 text-left font-semibold text-zinc-600">
-                      Order
-                    </th>
-                    <th className="px-5 py-4 text-left font-semibold text-zinc-600 hidden lg:table-cell">
-                      Bergabung
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {customers.map((customer) => (
-                    <tr
-                      key={customer.id}
-                      className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50 transition"
-                    >
-                      <td className="px-5 py-4">
-                        <p className="font-semibold text-zinc-900">
+          <div className="mt-6 space-y-3 md:hidden">
+            {customers.map((customer) => {
+              const initial = customer.name?.[0]?.toUpperCase() ?? "?";
+              return (
+                <div
+                  key={customer.id}
+                  className="rounded-2xl border border-zinc-200 bg-white p-4 transition hover:border-zinc-300"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-natalo-50 text-sm font-black text-natalo-700">
+                      {initial}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="truncate font-bold text-zinc-900">
                           {customer.name}
                         </p>
-                      </td>
-                      <td className="px-5 py-4 text-zinc-500">
-                        <p>{customer.email ?? "-"}</p>
-                        <p className="text-xs">{customer.phone ?? ""}</p>
-                      </td>
-                      <td className="px-5 py-4">
-                        <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-bold text-zinc-700">
-                          {customer._count.orders}x
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 text-zinc-400 hidden lg:table-cell">
+                        <Badge variant="info">
+                          {customer._count.orders}× order
+                        </Badge>
+                      </div>
+                      {customer.email && (
+                        <p className="mt-0.5 truncate text-xs text-zinc-500">
+                          {customer.email}
+                        </p>
+                      )}
+                      {customer.phone && (
+                        <p className="mt-0.5 truncate text-xs text-zinc-500">
+                          {customer.phone}
+                        </p>
+                      )}
+                      <p className="mt-1.5 text-[11px] text-zinc-400">
+                        Bergabung{" "}
                         {new Date(customer.createdAt).toLocaleDateString(
                           "id-ID",
                           {
                             day: "numeric",
                             month: "short",
                             year: "numeric",
-                          }
+                          },
                         )}
-                      </td>
-                    </tr>
-                  ))}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Desktop table */}
+          <div className="mt-6 hidden overflow-hidden rounded-2xl border border-zinc-200 bg-white md:block">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-zinc-100 bg-zinc-50/50">
+                    <th className="px-5 py-3.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-500">
+                      Nama
+                    </th>
+                    <th className="px-5 py-3.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-500">
+                      Email / HP
+                    </th>
+                    <th className="px-5 py-3.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-500">
+                      Order
+                    </th>
+                    <th className="hidden px-5 py-3.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-500 lg:table-cell">
+                      Bergabung
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {customers.map((customer) => {
+                    const initial = customer.name?.[0]?.toUpperCase() ?? "?";
+                    return (
+                      <tr
+                        key={customer.id}
+                        className="border-b border-zinc-100 transition last:border-0 hover:bg-natalo-50/40"
+                      >
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-2.5">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-natalo-50 text-xs font-black text-natalo-700">
+                              {initial}
+                            </div>
+                            <p className="font-bold text-zinc-900">
+                              {customer.name}
+                            </p>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 text-zinc-500">
+                          <p className="text-xs">{customer.email ?? "—"}</p>
+                          <p className="text-[11px] text-zinc-400">
+                            {customer.phone ?? ""}
+                          </p>
+                        </td>
+                        <td className="px-5 py-4">
+                          <Badge variant="info" size="md">
+                            {customer._count.orders}×
+                          </Badge>
+                        </td>
+                        <td className="hidden px-5 py-4 text-xs text-zinc-500 lg:table-cell">
+                          {new Date(customer.createdAt).toLocaleDateString(
+                            "id-ID",
+                            {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                            },
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -133,24 +176,26 @@ export default async function AdminCustomersPage({
       {totalPages > 1 && (
         <div className="mt-6 flex items-center justify-between">
           <p className="text-sm text-zinc-500">
-            Halaman {page} dari {totalPages}
+            Halaman{" "}
+            <span className="font-black text-zinc-950">{page}</span> dari{" "}
+            <span className="font-black text-zinc-950">{totalPages}</span>
           </p>
           <div className="flex gap-2">
             {page > 1 && (
-              <a
+              <Link
                 href={`/admin/customers?page=${page - 1}`}
-                className="rounded-full border border-zinc-200 px-4 py-2 text-sm font-bold hover:border-zinc-400"
+                className="rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm font-bold text-zinc-700 transition hover:border-zinc-400"
               >
                 ← Sebelumnya
-              </a>
+              </Link>
             )}
             {page < totalPages && (
-              <a
+              <Link
                 href={`/admin/customers?page=${page + 1}`}
-                className="rounded-full bg-zinc-950 px-4 py-2 text-sm font-bold text-white"
+                className="rounded-full bg-natalo-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-natalo-700"
               >
                 Berikutnya →
-              </a>
+              </Link>
             )}
           </div>
         </div>
