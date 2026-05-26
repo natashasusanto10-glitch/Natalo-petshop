@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { normalizePemKey } from "./pem-utils";
 
 /**
  * APNs (Apple Push Notification Service) sender — kirim push ke iOS native
@@ -49,32 +50,10 @@ async function initApnProviderInternal(): Promise<
     return null;
   }
 
-  // Normalize PEM content — handle 3 common paste failures di hosting:
-  //   1. "\n" escape literal (2 chars) — Vercel/Heroku kadang strip newlines
-  //   2. Single-line concat tanpa newline sama sekali
-  //   3. Whitespace berlebih di start/end
-  // PEM parser di @parse/node-apn / jsonwebtoken butuh actual LF newlines
-  // antara BEGIN marker, base64 content (max 64 chars/line), END marker.
-  let keyContent = rawKeyContent.replace(/\\n/g, "\n").trim();
-
-  // Auto-fix single-line PEM: kalau BEGIN/END present tapi cuma 1 baris,
-  // extract base64 body lalu split per 64 chars (RFC 7468 PEM format).
-  // Defense untuk hosting yang strip newlines saat paste env value.
-  if (
-    keyContent.includes("-----BEGIN PRIVATE KEY-----") &&
-    keyContent.includes("-----END PRIVATE KEY-----") &&
-    !keyContent.includes("\n")
-  ) {
-    const body = keyContent
-      .replace("-----BEGIN PRIVATE KEY-----", "")
-      .replace("-----END PRIVATE KEY-----", "")
-      .replace(/\s/g, "");
-    const wrappedBody = (body.match(/.{1,64}/g) ?? []).join("\n");
-    keyContent =
-      "-----BEGIN PRIVATE KEY-----\n" +
-      wrappedBody +
-      "\n-----END PRIVATE KEY-----";
-  }
+  // Normalize PEM content — handle multi-line, literal `\n`, dan
+  // single-line tanpa newline (yang sering ke-paste salah di Vercel
+  // dashboard). Lihat lib/pem-utils.ts.
+  const keyContent = normalizePemKey(rawKeyContent);
 
   // Sanity check PEM markers — kalau hilang, env value rusak.
   if (

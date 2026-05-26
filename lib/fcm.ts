@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { normalizePemKey } from "./pem-utils";
 
 /**
  * FCM (Firebase Cloud Messaging) sender — kirim push ke Android native app
@@ -40,8 +41,11 @@ async function getFcmMessaging() {
     return null;
   }
 
-  // Vercel env vars sering disimpan dengan "\n" literal (bukan newline asli).
-  const privateKey = rawPrivateKey.replace(/\\n/g, "\n");
+  // Normalize PEM — handle 3 format input (multi-line, literal \n,
+  // single-line tanpa newline). Lihat lib/pem-utils.ts untuk detail.
+  // Sebelumnya cuma replace(/\\n/g) yang gagal kalau Vercel dashboard
+  // strip newline saat paste → OpenSSL error "DECODER routines::unsupported".
+  const privateKey = normalizePemKey(rawPrivateKey);
 
   try {
     const { initializeApp, getApps, cert } = await import("firebase-admin/app");

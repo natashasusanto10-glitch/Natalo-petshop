@@ -21,6 +21,7 @@ import { NextRequest, NextResponse } from "next/server";
 import webpush from "web-push";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { normalizePemKey } from "@/lib/pem-utils";
 
 const DEFAULT_TITLE = "🔔 Test Push";
 const DEFAULT_BODY = "Kalau notif ini muncul, push channel kamu aktif.";
@@ -141,22 +142,7 @@ export async function POST(req: NextRequest) {
         reason: "APNS env tidak lengkap.",
       });
     } else {
-      let keyContent = rawKeyContent.replace(/\\n/g, "\n").trim();
-      if (
-        keyContent.includes("-----BEGIN PRIVATE KEY-----") &&
-        keyContent.includes("-----END PRIVATE KEY-----") &&
-        !keyContent.includes("\n")
-      ) {
-        const pemBody = keyContent
-          .replace("-----BEGIN PRIVATE KEY-----", "")
-          .replace("-----END PRIVATE KEY-----", "")
-          .replace(/\s/g, "");
-        const wrappedBody = (pemBody.match(/.{1,64}/g) ?? []).join("\n");
-        keyContent =
-          "-----BEGIN PRIVATE KEY-----\n" +
-          wrappedBody +
-          "\n-----END PRIVATE KEY-----";
-      }
+      const keyContent = normalizePemKey(rawKeyContent);
 
       try {
         const apn = await import("@parse/node-apn");
@@ -248,7 +234,7 @@ export async function POST(req: NextRequest) {
           "firebase-admin/app"
         );
         const { getMessaging } = await import("firebase-admin/messaging");
-        const privateKey = rawPrivateKey.replace(/\\n/g, "\n");
+        const privateKey = normalizePemKey(rawPrivateKey);
         const appName = `fcm-me-test-${Date.now()}`;
         const existing = getApps().find((a) => a.name === appName);
         const app =

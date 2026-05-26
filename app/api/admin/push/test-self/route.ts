@@ -28,6 +28,7 @@ import webpush from "web-push";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
+import { normalizePemKey } from "@/lib/pem-utils";
 
 const DEFAULT_TITLE = "🔔 Test Push (diagnostic)";
 const DEFAULT_BODY = "Kalau notifikasi ini muncul di HP, push channel kamu sudah benar.";
@@ -143,24 +144,7 @@ export async function POST(req: NextRequest) {
           reason: "APNS_KEY_ID / APNS_TEAM_ID / APNS_KEY_CONTENT tidak lengkap di Vercel env.",
         });
       } else {
-        // Normalize PEM: replace escaped \n + auto-wrap single-line PEM ke
-        // multi-line format (sama dgn lib/apns.ts).
-        let keyContent = rawKeyContent.replace(/\\n/g, "\n").trim();
-        if (
-          keyContent.includes("-----BEGIN PRIVATE KEY-----") &&
-          keyContent.includes("-----END PRIVATE KEY-----") &&
-          !keyContent.includes("\n")
-        ) {
-          const body = keyContent
-            .replace("-----BEGIN PRIVATE KEY-----", "")
-            .replace("-----END PRIVATE KEY-----", "")
-            .replace(/\s/g, "");
-          const wrappedBody = (body.match(/.{1,64}/g) ?? []).join("\n");
-          keyContent =
-            "-----BEGIN PRIVATE KEY-----\n" +
-            wrappedBody +
-            "\n-----END PRIVATE KEY-----";
-        }
+        const keyContent = normalizePemKey(rawKeyContent);
 
         try {
           const apn = await import("@parse/node-apn");
@@ -233,7 +217,7 @@ export async function POST(req: NextRequest) {
         try {
           const { initializeApp, getApps, cert, deleteApp } = await import("firebase-admin/app");
           const { getMessaging } = await import("firebase-admin/messaging");
-          const privateKey = rawPrivateKey.replace(/\\n/g, "\n");
+          const privateKey = normalizePemKey(rawPrivateKey);
           const appName = `fcm-test-${Date.now()}`;
           const existing = getApps().find((a) => a.name === appName);
           const app =
