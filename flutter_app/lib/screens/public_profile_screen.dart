@@ -10,7 +10,7 @@ import '../utils/haptics.dart';
 import 'member_post_detail_screen.dart';
 
 const _brandBlue = Color(0xFF0B7FEA);
-const _pageBg = Color(0xFFF8FAFC);
+const _pageBg = Colors.white;
 const _darkNavy = Color(0xFF101828);
 const _textSecondary = Color(0xFF667085);
 const _borderSoft = Color(0xFFE2E8F0);
@@ -158,24 +158,29 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.white,
         elevation: 0,
-        scrolledUnderElevation: 1,
+        scrolledUnderElevation: 0.5,
+        centerTitle: false,
+        titleSpacing: 0,
         leading: IconButton(
           onPressed: () => Navigator.maybePop(context),
-          icon: const Icon(Icons.arrow_back_rounded),
+          icon: const Icon(
+            Icons.arrow_back_rounded,
+            color: _darkNavy,
+            size: 26,
+          ),
           tooltip: 'Kembali',
         ),
         title: Text(
           _profile?.displayHandle ?? widget.username,
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: _darkNavy,
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            height: 1.1,
+          ),
         ),
-        actions: [
-          if (_profile != null)
-            IconButton(
-              onPressed: _share,
-              tooltip: 'Bagikan',
-              icon: const Icon(Icons.ios_share_rounded),
-            ),
-        ],
       ),
       body: _buildBody(),
     );
@@ -207,27 +212,28 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                   : null,
             ),
           ),
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            sliver: _posts.isEmpty
-                ? const SliverToBoxAdapter(child: _EmptyPosts())
-                : SliverGrid(
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      mainAxisSpacing: 3,
-                      crossAxisSpacing: 3,
-                      childAspectRatio: 1,
-                    ),
-                    delegate: SliverChildBuilderDelegate(
-                      (context, idx) => _PostTile(
-                        post: _posts[idx],
-                        onTap: () => _openPost(idx),
-                      ),
-                      childCount: _posts.length,
-                    ),
-                  ),
-          ),
+          const SliverToBoxAdapter(child: _ProfileTabs()),
+          if (_posts.isEmpty)
+            const SliverFillRemaining(
+              hasScrollBody: false,
+              child: _EmptyPosts(),
+            )
+          else
+            SliverGrid(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                mainAxisSpacing: 1.5,
+                crossAxisSpacing: 1.5,
+                childAspectRatio: 1,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, idx) => _PostTile(
+                  post: _posts[idx],
+                  onTap: () => _openPost(idx),
+                ),
+                childCount: _posts.length,
+              ),
+            ),
           if (_loadingMore)
             const SliverToBoxAdapter(
               child: Padding(
@@ -263,120 +269,99 @@ class _Header extends StatelessWidget {
     return Container(
       width: double.infinity,
       color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _Avatar(profile: profile),
-              const SizedBox(width: 18),
+              const SizedBox(width: 24),
               Expanded(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _StatColumn(
-                      value: profile.postCount,
-                      label: 'Postingan',
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        profile.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: _darkNavy,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          height: 1.1,
+                        ),
+                      ),
                     ),
-                    _StatColumn(
-                      value: profile.likedCount,
-                      label: 'Disukai',
+                    const SizedBox(height: 20),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        _StatColumn(
+                          value: profile.postCount,
+                          label: 'Postingan',
+                        ),
+                        _StatColumn(
+                          value: profile.likedCount,
+                          label: 'Disukai',
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          Text(
-            profile.username ?? profile.name,
-            style: const TextStyle(
-              color: _darkNavy,
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          if (profile.username != null && profile.name != profile.username) ...[
-            const SizedBox(height: 2),
-            Text(
-              profile.name,
-              style: const TextStyle(
-                color: _textSecondary,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
           if (profile.bio != null && profile.bio!.isNotEmpty) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: 12),
             Text(
               profile.bio!,
               style: const TextStyle(
                 color: Color(0xFF334155),
-                fontSize: 13.5,
+                fontSize: 13,
                 fontWeight: FontWeight.w500,
                 height: 1.4,
               ),
             ),
           ],
           const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: onEditProfile != null
-                    ? OutlinedButton.icon(
-                        onPressed: onEditProfile,
-                        icon: const Icon(Icons.edit_outlined, size: 18),
-                        label: const Text('Edit Profil'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: _darkNavy,
-                          side: const BorderSide(color: _borderSoft),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          textStyle: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                      )
-                    : FilledButton.icon(
-                        onPressed: onShare,
-                        icon: const Icon(Icons.ios_share_rounded, size: 18),
-                        label: const Text('Bagikan Profil'),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: _brandBlue,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          textStyle: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
+          SizedBox(
+            width: double.infinity,
+            height: 40,
+            child: onEditProfile != null
+                ? OutlinedButton(
+                    onPressed: onEditProfile,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _darkNavy,
+                      side: const BorderSide(color: _borderSoft),
+                      textStyle: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
                       ),
-              ),
-              if (onEditProfile != null) ...[
-                const SizedBox(width: 10),
-                OutlinedButton(
-                  onPressed: onShare,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: _darkNavy,
-                    side: const BorderSide(color: _borderSoft),
-                    padding: const EdgeInsets.all(10),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
+                    child: const Text('Edit Profil'),
+                  )
+                : FilledButton(
+                    onPressed: onShare,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _brandBlue,
+                      foregroundColor: Colors.white,
+                      textStyle: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: const Text('Bagikan Profil'),
                   ),
-                  child: const Icon(Icons.ios_share_rounded, size: 18),
-                ),
-              ],
-            ],
           ),
         ],
       ),
@@ -396,8 +381,8 @@ class _Avatar extends StatelessWidget {
       return ClipOval(
         child: CachedNetworkImage(
           imageUrl: url,
-          width: 84,
-          height: 84,
+          width: 82,
+          height: 82,
           fit: BoxFit.cover,
           placeholder: (_, __) => _initialAvatar(),
           errorWidget: (_, __, ___) => _initialAvatar(),
@@ -409,21 +394,19 @@ class _Avatar extends StatelessWidget {
 
   Widget _initialAvatar() {
     return Container(
-      width: 84,
-      height: 84,
+      width: 82,
+      height: 82,
       decoration: const BoxDecoration(
         shape: BoxShape.circle,
-        gradient: LinearGradient(
-          colors: [Color(0xFFDBEAFE), Color(0xFFBFDBFE)],
-        ),
+        color: Color(0xFFEFF6FF),
       ),
       child: Center(
         child: Text(
           profile.initial,
           style: const TextStyle(
             color: Color(0xFF1D4ED8),
-            fontSize: 32,
-            fontWeight: FontWeight.w900,
+            fontSize: 30,
+            fontWeight: FontWeight.w800,
           ),
         ),
       ),
@@ -439,26 +422,72 @@ class _StatColumn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(
-          '$value',
-          style: const TextStyle(
-            color: _darkNavy,
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
+    return SizedBox(
+      width: 92,
+      child: Column(
+        children: [
+          Text(
+            '$value',
+            style: const TextStyle(
+              color: _darkNavy,
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              height: 1.08,
+            ),
           ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          style: const TextStyle(
-            color: _textSecondary,
-            fontSize: 12.5,
-            fontWeight: FontWeight.w700,
+          const SizedBox(height: 3),
+          Text(
+            label,
+            style: const TextStyle(
+              color: _textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              height: 1.08,
+            ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileTabs extends StatelessWidget {
+  const _ProfileTabs();
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          top: BorderSide(color: _borderSoft, width: 0.5),
+          bottom: BorderSide(color: _borderSoft, width: 0.5),
         ),
-      ],
+      ),
+      child: SizedBox(
+        height: 48,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            const Icon(
+              Icons.grid_on_rounded,
+              color: _darkNavy,
+              size: 23,
+            ),
+            Positioned(
+              bottom: 0,
+              child: Container(
+                width: 44,
+                height: 2,
+                decoration: BoxDecoration(
+                  color: _darkNavy,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -479,10 +508,7 @@ class _PostTile extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFFE2E8F0),
-          borderRadius: BorderRadius.circular(2),
-        ),
+        color: const Color(0xFFE2E8F0),
         clipBehavior: Clip.hardEdge,
         child: Stack(
           fit: StackFit.expand,
@@ -528,30 +554,25 @@ class _EmptyPosts extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 30),
-      padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 24),
-      decoration: BoxDecoration(
-        border: Border.all(color: _borderSoft, style: BorderStyle.solid),
-        borderRadius: BorderRadius.circular(16),
-        color: Colors.white,
-      ),
-      child: const Center(
+    return const Center(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(24, 42, 24, 80),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               Icons.photo_library_outlined,
               color: Color(0xFFCBD5E1),
-              size: 36,
+              size: 32,
             ),
-            SizedBox(height: 8),
+            SizedBox(height: 10),
             Text(
               'Belum ada postingan',
               style: TextStyle(
                 color: _darkNavy,
                 fontSize: 14,
                 fontWeight: FontWeight.w800,
+                height: 1.2,
               ),
             ),
           ],

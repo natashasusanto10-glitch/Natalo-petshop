@@ -64,6 +64,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   // Render sebagai horizontal scroll chip — beda dari single placeholder
   // sebelumnya yang cuma pakai product.voucherPreview.
   List<ProductVoucherPreview> _vouchers = const [];
+  List<_ProductCustomerPost> _customerPosts = const [];
+  bool _loadingCustomerPosts = true;
   bool _descriptionExpanded = false;
   int _activeTab = 0;
   final ScrollController _scrollController = ScrollController();
@@ -130,6 +132,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     _loadFullProduct();
     _loadReviewPreview();
     _loadVouchers();
+    _loadCustomerPosts();
   }
 
   /// Fetch list voucher untuk produk ini. Non-blocking — kalau gagal /
@@ -150,6 +153,32 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       setState(() => _vouchers = parsed);
     } catch (_) {
       // Non-critical — fallback ke product.voucherPreview di widget.
+    }
+  }
+
+  Future<void> _loadCustomerPosts() async {
+    try {
+      final raw = await productService.fetchProductFeedPosts(
+        product.slug,
+        limit: 12,
+      );
+      if (!mounted) return;
+      final parsed = <_ProductCustomerPost>[];
+      for (final entry in raw) {
+        try {
+          final post = _ProductCustomerPost.fromJson(entry);
+          if (post.thumbnailUrl.isNotEmpty) parsed.add(post);
+        } catch (_) {
+          // Skip malformed UGC item; product detail remains usable.
+        }
+      }
+      setState(() {
+        _customerPosts = parsed;
+        _loadingCustomerPosts = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingCustomerPosts = false);
     }
   }
 
@@ -456,6 +485,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 AppHaptics.tap();
                 setState(() => _descriptionExpanded = !_descriptionExpanded);
               },
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: _ProductCustomerPostsSection(
+              posts: _customerPosts,
+              loading: _loadingCustomerPosts,
             ),
           ),
           SliverToBoxAdapter(
@@ -1726,6 +1761,265 @@ class _ProductDescriptionSection extends StatelessWidget {
   }
 }
 
+class _ProductCustomerPostsSection extends StatelessWidget {
+  final List<_ProductCustomerPost> posts;
+  final bool loading;
+
+  const _ProductCustomerPostsSection({
+    required this.posts,
+    required this.loading,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (!loading && posts.isEmpty) return const SizedBox.shrink();
+
+    return _SectionShell(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Postingan Pelanggan',
+                  style: TextStyle(
+                    color: _textDark,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              if (!loading && posts.isNotEmpty)
+                Text(
+                  '${posts.length} post',
+                  style: const TextStyle(
+                    color: _textGray,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Foto dan video dari pelanggan yang men-tag produk ini.',
+            style: TextStyle(
+              color: _textGray,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 190,
+            child: loading
+                ? const _CustomerPostLoadingList()
+                : ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: posts.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 10),
+                    itemBuilder: (context, index) {
+                      return _CustomerPostCard(post: posts[index]);
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CustomerPostLoadingList extends StatelessWidget {
+  const _CustomerPostLoadingList();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      scrollDirection: Axis.horizontal,
+      itemCount: 3,
+      separatorBuilder: (_, __) => const SizedBox(width: 10),
+      itemBuilder: (context, index) {
+        return Container(
+          width: 118,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF3F4F6),
+            borderRadius: BorderRadius.circular(14),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _CustomerPostCard extends StatelessWidget {
+  final _ProductCustomerPost post;
+
+  const _CustomerPostCard({required this.post});
+
+  Future<void> _openPost(BuildContext context) async {
+    AppHaptics.tap();
+    final uri = Uri.parse(
+      '${ApiConfig.publicSiteUrl}/feed/${Uri.encodeComponent(post.id)}',
+    );
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && context.mounted) {
+      AppToast.show(
+        context,
+        'Postingan belum bisa dibuka.',
+        kind: ToastKind.warning,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 118,
+      child: AppPressable(
+        onTap: () => _openPost(context),
+        borderRadius: BorderRadius.circular(14),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              AppProductImage(
+                imageUrl: post.thumbnailUrl,
+                fit: BoxFit.cover,
+                borderRadius: BorderRadius.zero,
+              ),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.10),
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.62),
+                    ],
+                    stops: const [0, 0.48, 1],
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 8,
+                right: 8,
+                child: _CustomerPostTypeBadge(post: post),
+              ),
+              if (post.isVideo && post.durationSec > 0)
+                Positioned(
+                  left: 8,
+                  top: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.62),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      _formatDuration(post.durationSec),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ),
+              Positioned(
+                left: 8,
+                right: 8,
+                bottom: 8,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      post.authorName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.favorite_rounded,
+                          color: Colors.white,
+                          size: 13,
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          _formatCompactCount(post.likeCount),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        if (post.commentCount > 0) ...[
+                          const SizedBox(width: 8),
+                          const Icon(
+                            Icons.mode_comment_rounded,
+                            color: Colors.white,
+                            size: 12,
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            _formatCompactCount(post.commentCount),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CustomerPostTypeBadge extends StatelessWidget {
+  final _ProductCustomerPost post;
+
+  const _CustomerPostTypeBadge({required this.post});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 26,
+      height: 26,
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.58),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(
+        post.isVideo ? Icons.play_arrow_rounded : Icons.collections_rounded,
+        color: Colors.white,
+        size: post.isVideo ? 19 : 15,
+      ),
+    );
+  }
+}
+
 class _ProductRecommendationSection extends StatelessWidget {
   final List<Product> related;
 
@@ -1931,6 +2225,54 @@ String _formatCompactCount(int value) {
   }
   if (value >= 100) return '${(value ~/ 50) * 50}+';
   return value.toString();
+}
+
+String _formatDuration(int seconds) {
+  final safe = seconds.clamp(0, 24 * 60 * 60);
+  final minutes = safe ~/ 60;
+  final rest = safe % 60;
+  return '$minutes:${rest.toString().padLeft(2, '0')}';
+}
+
+class _ProductCustomerPost {
+  final String id;
+  final String kind;
+  final String title;
+  final String thumbnailUrl;
+  final int durationSec;
+  final int likeCount;
+  final int commentCount;
+  final String authorName;
+
+  const _ProductCustomerPost({
+    required this.id,
+    required this.kind,
+    required this.title,
+    required this.thumbnailUrl,
+    required this.durationSec,
+    required this.likeCount,
+    required this.commentCount,
+    required this.authorName,
+  });
+
+  bool get isVideo => kind != 'PHOTO_CAROUSEL';
+
+  factory _ProductCustomerPost.fromJson(Map<String, dynamic> json) {
+    final author = json['author'];
+    final authorName = author is Map<String, dynamic>
+        ? (author['name'] ?? 'Pelanggan Natalo').toString()
+        : 'Pelanggan Natalo';
+    return _ProductCustomerPost(
+      id: (json['id'] ?? '').toString(),
+      kind: (json['kind'] ?? 'USER_VIDEO').toString(),
+      title: (json['title'] ?? '').toString(),
+      thumbnailUrl: (json['thumbnailUrl'] ?? '').toString(),
+      durationSec: (json['videoDurationSec'] as num?)?.toInt() ?? 0,
+      likeCount: (json['likeCount'] as num?)?.toInt() ?? 0,
+      commentCount: (json['commentCount'] as num?)?.toInt() ?? 0,
+      authorName: authorName.trim().isEmpty ? 'Pelanggan Natalo' : authorName,
+    );
+  }
 }
 
 String _formatWeight(int grams) {

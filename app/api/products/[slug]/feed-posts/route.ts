@@ -9,8 +9,8 @@
  *   - Resolve slug → productId (1 query)
  *   - JOIN via FeedPostProduct (many-to-many) + fallback ke FeedPost.productId
  *     (legacy posts yang belum di-backfill)
- *   - Filter: status=ACTIVE, encodingStatus=ready, videoUrl+thumbnailUrl set,
- *     deletedAt=null
+ *   - Filter: status=ACTIVE, deletedAt=null, dan punya thumbnail/cover.
+ *     Video harus encodingStatus=ready; PHOTO_CAROUSEL pakai media pertama.
  *   - Sort: likeCount DESC + createdAt DESC (paling banyak interaksi dulu)
  *   - Limit: ?limit=N (default 12, max 24)
  *
@@ -27,14 +27,14 @@ const MAX_LIMIT = 24;
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ slug: string }> },
+  { params }: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await params;
   const { searchParams } = new URL(request.url);
   const rawLimit = Number(searchParams.get("limit") ?? DEFAULT_LIMIT);
   const limit = Math.max(
     1,
-    Math.min(MAX_LIMIT, Number.isFinite(rawLimit) ? rawLimit : DEFAULT_LIMIT),
+    Math.min(MAX_LIMIT, Number.isFinite(rawLimit) ? rawLimit : DEFAULT_LIMIT)
   );
 
   const product = await prisma.product.findUnique({
@@ -52,19 +52,30 @@ export async function GET(
   const posts = await prisma.feedPost.findMany({
     where: {
       status: "ACTIVE",
-      encodingStatus: "ready",
       deletedAt: null,
-      videoUrl: { not: null },
-      thumbnailUrl: { not: null },
       OR: [
-        { productId: product.id },
-        { taggedProducts: { some: { productId: product.id } } },
+        {
+          encodingStatus: "ready",
+          videoUrl: { not: null },
+          thumbnailUrl: { not: null },
+        },
+        {
+          kind: "PHOTO_CAROUSEL",
+          media: { some: { url: { not: "" } } },
+        },
       ],
+      AND: {
+        OR: [
+          { productId: product.id },
+          { taggedProducts: { some: { productId: product.id } } },
+        ],
+      },
     },
     orderBy: [{ likeCount: "desc" }, { createdAt: "desc" }],
     take: limit,
     select: {
       id: true,
+      kind: true,
       title: true,
       thumbnailUrl: true,
       videoDurationSec: true,
@@ -72,20 +83,35 @@ export async function GET(
       commentCount: true,
       createdAt: true,
       author: { select: { id: true, name: true, role: true } },
+      media: {
+        orderBy: { sortOrder: "asc" },
+        take: 1,
+        select: { url: true, thumbnailUrl: true },
+      },
     },
   });
 
   const totalCount = await prisma.feedPost.count({
     where: {
       status: "ACTIVE",
-      encodingStatus: "ready",
       deletedAt: null,
-      videoUrl: { not: null },
-      thumbnailUrl: { not: null },
       OR: [
-        { productId: product.id },
-        { taggedProducts: { some: { productId: product.id } } },
+        {
+          encodingStatus: "ready",
+          videoUrl: { not: null },
+          thumbnailUrl: { not: null },
+        },
+        {
+          kind: "PHOTO_CAROUSEL",
+          media: { some: { url: { not: "" } } },
+        },
       ],
+      AND: {
+        OR: [
+          { productId: product.id },
+          { taggedProducts: { some: { productId: product.id } } },
+        ],
+      },
     },
   });
 
@@ -93,19 +119,28 @@ export async function GET(
     productSlug: slug,
     productName: product.name,
     total: totalCount,
-    items: posts.map((p) => ({
-      id: p.id,
-      title: p.title,
-      thumbnailUrl: signBunnyUrl(p.thumbnailUrl) ?? null,
-      videoDurationSec: p.videoDurationSec,
-      likeCount: p.likeCount,
-      commentCount: p.commentCount,
-      createdAt: p.createdAt.toISOString(),
-      author: {
-        id: p.author.id,
-        name: p.author.name,
-        role: p.author.role === "ADMIN" ? "ADMIN" : "CUSTOMER",
-      },
-    })),
+    items: posts.map((p) => {
+      const firstMedia = p.media[0] ?? null;
+      const coverUrl =
+        p.kind === "PHOTO_CAROUSEL"
+          ? firstMedia?.thumbnailUrl ?? firstMedia?.url ?? null
+          : p.thumbnailUrl;
+
+      return {
+        id: p.id,
+        kind: p.kind,
+        title: p.title,
+        thumbnailUrl: signBunnyUrl(coverUrl) ?? null,
+        videoDurationSec: p.videoDurationSec,
+        likeCount: p.likeCount,
+        commentCount: p.commentCount,
+        createdAt: p.createdAt.toISOString(),
+        author: {
+          id: p.author.id,
+          name: p.author.name,
+          role: p.author.role === "ADMIN" ? "ADMIN" : "CUSTOMER",
+        },
+      };
+    }),
   });
 }

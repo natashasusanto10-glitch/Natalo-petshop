@@ -32,15 +32,14 @@ const MAX_DESC_LENGTH = 2000;
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const csrfReject = assertSameOrigin(request);
   if (csrfReject) return csrfReject;
 
   // Try ADMIN session first, fallback CUSTOMER. Same pattern as upload-url
   // (lihat lib/auth.ts cookie priority bug).
-  const session =
-    (await getSession("ADMIN")) ?? (await getSession("CUSTOMER"));
+  const session = (await getSession("ADMIN")) ?? (await getSession("CUSTOMER"));
   if (!session) {
     return NextResponse.json({ error: "Login dulu" }, { status: 401 });
   }
@@ -79,7 +78,10 @@ export async function PATCH(
   });
 
   if (!post) {
-    return NextResponse.json({ error: "Post tidak ditemukan" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Post tidak ditemukan" },
+      { status: 404 }
+    );
   }
 
   const body = (await request.json().catch(() => ({}))) as {
@@ -127,7 +129,7 @@ export async function PATCH(
     } else if (t.length > MAX_TITLE_LENGTH) {
       return NextResponse.json(
         { error: `Judul max ${MAX_TITLE_LENGTH} karakter.` },
-        { status: 400 },
+        { status: 400 }
       );
     } else {
       updates.title = t;
@@ -143,20 +145,18 @@ export async function PATCH(
     if (desc !== null && desc.length > MAX_DESC_LENGTH) {
       return NextResponse.json(
         { error: `Deskripsi max ${MAX_DESC_LENGTH} karakter.` },
-        { status: 400 },
+        { status: 400 }
       );
     }
     composedDescription = desc;
   }
   // Customer: ada petType → re-compose description dengan "Info peliharaan"
   if (!isAdmin && typeof body.petType !== "undefined") {
-    const petType =
-      body.petType === null ? "" : String(body.petType).trim();
+    const petType = body.petType === null ? "" : String(body.petType).trim();
     const baseDesc =
       composedDescription !== undefined ? composedDescription ?? "" : "";
     const petInfo = petType ? `Info peliharaan: ${petType}` : "";
-    const finalDesc =
-      [baseDesc, petInfo].filter(Boolean).join("\n\n") || null;
+    const finalDesc = [baseDesc, petInfo].filter(Boolean).join("\n\n") || null;
     updates.description = finalDesc;
   } else if (composedDescription !== undefined) {
     updates.description = composedDescription;
@@ -173,13 +173,56 @@ export async function PATCH(
     if (unique.length > maxTaggedProducts) {
       return NextResponse.json(
         { error: `Maksimal ${maxTaggedProducts} produk yang bisa di-tag.` },
-        { status: 400 },
+        { status: 400 }
       );
     }
     newProductIds = unique;
     // Update FeedPost.productId ke primary (productIds[0]) supaya legacy
     // single-product display + product page query tetap work.
     updates.productId = unique[0] ?? null;
+  }
+
+  if (newProductIds !== null && newProductIds.length > 0) {
+    const products = await prisma.product.findMany({
+      where: { id: { in: newProductIds } },
+      select: { id: true, isActive: true },
+    });
+    if (products.length !== newProductIds.length) {
+      return NextResponse.json(
+        { error: "Produk tidak ditemukan." },
+        { status: 404 }
+      );
+    }
+    if (!isAdmin && products.some((product) => !product.isActive)) {
+      return NextResponse.json(
+        { error: "Produk tidak aktif, tidak bisa di-tag." },
+        { status: 400 }
+      );
+    }
+
+    if (!isAdmin) {
+      const verifiedPurchases = await prisma.orderItem.findMany({
+        where: {
+          productId: { in: newProductIds },
+          order: {
+            userId: session.sub,
+            paymentStatus: "PAID",
+            status: "DELIVERED",
+          },
+        },
+        select: { productId: true },
+        distinct: ["productId"],
+      });
+      if (verifiedPurchases.length !== newProductIds.length) {
+        return NextResponse.json(
+          {
+            error:
+              "Produk yang di-tag harus berasal dari riwayat pembelian yang sudah diterima.",
+          },
+          { status: 403 }
+        );
+      }
+    }
   }
 
   // Customer edit re-trigger moderation — status ke PENDING_REVIEW.
@@ -217,8 +260,8 @@ export async function PATCH(
                 ? body.productPromos[productId] === null
                   ? null
                   : Number.isFinite(Number(body.productPromos[productId]))
-                    ? Number(body.productPromos[productId])
-                    : null
+                  ? Number(body.productPromos[productId])
+                  : null
                 : null,
           })),
           skipDuplicates: true,
@@ -236,8 +279,8 @@ export async function PATCH(
           rawPromo === null
             ? null
             : Number.isFinite(Number(rawPromo))
-              ? Number(rawPromo)
-              : null;
+            ? Number(rawPromo)
+            : null;
         await tx.feedPostProduct.updateMany({
           where: { feedPostId: post.id, productId },
           data: { promoPrice },
@@ -262,7 +305,7 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const csrfReject = assertSameOrigin(request);
   if (csrfReject) return csrfReject;
@@ -309,7 +352,10 @@ export async function DELETE(
   });
 
   if (!post) {
-    return NextResponse.json({ error: "Post tidak ditemukan" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Post tidak ditemukan" },
+      { status: 404 }
+    );
   }
 
   const now = new Date();

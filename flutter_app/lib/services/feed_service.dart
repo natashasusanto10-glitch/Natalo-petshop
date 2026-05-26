@@ -354,6 +354,31 @@ class FeedService {
     }
   }
 
+  /// Update metadata post milik user sendiri.
+  ///
+  /// Backend akan mengembalikan post customer ACTIVE ke PENDING_REVIEW
+  /// setelah edit, supaya caption/tag baru dimoderasi ulang.
+  Future<bool> updateMyPost(
+    String postId, {
+    required String title,
+    String? description,
+    List<String>? productIds,
+  }) async {
+    final data = await apiClient.patchJson(
+      '/api/feed/posts/$postId',
+      body: {
+        'title': title,
+        'description': description,
+        if (productIds != null) 'productIds': productIds,
+      },
+      timeout: const Duration(seconds: 15),
+    );
+    if (data is Map<String, dynamic>) {
+      return data['ok'] == true;
+    }
+    return true;
+  }
+
   /// List produk yang boleh di-pin / tag di feed post (admin moderation).
   Future<List<dynamic>> fetchPinnableProducts({int limit = 30}) async {
     try {

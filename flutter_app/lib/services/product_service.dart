@@ -466,11 +466,15 @@ class ProductService {
     }
   }
 
-  Future<List<Map<String, dynamic>>> fetchProductFeedPosts(String slug) async {
+  Future<List<Map<String, dynamic>>> fetchProductFeedPosts(
+    String slug, {
+    int limit = 12,
+  }) async {
     if (slug.trim().isEmpty) return const [];
     try {
       final data = await apiClient.getJson(
         '/api/products/${Uri.encodeComponent(slug)}/feed-posts',
+        query: {'limit': limit.toString()},
       );
       final map = _asMap(data);
       final raw =
