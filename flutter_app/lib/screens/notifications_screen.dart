@@ -32,6 +32,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   bool _loading = true;
   bool _markingAll = false;
 
+  // Cache filtered list — avoid O(n) where().toList() di setiap build.
+  // Diinvalidasi (set null) saat _result atau _filter berubah.
+  List<AppNotification>? _cachedVisibleItems;
+
   @override
   void initState() {
     super.initState();
@@ -51,6 +55,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       if (!mounted) return;
       setState(() {
         _result = result;
+        _cachedVisibleItems = null; // invalidate — items berubah
         _error = null;
         _loading = false;
       });
@@ -66,8 +71,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Future<void> _refresh() => _load(silent: true);
 
   List<AppNotification> get _visibleItems {
+    // Memoize — cuma re-filter saat invalidate (set null) di _load/setFilter.
+    // Sebelum perbaikan: setiap build (mark-read, mark-all, scroll trigger
+    // setState, dll) → O(n) filter ulang. Dengan 200+ notif dan filter
+    // "Disebut" yang regex-heavy, ini noticeable lag.
+    final cached = _cachedVisibleItems;
+    if (cached != null) return cached;
     final items = _result?.items ?? const <AppNotification>[];
-    return items.where(_filter.matches).toList();
+    final filtered = items.where(_filter.matches).toList();
+    _cachedVisibleItems = filtered;
+    return filtered;
   }
 
   Future<void> _markAllRead() async {
@@ -250,7 +263,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               selected: _filter,
               onChanged: (filter) {
                 AppHaptics.selection();
-                setState(() => _filter = filter);
+                setState(() {
+                  _filter = filter;
+                  _cachedVisibleItems = null; // invalidate — filter berubah
+                });
               },
             ),
             Expanded(
