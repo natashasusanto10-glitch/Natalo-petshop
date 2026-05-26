@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../models/feed_comment.dart';
 import '../models/feed_post.dart';
 import '../services/api_client.dart';
+import '../services/block_service.dart';
 import '../services/feed_service.dart';
 import '../services/report_service.dart';
 import '../state/member_store.dart';
@@ -93,15 +94,25 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     super.initState();
     _loadInitial();
     widget.sheetScrollController?.addListener(_handleScroll);
+    // Listen blockService — user block lewat sheet ini sendiri
+    // → setState rebuild + filter di _buildDisplayItems otomatis hide
+    // komentar dari blocked user. Tidak perlu fetch ulang dari server.
+    blockService.addListener(_onBlocklistChanged);
+    blockService.load();
   }
 
   @override
   void dispose() {
     widget.sheetScrollController?.removeListener(_handleScroll);
+    blockService.removeListener(_onBlocklistChanged);
     _mentionCtrl.dispose();
     _inputCtrl.dispose();
     _inputFocus.dispose();
     super.dispose();
+  }
+
+  void _onBlocklistChanged() {
+    if (mounted) setState(() {});
   }
 
   void _handleScroll() {
@@ -341,8 +352,23 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     }
   }
 
+  /// Helper: cek apakah komentar ini dari user yang user current sudah
+  /// block. Pakai blockService (local SharedPreferences). Match by
+  /// userId primary, fallback ke displayHandle untuk legacy data.
+  bool _isCommentBlocked(FeedComment comment) {
+    if (!blockService.isLoaded || blockService.count == 0) return false;
+    return blockService.isUserBlocked(
+      userId: comment.author.id,
+      userName: comment.author.displayHandle,
+    );
+  }
+
   /// Group comments: parents first (newest-first), each followed by
   /// chronological replies. Server bisa return flat — kita group sini.
+  ///
+  /// Filter blocked users: skip komentar dari user yang current user
+  /// sudah block (lokal SharedPreferences via blockService). Konsisten
+  /// dengan feed_screen.dart pattern. Apply ke parent + replies.
   List<_CommentDisplayItem> _buildDisplayItems() {
     final items = <_CommentDisplayItem>[];
     final replyMap = <String, List<FeedComment>>{};
@@ -355,12 +381,20 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
 
     for (final c in _comments) {
       if (c.parentCommentId != null) continue; // skip — render under parent
+      // Skip parent komentar dari blocked user. Replies di bawahnya
+      // ikut hidden (semantik: user yang block creator tidak mau lihat
+      // diskusi terkait sama sekali).
+      if (_isCommentBlocked(c)) continue;
       items.add(_CommentDisplayItem(comment: c, isReply: false));
       final replies = replyMap[c.id];
       if (replies != null) {
         // Sort replies oldest-first (standard Instagram threading order).
         replies.sort((a, b) => a.createdAt.compareTo(b.createdAt));
         for (final r in replies) {
+          // Skip reply dari blocked user juga (mis. user lain yang reply
+          // di thread parent yang tidak di-block — masih bisa di-filter
+          // individual).
+          if (_isCommentBlocked(r)) continue;
           items.add(_CommentDisplayItem(comment: r, isReply: true));
         }
       }

@@ -24,6 +24,25 @@ import {
 
 const MAX_COMMENT_LENGTH = 1000;
 
+/**
+ * Anti-spam rate limit untuk komentar.
+ *
+ * Window 5 menit, max 10 komentar per user. Window-based count (bukan
+ * proper leaky bucket per-second), tapi cukup efektif untuk Natalo scale:
+ *   - User normal: 2-3 komentar / 5 menit (rapid back-and-forth chat)
+ *   - User aktif diskusi: 5-7 / 5 menit (interactive thread)
+ *   - Spammer / troll: 50+ dalam 30 detik = block keras
+ *
+ * Count over BOTH top-level + replies — supaya troll yang reply spam ke
+ * 1 komentar berkali-kali tetap kena limit. Authors di-track via
+ * authorId, jadi tidak per-post (1 user gak bisa workaround dengan ganti
+ * post).
+ *
+ * Admin exempt — mereka perlu reply moderasi cepat.
+ */
+const COMMENT_RATE_LIMIT_PER_WINDOW = 10;
+const COMMENT_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000; // 5 menit
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -124,6 +143,30 @@ export async function POST(
   }
 
   const isAdmin = session.role === "ADMIN";
+
+  // Rate limit — skip admin. Cek SEBELUM transaction supaya tidak waste
+  // DB write untuk request yang akan ditolak. Window-based count atas
+  // semua komentar (top-level + reply) dari user dalam 5 menit terakhir.
+  if (!isAdmin) {
+    const since = new Date(Date.now() - COMMENT_RATE_LIMIT_WINDOW_MS);
+    const recentCount = await prisma.feedComment.count({
+      where: {
+        authorId: session.sub,
+        createdAt: { gte: since },
+      },
+    });
+    if (recentCount >= COMMENT_RATE_LIMIT_PER_WINDOW) {
+      return NextResponse.json(
+        {
+          error:
+            "Kamu komentar terlalu cepat. Coba lagi dalam beberapa menit.",
+          rateLimited: true,
+          retryAfterMs: COMMENT_RATE_LIMIT_WINDOW_MS,
+        },
+        { status: 429 },
+      );
+    }
+  }
 
   const result = await prisma.$transaction(async (tx) => {
     const comment = await tx.feedComment.create({
