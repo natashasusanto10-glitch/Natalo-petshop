@@ -1,7 +1,7 @@
 name: natalo_petshop_flutter
 description: Native Flutter app for Natalo Petshop.
 publish_to: none
-version: 1.0.121+160
+version: 1.0.122+161
 environment:
   sdk: '>=3.0.0 <4.0.0'
   flutter: '>=3.7.0'
@@ -182,21 +182,19 @@ flutter_launcher_icons:
   min_sdk_android: 23
   remove_alpha_ios: true
 flutter_native_splash:
-  # Light theme splash — white bg supaya logo blue contrast jelas.
-  color: "#FFFFFF"
-  image: assets/native/splash.png
-  # Dark theme splash — pakai surfaceDark dari NataloColors supaya konsisten
-  # dengan scaffold dark theme di app (#0A0F1A backgroundDark). Sebelumnya
-  # color_dark: white = blinding flash di malam hari.
+  # Native splash: background full brand color + transparent logo.
+  # iOS launch screen centers the image in points, so the image must not
+  # include its own full-screen background or it becomes a visible square.
+  color: "#1E5FBF"
+  image: assets/native/splash-brand.png
   color_dark: "#0A0F1A"
-  image_dark: assets/native/splash-dark.png
+  image_dark: assets/native/splash-brand-dark.png
   android: true
   ios: true
   web: false
-  # Android 12+ splash: full-screen icon centered di background brand color.
-  # Sebelumnya white background — sekarang brand primary supaya feels native.
+  # Android 12+ uses the same transparent logo so it does not show a framed app icon.
   android_12:
-    color: "#0B7FEA"
-    image: assets/native/icon-foreground.png
+    color: "#1E5FBF"
+    image: assets/native/splash-logo.png
     color_dark: "#0A0F1A"
-    image_dark: assets/native/icon-foreground.png
+    image_dark: assets/native/splash-logo-dark.png

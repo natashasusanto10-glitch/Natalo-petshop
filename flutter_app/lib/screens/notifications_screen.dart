@@ -5,6 +5,7 @@ import '../models/app_notification.dart';
 import '../models/product.dart';
 import '../services/api_client.dart';
 import '../services/notification_service.dart';
+import '../state/member_store.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_ui.dart';
@@ -245,6 +246,29 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Login gate — sebelum render apapun. Reasoning: notif page = fitur
+    // member only di Natalo (lihat AppNotificationButton comment). Kalau
+    // guest masuk via deep link / direct nav (mis. push notif lama saat
+    // belum login), tampilkan prompt "Login dulu" daripada error/kosong.
+    //
+    // AnimatedBuilder listen memberStore supaya kalau user login dari
+    // dalam login screen yang di-push dari sini, page auto refresh
+    // tampilkan content begitu logged-in.
+    return AnimatedBuilder(
+      animation: memberStore,
+      builder: (context, _) {
+        if (!memberStore.isLoggedIn) {
+          return const _NotifLoginRequiredScaffold();
+        }
+        return _buildAuthenticatedContent(context);
+      },
+    );
+  }
+
+  /// Render content normal untuk user logged-in. Dipisahkan dari build()
+  /// supaya bisa wrap dengan AnimatedBuilder login check tanpa nested
+  /// indentation yang dalam.
+  Widget _buildAuthenticatedContent(BuildContext context) {
     final result = _result;
     final unread = result?.unreadCount ?? 0;
 
@@ -1072,4 +1096,105 @@ String _errorMessage(Object error) {
     return 'Server membalas halaman web, bukan data notifikasi. Cek API_BASE_URL atau endpoint notifikasi.';
   }
   return 'Koneksi notifikasi sedang tidak stabil. Coba lagi sebentar.';
+}
+
+/// Login prompt yang tampil saat guest user masuk /notifications.
+/// Pattern sama dengan _LoginRequiredScaffold di transactions_screen
+/// — consistent UX cross-screen. Tap "Masuk Member" → pushNamed
+/// /member/login, lalu AnimatedBuilder di parent screen auto-refresh
+/// begitu login sukses.
+class _NotifLoginRequiredScaffold extends StatelessWidget {
+  const _NotifLoginRequiredScaffold();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _pageBg,
+      appBar: AppBar(
+        backgroundColor: _pageBg,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+          color: _textDark,
+          onPressed: () => Navigator.maybePop(context),
+        ),
+        title: const Text(
+          'Notifikasi',
+          style: TextStyle(
+            color: _textDark,
+            fontSize: 17,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        centerTitle: false,
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: _brandBlue.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: const Icon(
+                  Icons.notifications_none_rounded,
+                  color: _brandBlue,
+                  size: 40,
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Login dulu yuk',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: _textDark,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Masuk member untuk lihat notifikasi pesanan, voucher, dan update lainnya.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: _textGray,
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () =>
+                      Navigator.pushNamed(context, '/member/login'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _brandBlue,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: const Text(
+                    'Masuk Member',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
