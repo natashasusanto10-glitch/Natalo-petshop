@@ -276,9 +276,17 @@ export default async function AdminOrderDetailPage({
               <div className="flex justify-between text-zinc-600">
                 <span>
                   Diskon Ongkir
-                  {order.shippingVoucherCode && (
+                  {/* Backend save voucher gratis ongkir ke
+                      freeShippingVoucherCode (lihat /api/orders/route.ts
+                      line 643). Fallback shippingVoucherCode untuk legacy
+                      data. */}
+                  {(order.freeShippingVoucherCode ||
+                    order.shippingVoucherCode) && (
                     <span className="ml-1 text-xs text-zinc-400">
-                      ({order.shippingVoucherCode})
+                      (
+                      {order.freeShippingVoucherCode ||
+                        order.shippingVoucherCode}
+                      )
                     </span>
                   )}
                 </span>
@@ -639,8 +647,10 @@ export default async function AdminOrderDetailPage({
             order.voucherCode ||
             order.productVoucherCode ||
             order.shippingVoucherCode ||
+            order.freeShippingVoucherCode ||
             order.loyaltyVoucherCode ||
             order.manualVoucherCode ||
+            order.privateVoucherCode ||
             order.notes) && (
             <section className="rounded-2xl border border-zinc-200 p-4 md:rounded-3xl md:p-5">
               <h2 className="font-bold text-zinc-950">Info tambahan</h2>
@@ -655,8 +665,17 @@ export default async function AdminOrderDetailPage({
                   cashTotal={order.total}
                 />
 
-                {/* Voucher list — iterate semua 4 slot voucher + legacy.
-                    Untuk tiap voucher yg punya entry di VoucherUsage,
+                {/* Voucher list — iterate semua 4 slot voucher yang
+                    actually digunakan backend (sesuai app/api/orders/route.ts):
+                      1. productVoucherCode  → PUBLIC_PRODUCT_DISCOUNT
+                      2. freeShippingVoucherCode → PUBLIC_FREE_SHIPPING
+                      3. loyaltyVoucherCode  → LOYALTY_POINT_CLAIM
+                      4. manualVoucherCode / privateVoucherCode → PRIVATE_MANUAL_CODE
+                    Plus legacy fallback: voucherCode (lama, sebelum split
+                    ke productVoucherCode) + shippingVoucherCode (generic
+                    shipping slot dari migration 20260518010000).
+
+                    Untuk tiap voucher yang ada entry di VoucherUsage,
                     tampilin nominal diskon-nya inline (Q1=A). */}
                 {(() => {
                   const usageByCode = new Map(
@@ -672,33 +691,35 @@ export default async function AdminOrderDetailPage({
                       ? ` (-${formatRupiah(amt)})`
                       : "";
                   };
+                  // Fallback chain per kategori — pakai field yang aktif
+                  // diisi backend, fallback ke legacy field kalau ada.
+                  const productCode =
+                    order.productVoucherCode || order.voucherCode;
+                  const shippingCode =
+                    order.freeShippingVoucherCode || order.shippingVoucherCode;
+                  const privateOrManualCode =
+                    order.manualVoucherCode || order.privateVoucherCode;
                   return (
                     <>
-                      {(order.productVoucherCode || order.voucherCode) && (
+                      {productCode && (
                         <p>
                           <span className="font-semibold">
                             Voucher Diskon Produk:
                           </span>{" "}
-                          <span className="font-mono">
-                            {order.productVoucherCode || order.voucherCode}
-                          </span>
+                          <span className="font-mono">{productCode}</span>
                           <span className="text-red-600">
-                            {formatAmount(
-                              order.productVoucherCode || order.voucherCode,
-                            )}
+                            {formatAmount(productCode)}
                           </span>
                         </p>
                       )}
-                      {order.shippingVoucherCode && (
+                      {shippingCode && (
                         <p>
                           <span className="font-semibold">
                             Voucher Gratis Ongkir:
                           </span>{" "}
-                          <span className="font-mono">
-                            {order.shippingVoucherCode}
-                          </span>
+                          <span className="font-mono">{shippingCode}</span>
                           <span className="text-red-600">
-                            {formatAmount(order.shippingVoucherCode)}
+                            {formatAmount(shippingCode)}
                           </span>
                         </p>
                       )}
@@ -715,16 +736,16 @@ export default async function AdminOrderDetailPage({
                           </span>
                         </p>
                       )}
-                      {order.manualVoucherCode && (
+                      {privateOrManualCode && (
                         <p>
                           <span className="font-semibold">
-                            Voucher Penjual (manual):
+                            Voucher Penjual (private/manual):
                           </span>{" "}
                           <span className="font-mono">
-                            {order.manualVoucherCode}
+                            {privateOrManualCode}
                           </span>
                           <span className="text-red-600">
-                            {formatAmount(order.manualVoucherCode)}
+                            {formatAmount(privateOrManualCode)}
                           </span>
                         </p>
                       )}
