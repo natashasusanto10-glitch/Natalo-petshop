@@ -92,6 +92,25 @@ export default async function AdminOrderDetailPage({
       refundCases: {
         orderBy: { createdAt: "desc" },
       },
+      // Granular voucher tracking — per-voucher discount amount + tipe.
+      // Dipakai untuk tampilan "Voucher X (-Rp 2.500)" inline di admin
+      // summary. Order punya 4 slot voucher (productVoucher, shipping,
+      // loyalty, manualVoucher), VoucherUsage track amount per voucher
+      // per order (1:N relation).
+      voucherUsages: {
+        include: {
+          voucher: {
+            select: {
+              code: true,
+              name: true,
+              type: true,
+              kind: true,
+              discountScope: true,
+            },
+          },
+        },
+        orderBy: { usedAt: "asc" },
+      },
     },
   });
 
@@ -225,6 +244,7 @@ export default async function AdminOrderDetailPage({
           </div>
 
           <div className="mt-6 space-y-2 border-t border-zinc-100 pt-4 text-sm">
+            {/* Subtotal & Ongkir — base nominal sebelum diskon */}
             <div className="flex justify-between text-zinc-600">
               <span>Subtotal</span>
               <span>{formatRupiah(order.subtotal)}</span>
@@ -233,19 +253,97 @@ export default async function AdminOrderDetailPage({
               <span>Ongkir</span>
               <span>{formatRupiah(order.shippingCost)}</span>
             </div>
-            {order.discount > 0 && (
+
+            {/* Diskon granular — split antara produk vs ongkir vs legacy
+                supaya admin tahu darimana datangnya diskon. Schema sudah
+                track per-kategori, tinggal display. */}
+            {order.productDiscount > 0 && (
               <div className="flex justify-between text-zinc-600">
-                <span>Diskon</span>
-                <span>-{formatRupiah(order.discount)}</span>
+                <span>
+                  Diskon Produk
+                  {(order.productVoucherCode || order.voucherCode) && (
+                    <span className="ml-1 text-xs text-zinc-400">
+                      ({order.productVoucherCode || order.voucherCode})
+                    </span>
+                  )}
+                </span>
+                <span className="text-red-600">
+                  -{formatRupiah(order.productDiscount)}
+                </span>
               </div>
             )}
-            <div className="flex justify-between text-lg font-black text-zinc-950">
-              <span>Total</span>
-              <span>{formatRupiah(order.total)}</span>
-            </div>
-            {totalRefunded > 0 && (
+            {order.shippingDiscount > 0 && (
+              <div className="flex justify-between text-zinc-600">
+                <span>
+                  Diskon Ongkir
+                  {order.shippingVoucherCode && (
+                    <span className="ml-1 text-xs text-zinc-400">
+                      ({order.shippingVoucherCode})
+                    </span>
+                  )}
+                </span>
+                <span className="text-red-600">
+                  -{formatRupiah(order.shippingDiscount)}
+                </span>
+              </div>
+            )}
+            {/* Fallback: kalau ada order.discount tapi belum ke-split ke
+                product/shipping (legacy order pre-refactor), tampilkan
+                aggregate supaya admin tetap lihat. */}
+            {order.discount > 0 &&
+              order.discount > order.productDiscount + order.shippingDiscount && (
+                <div className="flex justify-between text-zinc-600">
+                  <span>Diskon Lainnya</span>
+                  <span className="text-red-600">
+                    -
+                    {formatRupiah(
+                      order.discount -
+                        order.productDiscount -
+                        order.shippingDiscount,
+                    )}
+                  </span>
+                </div>
+              )}
+
+            {/* Saldo Refund — line baru. Saat user pakai saldo refund
+                sebagai metode bayar (full/partial), tampilkan supaya admin
+                tau dari mana selisih ke Total. Sebelumnya invisible →
+                admin bingung "kok Total 0 padahal subtotal 25rb". */}
+            {order.refundBalanceUsed > 0 && (
               <div className="flex justify-between text-blue-700">
-                <span>Sudah di-refund</span>
+                <span>🎁 Bayar via Saldo Refund</span>
+                <span>-{formatRupiah(order.refundBalanceUsed)}</span>
+              </div>
+            )}
+
+            {/* Total bayar tunai — prominent. Q4: tegasin supaya admin
+                langsung paham ini nominal yang user beneran bayar via
+                transfer/Midtrans/dst. Kalau 0, admin tahu order full
+                ke-cover saldo refund + voucher, gak ada yang nunggu. */}
+            <div className="flex justify-between border-t border-zinc-200 pt-3 mt-2 text-lg font-black text-zinc-950">
+              <span>Total Bayar Tunai</span>
+              <span
+                className={
+                  order.total === 0 ? "text-emerald-600" : "text-zinc-950"
+                }
+              >
+                {formatRupiah(order.total)}
+              </span>
+            </div>
+            {order.total === 0 && order.refundBalanceUsed > 0 && (
+              <p className="text-xs font-semibold text-emerald-700 -mt-1">
+                ✓ Order ke-cover full oleh saldo + voucher — tidak ada
+                yang perlu di-transfer
+              </p>
+            )}
+
+            {/* Already-refunded — beda dari refundBalanceUsed (Q3 keep
+                terpisah). Ini nominal yang DI-credit balik ke user dari
+                order ini (mis. partial refund OOS), bukan saldo yang
+                dipakai bayar order. */}
+            {totalRefunded > 0 && (
+              <div className="flex justify-between text-amber-700 border-t border-amber-200 pt-2 mt-2">
+                <span>↩ Sudah di-refund ke user</span>
                 <span>-{formatRupiah(totalRefunded)}</span>
               </div>
             )}
@@ -547,34 +645,93 @@ export default async function AdminOrderDetailPage({
             <section className="rounded-2xl border border-zinc-200 p-4 md:rounded-3xl md:p-5">
               <h2 className="font-bold text-zinc-950">Info tambahan</h2>
               <div className="mt-4 space-y-2 text-sm text-zinc-700">
-                <p>
-                  <span className="font-semibold">Metode bayar:</span>{" "}
-                  {order.paymentProvider}
-                </p>
-                {(order.productVoucherCode || order.voucherCode) && (
-                  <p>
-                    <span className="font-semibold">Voucher Diskon Produk:</span>{" "}
-                    {order.productVoucherCode || order.voucherCode}
-                  </p>
-                )}
-                {order.shippingVoucherCode && (
-                  <p>
-                    <span className="font-semibold">Voucher Gratis Ongkir:</span>{" "}
-                    {order.shippingVoucherCode}
-                  </p>
-                )}
-                {order.loyaltyVoucherCode && (
-                  <p>
-                    <span className="font-semibold">Voucher Loyalty Point:</span>{" "}
-                    {order.loyaltyVoucherCode}
-                  </p>
-                )}
-                {order.manualVoucherCode && (
-                  <p>
-                    <span className="font-semibold">Voucher Penjual (manual):</span>{" "}
-                    {order.manualVoucherCode}
-                  </p>
-                )}
+                {/* Metode bayar — conditional render berdasarkan komposisi
+                    pembayaran (saldo refund, voucher, cash). Sebelumnya
+                    hanya tampilin enum mentah "MANUAL" yang misleading
+                    saat user bayar full via saldo refund. */}
+                <PaymentMethodLine
+                  paymentProvider={order.paymentProvider}
+                  refundBalanceUsed={order.refundBalanceUsed}
+                  cashTotal={order.total}
+                />
+
+                {/* Voucher list — iterate semua 4 slot voucher + legacy.
+                    Untuk tiap voucher yg punya entry di VoucherUsage,
+                    tampilin nominal diskon-nya inline (Q1=A). */}
+                {(() => {
+                  const usageByCode = new Map(
+                    order.voucherUsages.map((u) => [
+                      u.voucher.code,
+                      u.discountAmount,
+                    ]),
+                  );
+                  const formatAmount = (code: string | null) => {
+                    if (!code) return null;
+                    const amt = usageByCode.get(code) ?? null;
+                    return amt && amt > 0
+                      ? ` (-${formatRupiah(amt)})`
+                      : "";
+                  };
+                  return (
+                    <>
+                      {(order.productVoucherCode || order.voucherCode) && (
+                        <p>
+                          <span className="font-semibold">
+                            Voucher Diskon Produk:
+                          </span>{" "}
+                          <span className="font-mono">
+                            {order.productVoucherCode || order.voucherCode}
+                          </span>
+                          <span className="text-red-600">
+                            {formatAmount(
+                              order.productVoucherCode || order.voucherCode,
+                            )}
+                          </span>
+                        </p>
+                      )}
+                      {order.shippingVoucherCode && (
+                        <p>
+                          <span className="font-semibold">
+                            Voucher Gratis Ongkir:
+                          </span>{" "}
+                          <span className="font-mono">
+                            {order.shippingVoucherCode}
+                          </span>
+                          <span className="text-red-600">
+                            {formatAmount(order.shippingVoucherCode)}
+                          </span>
+                        </p>
+                      )}
+                      {order.loyaltyVoucherCode && (
+                        <p>
+                          <span className="font-semibold">
+                            Voucher Loyalty Point:
+                          </span>{" "}
+                          <span className="font-mono">
+                            {order.loyaltyVoucherCode}
+                          </span>
+                          <span className="text-red-600">
+                            {formatAmount(order.loyaltyVoucherCode)}
+                          </span>
+                        </p>
+                      )}
+                      {order.manualVoucherCode && (
+                        <p>
+                          <span className="font-semibold">
+                            Voucher Penjual (manual):
+                          </span>{" "}
+                          <span className="font-mono">
+                            {order.manualVoucherCode}
+                          </span>
+                          <span className="text-red-600">
+                            {formatAmount(order.manualVoucherCode)}
+                          </span>
+                        </p>
+                      )}
+                    </>
+                  );
+                })()}
+
                 {order.notes && (
                   <p>
                     <span className="font-semibold">Catatan:</span> {order.notes}
@@ -738,3 +895,98 @@ export default async function AdminOrderDetailPage({
     </div>
   );
 }
+
+/**
+ * Render "Metode bayar" line dengan logic conditional berdasarkan
+ * komposisi pembayaran. Sebelumnya admin lihat "Metode bayar: MANUAL"
+ * meskipun user bayar full pakai Saldo Refund — confusing.
+ *
+ * Logika display:
+ *   1. Full saldo refund (cashTotal=0 + refundBalanceUsed>0):
+ *      → "🎁 Saldo Refund (100%)"
+ *   2. Hybrid (cashTotal>0 + refundBalanceUsed>0):
+ *      → "🎁 Saldo Rp X + 💳 {provider} Rp Y"
+ *   3. Cash only (no saldo, cashTotal>0):
+ *      → "💳 {provider label}"
+ *   4. Zero everything (rare — full voucher cover):
+ *      → "🎁 100% Voucher (tidak ada cash + tidak ada saldo)"
+ */
+function PaymentMethodLine({
+  paymentProvider,
+  refundBalanceUsed,
+  cashTotal,
+}: {
+  paymentProvider: string;
+  refundBalanceUsed: number;
+  cashTotal: number;
+}) {
+  // Friendly label per provider — admin lebih readable.
+  const providerLabel: Record<string, string> = {
+    MANUAL: "Transfer Manual",
+    MIDTRANS: "Midtrans Gateway",
+    XENDIT: "Xendit Gateway",
+  };
+  const friendlyProvider =
+    providerLabel[paymentProvider] ?? paymentProvider;
+
+  // Skenario 1: Full saldo refund cover order.
+  if (cashTotal === 0 && refundBalanceUsed > 0) {
+    return (
+      <p>
+        <span className="font-semibold">Metode bayar:</span>{" "}
+        <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-700">
+          🎁 Saldo Refund (100%)
+        </span>
+      </p>
+    );
+  }
+
+  // Skenario 2: Hybrid — saldo refund + bayar tunai.
+  if (cashTotal > 0 && refundBalanceUsed > 0) {
+    return (
+      <div>
+        <p>
+          <span className="font-semibold">Metode bayar:</span>{" "}
+          <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 text-xs font-bold text-purple-700">
+            🎁💳 Hybrid Saldo + Tunai
+          </span>
+        </p>
+        <ul className="mt-1.5 ml-3 space-y-0.5 text-xs text-zinc-600">
+          <li>
+            🎁 Saldo Refund:{" "}
+            <span className="font-bold text-blue-700">
+              {formatRupiah(refundBalanceUsed)}
+            </span>
+          </li>
+          <li>
+            💳 {friendlyProvider}:{" "}
+            <span className="font-bold text-zinc-900">
+              {formatRupiah(cashTotal)}
+            </span>
+          </li>
+        </ul>
+      </div>
+    );
+  }
+
+  // Skenario 4: Zero everything — full voucher cover (langka).
+  if (cashTotal === 0 && refundBalanceUsed === 0) {
+    return (
+      <p>
+        <span className="font-semibold">Metode bayar:</span>{" "}
+        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">
+          🎫 100% Voucher
+        </span>
+      </p>
+    );
+  }
+
+  // Skenario 3: Default — bayar tunai full (paling umum).
+  return (
+    <p>
+      <span className="font-semibold">Metode bayar:</span>{" "}
+      <span className="font-mono">💳 {friendlyProvider}</span>
+    </p>
+  );
+}
+
