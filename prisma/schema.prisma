@@ -87,6 +87,10 @@ model User {
   tokenVersion        Int                  @default(0)
   birthDate           DateTime?
   birthdayVoucherYear Int?
+  /// Tahun terakhir user dikirim teaser push "Besok ultahmu!" oleh
+  /// cron /api/cron/birthday-reminder. Anti-spam: cek field ini sebelum
+  /// kirim → tidak duplicate kalau cron re-run dalam hari yang sama.
+  lastBirthdayTeaserYear Int?
   /// Timestamp lock birthDate. Diisi saat user dapat voucher ulang
   /// tahun pertama. Setelah field ini != null:
   ///   - API /api/member/profile reject perubahan birthDate (return 403)
@@ -464,6 +468,10 @@ model Order {
   // order touched (cancellation request, refund case, dll) → cron bisa
   // gak pernah jalan.
   shippedAt               DateTime?
+  // Timestamp saat user di-kirim H-3 reminder push "Sudah Diterima?".
+  // Cron /api/cron/order-confirm-reminder set field ini supaya tidak
+  // kirim ulang reminder yang sama. Null = belum pernah di-remind.
+  notifiedConfirmReminderAt DateTime?
 
   // ── Cancellation request (Shopee/Tokopedia pattern) ──────────────────
   // Saat user pencet "Batalkan" di app setelah order udah PAID

@@ -17,6 +17,7 @@
 import { randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { sendPushToUser } from "@/lib/push";
+import { sendBirthdayVoucherEmail } from "@/lib/email-birthday";
 
 /**
  * Default voucher config. Tweak disini kalau Natalo mau ubah skema
@@ -94,7 +95,13 @@ export type BirthdayIssueResult = {
 const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
 
 async function findTodayBirthdayUsers(today: Date): Promise<
-  Array<{ id: string; name: string; birthDate: Date; birthdayVoucherYear: number | null }>
+  Array<{
+    id: string;
+    name: string;
+    email: string | null;
+    birthDate: Date;
+    birthdayVoucherYear: number | null;
+  }>
 > {
   // Shift UTC ke WIB sebelum extract calendar components. Pakai UTC
   // getter setelah shift supaya tidak double-apply local timezone offset
@@ -119,11 +126,12 @@ async function findTodayBirthdayUsers(today: Date): Promise<
     Array<{
       id: string;
       name: string;
+      email: string | null;
       birthDate: Date;
       birthdayVoucherYear: number | null;
     }>
   >`
-    SELECT id, name, "birthDate", "birthdayVoucherYear"
+    SELECT id, name, email, "birthDate", "birthdayVoucherYear"
     FROM "User"
     WHERE "birthDate" IS NOT NULL
       AND EXTRACT(MONTH FROM "birthDate") = ${month}
@@ -136,12 +144,64 @@ async function findTodayBirthdayUsers(today: Date): Promise<
 }
 
 /**
+ * Cari user yang ulang tahunnya BESOK (H-1) di WIB. Dipakai cron
+ * /api/cron/birthday-reminder untuk kirim teaser "Besok ultahmu!".
+ *
+ * Filter sama dengan findTodayBirthdayUsers (eligibility 30 hari +
+ * CUSTOMER role) supaya teaser konsisten dengan voucher issuance —
+ * user yg gak eligible voucher gak perlu teaser.
+ *
+ * Anti-spam: skip user yang lastBirthdayTeaserYear sudah == currentYear
+ * (sudah pernah dapat teaser tahun ini).
+ */
+export async function findTomorrowBirthdayUsers(today: Date): Promise<
+  Array<{
+    id: string;
+    name: string;
+    birthDate: Date;
+    lastBirthdayTeaserYear: number | null;
+  }>
+> {
+  // Tomorrow in WIB. Add 1 day to today (WIB-shifted).
+  const wibTime = new Date(today.getTime() + WIB_OFFSET_MS);
+  const tomorrowWib = new Date(wibTime.getTime() + 24 * 60 * 60 * 1000);
+  const month = tomorrowWib.getUTCMonth() + 1;
+  const day = tomorrowWib.getUTCDate();
+  const currentYear = tomorrowWib.getUTCFullYear();
+  const minAccountDays = getMinAccountDays();
+  const accountAgeThreshold = new Date(
+    today.getTime() - minAccountDays * 24 * 60 * 60 * 1000,
+  );
+
+  return prisma.$queryRaw<
+    Array<{
+      id: string;
+      name: string;
+      birthDate: Date;
+      lastBirthdayTeaserYear: number | null;
+    }>
+  >`
+    SELECT id, name, "birthDate", "lastBirthdayTeaserYear"
+    FROM "User"
+    WHERE "birthDate" IS NOT NULL
+      AND EXTRACT(MONTH FROM "birthDate") = ${month}
+      AND EXTRACT(DAY FROM "birthDate") = ${day}
+      AND ("lastBirthdayTeaserYear" IS NULL OR "lastBirthdayTeaserYear" < ${currentYear})
+      AND "createdAt" < ${accountAgeThreshold}
+      AND role = 'CUSTOMER'
+  `;
+}
+
+/**
  * Issue voucher untuk 1 user. Atomic dalam transaction:
  *   1. Create Voucher row (PUBLIC_PRODUCT_DISCOUNT, USER_OWNED)
  *   2. Update User.birthdayVoucherYear = currentYear
  * Return voucher code kalau sukses.
  */
-async function issueBirthdayVoucher(userId: string, currentYear: number): Promise<string> {
+async function issueBirthdayVoucher(
+  userId: string,
+  currentYear: number,
+): Promise<{ code: string; expiresAt: Date }> {
   const code = `BDAY-${currentYear}-${randomBytes(3).toString("hex").toUpperCase()}`;
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + BIRTHDAY_VOUCHER_CONFIG.expiresAfterDays);
@@ -183,7 +243,7 @@ async function issueBirthdayVoucher(userId: string, currentYear: number): Promis
       },
     }),
   ]);
-  return code;
+  return { code, expiresAt };
 }
 
 /**
@@ -237,7 +297,10 @@ export async function runBirthdayVoucherJob(
       continue;
     }
     try {
-      const code = await issueBirthdayVoucher(u.id, currentYear);
+      const { code, expiresAt } = await issueBirthdayVoucher(
+        u.id,
+        currentYear,
+      );
       result.issued += 1;
       result.details.push({
         userId: u.id,
@@ -245,11 +308,31 @@ export async function runBirthdayVoucherJob(
         status: "issued",
         voucherCode: code,
       });
-      // Fire push notif — errors di-catch dan TIDAK count sebagai error
-      // (voucher tetap valid di DB, push fail terjadi karena no token /
-      // server APN down — user akan lihat voucher di app saat buka).
+      // Fire 2 channel notif PARALLEL — push (instant, mobile) + email
+      // (backup, persistent). Kedua-duanya fire-and-forget, gagal tidak
+      // count sebagai error (voucher tetap valid di DB).
+      //
+      // Rationale email backup:
+      //   - User offline berhari-hari → push gak masuk → email muncul
+      //     saat next login email
+      //   - FCM token expired (user uninstall app sementara) → push
+      //     silent fail → email tetap masuk inbox
+      //   - Email = persistent record yang bisa di-search lagi user
       sendBirthdayPush(u.id, u.name, code).catch((err) => {
         console.warn("[birthday-voucher] push failed:", {
+          userId: u.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+      sendBirthdayVoucherEmail({
+        customerName: u.name,
+        customerEmail: u.email,
+        voucherCode: code,
+        discountAmount: BIRTHDAY_VOUCHER_CONFIG.discountAmount,
+        minimumOrder: BIRTHDAY_VOUCHER_CONFIG.minimumOrder,
+        expiresAt,
+      }).catch((err) => {
+        console.warn("[birthday-voucher] email failed:", {
           userId: u.id,
           error: err instanceof Error ? err.message : String(err),
         });

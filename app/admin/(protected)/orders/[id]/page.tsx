@@ -259,14 +259,23 @@ export default async function AdminOrderDetailPage({
               di sini akan double-refund. History tetap dirender untuk
               audit trail (kalau ada). */}
           {!isDone ? (
-            <details className="mt-6 rounded-2xl border border-blue-200 bg-blue-50/50 p-4">
-              <summary className="cursor-pointer font-semibold text-blue-900">
-                💰 Refund ke Saldo Refund User
+            <details className="mt-6 rounded-2xl border border-zinc-200 bg-zinc-50/50 p-3">
+              {/* Collapsible (default closed) — 90% kasus refund cukup
+                  pakai tombol "Tandai kosong" per-item di card produk.
+                  Section ini hanya untuk kasus jarang: return, partial
+                  cancel, atau override custom nominal. ORDER_CANCELLED
+                  dihilangkan dari dropdown — pembatalan order otomatis
+                  trigger auto-refund via tombol "Batalkan Order". */}
+              <summary className="cursor-pointer text-sm font-semibold text-zinc-700 hover:text-zinc-900">
+                Refund untuk kasus lain
+                <span className="ml-1 font-normal text-zinc-500">
+                  (return, batal sebagian, custom nominal)
+                </span>
               </summary>
-              <p className="mt-2 text-xs text-zinc-600">
-                Kredit saldo refund user untuk kasus produk kosong, partial
-                cancel, atau return approved. Saldo akan masuk instant dan
-                bisa user pakai di checkout berikutnya.
+              <p className="mt-3 text-xs text-zinc-600">
+                Kredit Saldo Refund user untuk kasus yang tidak ke-cover
+                tombol &quot;Tandai kosong&quot; per-item. Saldo masuk
+                instant dan bisa user pakai di checkout berikutnya.
               </p>
               <RefundFormClient
                 items={order.items.map((it) => ({

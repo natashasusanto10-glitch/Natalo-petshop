@@ -133,6 +133,18 @@ export function serializeOrderDetail(order: OrderDetailRecord) {
     // kalau ada resi → tampilkan resi, else kalau ada driverInfo →
     // tampilkan info driver.
     shippingDriverInfo: order.shippingDriverInfo,
+    // Timestamp saat shipment ditandai SHIPPED. Pakai untuk hitung
+    // auto-confirm date di Flutter (shippedAt + 7 hari).
+    shippedAt: order.shippedAt?.toISOString() ?? null,
+    // Pre-computed timestamp kapan order akan otomatis ditandai
+    // DELIVERED kalau user tidak tap "Sudah Diterima" duluan.
+    // Sinkron dengan cron /api/cron/auto-confirm-delivered (default 7d).
+    // Null kalau order belum SHIPPED.
+    autoConfirmAt: order.shippedAt
+      ? new Date(
+          order.shippedAt.getTime() + 7 * 24 * 60 * 60 * 1000,
+        ).toISOString()
+      : null,
     shipmentStatus: order.shipmentStatus,
     biteshipTrackingUrl: order.biteshipTrackingUrl,
     pickupStoreName: isSelfPickup

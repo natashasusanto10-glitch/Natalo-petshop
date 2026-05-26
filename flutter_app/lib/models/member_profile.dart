@@ -280,6 +280,14 @@ class OrderSummary {
   /// nama driver, HP, plat nomor, atau link GPS. Mutually exclusive
   /// dengan trackingNumber (cuma salah satu yang terisi per order).
   final String? shippingDriverInfo;
+  /// Timestamp kapan admin tandai SHIPPED (=shippedAt). Pakai untuk
+  /// tampilkan estimated auto-confirm date di order detail.
+  final DateTime? shippedAt;
+  /// Pre-computed timestamp kapan order akan otomatis ditandai DELIVERED
+  /// kalau user tidak tap "Sudah Diterima" duluan (cron auto-confirm
+  /// jalan di hari ke-7 setelah shippedAt). Null kalau belum SHIPPED.
+  /// UI tampilkan: "Otomatis selesai 1 Jun 2026" di ConfirmDeliveredCard.
+  final DateTime? autoConfirmAt;
   final String? trackingToken;
   final String? biteshipTrackingUrl;
   final String? shipmentStatus;
@@ -356,6 +364,8 @@ class OrderSummary {
     this.courierService,
     this.trackingNumber,
     this.shippingDriverInfo,
+    this.shippedAt,
+    this.autoConfirmAt,
     this.trackingToken,
     this.biteshipTrackingUrl,
     this.shipmentStatus,
@@ -451,6 +461,8 @@ class OrderSummary {
       courierService: _nullableString(json['courierService']),
       trackingNumber: _nullableString(json['trackingNumber']),
       shippingDriverInfo: _nullableString(json['shippingDriverInfo']),
+      shippedAt: _asDateTimeOrNull(json['shippedAt']),
+      autoConfirmAt: _asDateTimeOrNull(json['autoConfirmAt']),
       trackingToken: _nullableString(json['trackingToken']),
       biteshipTrackingUrl: _nullableString(json['biteshipTrackingUrl']),
       shipmentStatus: _nullableString(json['shipmentStatus']),

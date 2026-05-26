@@ -495,6 +495,7 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
                   _ConfirmDeliveredCard(
                     loading: _confirmingDelivered,
                     onConfirm: () => _confirmDelivered(context, order),
+                    autoConfirmAt: order.autoConfirmAt,
                   ),
                   const SizedBox(height: 12),
                 ],
@@ -2595,11 +2596,25 @@ class _ShippingInfoCard extends StatelessWidget {
 class _ConfirmDeliveredCard extends StatelessWidget {
   final bool loading;
   final VoidCallback onConfirm;
+  /// Estimasi kapan order auto-DELIVERED via cron (default H+7 sejak
+  /// shipped). Tampilkan small text "Otomatis selesai DD MMM YYYY"
+  /// di bawah button supaya user tau timing-nya + decision aid.
+  /// Null = belum SHIPPED atau backend belum expose field ini.
+  final DateTime? autoConfirmAt;
 
   const _ConfirmDeliveredCard({
     required this.loading,
     required this.onConfirm,
+    this.autoConfirmAt,
   });
+
+  String _formatAutoConfirm(DateTime dt) {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+      'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des',
+    ];
+    return '${dt.day} ${months[dt.month - 1]} ${dt.year}';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2610,75 +2625,106 @@ class _ConfirmDeliveredCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: const Color(0xFFA7F3D0), width: 1.5),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: const Color(0xFFD1FAE5),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Icon(
-              Icons.check_circle_outline_rounded,
-              color: Color(0xFF059669),
-              size: 22,
-            ),
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD1FAE5),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.check_circle_outline_rounded,
+                  color: Color(0xFF059669),
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Pesanan sudah sampai?',
+                      style: TextStyle(
+                        color: Color(0xFF065F46),
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Konfirmasi untuk selesaikan pesanan.',
+                      style: TextStyle(
+                        color: Color(0xFF047857),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 38,
+                child: FilledButton(
+                  onPressed: loading ? null : onConfirm,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF059669),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  child: loading
+                      ? const SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('Sudah Diterima'),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          // Auto-confirm info — transparency soal cron auto-DELIVERED.
+          // User gak surprise saat dapat email "Pesanan otomatis selesai".
+          if (autoConfirmAt != null) ...[
+            const SizedBox(height: 10),
+            Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  'Pesanan sudah sampai?',
-                  style: TextStyle(
-                    color: Color(0xFF065F46),
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w900,
-                  ),
+                const Icon(
+                  Icons.schedule_rounded,
+                  color: Color(0xFF047857),
+                  size: 14,
                 ),
-                SizedBox(height: 2),
-                Text(
-                  'Konfirmasi untuk selesaikan pesanan.',
-                  style: TextStyle(
-                    color: Color(0xFF047857),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Otomatis selesai ${_formatAutoConfirm(autoConfirmAt!)} kalau belum dikonfirmasi.',
+                    style: const TextStyle(
+                      color: Color(0xFF047857),
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ],
             ),
-          ),
-          const SizedBox(width: 8),
-          SizedBox(
-            height: 38,
-            child: FilledButton(
-              onPressed: loading ? null : onConfirm,
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF059669),
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                textStyle: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              child: loading
-                  ? const SizedBox(
-                      height: 16,
-                      width: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Text('Sudah Diterima'),
-            ),
-          ),
+          ],
         ],
       ),
     );

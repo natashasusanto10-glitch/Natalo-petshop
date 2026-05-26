@@ -33,6 +33,18 @@
     {
       "path": "/api/cron/auto-confirm-delivered",
       "schedule": "0 21 * * *"
+    },
+    {
+      "path": "/api/cron/order-confirm-reminder",
+      "schedule": "30 22 * * *"
+    },
+    {
+      "path": "/api/cron/birthday-reminder",
+      "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/cron/birthday-voucher-reminder",
+      "schedule": "30 12 * * *"
     }
   ]
 }

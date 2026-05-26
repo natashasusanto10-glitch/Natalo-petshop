@@ -319,3 +319,70 @@ export async function sendOrderStatusPush(
       }),
   ]);
 }
+
+/**
+ * Reminder push H-3 sebelum order auto-confirm DELIVERED.
+ *
+ * Dipanggil dari cron /api/cron/order-confirm-reminder yang jalan
+ * harian. Goal: nudge customer untuk tap "Sudah Diterima" manual
+ * supaya status DELIVERED reflect reality + (future) dapat loyalty
+ * poin bonus.
+ *
+ * Dispatch ke 3 channel mobile-first (APNs + FCM + Announcement) +
+ * Web Push. Tag "confirm-reminder-{orderId}" supaya kalau cron miss/
+ * delay 1 hari dan kirim ulang, notif replace bukan stack.
+ *
+ * @returns true kalau push dispatched.
+ */
+export async function sendConfirmReminderPush(input: {
+  userId: string;
+  orderId: string;
+  orderNumber: string;
+}): Promise<boolean> {
+  const title = `Pesanan #${input.orderNumber} sudah sampai?`;
+  const body =
+    'Tap "Sudah Diterima" di app supaya pesanan ditandai selesai. ' +
+    "Otomatis selesai 3 hari lagi.";
+  const url = `/member/order-detail?orderNumber=${input.orderNumber}`;
+
+  const payload: PushPayload = {
+    title,
+    body,
+    url,
+    tag: `confirm-reminder-${input.orderId}`,
+    category: "order",
+    data: {
+      type: "confirm_reminder",
+      order_id: input.orderId,
+      order_number: input.orderNumber,
+    },
+  };
+
+  try {
+    await Promise.all([
+      sendPushToUser(input.userId, payload),
+      sendApnsToUser(input.userId, payload),
+      sendFcmToUser(input.userId, payload),
+      prisma.announcement
+        .create({
+          data: {
+            title,
+            body,
+            url,
+            segment: "all",
+            type: "order",
+            ctaLabel: "Lihat Pesanan",
+            publishedAt: new Date(),
+            targetUserId: input.userId,
+          },
+        })
+        .catch((err) => {
+          console.warn("[push] confirm-reminder announcement:", err);
+        }),
+    ]);
+    return true;
+  } catch (err) {
+    console.error("[push] confirm-reminder dispatch failed:", err);
+    return false;
+  }
+}
