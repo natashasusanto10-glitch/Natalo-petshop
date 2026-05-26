@@ -113,3 +113,29 @@ vendor/bundle/
 
 # Bunny migration runtime artifacts (output dari scripts/migrate-bunny-to-sg.mjs)
 scripts/.bunny-migration-*
+
+# ── Credential & secret files — JANGAN PERNAH commit ──
+# Apple Push Notification Service (APNs) auth key — credential rahasia
+# untuk dispatch push notif iOS. Kalau leak ke git, attacker bisa fake
+# push notif ke semua user Natalo + Apple bisa revoke credential.
+# Simpan di Vercel env vars (APNS_AUTH_KEY_P8) atau secret manager.
+*.p8
+AuthKey_*.p8
+
+# Service account / API key files yang sering keluar dari Firebase
+# Console / Google Cloud download. Belum di-track sekarang tapi
+# defensive supaya gak ke-commit accidentally.
+*.serviceaccount.json
+google-services-account*.json
+firebase-adminsdk-*.json
+
+# Generic credential patterns — keystore, p12 cert, private keys.
+*.keystore
+*.jks
+*.p12
+*.pem
+!**/lib/**/*.pem
+*.key
+!**/lib/**/*.key
+id_rsa
+id_rsa.*
