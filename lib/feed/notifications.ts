@@ -46,6 +46,56 @@ function eventForAction(action: FeedModerationAction): {
   }
 }
 
+/**
+ * Notify user kalau video upload-nya GAGAL di-encode.
+ *
+ * Dipanggil oleh:
+ *   - Bunny webhook saat status ERROR (post di-mark failed)
+ *   - Reconcile cron saat post stuck >timeout AND Bunny null/error
+ *
+ * Idempotent via dedupeByEvent — kalau notif untuk post yang sama udah
+ * pernah dikirim, gak akan duplicate.
+ */
+export async function sendFeedEncodingFailedNotification(params: {
+  postId: string;
+  reason?: string | null;
+}) {
+  try {
+    const post = await prisma.feedPost.findUnique({
+      where: { id: params.postId },
+      select: {
+        id: true,
+        authorId: true,
+        authorRole: true,
+        title: true,
+        thumbnailUrl: true,
+      },
+    });
+    if (!post || post.authorRole !== "CUSTOMER") return;
+
+    const reasonSuffix = params.reason
+      ? ` Alasan: ${params.reason}.`
+      : "";
+
+    await createFeedNotification({
+      userId: post.authorId,
+      eventType: "feed_encoding_failed",
+      title: "Video gagal diproses",
+      message: `Postingan ${quoteFeedTitle(
+        post.title,
+      )} gagal di-encode dan tidak bisa tayang.${reasonSuffix} Silakan upload ulang.`,
+      feedPostId: post.id,
+      thumbnailUrl: post.thumbnailUrl,
+      status: "rejected",
+      url: feedPostOwnerUrl(post.id),
+      ctaLabel: "Lihat Postingan Saya",
+      dedupeByEvent: true,
+    });
+  } catch (err) {
+    console.warn("[feed-notif] encoding-failed failed:", err);
+  }
+}
+
 export async function sendFeedPendingReviewNotification(params: {
   postId: string;
 }) {

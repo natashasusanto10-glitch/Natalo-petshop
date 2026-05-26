@@ -10,6 +10,7 @@ export type FeedNotificationEventType =
   | "feed_review_pending"
   | "feed_post_approved"
   | "feed_post_rejected"
+  | "feed_encoding_failed"
   | "feed_new_comment"
   | "feed_new_like"
   | "feed_new_share"
@@ -40,6 +41,7 @@ function deriveNotificationCategory(
       return "feed_review";
     case "feed_post_approved":
     case "feed_post_rejected":
+    case "feed_encoding_failed":
       return "feed_result";
     default:
       return null;

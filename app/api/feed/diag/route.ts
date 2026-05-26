@@ -21,14 +21,9 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import {
-  BUNNY_VIDEO_STATUS,
-  bunnyPlaylistUrl,
-  bunnyThumbnailUrl,
-  getBunnyVideo,
-} from "@/lib/feed/bunny";
+import { bunnyPlaylistUrl } from "@/lib/feed/bunny";
 import { sweepBunnyOrphans, type BunnyGcResult } from "@/lib/feed/bunny-gc";
-import { sendFeedPendingReviewNotification } from "@/lib/feed/notifications";
+import { reconcileFeedPost } from "@/lib/feed/reconcile";
 
 export const dynamic = "force-dynamic";
 
@@ -77,48 +72,34 @@ export async function GET(request: NextRequest) {
   }
 
   if (force) {
-    // 1. Reconcile any posts still stuck in encodingStatus=uploading.
+    // 1. Reconcile semua post stuck di encodingStatus uploading/processing.
+    // Pakai reconcileFeedPost() helper (lib/feed/reconcile.ts) — same
+    // logic dengan cron /api/cron/feed-reconcile-videos. Auto-fail kalau
+    // stuck > 60 menit. Sebelumnya hanya scan "uploading" (miss yang
+    // sudah ke-update ke "processing" tapi webhook lost).
     const stuck = await prisma.feedPost.findMany({
-      where: { encodingStatus: "uploading", videoGuid: { not: null } },
-      select: { id: true, videoGuid: true },
+      where: {
+        encodingStatus: { in: ["uploading", "processing"] },
+        videoGuid: { not: null },
+        deletedAt: null,
+      },
+      select: { id: true },
       take: 50,
     });
     for (const post of stuck) {
-      if (!post.videoGuid) continue;
-      const meta = await getBunnyVideo(post.videoGuid);
-      if (!meta) {
-        actions.push({ postId: post.id, action: "skipped", detail: "Bunny null" });
-        continue;
-      }
-      if (meta.status === BUNNY_VIDEO_STATUS.FINISHED) {
-        await prisma.feedPost.update({
-          where: { id: post.id },
-          data: {
-            encodingStatus: "ready",
-            videoUrl: bunnyPlaylistUrl(post.videoGuid),
-            thumbnailUrl: bunnyThumbnailUrl(post.videoGuid),
-            videoMimeType: "application/vnd.apple.mpegurl",
-            videoDurationSec: meta.length ? Math.round(meta.length) : null,
-            videoWidth: meta.width ?? null,
-            videoHeight: meta.height ?? null,
-            videoSizeBytes: meta.storageSize ?? null,
-          },
-        });
-        void sendFeedPendingReviewNotification({ postId: post.id });
-        actions.push({ postId: post.id, action: "ready" });
-      } else if (meta.status === BUNNY_VIDEO_STATUS.ERROR) {
-        await prisma.feedPost.update({
-          where: { id: post.id },
-          data: { encodingStatus: "failed" },
-        });
-        actions.push({ postId: post.id, action: "failed" });
-      } else {
-        actions.push({
-          postId: post.id,
-          action: "skipped",
-          detail: `Bunny status=${meta.status}`,
-        });
-      }
+      const result = await reconcileFeedPost(post.id, {
+        failAfterStuckMinutes: 60,
+      });
+      actions.push({
+        postId: result.postId,
+        action: result.action,
+        detail:
+          result.action === "skipped"
+            ? result.detail
+            : result.action === "failed"
+              ? result.reason
+              : undefined,
+      });
     }
 
     // 2. Migrate any existing MP4 rows ke HLS playlist (forward

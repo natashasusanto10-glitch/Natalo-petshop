@@ -15,6 +15,10 @@
   },
   "crons": [
     {
+      "path": "/api/cron/feed-reconcile-videos",
+      "schedule": "*/10 * * * *"
+    },
+    {
       "path": "/api/cron/feed-storage-gc",
       "schedule": "0 3 * * 0"
     },
