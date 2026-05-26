@@ -24,6 +24,10 @@ class MemberProfile {
   final String? phone;
   final String role;
   final DateTime? birthDate;
+  /// Timestamp lock birthDate. Diset server saat user dapat voucher
+  /// ulang tahun pertama. UI render tgl lahir read-only kalau != null.
+  /// Untuk ubah, user harus hubungi admin via WA dengan verifikasi.
+  final DateTime? birthDateLockedAt;
   final DateTime? createdAt;
   final int points;
   final String? profilePhotoUrl;
@@ -40,11 +44,16 @@ class MemberProfile {
     this.phone,
     this.role = 'CUSTOMER',
     this.birthDate,
+    this.birthDateLockedAt,
     this.createdAt,
     this.points = 0,
     this.profilePhotoUrl,
     this.bio,
   });
+
+  /// True kalau birthDate sudah locked (user pernah dapat voucher ultah).
+  /// UI pakai untuk render date picker read-only + hint.
+  bool get isBirthDateLocked => birthDateLockedAt != null;
 
   bool get isAdmin => role.toUpperCase() == 'ADMIN';
   String get initial =>
@@ -69,6 +78,7 @@ class MemberProfile {
       phone: json['phone'] as String?,
       role: json['role'] as String? ?? 'CUSTOMER',
       birthDate: _parseDate(json['birthDate']),
+      birthDateLockedAt: _parseDate(json['birthDateLockedAt']),
       createdAt: _parseDate(json['createdAt'] ?? json['memberSince']),
       points: _asInt(json['points'] ?? json['loyaltyPoints']),
       profilePhotoUrl: _nullableString(
@@ -97,6 +107,7 @@ class MemberProfile {
         'phone': phone,
         'role': role,
         'birthDate': birthDate?.toIso8601String(),
+        'birthDateLockedAt': birthDateLockedAt?.toIso8601String(),
         'createdAt': createdAt?.toIso8601String(),
         'points': points,
         'profilePhotoUrl': profilePhotoUrl,
@@ -111,6 +122,7 @@ class MemberProfile {
     String? phone,
     String? role,
     DateTime? birthDate,
+    DateTime? birthDateLockedAt,
     DateTime? createdAt,
     int? points,
     String? profilePhotoUrl,
@@ -126,6 +138,7 @@ class MemberProfile {
       phone: phone ?? this.phone,
       role: role ?? this.role,
       birthDate: birthDate ?? this.birthDate,
+      birthDateLockedAt: birthDateLockedAt ?? this.birthDateLockedAt,
       createdAt: createdAt ?? this.createdAt,
       points: points ?? this.points,
       profilePhotoUrl:

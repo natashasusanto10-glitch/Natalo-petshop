@@ -32,6 +32,29 @@ export const BIRTHDAY_VOUCHER_CONFIG = {
   expiresAfterDays: 30,
 };
 
+/**
+ * Minimum usia akun sebelum eligible dapat voucher ulang tahun.
+ *
+ * Anti-abuse: tanpa guard ini, user bisa register hari ini → set tgl
+ * lahir = besok → cron jalan besok → dapat voucher Rp50k.
+ * Worst case 1 keluarga 4 HP register barengan → farm 4× Rp200k.
+ *
+ * 30 hari = compromise: cukup deter abuse instant tapi tidak terlalu
+ * keras buat user genuine yang baru kenal Natalo dan kebetulan ulang
+ * tahun bulan ini. Tokopedia pakai 90 hari (lebih ketat).
+ *
+ * Override via env `BIRTHDAY_VOUCHER_MIN_ACCOUNT_DAYS` (number string)
+ * kalau owner mau tuning tanpa redeploy schema.
+ */
+const DEFAULT_MIN_ACCOUNT_DAYS = 30;
+
+function getMinAccountDays(): number {
+  const raw = process.env.BIRTHDAY_VOUCHER_MIN_ACCOUNT_DAYS;
+  if (!raw) return DEFAULT_MIN_ACCOUNT_DAYS;
+  const parsed = parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_MIN_ACCOUNT_DAYS;
+}
+
 export type BirthdayIssueResult = {
   candidates: number;
   issued: number;
@@ -62,10 +85,18 @@ async function findTodayBirthdayUsers(today: Date): Promise<
   const month = today.getMonth() + 1; // 1-12
   const day = today.getDate();
   const currentYear = today.getFullYear();
+  const minAccountDays = getMinAccountDays();
+  const accountAgeThreshold = new Date(
+    today.getTime() - minAccountDays * 24 * 60 * 60 * 1000,
+  );
 
   // Prisma tidak native support EXTRACT(MONTH FROM x) dalam where.
   // Pakai raw query untuk filter by month + day. Cast ke timestamp
   // supaya match Postgres date functions.
+  //
+  // Eligibility additions:
+  //   - createdAt < threshold (akun minimal N hari) → anti-abuse
+  //     "register + set tgl besok = farm voucher"
   const users = await prisma.$queryRaw<
     Array<{
       id: string;
@@ -80,6 +111,7 @@ async function findTodayBirthdayUsers(today: Date): Promise<
       AND EXTRACT(MONTH FROM "birthDate") = ${month}
       AND EXTRACT(DAY FROM "birthDate") = ${day}
       AND ("birthdayVoucherYear" IS NULL OR "birthdayVoucherYear" < ${currentYear})
+      AND "createdAt" < ${accountAgeThreshold}
       AND role = 'CUSTOMER'
   `;
   return users;
@@ -120,7 +152,15 @@ async function issueBirthdayVoucher(userId: string, currentYear: number): Promis
     }),
     prisma.user.update({
       where: { id: userId },
-      data: { birthdayVoucherYear: currentYear },
+      data: {
+        birthdayVoucherYear: currentYear,
+        // Lock birthDate saat voucher pertama issued. Kalau user sudah
+        // pernah dapat voucher sebelumnya (birthDateLockedAt sudah set),
+        // statement ini overwrite jadi timestamp baru — itu OK karena
+        // semantik field = "kapan terakhir lock" dan field-nya tetap
+        // non-null (block UI tetap aktif).
+        birthDateLockedAt: new Date(),
+      },
     }),
   ]);
   return code;

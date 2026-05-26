@@ -87,6 +87,14 @@ model User {
   tokenVersion        Int                  @default(0)
   birthDate           DateTime?
   birthdayVoucherYear Int?
+  /// Timestamp lock birthDate. Diisi saat user dapat voucher ulang
+  /// tahun pertama. Setelah field ini != null:
+  ///   - API /api/member/profile reject perubahan birthDate (return 403)
+  ///   - Flutter UI render tgl lahir read-only dengan hint
+  ///   - Admin bisa override via endpoint admin manual (audit log)
+  /// Pattern dari Shopee anti-abuse: cegah user ganti2 tgl lahir untuk
+  /// trigger voucher ulang tahun di luar timing aslinya.
+  birthDateLockedAt   DateTime?
   /// URL foto profil — disimpan ke UploadThing CDN. Nullable: user yang
   /// belum upload pakai fallback initial avatar di UI. Dipakai di feed
   /// posts, comments, member screen, dst.

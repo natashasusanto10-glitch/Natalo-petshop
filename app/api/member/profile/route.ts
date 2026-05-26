@@ -12,7 +12,18 @@ export async function GET() {
   const [user, pointsAgg] = await Promise.all([
     prisma.user.findUnique({
       where: { id: session.sub },
-      select: { id: true, name: true, email: true, phone: true, birthDate: true, createdAt: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        birthDate: true,
+        // Lock timestamp — kalau != null, Flutter UI render tgl lahir
+        // read-only dengan hint hubungi admin untuk ubah. Lihat
+        // anti-abuse note di prisma/schema.prisma User.birthDateLockedAt.
+        birthDateLockedAt: true,
+        createdAt: true,
+      },
     }),
     prisma.customerPoint
       .aggregate({
@@ -55,8 +66,42 @@ export async function PUT(request: Request) {
     birthDate = parsed;
   }
 
+  // Fetch current user state untuk validate phone uniqueness + birthDate
+  // lock check sebelum update. Single query supaya ngirit round-trip.
+  const current = await prisma.user.findUnique({
+    where: { id: session.sub },
+    select: {
+      phone: true,
+      birthDate: true,
+      birthDateLockedAt: true,
+    },
+  });
+  if (!current) {
+    return NextResponse.json({ error: "User tidak ditemukan." }, { status: 404 });
+  }
+
+  // ── Anti-abuse: lock birthDate setelah voucher ultah pertama ───────
+  // Kalau user sudah pernah dapat voucher (birthDateLockedAt != null),
+  // tolak perubahan birthDate. User yang salah input bisa minta admin
+  // ubah via WA dengan verifikasi identitas. Pattern dari Shopee.
+  //
+  // Cek perubahan dengan compare ISO date string (tanpa time component)
+  // supaya tidak false-positive karena timezone parsing.
+  const currentDateIso = current.birthDate?.toISOString().slice(0, 10) ?? null;
+  const newDateIso = birthDate?.toISOString().slice(0, 10) ?? null;
+  const birthDateChanged = currentDateIso !== newDateIso;
+  if (birthDateChanged && current.birthDateLockedAt) {
+    return NextResponse.json(
+      {
+        error:
+          "Tanggal lahir sudah terkunci setelah kamu menerima voucher ulang tahun. Untuk mengubah, hubungi admin via WhatsApp dengan menyertakan KTP/identitas.",
+      },
+      { status: 403 },
+    );
+  }
+
   // Check phone uniqueness (if changed)
-  if (phone) {
+  if (phone && phone !== current.phone) {
     const existing = await prisma.user.findFirst({
       where: { phone, NOT: { id: session.sub } },
     });
@@ -68,7 +113,14 @@ export async function PUT(request: Request) {
   const user = await prisma.user.update({
     where: { id: session.sub },
     data: { name, phone, birthDate },
-    select: { id: true, name: true, email: true, phone: true, birthDate: true },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+      birthDate: true,
+      birthDateLockedAt: true,
+    },
   });
 
   return NextResponse.json({ user });

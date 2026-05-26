@@ -44,10 +44,16 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
   late final TextEditingController _bioController;
 
   DateTime? _birthDate;
+  /// Snapshot lock state dari profile saat load. Render read-only kalau
+  /// non-null. Lihat MemberProfile.birthDateLockedAt — diset server saat
+  /// user dapat voucher ultah pertama (anti-abuse).
+  DateTime? _birthDateLockedAt;
   bool _saving = false;
   bool _dirty = false;
 
   static const int _bioMaxLength = 150;
+
+  bool get _isBirthDateLocked => _birthDateLockedAt != null;
 
   @override
   void initState() {
@@ -60,6 +66,7 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
     _bioController = TextEditingController(text: profile?.bio ?? '')
       ..addListener(_markDirty);
     _birthDate = profile?.birthDate;
+    _birthDateLockedAt = profile?.birthDateLockedAt;
   }
 
   @override
@@ -77,6 +84,10 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
   bool get _canSave => _dirty && !_saving;
 
   Future<void> _pickBirthDate() async {
+    // Defensive guard — UI sudah hide tap target kalau locked, tapi
+    // double check supaya kalau ada path lain yang call method ini,
+    // tidak buka picker secara salah.
+    if (_isBirthDateLocked) return;
     AppHaptics.tap();
     final now = DateTime.now();
     final initial =
@@ -340,6 +351,7 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
                         _BirthDatePickerTile(
                           birthDate: _birthDate,
                           onTap: _pickBirthDate,
+                          isLocked: _isBirthDateLocked,
                         ),
                         const _FormDivider(),
                         // Bio field — multiline text, max 150 char (IG conv).
@@ -527,66 +539,118 @@ class _ProfileFormField extends StatelessWidget {
 class _BirthDatePickerTile extends StatelessWidget {
   final DateTime? birthDate;
   final VoidCallback onTap;
+  /// Kalau true, tile render read-only dengan lock icon + hint
+  /// "Hubungi admin untuk ubah". User TIDAK bisa tap untuk buka picker.
+  /// Triggered server-side setelah voucher ulang tahun pertama issued
+  /// (anti-abuse — cegah user ganti2 tgl lahir farm voucher).
+  final bool isLocked;
 
-  const _BirthDatePickerTile({required this.birthDate, required this.onTap});
+  const _BirthDatePickerTile({
+    required this.birthDate,
+    required this.onTap,
+    this.isLocked = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final hasDate = birthDate != null;
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF6CC),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(
-                Icons.cake_rounded,
-                color: Color(0xFFFBBF24),
-                size: 22,
-              ),
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: isLocked
+                  ? const Color(0xFFF3F4F6)
+                  : const Color(0xFFFFF6CC),
+              borderRadius: BorderRadius.circular(12),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Tanggal Lahir',
-                    style: TextStyle(
-                      color: _textSecondary,
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.2,
+            child: Icon(
+              isLocked ? Icons.lock_outline_rounded : Icons.cake_rounded,
+              color: isLocked
+                  ? const Color(0xFF9CA3AF)
+                  : const Color(0xFFFBBF24),
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Text(
+                      'Tanggal Lahir',
+                      style: TextStyle(
+                        color: _textSecondary,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.2,
+                      ),
                     ),
+                    if (isLocked) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF3F4F6),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'TERKUNCI',
+                          style: TextStyle(
+                            color: Color(0xFF6B7280),
+                            fontSize: 9,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  hasDate ? _formatBirthDate(birthDate!) : 'Belum diatur',
+                  style: TextStyle(
+                    color: hasDate ? _darkNavy : const Color(0xFFB6BEC9),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
                   ),
+                ),
+                if (isLocked) ...[
                   const SizedBox(height: 4),
-                  Text(
-                    hasDate ? _formatBirthDate(birthDate!) : 'Belum diatur',
+                  const Text(
+                    'Hubungi admin via WhatsApp untuk ubah.',
                     style: TextStyle(
-                      color: hasDate ? _darkNavy : const Color(0xFFB6BEC9),
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF6B7280),
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],
-              ),
+              ],
             ),
+          ),
+          if (!isLocked)
             const Icon(
               Icons.chevron_right_rounded,
               color: Color(0xFF94A3B8),
             ),
-          ],
-        ),
+        ],
       ),
     );
+    // Locked state: no InkWell — tile non-interactive supaya gak ada
+    // ripple yang bikin user mikir bisa diklik.
+    if (isLocked) return content;
+    return InkWell(onTap: onTap, child: content);
   }
 }
 
