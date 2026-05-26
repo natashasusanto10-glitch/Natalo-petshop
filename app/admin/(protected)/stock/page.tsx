@@ -2,6 +2,12 @@ import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
+import {
+  PageHeader,
+  StatCard,
+  EmptyState,
+  Badge,
+} from "@/components/admin/ui";
 
 // Halaman ini selalu render fresh — tidak boleh kena Next.js full-route cache
 // karena perubahan stok sering & user expect angka-nya selalu akurat.
@@ -62,30 +68,52 @@ export default async function AdminStockPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-5 md:py-10">
-      <div>
-        <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">Stok</h1>
-        <p className="mt-1 text-sm text-zinc-500">Monitor stok produk dan perbarui jika diperlukan.</p>
-      </div>
+      <PageHeader
+        title="📦 Stok"
+        subtitle="Monitor stok produk dan perbarui jika diperlukan."
+        actions={
+          <Link
+            href="/admin/dashboard"
+            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-2 text-xs font-bold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50"
+          >
+            ← Dashboard
+          </Link>
+        }
+      />
 
-      {/* Summary */}
-      <div className="mt-5 grid grid-cols-3 gap-2.5 md:mt-6 md:gap-3">
-        <div className="rounded-2xl border border-zinc-100 bg-white p-3 md:p-4">
-          <p className="text-[10px] font-semibold text-zinc-500 md:text-xs">Total Produk</p>
-          <p className="mt-1 text-xl font-black text-zinc-900 md:text-2xl">{products.length}</p>
-        </div>
-        <div className="rounded-2xl border border-amber-100 bg-amber-50 p-3 md:p-4">
-          <p className="text-[10px] font-semibold text-amber-600 md:text-xs">Stok Menipis</p>
-          <p className="mt-1 text-xl font-black text-amber-700 md:text-2xl">{lowStock.length}</p>
-        </div>
-        <div className="rounded-2xl border border-red-100 bg-red-50 p-3 md:p-4">
-          <p className="text-[10px] font-semibold text-red-600 md:text-xs">Habis</p>
-          <p className="mt-1 text-xl font-black text-red-700 md:text-2xl">{outOfStock.length}</p>
-        </div>
-      </div>
+      <section className="mt-6 grid grid-cols-3 gap-3">
+        <StatCard
+          label="Total Produk"
+          value={products.length}
+          helper="Aktif di toko"
+          variant="default"
+        />
+        <StatCard
+          label="Stok Menipis"
+          value={lowStock.length}
+          helper="Stok 1-5"
+          variant="warning"
+        />
+        <StatCard
+          label="Habis"
+          value={outOfStock.length}
+          helper="Stok 0"
+          variant="danger"
+        />
+      </section>
 
       {products.length === 0 ? (
-        <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-12 text-center text-sm text-zinc-500 md:rounded-3xl">
-          Belum ada produk.
+        <div className="mt-6 rounded-2xl border border-zinc-200 bg-white">
+          <EmptyState
+            icon="📭"
+            title="Belum ada produk"
+            description="Tambahkan produk pertama untuk mulai monitor stok."
+            action={{
+              label: "Tambah produk",
+              href: "/admin/products/new",
+            }}
+            size="full"
+          />
         </div>
       ) : (
         <>
@@ -113,13 +141,23 @@ export default async function AdminStockPage() {
                     >
                       {product.stock}
                     </p>
-                    {product.stock === 0 ? (
-                      <span className="mt-1 inline-block rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">Habis</span>
-                    ) : product.stock <= 5 ? (
-                      <span className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">Menipis</span>
-                    ) : (
-                      <span className="mt-1 inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Tersedia</span>
-                    )}
+                    <div className="mt-1">
+                      <Badge
+                        variant={
+                          product.stock === 0
+                            ? "danger"
+                            : product.stock <= 5
+                              ? "warning"
+                              : "success"
+                        }
+                      >
+                        {product.stock === 0
+                          ? "Habis"
+                          : product.stock <= 5
+                            ? "Menipis"
+                            : "Tersedia"}
+                      </Badge>
+                    </div>
                   </div>
                 </div>
                 <div className="mt-3 grid grid-cols-3 gap-2 border-t border-zinc-100 pt-3">
@@ -153,23 +191,33 @@ export default async function AdminStockPage() {
           </div>
 
           {/* Desktop table */}
-          <div className="mt-6 hidden overflow-hidden rounded-3xl border border-zinc-200 bg-white md:block">
+          <div className="mt-6 hidden overflow-hidden rounded-2xl border border-zinc-200 bg-white md:block">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-zinc-100 bg-zinc-50">
-                    <th className="px-5 py-4 text-left font-semibold text-zinc-600">Produk</th>
-                    <th className="px-5 py-4 text-left font-semibold text-zinc-600 hidden lg:table-cell">Kategori</th>
-                    <th className="px-5 py-4 text-right font-semibold text-zinc-600">Stok</th>
-                    <th className="px-5 py-4 text-left font-semibold text-zinc-600">Status</th>
-                    <th className="px-5 py-4 text-right font-semibold text-zinc-600">Aksi</th>
+                  <tr className="border-b border-zinc-100 bg-zinc-50/50">
+                    <th className="px-5 py-3.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-500">
+                      Produk
+                    </th>
+                    <th className="hidden px-5 py-3.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-500 lg:table-cell">
+                      Kategori
+                    </th>
+                    <th className="px-5 py-3.5 text-right text-[11px] font-black uppercase tracking-wider text-zinc-500">
+                      Stok
+                    </th>
+                    <th className="px-5 py-3.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-500">
+                      Status
+                    </th>
+                    <th className="px-5 py-3.5 text-right text-[11px] font-black uppercase tracking-wider text-zinc-500">
+                      Aksi
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {products.map((product) => (
                     <tr
                       key={product.id}
-                      className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50 transition"
+                      className="border-b border-zinc-100 transition last:border-0 hover:bg-natalo-50/40"
                     >
                       <td className="px-5 py-4">
                         <p className="font-semibold text-zinc-900">{product.name}</p>
@@ -191,13 +239,22 @@ export default async function AdminStockPage() {
                         </span>
                       </td>
                       <td className="px-5 py-4">
-                        {product.stock === 0 ? (
-                          <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-bold text-red-700">Habis</span>
-                        ) : product.stock <= 5 ? (
-                          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700">Menipis</span>
-                        ) : (
-                          <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700">Tersedia</span>
-                        )}
+                        <Badge
+                          variant={
+                            product.stock === 0
+                              ? "danger"
+                              : product.stock <= 5
+                                ? "warning"
+                                : "success"
+                          }
+                          size="md"
+                        >
+                          {product.stock === 0
+                            ? "Habis"
+                            : product.stock <= 5
+                              ? "Menipis"
+                              : "Tersedia"}
+                        </Badge>
                       </td>
                       <td className="px-5 py-4">
                         <div className="flex items-center justify-end gap-1.5">

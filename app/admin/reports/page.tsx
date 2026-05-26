@@ -1,6 +1,15 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
 import { requireAdminSession } from "@/lib/session-guards";
+import {
+  PageHeader,
+  StatCard,
+  SectionCard,
+  EmptyState,
+  Badge,
+  type BadgeVariant,
+} from "@/components/admin/ui";
 
 export default async function AdminReportsPage() {
   await requireAdminSession();
@@ -14,7 +23,7 @@ export default async function AdminReportsPage() {
     0,
     23,
     59,
-    59
+    59,
   );
 
   const [
@@ -56,10 +65,9 @@ export default async function AdminReportsPage() {
   const lastMonthRevenue = revenueLastMonth._sum.total ?? 0;
   const revenueGrowth =
     lastMonthRevenue > 0
-      ? (
-          ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) *
-          100
-        ).toFixed(1)
+      ? Math.round(
+          ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100,
+        )
       : null;
 
   const statusMap: Record<string, number> = {};
@@ -70,136 +78,112 @@ export default async function AdminReportsPage() {
     year: "numeric",
   });
 
+  const STATUS_ROWS: Array<{
+    key: string;
+    label: string;
+    variant: BadgeVariant;
+  }> = [
+    { key: "PENDING", label: "Menunggu", variant: "warning" },
+    { key: "PROCESSING", label: "Diproses", variant: "info" },
+    { key: "SHIPPED", label: "Dikirim", variant: "info" },
+    { key: "DELIVERED", label: "Selesai", variant: "success" },
+    { key: "CANCELLED", label: "Dibatalkan", variant: "danger" },
+  ];
+
   return (
     <div className="mx-auto max-w-4xl px-4 py-5 md:py-10">
-      <div>
-        <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">
-          Laporan
-        </h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          Ringkasan performa toko — {monthName}.
-        </p>
-      </div>
+      <PageHeader
+        title="📊 Laporan"
+        subtitle={`Ringkasan performa toko — ${monthName}.`}
+        actions={
+          <Link
+            href="/admin/dashboard"
+            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-2 text-xs font-bold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50"
+          >
+            ← Dashboard
+          </Link>
+        }
+      />
 
       {/* This month stats */}
-      <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <div className="rounded-2xl border border-zinc-100 bg-white p-4">
-          <p className="text-xs font-semibold text-zinc-500">
-            Pendapatan Bulan Ini
-          </p>
-          <p className="mt-2 text-lg font-black text-blue-600">
-            {formatRupiah(thisMonthRevenue)}
-          </p>
-          {revenueGrowth !== null && (
-            <p
-              className={`mt-1 text-xs font-semibold ${
-                parseFloat(revenueGrowth) >= 0
-                  ? "text-emerald-600"
-                  : "text-red-500"
-              }`}
-            >
-              {parseFloat(revenueGrowth) >= 0 ? "▲" : "▼"}{" "}
-              {Math.abs(parseFloat(revenueGrowth))}% vs bulan lalu
-            </p>
-          )}
-        </div>
-        <div className="rounded-2xl border border-zinc-100 bg-white p-4">
-          <p className="text-xs font-semibold text-zinc-500">
-            Pendapatan Bulan Lalu
-          </p>
-          <p className="mt-2 text-lg font-black text-zinc-700">
-            {formatRupiah(lastMonthRevenue)}
-          </p>
-        </div>
-        <div className="rounded-2xl border border-zinc-100 bg-white p-4">
-          <p className="text-xs font-semibold text-zinc-500">Order Bulan Ini</p>
-          <p className="mt-2 text-2xl font-black text-blue-600">
-            {ordersThisMonth}
-          </p>
-        </div>
-        <div className="rounded-2xl border border-zinc-100 bg-white p-4">
-          <p className="text-xs font-semibold text-zinc-500">
-            Order Bulan Lalu
-          </p>
-          <p className="mt-2 text-2xl font-black text-zinc-700">
-            {ordersLastMonth}
-          </p>
-        </div>
-      </div>
+      <section className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatCard
+          label="Pendapatan Bulan Ini"
+          value={formatRupiah(thisMonthRevenue)}
+          helper={
+            revenueGrowth !== null ? `vs ${formatRupiah(lastMonthRevenue)}` : "—"
+          }
+          variant="accent"
+          trend={revenueGrowth !== null ? { value: revenueGrowth } : undefined}
+        />
+        <StatCard
+          label="Pendapatan Bulan Lalu"
+          value={formatRupiah(lastMonthRevenue)}
+          helper="Periode sebelumnya"
+          variant="default"
+        />
+        <StatCard
+          label="Order Bulan Ini"
+          value={ordersThisMonth}
+          helper="Termasuk semua status"
+          variant="primary"
+        />
+        <StatCard
+          label="Order Bulan Lalu"
+          value={ordersLastMonth}
+          helper="Periode sebelumnya"
+          variant="default"
+        />
+      </section>
 
-      <div className="mt-5 grid gap-5 lg:grid-cols-2">
-        {/* Top products */}
-        <section className="rounded-2xl border border-zinc-200 bg-white p-4 md:rounded-3xl md:p-5">
-          <h2 className="font-bold text-zinc-950">Produk Terlaris</h2>
-          <div className="mt-4 space-y-2">
-            {topProducts.length > 0 ? (
-              topProducts.map((item, i) => (
+      <div className="mt-6 grid gap-5 lg:grid-cols-2">
+        <SectionCard title="Produk Terlaris" subtitle="Top 10 by quantity sold">
+          {topProducts.length > 0 ? (
+            <div className="space-y-2">
+              {topProducts.map((item, i) => (
                 <div
                   key={item.name}
-                  className="flex items-center gap-3 rounded-xl bg-zinc-50 px-4 py-3"
+                  className="flex items-center gap-3 rounded-xl bg-zinc-50 px-4 py-3 transition hover:bg-zinc-100"
                 >
-                  <span className="w-6 shrink-0 text-center text-xs font-black text-zinc-400">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-natalo-50 text-xs font-black text-natalo-700">
                     {i + 1}
                   </span>
-                  <p className="flex-1 truncate text-sm font-semibold text-zinc-900">
+                  <p className="flex-1 truncate text-sm font-bold text-zinc-900">
                     {item.name}
                   </p>
-                  <span className="shrink-0 rounded-full bg-blue-100 px-2.5 py-1 text-xs font-bold text-blue-700">
-                    {item._sum.quantity ?? 0}x
-                  </span>
+                  <Badge variant="info" size="md">
+                    {item._sum.quantity ?? 0}×
+                  </Badge>
                 </div>
-              ))
-            ) : (
-              <p className="text-sm text-zinc-500">Belum ada data.</p>
-            )}
-          </div>
-        </section>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              icon="📈"
+              title="Belum ada data"
+              description="Akan muncul setelah ada order pertama."
+            />
+          )}
+        </SectionCard>
 
-        {/* Order by status */}
-        <section className="rounded-2xl border border-zinc-200 bg-white p-4 md:rounded-3xl md:p-5">
-          <h2 className="font-bold text-zinc-950">Distribusi Status Order</h2>
-          <div className="mt-4 space-y-2">
-            {[
-              {
-                key: "PENDING",
-                label: "Menunggu",
-                color: "bg-amber-100 text-amber-700",
-              },
-              {
-                key: "PROCESSING",
-                label: "Diproses",
-                color: "bg-blue-100 text-blue-700",
-              },
-              {
-                key: "SHIPPED",
-                label: "Dikirim",
-                color: "bg-indigo-100 text-indigo-700",
-              },
-              {
-                key: "DELIVERED",
-                label: "Selesai",
-                color: "bg-emerald-100 text-emerald-700",
-              },
-              {
-                key: "CANCELLED",
-                label: "Dibatalkan",
-                color: "bg-red-100 text-red-700",
-              },
-            ].map(({ key, label, color }) => (
+        <SectionCard
+          title="Distribusi Status Order"
+          subtitle="Total per status semua-waktu"
+        >
+          <div className="space-y-2">
+            {STATUS_ROWS.map(({ key, label, variant }) => (
               <div
                 key={key}
                 className="flex items-center justify-between rounded-xl bg-zinc-50 px-4 py-3"
               >
-                <p className="text-sm font-medium text-zinc-700">{label}</p>
-                <span
-                  className={`rounded-full px-2.5 py-1 text-xs font-bold ${color}`}
-                >
+                <p className="text-sm font-bold text-zinc-800">{label}</p>
+                <Badge variant={variant} size="md">
                   {statusMap[key] ?? 0}
-                </span>
+                </Badge>
               </div>
             ))}
           </div>
-        </section>
+        </SectionCard>
       </div>
     </div>
   );

@@ -18,6 +18,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getPerformaMetrics } from "@/lib/promo-analytics";
 import { formatRupiah } from "@/lib/format";
+import { PageHeader } from "@/components/admin/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -86,17 +87,18 @@ export default async function AdminDiskonHub() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-5 md:px-8 md:py-10">
-      {/* ── Header ──────────────────────────────────────────────── */}
-      <div className="flex flex-col items-start justify-between gap-2 md:flex-row md:items-end">
-        <div>
-          <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">
-            Buat Diskon
-          </h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            Buat diskon sendiri untuk meningkatkan penjualan!
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="🎁 Buat Diskon"
+        subtitle="Hub semua jenis promosi: Promo Toko, Voucher, Flash Sale, dan Paket. Pilih tipe yang sesuai campaign kamu."
+        actions={
+          <Link
+            href="/admin/dashboard"
+            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-2 text-xs font-bold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50"
+          >
+            ← Dashboard
+          </Link>
+        }
+      />
 
       {/* ── 4 Quick Action Cards ────────────────────────────────── */}
       <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

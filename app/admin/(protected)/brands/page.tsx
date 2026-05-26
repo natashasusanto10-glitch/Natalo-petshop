@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { BrandLogoOrderClient } from "@/components/admin/BrandLogoOrderClient";
 import { BrandLogoUploadButton } from "@/components/admin/BrandLogoUploadButton";
+import { PageHeader, EmptyState } from "@/components/admin/ui";
 
 function slugify(name: string) {
   return name
@@ -153,22 +154,18 @@ export default async function AdminBrandsPage({
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-5 md:py-10">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
+      <PageHeader
+        title="Brand"
+        subtitle={`${brands.length} brand terdaftar.`}
+        actions={
           <Link
-            href="/admin"
-            className="hidden text-sm font-bold text-zinc-500 hover:text-zinc-950 md:inline"
+            href="/admin/dashboard"
+            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-2 text-xs font-bold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50"
           >
-            Kembali ke admin
+            ← Dashboard
           </Link>
-          <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:mt-2 md:text-3xl">
-            Brand
-          </h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            {brands.length} brand terdaftar
-          </p>
-        </div>
-      </div>
+        }
+      />
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2">
         {needsReviewCount > 0 && (
@@ -255,9 +252,12 @@ export default async function AdminBrandsPage({
 
       <div className="mt-6 overflow-hidden rounded-2xl border border-zinc-200 bg-white">
         {brands.length === 0 ? (
-          <div className="p-12 text-center text-sm text-zinc-500">
-            Belum ada brand.
-          </div>
+          <EmptyState
+            icon="🏭"
+            title="Belum ada brand"
+            description="Tambahkan brand pertama lewat form di atas."
+            size="full"
+          />
         ) : (
           <div className="divide-y divide-zinc-100">
             {brands.map((brand) => (

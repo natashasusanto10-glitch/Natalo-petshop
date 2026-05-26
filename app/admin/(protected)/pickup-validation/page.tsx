@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
 import { markAsPickedUp } from "../orders/[id]/actions";
+import { PageHeader, Badge } from "@/components/admin/ui";
 
 const PICKUP_STATUS_LABELS: Record<string, string> = {
   WAITING_PAYMENT: "Menunggu pembayaran",
@@ -33,18 +34,27 @@ export default async function PickupValidationPage({
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-5 md:py-10">
-      <Link href="/admin/orders" className="text-sm font-bold text-zinc-500 hover:text-zinc-950">
-        ← Kembali ke pesanan
-      </Link>
-      <div className="mt-3 md:mt-4">
-        <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">Validasi Pickup</h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          Masukkan kode pickup yang ditunjukkan customer saat mengambil pesanan.
-        </p>
-      </div>
+      <PageHeader
+        title="🏪 Validasi Pickup"
+        subtitle="Masukkan kode pickup yang ditunjukkan customer saat mengambil pesanan di toko."
+        actions={
+          <Link
+            href="/admin/orders"
+            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-2 text-xs font-bold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50"
+          >
+            ← Kembali ke pesanan
+          </Link>
+        }
+      />
 
-      <form action="/admin/pickup-validation" className="mt-5 rounded-2xl border border-zinc-200 p-4 md:mt-8 md:rounded-3xl md:p-5">
-        <label className="text-sm font-bold text-zinc-700" htmlFor="code">
+      <form
+        action="/admin/pickup-validation"
+        className="mt-6 rounded-2xl border border-zinc-200 bg-white p-4 md:p-5"
+      >
+        <label
+          className="text-sm font-bold text-zinc-700"
+          htmlFor="code"
+        >
           Kode Pickup
         </label>
         <div className="mt-2 flex flex-col gap-3 sm:flex-row">
@@ -53,51 +63,74 @@ export default async function PickupValidationPage({
             name="code"
             defaultValue={code}
             placeholder="NTL-4821"
-            className="min-w-0 flex-1 rounded-2xl border border-zinc-300 px-4 py-3 font-mono text-sm font-black uppercase outline-none focus:border-zinc-700"
+            className="min-w-0 flex-1 rounded-2xl border border-zinc-300 px-4 py-3 font-mono text-base font-black uppercase tracking-wider outline-none transition focus:border-natalo-500 focus:ring-2 focus:ring-natalo-100"
           />
-          <button className="rounded-full bg-zinc-950 px-6 py-3 text-sm font-black text-white hover:bg-zinc-800">
+          <button className="rounded-full bg-natalo-600 px-6 py-3 text-sm font-black text-white shadow-sm transition hover:bg-natalo-700">
             Cek Kode
           </button>
         </div>
       </form>
 
       {invalidCode && (
-        <div className="mt-5 rounded-3xl border border-red-100 bg-red-50 p-5 text-sm font-semibold text-red-700">
-          Kode pickup tidak ditemukan. Pastikan kode yang dimasukkan sudah benar.
+        <div className="mt-5 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+          <span className="text-xl leading-none">⚠️</span>
+          <p>
+            Kode pickup <span className="font-mono font-black">{code}</span> tidak
+            ditemukan. Pastikan kode yang dimasukkan sudah benar.
+          </p>
         </div>
       )}
 
       {order && (
-        <section className="mt-5 rounded-3xl border border-green-200 bg-green-50 p-5">
+        <section className="mt-5 overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 via-emerald-50 to-white p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-sm font-black text-green-800">Pesanan Valid</p>
-              <h2 className="mt-1 text-2xl font-black text-zinc-950">{order.orderNumber}</h2>
-              <p className="mt-1 text-sm text-zinc-600">Customer: {order.customerName}</p>
+              <p className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500 px-3 py-1 text-xs font-black text-white shadow-sm">
+                ✓ Pesanan Valid
+              </p>
+              <h2 className="mt-2.5 text-2xl font-black text-zinc-950">
+                {order.orderNumber}
+              </h2>
+              <p className="mt-1 text-sm text-zinc-600">
+                Customer: <span className="font-bold">{order.customerName}</span>
+              </p>
             </div>
-            <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-green-700">
-              {PICKUP_STATUS_LABELS[order.pickupStatus ?? ""] ?? order.pickupStatus ?? "-"}
-            </span>
+            <Badge variant="success" size="md">
+              {PICKUP_STATUS_LABELS[order.pickupStatus ?? ""] ??
+                order.pickupStatus ??
+                "-"}
+            </Badge>
           </div>
 
           <div className="mt-5 space-y-3 rounded-2xl bg-white p-4 text-sm">
-            <p>
-              <span className="font-semibold">Metode:</span> Ambil Sendiri di Toko
-            </p>
-            <p>
-              <span className="font-semibold">Kode:</span>{" "}
-              <span className="font-mono font-black">{order.pickupCode}</span>
-            </p>
-            <p>
-              <span className="font-semibold">Total:</span> {formatRupiah(order.total)}
-            </p>
+            <div className="flex justify-between gap-2 border-b border-zinc-100 pb-2">
+              <span className="font-bold text-zinc-700">Metode</span>
+              <span className="text-zinc-900">Ambil Sendiri di Toko</span>
+            </div>
+            <div className="flex justify-between gap-2 border-b border-zinc-100 pb-2">
+              <span className="font-bold text-zinc-700">Kode Pickup</span>
+              <span className="font-mono font-black tracking-wider text-zinc-950">
+                {order.pickupCode}
+              </span>
+            </div>
+            <div className="flex justify-between gap-2 border-b border-zinc-100 pb-2">
+              <span className="font-bold text-zinc-700">Total</span>
+              <span className="font-black text-zinc-950">
+                {formatRupiah(order.total)}
+              </span>
+            </div>
             <div>
-              <p className="font-semibold">Produk</p>
+              <p className="font-bold text-zinc-700">Produk</p>
               <div className="mt-2 space-y-2">
                 {order.items.map((item) => (
-                  <div key={item.id} className="flex justify-between gap-3 rounded-xl bg-zinc-50 px-3 py-2">
-                    <span>{item.name}</span>
-                    <span className="font-black">Qty {item.quantity}</span>
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between gap-3 rounded-xl bg-zinc-50 px-3 py-2.5"
+                  >
+                    <span className="truncate font-medium text-zinc-800">
+                      {item.name}
+                    </span>
+                    <Badge variant="info">Qty {item.quantity}</Badge>
                   </div>
                 ))}
               </div>
@@ -106,13 +139,14 @@ export default async function PickupValidationPage({
 
           {canHandOver && handOverAction ? (
             <form action={handOverAction} className="mt-5">
-              <button className="w-full rounded-full bg-emerald-600 px-6 py-3 text-sm font-black text-white hover:bg-emerald-700">
-                Serahkan Pesanan
+              <button className="w-full rounded-full bg-emerald-600 px-6 py-3.5 text-sm font-black text-white shadow-sm transition hover:bg-emerald-700">
+                ✓ Serahkan Pesanan ke Customer
               </button>
             </form>
           ) : (
-            <p className="mt-5 rounded-2xl bg-white px-4 py-3 text-sm font-bold text-zinc-600">
-              Pesanan belum bisa diserahkan. Pastikan status siap diambil, pembayaran lunas, dan belum pernah diambil.
+            <p className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+              ⚠️ Pesanan belum bisa diserahkan. Pastikan status siap diambil,
+              pembayaran lunas, dan belum pernah diambil.
             </p>
           )}
         </section>
