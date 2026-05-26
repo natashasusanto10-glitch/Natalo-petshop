@@ -19,7 +19,7 @@ export async function GET() {
   const whatsappRaw =
     process.env.NEXT_PUBLIC_WA_NUMBER ??
     process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ??
-    "6281330003880";
+    "6281289997113";
   const whatsapp = whatsappRaw.replace(/[^\d]/g, "");
 
   return NextResponse.json(
@@ -27,7 +27,7 @@ export async function GET() {
       store: {
         name: process.env.NEXT_PUBLIC_BRAND_NAME ?? "Natalo Petshop",
         address: {
-          line1: "Jl. MT. Haryono No. 103 BCD",
+          line1: "JLN MT Haryono No 103 B C D",
           city: "Medan",
           province: "Sumatera Utara",
           postalCode: "20212",

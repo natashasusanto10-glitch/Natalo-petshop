@@ -23,7 +23,7 @@ type OriginInput = {
 
 export const DEFAULT_SHOP_ORIGIN = {
   name: "Natalo Petshop / Sinar Petstore",
-  address: "Jl. MT Haryono No. 103 D Medan",
+  address: "JLN MT Haryono No 103 B C D",
   district: "Medan Kota",
   city: "Medan",
   province: "Sumatera Utara",

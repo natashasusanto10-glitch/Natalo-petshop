@@ -42,7 +42,7 @@ const contacts = [
   {
     icon: "📍",
     label: "Alamat",
-    value: "Jl. MT. Haryono No. 103 BCD, Medan, Sumatera Utara",
+    value: "JLN MT Haryono No 103 B C D, Medan, Sumatera Utara",
   },
   { icon: "📱", label: "WhatsApp", value: "+62 812 8999 7113" },
   { icon: "📧", label: "Email", value: STORE_CONTACT_EMAIL },

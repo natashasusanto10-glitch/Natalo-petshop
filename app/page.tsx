@@ -76,7 +76,7 @@ const SHORTCUT_ITEMS: {
   {
     icon: "house-call-grooming",
     label: "House Call Grooming",
-    href: "https://wa.me/6281330003880?text=Halo%20Natalo%2C%20saya%20ingin%20booking%20House%20Call%20Grooming",
+    href: "https://wa.me/6281289997113?text=Halo%20Natalo%2C%20saya%20ingin%20booking%20House%20Call%20Grooming",
     bg: "bg-emerald-50",
     color: "text-emerald-600",
     external: true,
@@ -84,7 +84,7 @@ const SHORTCUT_ITEMS: {
   {
     icon: "dog-training",
     label: "Dog Training",
-    href: "https://wa.me/6281330003880?text=Halo%20Natalo%2C%20saya%20ingin%20konsultasi%20Dog%20Training",
+    href: "https://wa.me/6281289997113?text=Halo%20Natalo%2C%20saya%20ingin%20konsultasi%20Dog%20Training",
     bg: "bg-violet-50",
     color: "text-violet-600",
     external: true,
@@ -711,7 +711,7 @@ export default async function HomePage() {
         priceRange: "Rp",
         address: {
           "@type": "PostalAddress",
-          streetAddress: "Jl. MT. Haryono No. 103 BCD",
+          streetAddress: "JLN MT Haryono No 103 B C D",
           addressLocality: "Medan",
           addressRegion: "Sumatera Utara",
           addressCountry: "ID",
