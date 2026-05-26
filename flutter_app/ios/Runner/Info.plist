@@ -105,6 +105,8 @@
 		</array>
 		<key>UIStatusBarHidden</key>
 		<false/>
+		<key>UIStatusBarStyle</key>
+		<string>UIStatusBarStyleLightContent</string>
 		<!-- LSApplicationQueriesSchemes — diperlukan iOS 9+ untuk
 		     `canOpenURL` + `launchUrl` ke external app schemes. Tanpa
 		     ini, launchUrl(LaunchMode.externalApplication) untuk wa.me/...
