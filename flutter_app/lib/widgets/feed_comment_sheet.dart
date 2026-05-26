@@ -313,6 +313,34 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     });
   }
 
+  /// Delete komentar user sendiri. Optimistic remove dari local list,
+  /// rollback kalau API gagal.
+  ///
+  /// Return Future<bool> ok status — true kalau sukses delete. Caller
+  /// (moderation sheet) pakai untuk decide snackbar success vs error.
+  Future<bool> _deleteComment(FeedComment comment) async {
+    if (!mounted) return false;
+    // Snapshot untuk rollback kalau API gagal.
+    final snapshot = List<FeedComment>.from(_comments);
+    setState(() {
+      _comments = _comments.where((c) => c.id != comment.id).toList();
+    });
+    try {
+      await feedService.deleteComment(comment.id);
+      // Sukses — comment beneran hilang. Tidak perlu refresh full list
+      // (optimistic update sudah done).
+      return true;
+    } catch (e) {
+      // Rollback optimistic state.
+      if (mounted) {
+        setState(() {
+          _comments = snapshot;
+        });
+      }
+      return false;
+    }
+  }
+
   /// Group comments: parents first (newest-first), each followed by
   /// chronological replies. Server bisa return flat — kita group sini.
   List<_CommentDisplayItem> _buildDisplayItems() {
@@ -528,11 +556,19 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
             );
           }
           final item = items[adjustedIndex];
+          // canDelete = current user adalah author komentar. Drives
+          // tampilan "Hapus" di moderation sheet (vs Laporkan/Blokir
+          // untuk komentar orang lain).
+          final currentUserId = memberStore.profile?.id;
+          final isOwn = currentUserId != null &&
+              currentUserId == item.comment.author.id;
           return _CommentTile(
             comment: item.comment,
             isReply: item.isReply,
             onLike: () => _toggleLike(item.comment),
             onReply: () => _setReplyTarget(item.comment),
+            canDelete: isOwn,
+            onDelete: isOwn ? () => _deleteComment(item.comment) : null,
           );
         },
       ),
@@ -852,12 +888,22 @@ class _CommentTile extends StatelessWidget {
   final bool isReply;
   final VoidCallback onLike;
   final VoidCallback onReply;
+  /// Callback delete dari parent — return Future<bool> ok/fail.
+  /// Parent yang panggil feedService.deleteComment + optimistic remove
+  /// dari local state. Nullable supaya guest user / non-owner tidak
+  /// crash.
+  final Future<bool> Function()? onDelete;
+  /// True kalau current user adalah author komentar ini. Drives lock
+  /// untuk "Hapus" action di moderation sheet.
+  final bool canDelete;
 
   const _CommentTile({
     required this.comment,
     required this.isReply,
     required this.onLike,
     required this.onReply,
+    this.onDelete,
+    this.canDelete = false,
   });
 
   @override
@@ -884,14 +930,18 @@ class _CommentTile extends StatelessWidget {
       // user laporkan + blokir author.
       behavior: HitTestBehavior.opaque,
       onLongPress: () {
-        final isOwnComment = author.isAdmin;
+        // Hide block/report option kalau ini komen sendiri (canDelete).
+        // Tampilkan "Hapus" instead. Cegah self-report / self-block yang
+        // gak masuk akal.
         showModerationActions(
           context,
           targetKind: ReportTargetKind.feedComment,
           targetId: comment.id,
           authorId: author.id,
-          authorName: isOwnComment ? null : name,
-          allowBlock: !isOwnComment,
+          authorName: canDelete ? null : name,
+          allowBlock: !canDelete,
+          allowSelfDelete: canDelete,
+          onSelfDelete: canDelete && onDelete != null ? onDelete : null,
           useFeedStyle: true,
         );
       },

@@ -27,9 +27,14 @@ class ModerationActionResult {
   /// User trigger report → caller bisa show toast / dim item.
   final bool didReport;
 
+  /// User trigger self-delete (own comment / post) → caller harus
+  /// optimistic remove dari list.
+  final bool didDelete;
+
   const ModerationActionResult({
     this.didBlock = false,
     this.didReport = false,
+    this.didDelete = false,
   });
 }
 
@@ -37,6 +42,12 @@ class ModerationActionResult {
 ///
 /// [authorId] dan [authorName] dipakai untuk block. Salah satu wajib
 /// (preferensi ID kalau ada).
+///
+/// [allowSelfDelete] + [onSelfDelete]: kalau set true + callback, sheet
+/// tampilkan opsi "Hapus" untuk user yang own konten. Caller wajib
+/// pastikan kondisi own (mis. currentUserId == author.id). Callback
+/// di-trigger setelah confirm dialog tapi SEBELUM sheet dismiss — caller
+/// bertanggung jawab pop sheet kalau perlu setelah delete complete.
 Future<ModerationActionResult?> showModerationActions(
   BuildContext context, {
   required ReportTargetKind targetKind,
@@ -45,6 +56,8 @@ Future<ModerationActionResult?> showModerationActions(
   String? authorName,
   bool allowBlock = true,
   bool useFeedStyle = false,
+  bool allowSelfDelete = false,
+  Future<bool> Function()? onSelfDelete,
 }) {
   return showModalBottomSheet<ModerationActionResult>(
     context: context,
@@ -58,6 +71,8 @@ Future<ModerationActionResult?> showModerationActions(
       authorName: authorName,
       allowBlock: allowBlock,
       useFeedStyle: useFeedStyle,
+      allowSelfDelete: allowSelfDelete,
+      onSelfDelete: onSelfDelete,
     ),
   );
 }
@@ -69,6 +84,8 @@ class _ModerationSheet extends StatelessWidget {
   final String? authorName;
   final bool allowBlock;
   final bool useFeedStyle;
+  final bool allowSelfDelete;
+  final Future<bool> Function()? onSelfDelete;
 
   const _ModerationSheet({
     required this.targetKind,
@@ -77,6 +94,8 @@ class _ModerationSheet extends StatelessWidget {
     this.authorName,
     required this.allowBlock,
     required this.useFeedStyle,
+    this.allowSelfDelete = false,
+    this.onSelfDelete,
   });
 
   @override
@@ -113,22 +132,68 @@ class _ModerationSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            // Report action.
-            _ActionTile(
-              icon: Icons.flag_outlined,
-              iconColor: const Color(0xFFEF4444),
-              label: 'Laporkan ${targetKind.displayLabel}',
-              subtitle: 'Kirim ke moderator Natalo untuk ditinjau',
-              labelColor: labelColor,
-              subtitleColor: subtitleColor,
-              onTap: () async {
-                final result = await _openReportFlow(context);
-                if (!context.mounted) return;
-                Navigator.of(context).pop(
-                  ModerationActionResult(didReport: result),
-                );
-              },
-            ),
+            // Self-delete tile — owner-only. Tampil paling atas supaya
+            // primary action mudah di-tap. Hide kalau bukan owner
+            // (allowSelfDelete=false default).
+            if (allowSelfDelete && onSelfDelete != null) ...[
+              _ActionTile(
+                icon: Icons.delete_outline_rounded,
+                iconColor: const Color(0xFFEF4444),
+                label: 'Hapus ${targetKind.displayLabel}',
+                subtitle:
+                    'Hapus permanen dari Natalo. Aksi ini tidak bisa di-undo.',
+                labelColor: labelColor,
+                subtitleColor: subtitleColor,
+                onTap: () async {
+                  final confirmed = await _confirmDelete(context);
+                  if (!confirmed) return;
+                  final ok = await onSelfDelete!.call();
+                  if (!context.mounted) return;
+                  Navigator.of(context).pop(
+                    ModerationActionResult(didDelete: ok),
+                  );
+                  if (ok) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          '${targetKind.displayLabel.toUpperCase().substring(0, 1)}${targetKind.displayLabel.substring(1)} dihapus.',
+                        ),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Gagal hapus ${targetKind.displayLabel}. Coba lagi.',
+                        ),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                },
+              ),
+              Divider(height: 1, color: dividerColor),
+            ],
+            // Report tile — hide kalau ini own content (gak masuk akal
+            // laporkan diri sendiri).
+            if (!allowSelfDelete) ...[
+              _ActionTile(
+                icon: Icons.flag_outlined,
+                iconColor: const Color(0xFFEF4444),
+                label: 'Laporkan ${targetKind.displayLabel}',
+                subtitle: 'Kirim ke moderator Natalo untuk ditinjau',
+                labelColor: labelColor,
+                subtitleColor: subtitleColor,
+                onTap: () async {
+                  final result = await _openReportFlow(context);
+                  if (!context.mounted) return;
+                  Navigator.of(context).pop(
+                    ModerationActionResult(didReport: result),
+                  );
+                },
+              ),
+            ],
             if (allowBlock &&
                 (authorId != null || (authorName?.isNotEmpty ?? false))) ...[
               Divider(height: 1, color: dividerColor),
@@ -222,6 +287,33 @@ class _ModerationSheet extends StatelessWidget {
       ),
     );
     return result.ok;
+  }
+
+  Future<bool> _confirmDelete(BuildContext context) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Hapus ${targetKind.displayLabel}?'),
+        content: Text(
+          '${targetKind.displayLabel[0].toUpperCase()}${targetKind.displayLabel.substring(1)} '
+          'akan dihapus permanen dan tidak bisa di-undo.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Batal'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFFEF4444),
+            ),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+    return result == true;
   }
 
   Future<bool> _confirmBlock(BuildContext context) async {

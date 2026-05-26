@@ -389,6 +389,9 @@ export async function listFeedComments({
       postId,
       parentCommentId: null,
       isHidden: false,
+      // Hide komentar yang user hapus sendiri. isHidden=admin moderation;
+      // deletedAt=user self-delete. Semantik beda, dua-duanya filter out.
+      deletedAt: null,
     },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: COMMENT_PAGE_SIZE + 1,
@@ -396,7 +399,7 @@ export async function listFeedComments({
     include: {
       author: { select: { id: true, name: true, username: true, role: true, profilePhotoUrl: true } },
       replies: {
-        where: { isHidden: false },
+        where: { isHidden: false, deletedAt: null },
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
         include: {
           author: { select: { id: true, name: true, username: true, role: true, profilePhotoUrl: true } },

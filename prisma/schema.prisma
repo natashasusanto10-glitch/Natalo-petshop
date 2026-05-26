@@ -1271,6 +1271,15 @@ model FeedComment {
   hiddenAt     DateTime?
   hiddenReason String?
 
+  /// Self-delete marker — user hapus komentar sendiri. Berbeda dari
+  /// isHidden (admin moderation):
+  ///   - isHidden = admin block konten yang melanggar
+  ///   - deletedAt = user voluntary remove komen mereka
+  /// Listing query filter deletedAt = null. Reply ke komentar yang
+  /// di-self-delete tetap visible (placeholder "Komentar dihapus" di UI
+  /// untuk parent supaya thread tetep readable).
+  deletedAt DateTime?
+
   likeCount Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
