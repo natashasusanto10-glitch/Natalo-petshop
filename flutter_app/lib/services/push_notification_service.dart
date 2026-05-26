@@ -156,6 +156,12 @@ class PushNotificationService {
 
   /// Register FCM token ke server (PWA `/api/push/subscribe-fcm`).
   /// Call setelah user login sukses.
+  ///
+  /// iOS tambahan: juga register raw APNs token (bukan FCM-wrapped) ke
+  /// `/api/push/subscribe-apns` supaya backend bisa direct-send ke APNs
+  /// Apple bypass Firebase. Diagnostic only — push reguler tetap via FCM.
+  /// `messaging.getAPNSToken()` return raw 64-char hex APNs device token.
+  /// Android: getAPNSToken() return null (no-op silently).
   Future<void> registerWithServer() async {
     final token = _currentToken;
     if (token == null || token.isEmpty) return;
@@ -166,7 +172,28 @@ class PushNotificationService {
       );
     } catch (error) {
       if (kDebugMode) {
-        debugPrint('[push] Register token failed: $error');
+        debugPrint('[push] Register FCM token failed: $error');
+      }
+    }
+
+    // iOS — register raw APNs token sebagai diagnostic backup channel.
+    // Allow backend untuk bypass Firebase saat investigate "FCM ok tapi
+    // device gak terima". Skip kalau bukan iOS atau APNs token gak
+    // tersedia (no permission / not yet registered).
+    try {
+      final apnsToken = await FirebaseMessaging.instance.getAPNSToken();
+      if (apnsToken != null && apnsToken.isNotEmpty) {
+        await apiClient.postJson(
+          '/api/push/subscribe-apns',
+          body: {'token': apnsToken},
+        );
+        if (kDebugMode) {
+          debugPrint('[push] APNs token registered: ${apnsToken.substring(0, 16)}...');
+        }
+      }
+    } catch (error) {
+      if (kDebugMode) {
+        debugPrint('[push] Register APNs token failed: $error');
       }
     }
   }
@@ -180,6 +207,17 @@ class PushNotificationService {
         '/api/push/subscribe-fcm',
         body: {'token': token},
       );
+    } catch (_) {}
+
+    // Cleanup APNs token registration juga (iOS only).
+    try {
+      final apnsToken = await FirebaseMessaging.instance.getAPNSToken();
+      if (apnsToken != null && apnsToken.isNotEmpty) {
+        await apiClient.deleteJson(
+          '/api/push/subscribe-apns',
+          body: {'token': apnsToken},
+        );
+      }
     } catch (_) {}
   }
 
