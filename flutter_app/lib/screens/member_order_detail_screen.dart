@@ -2065,10 +2065,36 @@ class _PaymentSummary extends StatelessWidget {
             label: 'Ongkir',
             value: formatRupiah(order.shippingCost),
           ),
-          if (order.discount > 0)
+          // Granular discount breakdown — split per kategori untuk
+          // transparency. Customer langsung tau "voucher saya yang -Rp
+          // 20rb itu untuk produk atau ongkir?". Match Shopee/Tokopedia
+          // pattern.
+          //
+          // Fallback chain: kalau productDiscount/shippingDiscount tidak
+          // tersedia (legacy order pre-split), tampilkan aggregate
+          // `discount` untuk backward compat.
+          if (order.productDiscount > 0)
+            _DiscountLineWithVoucher(
+              label: 'Diskon Produk',
+              amount: order.productDiscount,
+              voucherCode:
+                  order.productVoucherCode ?? order.voucherCode,
+            )
+          else if (order.shippingDiscount > 0)
+            // No productDiscount tapi ada shippingDiscount — keep aggregate
+            // gak tampil supaya cleaner.
+            const SizedBox.shrink()
+          else if (order.discount > 0)
             _SummaryLine(
               label: 'Diskon',
               value: '-${formatRupiah(order.discount)}',
+            ),
+          if (order.shippingDiscount > 0)
+            _DiscountLineWithVoucher(
+              label: 'Diskon Ongkir',
+              amount: order.shippingDiscount,
+              voucherCode: order.freeShippingVoucherCode ??
+                  order.shippingVoucherCode,
             ),
           // Saldo Refund line — tampil hanya kalau order pakai saldo.
           // Tanpa line ini, math tidak nyambung: subtotal - diskon ≠ total
@@ -2079,6 +2105,14 @@ class _PaymentSummary extends StatelessWidget {
               label: 'Saldo Refund Digunakan',
               value: '-${formatRupiah(order.refundBalanceUsed)}',
             ),
+          // Per-voucher detail list — tampil kalau VoucherUsage[] dari
+          // backend ada. Pattern Shopee: di bawah summary, tampilkan
+          // detail "✓ NATA-DISC: -Rp X" supaya customer confidence
+          // voucher mereka beneran ke-apply.
+          if (order.voucherUsages.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _VoucherUsageList(usages: order.voucherUsages),
+          ],
           const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.all(14),
@@ -2142,6 +2176,177 @@ class _SummaryLine extends StatelessWidget {
               color: strong ? _brandBlue : const Color(0xFF17202A),
               fontWeight: FontWeight.w900,
               fontSize: strong ? 18 : 14,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Discount line dengan inline voucher code chip (kalau ada).
+/// Pattern: "Diskon Produk (NATA-DISC) -Rp 30.000" — kode voucher
+/// di-display sebagai monospace pill kecil supaya stand out dari teks
+/// regular. Kalau voucher code null (mis. legacy order tanpa code
+/// tracking), label-only.
+class _DiscountLineWithVoucher extends StatelessWidget {
+  final String label;
+  final double amount;
+  final String? voucherCode;
+
+  const _DiscountLineWithVoucher({
+    required this.label,
+    required this.amount,
+    this.voucherCode,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 6,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Color(0xFF6B7280),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (voucherCode != null && voucherCode!.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEEF2FF),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      voucherCode!,
+                      style: const TextStyle(
+                        color: Color(0xFF4338CA),
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w800,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Text(
+            '-${formatRupiah(amount)}',
+            style: const TextStyle(
+              color: Color(0xFFDC2626),
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// List per-voucher detail di bawah summary. Tampilkan kalau backend
+/// kasih VoucherUsage[] data — biasa cuma untuk order yang pakai
+/// multiple voucher. Goal: transparency "voucher saya kepake gak?".
+///
+/// Layout: light blue box, checkmark icon + voucher label + amount.
+/// Match pattern Shopee detail order.
+class _VoucherUsageList extends StatelessWidget {
+  final List<OrderVoucherUsage> usages;
+
+  const _VoucherUsageList({required this.usages});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEEF2FF),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFC7D2FE)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(
+                Icons.local_offer_outlined,
+                size: 14,
+                color: Color(0xFF4338CA),
+              ),
+              SizedBox(width: 6),
+              Text(
+                'Voucher Digunakan',
+                style: TextStyle(
+                  color: Color(0xFF4338CA),
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          ...usages.map(
+            (u) => Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(
+                children: [
+                  const Text(
+                    '✓ ',
+                    style: TextStyle(
+                      color: Color(0xFF059669),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  Expanded(
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: '${u.displayLabel}: ',
+                            style: const TextStyle(
+                              color: Color(0xFF4338CA),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          TextSpan(
+                            text: u.code,
+                            style: const TextStyle(
+                              color: Color(0xFF1E1B4B),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '-${formatRupiah(u.discountAmount)}',
+                    style: const TextStyle(
+                      color: Color(0xFFDC2626),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],

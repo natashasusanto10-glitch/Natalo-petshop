@@ -25,6 +25,25 @@ export const orderDetailInclude = {
       },
     },
   },
+  // Voucher usage list — per-voucher discount amount + tipe. Customer
+  // UI tampilin "NATA-DISC (-Rp 2.500)" inline supaya user lihat
+  // voucher mereka beneran ke-apply. Sebelumnya cuma kode tanpa nominal
+  // = customer skeptis "voucher saya kepake gak?".
+  voucherUsages: {
+    select: {
+      voucherType: true,
+      discountAmount: true,
+      voucher: {
+        select: {
+          code: true,
+          name: true,
+          type: true,
+          discountScope: true,
+        },
+      },
+    },
+    orderBy: { usedAt: "asc" },
+  },
 } satisfies Prisma.OrderInclude;
 
 export type OrderDetailRecord = Prisma.OrderGetPayload<{
@@ -110,6 +129,12 @@ export function serializeOrderDetail(order: OrderDetailRecord) {
     subtotal: order.subtotal,
     shippingCost: order.shippingCost,
     discount: order.discount,
+    // Granular discount breakdown — split per kategori supaya customer
+    // UI bisa tampilin "Diskon Produk -Rp X" + "Diskon Ongkir -Rp Y"
+    // separately. Schema sudah track per-kategori (lihat /api/orders
+    // line 468-482), cuma serializer belum expose.
+    productDiscount: order.productDiscount,
+    shippingDiscount: order.shippingDiscount,
     refundBalanceUsed: order.refundBalanceUsed,
     total: order.total,
     manualBank: order.manualBank,
@@ -117,8 +142,27 @@ export function serializeOrderDetail(order: OrderDetailRecord) {
     voucherCode: order.voucherCode,
     productVoucherCode: order.productVoucherCode,
     shippingVoucherCode: order.shippingVoucherCode,
+    // Backend save voucher gratis ongkir ke field ini (lihat
+    // /api/orders/route.ts line 643). Sebelumnya gak di-expose → bug
+    // affect customer + admin UI invisible voucher ongkir.
+    freeShippingVoucherCode: order.freeShippingVoucherCode,
     loyaltyVoucherCode: order.loyaltyVoucherCode,
     manualVoucherCode: order.manualVoucherCode,
+    // Alias untuk manualVoucherCode di flow checkout terbaru
+    // (PRIVATE_MANUAL_CODE type). Backend save ke salah satu — fallback
+    // chain di client/admin display.
+    privateVoucherCode: order.privateVoucherCode,
+    // Per-voucher discount amount detail — customer UI iterate untuk
+    // tampilin nominal per voucher inline. Cegah customer komplain
+    // "voucher saya kepake gak?".
+    voucherUsages: order.voucherUsages.map((u) => ({
+      voucherType: u.voucherType,
+      discountAmount: u.discountAmount,
+      code: u.voucher.code,
+      name: u.voucher.name,
+      type: u.voucher.type,
+      discountScope: u.voucher.discountScope,
+    })),
     shippingAddress: order.shippingAddress,
     shippingCity: order.shippingCity,
     shippingPostalCode: order.shippingPostalCode,

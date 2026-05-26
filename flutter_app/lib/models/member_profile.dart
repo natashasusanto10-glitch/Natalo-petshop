@@ -306,6 +306,14 @@ class OrderSummary {
   final double subtotal;
   final double shippingCost;
   final double discount;
+  /// Diskon yang khusus apply ke produk (dari voucher tipe
+  /// PUBLIC_PRODUCT_DISCOUNT + LOYALTY_POINT_CLAIM + private scope PRODUCT).
+  /// Granular split dari `discount` aggregate untuk transparency UI.
+  final double productDiscount;
+  /// Diskon yang khusus apply ke ongkir (dari voucher PUBLIC_FREE_SHIPPING +
+  /// private scope SHIPPING). UI tampil "Diskon Ongkir -Rp X" terpisah dari
+  /// diskon produk.
+  final double shippingDiscount;
   // Saldo Refund yang dipakai untuk bayar order ini. > 0 = user pakai
   // saldo. Kalau total = 0 dan refundBalanceUsed > 0 → full saldo
   // payment (UI hide button "Bayar Sekarang", tampilkan badge).
@@ -320,7 +328,25 @@ class OrderSummary {
   final String? paymentUrl;
   final String? paymentProofUrl;
   final String? manualBank;
+  // Legacy + per-tipe voucher codes — backend save voucher ke salah satu
+  // slot berdasarkan tipe. UI iterate semua slot non-null untuk tampilan
+  // voucher list. Lihat /api/orders/route.ts untuk mapping.
   final String? voucherCode;
+  /// Voucher gratis ongkir (PUBLIC_FREE_SHIPPING). Disimpan terpisah
+  /// dari shippingVoucherCode legacy slot.
+  final String? freeShippingVoucherCode;
+  /// Voucher private dari penjual (PRIVATE_MANUAL_CODE). Alias
+  /// manualVoucherCode di backend flow baru. UI fallback chain
+  /// keduanya untuk display.
+  final String? privateVoucherCode;
+  final String? productVoucherCode;
+  final String? shippingVoucherCode;
+  final String? loyaltyVoucherCode;
+  final String? manualVoucherCode;
+  /// Per-voucher discount amount + tipe — dari VoucherUsage[] backend.
+  /// UI tampilin "NATA-DISC (-Rp 2.500)" inline per voucher untuk
+  /// transparency. Empty = order belum/tidak pakai voucher.
+  final List<OrderVoucherUsage> voucherUsages;
 
   // ── Items + timestamps ──
   final List<OrderItemSummary> items;
@@ -380,6 +406,8 @@ class OrderSummary {
     this.subtotal = 0,
     this.shippingCost = 0,
     this.discount = 0,
+    this.productDiscount = 0,
+    this.shippingDiscount = 0,
     this.refundBalanceUsed = 0,
     this.total = 0,
     this.uniqueCode,
@@ -390,6 +418,13 @@ class OrderSummary {
     this.paymentProofUrl,
     this.manualBank,
     this.voucherCode,
+    this.freeShippingVoucherCode,
+    this.privateVoucherCode,
+    this.productVoucherCode,
+    this.shippingVoucherCode,
+    this.loyaltyVoucherCode,
+    this.manualVoucherCode,
+    this.voucherUsages = const [],
     this.items = const [],
     this.itemCountFromApi = 0,
     required this.createdAt,
@@ -502,6 +537,21 @@ class OrderSummary {
       paymentProofUrl: _nullableString(json['paymentProofUrl']),
       manualBank: _nullableString(json['manualBank']),
       voucherCode: _nullableString(json['voucherCode']),
+      freeShippingVoucherCode:
+          _nullableString(json['freeShippingVoucherCode']),
+      privateVoucherCode: _nullableString(json['privateVoucherCode']),
+      productVoucherCode: _nullableString(json['productVoucherCode']),
+      shippingVoucherCode: _nullableString(json['shippingVoucherCode']),
+      loyaltyVoucherCode: _nullableString(json['loyaltyVoucherCode']),
+      manualVoucherCode: _nullableString(json['manualVoucherCode']),
+      voucherUsages: () {
+        final raw = json['voucherUsages'];
+        if (raw is! List) return const <OrderVoucherUsage>[];
+        return raw
+            .whereType<Map<String, dynamic>>()
+            .map(OrderVoucherUsage.fromJson)
+            .toList();
+      }(),
       uniqueCode:
           json['uniqueCode'] == null ? null : _asInt(json['uniqueCode']),
       detailUrl: _nullableString(json['detailUrl']),
@@ -519,6 +569,8 @@ class OrderSummary {
       subtotal: _asDouble(json['subtotal']),
       shippingCost: _asDouble(json['shippingCost']),
       discount: _asDouble(json['discount']),
+      productDiscount: _asDouble(json['productDiscount']),
+      shippingDiscount: _asDouble(json['shippingDiscount']),
       refundBalanceUsed: _asDouble(json['refundBalanceUsed']),
       total: _asDouble(json['total']),
       items: orderItems,
@@ -541,6 +593,67 @@ class OrderSummary {
   /// Alias `fromJson` — beberapa code (service) pakai fromApiJson.
   factory OrderSummary.fromApiJson(Map<String, dynamic> json) =>
       OrderSummary.fromJson(json);
+}
+
+/// Per-voucher usage detail untuk order ini. Backend kirim dari
+/// VoucherUsage[] table — track berapa nominal diskon yang each voucher
+/// kontribusi. UI iterate untuk tampilan "NATA-DISC (-Rp 2.500)" inline
+/// supaya customer transparansi voucher mereka beneran ke-apply.
+///
+/// Fields dari backend (lib/order-detail.ts serializer):
+///   - code: voucher.code (mis. "NATA-DISC")
+///   - name: voucher.name (display name)
+///   - voucherType: snapshot type string saat voucher di-use
+///   - type: voucher.type enum (PUBLIC_PRODUCT_DISCOUNT, dll)
+///   - discountScope: PRODUCT | SHIPPING (relevan untuk private voucher)
+///   - discountAmount: nominal Rp yang benar-benar di-apply
+class OrderVoucherUsage {
+  final String code;
+  final String? name;
+  final String? voucherType;
+  final String? type;
+  final String? discountScope;
+  final double discountAmount;
+
+  const OrderVoucherUsage({
+    required this.code,
+    this.name,
+    this.voucherType,
+    this.type,
+    this.discountScope,
+    this.discountAmount = 0,
+  });
+
+  factory OrderVoucherUsage.fromJson(Map<String, dynamic> json) {
+    return OrderVoucherUsage(
+      code: (json['code'] ?? '').toString(),
+      name: json['name'] is String ? json['name'] as String : null,
+      voucherType:
+          json['voucherType'] is String ? json['voucherType'] as String : null,
+      type: json['type'] is String ? json['type'] as String : null,
+      discountScope: json['discountScope'] is String
+          ? json['discountScope'] as String
+          : null,
+      discountAmount: (() {
+        final raw = json['discountAmount'];
+        if (raw is num) return raw.toDouble();
+        return double.tryParse(raw?.toString() ?? '') ?? 0;
+      })(),
+    );
+  }
+
+  /// Human-friendly label untuk display "Voucher Diskon Produk", dll.
+  String get displayLabel {
+    if (type == 'PUBLIC_FREE_SHIPPING') return 'Voucher Gratis Ongkir';
+    if (type == 'PUBLIC_PRODUCT_DISCOUNT') return 'Voucher Diskon Produk';
+    if (type == 'LOYALTY_POINT_CLAIM') return 'Voucher Loyalty Point';
+    if (type == 'PRIVATE_MANUAL_CODE') {
+      return discountScope == 'SHIPPING'
+          ? 'Voucher Ongkir Penjual'
+          : 'Voucher Diskon Penjual';
+    }
+    return 'Voucher';
+  }
 }
 
 class OrderItemSummary {
