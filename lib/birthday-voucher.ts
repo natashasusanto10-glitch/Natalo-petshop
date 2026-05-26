@@ -154,11 +154,13 @@ async function issueBirthdayVoucher(userId: string, currentYear: number): Promis
       where: { id: userId },
       data: {
         birthdayVoucherYear: currentYear,
-        // Lock birthDate saat voucher pertama issued. Kalau user sudah
-        // pernah dapat voucher sebelumnya (birthDateLockedAt sudah set),
-        // statement ini overwrite jadi timestamp baru — itu OK karena
-        // semantik field = "kapan terakhir lock" dan field-nya tetap
-        // non-null (block UI tetap aktif).
+        // Defensive re-lock — di model Opsi B (Shopee strict),
+        // birthDateLockedAt sudah ke-set saat user first save birthDate
+        // (lihat /api/member/profile PUT). Statement ini overwrite jadi
+        // timestamp baru — semantik field = "kapan terakhir lock", tetap
+        // non-null (block UI tetap aktif). Kalau ada edge case dimana
+        // voucher di-issue tapi lock belum set (mis. data corrupt /
+        // migration legacy), ini ensure lock terpasang.
         birthDateLockedAt: new Date(),
       },
     }),

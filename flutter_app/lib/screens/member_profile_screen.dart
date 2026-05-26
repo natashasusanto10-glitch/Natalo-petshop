@@ -88,6 +88,92 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
     // double check supaya kalau ada path lain yang call method ini,
     // tidak buka picker secara salah.
     if (_isBirthDateLocked) return;
+
+    // Warning dialog SEBELUM date picker — user perlu sadar bahwa
+    // tgl lahir akan terkunci permanen setelah save (Opsi B Shopee
+    // strict). Confirmation ini critical karena:
+    //   - Salah input = harus WA admin untuk koreksi (effort)
+    //   - Setelah locked = TIDAK BISA edit sendiri di app
+    //
+    // Dialog hanya muncul kalau user belum pernah set birthDate
+    // (_birthDate == null) — kalau sudah ada birthDate tapi unlocked
+    // (kasus rare: setelah admin override), skip dialog karena user
+    // memang request edit.
+    final isFirstTimeSet = _birthDate == null;
+    if (isFirstTimeSet) {
+      AppHaptics.tap();
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogCtx) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          icon: Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF6CC),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: const Icon(
+              Icons.lock_outline_rounded,
+              color: Color(0xFFFBBF24),
+              size: 28,
+            ),
+          ),
+          title: const Text(
+            'Tanggal lahir akan terkunci',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontWeight: FontWeight.w900),
+          ),
+          content: const Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Setelah kamu pilih dan simpan tanggal lahir, tanggal '
+                'akan TERKUNCI dan tidak bisa kamu ubah sendiri.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Color(0xFF374151),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  height: 1.5,
+                ),
+              ),
+              SizedBox(height: 10),
+              Text(
+                'Kalau salah input nanti, kamu harus hubungi admin via '
+                'WhatsApp untuk ralat. Pastikan tanggal yang kamu pilih '
+                'sudah BENAR.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Color(0xFF6B7280),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  height: 1.5,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx, false),
+              child: const Text('Batal'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogCtx, true),
+              style: FilledButton.styleFrom(
+                backgroundColor: _brandBlue,
+              ),
+              child: const Text('Lanjut'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+      // Re-check mounted setelah dialog dismiss — async gap.
+      if (!mounted) return;
+    }
+
     AppHaptics.tap();
     final now = DateTime.now();
     final initial =
@@ -633,6 +719,19 @@ class _BirthDatePickerTile extends StatelessWidget {
                       color: Color(0xFF6B7280),
                       fontSize: 11.5,
                       fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ] else if (!hasDate) ...[
+                  // Hint kalau belum di-set — warn user bahwa setelah save
+                  // akan ke-lock. Kombinasi dengan confirm dialog di
+                  // _pickBirthDate supaya user double-aware sebelum commit.
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Akan terkunci setelah disimpan.',
+                    style: TextStyle(
+                      color: Color(0xFFFBBF24),
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ],

@@ -80,10 +80,16 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "User tidak ditemukan." }, { status: 404 });
   }
 
-  // ── Anti-abuse: lock birthDate setelah voucher ultah pertama ───────
-  // Kalau user sudah pernah dapat voucher (birthDateLockedAt != null),
-  // tolak perubahan birthDate. User yang salah input bisa minta admin
-  // ubah via WA dengan verifikasi identitas. Pattern dari Shopee.
+  // ── Anti-abuse: Shopee-strict lock birthDate ──────────────────────
+  // Aturan:
+  //   - Kalau birthDateLockedAt != null → birthDate TIDAK BOLEH diubah.
+  //     User yang mau ralat harus hubungi admin (lihat
+  //     /admin/birth-date-overrides — admin override auto-clear lock).
+  //   - Kalau birthDateLockedAt == null → user bebas set/edit birthDate.
+  //     Setelah save dengan birthDate non-null, auto-lock IMMEDIATE.
+  //   - Special case: admin baru saja override (birthDateLockedAt = NULL
+  //     tapi birthDate sudah ada) → user dapat 1× kesempatan edit lagi
+  //     untuk ralat sendiri, lalu re-lock.
   //
   // Cek perubahan dengan compare ISO date string (tanpa time component)
   // supaya tidak false-positive karena timezone parsing.
@@ -94,7 +100,7 @@ export async function PUT(request: Request) {
     return NextResponse.json(
       {
         error:
-          "Tanggal lahir sudah terkunci setelah kamu menerima voucher ulang tahun. Untuk mengubah, hubungi admin via WhatsApp dengan menyertakan KTP/identitas.",
+          "Tanggal lahir sudah terkunci. Untuk ubah, hubungi admin via WhatsApp dengan verifikasi identitas (sebutkan nama, email, dan no HP terdaftar).",
       },
       { status: 403 },
     );
@@ -110,9 +116,24 @@ export async function PUT(request: Request) {
     }
   }
 
+  // Auto-lock saat birthDate berubah ke non-null value (Opsi B Shopee
+  // strict). Logic:
+  //   - Saat first-time set (NULL → tgl) → lock
+  //   - Saat re-set setelah admin override (lock cleared, birthDate
+  //     masih ada) → user bebas edit sekali ini, lalu lock lagi
+  //   - Kalau user clear birthDate (tgl → NULL) → JANGAN set lock
+  //     (semantik field = "tanggal pernah dikunci"; clearing field
+  //     tidak harus lock NULL)
+  const shouldLock = birthDateChanged && birthDate !== null;
+
   const user = await prisma.user.update({
     where: { id: session.sub },
-    data: { name, phone, birthDate },
+    data: {
+      name,
+      phone,
+      birthDate,
+      ...(shouldLock ? { birthDateLockedAt: new Date() } : {}),
+    },
     select: {
       id: true,
       name: true,
