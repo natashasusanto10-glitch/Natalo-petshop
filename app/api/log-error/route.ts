@@ -15,6 +15,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 
 export const dynamic = "force-dynamic";
 
@@ -52,7 +53,36 @@ export async function POST(request: NextRequest) {
       at: new Date().toISOString(),
     };
 
-    // TODO: forward to Sentry / PostHog / Bugsnag here.
+    // Forward ke Sentry (no-op kalau SENTRY_DSN gak diset). Reconstruct
+    // synthetic Error supaya stack trace dipertahankan di Sentry UI.
+    try {
+      const syntheticError = new Error(normalized.message);
+      if (normalized.stack) syntheticError.stack = normalized.stack;
+      Sentry.captureException(syntheticError, {
+        tags: {
+          source: normalized.source,
+          origin: "client-boundary",
+        },
+        contexts: {
+          client: {
+            url: normalized.url ?? undefined,
+            userAgent: normalized.userAgent ?? undefined,
+            digest: normalized.digest ?? undefined,
+          },
+          custom:
+            typeof normalized.context === "object" &&
+            normalized.context !== null
+              ? (normalized.context as Record<string, unknown>)
+              : undefined,
+        },
+      });
+    } catch {
+      // Sentry SDK failure tidak boleh bikin endpoint crash — fallthrough
+      // ke console log default di bawah.
+    }
+
+    // Tetap console log supaya errors visible di Vercel function logs
+    // walaupun Sentry-nya disabled di local dev.
     // eslint-disable-next-line no-console
     console.error("[client-error]", normalized);
 

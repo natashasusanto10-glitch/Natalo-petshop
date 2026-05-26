@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import bundleAnalyzer from "@next/bundle-analyzer";
+import { withSentryConfig } from "@sentry/nextjs";
 
 const withBundleAnalyzer = bundleAnalyzer({
   enabled: process.env.ANALYZE === "true",
@@ -156,4 +157,24 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default withBundleAnalyzer(nextConfig);
+// Compose bundleAnalyzer + Sentry wrappers. Order matters — Sentry harus
+// outermost supaya source map upload & instrumentation jalan saat build.
+// Sentry options:
+//   - silent: tidak spam log di lokal dev kalau env Sentry tidak diset
+//   - widenClientFileUpload: capture lebih banyak chunk untuk source map
+//   - hideSourceMaps: tidak expose .map ke client (security)
+//   - disableLogger: strip Sentry SDK debug log di production bundle
+//   - automaticVercelMonitors: enable cron monitoring auto kalau pakai
+//     Vercel cron
+const sentryWebpackOptions = {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  silent: !process.env.CI,
+  widenClientFileUpload: true,
+  hideSourceMaps: true,
+  disableLogger: true,
+  automaticVercelMonitors: true,
+};
+
+export default withSentryConfig(withBundleAnalyzer(nextConfig), sentryWebpackOptions);

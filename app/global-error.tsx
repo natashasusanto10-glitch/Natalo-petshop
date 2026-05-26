@@ -1,5 +1,6 @@
 "use client";
 
+import * as Sentry from "@sentry/nextjs";
 import { useEffect } from "react";
 
 export default function GlobalError({
@@ -14,6 +15,22 @@ export default function GlobalError({
   // Fire-and-forget error report. Runs in effect (not render) so that a
   // re-render during recovery doesn't spam duplicate beacons.
   useEffect(() => {
+    // Direct capture ke Sentry — lebih cepat + retain native stack vs
+    // synthetic reconstruction di /api/log-error. No-op kalau SDK gak
+    // ke-init (DSN env kosong).
+    try {
+      Sentry.captureException(error, {
+        tags: { source: "global-error", origin: "react-boundary" },
+        contexts: {
+          react: { digest: error.digest },
+        },
+      });
+    } catch {
+      // Never break the recovery screen itself.
+    }
+
+    // Backup: kirim beacon ke /api/log-error supaya tetap muncul di
+    // Vercel function logs walau client Sentry SDK gagal load.
     try {
       const body = JSON.stringify({
         source: "global-error",

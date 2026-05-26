@@ -1,5 +1,6 @@
 "use client";
 
+import * as Sentry from "@sentry/nextjs";
 import { useEffect } from "react";
 import Link from "next/link";
 
@@ -12,6 +13,16 @@ export default function ErrorPage({
 }) {
   useEffect(() => {
     console.error(error);
+    // Direct Sentry capture — preserve native stack + grouping. No-op kalau
+    // SDK gak ke-init (NEXT_PUBLIC_SENTRY_DSN kosong di lokal dev).
+    try {
+      Sentry.captureException(error, {
+        tags: { source: "error-boundary", origin: "react-boundary" },
+        contexts: { react: { digest: error.digest } },
+      });
+    } catch {
+      // Telemetry never crashes recovery UI.
+    }
     // Fire-and-forget error report — sendBeacon so the request survives
     // even if the page is mid-unmount when the boundary fires. Endpoint
     // is the integration point for Sentry / PostHog later.
