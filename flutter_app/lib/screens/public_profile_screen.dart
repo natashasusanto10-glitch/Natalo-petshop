@@ -8,6 +8,7 @@ import '../services/follow_service.dart';
 import '../services/profile_service.dart';
 import '../utils/haptics.dart';
 import 'member_post_detail_screen.dart';
+import 'public_profile_follow_list_screen.dart';
 
 const _brandBlue = Color(0xFF0B7FEA);
 const _pageBg = Colors.white;
@@ -124,6 +125,21 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   }
 
   Future<void> _refresh() async => _load();
+
+  void _openFollowList(FollowListKind kind) {
+    final profile = _profile;
+    if (profile == null) return;
+    AppHaptics.tap();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PublicProfileFollowListScreen(
+          profile: profile,
+          initialKind: kind,
+        ),
+      ),
+    );
+  }
 
   void _openPost(int index) {
     if (index < 0 || index >= _posts.length) return;
@@ -253,6 +269,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
               profile: profile,
               followBusy: _followBusy,
               onFollowToggle: profile.isOwner ? null : _toggleFollow,
+              onFollowersTap: () => _openFollowList(FollowListKind.followers),
+              onFollowingTap: () => _openFollowList(FollowListKind.following),
               onEditProfile: profile.isOwner
                   ? () => Navigator.pushNamed(context, '/member/profile')
                   : null,
@@ -315,12 +333,16 @@ class _Header extends StatelessWidget {
   final PublicProfile profile;
   final bool followBusy;
   final VoidCallback? onFollowToggle;
+  final VoidCallback? onFollowersTap;
+  final VoidCallback? onFollowingTap;
   final VoidCallback? onEditProfile;
 
   const _Header({
     required this.profile,
     required this.followBusy,
     this.onFollowToggle,
+    this.onFollowersTap,
+    this.onFollowingTap,
     this.onEditProfile,
   });
 
@@ -367,10 +389,12 @@ class _Header extends StatelessWidget {
                         _StatColumn(
                           value: profile.followersCount,
                           label: 'Pengikut',
+                          onTap: onFollowersTap,
                         ),
                         _StatColumn(
                           value: profile.followingCount,
                           label: 'Mengikuti',
+                          onTap: onFollowingTap,
                         ),
                       ],
                     ),
@@ -515,12 +539,17 @@ class _Avatar extends StatelessWidget {
 class _StatColumn extends StatelessWidget {
   final int value;
   final String label;
+  final VoidCallback? onTap;
 
-  const _StatColumn({required this.value, required this.label});
+  const _StatColumn({
+    required this.value,
+    required this.label,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
+    final content = SizedBox(
       width: 70,
       child: Column(
         children: [
@@ -544,6 +573,18 @@ class _StatColumn extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+    if (onTap == null) return content;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: content,
+        ),
       ),
     );
   }
