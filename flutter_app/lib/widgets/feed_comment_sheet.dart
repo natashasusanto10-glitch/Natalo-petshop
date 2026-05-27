@@ -619,8 +619,8 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
           // tampilan "Hapus" di moderation sheet (vs Laporkan/Blokir
           // untuk komentar orang lain).
           final currentUserId = memberStore.profile?.id;
-          final isOwn = currentUserId != null &&
-              currentUserId == item.comment.author.id;
+          final isOwn =
+              currentUserId != null && currentUserId == item.comment.author.id;
           return _CommentTile(
             comment: item.comment,
             isReply: item.isReply,
@@ -725,97 +725,97 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
 
   Widget _buildInputRow(dynamic profile, String initial, bool isLoggedIn) {
     return Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          // Avatar user current — pakai foto profil kalau ada,
-          // fallback ke initial bubble. Re-use _CommentAvatar yang
-          // sudah handle Image.network + errorBuilder fallback ke
-          // initial supaya konsisten dengan avatar di comment list.
-          Padding(
-            padding: const EdgeInsets.only(bottom: 2),
-            child: _CommentAvatar(
-              size: 34,
-              initial: initial,
-              imageUrl: profile?.profilePhotoUrl,
-            ),
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        // Avatar user current — pakai foto profil kalau ada,
+        // fallback ke initial bubble. Re-use _CommentAvatar yang
+        // sudah handle Image.network + errorBuilder fallback ke
+        // initial supaya konsisten dengan avatar di comment list.
+        Padding(
+          padding: const EdgeInsets.only(bottom: 2),
+          child: _CommentAvatar(
+            size: 34,
+            initial: initial,
+            imageUrl: profile?.profilePhotoUrl,
           ),
-          const SizedBox(width: 10),
+        ),
+        const SizedBox(width: 10),
 
-          // Input field — dark transparent fill, white text + cursor.
-          Expanded(
-            child: Container(
-              constraints: const BoxConstraints(
-                minHeight: 40,
-                maxHeight: 120,
+        // Input field — dark transparent fill, white text + cursor.
+        Expanded(
+          child: Container(
+            constraints: const BoxConstraints(
+              minHeight: 40,
+              maxHeight: 120,
+            ),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.10),
               ),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.10),
-                ),
+            ),
+            child: TextField(
+              controller: _inputCtrl,
+              focusNode: _inputFocus,
+              enabled: !_posting,
+              maxLines: null,
+              minLines: 1,
+              textCapitalization: TextCapitalization.sentences,
+              textInputAction: TextInputAction.newline,
+              keyboardAppearance: Brightness.dark,
+              cursorColor: Colors.white,
+              inputFormatters: [
+                LengthLimitingTextInputFormatter(500),
+              ],
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                height: 1.35,
               ),
-              child: TextField(
-                controller: _inputCtrl,
-                focusNode: _inputFocus,
-                enabled: !_posting,
-                maxLines: null,
-                minLines: 1,
-                textCapitalization: TextCapitalization.sentences,
-                textInputAction: TextInputAction.newline,
-                keyboardAppearance: Brightness.dark,
-                cursorColor: Colors.white,
-                inputFormatters: [
-                  LengthLimitingTextInputFormatter(500),
-                ],
-                style: const TextStyle(
-                  color: Colors.white,
+              decoration: InputDecoration(
+                isDense: true,
+                // BUG FIX: global app theme set `filled: true` +
+                // `fillColor: white surface`, yang override styling
+                // wrapping Container. Hasil: input field tampil
+                // solid white pill di dark drawer (bukan dark
+                // transparent). Explicit `filled: false` + transparent
+                // fillColor supaya theme global tidak bocor masuk.
+                filled: false,
+                fillColor: Colors.transparent,
+                hintText: isLoggedIn
+                    ? 'Tambahkan komentar...'
+                    : 'Login untuk komentar...',
+                hintStyle: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.45),
                   fontSize: 14,
-                  height: 1.35,
                 ),
-                decoration: InputDecoration(
-                  isDense: true,
-                  // BUG FIX: global app theme set `filled: true` +
-                  // `fillColor: white surface`, yang override styling
-                  // wrapping Container. Hasil: input field tampil
-                  // solid white pill di dark drawer (bukan dark
-                  // transparent). Explicit `filled: false` + transparent
-                  // fillColor supaya theme global tidak bocor masuk.
-                  filled: false,
-                  fillColor: Colors.transparent,
-                  hintText: isLoggedIn
-                      ? 'Tambahkan komentar...'
-                      : 'Login untuk komentar...',
-                  hintStyle: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.45),
-                    fontSize: 14,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 9,
-                  ),
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  disabledBorder: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 9,
                 ),
-                onChanged: (_) => setState(() {}),
-                onTap: () {
-                  if (!isLoggedIn) {
-                    Navigator.pushNamed(context, '/member/login');
-                  }
-                },
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                disabledBorder: InputBorder.none,
               ),
+              onChanged: (_) => setState(() {}),
+              onTap: () {
+                if (!isLoggedIn) {
+                  Navigator.pushNamed(context, '/member/login');
+                }
+              },
             ),
           ),
+        ),
 
-          // Send button (disabled saat kosong / posting).
-          _SendButton(
-            enabled: !_posting && _inputCtrl.text.trim().isNotEmpty,
-            posting: _posting,
-            onPressed: _postComment,
-          ),
-        ],
+        // Send button (disabled saat kosong / posting).
+        _SendButton(
+          enabled: !_posting && _inputCtrl.text.trim().isNotEmpty,
+          posting: _posting,
+          onPressed: _postComment,
+        ),
+      ],
     );
   }
 }
@@ -832,7 +832,7 @@ class _CommentDisplayItem {
 /// caption + author di atas sebelum komentar lain.
 ///
 /// Visual: similar ke _CommentTile (avatar + name + body) tapi tanpa
-/// like/reply button (caption bukan comment, tidak interactive). Author
+/// like/reply button (caption bukan comment). Author
 /// name dapat verified badge kalau admin/official, plus subtle separator
 /// di bawah untuk visual hint "caption end, comments start".
 class _CaptionTile extends StatelessWidget {
@@ -870,35 +870,46 @@ class _CaptionTile extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _CommentAvatar(size: 36, initial: initial, imageUrl: avatarUrl),
+            _AuthorTapTarget(
+              author: author,
+              child: _CommentAvatar(
+                size: 36,
+                initial: initial,
+                imageUrl: avatarUrl,
+              ),
+            ),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 12.5,
+                  _AuthorTapTarget(
+                    author: author,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 12.5,
+                            ),
                           ),
                         ),
-                      ),
-                      if (author.isOfficialAccount) ...[
-                        const SizedBox(width: 4),
-                        const Icon(
-                          Icons.verified_rounded,
-                          size: 13,
-                          color: NataloColors.primary,
-                        ),
+                        if (author.isOfficialAccount) ...[
+                          const SizedBox(width: 4),
+                          const Icon(
+                            Icons.verified_rounded,
+                            size: 13,
+                            color: NataloColors.primary,
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                   const SizedBox(height: 3),
                   MentionText(
@@ -947,11 +958,13 @@ class _CommentTile extends StatelessWidget {
   final bool isReply;
   final VoidCallback onLike;
   final VoidCallback onReply;
+
   /// Callback delete dari parent — return Future<bool> ok/fail.
   /// Parent yang panggil feedService.deleteComment + optimistic remove
   /// dari local state. Nullable supaya guest user / non-owner tidak
   /// crash.
   final Future<bool> Function()? onDelete;
+
   /// True kalau current user adalah author komentar ini. Drives lock
   /// untuk "Hapus" action di moderation sheet.
   final bool canDelete;
@@ -1014,11 +1027,13 @@ class _CommentTile extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Avatar.
-            _CommentAvatar(
-              size: avatarSize,
-              initial: initial,
-              imageUrl: avatarUrl,
+            _AuthorTapTarget(
+              author: author,
+              child: _CommentAvatar(
+                size: avatarSize,
+                initial: initial,
+                imageUrl: avatarUrl,
+              ),
             ),
             const SizedBox(width: 10),
 
@@ -1030,28 +1045,37 @@ class _CommentTile extends StatelessWidget {
                   Row(
                     children: [
                       Flexible(
-                        child: Text(
-                          name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            // White untuk dark drawer (was 0xFF111111 dark
-                            // text di dark bg → poor contrast, terlihat
-                            // bluish/faded di screenshot user).
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 12.5,
+                        child: _AuthorTapTarget(
+                          author: author,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    // White untuk dark drawer (was 0xFF111111
+                                    // dark text di dark bg → poor contrast.
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 12.5,
+                                  ),
+                                ),
+                              ),
+                              if (author.isOfficialAccount) ...[
+                                const SizedBox(width: 4),
+                                const Icon(
+                                  Icons.verified_rounded,
+                                  size: 13,
+                                  color: NataloColors.primary,
+                                ),
+                              ],
+                            ],
                           ),
                         ),
                       ),
-                      if (author.isOfficialAccount) ...[
-                        const SizedBox(width: 4),
-                        const Icon(
-                          Icons.verified_rounded,
-                          size: 13,
-                          color: NataloColors.primary,
-                        ),
-                      ],
                       const SizedBox(width: 6),
                       Text(
                         _timeAgo(comment.createdAt),
@@ -1128,6 +1152,30 @@ class _CommentTile extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _AuthorTapTarget extends StatelessWidget {
+  final FeedAuthor author;
+  final Widget child;
+
+  const _AuthorTapTarget({
+    required this.author,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (!author.hasUsername) return child;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _openAuthorProfile(context, author),
+      child: Semantics(
+        button: true,
+        label: 'Buka profil ${author.displayHandle}',
+        child: child,
       ),
     );
   }
@@ -1408,4 +1456,13 @@ String _formatCount(int n) {
   if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}jt';
   if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}rb';
   return '$n';
+}
+
+void _openAuthorProfile(BuildContext context, FeedAuthor author) {
+  if (!author.hasUsername) return;
+  AppHaptics.tap();
+  Navigator.of(context).pushNamed(
+    '/u',
+    arguments: author.username!.toLowerCase(),
+  );
 }
