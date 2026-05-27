@@ -10,8 +10,8 @@
  *   5. Menunggu Review  → success + Kembali ke Feed / Lihat Postingan
  *
  * Setiap step adalah layar penuh dengan transisi slide native-like.
- * Backend tetap pakai pipeline Bunny direct upload yang sudah ada
- * (POST /api/feed/bunny/upload-url → PUT raw bytes).
+ * Backend tetap pakai pipeline Bunny direct upload yang sudah ada:
+ * POST /api/feed/bunny/upload-url → TUS resumable upload ke Bunny.
  */
 
 import { useRouter } from "next/navigation";
@@ -46,6 +46,11 @@ import {
   MAX_SOURCE_VIDEO_SIZE,
   USER_VIDEO_CONFIG,
 } from "@/lib/feed/video-config";
+import {
+  uploadToBunnyViaTus,
+  type BunnyTusCredentials,
+} from "@/lib/feed/tus-upload";
+import { useUploadLifecycle } from "@/lib/feed/upload-lifecycle";
 
 const MAX_CAPTION_LENGTH = 500;
 const ACCEPT_VIDEO = "video/mp4,video/quicktime,video/*";
@@ -74,6 +79,15 @@ type PinnableProduct = {
   reviewCount: number;
   purchasedAt: string;
   orderNumber: string;
+};
+
+type BunnyUploadProvisionResponse = {
+  error?: string;
+  postId?: string;
+  videoGuid?: string;
+  uploadUrl?: string;
+  uploadHeaders?: Record<string, string>;
+  tus?: BunnyTusCredentials | null;
 };
 
 export function FeedUploadClient() {
@@ -131,6 +145,17 @@ export function FeedUploadClient() {
     "submitting" | "trimming" | "uploading" | null
   >(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  useUploadLifecycle(uploading && uploadStage === "uploading", {
+    onSuspend: () => {
+      setUploadLabel(
+        "Upload pause sementara. Buka kembali app untuk lanjut otomatis...",
+      );
+    },
+    onResume: () => {
+      setUploadLabel("Melanjutkan upload video...");
+    },
+  });
 
   // ── Cleanup blob URLs ─────────────────────────────────────────────
   useEffect(() => {
@@ -397,6 +422,8 @@ export function FeedUploadClient() {
   async function handleSubmit() {
     if (!file || !metadata) return;
     if (uploading) return;
+    let provisionedPostId: string | null = null;
+    let uploadCompleted = false;
     setSubmitError(null);
     setUploading(true);
     setUploadStage("submitting");
@@ -423,16 +450,13 @@ export function FeedUploadClient() {
           videoDurationSec: Math.round(finalDuration),
         }),
       });
-      const urlData = (await urlRes.json().catch(() => ({}))) as {
-        error?: string;
-        postId?: string;
-        videoGuid?: string;
-        uploadUrl?: string;
-        uploadHeaders?: Record<string, string>;
-      };
-      if (!urlRes.ok || !urlData.uploadUrl) {
+      const urlData = (await urlRes.json().catch(
+        () => ({}),
+      )) as BunnyUploadProvisionResponse;
+      if (!urlRes.ok || (!urlData.tus && !urlData.uploadUrl)) {
         throw new Error(urlData.error ?? "Gagal menyiapkan unggahan.");
       }
+      provisionedPostId = urlData.postId ?? null;
 
       // 3) Trim source kalau user pilih sub-range. Else skip — upload raw.
       let uploadBlob: Blob = file;
@@ -454,17 +478,32 @@ export function FeedUploadClient() {
       setUploadStage("uploading");
       setUploadProgress(0);
       setUploadLabel("Mengunggah video...");
-      await uploadToBunnyWithProgress({
-        uploadUrl: urlData.uploadUrl,
-        headers: urlData.uploadHeaders ?? {},
-        body: uploadBlob,
-        onProgress: setUploadProgress,
-      });
+      if (urlData.tus) {
+        await uploadToBunnyViaTus({
+          file: uploadBlob,
+          credentials: urlData.tus,
+          filetype: file.type || uploadBlob.type || "video/mp4",
+          title: file.name || caption.trim() || "feed-video",
+          onProgress: (percent) => setUploadProgress(percent),
+        });
+      } else if (urlData.uploadUrl) {
+        await uploadToBunnyWithProgress({
+          uploadUrl: urlData.uploadUrl,
+          headers: urlData.uploadHeaders ?? {},
+          body: uploadBlob,
+          onProgress: setUploadProgress,
+        });
+      }
+      uploadCompleted = true;
 
       void hapticSuccess();
       setDirection("forward");
       setStep("success");
     } catch (err) {
+      if (provisionedPostId && !uploadCompleted) {
+        setUploadLabel("Membersihkan upload gagal...");
+        await cleanupFailedProvisionedPost(provisionedPostId);
+      }
       setSubmitError(
         err instanceof Error ? err.message : "Upload gagal. Coba lagi.",
       );
@@ -2044,6 +2083,17 @@ function formatDate(iso: string) {
     month: "short",
     year: "numeric",
   });
+}
+
+async function cleanupFailedProvisionedPost(postId: string | null) {
+  if (!postId) return;
+  try {
+    await fetch(`/api/feed/posts/${encodeURIComponent(postId)}`, {
+      method: "DELETE",
+    });
+  } catch {
+    // Best-effort cleanup. Cron/storage GC tetap menangani sisa orphan.
+  }
 }
 
 /**
