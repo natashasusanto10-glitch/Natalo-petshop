@@ -1,0 +1,529 @@
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/material.dart';
+
+import '../screens/public_profile_screen.dart';
+import '../services/api_client.dart';
+import '../services/follow_service.dart';
+import '../services/post_likers_service.dart';
+import '../theme/natalo_colors.dart';
+import '../utils/haptics.dart';
+
+const _brandBlue = Color(0xFF0B7FEA);
+
+/// IG-style "Disukai oleh" bottom sheet — list user yang like sebuah
+/// post, dengan tombol Follow/Mengikuti per row + tap baris untuk buka
+/// public profile.
+///
+/// Open via `PostLikersSheet.show(context, postId: ...)`. Sheet handle
+/// fetch awal + infinite scroll + optimistic follow toggle internally.
+class PostLikersSheet extends StatefulWidget {
+  final String postId;
+
+  const PostLikersSheet({super.key, required this.postId});
+
+  /// Helper untuk show sheet sebagai modal bottom sheet dengan
+  /// DraggableScrollableSheet — match IG behavior dimana user bisa
+  /// drag-up untuk expand atau drag-down untuk close.
+  static Future<void> show(BuildContext context, {required String postId}) {
+    AppHaptics.tap();
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.4,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) {
+          return _Container(
+            child: PostLikersSheet(postId: postId),
+          );
+        },
+      ),
+    );
+  }
+
+  @override
+  State<PostLikersSheet> createState() => _PostLikersSheetState();
+}
+
+class _PostLikersSheetState extends State<PostLikersSheet> {
+  final ScrollController _scrollController = ScrollController();
+  List<FollowUserSummary> _items = [];
+  String? _nextCursor;
+  bool _loading = true;
+  bool _loadingMore = false;
+  String? _errorText;
+  // Track follow-in-flight per userId — guard double-tap + show progress.
+  final Set<String> _followBusy = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_loadingMore || _nextCursor == null) return;
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      _loadMore();
+    }
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _errorText = null;
+    });
+    try {
+      final result = await postLikersService.fetchLikers(widget.postId);
+      if (!mounted) return;
+      setState(() {
+        _items = result.items;
+        _nextCursor = result.nextCursor;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _errorText = 'Gagal memuat daftar. Coba lagi.';
+      });
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_nextCursor == null || _loadingMore) return;
+    setState(() => _loadingMore = true);
+    try {
+      final result = await postLikersService.fetchLikers(
+        widget.postId,
+        cursor: _nextCursor,
+      );
+      if (!mounted) return;
+      setState(() {
+        _items = [..._items, ...result.items];
+        _nextCursor = result.nextCursor;
+        _loadingMore = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingMore = false);
+    }
+  }
+
+  Future<void> _toggleFollow(int index) async {
+    final liker = _items[index];
+    if (liker.isSelf || _followBusy.contains(liker.id)) return;
+    AppHaptics.tap();
+
+    final wasFollowing = liker.isFollowing;
+    setState(() {
+      _followBusy.add(liker.id);
+      _items[index] = liker.copyWith(isFollowing: !wasFollowing);
+    });
+
+    try {
+      final state = wasFollowing
+          ? await followService.unfollow(liker.id)
+          : await followService.follow(liker.id);
+      if (!mounted) return;
+      setState(() {
+        _followBusy.remove(liker.id);
+        // Sync dari server response — covers concurrent toggle race.
+        _items[index] = _items[index].copyWith(
+          isFollowing: state.isFollowing,
+          followersCount: state.followersCount,
+        );
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _followBusy.remove(liker.id);
+        // Rollback optimistic update.
+        _items[index] = _items[index].copyWith(isFollowing: wasFollowing);
+      });
+      if (e.isUnauthorized) {
+        Navigator.pop(context);
+        Navigator.pushNamed(context, '/member/login');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message)),
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _followBusy.remove(liker.id);
+        _items[index] = _items[index].copyWith(isFollowing: wasFollowing);
+      });
+    }
+  }
+
+  void _openProfile(FollowUserSummary liker) {
+    if (!liker.canOpenProfile) return;
+    AppHaptics.tap();
+    // Pop sheet first supaya stack tidak menumpuk (kalau user buka profile
+    // dari sheet, lalu back, langsung balik ke post detail — bukan ke
+    // sheet terbuka di atas profile).
+    Navigator.pop(context);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PublicProfileScreen(username: liker.username!),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildHandle(),
+        _buildHeader(),
+        const Divider(height: 1, color: Color(0xFFE5E7EB)),
+        Expanded(child: _buildBody()),
+      ],
+    );
+  }
+
+  Widget _buildHandle() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Container(
+        width: 36,
+        height: 4,
+        decoration: BoxDecoration(
+          color: const Color(0xFFD1D5DB),
+          borderRadius: BorderRadius.circular(2),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 6, 12, 12),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Text(
+              'Disukai oleh',
+              style: TextStyle(
+                color: NataloColors.textPrimary,
+                fontSize: 15,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Tutup',
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.close_rounded, size: 22),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_loading) {
+      return const Center(
+        child: CircularProgressIndicator(
+          color: _brandBlue,
+          strokeWidth: 2.4,
+        ),
+      );
+    }
+    if (_errorText != null && _items.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _errorText!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: NataloColors.textSecondary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: _load,
+                style: FilledButton.styleFrom(backgroundColor: _brandBlue),
+                child: const Text('Coba Lagi'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    if (_items.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            'Belum ada yang menyukai postingan ini.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: NataloColors.textSecondary,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      controller: _scrollController,
+      padding: const EdgeInsets.only(bottom: 16),
+      itemCount: _items.length + (_loadingMore ? 1 : 0),
+      itemBuilder: (context, index) {
+        if (index >= _items.length) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          );
+        }
+        return _LikerRow(
+          liker: _items[index],
+          busy: _followBusy.contains(_items[index].id),
+          onTap: () => _openProfile(_items[index]),
+          onToggleFollow: () => _toggleFollow(index),
+        );
+      },
+    );
+  }
+}
+
+class _Container extends StatelessWidget {
+  final Widget child;
+
+  const _Container({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: child,
+    );
+  }
+}
+
+class _LikerRow extends StatelessWidget {
+  final FollowUserSummary liker;
+  final bool busy;
+  final VoidCallback onTap;
+  final VoidCallback onToggleFollow;
+
+  const _LikerRow({
+    required this.liker,
+    required this.busy,
+    required this.onTap,
+    required this.onToggleFollow,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: liker.canOpenProfile ? onTap : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        child: Row(
+          children: [
+            _Avatar(liker: liker),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    liker.username != null && liker.username!.isNotEmpty
+                        ? liker.username!
+                        : liker.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: NataloColors.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      height: 1.15,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    liker.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: NataloColors.textSecondary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      height: 1.15,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            if (!liker.isSelf) _FollowButton(
+              isFollowing: liker.isFollowing,
+              busy: busy,
+              onPressed: onToggleFollow,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Avatar extends StatelessWidget {
+  final FollowUserSummary liker;
+
+  const _Avatar({required this.liker});
+
+  @override
+  Widget build(BuildContext context) {
+    const size = 42.0;
+    final url = liker.profilePhotoUrl;
+    if (url != null && url.isNotEmpty) {
+      return ClipOval(
+        child: CachedNetworkImage(
+          imageUrl: url,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          placeholder: (_, __) => _initialAvatar(size),
+          errorWidget: (_, __, ___) => _initialAvatar(size),
+        ),
+      );
+    }
+    return _initialAvatar(size);
+  }
+
+  Widget _initialAvatar(double size) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        color: Color(0xFFEFF6FF),
+      ),
+      child: Center(
+        child: Text(
+          liker.initial,
+          style: const TextStyle(
+            color: Color(0xFF1D4ED8),
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FollowButton extends StatelessWidget {
+  final bool isFollowing;
+  final bool busy;
+  final VoidCallback onPressed;
+
+  const _FollowButton({
+    required this.isFollowing,
+    required this.busy,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // IG-style compact button: Follow = brand blue filled, Mengikuti =
+    // outlined neutral. Width fixed supaya tidak shift size saat toggle.
+    final width = isFollowing ? 96.0 : 80.0;
+    if (isFollowing) {
+      return SizedBox(
+        width: width,
+        height: 32,
+        child: OutlinedButton(
+          onPressed: busy ? null : onPressed,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: NataloColors.textPrimary,
+            side: const BorderSide(color: Color(0xFFCBD5E1)),
+            padding: EdgeInsets.zero,
+            textStyle: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+          child: busy
+              ? const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 1.8),
+                )
+              : const Text('Mengikuti'),
+        ),
+      );
+    }
+    return SizedBox(
+      width: width,
+      height: 32,
+      child: FilledButton(
+        onPressed: busy ? null : onPressed,
+        style: FilledButton.styleFrom(
+          backgroundColor: _brandBlue,
+          foregroundColor: Colors.white,
+          padding: EdgeInsets.zero,
+          textStyle: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+        child: busy
+            ? const SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.8,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+            : const Text('Follow'),
+      ),
+    );
+  }
+}

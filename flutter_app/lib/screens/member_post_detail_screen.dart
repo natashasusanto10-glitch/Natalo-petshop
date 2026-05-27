@@ -1,5 +1,6 @@
 // ignore_for_file: use_build_context_synchronously
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shimmer/shimmer.dart';
@@ -18,8 +19,10 @@ import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/emoji_picker_panel.dart';
+import '../widgets/post_likers_sheet.dart';
 import '../widgets/profile_avatar.dart';
 import '../shared/widgets/natalo_post_action_icon.dart';
+import 'public_profile_screen.dart';
 
 /// Detail Postingan style Instagram Feed — continuous vertical scroll list
 /// of user's own posts (Postingan Saya).
@@ -1003,7 +1006,14 @@ String _hybridDateLabel(DateTime created) {
   return formatTanggal(created);
 }
 
-class _LikedByLine extends StatelessWidget {
+/// IG-style "Disukai oleh ..." row dengan tappable segments:
+///   - Avatar stack tap → buka PostLikersSheet
+///   - Nama primary liker tap → buka public profile-nya
+///   - "X orang lainnya" tap → buka PostLikersSheet
+/// Pakai StatefulWidget karena TapGestureRecognizer instance perlu di-
+/// dispose saat widget unmount (best practice; kalau StatelessWidget,
+/// recognizer ke-create ulang tiap build dan tidak pernah di-dispose).
+class _LikedByLine extends StatefulWidget {
   final FeedPost post;
 
   const _LikedByLine({
@@ -1011,22 +1021,100 @@ class _LikedByLine extends StatelessWidget {
   });
 
   @override
+  State<_LikedByLine> createState() => _LikedByLineState();
+}
+
+class _LikedByLineState extends State<_LikedByLine> {
+  TapGestureRecognizer? _primaryNameRecognizer;
+  TapGestureRecognizer? _othersRecognizer;
+
+  @override
+  void dispose() {
+    _primaryNameRecognizer?.dispose();
+    _othersRecognizer?.dispose();
+    super.dispose();
+  }
+
+  void _openPrimaryProfile(FeedAuthor primary) {
+    if (primary.isOfficialAccount) return;
+    final username = primary.username;
+    if (username == null || username.isEmpty) return;
+    AppHaptics.tap();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PublicProfileScreen(username: username),
+      ),
+    );
+  }
+
+  void _openLikersSheet() {
+    PostLikersSheet.show(context, postId: widget.post.id);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final likers = post.recentLikers;
+    final likers = widget.post.recentLikers;
     final currentUserId = memberStore.profile?.id;
     final primary = likers.isNotEmpty ? likers.first : null;
+    final primaryIsSelf = primary != null && primary.id == currentUserId;
     final primaryName = primary == null
         ? 'beberapa orang'
-        : primary.id == currentUserId
+        : primaryIsSelf
             ? 'Anda'
             : primary.displayName;
-    final othersCount = post.likeCount - 1;
+    // Primary tappable kalau ada primary + bukan official admin + punya
+    // username yang valid (atau adalah viewer = "Anda"; tap "Anda" buka
+    // profile sendiri). "Anda" tetap tappable supaya consistent dengan
+    // tap @mention di feed.
+    final canTapPrimary = primary != null &&
+        !primary.isOfficialAccount &&
+        ((primary.username?.isNotEmpty ?? false) || primaryIsSelf);
+    final othersCount = widget.post.likeCount - 1;
+
+    // Lazily build recognizers — dispose otomatis di dispose() lifecycle
+    // supaya tidak leak. Recreate kalau target liker berubah (mis. server
+    // refresh recentLikers list).
+    _primaryNameRecognizer?.dispose();
+    _othersRecognizer?.dispose();
+    _primaryNameRecognizer = null;
+    _othersRecognizer = null;
+    if (canTapPrimary) {
+      _primaryNameRecognizer = TapGestureRecognizer()
+        ..onTap = () {
+          if (primaryIsSelf) {
+            // "Anda" tap → buka profile sendiri kalau username ada.
+            final myUsername = memberStore.profile?.username;
+            if (myUsername != null && myUsername.isNotEmpty) {
+              AppHaptics.tap();
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      PublicProfileScreen(username: myUsername),
+                ),
+              );
+            }
+          } else {
+            _openPrimaryProfile(primary);
+          }
+        };
+    }
+    if (othersCount > 0) {
+      _othersRecognizer = TapGestureRecognizer()..onTap = _openLikersSheet;
+    }
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        _LikedAvatarStack(
-          likers: likers,
-          likeCount: post.likeCount,
+        GestureDetector(
+          // Avatar stack tap → buka sheet semua liker. Match IG behavior.
+          onTap: _openLikersSheet,
+          behavior: HitTestBehavior.opaque,
+          child: _LikedAvatarStack(
+            likers: likers,
+            likeCount: widget.post.likeCount,
+          ),
         ),
         const SizedBox(width: 8),
         Expanded(
@@ -1037,12 +1125,14 @@ class _LikedByLine extends StatelessWidget {
                 TextSpan(
                   text: primaryName,
                   style: const TextStyle(fontWeight: FontWeight.w900),
+                  recognizer: _primaryNameRecognizer,
                 ),
                 if (othersCount > 0) ...[
                   const TextSpan(text: ' dan '),
                   TextSpan(
                     text: '$othersCount orang lainnya',
                     style: const TextStyle(fontWeight: FontWeight.w900),
+                    recognizer: _othersRecognizer,
                   ),
                 ],
               ],
