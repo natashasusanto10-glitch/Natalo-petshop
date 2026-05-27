@@ -70,6 +70,7 @@ import 'theme/natalo_colors.dart';
 import 'theme/natalo_theme.dart';
 import 'widgets/app_error_widget.dart';
 import 'widgets/app_lock_gate.dart';
+import 'widgets/app_startup_splash.dart';
 import 'widgets/offline_banner.dart';
 import 'widgets/read_only_welcome_gate.dart';
 
@@ -228,26 +229,28 @@ class NataloPetshopApp extends StatelessWidget {
             // no gradient overlay. Faster rendering di HP murah, better
             // readability outdoor, familiar pattern untuk user Indonesia
             // (Tokopedia/Shopee style).
-            return AppLockGate(
-              child: ReadOnlyWelcomeGate(
-                // ColoredBox provides bg behind transparent Scaffolds —
-                // dipakai theme dark, ganti otomatis via Theme.of context.
-                child: ColoredBox(
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? NataloColors.feedBlack
-                      : NataloColors.background,
-                  child: Stack(
-                    children: [
-                      child ?? const SizedBox.shrink(),
-                      // Offline banner di top — auto slide-in/out berdasar
-                      // connectivity status. Z-index above semua screen.
-                      const Positioned(
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        child: OfflineBanner(),
-                      ),
-                    ],
+            return AppStartupSplash(
+              child: AppLockGate(
+                child: ReadOnlyWelcomeGate(
+                  // ColoredBox provides bg behind transparent Scaffolds —
+                  // dipakai theme dark, ganti otomatis via Theme.of context.
+                  child: ColoredBox(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? NataloColors.feedBlack
+                        : NataloColors.background,
+                    child: Stack(
+                      children: [
+                        child ?? const SizedBox.shrink(),
+                        // Offline banner di top — auto slide-in/out berdasar
+                        // connectivity status. Z-index above semua screen.
+                        const Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          child: OfflineBanner(),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
