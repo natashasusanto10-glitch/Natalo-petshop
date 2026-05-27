@@ -54,6 +54,8 @@ const _feedActionStrokeWidth = 2.2;
 const _feedActionCountFontSize = 12.0;
 const _feedActionItemSpacing = 18.0;
 const _feedActionBottomInset = 24.0;
+const _feedProductCtaRightInset = 86.0;
+const _feedProductCtaBottomInset = 188.0;
 
 /// Instagram Reels-style fullscreen vertical video feed.
 /// - Fullscreen video/image background per post (cover fit)
@@ -3159,8 +3161,8 @@ class _FeedPostViewState extends State<_FeedPostView>
                         if (featuredProduct != null)
                           Positioned(
                             left: 16,
-                            right: 16,
-                            bottom: feedInfoInset + 96,
+                            right: _feedProductCtaRightInset,
+                            bottom: feedInfoInset + _feedProductCtaBottomInset,
                             child: AnimatedSlide(
                               duration: const Duration(milliseconds: 280),
                               curve: Curves.easeOutCubic,
@@ -3573,7 +3575,8 @@ class _ExpandableCaptionState extends State<_ExpandableCaption> {
           ],
         ),
         maxLines: widget.expanded ? null : 2,
-        overflow: widget.expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+        overflow:
+            widget.expanded ? TextOverflow.visible : TextOverflow.ellipsis,
       ),
     );
   }
@@ -6387,6 +6390,33 @@ class _EndOfVideoProductCta extends StatelessWidget {
                       ),
                     ),
                   ],
+                ),
+              ),
+            ),
+          ),
+          // Pointer kecil ke mini product bar di bawahnya. Ini bikin
+          // hierarchy jelas: popup besar adalah detail dari bar produk aktif.
+          Positioned(
+            bottom: -6,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Transform.rotate(
+                angle: math.pi / 4,
+                child: Container(
+                  width: 14,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.72),
+                    border: Border(
+                      right: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.10),
+                      ),
+                      bottom: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.10),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
