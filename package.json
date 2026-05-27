@@ -38,7 +38,7 @@
     "apk:customer:release": "cd natalo-petshop-app/android && .\\gradlew.bat assembleRelease",
     "apk:admin:release": "node scripts/build-admin-apk.mjs",
     "aab:customer:release": "cd natalo-petshop-app/android && .\\gradlew.bat bundleRelease",
-    "cap:assets": "npx capacitor-assets generate --ios --android --iconBackgroundColor \"#1E5FBF\" --splashBackgroundColor \"#ffffff\"",
+    "cap:assets": "npx capacitor-assets generate --ios --android --iconBackgroundColor \"#1E5FBF\" --splashBackgroundColor \"#1E5FBF\"",
     "cap:assets:legacy-blue": "npx capacitor-assets generate --ios --android --iconBackgroundColor \"#1E5FBF\" --splashBackgroundColor \"#1E5FBF\"",
     "gen:splash": "node scripts/generate-ios-splash.mjs",
     "gen:cap-splash": "node scripts/generate-capacitor-splash.mjs",
