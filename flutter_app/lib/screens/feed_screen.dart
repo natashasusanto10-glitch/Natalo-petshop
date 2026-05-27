@@ -1555,16 +1555,14 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                 onPageChanged: (idx) => setState(() => _photoIndex = idx),
                 itemBuilder: (context, index) {
                   final photo = photos[index];
-                  // InteractiveViewer wrap untuk pinch-zoom (1× → 4×).
-                  // PageView tetap handle horizontal swipe saat tidak
-                  // zoomed (scale 1.0). Saat user pinch, InteractiveViewer
-                  // ambil over gesture untuk pan + zoom. IG / Pinterest
-                  // pattern — user expect pinch zoom di photo.
+                  // Pinch-zoom sementara: begitu gesture selesai, foto
+                  // snap back ke ukuran asli supaya feed tidak nyangkut
+                  // dalam state zoom.
                   return Center(
-                    child: InteractiveViewer(
+                    child: _SnapBackZoomMedia(
+                      clipBehavior: Clip.none,
                       minScale: 1,
                       maxScale: 4,
-                      clipBehavior: Clip.none,
                       child: AspectRatio(
                         aspectRatio: _instagramImageAspectRatio(
                           photo.width,
@@ -2950,10 +2948,14 @@ class _FeedPostViewState extends State<_FeedPostView>
                           // Sprint 4 #1 — Long-press signature gesture.
                           onLongPressStart: _onLongPressStart,
                           onLongPressEnd: _onLongPressEnd,
-                          child: _MediaBackground(
-                            post: post,
-                            videoController: _videoController,
-                            compactPreview: _commentDrawerMounted,
+                          child: _SnapBackZoomMedia(
+                            minScale: 1,
+                            maxScale: 4,
+                            child: _MediaBackground(
+                              post: post,
+                              videoController: _videoController,
+                              compactPreview: _commentDrawerMounted,
+                            ),
                           ),
                         ),
                       ),
@@ -3578,6 +3580,102 @@ class _ExpandableCaptionState extends State<_ExpandableCaption> {
         overflow:
             widget.expanded ? TextOverflow.visible : TextOverflow.ellipsis,
       ),
+    );
+  }
+}
+
+class _SnapBackZoomMedia extends StatefulWidget {
+  final Widget child;
+  final Clip clipBehavior;
+  final double minScale;
+  final double maxScale;
+
+  const _SnapBackZoomMedia({
+    required this.child,
+    this.clipBehavior = Clip.hardEdge,
+    this.minScale = 1,
+    this.maxScale = 4,
+  });
+
+  @override
+  State<_SnapBackZoomMedia> createState() => _SnapBackZoomMediaState();
+}
+
+class _SnapBackZoomMediaState extends State<_SnapBackZoomMedia>
+    with SingleTickerProviderStateMixin {
+  late final TransformationController _controller;
+  late final AnimationController _snapBackController;
+  Animation<Matrix4>? _snapBackAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TransformationController();
+    _snapBackController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    )..addListener(_handleSnapBackTick);
+  }
+
+  @override
+  void dispose() {
+    _snapBackController.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _handleInteractionStart(ScaleStartDetails details) {
+    if (_snapBackController.isAnimating) {
+      _snapBackController.stop();
+    }
+  }
+
+  void _handleInteractionEnd(ScaleEndDetails details) {
+    final currentMatrix = Matrix4.copy(_controller.value);
+    if (_isIdentity(currentMatrix)) {
+      _controller.value = Matrix4.identity();
+      return;
+    }
+
+    _snapBackAnimation = Matrix4Tween(
+      begin: currentMatrix,
+      end: Matrix4.identity(),
+    ).animate(
+      CurvedAnimation(
+        parent: _snapBackController,
+        curve: Curves.easeOutCubic,
+      ),
+    );
+    _snapBackController.forward(from: 0);
+  }
+
+  void _handleSnapBackTick() {
+    final animation = _snapBackAnimation;
+    if (animation == null) return;
+    _controller.value = animation.value;
+  }
+
+  bool _isIdentity(Matrix4 matrix) {
+    final identity = Matrix4.identity();
+    for (var i = 0; i < 16; i++) {
+      if ((matrix.storage[i] - identity.storage[i]).abs() > 0.001) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InteractiveViewer(
+      transformationController: _controller,
+      minScale: widget.minScale,
+      maxScale: widget.maxScale,
+      panEnabled: false,
+      clipBehavior: widget.clipBehavior,
+      onInteractionStart: _handleInteractionStart,
+      onInteractionEnd: _handleInteractionEnd,
+      child: widget.child,
     );
   }
 }
