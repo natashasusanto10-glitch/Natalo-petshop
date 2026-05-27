@@ -30,6 +30,7 @@ import '../services/report_service.dart';
 import '../services/video_quality_service.dart';
 import '../state/cart_store.dart';
 import '../state/feed_local_store.dart';
+import '../state/feed_store.dart';
 import '../state/member_store.dart';
 import '../state/settings_store.dart';
 import '../utils/android_back_overlays.dart';
@@ -233,9 +234,16 @@ class _FeedScreenState extends State<FeedScreen> {
       _loading = true;
       _loadError = null;
     });
+    // Capture timestamp SEBELUM await — stale-write guard. Kalau user tap
+    // like di tengah fetch, store skip overwrite interaction fields karena
+    // localActionAt > fetchedAt.
+    final fetchedAt = DateTime.now();
     try {
       final page = await feedService.fetchPublicFeed();
       if (!mounted) return;
+      // Seed shared FeedStore — single source of truth untuk like/comment
+      // sync antar screen (Feed / Detail / Public Profile / Postingan Saya).
+      feedStore.mergeFromServer(page.items, fetchedAt: fetchedAt);
       // Gap #7: merge backend viewerLiked dengan local cache.
       try {
         feedLocalStore.mergeBackendLiked(page.items);
@@ -282,12 +290,14 @@ class _FeedScreenState extends State<FeedScreen> {
   Future<void> _loadMore() async {
     if (_loadingMore || _nextCursor == null) return;
     _loadingMore = true;
+    final fetchedAt = DateTime.now();
     try {
       final page = await feedService.fetchPublicFeed(cursor: _nextCursor);
       if (!mounted) {
         _loadingMore = false;
         return;
       }
+      feedStore.mergeFromServer(page.items, fetchedAt: fetchedAt);
       feedLocalStore.mergeBackendLiked(page.items);
       setState(() {
         _posts.addAll(page.items);
@@ -1071,10 +1081,13 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   void initState() {
     super.initState();
     _photoPageController = PageController();
-    _liked = widget.post.viewerLiked || feedLocalStore.isLiked(widget.post.id);
-    _likeCount = widget.post.likeCount;
-    _commentCount = widget.post.commentCount;
-    _shareCount = widget.post.shareCount;
+    // Seed store dengan post saat ini supaya feedStore.get always returns
+    // non-null. Idempotent — kalau store sudah punya, NoOp.
+    feedStore.seed([widget.post]);
+    _syncFromStore();
+    // Subscribe untuk sync state lintas screen — kalau Detail screen
+    // toggle like atau add comment, listener ini fire & local mirror ikut.
+    feedStore.addListener(_onFeedStoreChanged);
 
     _heartBurstController = AnimationController(
       vsync: this,
@@ -1145,10 +1158,44 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
 
   @override
   void dispose() {
+    feedStore.removeListener(_onFeedStoreChanged);
     _stopProductRotation();
     _photoPageController.dispose();
     _heartBurstController.dispose();
     super.dispose();
+  }
+
+  /// Read latest state dari shared FeedStore, fallback ke widget.post.
+  /// Dipanggil di initState + setiap notifyListeners dari store.
+  void _syncFromStore() {
+    final fresh = feedStore.get(widget.post.id) ?? widget.post;
+    _liked = fresh.viewerLiked ||
+        fresh.isLiked ||
+        feedLocalStore.isLiked(widget.post.id);
+    _likeCount = fresh.likeCount;
+    _commentCount = fresh.commentCount;
+    _shareCount = fresh.shareCount;
+  }
+
+  void _onFeedStoreChanged() {
+    if (!mounted) return;
+    final fresh = feedStore.get(widget.post.id);
+    if (fresh == null) return;
+    final newLiked = fresh.viewerLiked ||
+        fresh.isLiked ||
+        feedLocalStore.isLiked(widget.post.id);
+    if (newLiked == _liked &&
+        fresh.likeCount == _likeCount &&
+        fresh.commentCount == _commentCount &&
+        fresh.shareCount == _shareCount) {
+      return;
+    }
+    setState(() {
+      _liked = newLiked;
+      _likeCount = fresh.likeCount;
+      _commentCount = fresh.commentCount;
+      _shareCount = fresh.shareCount;
+    });
   }
 
   // ─── Product chip rotation ──────────────────────────────────────────
@@ -1183,34 +1230,30 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   Future<void> _onLikePressed() async {
     if (_likeBusy) return;
     AppHaptics.impact();
-    final wasLiked = _liked;
-    final previousCount = _likeCount;
-    setState(() {
-      _likeBusy = true;
-      _liked = !wasLiked;
-      _likeCount =
-          wasLiked ? (_likeCount > 0 ? _likeCount - 1 : 0) : _likeCount + 1;
-    });
-    feedLocalStore.setLiked(widget.post.id, !wasLiked);
+    setState(() => _likeBusy = true);
+    // Delegate ke FeedStore: optimistic + API + reconcile + rollback +
+    // mutex semua di-handle di sana. Listener kita yang propagasi state
+    // ke local field via _onFeedStoreChanged → setState.
     try {
-      final result = await feedService.toggleLike(
-        widget.post.id,
-        currentlyLiked: wasLiked,
-      );
-      if (!mounted) return;
-      setState(() {
-        _liked = result.liked;
-        _likeCount = result.likeCount;
-      });
+      final result = await feedStore.toggleLike(widget.post.id);
       feedLocalStore.setLiked(widget.post.id, result.liked);
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
-      // Rollback optimistic.
-      setState(() {
-        _liked = wasLiked;
-        _likeCount = previousCount;
-      });
-      feedLocalStore.setLiked(widget.post.id, wasLiked);
+      if (error is ApiException && error.statusCode == 401) {
+        if (memberStore.isLoggedIn) {
+          await memberStore.logout();
+        }
+        if (!mounted) return;
+        Navigator.pushNamed(context, '/member/login');
+      } else {
+        AppToast.show(
+          context,
+          error is ApiException && error.statusCode == 404
+              ? 'Postingan tidak tersedia.'
+              : 'Like belum tersimpan. Coba lagi.',
+          kind: ToastKind.warning,
+        );
+      }
     } finally {
       if (mounted) setState(() => _likeBusy = false);
     }
@@ -1252,7 +1295,12 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
           onClose: () => Navigator.pop(context),
           onAddedCountChanged: (count) {
             if (!mounted) return;
-            setState(() => _commentCount = widget.post.commentCount + count);
+            // Propagasi ke FeedStore — semua screen lain yang baca count
+            // dari store ikut update. Local field di-update otomatis lewat
+            // _onFeedStoreChanged listener.
+            final base = feedStore.get(widget.post.id)?.commentCount ??
+                widget.post.commentCount;
+            feedStore.setCommentCount(widget.post.id, base + count);
           },
         ),
       ),
@@ -1773,6 +1821,11 @@ class _FeedPostViewState extends State<_FeedPostView>
   @override
   void initState() {
     super.initState();
+    // Seed shared FeedStore + subscribe — single source of truth untuk
+    // like/comment sync antar screen. Detail screen yang juga listen ke
+    // store akan auto-update kalau user toggle dari sini, dan sebaliknya.
+    feedStore.seed([widget.post]);
+    feedStore.addListener(_onFeedStoreChanged);
     // Gap #7: initialize _liked dari union backend + local cache.
     // Backend `viewerLiked` win kalau ada (true source), tapi kalau
     // backend false + local cache true → trust local (just-liked
@@ -2095,6 +2148,7 @@ class _FeedPostViewState extends State<_FeedPostView>
 
   @override
   void dispose() {
+    feedStore.removeListener(_onFeedStoreChanged);
     _loadingSpinnerDelay?.cancel();
     _stopProductRotation();
     // Defensive: kalau widget unmount sebelum drawer close (mis. user
@@ -2188,39 +2242,44 @@ class _FeedPostViewState extends State<_FeedPostView>
     _productRotationTimer = null;
   }
 
+  /// Sync local mirror dari shared FeedStore. Dipanggil saat store
+  /// notify (toggle dari Detail/Profile screen yang lain juga update
+  /// store → kita ikut rebuild).
+  void _onFeedStoreChanged() {
+    if (!mounted) return;
+    final fresh = feedStore.get(widget.post.id);
+    if (fresh == null) return;
+    final newLiked = fresh.viewerLiked ||
+        fresh.isLiked ||
+        feedLocalStore.isLiked(widget.post.id);
+    if (newLiked == _liked &&
+        fresh.likeCount == _likeCount &&
+        fresh.commentCount == _commentCount &&
+        fresh.shareCount == _shareCount) {
+      return;
+    }
+    setState(() {
+      _liked = newLiked;
+      _likeCount = fresh.likeCount;
+      _commentCount = fresh.commentCount;
+      _shareCount = fresh.shareCount;
+    });
+  }
+
   Future<void> _onLikePressed() async {
     if (_likeBusy) return;
     AppHaptics.impact();
-    final wasLiked = _liked;
-    final previousCount = _likeCount;
-    setState(() {
-      _likeBusy = true;
-      _liked = !wasLiked;
-      _likeCount =
-          wasLiked ? (_likeCount > 0 ? _likeCount - 1 : 0) : _likeCount + 1;
-    });
-    // Gap #7: persist liked state local (SharedPreferences). Survives
-    // app restart, instant reflection saat next launch sebelum API
-    // fetch. Backend tetap source of truth — local hanya fast-path.
-    feedLocalStore.setLiked(widget.post.id, !wasLiked);
+    setState(() => _likeBusy = true);
+    // Delegate ke FeedStore — optimistic + API + reconcile + rollback +
+    // mutex semua handled di sana. Local field auto-update lewat
+    // _onFeedStoreChanged listener saat store notify.
     try {
-      final result = await feedService.toggleLike(widget.post.id,
-          currentlyLiked: wasLiked);
-      if (!mounted) return;
-      setState(() {
-        _liked = result.liked;
-        _likeCount = result.likeCount;
-      });
-      // Reconcile local cache dengan backend truth.
+      final result = await feedStore.toggleLike(widget.post.id);
+      // Sync ke FeedLocalStore (SharedPreferences) supaya next launch
+      // reflect liked state instant.
       feedLocalStore.setLiked(widget.post.id, result.liked);
     } catch (error) {
       if (!mounted) return;
-      setState(() {
-        _liked = wasLiked;
-        _likeCount = previousCount;
-      });
-      // Rollback local cache juga.
-      feedLocalStore.setLiked(widget.post.id, wasLiked);
       if (error is ApiException && error.statusCode == 401) {
         // BUG FIX: kalau backend reject 401 padahal client kira logged-in
         // (zombie session — user.id tidak ada di DB / token expired), JANGAN
@@ -2305,13 +2364,17 @@ class _FeedPostViewState extends State<_FeedPostView>
     // (consumeAndroidBackOverlay sudah removeLast SEBELUM call closer).
     popAndroidBackOverlayCloser(_androidBackCommentCloser);
     final countDelta = math.max(addedCount, _commentAddedCount);
+    if (countDelta > 0) {
+      // Propagasi ke FeedStore — semua screen lain (Detail / Public
+      // Profile / Postingan Saya) yang baca count dari store ikut update.
+      // Local _commentCount field auto-update via _onFeedStoreChanged.
+      final base = feedStore.get(widget.post.id)?.commentCount ?? _commentCount;
+      feedStore.setCommentCount(widget.post.id, base + countDelta);
+    }
     setState(() {
       _commentSheetOpen = false;
       _commentAddedCount = 0;
       _commentDragOffset = 0;
-      if (countDelta > 0) {
-        _commentCount += countDelta;
-      }
     });
     Future<void>.delayed(const Duration(milliseconds: 280), () {
       if (!mounted || _commentSheetOpen) return;
