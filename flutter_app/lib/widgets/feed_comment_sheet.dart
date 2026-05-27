@@ -7,6 +7,7 @@ import '../services/api_client.dart';
 import '../services/block_service.dart';
 import '../services/feed_service.dart';
 import '../services/report_service.dart';
+import '../state/feed_store.dart';
 import '../state/member_store.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/haptics.dart';
@@ -338,8 +339,15 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     });
     try {
       await feedService.deleteComment(comment.id);
-      // Sukses — comment beneran hilang. Tidak perlu refresh full list
-      // (optimistic update sudah done).
+      // Sukses — comment beneran hilang. Sync comment count ke FeedStore
+      // supaya Reels/Detail/grid yang baca count dari store auto-decrement.
+      // Caller juga akan terima propagation via store listener.
+      final fresh = feedStore.get(widget.post.id);
+      final current = fresh?.commentCount ?? widget.post.commentCount;
+      feedStore.setCommentCount(
+        widget.post.id,
+        current > 0 ? current - 1 : 0,
+      );
       return true;
     } catch (e) {
       // Rollback optimistic state.
