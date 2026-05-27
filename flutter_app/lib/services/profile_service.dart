@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import '../models/my_feed_post.dart';
+import '../models/feed_post.dart';
 import '../models/public_profile.dart';
 import 'api_client.dart';
 
@@ -45,12 +45,14 @@ class ProfileService {
       isFollowing: isFollowing,
     );
     final itemsRaw = data['items'];
-    final items = <MyFeedPost>[];
+    final items = <FeedPost>[];
     if (itemsRaw is List) {
       for (final item in itemsRaw) {
         if (item is Map<String, dynamic>) {
           try {
-            items.add(MyFeedPost.fromJson(item));
+            // FeedPost.fromJson handles both shape /api/u/{username} (mediaItems,
+            // type, status, dll) DAN shape reels feed.
+            items.add(FeedPost.fromJson(item));
           } catch (e) {
             if (kDebugMode) debugPrint('[profile] post parse error: $e');
           }
@@ -67,7 +69,7 @@ class ProfileService {
 
 class PublicProfileResult {
   final PublicProfile profile;
-  final List<MyFeedPost> posts;
+  final List<FeedPost> posts;
   final String? nextCursor;
 
   const PublicProfileResult({

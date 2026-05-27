@@ -9,7 +9,6 @@ import 'package:visibility_detector/visibility_detector.dart';
 import '../config/api_config.dart';
 import '../models/feed_comment.dart';
 import '../models/feed_post.dart';
-import '../models/my_feed_post.dart';
 import '../services/api_client.dart';
 import '../services/feed_service.dart';
 import '../state/feed_store.dart';
@@ -40,8 +39,8 @@ import '../shared/widgets/natalo_post_action_icon.dart';
 ///  - "..." menu: Edit caption + Hapus postingan.
 ///  - Header subtitle: nama user dari memberStore.profile.name.
 class MemberPostDetailScreen extends StatefulWidget {
-  final MyFeedPost post;
-  final List<MyFeedPost>? posts;
+  final FeedPost post;
+  final List<FeedPost>? posts;
   final int initialIndex;
 
   /// Override author header info — dipakai saat screen ini di-open dari
@@ -75,7 +74,7 @@ class MemberPostDetailScreen extends StatefulWidget {
 
 class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
   late final ScrollController _scrollController;
-  late List<MyFeedPost> _posts;
+  late List<FeedPost> _posts;
   // Track liked state per post id — optimistic toggle, source-of-truth
   // sampai backend respons confirm.
   final Map<String, bool> _likedCache = {};
@@ -91,7 +90,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
     final source = widget.posts;
     _posts = source == null || source.isEmpty
         ? [widget.post]
-        : List<MyFeedPost>.from(source);
+        : List<FeedPost>.from(source);
     _postKeys = List.generate(_posts.length, (_) => GlobalKey());
     _scrollController = ScrollController();
     // Hydrate _likedCache dari backend `viewerLiked` field — tanpa ini,
@@ -104,9 +103,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
     }
     // Seed shared FeedStore — supaya like/comment count di sini sinkron
     // ke screen lain (Reels feed, Postingan Saya grid, Public Profile).
-    // Adapter convert MyFeedPost → FeedPost (interaction fields preserved,
-    // author stub karena MyFeedPost tidak punya).
-    feedStore.seed(_posts.map(feedPostFromMyFeedPost));
+    feedStore.seed(_posts);
     feedStore.addListener(_onFeedStoreChanged);
     // Jump ke post target setelah first frame settled. Pakai
     // Scrollable.ensureVisible via GlobalKey context — Flutter handle
@@ -333,7 +330,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
       // Sync ke FeedStore — Reels feed / grid lain yang display caption
       // post ini ikut update. Status reset ke PENDING_REVIEW di backend
       // (lihat _withCaption) → store reflect itu juga.
-      feedStore.applyPostUpdate(feedPostFromMyFeedPost(updated));
+      feedStore.applyPostUpdate(updated);
       AppToast.show(context, 'Caption diperbarui — menunggu review admin');
     } catch (_) {
       if (!mounted) return;
@@ -483,62 +480,29 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
     );
   }
 
-  /// Bulk interaction update — rekonstruksi MyFeedPost dengan likeCount,
+  /// Bulk interaction update — rekonstruksi FeedPost dengan likeCount,
   /// viewerLiked, dan commentCount baru sekaligus. Dipakai oleh sync
   /// listener FeedStore (_onFeedStoreChanged).
-  MyFeedPost _withInteractionUpdate(
-    MyFeedPost post, {
+  FeedPost _withInteractionUpdate(
+    FeedPost post, {
     required int likeCount,
     required bool liked,
     required int commentCount,
   }) {
-    return MyFeedPost(
-      id: post.id,
-      slug: post.slug,
-      caption: post.caption,
-      mediaUrl: post.mediaUrl,
-      thumbnailUrl: post.thumbnailUrl,
-      type: post.type,
-      mediaItems: post.mediaItems,
-      blurhash: post.blurhash,
-      durationSec: post.durationSec,
-      aspectWidth: post.aspectWidth,
-      aspectHeight: post.aspectHeight,
-      status: post.status,
-      rejectionReason: post.rejectionReason,
+    return post.copyWith(
       likeCount: likeCount,
       commentCount: commentCount,
-      viewCount: post.viewCount,
       viewerLiked: liked,
-      productIds: post.productIds,
-      createdAt: post.createdAt,
-      approvedAt: post.approvedAt,
+      isLiked: liked,
     );
   }
 
-  MyFeedPost _withCaption(MyFeedPost post, String newCaption) {
-    return MyFeedPost(
-      id: post.id,
-      slug: post.slug,
+  FeedPost _withCaption(FeedPost post, String newCaption) {
+    return post.copyWith(
       caption: newCaption.isEmpty ? null : newCaption,
-      mediaUrl: post.mediaUrl,
-      thumbnailUrl: post.thumbnailUrl,
-      type: post.type,
-      mediaItems: post.mediaItems,
-      blurhash: post.blurhash,
-      durationSec: post.durationSec,
-      aspectWidth: post.aspectWidth,
-      aspectHeight: post.aspectHeight,
+      description: newCaption.isEmpty ? '' : newCaption,
       // Edit caption reset status ke PENDING_REVIEW per backend logic.
       status: 'PENDING_REVIEW',
-      rejectionReason: post.rejectionReason,
-      likeCount: post.likeCount,
-      commentCount: post.commentCount,
-      viewCount: post.viewCount,
-      viewerLiked: post.viewerLiked,
-      productIds: post.productIds,
-      createdAt: post.createdAt,
-      approvedAt: post.approvedAt,
     );
   }
 }
@@ -546,7 +510,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
 // ─── Per-post item ───────────────────────────────────────────────────
 
 class _PostFeedItem extends StatefulWidget {
-  final MyFeedPost post;
+  final FeedPost post;
   final String memberName;
   final String memberInitial;
   final String? memberPhotoUrl;
@@ -557,7 +521,7 @@ class _PostFeedItem extends StatefulWidget {
   // lain dari public profile, status tidak ditampilkan (mereka cuma lihat
   // post yang sudah PUBLISHED toh — atau setidaknya yang dianggap public
   // oleh backend). Bonus: kalau backend tidak mengirim `status` field di
-  // public endpoint, MyFeedPost.fromJson defaultkan ke 'PENDING_REVIEW',
+  // public endpoint, FeedPost.fromJson defaultkan ke 'PENDING_REVIEW',
   // yang bisa salah picu badge. Gate by isOwner mencegah false positive.
   final bool showStatusBadge;
   final VoidCallback onLike;
@@ -706,11 +670,11 @@ class _PostFeedItemState extends State<_PostFeedItem>
         // Hanya ditampilkan untuk owner (showStatusBadge=true) — viewer
         // dari public profile tidak melihat status moderation post orang
         // lain. Tanpa gate ini, default status='PENDING_REVIEW' di
-        // MyFeedPost.fromJson bisa kelihatan ke viewer kalau backend
+        // FeedPost.fromJson bisa kelihatan ke viewer kalau backend
         // /api/u/{username} tidak set field status di response.
         if (widget.showStatusBadge &&
-            (post.statusInfo == MyFeedPostStatus.pending ||
-                post.statusInfo == MyFeedPostStatus.rejected)) ...[
+            (post.statusInfo == FeedPostStatus.pending ||
+                post.statusInfo == FeedPostStatus.rejected)) ...[
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
             child: _PostStatusBadge(post: post),
@@ -1020,7 +984,7 @@ class _LikedByLine extends StatelessWidget {
   final String memberName;
   final String? memberPhotoUrl;
   final String memberInitial;
-  final MyFeedPost post;
+  final FeedPost post;
 
   const _LikedByLine({
     required this.memberName,
@@ -1223,13 +1187,13 @@ class _PostCaption extends StatelessWidget {
 }
 
 class _PostStatusBadge extends StatelessWidget {
-  final MyFeedPost post;
+  final FeedPost post;
 
   const _PostStatusBadge({required this.post});
 
   @override
   Widget build(BuildContext context) {
-    final rejected = post.statusInfo == MyFeedPostStatus.rejected;
+    final rejected = post.statusInfo == FeedPostStatus.rejected;
     final bg = rejected ? const Color(0xFFFEF2F2) : const Color(0xFFFFF7E6);
     final fg = rejected ? const Color(0xFFDC2626) : const Color(0xFFB45309);
     final label = rejected ? 'Ditolak' : 'Menunggu review';
@@ -1283,7 +1247,7 @@ class _PostStatusBadge extends StatelessWidget {
 // ─── Media surface — switcher per content type ──────────────────────
 
 class _PostMediaSurface extends StatelessWidget {
-  final MyFeedPost post;
+  final FeedPost post;
 
   const _PostMediaSurface({required this.post});
 
@@ -1292,9 +1256,9 @@ class _PostMediaSurface extends StatelessWidget {
     // Pass type ke aspect calculator — video pakai 3:5 fixed (immersive),
     // photo/carousel pakai source aspect clamped ke 4:5.
     final aspectRatio = _safeAspectRatio(
-      post.aspectWidth,
-      post.aspectHeight,
-      type: post.type,
+      post.aspectWidthInt,
+      post.aspectHeightInt,
+      type: post.contentType,
     );
     // Hero destination — wraps photo (single & carousel cover) dengan tag
     // sama dengan _PostThumbnail di member_screen grid: 'post-thumb-${id}'.
@@ -1302,21 +1266,21 @@ class _PostMediaSurface extends StatelessWidget {
     // Video skip (VideoPlayer destination tidak compatible).
     return AspectRatio(
       aspectRatio: aspectRatio,
-      child: switch (post.type) {
-        MyFeedPostType.video => _InlineVideoPlayer(
+      child: switch (post.contentType) {
+        FeedContentType.video => _InlineVideoPlayer(
             postId: post.id,
             mediaUrl: post.previewMediaUrl,
             thumbnailUrl: post.thumbnailUrl,
             aspectRatio: aspectRatio,
           ),
-        MyFeedPostType.carousel => Hero(
+        FeedContentType.carousel => Hero(
             tag: 'post-thumb-${post.id}',
             child: _CarouselSurface(
               post: post,
               aspectRatio: aspectRatio,
             ),
           ),
-        MyFeedPostType.photo => Hero(
+        FeedContentType.photo => Hero(
             tag: 'post-thumb-${post.id}',
             child: _ImageSurface(
               imageUrl: post.previewMediaUrl,
@@ -1329,7 +1293,7 @@ class _PostMediaSurface extends StatelessWidget {
 }
 
 class _CarouselSurface extends StatefulWidget {
-  final MyFeedPost post;
+  final FeedPost post;
   final double aspectRatio;
 
   const _CarouselSurface({required this.post, required this.aspectRatio});
@@ -1341,16 +1305,15 @@ class _CarouselSurface extends StatefulWidget {
 class _CarouselSurfaceState extends State<_CarouselSurface> {
   int _index = 0;
 
-  List<MyFeedMediaItem> get _items {
+  List<FeedMedia> get _items {
     if (widget.post.mediaItems.isNotEmpty) return widget.post.mediaItems;
     if (widget.post.previewMediaUrl.isEmpty) return const [];
     return [
-      MyFeedMediaItem(
+      FeedMedia(
         id: '${widget.post.id}-fallback',
         mediaUrl: widget.post.previewMediaUrl,
         thumbnailUrl: widget.post.thumbnailUrl,
-        mediaType:
-            widget.post.isVideo ? MyFeedMediaType.video : MyFeedMediaType.image,
+        mediaType: widget.post.isVideo ? 'video' : 'image',
         durationSeconds: widget.post.durationSec,
       ),
     ];
@@ -1370,7 +1333,7 @@ class _CarouselSurfaceState extends State<_CarouselSurface> {
           onPageChanged: (i) => setState(() => _index = i),
           itemBuilder: (context, index) {
             final item = items[index];
-            if (item.mediaType == MyFeedMediaType.video) {
+            if (item.isVideo) {
               return _InlineVideoPlayer(
                 postId: '${widget.post.id}-$index',
                 mediaUrl: item.mediaUrl,
@@ -2250,7 +2213,7 @@ class _EditCaptionSheetState extends State<_EditCaptionSheet> {
 // ─── Comment sheet — MVP, fetch & post inline ───────────────────────
 
 class _MyPostCommentSheet extends StatefulWidget {
-  final MyFeedPost post;
+  final FeedPost post;
   final String authorName;
   final String? authorAvatarUrl;
 
@@ -2977,10 +2940,10 @@ class _RepliesToggle extends StatelessWidget {
 ///     portrait maksimum 4:5, landscape maksimum 1.91:1.
 ///
 /// Default fallback 4:5 kalau type tidak diketahui.
-double _safeAspectRatio(int width, int height, {MyFeedPostType? type}) {
+double _safeAspectRatio(int width, int height, {FeedContentType? type}) {
   // Video: fixed 9:14 — halaman ini list posts, bukan Reels, tetapi
   // Instagram video post portrait terasa lebih tinggi dari foto 4:5.
-  if (type == MyFeedPostType.video) {
+  if (type == FeedContentType.video) {
     return 9 / 14;
   }
   if (width <= 0 || height <= 0) return 4 / 5;

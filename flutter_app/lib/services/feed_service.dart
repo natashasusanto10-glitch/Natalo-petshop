@@ -6,7 +6,6 @@ import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import '../models/feed_comment.dart';
 import '../models/feed_post.dart';
-import '../models/my_feed_post.dart';
 import '../state/member_store.dart';
 import 'api_client.dart';
 
@@ -77,8 +76,10 @@ class FeedService {
   /// - Page pertama: omit `cursor`, default 20 items (max 50)
   /// - Page selanjutnya: pass `cursor` dari `nextCursor` page sebelumnya
   ///
-  /// Return [MyFeedPostPage] dengan `nextCursor` null kalau end-of-list.
-  Future<MyFeedPostPage> fetchMyPosts({
+  /// Return [FeedPage] dengan `nextCursor` null kalau end-of-list.
+  /// FeedPost.fromJson handles shape /api/feed/my-posts (status, type,
+  /// mediaItems, productIds) sama seperti shape reels feed.
+  Future<FeedPage> fetchMyPosts({
     String filter = 'all',
     String? cursor,
     int limit = 20,
@@ -96,11 +97,11 @@ class FeedService {
     final items = raw is List
         ? raw
             .whereType<Map<String, dynamic>>()
-            .map(MyFeedPost.fromApiJson)
+            .map(FeedPost.fromJson)
             .toList()
-        : const <MyFeedPost>[];
+        : const <FeedPost>[];
     final nextCursor = data is Map ? data['nextCursor'] as String? : null;
-    return MyFeedPostPage(items: items, nextCursor: nextCursor);
+    return FeedPage(items: items, nextCursor: nextCursor);
   }
 
   /// Fetch jumlah feed post yang user (sedang login) LIKE — bukan likes

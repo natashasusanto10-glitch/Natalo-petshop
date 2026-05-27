@@ -8,7 +8,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 
 import '../models/feed_post.dart';
-import '../models/my_feed_post.dart';
 import '../services/feed_service.dart';
 import '../state/feed_store.dart';
 import '../state/member_store.dart';
@@ -37,7 +36,7 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
   int _filterIndex = 0;
   int _draftCount = 0;
   bool _showDraftReminder = true;
-  List<MyFeedPost> _allPosts = const [];
+  List<FeedPost> _allPosts = const [];
   bool _loading = true;
   // Pagination state:
   // - _nextCursor: post id terakhir dari fetch sebelumnya. null = end-of-list.
@@ -101,7 +100,7 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
       // tile expose count. Sekaligus protect dari stale overwrite via
       // fetchedAt.
       feedStore.mergeFromServer(
-        page.items.map(feedPostFromMyFeedPost),
+        page.items,
         fetchedAt: fetchedAt,
       );
       setState(() {
@@ -143,7 +142,7 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
       );
       if (!mounted) return;
       feedStore.mergeFromServer(
-        page.items.map(feedPostFromMyFeedPost),
+        page.items,
         fetchedAt: fetchedAt,
       );
       setState(() {
@@ -204,14 +203,14 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     });
   }
 
-  List<MyFeedPost> get _visiblePosts {
+  List<FeedPost> get _visiblePosts {
     final filter = _filters[_filterIndex].type;
     return _allPosts.where((post) {
       return switch (filter) {
         _PostFilterType.all => true,
         _PostFilterType.photo => !post.isVideo,
         _PostFilterType.video => post.isVideo,
-        _PostFilterType.review => post.statusInfo == MyFeedPostStatus.pending,
+        _PostFilterType.review => post.statusInfo == FeedPostStatus.pending,
       };
     }).toList();
   }
@@ -313,7 +312,7 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     setState(() => _filterIndex = index);
   }
 
-  void _openPostDetail(List<MyFeedPost> posts, int initialIndex) {
+  void _openPostDetail(List<FeedPost> posts, int initialIndex) {
     AppHaptics.tap();
     Navigator.push<void>(
       context,
@@ -656,7 +655,7 @@ class _FeedGalleryTabs extends StatelessWidget {
 }
 
 class _GalleryPostTile extends StatelessWidget {
-  final MyFeedPost post;
+  final FeedPost post;
   final VoidCallback onTap;
 
   const _GalleryPostTile({
@@ -703,7 +702,7 @@ class _GalleryPostTile extends StatelessWidget {
 }
 
 class _PostThumbnail extends StatelessWidget {
-  final MyFeedPost post;
+  final FeedPost post;
   const _PostThumbnail({required this.post});
 
   @override
@@ -721,7 +720,7 @@ class _PostThumbnail extends StatelessWidget {
   }
 }
 
-String? _thumbnailUrlForPost(MyFeedPost post) {
+String? _thumbnailUrlForPost(FeedPost post) {
   final thumbnail = post.thumbnailUrl;
   if (thumbnail != null && thumbnail.trim().isNotEmpty) return thumbnail.trim();
   for (final item in post.mediaItems) {
@@ -777,25 +776,25 @@ class _PostMediaTypeIcon extends StatelessWidget {
 }
 
 class _StatusBadge extends StatelessWidget {
-  final MyFeedPostStatus status;
+  final FeedPostStatus status;
   const _StatusBadge({required this.status});
 
   @override
   Widget build(BuildContext context) {
     final style = switch (status) {
-      MyFeedPostStatus.pending => const _StatusStyle(
+      FeedPostStatus.pending => const _StatusStyle(
           label: 'Menunggu',
           bg: Color(0xFFFFF4D6),
           fg: Color(0xFFB45309),
           icon: Icons.schedule_rounded,
         ),
-      MyFeedPostStatus.rejected => const _StatusStyle(
+      FeedPostStatus.rejected => const _StatusStyle(
           label: 'Ditolak',
           bg: Color(0xFFEF4444),
           fg: Colors.white,
           icon: Icons.cancel_rounded,
         ),
-      MyFeedPostStatus.active || MyFeedPostStatus.unknown => null,
+      FeedPostStatus.active || FeedPostStatus.unknown => null,
     };
 
     if (style == null) return const SizedBox.shrink();
@@ -922,7 +921,7 @@ class _FilteredEmptyState extends StatelessWidget {
 }
 
 class _MemberPostPreviewScreen extends StatefulWidget {
-  final MyFeedPost post;
+  final FeedPost post;
 
   const _MemberPostPreviewScreen({required this.post});
 
@@ -934,17 +933,16 @@ class _MemberPostPreviewScreen extends StatefulWidget {
 class _MemberPostPreviewScreenState extends State<_MemberPostPreviewScreen> {
   int _index = 0;
 
-  List<MyFeedMediaItem> get _items {
+  List<FeedMedia> get _items {
     if (widget.post.mediaItems.isNotEmpty) return widget.post.mediaItems;
     final mediaUrl = widget.post.previewMediaUrl;
     if (mediaUrl.trim().isEmpty) return const [];
     return [
-      MyFeedMediaItem(
+      FeedMedia(
         id: '${widget.post.id}-preview',
         mediaUrl: mediaUrl,
         thumbnailUrl: widget.post.thumbnailUrl,
-        mediaType:
-            widget.post.isVideo ? MyFeedMediaType.video : MyFeedMediaType.image,
+        mediaType: widget.post.isVideo ? 'video' : 'image',
         durationSeconds: widget.post.durationSec,
       ),
     ];

@@ -38,7 +38,7 @@ import 'screens/username_setup_screen.dart';
 import 'screens/member_reviews_screen.dart';
 import 'screens/member_screen.dart';
 import 'screens/member_vouchers_screen.dart';
-import 'models/my_feed_post.dart';
+import 'models/feed_post.dart';
 import 'screens/forgot_password_screen.dart';
 import 'screens/notification_preferences_screen.dart';
 import 'screens/notifications_screen.dart';
@@ -339,10 +339,10 @@ class NataloPetshopApp extends StatelessWidget {
               // quick actions). Keep both untuk konsistensi.
               '/member/posts' => const MemberPostsScreen(),
               '/member/postingan-detail'
-                  when settings.arguments is MyFeedPost =>
-                MemberPostDetailScreen(post: settings.arguments as MyFeedPost),
-              '/member/postingan-edit' when settings.arguments is MyFeedPost =>
-                MemberPostEditScreen(post: settings.arguments as MyFeedPost),
+                  when settings.arguments is FeedPost =>
+                MemberPostDetailScreen(post: settings.arguments as FeedPost),
+              '/member/postingan-edit' when settings.arguments is FeedPost =>
+                MemberPostEditScreen(post: settings.arguments as FeedPost),
               '/member/order-detail' when settings.arguments is OrderSummary =>
                 MemberOrderDetailScreen(
                     order: settings.arguments as OrderSummary),

@@ -4,7 +4,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../models/feed_post.dart';
-import '../models/my_feed_post.dart';
 import '../services/api_client.dart';
 import '../services/feed_service.dart';
 import '../state/feed_store.dart';
@@ -107,7 +106,7 @@ class _ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<_ProfilePage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  List<MyFeedPost> _allPosts = const [];
+  List<FeedPost> _allPosts = const [];
   bool _loadingPosts = true;
   int _likedPostsCount = 0;
   String? _postsError;
@@ -138,16 +137,16 @@ class _ProfilePageState extends State<_ProfilePage>
         feedService.fetchMyLikesCount(),
       ]);
       if (!mounted) return;
-      // fetchMyPosts return MyFeedPostPage (cursor-paginated). Untuk
+      // fetchMyPosts return FeedPostPage (cursor-paginated). Untuk
       // header summary di Akun (stat post count), kita pakai page pertama
       // saja — tidak perlu fetch all pages. Total post count tetap akurat
       // via len(items) untuk preview, atau ambil dari totalCount kalau
       // butuh exact (future enhancement).
-      final page = results[0] as MyFeedPostPage;
+      final page = results[0] as FeedPage;
       // Seed FeedStore — cross-screen sync (Reels/Detail toggle ke-reflect
       // di Postingan Saya preview kalau di masa depan tile tampil count).
       feedStore.mergeFromServer(
-        page.items.map(feedPostFromMyFeedPost),
+        page.items,
         fetchedAt: fetchedAt,
       );
       setState(() {
@@ -194,7 +193,7 @@ class _ProfilePageState extends State<_ProfilePage>
     showUpdateProfilePhotoSheet(context);
   }
 
-  void _openPostDetail(List<MyFeedPost> posts, int initialIndex) {
+  void _openPostDetail(List<FeedPost> posts, int initialIndex) {
     if (posts.isEmpty) return;
     AppHaptics.tap();
     Navigator.push<void>(
@@ -212,10 +211,10 @@ class _ProfilePageState extends State<_ProfilePage>
     });
   }
 
-  List<MyFeedPost> get _videoPosts =>
+  List<FeedPost> get _videoPosts =>
       _allPosts.where((p) => p.isVideo).toList();
 
-  List<MyFeedPost> get _taggedPosts =>
+  List<FeedPost> get _taggedPosts =>
       _allPosts.where((p) => p.productIds.isNotEmpty).toList();
 
   @override
@@ -592,7 +591,7 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
 // ─── Post grid 3-kolom ────────────────────────────────────────────
 
 class _PostGrid extends StatelessWidget {
-  final List<MyFeedPost> posts;
+  final List<FeedPost> posts;
   final bool loading;
   final String? errorText;
   final String emptyText;
@@ -728,7 +727,7 @@ class _ErrorState extends StatelessWidget {
 }
 
 class _PostThumbnail extends StatelessWidget {
-  final MyFeedPost post;
+  final FeedPost post;
   final VoidCallback onTap;
 
   const _PostThumbnail({required this.post, required this.onTap});

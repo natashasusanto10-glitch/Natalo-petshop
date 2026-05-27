@@ -2,7 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 
-import '../models/my_feed_post.dart';
+import '../models/feed_post.dart';
 import '../services/api_client.dart';
 import '../services/feed_service.dart';
 import '../state/feed_store.dart';
@@ -14,7 +14,7 @@ import '../widgets/app_toast.dart';
 /// Edit Postingan — edit caption + manage tagged products.
 /// Video/thumbnail tidak bisa di-edit (replace upload ulang).
 class MemberPostEditScreen extends StatefulWidget {
-  final MyFeedPost post;
+  final FeedPost post;
 
   const MemberPostEditScreen({super.key, required this.post});
 
@@ -59,7 +59,7 @@ class _MemberPostEditScreenState extends State<MemberPostEditScreen> {
         productIds: _selectedProductIds.toList(),
       );
       if (!mounted) return;
-      final wasActive = widget.post.statusInfo == MyFeedPostStatus.active;
+      final wasActive = widget.post.statusInfo == FeedPostStatus.active;
       // Sync ke FeedStore — semua screen lain (Reels, grid Postingan Saya,
       // Detail) yang baca caption/status post ini ikut update. Status
       // backend reset ke PENDING_REVIEW kalau wasActive (re-review).
@@ -197,7 +197,7 @@ class _MemberPostEditScreenState extends State<MemberPostEditScreen> {
               borderRadius: BorderRadius.circular(14),
             ),
             child: AspectRatio(
-              aspectRatio: widget.post.aspectWidth / widget.post.aspectHeight,
+              aspectRatio: widget.post.aspectRatio,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
@@ -287,7 +287,7 @@ class _MemberPostEditScreenState extends State<MemberPostEditScreen> {
             onManage: _saving ? null : _openProductPicker,
           ),
           const SizedBox(height: 10),
-          if (widget.post.statusInfo == MyFeedPostStatus.active)
+          if (widget.post.statusInfo == FeedPostStatus.active)
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(

@@ -2,7 +2,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../models/feed_post.dart';
-import '../models/my_feed_post.dart';
 import '../models/public_profile.dart';
 import '../services/api_client.dart';
 import '../services/follow_service.dart';
@@ -39,7 +38,7 @@ class PublicProfileScreen extends StatefulWidget {
 
 class _PublicProfileScreenState extends State<PublicProfileScreen> {
   PublicProfile? _profile;
-  List<MyFeedPost> _posts = const [];
+  List<FeedPost> _posts = const [];
   String? _nextCursor;
   bool _loading = true;
   bool _loadingMore = false;
@@ -89,7 +88,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       // dari sana, post di store ke-update + grid bisa observe (kalau
       // suatu saat grid tile tampilkan likeCount visible).
       feedStore.mergeFromServer(
-        result.posts.map(feedPostFromMyFeedPost),
+        result.posts,
         fetchedAt: fetchedAt,
       );
       setState(() {
@@ -127,7 +126,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       );
       if (!mounted) return;
       feedStore.mergeFromServer(
-        result.posts.map(feedPostFromMyFeedPost),
+        result.posts,
         fetchedAt: fetchedAt,
       );
       setState(() {
@@ -663,7 +662,7 @@ class _ProfileTabs extends StatelessWidget {
 }
 
 class _PostTile extends StatelessWidget {
-  final MyFeedPost post;
+  final FeedPost post;
   final VoidCallback onTap;
 
   const _PostTile({required this.post, required this.onTap});
@@ -697,12 +696,9 @@ class _PostTile extends StatelessWidget {
   Widget _buildSafeTile(BuildContext context) {
     // Resolve thumb dgn fallback chain — thumbnailUrl post → thumbnailUrl
     // media pertama → mediaUrl media pertama → mediaUrl post.
-    final rawThumb = post.thumbnailUrl ??
-        (post.mediaItems.isNotEmpty
-            ? post.mediaItems.first.thumbnailUrl ??
-                post.mediaItems.first.mediaUrl
-            : post.mediaUrl);
-    final thumb = rawThumb.trim();
+    // previewMediaUrl getter handles fallback chain: thumbnailUrl →
+    // mediaItems.first.thumbnailUrl → mediaItems.first.mediaUrl → videoUrl.
+    final thumb = post.previewMediaUrl.trim();
 
     // STRICT URL validation — pakai Uri.tryParse + check scheme + host.
     // Defensive untuk edge case: "https://" tanpa host, URL dengan space,
