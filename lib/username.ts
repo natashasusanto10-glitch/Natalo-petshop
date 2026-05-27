@@ -194,6 +194,8 @@ export async function resolveUserByUsername(
   username: string | null;
   profilePhotoUrl: string | null;
   bio: string | null;
+  followersCount: number;
+  followingCount: number;
   createdAt: Date;
 } | null> {
   const normalized = normalizeUsername(rawUsername);
@@ -208,6 +210,8 @@ export async function resolveUserByUsername(
       username: true,
       profilePhotoUrl: true,
       bio: true,
+      followersCount: true,
+      followingCount: true,
       createdAt: true,
     },
   });
@@ -229,6 +233,8 @@ export async function resolveUserByUsername(
           username: true,
           profilePhotoUrl: true,
           bio: true,
+          followersCount: true,
+          followingCount: true,
           createdAt: true,
         },
       },

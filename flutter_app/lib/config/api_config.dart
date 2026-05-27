@@ -17,6 +17,14 @@ class ApiConfig {
   /// backward compat. Sama nilainya.
   static const String baseUrl = apiBaseUrl;
 
+  /// Base URL untuk NestJS social service (follow/unfollow). Default ke
+  /// API utama supaya local/dev lama tetap bisa override bertahap via
+  /// `--dart-define=SOCIAL_API_BASE_URL=...`.
+  static const String socialApiBaseUrl = String.fromEnvironment(
+    'SOCIAL_API_BASE_URL',
+    defaultValue: apiBaseUrl,
+  );
+
   /// URL publik website — dipakai untuk share link produk, deep link, dll.
   /// Biasanya sama dengan apiBaseUrl di production.
   static const String publicSiteUrl = String.fromEnvironment(
@@ -28,6 +36,21 @@ class ApiConfig {
   /// `https://www.natalopetshop.com/api/products`.
   static Uri uri(String path, [Map<String, dynamic>? query]) {
     final base = Uri.parse(apiBaseUrl);
+    return _buildUri(base, path, query);
+  }
+
+  /// Build endpoint NestJS social service. `/social/users/x/follow` →
+  /// `${SOCIAL_API_BASE_URL}/social/users/x/follow`.
+  static Uri socialUri(String path, [Map<String, dynamic>? query]) {
+    final base = Uri.parse(socialApiBaseUrl);
+    return _buildUri(base, path, query);
+  }
+
+  static Uri _buildUri(
+    Uri base,
+    String path,
+    Map<String, dynamic>? query,
+  ) {
     final segments = [
       ...base.pathSegments,
       ...path.split('/').where((s) => s.isNotEmpty),
@@ -37,7 +60,8 @@ class ApiConfig {
     );
     return base.replace(
       pathSegments: segments,
-      queryParameters: queryParameters?.isEmpty == true ? null : queryParameters,
+      queryParameters:
+          queryParameters?.isEmpty == true ? null : queryParameters,
     );
   }
 }

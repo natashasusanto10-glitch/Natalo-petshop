@@ -9,6 +9,9 @@ class PublicProfile {
   final DateTime? memberSince;
   final int postCount;
   final int likedCount;
+  final int followersCount;
+  final int followingCount;
+  final bool isFollowing;
   final bool isOwner;
 
   const PublicProfile({
@@ -20,6 +23,9 @@ class PublicProfile {
     this.memberSince,
     this.postCount = 0,
     this.likedCount = 0,
+    this.followersCount = 0,
+    this.followingCount = 0,
+    this.isFollowing = false,
     this.isOwner = false,
   });
 
@@ -44,15 +50,24 @@ class PublicProfile {
         json['profilePhotoUrl'] ?? json['profile_photo_url'],
       ),
       bio: _nullableString(json['bio']),
-      memberSince:
-          DateTime.tryParse((json['memberSince'] ?? '').toString()),
+      memberSince: DateTime.tryParse((json['memberSince'] ?? '').toString()),
       postCount: 0,
       likedCount: 0,
+      followersCount: 0,
+      followingCount: 0,
+      isFollowing: json['isFollowing'] == true,
       isOwner: isOwner,
     );
   }
 
-  PublicProfile copyWith({int? postCount, int? likedCount, bool? isOwner}) {
+  PublicProfile copyWith({
+    int? postCount,
+    int? likedCount,
+    int? followersCount,
+    int? followingCount,
+    bool? isFollowing,
+    bool? isOwner,
+  }) {
     return PublicProfile(
       id: id,
       name: name,
@@ -62,6 +77,9 @@ class PublicProfile {
       memberSince: memberSince,
       postCount: postCount ?? this.postCount,
       likedCount: likedCount ?? this.likedCount,
+      followersCount: followersCount ?? this.followersCount,
+      followingCount: followingCount ?? this.followingCount,
+      isFollowing: isFollowing ?? this.isFollowing,
       isOwner: isOwner ?? this.isOwner,
     );
   }

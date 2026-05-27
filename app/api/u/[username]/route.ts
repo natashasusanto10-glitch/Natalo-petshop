@@ -58,7 +58,7 @@ export async function GET(
       ? Math.min(MAX_LIMIT, Math.max(1, Math.floor(rawLimit)))
       : DEFAULT_LIMIT;
 
-  const [rawPosts, totalCount, likedCount] = await Promise.all([
+  const [rawPosts, totalCount, likedCount, viewerFollow] = await Promise.all([
     prisma.feedPost.findMany({
       where: {
         authorId: target.id,
@@ -110,6 +110,17 @@ export async function GET(
     prisma.feedLike.count({
       where: { userId: target.id },
     }),
+    viewerUserId && !isOwner
+      ? prisma.userFollow.findUnique({
+          where: {
+            followerId_followingId: {
+              followerId: viewerUserId,
+              followingId: target.id,
+            },
+          },
+          select: { id: true },
+        })
+      : null,
   ]);
 
   const hasMore = rawPosts.length > limit;
@@ -127,8 +138,11 @@ export async function GET(
     stats: {
       postCount: totalCount,
       likedCount,
+      followersCount: target.followersCount,
+      followingCount: target.followingCount,
     },
     isOwner,
+    isFollowing: Boolean(viewerFollow),
     items: sliced.map((p) => ({
       id: p.id,
       kind: p.kind,
