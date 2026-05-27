@@ -8,7 +8,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_blurhash/flutter_blurhash.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shimmer/shimmer.dart';
@@ -1033,7 +1032,7 @@ class _FeedErrorState extends StatelessWidget {
 
 /// PHOTO_CAROUSEL post view — render 1-8 foto pakai PageView horizontal +
 /// dots indicator + heart burst + action rail. Reuse helper components
-/// (_ReelsAction, _BlurredFeedBackdrop, _FeedCreatorIdentity, _ExpandableCaption)
+/// (_ReelsAction, _FeedCreatorIdentity, _ExpandableCaption)
 /// dari _FeedPostView via lokasi sama-file.
 ///
 /// Beda dari _FeedPostView:
@@ -2969,8 +2968,8 @@ class _FeedPostViewState extends State<_FeedPostView>
                       // sudah lewat 800ms grace period (lihat
                       // _resetLoadingSpinnerTimer). Kalau initialize selesai
                       // < 800ms, spinner tidak pernah render → perceived
-                      // instant. Blurhash + thumbnail dari _MediaBackground
-                      // tetap visible selama itu.
+                      // instant. Thumbnail dari _MediaBackground tetap
+                      // visible di atas background hitam selama itu.
                       if (_showLoadingSpinner &&
                           _videoController != null &&
                           !_videoController!.value.isInitialized &&
@@ -3603,14 +3602,17 @@ class _SnapBackZoomMedia extends StatefulWidget {
 
 class _SnapBackZoomMediaState extends State<_SnapBackZoomMedia>
     with SingleTickerProviderStateMixin {
-  late final TransformationController _controller;
   late final AnimationController _snapBackController;
-  Animation<Matrix4>? _snapBackAnimation;
+  final Map<int, Offset> _activePointers = {};
+  Animation<double>? _snapBackAnimation;
+  double _scale = 1;
+  double _gestureStartScale = 1;
+  double _gestureStartDistance = 1;
+  bool _pinching = false;
 
   @override
   void initState() {
     super.initState();
-    _controller = TransformationController();
     _snapBackController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 220),
@@ -3620,26 +3622,64 @@ class _SnapBackZoomMediaState extends State<_SnapBackZoomMedia>
   @override
   void dispose() {
     _snapBackController.dispose();
-    _controller.dispose();
     super.dispose();
   }
 
-  void _handleInteractionStart(ScaleStartDetails details) {
-    if (_snapBackController.isAnimating) {
-      _snapBackController.stop();
+  void _handlePointerDown(PointerDownEvent event) {
+    _activePointers[event.pointer] = event.localPosition;
+    if (_activePointers.length == 2) {
+      _startPinch();
     }
   }
 
-  void _handleInteractionEnd(ScaleEndDetails details) {
-    final currentMatrix = Matrix4.copy(_controller.value);
-    if (_isIdentity(currentMatrix)) {
-      _controller.value = Matrix4.identity();
+  void _handlePointerMove(PointerMoveEvent event) {
+    if (!_activePointers.containsKey(event.pointer)) return;
+    _activePointers[event.pointer] = event.localPosition;
+    if (!_pinching || _activePointers.length < 2) return;
+
+    final distance = _currentPointerDistance();
+    if (distance <= 0 || _gestureStartDistance <= 0) return;
+
+    final nextScale = (_gestureStartScale * distance / _gestureStartDistance)
+        .clamp(widget.minScale, widget.maxScale)
+        .toDouble();
+    if ((nextScale - _scale).abs() < 0.001) return;
+    setState(() => _scale = nextScale);
+  }
+
+  void _handlePointerUp(PointerUpEvent event) {
+    _activePointers.remove(event.pointer);
+    if (_pinching && _activePointers.length < 2) {
+      _endPinch();
+    }
+  }
+
+  void _handlePointerCancel(PointerCancelEvent event) {
+    _activePointers.remove(event.pointer);
+    if (_pinching && _activePointers.length < 2) {
+      _endPinch();
+    }
+  }
+
+  void _startPinch() {
+    if (_snapBackController.isAnimating) {
+      _snapBackController.stop();
+    }
+    _pinching = true;
+    _gestureStartScale = _scale;
+    _gestureStartDistance = math.max(1.0, _currentPointerDistance());
+  }
+
+  void _endPinch() {
+    _pinching = false;
+    if ((_scale - widget.minScale).abs() <= 0.001) {
+      setState(() => _scale = widget.minScale);
       return;
     }
 
-    _snapBackAnimation = Matrix4Tween(
-      begin: currentMatrix,
-      end: Matrix4.identity(),
+    _snapBackAnimation = Tween<double>(
+      begin: _scale,
+      end: widget.minScale,
     ).animate(
       CurvedAnimation(
         parent: _snapBackController,
@@ -3652,30 +3692,30 @@ class _SnapBackZoomMediaState extends State<_SnapBackZoomMedia>
   void _handleSnapBackTick() {
     final animation = _snapBackAnimation;
     if (animation == null) return;
-    _controller.value = animation.value;
+    setState(() => _scale = animation.value);
   }
 
-  bool _isIdentity(Matrix4 matrix) {
-    final identity = Matrix4.identity();
-    for (var i = 0; i < 16; i++) {
-      if ((matrix.storage[i] - identity.storage[i]).abs() > 0.001) {
-        return false;
-      }
-    }
-    return true;
+  double _currentPointerDistance() {
+    if (_activePointers.length < 2) return 0;
+    final points = _activePointers.values.take(2).toList(growable: false);
+    return (points[0] - points[1]).distance;
   }
 
   @override
   Widget build(BuildContext context) {
-    return InteractiveViewer(
-      transformationController: _controller,
-      minScale: widget.minScale,
-      maxScale: widget.maxScale,
-      panEnabled: false,
-      clipBehavior: widget.clipBehavior,
-      onInteractionStart: _handleInteractionStart,
-      onInteractionEnd: _handleInteractionEnd,
-      child: widget.child,
+    return Listener(
+      onPointerDown: _handlePointerDown,
+      onPointerMove: _handlePointerMove,
+      onPointerUp: _handlePointerUp,
+      onPointerCancel: _handlePointerCancel,
+      behavior: HitTestBehavior.translucent,
+      child: ClipRect(
+        clipBehavior: widget.clipBehavior,
+        child: Transform.scale(
+          scale: _scale,
+          child: widget.child,
+        ),
+      ),
     );
   }
 }
@@ -3695,12 +3735,6 @@ class _MediaBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ctrl = videoController;
-    // Layer 0: Blurhash LQIP placeholder — instant decode dari string ~30
-    // byte yang server kirim di thumbnailBlurhash. Selalu render di belakang
-    // sebagai safety net supaya tidak pernah lihat bg-black saat thumbnail
-    // real masih loading dari Bunny CDN (cold cache, slow network, scroll-
-    // snap composite timing). Layer di atas akan cover saat ready.
-    final blurhashLayer = _BlurhashPlaceholder(hash: post.thumbnailBlurhash);
 
     if (ctrl != null && ctrl.value.isInitialized) {
       final size = ctrl.value.size;
@@ -3723,30 +3757,10 @@ class _MediaBackground extends StatelessWidget {
         );
       }
 
-      final horizontal = _isHorizontalSize(size) || _isHorizontalPost(post);
-      if (horizontal) {
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            blurhashLayer,
-            _BlurredFeedBackdrop(thumbnailUrl: post.thumbnailUrl),
-            Center(
-              child: FittedBox(
-                fit: BoxFit.contain,
-                child: SizedBox(
-                  width: size.width,
-                  height: size.height,
-                  child: VideoPlayer(ctrl),
-                ),
-              ),
-            ),
-          ],
-        );
-      }
       return Stack(
         fit: StackFit.expand,
         children: [
-          blurhashLayer,
+          const ColoredBox(color: Colors.black),
           FittedBox(
             fit: BoxFit.cover,
             child: SizedBox(
@@ -3777,72 +3791,20 @@ class _MediaBackground extends StatelessWidget {
         );
       }
 
-      if (_isHorizontalPost(post)) {
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            blurhashLayer,
-            _BlurredFeedBackdrop(thumbnailUrl: thumb),
-            Center(
-              child: CachedNetworkImage(
-                imageUrl: thumb,
-                fit: BoxFit.contain,
-                placeholder: (_, __) => const SizedBox.shrink(),
-                errorWidget: (_, __, ___) => const SizedBox.shrink(),
-              ),
-            ),
-          ],
-        );
-      }
       return Stack(
         fit: StackFit.expand,
         children: [
-          blurhashLayer,
+          const ColoredBox(color: Colors.black),
           CachedNetworkImage(
             imageUrl: thumb,
             fit: BoxFit.cover,
-            // Placeholder transparent supaya blurhash layer terlihat di
-            // belakang sampai real thumb loaded.
             placeholder: (_, __) => const SizedBox.shrink(),
             errorWidget: (_, __, ___) => const SizedBox.shrink(),
           ),
         ],
       );
     }
-    return blurhashLayer;
-  }
-}
-
-/// Sprint 1 #5 — Blurhash LQIP placeholder.
-///
-/// Server (Bunny webhook) generate hash ~30 byte saat thumbnail tersedia,
-/// dikirim sebagai `thumbnailBlurhash` di FeedPost JSON. Client decode
-/// pakai flutter_blurhash → render canvas yang CSS-scaled jadi smooth
-/// blur preview. ZERO network fetch, instant paint.
-///
-/// Fallback: hash null/invalid → black solid (existing behavior).
-class _BlurhashPlaceholder extends StatelessWidget {
-  final String? hash;
-  const _BlurhashPlaceholder({required this.hash});
-
-  @override
-  Widget build(BuildContext context) {
-    final h = hash;
-    if (h == null || h.isEmpty) {
-      return const ColoredBox(color: Colors.black);
-    }
-    // BlurHash decode + render — pakai default decodingWidth/Height yang
-    // kecil (32x32) supaya cepat decode di main thread (~1-3ms). CSS scale
-    // up jadi blur smooth.
-    return BlurHash(
-      hash: h,
-      // imageFit: video card umumnya 9:16 portrait, cover supaya fill area.
-      imageFit: BoxFit.cover,
-      // Fallback color saat hash decode error (rare) — black sesuai theme.
-      color: Colors.black,
-      // Optional decode resolution tweak — default sudah 32x32 which is
-      // sweet spot performance vs detail. Keep default.
-    );
+    return const ColoredBox(color: Colors.black);
   }
 }
 
@@ -3996,58 +3958,6 @@ class _FullScreenVideoPageState extends State<_FullScreenVideoPage> {
   }
 }
 
-class _BlurredFeedBackdrop extends StatelessWidget {
-  final String? thumbnailUrl;
-
-  const _BlurredFeedBackdrop({required this.thumbnailUrl});
-
-  @override
-  Widget build(BuildContext context) {
-    final url = thumbnailUrl;
-    if (url == null || url.isEmpty) {
-      return const DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF111827), Colors.black],
-          ),
-        ),
-      );
-    }
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        ImageFiltered(
-          imageFilter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-          child: Transform.scale(
-            scale: 1.12,
-            child: CachedNetworkImage(
-              imageUrl: url,
-              fit: BoxFit.cover,
-              placeholder: (_, __) => const ColoredBox(color: Colors.black),
-              errorWidget: (_, __, ___) =>
-                  const ColoredBox(color: Colors.black),
-            ),
-          ),
-        ),
-        ColoredBox(color: Colors.black.withValues(alpha: 0.30)),
-      ],
-    );
-  }
-}
-
-bool _isHorizontalPost(FeedPost post) {
-  final width = post.videoWidth;
-  final height = post.videoHeight;
-  return width > 0 && height > 0 && width > height;
-}
-
-bool _isHorizontalSize(Size size) {
-  if (size.width <= 0 || size.height <= 0) return false;
-  return size.width > size.height;
-}
-
 double _instagramImageAspectRatio(int? width, int? height) {
   final w = width ?? 0;
   final h = height ?? 0;
@@ -4189,13 +4099,44 @@ class _ReelsAction extends StatefulWidget {
   State<_ReelsAction> createState() => _ReelsActionState();
 }
 
-class _ReelsActionState extends State<_ReelsAction> {
+class _ReelsActionState extends State<_ReelsAction>
+    with SingleTickerProviderStateMixin {
   late final ActionThrottle _throttle;
+  late final AnimationController _tapPulseController;
+  late final Animation<double> _tapPulseScale;
 
   @override
   void initState() {
     super.initState();
-    _throttle = ActionThrottle(interval: const Duration(milliseconds: 450));
+    _throttle = ActionThrottle(interval: const Duration(milliseconds: 220));
+    _tapPulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 180),
+    );
+    _tapPulseScale = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(begin: 1.0, end: 1.18)
+            .chain(CurveTween(curve: Curves.easeOutCubic)),
+        weight: 45,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 1.18, end: 1.0)
+            .chain(CurveTween(curve: Curves.easeOutCubic)),
+        weight: 55,
+      ),
+    ]).animate(_tapPulseController);
+  }
+
+  @override
+  void dispose() {
+    _tapPulseController.dispose();
+    super.dispose();
+  }
+
+  void _handleTap() {
+    final accepted = _throttle.run(widget.onTap);
+    if (!accepted) return;
+    _tapPulseController.forward(from: 0);
   }
 
   @override
@@ -4205,36 +4146,39 @@ class _ReelsActionState extends State<_ReelsAction> {
       child: Material(
         color: Colors.transparent,
         child: InkResponse(
-          onTap: () => _throttle.run(widget.onTap),
+          onTap: _handleTap,
           radius: 28,
-          child: SizedBox(
-            height: widget.count == null ? 44 : 60,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                widget.iconChild,
-                if (widget.count != null) ...[
-                  const SizedBox(height: 2),
-                  RepaintBoundary(
-                    child: Text(
-                      _formatCount(widget.count!),
-                      style: const TextStyle(
-                        color: _feedActionForegroundColor,
-                        fontSize: _feedActionCountFontSize,
-                        fontWeight: FontWeight.w900,
-                        height: 1,
-                        shadows: [
-                          Shadow(
-                            color: _feedActionTextShadowColor,
-                            blurRadius: 2.4,
-                            offset: Offset(0, 0.8),
-                          ),
-                        ],
+          child: ScaleTransition(
+            scale: _tapPulseScale,
+            child: SizedBox(
+              height: widget.count == null ? 44 : 60,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  widget.iconChild,
+                  if (widget.count != null) ...[
+                    const SizedBox(height: 2),
+                    RepaintBoundary(
+                      child: Text(
+                        _formatCount(widget.count!),
+                        style: const TextStyle(
+                          color: _feedActionForegroundColor,
+                          fontSize: _feedActionCountFontSize,
+                          fontWeight: FontWeight.w900,
+                          height: 1,
+                          shadows: [
+                            Shadow(
+                              color: _feedActionTextShadowColor,
+                              blurRadius: 2.4,
+                              offset: Offset(0, 0.8),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),
