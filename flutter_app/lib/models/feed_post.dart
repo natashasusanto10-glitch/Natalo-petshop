@@ -705,3 +705,75 @@ class FeedPage {
 
   const FeedPage({this.items = const [], this.nextCursor});
 }
+
+/// Adapter MyFeedPost → FeedPost untuk seed FeedStore dari screen yang
+/// masih pakai MyFeedPost model (member_post_detail, public_profile,
+/// member_posts, dll). Author info di-stub karena MyFeedPost tidak
+/// menyimpan author — itu OK karena store hanya butuh post.id + interaksi
+/// (likeCount/commentCount/viewerLiked) untuk sync. Author info untuk
+/// header tetap di-resolve dari context (memberStore atau PublicProfile
+/// di caller).
+///
+/// **CATATAN:** Adapter ini transitional — setelah semua callers migrasi
+/// ke FeedPost native, helper ini bisa di-delete.
+FeedPost feedPostFromMyFeedPost(dynamic m) {
+  // dynamic untuk hindari import circular MyFeedPost di sini. Caller pass
+  // MyFeedPost instance; kita akses via duck-typing fields. Aman karena
+  // MyFeedPost API stable.
+  final mediaItemsRaw = m.mediaItems as List?;
+  final mediaItems = <FeedMedia>[];
+  if (mediaItemsRaw != null) {
+    for (var i = 0; i < mediaItemsRaw.length; i++) {
+      final mi = mediaItemsRaw[i];
+      // mi.mediaType bisa enum atau string — handle both.
+      final rawType = mi.mediaType.toString().toLowerCase();
+      final mediaType = rawType.contains('video') ? 'video' : 'image';
+      mediaItems.add(FeedMedia(
+        id: (mi.id as String?) ?? 'media-$i',
+        mediaType: mediaType,
+        mediaUrl: (mi.mediaUrl as String?) ?? '',
+        thumbnailUrl: mi.thumbnailUrl as String?,
+        durationSeconds: mi.durationSeconds as int?,
+        sortOrder: i,
+      ));
+    }
+  }
+
+  final kind = (m.isVideo as bool? ?? false)
+      ? 'USER_VIDEO'
+      : (m.isCarousel as bool? ?? false)
+          ? 'PHOTO_CAROUSEL'
+          : 'PHOTO';
+
+  return FeedPost(
+    id: m.id as String,
+    slug: (m.slug as String?) ?? (m.id as String),
+    caption: m.caption as String?,
+    title: '',
+    description: (m.caption as String?) ?? '',
+    videoUrl: (m.mediaUrl as String?) ?? '',
+    thumbnailUrl: m.thumbnailUrl as String?,
+    blurhash: m.blurhash as String?,
+    durationSec: (m.durationSec as int?) ?? 0,
+    aspectRatio: _aspectFromIntPair(
+          m.aspectWidth as int?,
+          m.aspectHeight as int?,
+        ) ??
+        (9 / 16),
+    videoWidth: (m.aspectWidth as int?) ?? 0,
+    videoHeight: (m.aspectHeight as int?) ?? 0,
+    kind: kind,
+    // Stub author — caller resolve dari context (memberStore / PublicProfile).
+    author: const FeedAuthor(id: '', name: 'User'),
+    likeCount: (m.likeCount as int?) ?? 0,
+    commentCount: (m.commentCount as int?) ?? 0,
+    viewCount: (m.viewCount as int?) ?? 0,
+    isLiked: (m.viewerLiked as bool?) ?? false,
+    viewerLiked: (m.viewerLiked as bool?) ?? false,
+    createdAt: m.createdAt as DateTime? ?? DateTime.now(),
+    mediaItems: mediaItems,
+    status: (m.status as String?) ?? 'PUBLISHED',
+    rejectionReason: m.rejectionReason as String?,
+    approvedAt: m.approvedAt as DateTime?,
+  );
+}

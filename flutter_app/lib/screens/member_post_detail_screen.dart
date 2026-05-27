@@ -12,6 +12,7 @@ import '../models/feed_post.dart';
 import '../models/my_feed_post.dart';
 import '../services/api_client.dart';
 import '../services/feed_service.dart';
+import '../state/feed_store.dart';
 import '../state/member_store.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
@@ -101,10 +102,45 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
     for (final post in _posts) {
       _likedCache[post.id] = post.viewerLiked;
     }
+    // Seed shared FeedStore — supaya like/comment count di sini sinkron
+    // ke screen lain (Reels feed, Postingan Saya grid, Public Profile).
+    // Adapter convert MyFeedPost → FeedPost (interaction fields preserved,
+    // author stub karena MyFeedPost tidak punya).
+    feedStore.seed(_posts.map(feedPostFromMyFeedPost));
+    feedStore.addListener(_onFeedStoreChanged);
     // Jump ke post target setelah first frame settled. Pakai
     // Scrollable.ensureVisible via GlobalKey context — Flutter handle
     // layout precisely, gak ada drift estimasi.
     WidgetsBinding.instance.addPostFrameCallback((_) => _jumpToInitial());
+  }
+
+  /// Sync local _likedCache + _posts[i] likeCount/commentCount dari store.
+  /// Trigger saat FeedStore notify (e.g. user like dari Reels feed → store
+  /// update → kita ikut update DI SINI walaupun tidak dari interaksi
+  /// langsung di detail screen).
+  void _onFeedStoreChanged() {
+    if (!mounted) return;
+    var anyChanged = false;
+    for (var i = 0; i < _posts.length; i++) {
+      final post = _posts[i];
+      final fresh = feedStore.get(post.id);
+      if (fresh == null) continue;
+      final freshLiked = fresh.viewerLiked || fresh.isLiked;
+      final cached = _likedCache[post.id];
+      if (cached != freshLiked ||
+          post.likeCount != fresh.likeCount ||
+          post.commentCount != fresh.commentCount) {
+        _likedCache[post.id] = freshLiked;
+        _posts[i] = _withInteractionUpdate(
+          post,
+          likeCount: fresh.likeCount,
+          liked: freshLiked,
+          commentCount: fresh.commentCount,
+        );
+        anyChanged = true;
+      }
+    }
+    if (anyChanged) setState(() {});
   }
 
   void _jumpToInitial() {
@@ -156,6 +192,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
 
   @override
   void dispose() {
+    feedStore.removeListener(_onFeedStoreChanged);
     _scrollController.dispose();
     super.dispose();
   }
@@ -187,43 +224,14 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
   Future<void> _toggleLike(int index) async {
     final post = _posts[index];
     AppHaptics.tap();
-    final currentlyLiked = _likedCache[post.id] ?? post.viewerLiked;
-    final newLiked = !currentlyLiked;
-    // Optimistic update — UI immediately respond.
-    setState(() {
-      _likedCache[post.id] = newLiked;
-      _posts[index] = _withLikeCount(
-        post,
-        newLiked ? post.likeCount + 1 : (post.likeCount - 1).clamp(0, 999999),
-        liked: newLiked,
-      );
-    });
-    // Background sync — kalau gagal, revert.
+    // Delegate ke shared FeedStore — handle optimistic + API + reconcile
+    // + rollback. _onFeedStoreChanged listener akan auto-sync local
+    // _likedCache + _posts[i] saat store notify. Reels feed dan screen
+    // lain yang ikut listen ke store juga akan ke-update.
     try {
-      final result = await feedService.toggleLike(
-        post.id,
-        currentlyLiked: currentlyLiked,
-      );
-      if (!mounted) return;
-      setState(() {
-        _likedCache[post.id] = result.liked;
-        _posts[index] = _withLikeCount(
-          _posts[index],
-          result.likeCount,
-          liked: result.liked,
-        );
-      });
+      await feedStore.toggleLike(post.id);
     } catch (_) {
       if (!mounted) return;
-      // Revert.
-      setState(() {
-        _likedCache[post.id] = currentlyLiked;
-        _posts[index] = _withLikeCount(
-          post,
-          post.likeCount,
-          liked: currentlyLiked,
-        );
-      });
       AppToast.show(context, 'Gagal update suka, coba lagi');
     }
   }
@@ -318,9 +326,14 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
         },
       );
       if (!mounted) return;
+      final updated = _withCaption(post, newCaption);
       setState(() {
-        _posts[index] = _withCaption(post, newCaption);
+        _posts[index] = updated;
       });
+      // Sync ke FeedStore — Reels feed / grid lain yang display caption
+      // post ini ikut update. Status reset ke PENDING_REVIEW di backend
+      // (lihat _withCaption) → store reflect itu juga.
+      feedStore.applyPostUpdate(feedPostFromMyFeedPost(updated));
       AppToast.show(context, 'Caption diperbarui — menunggu review admin');
     } catch (_) {
       if (!mounted) return;
@@ -357,6 +370,8 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
       if (!mounted) return;
       if (ok) {
         setState(() => _posts.removeAt(index));
+        // Sync ke FeedStore — Reels feed / grid lain ikut hilang.
+        feedStore.removePost(post.id);
         AppToast.show(context, 'Postingan dihapus');
         // Kalau list kosong, balik ke grid.
         if (_posts.isEmpty) Navigator.maybePop(context);
@@ -468,11 +483,15 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
     );
   }
 
-  /// Helper rebuild post dengan likeCount + viewerLiked baru — MyFeedPost
-  /// immutable jadi kita rekonstruksi (mirip copyWith pattern). `liked`
-  /// optional supaya call site lama bisa preserve, sekaligus support fresh
-  /// dari backend response (toggleLike return { liked, likeCount }).
-  MyFeedPost _withLikeCount(MyFeedPost post, int newCount, {bool? liked}) {
+  /// Bulk interaction update — rekonstruksi MyFeedPost dengan likeCount,
+  /// viewerLiked, dan commentCount baru sekaligus. Dipakai oleh sync
+  /// listener FeedStore (_onFeedStoreChanged).
+  MyFeedPost _withInteractionUpdate(
+    MyFeedPost post, {
+    required int likeCount,
+    required bool liked,
+    required int commentCount,
+  }) {
     return MyFeedPost(
       id: post.id,
       slug: post.slug,
@@ -487,10 +506,10 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
       aspectHeight: post.aspectHeight,
       status: post.status,
       rejectionReason: post.rejectionReason,
-      likeCount: newCount,
-      commentCount: post.commentCount,
+      likeCount: likeCount,
+      commentCount: commentCount,
       viewCount: post.viewCount,
-      viewerLiked: liked ?? post.viewerLiked,
+      viewerLiked: liked,
       productIds: post.productIds,
       createdAt: post.createdAt,
       approvedAt: post.approvedAt,
@@ -2470,6 +2489,13 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
           _expandedReplies.add(replyTo.id);
         }
       });
+      // Sync count ke FeedStore — semua screen lain (Reels, grid Postingan
+      // Saya, public profile) yang baca commentCount lewat store akan
+      // langsung ke-update. Tanpa ini, user tutup sheet → count Feed/grid
+      // tetap stale sampai refresh.
+      final fresh = feedStore.get(widget.post.id);
+      final current = fresh?.commentCount ?? widget.post.commentCount;
+      feedStore.setCommentCount(widget.post.id, current + 1);
     } catch (_) {
       if (!mounted) return;
       AppToast.show(context, 'Gagal kirim komentar, coba lagi');
