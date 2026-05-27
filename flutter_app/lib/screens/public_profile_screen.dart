@@ -699,7 +699,14 @@ class _PostTile extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        color: const Color(0xFFE2E8F0),
+        // Pakai decoration (bukan color shorthand) karena Container assert
+        // `clipBehavior == Clip.none || decoration != null`. Pakai color:
+        // shorthand TIDAK set decoration, jadi pair-up dengan
+        // clipBehavior: Clip.hardEdge throw assertion saat build child —
+        // dan throw itu terjadi DI LUAR try-catch _buildSafeTile (sudah
+        // return), bocor ke ErrorWidget.builder global = AppErrorWidget
+        // di seluruh cell. Decoration eksplisit fix root cause.
+        decoration: const BoxDecoration(color: Color(0xFFE2E8F0)),
         clipBehavior: Clip.hardEdge,
         child: Stack(
           fit: StackFit.expand,
