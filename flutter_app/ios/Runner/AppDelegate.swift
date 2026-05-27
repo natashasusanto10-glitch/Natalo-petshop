@@ -1,6 +1,8 @@
 import Flutter
 import UIKit
 import FirebaseCore
+import FirebaseMessaging
+import UserNotifications
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -24,7 +26,29 @@ import FirebaseCore
     // Reference: firebase_messaging Flutter plugin docs explicit
     // mention `FirebaseApp.configure()` di AppDelegate untuk iOS.
     FirebaseApp.configure()
+    if #available(iOS 10.0, *) {
+      UNUserNotificationCenter.current().delegate = self
+    }
+    application.registerForRemoteNotifications()
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  override func application(
+    _ application: UIApplication,
+    didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+  ) {
+    // Ensure Firebase Messaging receives the APNs token even when app
+    // delegate proxy/swizzling timing changes under TestFlight builds.
+    Messaging.messaging().apnsToken = deviceToken
+    super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
+  }
+
+  override func application(
+    _ application: UIApplication,
+    didFailToRegisterForRemoteNotificationsWithError error: Error
+  ) {
+    NSLog("[push] iOS failed to register for remote notifications: %@", error.localizedDescription)
+    super.application(application, didFailToRegisterForRemoteNotificationsWithError: error)
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
