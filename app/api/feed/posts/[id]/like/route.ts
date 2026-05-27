@@ -20,7 +20,7 @@ import { sendLikeNotification } from "@/lib/feed/activity-notifications";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const csrfReject = assertSameOrigin(request);
   if (csrfReject) return csrfReject;
@@ -42,7 +42,10 @@ export async function POST(
     })
     .catch(() => null);
   if (!post || post.status !== "ACTIVE" || post.deletedAt) {
-    return NextResponse.json({ error: "Post tidak ditemukan" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Post tidak ditemukan" },
+      { status: 404 }
+    );
   }
 
   // Toggle dalam transaction supaya counter tidak drift saat concurrent.
@@ -91,9 +94,34 @@ export async function POST(
     });
   }
 
+  const recentLikes = await prisma.feedLike.findMany({
+    where: { postId },
+    orderBy: { createdAt: "desc" },
+    take: 3,
+    select: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          role: true,
+          profilePhotoUrl: true,
+        },
+      },
+    },
+  });
+
   return NextResponse.json({
     ok: true,
     liked: result.liked,
     likeCount: result.likeCount,
+    recentLikers: recentLikes.map((like) => ({
+      id: like.user.id,
+      name: like.user.name,
+      username: like.user.username,
+      role: like.user.role === "ADMIN" ? "ADMIN" : "CUSTOMER",
+      profilePhotoUrl: like.user.profilePhotoUrl,
+      avatarUrl: like.user.profilePhotoUrl,
+    })),
   });
 }

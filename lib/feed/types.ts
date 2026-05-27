@@ -110,6 +110,7 @@ export type FeedPostListItem = {
   viewCount: number;
   shareCount: number;
   author: FeedPostAuthor;
+  recentLikers: FeedPostAuthor[];
   publishedAt: string | null;
   createdAt: string;
   // Per-viewer state — server compute kalau session ada, false kalau anon.

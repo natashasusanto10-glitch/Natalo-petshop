@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/feed_post.dart';
 import '../services/feed_service.dart';
+import 'member_store.dart';
 
 /// Shared, postId-keyed store untuk semua feed post di app.
 ///
@@ -126,7 +127,7 @@ class FeedStore extends ChangeNotifier {
           status: incoming.status,
           rejectionReason: incoming.rejectionReason,
           approvedAt: incoming.approvedAt,
-          // SKIP: likeCount, commentCount, isLiked, viewerLiked.
+          // SKIP: likeCount, commentCount, isLiked, viewerLiked, recentLikers.
         );
       } else {
         // Server data fresher than any local optimistic action — apply all.
@@ -179,6 +180,7 @@ class FeedStore extends ChangeNotifier {
       isLiked: liked,
       viewerLiked: liked,
       likeCount: likeCount < 0 ? 0 : likeCount,
+      recentLikers: _reconcileCurrentUserLiker(p.recentLikers, liked),
     );
     _lastLocalActionAt[postId] = DateTime.now();
     notifyListeners();
@@ -218,6 +220,7 @@ class FeedStore extends ChangeNotifier {
       isLiked: newLiked,
       viewerLiked: newLiked,
       likeCount: optimisticCount,
+      recentLikers: _reconcileCurrentUserLiker(oldPost.recentLikers, newLiked),
     );
     _lastLocalActionAt[postId] = DateTime.now();
     notifyListeners();
@@ -234,6 +237,12 @@ class FeedStore extends ChangeNotifier {
           isLiked: result.liked,
           viewerLiked: result.liked,
           likeCount: result.likeCount,
+          recentLikers: result.recentLikers.isNotEmpty
+              ? result.recentLikers
+              : _reconcileCurrentUserLiker(
+                  current.recentLikers,
+                  result.liked,
+                ),
         );
         _lastLocalActionAt[postId] = DateTime.now();
         notifyListeners();
@@ -292,3 +301,26 @@ class FeedStore extends ChangeNotifier {
 }
 
 final FeedStore feedStore = FeedStore._();
+
+List<FeedAuthor> _reconcileCurrentUserLiker(
+  List<FeedAuthor> existing,
+  bool liked,
+) {
+  final profile = memberStore.profile;
+  if (profile == null || profile.id.isEmpty) return existing;
+  final withoutMe =
+      existing.where((liker) => liker.id != profile.id).toList(growable: true);
+  if (!liked) return withoutMe;
+  return [
+    FeedAuthor(
+      id: profile.id,
+      name: profile.name,
+      username: profile.username,
+      avatarUrl: profile.profilePhotoUrl,
+      profilePhotoUrl: profile.profilePhotoUrl,
+      role: profile.role,
+      isAdmin: profile.isAdmin,
+    ),
+    ...withoutMe,
+  ].take(3).toList(growable: false);
+}

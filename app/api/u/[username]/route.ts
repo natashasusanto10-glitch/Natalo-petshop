@@ -25,24 +25,21 @@ import { resolveUserByUsername } from "@/lib/username";
 import { getSession } from "@/lib/auth";
 import { signBunnyUrl } from "@/lib/feed/bunny";
 
-const VISIBLE_KINDS: FeedPostKind[] = [
-  "COMMUNITY",
-  "PHOTO_CAROUSEL",
-];
+const VISIBLE_KINDS: FeedPostKind[] = ["COMMUNITY", "PHOTO_CAROUSEL"];
 
 const MAX_LIMIT = 50;
 const DEFAULT_LIMIT = 20;
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ username: string }> },
+  { params }: { params: Promise<{ username: string }> }
 ) {
   const { username } = await params;
   const target = await resolveUserByUsername(username);
   if (!target) {
     return NextResponse.json(
       { error: "USER_NOT_FOUND", message: "User tidak ditemukan." },
-      { status: 404 },
+      { status: 404 }
     );
   }
 
@@ -52,7 +49,7 @@ export async function GET(
 
   const cursor = request.nextUrl.searchParams.get("cursor") || null;
   const rawLimit = Number(
-    request.nextUrl.searchParams.get("limit") ?? `${DEFAULT_LIMIT}`,
+    request.nextUrl.searchParams.get("limit") ?? `${DEFAULT_LIMIT}`
   );
   const limit =
     Number.isFinite(rawLimit) && rawLimit > 0
@@ -95,6 +92,21 @@ export async function GET(
             height: true,
           },
         },
+        likes: {
+          orderBy: { createdAt: "desc" },
+          take: 3,
+          select: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                username: true,
+                role: true,
+                profilePhotoUrl: true,
+              },
+            },
+          },
+        },
       },
     }),
     // Total post count untuk header stats.
@@ -126,6 +138,20 @@ export async function GET(
 
   const hasMore = rawPosts.length > limit;
   const sliced = hasMore ? rawPosts.slice(0, limit) : rawPosts;
+  const viewerLikedIds =
+    viewerUserId && sliced.length > 0
+      ? new Set(
+          (
+            await prisma.feedLike.findMany({
+              where: {
+                userId: viewerUserId,
+                postId: { in: sliced.map((p) => p.id) },
+              },
+              select: { postId: true },
+            })
+          ).map((like) => like.postId)
+        )
+      : new Set<string>();
 
   return NextResponse.json({
     user: {
@@ -165,6 +191,15 @@ export async function GET(
       likeCount: p.likeCount,
       commentCount: p.commentCount,
       viewCount: p.viewCount,
+      viewerLiked: viewerLikedIds.has(p.id),
+      recentLikers: p.likes.map((like) => ({
+        id: like.user.id,
+        name: like.user.name,
+        username: like.user.username,
+        role: like.user.role === "ADMIN" ? "ADMIN" : "CUSTOMER",
+        profilePhotoUrl: like.user.profilePhotoUrl,
+        avatarUrl: like.user.profilePhotoUrl,
+      })),
       media: p.media.map((m) => ({
         id: m.id,
         url: signBunnyUrl(m.url) ?? m.url,

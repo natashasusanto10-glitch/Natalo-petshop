@@ -102,7 +102,15 @@ export async function listFeedPosts({
         }
       : {}),
     include: {
-      author: { select: { id: true, name: true, username: true, role: true, profilePhotoUrl: true } },
+      author: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          role: true,
+          profilePhotoUrl: true,
+        },
+      },
       product: {
         select: {
           id: true,
@@ -162,6 +170,21 @@ export async function listFeedPosts({
           sortOrder: true,
         },
         orderBy: { sortOrder: "asc" },
+      },
+      likes: {
+        orderBy: { createdAt: "desc" },
+        take: 3,
+        select: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              username: true,
+              role: true,
+              profilePhotoUrl: true,
+            },
+          },
+        },
       },
     },
   });
@@ -281,7 +304,9 @@ export async function listFeedPosts({
         soldCount: soldCountMap.get(tp.product!.id) ?? 0,
       })),
     promo:
-      p.kind === "PROMO" && p.promoOriginalPrice != null && p.promoDiscountPrice != null
+      p.kind === "PROMO" &&
+      p.promoOriginalPrice != null &&
+      p.promoDiscountPrice != null
         ? {
             originalPrice: p.promoOriginalPrice,
             discountPrice: p.promoDiscountPrice,
@@ -308,9 +333,21 @@ export async function listFeedPosts({
       id: p.author.id,
       name: p.author.name,
       username: p.author.username ?? null,
-      role: (p.authorRole === "ADMIN" ? "ADMIN" : "CUSTOMER") as "ADMIN" | "CUSTOMER",
+      role: (p.authorRole === "ADMIN" ? "ADMIN" : "CUSTOMER") as
+        | "ADMIN"
+        | "CUSTOMER",
       profilePhotoUrl: p.author.profilePhotoUrl ?? null,
     },
+    recentLikers: p.likes.map((like) => ({
+      id: like.user.id,
+      name: like.user.name,
+      username: like.user.username ?? null,
+      role: (like.user.role === "ADMIN" ? "ADMIN" : "CUSTOMER") as
+        | "ADMIN"
+        | "CUSTOMER",
+      profilePhotoUrl: like.user.profilePhotoUrl ?? null,
+      avatarUrl: like.user.profilePhotoUrl ?? null,
+    })),
     publishedAt: p.publishedAt?.toISOString() ?? null,
     createdAt: p.createdAt.toISOString(),
     viewerLiked: viewerLikedIds.has(p.id),
@@ -338,7 +375,13 @@ function mapFeedComment(
     isHidden: boolean;
     likeCount: number;
     createdAt: Date;
-    author: { id: string; name: string; username: string | null; role: string; profilePhotoUrl: string | null };
+    author: {
+      id: string;
+      name: string;
+      username: string | null;
+      role: string;
+      profilePhotoUrl: string | null;
+    };
     replies?: Array<{
       id: string;
       postId: string;
@@ -348,10 +391,16 @@ function mapFeedComment(
       isHidden: boolean;
       likeCount: number;
       createdAt: Date;
-      author: { id: string; name: string; username: string | null; role: string; profilePhotoUrl: string | null };
+      author: {
+        id: string;
+        name: string;
+        username: string | null;
+        role: string;
+        profilePhotoUrl: string | null;
+      };
     }>;
   },
-  viewerLikedIds: Set<string>,
+  viewerLikedIds: Set<string>
 ): FeedCommentItem {
   return {
     id: c.id,
@@ -366,11 +415,14 @@ function mapFeedComment(
       id: c.author.id,
       name: c.author.name,
       username: c.author.username ?? null,
-      role: (c.author.role === "ADMIN" ? "ADMIN" : "CUSTOMER") as "ADMIN" | "CUSTOMER",
+      role: (c.author.role === "ADMIN" ? "ADMIN" : "CUSTOMER") as
+        | "ADMIN"
+        | "CUSTOMER",
       profilePhotoUrl: c.author.profilePhotoUrl ?? null,
     },
     viewerLiked: viewerLikedIds.has(c.id),
-    replies: c.replies?.map((reply) => mapFeedComment(reply, viewerLikedIds)) ?? [],
+    replies:
+      c.replies?.map((reply) => mapFeedComment(reply, viewerLikedIds)) ?? [],
     replyCount: c.replies?.length ?? 0,
   };
 }
@@ -397,12 +449,28 @@ export async function listFeedComments({
     take: COMMENT_PAGE_SIZE + 1,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     include: {
-      author: { select: { id: true, name: true, username: true, role: true, profilePhotoUrl: true } },
+      author: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          role: true,
+          profilePhotoUrl: true,
+        },
+      },
       replies: {
         where: { isHidden: false, deletedAt: null },
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
         include: {
-          author: { select: { id: true, name: true, username: true, role: true, profilePhotoUrl: true } },
+          author: {
+            select: {
+              id: true,
+              name: true,
+              username: true,
+              role: true,
+              profilePhotoUrl: true,
+            },
+          },
         },
       },
     },
@@ -427,7 +495,9 @@ export async function listFeedComments({
   const hasMore = comments.length > COMMENT_PAGE_SIZE;
   const sliced = hasMore ? comments.slice(0, COMMENT_PAGE_SIZE) : comments;
 
-  const items: FeedCommentItem[] = sliced.map((c) => mapFeedComment(c, viewerLikedIds));
+  const items: FeedCommentItem[] = sliced.map((c) =>
+    mapFeedComment(c, viewerLikedIds)
+  );
 
   return {
     items,

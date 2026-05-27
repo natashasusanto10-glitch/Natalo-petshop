@@ -126,13 +126,15 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
       final cached = _likedCache[post.id];
       if (cached != freshLiked ||
           post.likeCount != fresh.likeCount ||
-          post.commentCount != fresh.commentCount) {
+          post.commentCount != fresh.commentCount ||
+          !_sameLikerIds(post.recentLikers, fresh.recentLikers)) {
         _likedCache[post.id] = freshLiked;
         _posts[i] = _withInteractionUpdate(
           post,
           likeCount: fresh.likeCount,
           liked: freshLiked,
           commentCount: fresh.commentCount,
+          recentLikers: fresh.recentLikers,
         );
         anyChanged = true;
       }
@@ -487,8 +489,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
                   onLike: () => _toggleLike(index),
                   onComment: () => _openComments(index),
                   onShare: () => _shareNative(index),
-                  onMenuTap:
-                      widget.isOwner ? () => _openPostMenu(index) : null,
+                  onMenuTap: widget.isOwner ? () => _openPostMenu(index) : null,
                 );
               },
             ),
@@ -503,12 +504,14 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
     required int likeCount,
     required bool liked,
     required int commentCount,
+    List<FeedAuthor>? recentLikers,
   }) {
     return post.copyWith(
       likeCount: likeCount,
       commentCount: commentCount,
       viewerLiked: liked,
       isLiked: liked,
+      recentLikers: recentLikers,
     );
   }
 
@@ -520,6 +523,14 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
       status: 'PENDING_REVIEW',
     );
   }
+}
+
+bool _sameLikerIds(List<FeedAuthor> a, List<FeedAuthor> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i].id != b[i].id) return false;
+  }
+  return true;
 }
 
 // ─── Per-post item ───────────────────────────────────────────────────
@@ -817,9 +828,6 @@ class _PostFeedItemState extends State<_PostFeedItem>
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
             child: _LikedByLine(
-              memberName: memberName,
-              memberPhotoUrl: memberPhotoUrl,
-              memberInitial: memberInitial,
               post: post,
             ),
           ),
@@ -996,40 +1004,29 @@ String _hybridDateLabel(DateTime created) {
 }
 
 class _LikedByLine extends StatelessWidget {
-  final String memberName;
-  final String? memberPhotoUrl;
-  final String memberInitial;
   final FeedPost post;
 
   const _LikedByLine({
-    required this.memberName,
-    required this.memberPhotoUrl,
-    required this.memberInitial,
     required this.post,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Wording:
-    //  - 1 like  → "Disukai oleh X"
-    //  - 2+ like → "Disukai oleh X dan N orang lainnya"
-    // (0 like sudah di-hide di parent.)
-    //
-    // Avatar stack: IG-style mini overlapping circles di kiri text.
-    // Saat ini Natalo backend belum return list of recent likers, jadi
-    // kita pakai avatar member yang lagi view (self) sebagai placeholder
-    // tunggal — kalau ada 2+ likes, tampilkan 2 overlap avatars (self +
-    // placeholder N). Future: extend feed posts response dengan
-    // recentLikers array untuk avatar yang akurat per-liker.
-    final isSelfOnly = post.likeCount == 1;
+    final likers = post.recentLikers;
+    final currentUserId = memberStore.profile?.id;
+    final primary = likers.isNotEmpty ? likers.first : null;
+    final primaryName = primary == null
+        ? 'beberapa orang'
+        : primary.id == currentUserId
+            ? 'Anda'
+            : primary.displayName;
     final othersCount = post.likeCount - 1;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         _LikedAvatarStack(
-          memberInitial: memberInitial,
-          memberPhotoUrl: memberPhotoUrl,
-          hasOthers: !isSelfOnly,
+          likers: likers,
+          likeCount: post.likeCount,
         ),
         const SizedBox(width: 8),
         Expanded(
@@ -1038,10 +1035,10 @@ class _LikedByLine extends StatelessWidget {
               children: [
                 const TextSpan(text: 'Disukai oleh '),
                 TextSpan(
-                  text: memberName,
+                  text: primaryName,
                   style: const TextStyle(fontWeight: FontWeight.w900),
                 ),
-                if (!isSelfOnly) ...[
+                if (othersCount > 0) ...[
                   const TextSpan(text: ' dan '),
                   TextSpan(
                     text: '$othersCount orang lainnya',
@@ -1068,19 +1065,19 @@ class _LikedByLine extends StatelessWidget {
 /// Mini avatar stack — overlapping circles di kiri "Disukai oleh ..." text.
 /// IG-style: 1 avatar kalau 1 like, 2 overlap avatars kalau >1 like.
 class _LikedAvatarStack extends StatelessWidget {
-  final String memberInitial;
-  final String? memberPhotoUrl;
-  final bool hasOthers;
+  final List<FeedAuthor> likers;
+  final int likeCount;
 
   const _LikedAvatarStack({
-    required this.memberInitial,
-    required this.memberPhotoUrl,
-    required this.hasOthers,
+    required this.likers,
+    required this.likeCount,
   });
 
   @override
   Widget build(BuildContext context) {
     const size = 22.0;
+    final visible = likers.take(2).toList(growable: false);
+    final hasOthers = likeCount > 1;
     // Width yang reserve untuk 1 atau 2 avatar overlap.
     final width = hasOthers ? size + (size * 0.55) : size;
     return SizedBox(
@@ -1092,15 +1089,25 @@ class _LikedAvatarStack extends StatelessWidget {
           if (hasOthers)
             Positioned(
               left: size * 0.55,
-              child: _MiniAvatar.placeholder(size: size),
+              child: visible.length > 1
+                  ? _MiniAvatar.member(
+                      initial: visible[1].initial,
+                      photoUrl:
+                          visible[1].profilePhotoUrl ?? visible[1].avatarUrl,
+                      size: size,
+                    )
+                  : _MiniAvatar.placeholder(size: size),
             ),
           Positioned(
             left: 0,
-            child: _MiniAvatar.member(
-              initial: memberInitial,
-              photoUrl: memberPhotoUrl,
-              size: size,
-            ),
+            child: visible.isNotEmpty
+                ? _MiniAvatar.member(
+                    initial: visible.first.initial,
+                    photoUrl: visible.first.profilePhotoUrl ??
+                        visible.first.avatarUrl,
+                    size: size,
+                  )
+                : _MiniAvatar.placeholder(size: size),
           ),
         ],
       ),

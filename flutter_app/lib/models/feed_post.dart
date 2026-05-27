@@ -220,6 +220,7 @@ class FeedPost {
   final int shareCount;
   final bool isLiked;
   final bool viewerLiked;
+  final List<FeedAuthor> recentLikers;
   final DateTime createdAt;
 
   /// FeedMedia rows ordered by sortOrder. Untuk PHOTO_CAROUSEL = 1-8
@@ -262,6 +263,7 @@ class FeedPost {
     this.shareCount = 0,
     this.isLiked = false,
     this.viewerLiked = false,
+    this.recentLikers = const [],
     required this.createdAt,
     this.mediaItems = const [],
     this.status = 'PUBLISHED',
@@ -393,6 +395,7 @@ class FeedPost {
     int? shareCount,
     bool? isLiked,
     bool? viewerLiked,
+    List<FeedAuthor>? recentLikers,
     DateTime? createdAt,
     List<FeedMedia>? mediaItems,
     String? status,
@@ -427,6 +430,7 @@ class FeedPost {
       shareCount: shareCount ?? this.shareCount,
       isLiked: liked ?? this.isLiked,
       viewerLiked: liked ?? this.viewerLiked,
+      recentLikers: recentLikers ?? this.recentLikers,
       createdAt: createdAt ?? this.createdAt,
       mediaItems: mediaItems ?? this.mediaItems,
       status: status ?? this.status,
@@ -484,6 +488,12 @@ class FeedPost {
         .map(FeedMedia.fromJson)
         .toList()
       ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    final recentLikersJson = json['recentLikers'] as List? ?? const [];
+    final recentLikers = recentLikersJson
+        .whereType<Map<String, dynamic>>()
+        .map(FeedAuthor.fromJson)
+        .where((liker) => liker.id.isNotEmpty)
+        .toList();
 
     // kind: accept `kind` (reels) atau derive dari `type` (my-posts) atau
     // fallback ke USER_VIDEO. type field di my-posts: 'video' | 'photo' |
@@ -491,8 +501,7 @@ class FeedPost {
     final rawKind = json['kind'] as String?;
     final rawType = (json['type'] as String?)?.toUpperCase();
     final kind = rawKind ??
-        (rawType == 'CAROUSEL' ||
-                rawType == 'PHOTO_CAROUSEL'
+        (rawType == 'CAROUSEL' || rawType == 'PHOTO_CAROUSEL'
             ? 'PHOTO_CAROUSEL'
             : rawType == 'PHOTO' || rawType == 'IMAGE'
                 ? 'PHOTO'
@@ -555,6 +564,7 @@ class FeedPost {
       shareCount: (json['shareCount'] as num?)?.toInt() ?? 0,
       isLiked: liked,
       viewerLiked: liked,
+      recentLikers: recentLikers,
       createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
           DateTime.now(),
       mediaItems: mediaItems,
@@ -592,7 +602,17 @@ class FeedPost {
         'isAdmin': author.isAdmin,
         'isOfficial': author.isOfficial,
       },
-      'products': products.map((p) => {'id': p.id, 'name': p.name, 'slug': p.slug, 'price': p.price, 'imageUrl': p.imageUrl, 'stock': p.stock, 'isActive': p.isActive}).toList(),
+      'products': products
+          .map((p) => {
+                'id': p.id,
+                'name': p.name,
+                'slug': p.slug,
+                'price': p.price,
+                'imageUrl': p.imageUrl,
+                'stock': p.stock,
+                'isActive': p.isActive
+              })
+          .toList(),
       'likeCount': likeCount,
       'commentCount': commentCount,
       'viewCount': viewCount,
@@ -600,17 +620,31 @@ class FeedPost {
       'viewerLiked': viewerLiked || isLiked,
       'isLiked': viewerLiked || isLiked,
       'isLikedByMe': viewerLiked || isLiked,
+      'recentLikers': recentLikers
+          .map((liker) => {
+                'id': liker.id,
+                'name': liker.name,
+                'username': liker.username,
+                'avatarUrl': liker.avatarUrl,
+                'profilePhotoUrl': liker.profilePhotoUrl,
+                'role': liker.role,
+                'isAdmin': liker.isAdmin,
+                'isOfficial': liker.isOfficial,
+              })
+          .toList(),
       'createdAt': createdAt.toIso8601String(),
-      'mediaItems': mediaItems.map((m) => {
-            'id': m.id,
-            'mediaType': m.mediaType,
-            'mediaUrl': m.mediaUrl,
-            'thumbnailUrl': m.thumbnailUrl,
-            'width': m.width,
-            'height': m.height,
-            'sortOrder': m.sortOrder,
-            'durationSeconds': m.durationSeconds,
-          }).toList(),
+      'mediaItems': mediaItems
+          .map((m) => {
+                'id': m.id,
+                'mediaType': m.mediaType,
+                'mediaUrl': m.mediaUrl,
+                'thumbnailUrl': m.thumbnailUrl,
+                'width': m.width,
+                'height': m.height,
+                'sortOrder': m.sortOrder,
+                'durationSeconds': m.durationSeconds,
+              })
+          .toList(),
       'status': status,
       'rejectionReason': rejectionReason,
       'approvedAt': approvedAt?.toIso8601String(),
@@ -677,12 +711,12 @@ class FeedMedia {
         (json['url'] as String?) ??
         (json['videoUrl'] as String?) ??
         '';
-    final rawType = (json['mediaType'] as String?) ??
-        (json['contentType'] as String?);
-    final mediaType = rawType?.toLowerCase() == 'video' ||
-            _looksLikeVideoUrl(mediaUrl)
-        ? 'video'
-        : 'image';
+    final rawType =
+        (json['mediaType'] as String?) ?? (json['contentType'] as String?);
+    final mediaType =
+        rawType?.toLowerCase() == 'video' || _looksLikeVideoUrl(mediaUrl)
+            ? 'video'
+            : 'image';
     return FeedMedia(
       id: (json['id'] as String?) ?? '',
       mediaType: mediaType,
@@ -705,4 +739,3 @@ class FeedPage {
 
   const FeedPage({this.items = const [], this.nextCursor});
 }
-

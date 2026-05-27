@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
   if (!session) {
     return NextResponse.json(
       { error: "LOGIN_REQUIRED", message: "Login dulu untuk lihat postingan." },
-      { status: 401 },
+      { status: 401 }
     );
   }
 
@@ -43,9 +43,7 @@ export async function GET(request: NextRequest) {
   // ambil page pertama. Backward-compatible: kalau cursor/limit tidak
   // di-set, return semua sampai 20 post pertama.
   const cursor = request.nextUrl.searchParams.get("cursor") || null;
-  const rawLimit = Number(
-    request.nextUrl.searchParams.get("limit") ?? "20",
-  );
+  const rawLimit = Number(request.nextUrl.searchParams.get("limit") ?? "20");
   const limit =
     Number.isFinite(rawLimit) && rawLimit > 0
       ? Math.min(50, Math.max(1, Math.floor(rawLimit)))
@@ -106,6 +104,21 @@ export async function GET(request: NextRequest) {
             sortOrder: true,
           },
         },
+        likes: {
+          orderBy: { createdAt: "desc" },
+          take: 3,
+          select: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                username: true,
+                role: true,
+                profilePhotoUrl: true,
+              },
+            },
+          },
+        },
       },
     }),
     prisma.feedPost.count({ where: baseWhere }),
@@ -125,19 +138,20 @@ export async function GET(request: NextRequest) {
   //
   // 1 query batch via { postId: { in: ids } } — index pada
   // FeedLike.userId_postId membuat lookup O(log n).
-  const viewerLikedIds = slicedPosts.length === 0
-    ? new Set<string>()
-    : new Set(
-        (
-          await prisma.feedLike.findMany({
-            where: {
-              userId: session.sub,
-              postId: { in: slicedPosts.map((p) => p.id) },
-            },
-            select: { postId: true },
-          })
-        ).map((l) => l.postId),
-      );
+  const viewerLikedIds =
+    slicedPosts.length === 0
+      ? new Set<string>()
+      : new Set(
+          (
+            await prisma.feedLike.findMany({
+              where: {
+                userId: session.sub,
+                postId: { in: slicedPosts.map((p) => p.id) },
+              },
+              select: { postId: true },
+            })
+          ).map((l) => l.postId)
+        );
 
   return NextResponse.json({
     posts: slicedPosts.map((post) => {
@@ -159,24 +173,24 @@ export async function GET(request: NextRequest) {
       const videoThumbnailUrl =
         signBunnyUrl(
           post.thumbnailUrl ??
-            (post.videoGuid ? bunnyThumbnailUrl(post.videoGuid) || null : null),
+            (post.videoGuid ? bunnyThumbnailUrl(post.videoGuid) || null : null)
         ) ?? null;
       const mediaItems = isPhotoPost
         ? signedMedia
         : videoUrl
-          ? [
-              {
-                id: `${post.id}-video`,
-                mediaType: "video",
-                mediaUrl: videoUrl,
-                thumbnailUrl: videoThumbnailUrl,
-                durationSeconds: post.videoDurationSec,
-                width: post.videoWidth,
-                height: post.videoHeight,
-                sortOrder: 0,
-              },
-            ]
-          : [];
+        ? [
+            {
+              id: `${post.id}-video`,
+              mediaType: "video",
+              mediaUrl: videoUrl,
+              thumbnailUrl: videoThumbnailUrl,
+              durationSeconds: post.videoDurationSec,
+              width: post.videoWidth,
+              height: post.videoHeight,
+              sortOrder: 0,
+            },
+          ]
+        : [];
       const type = isPhotoPost
         ? signedMedia.length > 1
           ? "carousel"
@@ -212,6 +226,14 @@ export async function GET(request: NextRequest) {
         shareCount: post.shareCount,
         viewCount: post.viewCount,
         viewerLiked: viewerLikedIds.has(post.id),
+        recentLikers: post.likes.map((like) => ({
+          id: like.user.id,
+          name: like.user.name,
+          username: like.user.username,
+          role: like.user.role === "ADMIN" ? "ADMIN" : "CUSTOMER",
+          profilePhotoUrl: like.user.profilePhotoUrl,
+          avatarUrl: like.user.profilePhotoUrl,
+        })),
       };
     }),
     filter,

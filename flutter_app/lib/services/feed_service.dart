@@ -13,7 +13,12 @@ import 'api_client.dart';
 class FeedLikeResult {
   final bool liked;
   final int likeCount;
-  const FeedLikeResult({required this.liked, required this.likeCount});
+  final List<FeedAuthor> recentLikers;
+  const FeedLikeResult({
+    required this.liked,
+    required this.likeCount,
+    this.recentLikers = const [],
+  });
 }
 
 /// Feed API: list, like, comment, share, upload. Stub minimal — endpoint REST
@@ -95,10 +100,7 @@ class FeedService {
     final raw =
         data is Map ? (data['posts'] ?? data['items'] ?? data['data']) : data;
     final items = raw is List
-        ? raw
-            .whereType<Map<String, dynamic>>()
-            .map(FeedPost.fromJson)
-            .toList()
+        ? raw.whereType<Map<String, dynamic>>().map(FeedPost.fromJson).toList()
         : const <FeedPost>[];
     final nextCursor = data is Map ? data['nextCursor'] as String? : null;
     return FeedPage(items: items, nextCursor: nextCursor);
@@ -161,6 +163,11 @@ class FeedService {
         return FeedLikeResult(
           liked: body['liked'] as bool? ?? !currentlyLiked,
           likeCount: (body['likeCount'] as num?)?.toInt() ?? 0,
+          recentLikers: (body['recentLikers'] as List? ?? const [])
+              .whereType<Map<String, dynamic>>()
+              .map(FeedAuthor.fromJson)
+              .where((liker) => liker.id.isNotEmpty)
+              .toList(),
         );
       }
       return FeedLikeResult(liked: !currentlyLiked, likeCount: 0);
