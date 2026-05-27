@@ -227,10 +227,22 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                 childAspectRatio: 1,
               ),
               delegate: SliverChildBuilderDelegate(
-                (context, idx) => _PostTile(
-                  post: _posts[idx],
-                  onTap: () => _openPost(idx),
-                ),
+                (context, idx) {
+                  // Per-tile guard — kalau ada single post yg bikin
+                  // _PostTile throw (mis. URL malformed bikin
+                  // CachedNetworkImage assert), jangan biarin
+                  // AppErrorWidget global ngambil-alih SELURUH grid.
+                  // Tile yang gagal di-render sebagai placeholder
+                  // abu-abu polos. Sisanya tetap aman.
+                  try {
+                    return _PostTile(
+                      post: _posts[idx],
+                      onTap: () => _openPost(idx),
+                    );
+                  } catch (_) {
+                    return const ColoredBox(color: Color(0xFFE2E8F0));
+                  }
+                },
                 childCount: _posts.length,
               ),
             ),
@@ -500,11 +512,20 @@ class _PostTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final thumb = post.thumbnailUrl ??
+    // Resolve thumb dgn fallback chain — thumbnailUrl post → thumbnailUrl
+    // media pertama → mediaUrl media pertama → mediaUrl post. Trim &
+    // validate http(s) supaya bunny stream embed URL atau path relative
+    // gak bikin CachedNetworkImage assert/crash → AppErrorWidget global
+    // ngambil-alih SELURUH grid (kasus user yerikegracia: "1 Postingan"
+    // header tapi grid blank "Terjadi kesalahan").
+    final rawThumb = post.thumbnailUrl ??
         (post.mediaItems.isNotEmpty
             ? post.mediaItems.first.thumbnailUrl ??
                 post.mediaItems.first.mediaUrl
             : post.mediaUrl);
+    final thumb = rawThumb.trim();
+    final isValidImageUrl =
+        thumb.startsWith('http://') || thumb.startsWith('https://');
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -513,7 +534,7 @@ class _PostTile extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            if (thumb.isNotEmpty)
+            if (isValidImageUrl)
               CachedNetworkImage(
                 imageUrl: thumb,
                 fit: BoxFit.cover,

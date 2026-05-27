@@ -184,9 +184,17 @@ class MyFeedPost {
     final durationSec =
         _int(json['durationSec'] ?? json['videoDurationSec']) ?? 0;
     final type = _resolvePostType(json, mediaUrl, mediaItems, durationSec);
+    // Defensive cast — pakai toString() bukan `as String` supaya tidak
+    // throw TypeError kalau json field unexpected type (mis. id num
+    // bukan String). Backend Natalo selalu kasih cuid string, tapi
+    // defensive parse cegah crash kalau ada drift.
+    final id = json['id']?.toString() ?? '';
+    if (id.isEmpty) {
+      throw const FormatException('FeedPost.id missing in API response');
+    }
     return MyFeedPost(
-      id: json['id'] as String,
-      slug: json['slug'] as String? ?? json['id'] as String,
+      id: id,
+      slug: _string(json['slug']) ?? id,
       caption: _string(json['caption']) ??
           _string(json['description']) ??
           _string(json['title']),
