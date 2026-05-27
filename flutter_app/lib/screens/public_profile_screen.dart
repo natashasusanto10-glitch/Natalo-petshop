@@ -639,20 +639,49 @@ class _PostTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // CRITICAL: wrap entire tile body in Builder + try-catch supaya
+    // build()-time error (CachedNetworkImage assert, Uri parse fail, dll)
+    // ke-catch lokal SEBELUM sampai ke ErrorWidget.builder global yang
+    // jadi banner gede "Terjadi kesalahan".
+    //
+    // Note: per-tile try-catch di SliverChildBuilderDelegate hanya catch
+    // CONSTRUCTOR errors (yang gak pernah throw untuk const widget) —
+    // build()-time errors di child widget langsung intercept oleh
+    // ErrorWidget.builder global. Try-catch di SINI dalam build method
+    // catches semua synchronous errors di tile.
+    return Builder(
+      builder: (innerContext) {
+        try {
+          return _buildSafeTile(innerContext);
+        } catch (_) {
+          // Last-resort fallback — render plain colored box. Catatan: ini
+          // CUMA catch error sync di build path. Async errors (download
+          // image fail) sudah di-handle oleh CachedNetworkImage.errorWidget.
+          return const ColoredBox(color: Color(0xFFE2E8F0));
+        }
+      },
+    );
+  }
+
+  Widget _buildSafeTile(BuildContext context) {
     // Resolve thumb dgn fallback chain — thumbnailUrl post → thumbnailUrl
-    // media pertama → mediaUrl media pertama → mediaUrl post. Trim &
-    // validate http(s) supaya bunny stream embed URL atau path relative
-    // gak bikin CachedNetworkImage assert/crash → AppErrorWidget global
-    // ngambil-alih SELURUH grid (kasus user yerikegracia: "1 Postingan"
-    // header tapi grid blank "Terjadi kesalahan").
+    // media pertama → mediaUrl media pertama → mediaUrl post.
     final rawThumb = post.thumbnailUrl ??
         (post.mediaItems.isNotEmpty
             ? post.mediaItems.first.thumbnailUrl ??
                 post.mediaItems.first.mediaUrl
             : post.mediaUrl);
     final thumb = rawThumb.trim();
-    final isValidImageUrl =
-        thumb.startsWith('http://') || thumb.startsWith('https://');
+
+    // STRICT URL validation — pakai Uri.tryParse + check scheme + host.
+    // Defensive untuk edge case: "https://" tanpa host, URL dengan space,
+    // path relative, "javascript:" scheme, dll. Sebelumnya cuma cek
+    // startsWith yang gampang lolos URL malformed.
+    final parsedUri = Uri.tryParse(thumb);
+    final isValidImageUrl = parsedUri != null &&
+        (parsedUri.scheme == 'http' || parsedUri.scheme == 'https') &&
+        parsedUri.hasAuthority;
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -662,14 +691,7 @@ class _PostTile extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             if (isValidImageUrl)
-              CachedNetworkImage(
-                imageUrl: thumb,
-                fit: BoxFit.cover,
-                placeholder: (_, __) =>
-                    const ColoredBox(color: Color(0xFFE2E8F0)),
-                errorWidget: (_, __, ___) =>
-                    const ColoredBox(color: Color(0xFFE2E8F0)),
-              )
+              _SafeNetworkImage(url: thumb)
             else
               const ColoredBox(color: Color(0xFFE2E8F0)),
             if (post.isVideo)
@@ -694,6 +716,30 @@ class _PostTile extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Defensive wrapper untuk CachedNetworkImage — catch any sync assertion
+/// di constructor (jarang tapi terjadi untuk URL malformed yang lolos
+/// startsWith check). Fallback ke plain ColoredBox kalau throw.
+class _SafeNetworkImage extends StatelessWidget {
+  final String url;
+  const _SafeNetworkImage({required this.url});
+
+  @override
+  Widget build(BuildContext context) {
+    try {
+      return CachedNetworkImage(
+        imageUrl: url,
+        fit: BoxFit.cover,
+        placeholder: (_, __) =>
+            const ColoredBox(color: Color(0xFFE2E8F0)),
+        errorWidget: (_, __, ___) =>
+            const ColoredBox(color: Color(0xFFE2E8F0)),
+      );
+    } catch (_) {
+      return const ColoredBox(color: Color(0xFFE2E8F0));
+    }
   }
 }
 
