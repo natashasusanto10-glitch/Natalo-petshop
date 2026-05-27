@@ -1119,8 +1119,8 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     // Pre-cache thumbnail foto pertama supaya muncul instan.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      for (final m in widget.post.media.take(3)) {
-        precacheImage(CachedNetworkImageProvider(m.url), context);
+      for (final m in widget.post.mediaItems.take(3)) {
+        precacheImage(CachedNetworkImageProvider(m.mediaUrl), context);
       }
     });
 
@@ -1462,7 +1462,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   @override
   Widget build(BuildContext context) {
     final post = widget.post;
-    final photos = post.media;
+    final photos = post.mediaItems;
     const actionRailInset = _feedActionBottomInset;
     const feedInfoInset = 24.0;
 

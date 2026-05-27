@@ -1,4 +1,18 @@
 /// Models untuk feed module — port dari Prisma FeedPost + relations.
+///
+/// **UNIFIED MODEL (post-total-rewrite untuk like/comment sync):**
+/// FeedPost adalah single source of truth untuk semua feed-related screen
+/// (Feed/Reels, Detail Postingan, Postingan Saya, Public Profile). Schema
+/// adalah superset gabungan kebutuhan reels (video + products) DAN owner
+/// moderation pipeline (status, rejection reason, approvedAt).
+///
+/// Dipakai oleh:
+///   - /api/feed/posts        (reels feed)
+///   - /api/feed/my-posts     (postingan saya grid)
+///   - /api/u/{username}      (public profile grid)
+///   - /api/feed/posts/{id}   (single post detail)
+///
+/// MyFeedPost legacy class sudah di-delete — semua callers pakai FeedPost.
 
 class FeedAuthor {
   final String id;
@@ -38,6 +52,9 @@ class FeedAuthor {
 
   bool get hasUsername =>
       !isOfficialAccount && username != null && username!.isNotEmpty;
+
+  String get initial =>
+      name.trim().isEmpty ? 'N' : name.trim().substring(0, 1).toUpperCase();
 
   factory FeedAuthor.fromJson(Map<String, dynamic> json) {
     final avatar = json['avatarUrl'] as String?;
@@ -137,7 +154,38 @@ class FeedProductLink {
   }
 }
 
-/// Single feed post — video/image dengan optional product tags + author.
+/// Moderation status — owner-only concern (badge di Postingan Saya/Detail
+/// owner). Viewer non-owner tidak peduli (kalau post tampil di public
+/// endpoint, status pasti PUBLISHED).
+enum FeedPostStatus { pending, active, rejected, unknown }
+
+extension FeedPostStatusX on FeedPostStatus {
+  String get label {
+    return switch (this) {
+      FeedPostStatus.active => 'Tayang',
+      FeedPostStatus.rejected => 'Ditolak',
+      FeedPostStatus.pending => 'Menunggu Review',
+      FeedPostStatus.unknown => '-',
+    };
+  }
+
+  String get description {
+    return switch (this) {
+      FeedPostStatus.active => 'Sudah tayang di Feed',
+      FeedPostStatus.rejected => 'Ditolak oleh admin',
+      FeedPostStatus.pending => 'Sedang menunggu review admin',
+      FeedPostStatus.unknown => '',
+    };
+  }
+}
+
+/// Tipe konten — derive dari `kind` + media items + duration + URL.
+/// Hanya untuk UI rendering choice (video player vs carousel vs image).
+enum FeedContentType { photo, carousel, video }
+
+/// Single feed post — superset semua use case (reels + grid + detail +
+/// public profile + edit). Fields tertentu hanya relevan untuk owner
+/// (status, rejectionReason, approvedAt) — viewer non-owner abaikan.
 class FeedPost {
   final String id;
   final String slug;
@@ -146,6 +194,9 @@ class FeedPost {
   final String title;
   final String description;
   final String? caption;
+
+  /// Untuk video kind: source video URL. Untuk photo/carousel: kosong
+  /// (gunakan mediaItems.first.mediaUrl).
   final String videoUrl;
   final String? thumbnailUrl;
   final String? blurhash;
@@ -154,6 +205,10 @@ class FeedPost {
   final double aspectRatio;
   final int videoWidth;
   final int videoHeight;
+
+  /// Kind dari backend: USER_VIDEO / VIDEO_ONLY / VIDEO_PRODUCT / PROMO /
+  /// COMMUNITY / PHOTO_CAROUSEL / PHOTO. Drives type detection via
+  /// [contentType] getter.
   final String kind;
   final FeedAuthor author;
   final List<FeedProductLink> products;
@@ -167,10 +222,20 @@ class FeedPost {
   final bool viewerLiked;
   final DateTime createdAt;
 
-  /// FeedMedia rows untuk PHOTO_CAROUSEL post — 1-8 foto ordered by
-  /// sortOrder. Empty untuk VIDEO_ONLY / VIDEO_PRODUCT / COMMUNITY (video
-  /// pakai videoUrl + thumbnailUrl).
-  final List<FeedMedia> media;
+  /// FeedMedia rows ordered by sortOrder. Untuk PHOTO_CAROUSEL = 1-8
+  /// foto. Untuk POST tunggal kadang single media item. Empty untuk
+  /// pure video post yang pakai videoUrl + thumbnailUrl saja.
+  final List<FeedMedia> mediaItems;
+
+  // ───── Moderation fields (owner-only concerns) ─────
+
+  /// Backend status string. Owner pipeline:
+  ///   PENDING_REVIEW → PUBLISHED (atau REJECTED)
+  /// Public endpoint hanya kembalikan PUBLISHED posts, jadi default
+  /// 'PUBLISHED' di fromJson aman untuk viewer-side.
+  final String status;
+  final String? rejectionReason;
+  final DateTime? approvedAt;
 
   const FeedPost({
     required this.id,
@@ -198,14 +263,179 @@ class FeedPost {
     this.isLiked = false,
     this.viewerLiked = false,
     required this.createdAt,
-    this.media = const [],
+    this.mediaItems = const [],
+    this.status = 'PUBLISHED',
+    this.rejectionReason,
+    this.approvedAt,
   });
+
+  // ───────── Content type ─────────
 
   /// Detect PHOTO_CAROUSEL post — render harus pakai _PhotoCarouselPostView,
   /// bukan _FeedPostView (yang assume video controller). Defensive cek media
   /// non-empty supaya gak crash kalau backend bug return PHOTO_CAROUSEL
   /// tanpa media (mis. legacy data atau partial migration).
-  bool get isPhotoCarousel => kind == 'PHOTO_CAROUSEL' && media.isNotEmpty;
+  bool get isPhotoCarousel => kind == 'PHOTO_CAROUSEL' && mediaItems.isNotEmpty;
+
+  /// Pakai untuk grid render — apakah post ini video (perlu play icon
+  /// overlay) atau photo/carousel (langsung thumb).
+  FeedContentType get contentType {
+    final upper = kind.toUpperCase();
+    if (upper == 'PHOTO_CAROUSEL' || upper == 'CAROUSEL') {
+      return mediaItems.length > 1
+          ? FeedContentType.carousel
+          : FeedContentType.photo;
+    }
+    if (upper == 'PHOTO' || upper == 'IMAGE') return FeedContentType.photo;
+    if (upper == 'VIDEO' ||
+        upper == 'USER_VIDEO' ||
+        upper == 'VIDEO_ONLY' ||
+        upper == 'VIDEO_PRODUCT' ||
+        upper == 'COMMUNITY' ||
+        upper == 'PROMO') {
+      return FeedContentType.video;
+    }
+    // Fallback via heuristics — useful kalau backend variant tak terduga.
+    if (mediaItems.any((m) => m.mediaType.toLowerCase() == 'video')) {
+      return FeedContentType.video;
+    }
+    if (mediaItems.length > 1) return FeedContentType.carousel;
+    if (durationSec > 0 || _looksLikeVideoUrl(videoUrl)) {
+      return FeedContentType.video;
+    }
+    return FeedContentType.photo;
+  }
+
+  bool get isVideo => contentType == FeedContentType.video;
+  bool get isCarousel => contentType == FeedContentType.carousel;
+  bool get isPhoto => contentType == FeedContentType.photo;
+
+  /// Thumbnail URL untuk grid tile dengan fallback chain:
+  ///   thumbnailUrl → first mediaItem.thumbnailUrl → first mediaItem.mediaUrl
+  ///   → videoUrl (last resort)
+  String get previewMediaUrl {
+    final t = thumbnailUrl?.trim();
+    if (t != null && t.isNotEmpty) return t;
+    for (final m in mediaItems) {
+      final mt = m.thumbnailUrl?.trim();
+      if (mt != null && mt.isNotEmpty) return mt;
+      if (m.mediaUrl.isNotEmpty) return m.mediaUrl;
+    }
+    return videoUrl;
+  }
+
+  // ───────── Moderation helpers (owner-only) ─────────
+
+  FeedPostStatus get statusInfo {
+    return switch (status.toUpperCase()) {
+      'ACTIVE' || 'PUBLISHED' => FeedPostStatus.active,
+      'REJECTED' => FeedPostStatus.rejected,
+      'PENDING_REVIEW' || 'PENDING' => FeedPostStatus.pending,
+      _ => FeedPostStatus.unknown,
+    };
+  }
+
+  bool get isApproved => statusInfo == FeedPostStatus.active;
+  bool get isPending => statusInfo == FeedPostStatus.pending;
+  bool get isRejected => statusInfo == FeedPostStatus.rejected;
+
+  // ───────── Derived ─────────
+
+  /// Subset product IDs — useful untuk legacy callers yang dulu pakai
+  /// MyFeedPost.productIds (list of string).
+  List<String> get productIds =>
+      products.map((p) => p.id).toList(growable: false);
+
+  /// Duration label mm:ss — dipakai badge video di grid.
+  String get durationLabel {
+    final total = durationSec.clamp(0, 999999);
+    final minutes = total ~/ 60;
+    final rest = total % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${rest.toString().padLeft(2, '0')}';
+  }
+
+  /// Aspect width/height int pair — legacy MyFeedPost API.
+  /// Derive dari aspectRatio kalau backend tidak include explicit pair.
+  int get aspectWidthInt {
+    if (videoWidth > 0) return videoWidth;
+    return aspectRatio >= 1 ? 16 : 9;
+  }
+
+  int get aspectHeightInt {
+    if (videoHeight > 0) return videoHeight;
+    return aspectRatio >= 1 ? 9 : 16;
+  }
+
+  // ───────── copyWith ─────────
+
+  FeedPost copyWith({
+    String? id,
+    String? slug,
+    String? title,
+    String? description,
+    String? caption,
+    String? videoUrl,
+    String? thumbnailUrl,
+    String? blurhash,
+    String? thumbnailBlurhash,
+    int? durationSec,
+    double? aspectRatio,
+    int? videoWidth,
+    int? videoHeight,
+    String? kind,
+    FeedAuthor? author,
+    List<FeedProductLink>? products,
+    List<FeedProductLink>? productsInVideo,
+    List<FeedProductLink>? taggedProducts,
+    int? likeCount,
+    int? commentCount,
+    int? viewCount,
+    int? shareCount,
+    bool? isLiked,
+    bool? viewerLiked,
+    DateTime? createdAt,
+    List<FeedMedia>? mediaItems,
+    String? status,
+    String? rejectionReason,
+    DateTime? approvedAt,
+  }) {
+    // isLiked dan viewerLiked selalu sinkron — kalau caller cuma kasih
+    // satu, pakai itu untuk keduanya.
+    final liked = isLiked ?? viewerLiked;
+    return FeedPost(
+      id: id ?? this.id,
+      slug: slug ?? this.slug,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      caption: caption ?? this.caption,
+      videoUrl: videoUrl ?? this.videoUrl,
+      thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
+      blurhash: blurhash ?? this.blurhash,
+      thumbnailBlurhash: thumbnailBlurhash ?? this.thumbnailBlurhash,
+      durationSec: durationSec ?? this.durationSec,
+      aspectRatio: aspectRatio ?? this.aspectRatio,
+      videoWidth: videoWidth ?? this.videoWidth,
+      videoHeight: videoHeight ?? this.videoHeight,
+      kind: kind ?? this.kind,
+      author: author ?? this.author,
+      products: products ?? this.products,
+      productsInVideo: productsInVideo ?? this.productsInVideo,
+      taggedProducts: taggedProducts ?? this.taggedProducts,
+      likeCount: likeCount ?? this.likeCount,
+      commentCount: commentCount ?? this.commentCount,
+      viewCount: viewCount ?? this.viewCount,
+      shareCount: shareCount ?? this.shareCount,
+      isLiked: liked ?? this.isLiked,
+      viewerLiked: liked ?? this.viewerLiked,
+      createdAt: createdAt ?? this.createdAt,
+      mediaItems: mediaItems ?? this.mediaItems,
+      status: status ?? this.status,
+      rejectionReason: rejectionReason ?? this.rejectionReason,
+      approvedAt: approvedAt ?? this.approvedAt,
+    );
+  }
+
+  // ───────── JSON ─────────
 
   factory FeedPost.fromJson(Map<String, dynamic> json) {
     final productsJson = (json['products'] as List?) ??
@@ -239,18 +469,64 @@ class FeedPost {
                   : p,
             ))
         .toList();
-    final liked =
-        json['viewerLiked'] as bool? ?? json['isLiked'] as bool? ?? false;
+    final liked = json['isLikedByMe'] as bool? ??
+        json['viewerLiked'] as bool? ??
+        json['isLiked'] as bool? ??
+        false;
     final blurhash = (json['thumbnailBlurhash'] ?? json['blurhash']) as String?;
-    final mediaJson = (json['media'] as List?) ?? const [];
-    final media = mediaJson
+
+    // mediaItems: accept BOTH `mediaItems` (newer my-posts/public profile
+    // shape) AND `media` (existing reels feed shape).
+    final mediaJson =
+        (json['mediaItems'] as List?) ?? (json['media'] as List?) ?? const [];
+    final mediaItems = mediaJson
         .whereType<Map<String, dynamic>>()
         .map(FeedMedia.fromJson)
         .toList()
       ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+
+    // kind: accept `kind` (reels) atau derive dari `type` (my-posts) atau
+    // fallback ke USER_VIDEO. type field di my-posts: 'video' | 'photo' |
+    // 'carousel' atau uppercase variant.
+    final rawKind = json['kind'] as String?;
+    final rawType = (json['type'] as String?)?.toUpperCase();
+    final kind = rawKind ??
+        (rawType == 'CAROUSEL' ||
+                rawType == 'PHOTO_CAROUSEL'
+            ? 'PHOTO_CAROUSEL'
+            : rawType == 'PHOTO' || rawType == 'IMAGE'
+                ? 'PHOTO'
+                : rawType == 'VIDEO'
+                    ? 'USER_VIDEO'
+                    : 'USER_VIDEO');
+
+    // aspectRatio: prefer explicit aspectRatio double; else derive dari
+    // aspectWidth/aspectHeight pair (my-posts shape).
+    final aspectRatio = (json['aspectRatio'] as num?)?.toDouble() ??
+        _aspectFromIntPair(
+          (json['aspectWidth'] as num?)?.toInt(),
+          (json['aspectHeight'] as num?)?.toInt(),
+        ) ??
+        (9 / 16);
+
+    // duration: accept `durationSec` ATAU `videoDurationSec`.
+    final durationSec = (json['durationSec'] as num?)?.toInt() ??
+        (json['videoDurationSec'] as num?)?.toInt() ??
+        0;
+
+    // status default PUBLISHED — backend public endpoints (feed list,
+    // public profile) tidak include status, dan post yang tampil di sana
+    // sudah PUBLISHED toh.
+    final status = (json['status'] as String?) ?? 'PUBLISHED';
+
+    final id = json['id']?.toString() ?? '';
+    if (id.isEmpty) {
+      throw const FormatException('FeedPost.id missing in API response');
+    }
+
     return FeedPost(
-      id: json['id'] as String,
-      slug: (json['slug'] ?? json['id']) as String,
+      id: id,
+      slug: (json['slug'] ?? json['id']) as String? ?? id,
       title: (json['title'] as String?) ?? '',
       description: (json['description'] as String?) ?? '',
       caption: json['caption'] as String?,
@@ -258,11 +534,15 @@ class FeedPost {
       thumbnailUrl: json['thumbnailUrl'] as String?,
       blurhash: blurhash,
       thumbnailBlurhash: blurhash,
-      durationSec: (json['durationSec'] as num?)?.toInt() ?? 0,
-      aspectRatio: (json['aspectRatio'] as num?)?.toDouble() ?? (9 / 16),
-      videoWidth: (json['videoWidth'] as num?)?.toInt() ?? 0,
-      videoHeight: (json['videoHeight'] as num?)?.toInt() ?? 0,
-      kind: json['kind'] as String? ?? 'USER_VIDEO',
+      durationSec: durationSec,
+      aspectRatio: aspectRatio,
+      videoWidth: (json['videoWidth'] as num?)?.toInt() ??
+          (json['aspectWidth'] as num?)?.toInt() ??
+          0,
+      videoHeight: (json['videoHeight'] as num?)?.toInt() ??
+          (json['aspectHeight'] as num?)?.toInt() ??
+          0,
+      kind: kind,
       author: json['author'] is Map<String, dynamic>
           ? FeedAuthor.fromJson(json['author'] as Map<String, dynamic>)
           : const FeedAuthor(id: '', name: 'User'),
@@ -277,31 +557,108 @@ class FeedPost {
       viewerLiked: liked,
       createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
           DateTime.now(),
-      media: media,
+      mediaItems: mediaItems,
+      status: status,
+      rejectionReason:
+          (json['rejectionReason'] ?? json['moderationNote']) as String?,
+      approvedAt: DateTime.tryParse(json['approvedAt']?.toString() ?? ''),
     );
+  }
+
+  /// Convenience untuk persistence (offline cache, dll) — minimal shape
+  /// yang round-trip via fromJson.
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'slug': slug,
+      'title': title,
+      'description': description,
+      'caption': caption,
+      'videoUrl': videoUrl,
+      'thumbnailUrl': thumbnailUrl,
+      'thumbnailBlurhash': thumbnailBlurhash,
+      'durationSec': durationSec,
+      'aspectRatio': aspectRatio,
+      'videoWidth': videoWidth,
+      'videoHeight': videoHeight,
+      'kind': kind,
+      'author': {
+        'id': author.id,
+        'name': author.name,
+        'username': author.username,
+        'avatarUrl': author.avatarUrl,
+        'profilePhotoUrl': author.profilePhotoUrl,
+        'role': author.role,
+        'isAdmin': author.isAdmin,
+        'isOfficial': author.isOfficial,
+      },
+      'products': products.map((p) => {'id': p.id, 'name': p.name, 'slug': p.slug, 'price': p.price, 'imageUrl': p.imageUrl, 'stock': p.stock, 'isActive': p.isActive}).toList(),
+      'likeCount': likeCount,
+      'commentCount': commentCount,
+      'viewCount': viewCount,
+      'shareCount': shareCount,
+      'viewerLiked': viewerLiked || isLiked,
+      'isLiked': viewerLiked || isLiked,
+      'isLikedByMe': viewerLiked || isLiked,
+      'createdAt': createdAt.toIso8601String(),
+      'mediaItems': mediaItems.map((m) => {
+            'id': m.id,
+            'mediaType': m.mediaType,
+            'mediaUrl': m.mediaUrl,
+            'thumbnailUrl': m.thumbnailUrl,
+            'width': m.width,
+            'height': m.height,
+            'sortOrder': m.sortOrder,
+            'durationSeconds': m.durationSeconds,
+          }).toList(),
+      'status': status,
+      'rejectionReason': rejectionReason,
+      'approvedAt': approvedAt?.toIso8601String(),
+    };
   }
 }
 
-/// 1 row dari FeedMedia table — image (atau future video) yang di-tag ke
-/// FeedPost. Saat ini hanya image yang dipakai untuk PHOTO_CAROUSEL.
+double? _aspectFromIntPair(int? w, int? h) {
+  if (w == null || h == null || w <= 0 || h <= 0) return null;
+  return w / h;
+}
+
+bool _looksLikeVideoUrl(String url) {
+  final lower = url.toLowerCase();
+  return lower.endsWith('.mp4') ||
+      lower.endsWith('.mov') ||
+      lower.endsWith('.m4v') ||
+      lower.endsWith('.webm') ||
+      lower.endsWith('.m3u8') ||
+      lower.contains('/video/');
+}
+
+/// 1 row dari FeedMedia table — image atau video item dalam carousel/single
+/// media post. Field `mediaUrl` adalah canonical (sebelumnya bernama `url`
+/// di reels feed shape — fromJson accept BOTH).
 class FeedMedia {
   final String id;
   final String mediaType; // "image" | "video"
-  final String url;
+  final String mediaUrl;
   final String? thumbnailUrl;
   final int? width;
   final int? height;
   final int sortOrder;
+  final int? durationSeconds;
 
   const FeedMedia({
     required this.id,
     required this.mediaType,
-    required this.url,
+    required this.mediaUrl,
     this.thumbnailUrl,
     this.width,
     this.height,
     this.sortOrder = 0,
+    this.durationSeconds,
   });
+
+  /// Backward-compat alias — kode lama pakai `.url`.
+  String get url => mediaUrl;
 
   /// Aspect ratio untuk pre-compute layout sebelum image fully load. Default
   /// 1:1 (square) supaya gak ada layout shift kalau width/height null.
@@ -312,15 +669,31 @@ class FeedMedia {
     return w / h;
   }
 
+  bool get isVideo => mediaType.toLowerCase() == 'video';
+  bool get isImage => !isVideo;
+
   factory FeedMedia.fromJson(Map<String, dynamic> json) {
+    final mediaUrl = (json['mediaUrl'] as String?) ??
+        (json['url'] as String?) ??
+        (json['videoUrl'] as String?) ??
+        '';
+    final rawType = (json['mediaType'] as String?) ??
+        (json['contentType'] as String?);
+    final mediaType = rawType?.toLowerCase() == 'video' ||
+            _looksLikeVideoUrl(mediaUrl)
+        ? 'video'
+        : 'image';
     return FeedMedia(
       id: (json['id'] as String?) ?? '',
-      mediaType: (json['mediaType'] as String?) ?? 'image',
-      url: (json['url'] as String?) ?? '',
+      mediaType: mediaType,
+      mediaUrl: mediaUrl,
       thumbnailUrl: json['thumbnailUrl'] as String?,
       width: (json['width'] as num?)?.toInt(),
       height: (json['height'] as num?)?.toInt(),
       sortOrder: (json['sortOrder'] as num?)?.toInt() ?? 0,
+      durationSeconds: (json['durationSeconds'] as num?)?.toInt() ??
+          (json['durationSec'] as num?)?.toInt() ??
+          (json['videoDurationSec'] as num?)?.toInt(),
     );
   }
 }
