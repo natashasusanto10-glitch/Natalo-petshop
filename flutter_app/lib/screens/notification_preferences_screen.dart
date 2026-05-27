@@ -1,7 +1,11 @@
+import 'dart:io';
+
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/notification_service.dart';
+import '../services/push_notification_service.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/haptics.dart';
 
@@ -272,6 +276,285 @@ class _NotificationPreferencesScreenState
                 fontSize: 11,
                 fontWeight: FontWeight.w500,
                 height: 1.5,
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          const _PushDiagnosticPanel(),
+        ],
+      ),
+    );
+  }
+}
+
+/// Panel diagnostik push — visible di Pengaturan Notifikasi supaya user
+/// (dan saya saat debug) bisa cek cepat apakah token Android FCM ke-
+/// register ke backend dengan benar, lalu fire test push untuk validasi
+/// chain lengkap (permission → token → backend → FCM → device tray).
+///
+/// 3 baris status:
+///   - Permission OS (granted / denied / not requested)
+///   - Token lokal (16 char first untuk privacy)
+///   - Token ke-register di backend (count via /api/push/me/status)
+/// Plus 2 tombol: Kirim Test + Daftar Ulang Token (force re-register).
+class _PushDiagnosticPanel extends StatefulWidget {
+  const _PushDiagnosticPanel();
+
+  @override
+  State<_PushDiagnosticPanel> createState() => _PushDiagnosticPanelState();
+}
+
+class _PushDiagnosticPanelState extends State<_PushDiagnosticPanel> {
+  String? _permissionStatus;
+  String? _fcmToken;
+  PushSubscriptionStatus? _status;
+  bool _refreshing = false;
+  bool _sending = false;
+  bool _reRegistering = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    if (_refreshing) return;
+    setState(() => _refreshing = true);
+    try {
+      // Permission OS-level — saat denied, FCM tidak akan deliver notif
+      // sama sekali walau token valid.
+      final settings =
+          await FirebaseMessaging.instance.getNotificationSettings();
+      String perm;
+      switch (settings.authorizationStatus) {
+        case AuthorizationStatus.authorized:
+          perm = 'Diizinkan';
+          break;
+        case AuthorizationStatus.denied:
+          perm = 'Ditolak — buka Pengaturan HP → Aplikasi → Natalo → Notifikasi → izinkan';
+          break;
+        case AuthorizationStatus.notDetermined:
+          perm = 'Belum diminta';
+          break;
+        case AuthorizationStatus.provisional:
+          perm = 'Sementara (iOS)';
+          break;
+      }
+      final token = await FirebaseMessaging.instance.getToken();
+      final status = await pushNotificationService.fetchSubscriptionStatus();
+      if (!mounted) return;
+      setState(() {
+        _permissionStatus = perm;
+        _fcmToken = token;
+        _status = status;
+        _refreshing = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _permissionStatus = 'Error: $e';
+        _refreshing = false;
+      });
+    }
+  }
+
+  Future<void> _sendTest() async {
+    AppHaptics.tap();
+    setState(() => _sending = true);
+    final ok = await pushNotificationService.sendTestPush(
+      title: 'Test Notifikasi Natalo',
+      body: Platform.isAndroid
+          ? 'Notifikasi Android diterima ✓'
+          : 'Notifikasi iOS diterima ✓',
+    );
+    if (!mounted) return;
+    setState(() => _sending = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ok
+              ? 'Test terkirim. Tunggu beberapa detik di tray notifikasi.'
+              : 'Gagal kirim test push. Cek status di atas.',
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _reRegister() async {
+    AppHaptics.tap();
+    setState(() => _reRegistering = true);
+    await pushNotificationService.registerWithServer();
+    // Delay singkat supaya backend sempat upsert sebelum refetch status.
+    await Future.delayed(const Duration(milliseconds: 700));
+    if (!mounted) return;
+    setState(() => _reRegistering = false);
+    await _refresh();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Token diminta ulang ke server.'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokenPreview = (_fcmToken == null || _fcmToken!.isEmpty)
+        ? '(belum ada — FCM getToken null)'
+        : '${_fcmToken!.substring(0, _fcmToken!.length.clamp(0, 16))}…';
+    final regCount = _status?.tokenCount ?? 0;
+    final authed = _status?.authenticated ?? false;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFDDE8F8)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.bug_report_outlined,
+                size: 18,
+                color: NataloColors.textSecondary,
+              ),
+              const SizedBox(width: 6),
+              const Expanded(
+                child: Text(
+                  'Diagnostik Push',
+                  style: TextStyle(
+                    color: NataloColors.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Refresh status',
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                  minWidth: 32,
+                  minHeight: 32,
+                ),
+                icon: _refreshing
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 1.8),
+                      )
+                    : const Icon(Icons.refresh_rounded, size: 18),
+                onPressed: _refreshing ? null : _refresh,
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          _DiagRow('Permission OS', _permissionStatus ?? '...'),
+          _DiagRow('Login session', authed ? 'Aktif' : 'Belum login'),
+          _DiagRow('FCM token (lokal)', tokenPreview),
+          _DiagRow(
+            'Token aktif di server',
+            _status == null
+                ? '...'
+                : regCount > 0
+                    ? '$regCount device'
+                    : 'Belum ada — tap "Daftar Ulang"',
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: _reRegistering
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 1.8),
+                        )
+                      : const Icon(Icons.sync_rounded, size: 16),
+                  label: const Text('Daftar Ulang'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: NataloColors.textPrimary,
+                    side: const BorderSide(color: Color(0xFFCBD5E1)),
+                    textStyle: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  onPressed: _reRegistering ? null : _reRegister,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton.icon(
+                  icon: _sending
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 1.8,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Icon(Icons.send_rounded, size: 16),
+                  label: const Text('Kirim Test'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: NataloColors.primary,
+                    textStyle: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  onPressed: (_sending || regCount == 0) ? null : _sendTest,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DiagRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _DiagRow(this.label, this.value);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 132,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: NataloColors.textSecondary,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: NataloColors.textPrimary,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                height: 1.35,
               ),
             ),
           ),
