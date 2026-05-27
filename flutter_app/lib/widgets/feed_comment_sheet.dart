@@ -366,6 +366,24 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
   /// Group comments: parents first (newest-first), each followed by
   /// chronological replies. Server bisa return flat — kita group sini.
   ///
+  /// Resolve caption text untuk display di top of comment sheet (IG pattern).
+  /// Fallback chain handle legacy posts:
+  ///   1. `caption` field (reserved untuk future kalau backend kirim)
+  ///   2. `description` field (current behavior — photo & video upload
+  ///      sama-sama simpan caption di sini sejak v1.0.106 fix)
+  ///   3. `title` field (fallback untuk legacy photo post pre-fix yang
+  ///      caption malah ke-simpan di title bukan description)
+  /// Skip placeholder "Postingan baru" — itu fallback default saat user
+  /// tidak isi caption sama sekali, jangan render sebagai caption real.
+  String _resolveCaption() {
+    final rawCaption = widget.post.caption?.trim().isNotEmpty == true
+        ? widget.post.caption!.trim()
+        : widget.post.description.trim().isNotEmpty
+            ? widget.post.description.trim()
+            : widget.post.title.trim();
+    return rawCaption == 'Postingan baru' ? '' : rawCaption;
+  }
+
   /// Filter blocked users: skip komentar dari user yang current user
   /// sudah block (lokal SharedPreferences via blockService). Konsisten
   /// dengan feed_screen.dart pattern. Apply ke parent + replies.
@@ -496,39 +514,50 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
         ),
       );
     }
+    // IG pattern — Compute caption SEBELUM check _comments.isEmpty supaya
+    // caption tetap muncul di atas walau no comments yet. Sebelumnya bug:
+    // kalau comments kosong, early-return empty state → caption tile gak
+    // pernah render. Akibatnya post tanpa comment kelihatan caption-less
+    // (padahal di main feed UI caption muncul).
+    final emptyCaptionText = _resolveCaption();
     if (_comments.isEmpty) {
       return ListView(
         controller: widget.sheetScrollController,
-        padding: const EdgeInsets.symmetric(vertical: 50, horizontal: 32),
+        padding: EdgeInsets.zero,
         children: [
-          Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.mode_comment_outlined,
-                  color: Colors.white.withValues(alpha: 0.35),
-                  size: 40,
-                ),
-                const SizedBox(height: 10),
-                const Text(
-                  'Belum ada komentar',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
+          if (emptyCaptionText.isNotEmpty)
+            _CaptionTile(post: widget.post, captionText: emptyCaptionText),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 50, horizontal: 32),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.mode_comment_outlined,
+                    color: Colors.white.withValues(alpha: 0.35),
+                    size: 40,
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Jadi yang pertama berkomentar!',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.55),
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Belum ada komentar',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 4),
+                  Text(
+                    'Jadi yang pertama berkomentar!',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.55),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -539,21 +568,9 @@ class _FeedCommentSheetState extends State<FeedCommentSheet> {
     // IG pattern — caption post di-render sebagai item pertama di atas
     // comment list (dengan author tag "creator"). User langsung baca
     // caption tanpa tutup sheet & balik ke feed.
-    // Caption priority order — fallback chain untuk handle legacy posts:
-    //   1. `caption` field (reserved untuk future kalau backend kirim)
-    //   2. `description` field (current behavior — photo & video upload
-    //      sama-sama simpan caption di sini sejak v1.0.106 fix)
-    //   3. `title` field (fallback untuk legacy photo post pre-fix yang
-    //      caption malah ke-simpan di title bukan description)
-    final rawCaption = widget.post.caption?.trim().isNotEmpty == true
-        ? widget.post.caption!.trim()
-        : widget.post.description.trim().isNotEmpty
-            ? widget.post.description.trim()
-            : widget.post.title.trim();
-    // Skip placeholder "Postingan baru" — itu fallback default saat user
-    // tidak isi caption sama sekali, jangan render sebagai caption real.
-    final captionText =
-        rawCaption == 'Postingan baru' ? '' : rawCaption;
+    // Logic moved ke _resolveCaption() helper supaya bisa reuse di
+    // empty-state branch di atas (sebelum populated-state).
+    final captionText = _resolveCaption();
     final hasCaption = captionText.isNotEmpty;
     final captionOffset = hasCaption ? 1 : 0;
     final totalCount = items.length + captionOffset + (_loadingMore ? 1 : 0);
