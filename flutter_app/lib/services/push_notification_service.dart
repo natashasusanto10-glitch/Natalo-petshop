@@ -132,7 +132,45 @@ class PushNotificationService {
           );
 
       // 4) Get FCM token & listen to refresh.
-      _currentToken = await messaging.getToken();
+      //
+      // iOS-specific: messaging.getToken() requires APNs token ready dulu.
+      // Kalau dipanggil terlalu cepat setelah requestPermission(), bisa
+      // return null karena iOS belum kasih APNs token (timing race async
+      // dengan Apple's server). Plugin v15 supposedly handle internally
+      // tapi ada edge case di fresh install dimana token return null silent.
+      //
+      // Fix: explicitly await getAPNSToken() FIRST di iOS — itu blocking
+      // sampai APNs token tersedia (atau timeout). Setelah APNs ready,
+      // getToken() return FCM token yang properly bound.
+      if (Platform.isIOS) {
+        // Retry up to 5x dengan exponential backoff total max ~7.75 detik.
+        // iOS APNs registration biasanya complete <2 detik tapi network jelek
+        // bisa sampai 5-10 detik.
+        for (var attempt = 0; attempt < 5; attempt++) {
+          final apnsToken = await messaging.getAPNSToken();
+          if (apnsToken != null && apnsToken.isNotEmpty) {
+            if (kDebugMode) {
+              debugPrint('[push] iOS APNs token ready (attempt ${attempt + 1})');
+            }
+            break;
+          }
+          if (kDebugMode) {
+            debugPrint('[push] iOS APNs token null, retry in ${250 << attempt}ms');
+          }
+          await Future.delayed(Duration(milliseconds: 250 << attempt));
+        }
+      }
+
+      // Retry getToken() juga — kalau APNs wait di atas timeout-out tanpa
+      // resolve, getToken() bisa masih return null. Defensive retry.
+      for (var attempt = 0; attempt < 3; attempt++) {
+        _currentToken = await messaging.getToken();
+        if (_currentToken != null && _currentToken!.isNotEmpty) break;
+        if (kDebugMode) {
+          debugPrint('[push] FCM getToken() null, retry attempt ${attempt + 1}');
+        }
+        await Future.delayed(Duration(milliseconds: 500 << attempt));
+      }
       if (kDebugMode && _currentToken != null) {
         debugPrint('[push] FCM token: ${_currentToken!.substring(0, 20)}...');
       }
