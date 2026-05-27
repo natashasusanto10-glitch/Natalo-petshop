@@ -69,6 +69,10 @@ class PushNotificationService {
   bool _initialized = false;
   String? _currentToken;
   GlobalKey<NavigatorState>? _navigatorKey;
+  bool _registrationInFlight = false;
+  bool _registrationQueued = false;
+  Timer? _registrationRetryTimer;
+  int _registrationRetryAttempt = 0;
 
   /// Initialize Firebase + register token handlers. Idempotent.
   /// Call ini di main() setelah memberStore + cartStore di-init.
@@ -150,12 +154,14 @@ class PushNotificationService {
           final apnsToken = await messaging.getAPNSToken();
           if (apnsToken != null && apnsToken.isNotEmpty) {
             if (kDebugMode) {
-              debugPrint('[push] iOS APNs token ready (attempt ${attempt + 1})');
+              debugPrint(
+                  '[push] iOS APNs token ready (attempt ${attempt + 1})');
             }
             break;
           }
           if (kDebugMode) {
-            debugPrint('[push] iOS APNs token null, retry in ${250 << attempt}ms');
+            debugPrint(
+                '[push] iOS APNs token null, retry in ${250 << attempt}ms');
           }
           await Future.delayed(Duration(milliseconds: 250 << attempt));
         }
@@ -167,7 +173,8 @@ class PushNotificationService {
         _currentToken = await messaging.getToken();
         if (_currentToken != null && _currentToken!.isNotEmpty) break;
         if (kDebugMode) {
-          debugPrint('[push] FCM getToken() null, retry attempt ${attempt + 1}');
+          debugPrint(
+              '[push] FCM getToken() null, retry attempt ${attempt + 1}');
         }
         await Future.delayed(Duration(milliseconds: 500 << attempt));
       }
@@ -241,145 +248,156 @@ class PushNotificationService {
   /// `messaging.getAPNSToken()` return raw 64-char hex APNs device token.
   /// Android: getAPNSToken() return null (no-op silently).
   Future<void> registerWithServer() async {
-    // DIAGNOSTIC ping ke backend supaya bisa verify di Vercel logs apakah
-    // function ini bener-bener ke-call. Hapus setelah debug push iOS done.
-    // /api/log-error endpoint always return 200, no auth required.
-    try {
-      await apiClient.postJson('/api/log-error', body: {
-        'source': 'registerWithServer-entry',
-        'message': '[diag] registerWithServer called',
-        'context': {
-          'platform': Platform.isIOS ? 'ios' : (Platform.isAndroid ? 'android' : 'other'),
-          'hasCurrentToken': (_currentToken != null && _currentToken!.isNotEmpty),
-          'initialized': _initialized,
-        },
-      });
-    } catch (_) {
-      // Network error / auth issue — silent, gak block flow utama
+    if (_registrationInFlight) {
+      _registrationQueued = true;
+      return;
     }
+    _registrationInFlight = true;
+    var shouldRetry = false;
 
-    // Refactor: HAPUS early-return kalau _currentToken null. APNs token
-    // registration adalah independent channel — bisa jalan walaupun FCM
-    // token belum ready (jarang terjadi tapi mungkin di iOS fresh install
-    // timing race). Sebelumnya design-nya `if FCM null return` yang skip
-    // APNs juga = lose redundancy.
-
-    // FCM token registration — retry inline kalau _currentToken null.
-    // Bisa terjadi kalau registerWithServer dipanggil sebelum initialize()
-    // selesai retry getToken di iOS.
-    String? fcmToken = _currentToken;
-    if (fcmToken == null || fcmToken.isEmpty) {
-      // Inline retry sekali — kalau initialize() retry udah ngambil,
-      // _currentToken seharusnya udah set. Kalau masih null, attempt
-      // fresh getToken() dengan retry.
-      for (var attempt = 0; attempt < 3; attempt++) {
-        try {
-          fcmToken = await FirebaseMessaging.instance.getToken();
-          if (fcmToken != null && fcmToken.isNotEmpty) {
-            _currentToken = fcmToken;
-            break;
+    try {
+      // FCM token registration — retry inline kalau _currentToken null.
+      // Bisa terjadi kalau registerWithServer dipanggil sebelum initialize()
+      // selesai retry getToken di iOS.
+      String? fcmToken = _currentToken;
+      if (fcmToken == null || fcmToken.isEmpty) {
+        // Inline retry sekali — kalau initialize() retry udah ngambil,
+        // _currentToken seharusnya udah set. Kalau masih null, attempt
+        // fresh getToken() dengan retry.
+        for (var attempt = 0; attempt < 3; attempt++) {
+          try {
+            fcmToken = await FirebaseMessaging.instance.getToken();
+            if (fcmToken != null && fcmToken.isNotEmpty) {
+              _currentToken = fcmToken;
+              break;
+            }
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('[push] getToken retry $attempt failed: $e');
+            }
           }
-        } catch (e) {
-          if (kDebugMode) debugPrint('[push] getToken retry $attempt failed: $e');
+          await Future.delayed(Duration(milliseconds: 500 << attempt));
         }
-        await Future.delayed(Duration(milliseconds: 500 << attempt));
       }
-    }
 
-    if (fcmToken != null && fcmToken.isNotEmpty) {
-      try {
-        await apiClient.postJson(
-          '/api/push/subscribe-fcm',
-          body: {'token': fcmToken},
-        );
-        if (kDebugMode) {
-          debugPrint('[push] FCM token registered: ${fcmToken.substring(0, 16)}...');
-        }
-      } catch (error) {
-        if (kDebugMode) {
-          debugPrint('[push] Register FCM token failed: $error');
-        }
-      }
-    } else {
-      // Log explicit visibility kalau FCM token bener-bener gak tersedia.
-      // Crashlytics akan capture supaya kita lihat di dashboard.
-      if (kDebugMode) {
-        debugPrint('[push] FCM token unavailable after retry — skip subscribe-fcm');
-      }
-      try {
-        await FirebaseCrashlytics.instance.recordError(
-          Exception('FCM token null after retry — getToken() persistent fail'),
-          StackTrace.current,
-          reason: 'registerWithServer() FCM token unavailable',
-          fatal: false,
-        );
-      } catch (_) {}
-    }
-
-    // iOS — register raw APNs token sebagai diagnostic backup channel.
-    // ALWAYS attempt — independent dari FCM token availability. Retry up
-    // to 3× dengan exponential backoff. Total max wait ~3.5s.
-    try {
-      String? apnsToken;
-      for (var attempt = 0; attempt < 3; attempt++) {
-        apnsToken = await FirebaseMessaging.instance.getAPNSToken();
-        if (apnsToken != null && apnsToken.isNotEmpty) break;
-        await Future.delayed(Duration(milliseconds: 500 << attempt));
-      }
-      if (apnsToken != null && apnsToken.isNotEmpty) {
-        await apiClient.postJson(
-          '/api/push/subscribe-apns',
-          body: {'token': apnsToken},
-        );
-        if (kDebugMode) {
-          debugPrint('[push] APNs token registered: ${apnsToken.substring(0, 16)}...');
+      if (fcmToken != null && fcmToken.isNotEmpty) {
+        try {
+          await apiClient.postJson(
+            '/api/push/subscribe-fcm',
+            body: {'token': fcmToken},
+          );
+          if (kDebugMode) {
+            debugPrint(
+              '[push] FCM token registered: ${fcmToken.substring(0, 16)}...',
+            );
+          }
+        } catch (error) {
+          shouldRetry = true;
+          if (kDebugMode) {
+            debugPrint('[push] Register FCM token failed: $error');
+          }
         }
       } else {
-        // APNs token null — Android case (expected) OR iOS dengan
-        // permission denied / not yet registered.
+        // Log explicit visibility kalau FCM token bener-bener gak tersedia.
+        // Crashlytics akan capture supaya kita lihat di dashboard.
+        shouldRetry = true;
         if (kDebugMode) {
-          debugPrint('[push] APNs token unavailable after retry');
+          debugPrint(
+            '[push] FCM token unavailable after retry — skip subscribe-fcm',
+          );
         }
-        // Cuma log ke Crashlytics di iOS karena Android expected null.
-        if (Platform.isIOS) {
-          try {
-            await FirebaseCrashlytics.instance.recordError(
-              Exception('APNs token null after retry on iOS'),
-              StackTrace.current,
-              reason: 'registerWithServer() APNs token unavailable iOS',
-              fatal: false,
+        try {
+          await FirebaseCrashlytics.instance.recordError(
+            Exception(
+                'FCM token null after retry — getToken() persistent fail'),
+            StackTrace.current,
+            reason: 'registerWithServer() FCM token unavailable',
+            fatal: false,
+          );
+        } catch (_) {}
+      }
+
+      if (Platform.isIOS) {
+        // iOS — register raw APNs token sebagai diagnostic backup channel.
+        // ALWAYS attempt — independent dari FCM token availability. Retry up
+        // to 5× dengan exponential backoff. Kalau APNs masih telat, scheduled
+        // retry di bawah akan coba lagi tanpa perlu user logout/login.
+        try {
+          String? apnsToken;
+          for (var attempt = 0; attempt < 5; attempt++) {
+            apnsToken = await FirebaseMessaging.instance.getAPNSToken();
+            if (apnsToken != null && apnsToken.isNotEmpty) break;
+            await Future.delayed(Duration(milliseconds: 500 << attempt));
+          }
+          if (apnsToken != null && apnsToken.isNotEmpty) {
+            await apiClient.postJson(
+              '/api/push/subscribe-apns',
+              body: {'token': apnsToken},
             );
-          } catch (_) {}
+            if (kDebugMode) {
+              debugPrint(
+                '[push] APNs token registered: ${apnsToken.substring(0, 16)}...',
+              );
+            }
+          } else {
+            shouldRetry = true;
+            if (kDebugMode) {
+              debugPrint('[push] APNs token unavailable after retry');
+            }
+            try {
+              await FirebaseCrashlytics.instance.recordError(
+                Exception('APNs token null after retry on iOS'),
+                StackTrace.current,
+                reason: 'registerWithServer() APNs token unavailable iOS',
+                fatal: false,
+              );
+            } catch (_) {}
+          }
+        } catch (error) {
+          shouldRetry = true;
+          if (kDebugMode) {
+            debugPrint('[push] Register APNs token failed: $error');
+          }
         }
       }
-    } catch (error) {
-      if (kDebugMode) {
-        debugPrint('[push] Register APNs token failed: $error');
+    } finally {
+      _registrationInFlight = false;
+      if (_registrationQueued) {
+        _registrationQueued = false;
+        unawaited(registerWithServer());
+      } else if (shouldRetry) {
+        _scheduleRegistrationRetry();
+      } else {
+        _clearRegistrationRetry();
       }
     }
   }
 
   /// Unregister token dari server saat logout. Idempotent.
   Future<void> unregisterFromServer() async {
+    _clearRegistrationRetry();
     final token = _currentToken;
-    if (token == null || token.isEmpty) return;
-    try {
-      await apiClient.deleteJson(
-        '/api/push/subscribe-fcm',
-        body: {'token': token},
-      );
-    } catch (_) {}
+    if (token != null && token.isNotEmpty) {
+      try {
+        await apiClient.deleteJson(
+          '/api/push/subscribe-fcm',
+          body: {'token': token},
+        );
+      } catch (_) {}
+    }
 
     // Cleanup APNs token registration juga (iOS only).
-    try {
-      final apnsToken = await FirebaseMessaging.instance.getAPNSToken();
-      if (apnsToken != null && apnsToken.isNotEmpty) {
-        await apiClient.deleteJson(
-          '/api/push/subscribe-apns',
-          body: {'token': apnsToken},
-        );
-      }
-    } catch (_) {}
+    if (Platform.isIOS) {
+      try {
+        final apnsToken = await FirebaseMessaging.instance.getAPNSToken();
+        if (apnsToken != null && apnsToken.isNotEmpty) {
+          await apiClient.deleteJson(
+            '/api/push/subscribe-apns',
+            body: {'token': apnsToken},
+          );
+        }
+      } catch (_) {}
+    }
   }
 
   Future<PushSubscriptionStatus> fetchSubscriptionStatus() async {
@@ -422,7 +440,39 @@ class PushNotificationService {
   void _onTokenRefresh(String token) {
     _currentToken = token;
     // Auto re-register dengan server (server akan upsert).
+    _clearRegistrationRetry();
     registerWithServer();
+  }
+
+  void _scheduleRegistrationRetry() {
+    if (_registrationRetryAttempt >= 8) return;
+    _registrationRetryTimer?.cancel();
+    final delay = _registrationRetryDelay(_registrationRetryAttempt);
+    _registrationRetryAttempt++;
+    if (kDebugMode) {
+      debugPrint('[push] Schedule registration retry in ${delay.inSeconds}s');
+    }
+    _registrationRetryTimer = Timer(delay, registerWithServer);
+  }
+
+  Duration _registrationRetryDelay(int attempt) {
+    const delays = <Duration>[
+      Duration(seconds: 5),
+      Duration(seconds: 15),
+      Duration(seconds: 30),
+      Duration(minutes: 1),
+      Duration(minutes: 2),
+      Duration(minutes: 5),
+      Duration(minutes: 10),
+      Duration(minutes: 15),
+    ];
+    return delays[attempt.clamp(0, delays.length - 1)];
+  }
+
+  void _clearRegistrationRetry() {
+    _registrationRetryTimer?.cancel();
+    _registrationRetryTimer = null;
+    _registrationRetryAttempt = 0;
   }
 
   Future<void> _onForegroundMessage(RemoteMessage message) async {
