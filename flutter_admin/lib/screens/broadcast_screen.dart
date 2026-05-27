@@ -6,13 +6,12 @@ import '../theme/admin_theme.dart';
 /// Form broadcast push notification ke semua customer.
 ///
 /// Pakai endpoint POST /api/admin/push/broadcast yang sudah ada.
-/// Body: {title, body, url?, segment, dryRun}
+/// Body: {title, body, url?, segment}
 ///
 /// Segment options:
 /// - all: semua user dengan push subscription
 /// - members: yang pernah complete order
 /// - active30d: yang punya order 30 hari terakhir
-/// - test: kirim ke admin saja (preview)
 class BroadcastScreen extends StatefulWidget {
   const BroadcastScreen({super.key});
 
@@ -31,7 +30,6 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
     _Segment('all', 'Semua pengguna', 'Semua user dengan push subscription'),
     _Segment('members', 'Member aktif', 'User yang pernah complete order'),
     _Segment('active30d', '30 hari terakhir', 'Order dalam 30 hari'),
-    _Segment('test', 'Test (admin saja)', 'Preview kirim hanya ke admin'),
   ];
 
   @override
@@ -42,7 +40,7 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
     super.dispose();
   }
 
-  Future<void> _send({bool dryRun = false}) async {
+  Future<void> _send() async {
     if (_sending) return;
     final title = _titleController.text.trim();
     final body = _bodyController.text.trim();
@@ -52,28 +50,26 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
     if (title.length > 60) return _err('Judul maksimal 60 karakter');
     if (body.length > 180) return _err('Isi pesan maksimal 180 karakter');
 
-    if (!dryRun) {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('Kirim broadcast?'),
-          content: Text(
-            'Notifikasi akan dikirim ke segmen "${_segments.firstWhere((s) => s.key == _segment).label}".\n\nLanjutkan?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Batal'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Kirim'),
-            ),
-          ],
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Kirim broadcast?'),
+        content: Text(
+          'Notifikasi akan dikirim ke segmen "${_segments.firstWhere((s) => s.key == _segment).label}".\n\nLanjutkan?',
         ),
-      );
-      if (confirmed != true) return;
-    }
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Kirim'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
 
     setState(() => _sending = true);
     try {
@@ -85,11 +81,11 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
           if (_urlController.text.trim().isNotEmpty)
             'url': _urlController.text.trim(),
           'segment': _segment,
-          'dryRun': dryRun,
         },
       );
       if (!mounted) return;
-      final recipientCount = (response is Map && response['recipientCount'] is num)
+      final recipientCount =
+          (response is Map && response['recipientCount'] is num)
           ? (response['recipientCount'] as num).toInt()
           : 0;
       final sent = (response is Map && response['sent'] is num)
@@ -97,20 +93,14 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
           : 0;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            dryRun
-                ? 'Dry-run: $recipientCount user akan terima'
-                : 'Terkirim ke $sent dari $recipientCount user',
-          ),
+          content: Text('Terkirim ke $sent dari $recipientCount user'),
           backgroundColor: AdminColors.success,
           behavior: SnackBarBehavior.floating,
         ),
       );
-      if (!dryRun) {
-        _titleController.clear();
-        _bodyController.clear();
-        _urlController.clear();
-      }
+      _titleController.clear();
+      _bodyController.clear();
+      _urlController.clear();
     } on AdminApiException catch (e) {
       _err('Gagal: ${e.message}');
     } catch (_) {
@@ -121,9 +111,7 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
   }
 
   void _err(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg)),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   @override
@@ -139,13 +127,16 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
             padding: const EdgeInsets.all(14),
             child: const Row(
               children: [
-                Icon(Icons.campaign_outlined,
-                    color: AdminColors.primary, size: 22),
+                Icon(
+                  Icons.campaign_outlined,
+                  color: AdminColors.primary,
+                  size: 22,
+                ),
                 SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     'Kirim push notification ke pengguna app Natalo. '
-                    'Gunakan "Test" dulu untuk preview di HP kamu sebelum kirim ke banyak orang.',
+                    'Pastikan judul, isi pesan, dan segmen sudah benar sebelum mengirim.',
                     style: TextStyle(
                       fontSize: 12,
                       color: AdminColors.textPrimary,
@@ -251,10 +242,7 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                 const Text(
                   'Path relatif (mis. /products) atau full URL. '
                   'User akan diarahkan ke sini saat tap notif.',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: AdminColors.textMuted,
-                  ),
+                  style: TextStyle(fontSize: 11, color: AdminColors.textMuted),
                 ),
                 const SizedBox(height: 18),
                 const Text(
@@ -266,68 +254,56 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                   ),
                 ),
                 const SizedBox(height: 6),
-                for (final s in _segments)
-                  RadioListTile<String>(
-                    value: s.key,
-                    groupValue: _segment,
-                    activeColor: AdminColors.primary,
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(
-                      s.label,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    subtitle: Text(
-                      s.description,
-                      style: const TextStyle(
-                        fontSize: 11.5,
-                        color: AdminColors.textMuted,
-                      ),
-                    ),
-                    onChanged: (v) => setState(() => _segment = v ?? 'all'),
+                RadioGroup<String>(
+                  groupValue: _segment,
+                  onChanged: (v) => setState(() => _segment = v ?? 'all'),
+                  child: Column(
+                    children: [
+                      for (final s in _segments)
+                        RadioListTile<String>(
+                          value: s.key,
+                          activeColor: AdminColors.primary,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(
+                            s.label,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          subtitle: Text(
+                            s.description,
+                            style: const TextStyle(
+                              fontSize: 11.5,
+                              color: AdminColors.textMuted,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
+                ),
               ],
             ),
           ),
           const SizedBox(height: 20),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Column(
-              children: [
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.visibility_outlined),
-                  label: const Text('Test (preview, tidak ke semua user)'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AdminColors.info,
-                    side: const BorderSide(color: AdminColors.info),
-                    minimumSize: const Size.fromHeight(48),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                  ),
-                  onPressed: _sending ? null : () => _send(dryRun: true),
-                ),
-                const SizedBox(height: 10),
-                ElevatedButton.icon(
-                  icon: _sending
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.send_rounded),
-                  label: Text(_sending ? 'Mengirim...' : 'Kirim ke User'),
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(48),
-                  ),
-                  onPressed: _sending ? null : () => _send(dryRun: false),
-                ),
-              ],
+            child: ElevatedButton.icon(
+              icon: _sending
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.send_rounded),
+              label: Text(_sending ? 'Mengirim...' : 'Kirim ke User'),
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+              ),
+              onPressed: _sending ? null : _send,
             ),
           ),
           const SizedBox(height: 24),
