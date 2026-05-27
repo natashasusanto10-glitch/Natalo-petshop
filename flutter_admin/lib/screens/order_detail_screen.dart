@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/api_client.dart';
+import '../services/notification_counts.dart';
 import '../theme/admin_theme.dart';
 
 /// Detail screen untuk satu order — view + actions.
@@ -91,6 +92,151 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     } finally {
       if (mounted) setState(() => _actionInProgress = false);
     }
+  }
+
+  Future<void> _onApproveCancellation() async {
+    final orderId = widget.orderNumber;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Setujui pembatalan?'),
+        content: const Text(
+          'Order akan dibatalkan & sistem otomatis: refund saldo (kalau '
+          'sudah bayar), restore stok, rollback voucher, kirim notif ke '
+          'customer. Lanjutkan?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: AdminColors.danger),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Setujui'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _runAction(() async {
+      await adminApi.postJson(
+        '/api/admin/orders/${Uri.encodeComponent(orderId)}/cancellation/approve',
+        timeout: const Duration(seconds: 20),
+      );
+      _showSuccess('Pembatalan disetujui — order CANCELLED, refund ter-issue.');
+      await _load();
+    });
+  }
+
+  Future<void> _onRejectCancellation() async {
+    final reason = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const _RejectCancellationSheet(),
+    );
+    if (reason == null || reason.isEmpty) return;
+    await _runAction(() async {
+      await adminApi.postJson(
+        '/api/admin/orders/${Uri.encodeComponent(widget.orderNumber)}/cancellation/reject',
+        body: {'rejectReason': reason},
+      );
+      _showSuccess('Permintaan pembatalan ditolak — notif terkirim ke customer.');
+      await _load();
+    });
+  }
+
+  Future<void> _onRefundWallet({String? itemId, int? maxAmount}) async {
+    final result = await showModalBottomSheet<_RefundFormResult>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _RefundWalletSheet(
+        itemId: itemId,
+        suggestedAmount: maxAmount,
+      ),
+    );
+    if (result == null) return;
+    await _runAction(() async {
+      await adminApi.postJson(
+        '/api/admin/orders/${Uri.encodeComponent(widget.orderNumber)}/refund-wallet',
+        body: {
+          'amount': result.amount,
+          'reason': result.reason,
+          if (result.itemId != null) 'itemId': result.itemId,
+          if (result.adminNote != null && result.adminNote!.isNotEmpty)
+            'adminNote': result.adminNote,
+        },
+        timeout: const Duration(seconds: 20),
+      );
+      _showSuccess('Refund Rp${result.amount} ter-issue ke Saldo Refund customer.');
+      await _load();
+    });
+  }
+
+  Future<void> _onMarkItemOutOfStock(Map<String, dynamic> item) async {
+    final itemId = item['id']?.toString();
+    if (itemId == null) return;
+    final qty = (item['quantity'] is num) ? (item['quantity'] as num).toInt() : 1;
+    final name = (item['name'] ?? 'Item').toString();
+    final result = await showModalBottomSheet<_MarkOOSResult>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _MarkOOSSheet(itemName: name, maxQty: qty),
+    );
+    if (result == null) return;
+    await _runAction(() async {
+      await adminApi.postJson(
+        '/api/admin/orders/${Uri.encodeComponent(widget.orderNumber)}/items/${Uri.encodeComponent(itemId)}/out-of-stock',
+        body: {
+          'missingQty': result.missingQty,
+          if (result.adminNote != null && result.adminNote!.isNotEmpty)
+            'adminNote': result.adminNote,
+        },
+        timeout: const Duration(seconds: 20),
+      );
+      _showSuccess('$name × ${result.missingQty} ditandai kosong — refund auto-issue.');
+      await _load();
+    });
+  }
+
+  Future<void> _runAction(Future<void> Function() fn) async {
+    if (_actionInProgress) return;
+    setState(() => _actionInProgress = true);
+    try {
+      await fn();
+    } on AdminApiException catch (e) {
+      _showError('Gagal: ${e.message}');
+    } catch (_) {
+      _showError('Gagal. Coba lagi.');
+    } finally {
+      if (mounted) setState(() => _actionInProgress = false);
+    }
+  }
+
+  void _showSuccess(String msg) {
+    if (!mounted) return;
+    // Haptic confirm action sukses — tactile feedback Material guidelines.
+    HapticFeedback.lightImpact();
+    // Update badge counter — order status changed bisa pengaruhi
+    // ordersPending / cancelRequests.
+    NotificationCounts.instance.refresh();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: AdminColors.success,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _showError(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg)),
+    );
   }
 
   Future<void> _onShipPressed() async {
@@ -183,6 +329,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
     final o = _order!;
     final items = (o['items'] as List?) ?? const [];
+    final refundCases = (o['refundCases'] as List?) ?? const [];
+    final cancellationStatus =
+        (o['cancellationRequestStatus'] ?? '').toString();
+    final refundEligible = o['refundEligible'] == true;
     return RefreshIndicator(
       onRefresh: _load,
       color: AdminColors.primary,
@@ -206,6 +356,21 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               ],
             ),
           ),
+
+          // Cancellation request banner — muncul kalau ada request PENDING /
+          // APPROVED / REJECTED. PENDING punya tombol Setujui & Tolak.
+          if (cancellationStatus.isNotEmpty)
+            _CancellationBanner(
+              status: cancellationStatus,
+              reason: o['cancellationReason']?.toString(),
+              rejectReason: o['cancellationRejectReason']?.toString(),
+              requestedAt: o['cancellationRequestedAt']?.toString(),
+              respondedAt: o['cancellationRespondedAt']?.toString(),
+              actionInProgress: _actionInProgress,
+              onApprove: _onApproveCancellation,
+              onReject: _onRejectCancellation,
+            ),
+
           const SizedBox(height: 8),
 
           // Customer info.
@@ -303,61 +468,100 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 if (item is Map<String, dynamic>)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 6),
-                    child: Row(
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                (item['name'] ?? '-').toString(),
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: AdminColors.textPrimary,
-                                ),
-                              ),
-                              if (item['variantLabel'] != null) ...[
-                                const SizedBox(height: 2),
-                                Text(
-                                  item['variantLabel'].toString(),
-                                  style: const TextStyle(
-                                    fontSize: 11.5,
-                                    color: AdminColors.textMuted,
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    (item['name'] ?? '-').toString(),
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: AdminColors.textPrimary,
+                                    ),
                                   ),
-                                ),
-                              ],
-                              const SizedBox(height: 2),
-                              Text(
-                                'x${item['quantity'] ?? 1}  •  ${formatRupiah(item['price'] ?? 0)}',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: AdminColors.textSecondary,
-                                ),
+                                  if (item['variantLabel'] != null) ...[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      item['variantLabel'].toString(),
+                                      style: const TextStyle(
+                                        fontSize: 11.5,
+                                        color: AdminColors.textMuted,
+                                      ),
+                                    ),
+                                  ],
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'x${item['quantity'] ?? 1}  •  ${formatRupiah(item['price'] ?? 0)}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: AdminColors.textSecondary,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
+                            ),
+                            Text(
+                              formatRupiah(
+                                (item['price'] ?? 0) is num
+                                    ? ((item['price'] as num) *
+                                            ((item['quantity'] as num?) ?? 1))
+                                        .toInt()
+                                    : 0,
+                              ),
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: AdminColors.textPrimary,
+                              ),
+                            ),
+                          ],
                         ),
-                        Text(
-                          formatRupiah(
-                            (item['price'] ?? 0) is num
-                                ? ((item['price'] as num) *
-                                        ((item['quantity'] as num?) ?? 1))
-                                    .toInt()
-                                : 0,
+                        if (refundEligible)
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton.icon(
+                              style: TextButton.styleFrom(
+                                foregroundColor: AdminColors.danger,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 0),
+                                minimumSize: const Size(0, 28),
+                                tapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              onPressed: _actionInProgress
+                                  ? null
+                                  : () => _onMarkItemOutOfStock(item),
+                              icon: const Icon(Icons.report_off_outlined,
+                                  size: 14),
+                              label: const Text(
+                                'Tandai kosong',
+                                style: TextStyle(fontSize: 11.5),
+                              ),
+                            ),
                           ),
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: AdminColors.textPrimary,
-                          ),
-                        ),
                       ],
                     ),
                   ),
             ],
           ),
+
+          // Refund history — display kalau ada refund case ter-issue.
+          if (refundCases.isNotEmpty)
+            _SectionCard(
+              title: 'Refund (${refundCases.length})',
+              children: [
+                for (final rc in refundCases)
+                  if (rc is Map<String, dynamic>)
+                    _RefundCaseRow(refundCase: rc),
+              ],
+            ),
 
           // Total breakdown.
           _SectionCard(
@@ -386,8 +590,18 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   Widget? _buildBottomActions() {
     if (_order == null) return null;
     final status = (_order!['status'] ?? '').toString().toUpperCase();
+    final refundEligible = _order!['refundEligible'] == true;
+    final cancellationStatus =
+        (_order!['cancellationRequestStatus'] ?? '').toString();
 
     final actions = <Widget>[];
+
+    // Kalau ada cancellation request PENDING, prioritaskan tombol
+    // approve/reject di banner — sembunyikan action status biasa supaya
+    // admin fokus respon dulu (sama pattern web).
+    if (cancellationStatus == 'PENDING') {
+      return null;
+    }
 
     switch (status) {
       case 'PENDING':
@@ -436,6 +650,18 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       case 'CANCELLED':
       case 'REFUNDED':
         return null;
+    }
+
+    // Always-available secondary action: refund ke Saldo Refund (kalau
+    // refundEligible). Admin bisa pakai ini untuk partial refund manual
+    // (misal customer komplain harga salah, kasih kompensasi sebagian).
+    if (refundEligible) {
+      actions.add(_actionButton(
+        label: 'Refund ke Saldo',
+        outlined: true,
+        color: AdminColors.danger,
+        onPressed: () => _onRefundWallet(),
+      ));
     }
 
     if (actions.isEmpty) return null;
@@ -709,6 +935,702 @@ class _ShipFormResult {
     required this.courierCode,
     required this.courierService,
   });
+}
+
+class _RefundFormResult {
+  final int amount;
+  final String reason;
+  final String? itemId;
+  final String? adminNote;
+
+  const _RefundFormResult({
+    required this.amount,
+    required this.reason,
+    this.itemId,
+    this.adminNote,
+  });
+}
+
+class _MarkOOSResult {
+  final int missingQty;
+  final String? adminNote;
+
+  const _MarkOOSResult({required this.missingQty, this.adminNote});
+}
+
+/// Banner cancellation request — varian warna sesuai status.
+class _CancellationBanner extends StatelessWidget {
+  final String status;
+  final String? reason;
+  final String? rejectReason;
+  final String? requestedAt;
+  final String? respondedAt;
+  final bool actionInProgress;
+  final VoidCallback onApprove;
+  final VoidCallback onReject;
+
+  const _CancellationBanner({
+    required this.status,
+    required this.reason,
+    required this.rejectReason,
+    required this.requestedAt,
+    required this.respondedAt,
+    required this.actionInProgress,
+    required this.onApprove,
+    required this.onReject,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final (bg, fg, title, body) = switch (status) {
+      'PENDING' => (
+          const Color(0xFFFFF3F0),
+          AdminColors.primary,
+          'Permintaan pembatalan',
+          'Customer minta cancel order. Cek alasannya lalu setujui atau tolak.',
+        ),
+      'APPROVED' => (
+          const Color(0xFFE6F7F4),
+          AdminColors.success,
+          'Pembatalan disetujui',
+          'Permintaan pembatalan sudah disetujui & order sudah CANCELLED.',
+        ),
+      'REJECTED' => (
+          const Color(0xFFFEE2E2),
+          AdminColors.danger,
+          'Pembatalan ditolak',
+          'Kamu sudah tolak permintaan ini — order kembali ke flow normal.',
+        ),
+      _ => (
+          const Color(0xFFEEEEEE),
+          AdminColors.textSecondary,
+          'Status pembatalan: $status',
+          '',
+        ),
+    };
+    return Container(
+      margin: const EdgeInsets.fromLTRB(0, 8, 0, 0),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      color: bg,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                status == 'APPROVED'
+                    ? Icons.check_circle_outline_rounded
+                    : status == 'REJECTED'
+                        ? Icons.cancel_outlined
+                        : Icons.warning_amber_rounded,
+                color: fg,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: fg,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (body.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              body,
+              style: const TextStyle(
+                fontSize: 12.5,
+                color: AdminColors.textPrimary,
+                height: 1.4,
+              ),
+            ),
+          ],
+          if (reason != null && reason!.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Alasan customer:',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: AdminColors.textMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    reason!,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: AdminColors.textPrimary,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (status == 'REJECTED' &&
+              rejectReason != null &&
+              rejectReason!.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Alasan penolakan kamu:',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: AdminColors.textMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    rejectReason!,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: AdminColors.textPrimary,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (status == 'PENDING') ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: actionInProgress ? null : onReject,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AdminColors.danger,
+                      side: const BorderSide(color: AdminColors.danger),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    child: const Text('Tolak'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: actionInProgress ? null : onApprove,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AdminColors.success,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    child: const Text('Setujui'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Row untuk satu RefundCase di section history.
+class _RefundCaseRow extends StatelessWidget {
+  final Map<String, dynamic> refundCase;
+  const _RefundCaseRow({required this.refundCase});
+
+  static const _reasonLabels = {
+    'OUT_OF_STOCK': 'Stok kosong',
+    'PARTIAL_CANCEL': 'Cancel sebagian',
+    'RETURN_APPROVED': 'Retur disetujui',
+    'ORDER_CANCELLED': 'Order dibatalkan',
+    'OTHER': 'Lain-lain',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final amount = (refundCase['amount'] is num)
+        ? (refundCase['amount'] as num).toInt()
+        : 0;
+    final status = (refundCase['status'] ?? 'PENDING').toString();
+    final reason = (refundCase['reason'] ?? 'OTHER').toString();
+    final note = refundCase['adminNote']?.toString();
+    final itemRefund = refundCase['orderItemId'] != null;
+    final created = refundCase['createdAt']?.toString();
+    final credited = refundCase['creditedAt']?.toString();
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AdminColors.background,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: status == 'CREDITED'
+                      ? const Color(0xFFE6F7F4)
+                      : const Color(0xFFFFF8E1),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+                child: Text(
+                  status,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: status == 'CREDITED'
+                        ? AdminColors.success
+                        : AdminColors.warning,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                _reasonLabels[reason] ?? reason,
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  color: AdminColors.textSecondary,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                formatRupiah(amount),
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: AdminColors.danger,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            itemRefund ? 'Per-item' : 'Whole order',
+            style: const TextStyle(
+              fontSize: 10.5,
+              color: AdminColors.textMuted,
+            ),
+          ),
+          if (note != null && note.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              note,
+              style: const TextStyle(
+                fontSize: 11.5,
+                color: AdminColors.textPrimary,
+                height: 1.3,
+              ),
+            ),
+          ],
+          if (credited != null || created != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              credited != null
+                  ? 'Credited: ${_shortDate(credited)}'
+                  : 'Dibuat: ${_shortDate(created!)}',
+              style: const TextStyle(
+                fontSize: 10.5,
+                color: AdminColors.textMuted,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _shortDate(String iso) {
+    final dt = DateTime.tryParse(iso);
+    if (dt == null) return iso;
+    final local = dt.toLocal();
+    return '${local.day}/${local.month}/${local.year} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  }
+}
+
+class _RejectCancellationSheet extends StatefulWidget {
+  const _RejectCancellationSheet();
+  @override
+  State<_RejectCancellationSheet> createState() =>
+      _RejectCancellationSheetState();
+}
+
+class _RejectCancellationSheetState extends State<_RejectCancellationSheet> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final viewInsets = MediaQuery.of(context).viewInsets;
+    return Padding(
+      padding: EdgeInsets.only(bottom: viewInsets.bottom),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 38,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AdminColors.divider,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Tolak Permintaan Pembatalan',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: AdminColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Jelaskan alasan penolakan — customer akan terima notif berisi pesan ini.',
+              style: TextStyle(fontSize: 12, color: AdminColors.textSecondary),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _controller,
+              maxLines: 4,
+              maxLength: 500,
+              decoration: const InputDecoration(
+                hintText: 'Misal: pesanan sudah masuk antrian packing dan tidak bisa dibatalkan.',
+              ),
+            ),
+            const SizedBox(height: 10),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AdminColors.danger,
+              ),
+              onPressed: () {
+                final reason = _controller.text.trim();
+                if (reason.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text('Alasan penolakan wajib diisi.')),
+                  );
+                  return;
+                }
+                Navigator.of(context).pop(reason);
+              },
+              child: const Text('Tolak Permintaan'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RefundWalletSheet extends StatefulWidget {
+  final String? itemId;
+  final int? suggestedAmount;
+  const _RefundWalletSheet({this.itemId, this.suggestedAmount});
+
+  @override
+  State<_RefundWalletSheet> createState() => _RefundWalletSheetState();
+}
+
+class _RefundWalletSheetState extends State<_RefundWalletSheet> {
+  late final TextEditingController _amountController;
+  final _noteController = TextEditingController();
+  String _reason = 'OTHER';
+
+  static const _reasons = [
+    ('OUT_OF_STOCK', 'Stok kosong'),
+    ('PARTIAL_CANCEL', 'Cancel sebagian'),
+    ('RETURN_APPROVED', 'Retur disetujui'),
+    ('ORDER_CANCELLED', 'Order dibatalkan'),
+    ('OTHER', 'Lain-lain'),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _amountController = TextEditingController(
+      text: widget.suggestedAmount != null && widget.suggestedAmount! > 0
+          ? widget.suggestedAmount.toString()
+          : '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    _noteController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final viewInsets = MediaQuery.of(context).viewInsets;
+    return Padding(
+      padding: EdgeInsets.only(bottom: viewInsets.bottom),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 38,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AdminColors.divider,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Refund ke Saldo Refund',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: AdminColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Nominal akan masuk ke Saldo Refund customer & bisa dipakai untuk order berikutnya.',
+              style: TextStyle(fontSize: 12, color: AdminColors.textSecondary),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _amountController,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: const InputDecoration(
+                hintText: '0',
+                prefixText: 'Rp ',
+                labelText: 'Nominal Refund',
+              ),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              initialValue: _reason,
+              decoration: const InputDecoration(labelText: 'Alasan'),
+              items: _reasons
+                  .map((r) => DropdownMenuItem(
+                        value: r.$1,
+                        child: Text(r.$2),
+                      ))
+                  .toList(),
+              onChanged: (v) => setState(() => _reason = v ?? 'OTHER'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _noteController,
+              maxLines: 2,
+              maxLength: 500,
+              decoration: const InputDecoration(
+                labelText: 'Catatan untuk customer (opsional)',
+                hintText: 'Akan tampil di history refund customer',
+              ),
+            ),
+            const SizedBox(height: 6),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AdminColors.danger,
+              ),
+              onPressed: () {
+                final amount =
+                    int.tryParse(_amountController.text.trim()) ?? 0;
+                if (amount <= 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text('Nominal refund harus > 0.')),
+                  );
+                  return;
+                }
+                Navigator.of(context).pop(_RefundFormResult(
+                  amount: amount,
+                  reason: _reason,
+                  itemId: widget.itemId,
+                  adminNote: _noteController.text.trim().isEmpty
+                      ? null
+                      : _noteController.text.trim(),
+                ));
+              },
+              child: const Text('Issue Refund'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MarkOOSSheet extends StatefulWidget {
+  final String itemName;
+  final int maxQty;
+  const _MarkOOSSheet({required this.itemName, required this.maxQty});
+
+  @override
+  State<_MarkOOSSheet> createState() => _MarkOOSSheetState();
+}
+
+class _MarkOOSSheetState extends State<_MarkOOSSheet> {
+  late final TextEditingController _qtyController;
+  final _noteController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _qtyController = TextEditingController(text: widget.maxQty.toString());
+  }
+
+  @override
+  void dispose() {
+    _qtyController.dispose();
+    _noteController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final viewInsets = MediaQuery.of(context).viewInsets;
+    return Padding(
+      padding: EdgeInsets.only(bottom: viewInsets.bottom),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 38,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AdminColors.divider,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Tandai Item Kosong',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: AdminColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              widget.itemName,
+              style: const TextStyle(
+                fontSize: 12.5,
+                color: AdminColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Refund net-of-voucher otomatis ter-issue ke Saldo customer.',
+              style: TextStyle(fontSize: 11.5, color: AdminColors.textMuted),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _qtyController,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: InputDecoration(
+                labelText: 'Qty kosong (max ${widget.maxQty})',
+                hintText: '${widget.maxQty}',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _noteController,
+              maxLines: 2,
+              maxLength: 500,
+              decoration: const InputDecoration(
+                labelText: 'Catatan tambahan (opsional)',
+              ),
+            ),
+            const SizedBox(height: 6),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AdminColors.danger,
+              ),
+              onPressed: () {
+                final qty = int.tryParse(_qtyController.text.trim()) ?? 0;
+                if (qty <= 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Qty harus > 0.')),
+                  );
+                  return;
+                }
+                if (qty > widget.maxQty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                        content: Text(
+                            'Qty melebihi qty order (max ${widget.maxQty}).')),
+                  );
+                  return;
+                }
+                Navigator.of(context).pop(_MarkOOSResult(
+                  missingQty: qty,
+                  adminNote: _noteController.text.trim().isEmpty
+                      ? null
+                      : _noteController.text.trim(),
+                ));
+              },
+              child: const Text('Tandai Kosong + Refund'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _ShipForm extends StatefulWidget {

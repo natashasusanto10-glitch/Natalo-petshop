@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
 import '../theme/admin_theme.dart';
+import '../widgets/skeletons.dart';
 import 'add_product_screen.dart';
 import 'product_edit_screen.dart';
 
@@ -156,8 +157,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
   Widget _buildBody() {
     if (_loading) {
-      return const Center(
-        child: CircularProgressIndicator(color: AdminColors.primary),
+      return SkeletonList(
+        count: 6,
+        builder: (_) => const ProductCardSkeleton(),
       );
     }
     if (_error != null) {
@@ -434,22 +436,32 @@ class _StockButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final disabled = onPressed == null;
-    return InkWell(
-      onTap: onPressed,
-      borderRadius: BorderRadius.circular(4),
-      child: Container(
-        width: 28,
-        height: 28,
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: disabled ? AdminColors.divider : AdminColors.primary,
+    // Visual: 32×32 supaya kontrol stok tetap compact di dalam card,
+    // tapi hit area extended via SizedBox 44×44 + alignment center.
+    // Android Material guidelines: tap target ≥48dp; 44dp acceptable
+    // untuk inline control sesuai pattern Shopee stock-control.
+    return SizedBox(
+      width: 44,
+      height: 44,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(6),
+        child: Center(
+          child: Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: disabled ? AdminColors.divider : AdminColors.primary,
+              ),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Icon(
+              icon,
+              size: 18,
+              color: disabled ? AdminColors.textMuted : AdminColors.primary,
+            ),
           ),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Icon(
-          icon,
-          size: 16,
-          color: disabled ? AdminColors.textMuted : AdminColors.primary,
         ),
       ),
     );

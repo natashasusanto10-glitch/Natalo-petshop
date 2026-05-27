@@ -1,14 +1,18 @@
+import 'dart:io';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../services/api_client.dart';
+import '../services/upload_service.dart';
 import '../theme/admin_theme.dart';
 
 /// Form untuk tambah produk baru. POST /api/admin/products.
 ///
 /// Field minimal: nama, harga, stok. Field opsional: deskripsi, weight,
-/// imageUrl (manual URL paste — full image picker upload pakai Bunny
-/// upload flow akan masuk Phase 4).
+/// imageUrl (di-upload dari galeri HP via /api/admin/upload).
 class AddProductScreen extends StatefulWidget {
   const AddProductScreen({super.key});
 
@@ -22,9 +26,12 @@ class _AddProductScreenState extends State<AddProductScreen> {
   final _stockController = TextEditingController(text: '0');
   final _weightController = TextEditingController(text: '500');
   final _descController = TextEditingController();
-  final _imageUrlController = TextEditingController();
+  final _picker = ImagePicker();
   bool _isActive = true;
   bool _saving = false;
+  bool _uploadingImage = false;
+  File? _pickedImage;
+  String? _uploadedImageUrl;
 
   @override
   void dispose() {
@@ -33,8 +40,47 @@ class _AddProductScreenState extends State<AddProductScreen> {
     _stockController.dispose();
     _weightController.dispose();
     _descController.dispose();
-    _imageUrlController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickAndUploadImage() async {
+    if (_uploadingImage || _saving) return;
+    try {
+      final picked = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+        maxWidth: 1600,
+        maxHeight: 1600,
+      );
+      if (picked == null) return;
+      final file = File(picked.path);
+      setState(() {
+        _pickedImage = file;
+        _uploadedImageUrl = null;
+        _uploadingImage = true;
+      });
+      final url = await AdminUploadService.instance.uploadProductImage(file);
+      if (!mounted) return;
+      setState(() {
+        _uploadedImageUrl = url;
+        _uploadingImage = false;
+      });
+    } on AdminUploadException catch (e) {
+      if (!mounted) return;
+      setState(() => _uploadingImage = false);
+      _err(e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _uploadingImage = false);
+      _err('Gagal upload foto. Coba lagi.');
+    }
+  }
+
+  void _removeImage() {
+    setState(() {
+      _pickedImage = null;
+      _uploadedImageUrl = null;
+    });
   }
 
   Future<void> _save() async {
@@ -43,10 +89,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
     final price = int.tryParse(_priceController.text.trim()) ?? -1;
     final stock = int.tryParse(_stockController.text.trim()) ?? 0;
     final weight = int.tryParse(_weightController.text.trim()) ?? 500;
-    final imageUrl = _imageUrlController.text.trim();
 
     if (name.isEmpty) return _err('Nama produk wajib diisi');
     if (price < 0) return _err('Harga harus angka >= 0');
+    if (_uploadingImage) return _err('Tunggu upload foto selesai dulu');
 
     setState(() => _saving = true);
     try {
@@ -59,7 +105,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
           'weightGram': weight,
           if (_descController.text.trim().isNotEmpty)
             'description': _descController.text.trim(),
-          if (imageUrl.isNotEmpty) 'imageUrl': imageUrl,
+          if (_uploadedImageUrl != null) 'imageUrl': _uploadedImageUrl,
           'isActive': _isActive,
         },
       );
@@ -178,22 +224,13 @@ class _AddProductScreenState extends State<AddProductScreen> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                const _Label('URL Gambar (opsional)'),
-                TextField(
-                  controller: _imageUrlController,
-                  keyboardType: TextInputType.url,
-                  decoration: const InputDecoration(
-                    hintText: 'https://...',
-                  ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Upload langsung dari HP — coming soon. '
-                  'Sementara paste URL CDN/Bunny.',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: AdminColors.textMuted,
-                  ),
+                const _Label('Foto Produk (opsional)'),
+                _ProductImagePicker(
+                  pickedImage: _pickedImage,
+                  uploadedUrl: _uploadedImageUrl,
+                  uploading: _uploadingImage,
+                  onPick: _pickAndUploadImage,
+                  onRemove: _removeImage,
                 ),
                 const SizedBox(height: 14),
                 const _Label('Deskripsi'),
@@ -259,6 +296,162 @@ class _Label extends StatelessWidget {
           color: AdminColors.textSecondary,
         ),
       ),
+    );
+  }
+}
+
+/// Picker + preview foto produk. Tap untuk pick dari galeri, tap-X untuk
+/// hapus. Selama upload, tampilkan overlay loader. Selesai upload → badge
+/// "Terupload ✓" supaya admin tahu URL ready dipakai saat simpan.
+class _ProductImagePicker extends StatelessWidget {
+  final File? pickedImage;
+  final String? uploadedUrl;
+  final bool uploading;
+  final VoidCallback onPick;
+  final VoidCallback onRemove;
+
+  const _ProductImagePicker({
+    required this.pickedImage,
+    required this.uploadedUrl,
+    required this.uploading,
+    required this.onPick,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (pickedImage == null && uploadedUrl == null) {
+      return InkWell(
+        onTap: onPick,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          height: 140,
+          decoration: BoxDecoration(
+            color: AdminColors.background,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: AdminColors.divider,
+              style: BorderStyle.solid,
+            ),
+          ),
+          child: const Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.add_a_photo_outlined,
+                  size: 32, color: AdminColors.textMuted),
+              SizedBox(height: 8),
+              Text(
+                'Pilih foto dari galeri',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AdminColors.textSecondary,
+                ),
+              ),
+              SizedBox(height: 2),
+              Text(
+                'JPG, PNG, WEBP — maks 2 MB',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: AdminColors.textMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: pickedImage != null
+                  ? Image.file(
+                      pickedImage!,
+                      width: double.infinity,
+                      height: 200,
+                      fit: BoxFit.cover,
+                    )
+                  : CachedNetworkImage(
+                      imageUrl: uploadedUrl!,
+                      width: double.infinity,
+                      height: 200,
+                      fit: BoxFit.cover,
+                    ),
+            ),
+            if (uploading)
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(color: Colors.white),
+                        SizedBox(height: 10),
+                        Text(
+                          'Mengupload foto...',
+                          style: TextStyle(color: Colors.white, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: Material(
+                color: Colors.black.withValues(alpha: 0.55),
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: uploading ? null : onRemove,
+                  child: const Padding(
+                    padding: EdgeInsets.all(6),
+                    child: Icon(Icons.close_rounded,
+                        color: Colors.white, size: 18),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            if (uploadedUrl != null && !uploading)
+              const Row(
+                children: [
+                  Icon(Icons.check_circle_rounded,
+                      size: 14, color: AdminColors.success),
+                  SizedBox(width: 4),
+                  Text(
+                    'Foto terupload',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: AdminColors.success,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: uploading ? null : onPick,
+              icon: const Icon(Icons.refresh_rounded, size: 16),
+              label: const Text('Ganti foto'),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

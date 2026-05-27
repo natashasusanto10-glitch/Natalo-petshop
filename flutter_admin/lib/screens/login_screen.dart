@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../services/api_client.dart';
+import '../services/fcm_service.dart';
 import '../theme/admin_theme.dart';
 import 'home_shell.dart';
 
@@ -38,6 +42,8 @@ class _LoginScreenState extends State<LoginScreen> {
     );
     if (!mounted) return;
     if (result.ok) {
+      // Register FCM token sekarang setelah session aktif.
+      unawaited(FcmService.instance.registerAfterLogin());
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const HomeShell()),
       );
@@ -59,7 +65,8 @@ class _LoginScreenState extends State<LoginScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
             child: Form(
               key: _formKey,
-              child: Column(
+              child: AutofillGroup(
+                child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -103,6 +110,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
                     textInputAction: TextInputAction.next,
+                    autofillHints: const [
+                      AutofillHints.username,
+                      AutofillHints.email,
+                    ],
                     decoration: const InputDecoration(
                       hintText: 'Email admin',
                       prefixIcon: Icon(Icons.mail_outline_rounded),
@@ -121,7 +132,13 @@ class _LoginScreenState extends State<LoginScreen> {
                     controller: _passwordController,
                     obscureText: _obscurePassword,
                     textInputAction: TextInputAction.done,
-                    onFieldSubmitted: (_) => _onLoginPressed(),
+                    autofillHints: const [AutofillHints.password],
+                    onFieldSubmitted: (_) {
+                      // Beri tahu autofill engine kalau commit selesai
+                      // supaya Google Smart Lock offer save credentials.
+                      TextInput.finishAutofillContext();
+                      _onLoginPressed();
+                    },
                     decoration: InputDecoration(
                       hintText: 'Password',
                       prefixIcon: const Icon(Icons.lock_outline_rounded),
@@ -209,6 +226,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                 ],
+              ),
               ),
             ),
           ),

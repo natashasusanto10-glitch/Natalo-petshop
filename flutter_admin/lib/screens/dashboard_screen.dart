@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
+import '../services/notification_counts.dart';
 import '../theme/admin_theme.dart';
 import 'add_product_screen.dart';
 import 'broadcast_screen.dart';
+import 'feed_create_screen.dart';
+import 'feed_moderation_screen.dart';
 import 'vouchers_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -16,7 +19,6 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   bool _loading = true;
   String? _error;
-  // Placeholder data sampai endpoint /api/admin/stats dibangun.
   int _ordersToday = 0;
   int _omzetToday = 0;
   int _pendingShip = 0;
@@ -34,25 +36,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _error = null;
     });
     try {
-      // Endpoint sementara: /api/admin/dashboard-stats (TODO backend build).
-      // Kalau 404, fall back ke placeholder 0 — supaya app tetap launchable
-      // sebelum backend ready.
-      try {
-        final data = await adminApi.getJson('/api/admin/dashboard-stats');
-        if (data is Map<String, dynamic>) {
-          _ordersToday = (data['ordersToday'] as num?)?.toInt() ?? 0;
-          _omzetToday = (data['omzetToday'] as num?)?.toInt() ?? 0;
-          _pendingShip = (data['pendingShipment'] as num?)?.toInt() ?? 0;
-          _lowStockCount = (data['lowStockCount'] as num?)?.toInt() ?? 0;
-        }
-      } on AdminApiException catch (e) {
-        if (e.isNotFound) {
-          // Backend belum ada endpoint — show zeros + soft notice.
-          _error = 'Backend dashboard-stats belum tersedia. '
-              'Build /api/admin/dashboard-stats di Next.js.';
-        } else {
-          rethrow;
-        }
+      // Paralel: stats + notification counts. Pull-to-refresh dashboard
+      // = refresh segalanya sekaligus supaya admin dapat full picture
+      // tanpa harus pindah-pindah tab.
+      final statsFuture = adminApi.getJson('/api/admin/dashboard-stats');
+      final countsFuture = NotificationCounts.instance.refresh();
+      final data = await statsFuture;
+      await countsFuture;
+      if (data is Map<String, dynamic>) {
+        _ordersToday = (data['ordersToday'] as num?)?.toInt() ?? 0;
+        _omzetToday = (data['omzetToday'] as num?)?.toInt() ?? 0;
+        _pendingShip = (data['pendingShipment'] as num?)?.toInt() ?? 0;
+        _lowStockCount = (data['lowStockCount'] as num?)?.toInt() ?? 0;
       }
     } on AdminApiException catch (e) {
       _error = e.message;
@@ -215,8 +210,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
             _QuickActionTile(
               icon: Icons.feed_outlined,
               label: 'Post Feed',
-              subtitle: 'Upload video/foto promosi',
-              onTap: () => _showComingSoon(context),
+              subtitle: 'Upload 1-8 foto ke tab Rekomendasi',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const FeedCreateScreen()),
+              ),
+            ),
+            _QuickActionTile(
+              icon: Icons.rule_outlined,
+              label: 'Moderasi Feed',
+              subtitle: 'Review post customer yang nunggu approval',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const FeedModerationScreen(),
+                ),
+              ),
             ),
 
             const SizedBox(height: 24),
@@ -226,14 +233,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  void _showComingSoon(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Coming soon — fitur ini dalam pengembangan.'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
 }
 
 class _StatCard extends StatelessWidget {

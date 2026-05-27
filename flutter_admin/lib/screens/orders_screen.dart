@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
+import '../services/notification_counts.dart';
 import '../theme/admin_theme.dart';
+import '../widgets/skeletons.dart';
 import 'order_detail_screen.dart';
 
 class OrdersScreen extends StatefulWidget {
@@ -14,6 +16,8 @@ class OrdersScreen extends StatefulWidget {
 class _OrdersScreenState extends State<OrdersScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
 
   static const _statuses = <_OrderStatus>[
     _OrderStatus(key: 'all', label: 'Semua'),
@@ -32,7 +36,20 @@ class _OrdersScreenState extends State<OrdersScreen>
   @override
   void dispose() {
     _tabController.dispose();
+    _searchController.dispose();
     super.dispose();
+  }
+
+  void _onSearchSubmit(String value) {
+    final trimmed = value.trim();
+    if (trimmed == _searchQuery) return;
+    setState(() => _searchQuery = trimmed);
+  }
+
+  void _clearSearch() {
+    if (_searchQuery.isEmpty && _searchController.text.isEmpty) return;
+    _searchController.clear();
+    setState(() => _searchQuery = '');
   }
 
   @override
@@ -40,24 +57,55 @@ class _OrdersScreenState extends State<OrdersScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text('Pesanan'),
-        bottom: TabBar(
-          controller: _tabController,
-          isScrollable: true,
-          tabAlignment: TabAlignment.start,
-          indicatorColor: AdminColors.primary,
-          labelColor: AdminColors.primary,
-          unselectedLabelColor: AdminColors.textSecondary,
-          labelStyle:
-              const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-          unselectedLabelStyle:
-              const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
-          tabs: _statuses.map((s) => Tab(text: s.label)).toList(),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(108),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                child: TextField(
+                  controller: _searchController,
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: _onSearchSubmit,
+                  decoration: InputDecoration(
+                    hintText: 'Cari No. order / nama / HP customer',
+                    prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                    suffixIcon: _searchQuery.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.close_rounded, size: 18),
+                            onPressed: _clearSearch,
+                          ),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                  ),
+                ),
+              ),
+              TabBar(
+                controller: _tabController,
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
+                indicatorColor: AdminColors.primary,
+                labelColor: AdminColors.primary,
+                unselectedLabelColor: AdminColors.textSecondary,
+                labelStyle:
+                    const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                unselectedLabelStyle:
+                    const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                tabs: _statuses.map((s) => Tab(text: s.label)).toList(),
+              ),
+            ],
+          ),
         ),
       ),
       body: TabBarView(
         controller: _tabController,
         children: _statuses
-            .map((s) => _OrdersList(statusKey: s.key))
+            .map((s) =>
+                _OrdersList(statusKey: s.key, searchQuery: _searchQuery))
             .toList(),
       ),
     );
@@ -72,7 +120,8 @@ class _OrderStatus {
 
 class _OrdersList extends StatefulWidget {
   final String statusKey;
-  const _OrdersList({required this.statusKey});
+  final String searchQuery;
+  const _OrdersList({required this.statusKey, required this.searchQuery});
 
   @override
   State<_OrdersList> createState() => _OrdersListState();
@@ -93,6 +142,16 @@ class _OrdersListState extends State<_OrdersList>
     _load();
   }
 
+  @override
+  void didUpdateWidget(covariant _OrdersList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Reload kalau search query berubah — biarkan tab keepAlive lainnya
+    // ikut update saat user pindah tab.
+    if (oldWidget.searchQuery != widget.searchQuery) {
+      _load();
+    }
+  }
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
@@ -103,6 +162,7 @@ class _OrdersListState extends State<_OrdersList>
         '/api/admin/orders',
         query: {
           if (widget.statusKey != 'all') 'status': widget.statusKey,
+          if (widget.searchQuery.isNotEmpty) 'q': widget.searchQuery,
           'limit': 50,
         },
       );
@@ -137,22 +197,34 @@ class _OrdersListState extends State<_OrdersList>
   Widget build(BuildContext context) {
     super.build(context);
     if (_loading) {
-      return const Center(
-        child: CircularProgressIndicator(color: AdminColors.primary),
+      return SkeletonList(
+        count: 6,
+        builder: (_) => const OrderCardSkeleton(),
       );
     }
     if (_error != null) {
       return _ErrorBox(message: _error!, onRetry: _load);
     }
     if (_orders.isEmpty) {
+      final searching = widget.searchQuery.isNotEmpty;
       return _EmptyBox(
-        icon: Icons.receipt_long_outlined,
-        label: 'Belum ada pesanan',
+        icon: searching ? Icons.search_off_rounded : Icons.receipt_long_outlined,
+        label: searching
+            ? 'Tidak ada hasil untuk "${widget.searchQuery}"'
+            : 'Belum ada pesanan',
+        hint: searching ? 'Coba kata kunci lain' : null,
       );
     }
     return RefreshIndicator(
       color: AdminColors.primary,
-      onRefresh: _load,
+      onRefresh: () async {
+        // Pull-to-refresh juga update badge counter — admin pulling
+        // di tab Pesanan biasanya untuk cek "ada order baru kah?"
+        await Future.wait([
+          _load(),
+          NotificationCounts.instance.refresh(),
+        ]);
+      },
       child: ListView.separated(
         padding: const EdgeInsets.all(12),
         itemCount: _orders.length,
@@ -381,24 +453,41 @@ class _ErrorBox extends StatelessWidget {
 class _EmptyBox extends StatelessWidget {
   final IconData icon;
   final String label;
-  const _EmptyBox({required this.icon, required this.label});
+  final String? hint;
+  const _EmptyBox({required this.icon, required this.label, this.hint});
 
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 48, color: AdminColors.textMuted),
-          const SizedBox(height: 12),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 14,
-              color: AdminColors.textSecondary,
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 56, color: AdminColors.textMuted),
+            const SizedBox(height: 14),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AdminColors.textSecondary,
+              ),
             ),
-          ),
-        ],
+            if (hint != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                hint!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AdminColors.textMuted,
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

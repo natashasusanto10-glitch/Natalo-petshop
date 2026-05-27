@@ -111,6 +111,37 @@ ThemeData adminThemeLight() {
       thickness: 1,
       space: 1,
     ),
+    // SnackBar default-floating + bottom margin supaya tidak nutupin
+    // BottomNavigationBar di HomeShell. Tanpa ini, snackbar full-width
+    // dari edge bawah dan menumpuk di atas tab bar (visual jelek + content
+    // tab ke-cover).
+    snackBarTheme: const SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      insetPadding: EdgeInsets.fromLTRB(12, 0, 12, 12),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(Radius.circular(8)),
+      ),
+    ),
+    // Bottom sheet — corner radius konsisten + drag handle theme.
+    bottomSheetTheme: const BottomSheetThemeData(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+    ),
+    // Dialog — match elevated button pattern.
+    dialogTheme: const DialogThemeData(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      elevation: 4,
+    ),
+    // Material Tap target — pastikan min 48dp untuk a11y + Android
+    // guidelines. Default sudah `padded` di Material 3 tapi enforce
+    // eksplisit supaya kalau ada widget custom (InkWell raw) tetap
+    // dapat extra hit area.
+    materialTapTargetSize: MaterialTapTargetSize.padded,
   );
 }
 

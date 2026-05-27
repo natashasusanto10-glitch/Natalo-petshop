@@ -50,9 +50,117 @@ class _VouchersScreenState extends State<VouchersScreen> {
 
   Future<void> _openCreate() async {
     final created = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const _CreateVoucherScreen()),
+      MaterialPageRoute(builder: (_) => const _VoucherFormScreen()),
     );
     if (created == true) _load();
+  }
+
+  Future<void> _openEdit(Map<String, dynamic> voucher) async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => _VoucherFormScreen(existing: voucher),
+      ),
+    );
+    if (changed == true) _load();
+  }
+
+  Future<void> _toggleActive(Map<String, dynamic> voucher) async {
+    final id = voucher['id']?.toString();
+    if (id == null || id.isEmpty) return;
+    final currentlyActive = voucher['isActive'] == true;
+    try {
+      await adminApi.patchJson(
+        '/api/admin/vouchers/${Uri.encodeComponent(id)}',
+        body: {'isActive': !currentlyActive},
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(currentlyActive
+              ? 'Voucher di-nonaktifkan.'
+              : 'Voucher diaktifkan.'),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AdminColors.success,
+        ),
+      );
+      _load();
+    } on AdminApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal: ${e.message}')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Gagal update. Coba lagi.')),
+      );
+    }
+  }
+
+  Future<void> _delete(Map<String, dynamic> voucher) async {
+    final id = voucher['id']?.toString();
+    final code = voucher['code']?.toString() ?? '-';
+    if (id == null || id.isEmpty) return;
+    final usedCount = (voucher['usedCount'] ?? 0) is num
+        ? (voucher['usedCount'] as num).toInt()
+        : 0;
+    final isSoft = usedCount > 0;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(isSoft ? 'Nonaktifkan voucher?' : 'Hapus voucher $code?'),
+        content: Text(
+          isSoft
+              ? 'Voucher $code sudah pernah dipakai $usedCount kali. '
+                  'Untuk jaga histori pemakaian, voucher akan di-nonaktifkan '
+                  '(bukan dihapus permanen).'
+              : 'Voucher $code akan dihapus permanen. Lanjutkan?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: AdminColors.danger),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(isSoft ? 'Nonaktifkan' : 'Hapus'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      final res = await adminApi.deleteJson(
+        '/api/admin/vouchers/${Uri.encodeComponent(id)}',
+      );
+      if (!mounted) return;
+      final mode = (res is Map && res['mode'] is String)
+          ? res['mode'] as String
+          : 'hard';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(mode == 'soft'
+              ? 'Voucher di-nonaktifkan (sudah ada history).'
+              : 'Voucher dihapus.'),
+          backgroundColor: AdminColors.success,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      _load();
+    } on AdminApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal: ${e.message}')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Gagal hapus. Coba lagi.')),
+      );
+    }
   }
 
   @override
@@ -168,7 +276,15 @@ class _VouchersScreenState extends State<VouchersScreen> {
         padding: const EdgeInsets.all(12),
         itemCount: _vouchers.length,
         separatorBuilder: (_, __) => const SizedBox(height: 8),
-        itemBuilder: (_, i) => _VoucherCard(voucher: _vouchers[i]),
+        itemBuilder: (_, i) {
+          final v = _vouchers[i];
+          return _VoucherCard(
+            voucher: v,
+            onTap: () => _openEdit(v),
+            onToggleActive: () => _toggleActive(v),
+            onDelete: () => _delete(v),
+          );
+        },
       ),
     );
   }
@@ -176,7 +292,16 @@ class _VouchersScreenState extends State<VouchersScreen> {
 
 class _VoucherCard extends StatelessWidget {
   final Map<String, dynamic> voucher;
-  const _VoucherCard({required this.voucher});
+  final VoidCallback onTap;
+  final VoidCallback onToggleActive;
+  final VoidCallback onDelete;
+
+  const _VoucherCard({
+    required this.voucher,
+    required this.onTap,
+    required this.onToggleActive,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -200,7 +325,10 @@ class _VoucherCard extends StatelessWidget {
             ? formatRupiah(discountAmount.toInt())
             : '-';
 
-    return Container(
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -270,6 +398,63 @@ class _VoucherCard extends StatelessWidget {
                     ),
                   ),
                 ),
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert_rounded,
+                    color: AdminColors.textMuted, size: 20),
+                tooltip: 'Opsi voucher',
+                onSelected: (value) {
+                  switch (value) {
+                    case 'edit':
+                      onTap();
+                      break;
+                    case 'toggle':
+                      onToggleActive();
+                      break;
+                    case 'delete':
+                      onDelete();
+                      break;
+                  }
+                },
+                itemBuilder: (_) => [
+                  const PopupMenuItem(
+                    value: 'edit',
+                    child: Row(
+                      children: [
+                        Icon(Icons.edit_outlined, size: 18),
+                        SizedBox(width: 10),
+                        Text('Edit'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'toggle',
+                    child: Row(
+                      children: [
+                        Icon(
+                          isActive
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(isActive ? 'Nonaktifkan' : 'Aktifkan'),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'delete',
+                    child: Row(
+                      children: [
+                        Icon(Icons.delete_outline_rounded,
+                            size: 18, color: AdminColors.danger),
+                        SizedBox(width: 10),
+                        Text('Hapus',
+                            style: TextStyle(color: AdminColors.danger)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
           if (name.isNotEmpty) ...[
@@ -354,6 +539,7 @@ class _VoucherCard extends StatelessWidget {
           ),
         ],
       ),
+    ),
     );
   }
 
@@ -364,24 +550,70 @@ class _VoucherCard extends StatelessWidget {
   }
 }
 
-class _CreateVoucherScreen extends StatefulWidget {
-  const _CreateVoucherScreen();
+class _VoucherFormScreen extends StatefulWidget {
+  /// Kalau null → create mode (POST). Kalau ada → edit mode (PATCH),
+  /// field di-pre-fill dari [existing], dan code field di-disable
+  /// (kode unik, tidak boleh diubah lewat edit).
+  final Map<String, dynamic>? existing;
+  const _VoucherFormScreen({this.existing});
 
   @override
-  State<_CreateVoucherScreen> createState() => _CreateVoucherScreenState();
+  State<_VoucherFormScreen> createState() => _VoucherFormScreenState();
 }
 
-class _CreateVoucherScreenState extends State<_CreateVoucherScreen> {
-  final _codeController = TextEditingController();
-  final _nameController = TextEditingController();
-  final _descController = TextEditingController();
-  final _percentController = TextEditingController();
-  final _amountController = TextEditingController();
-  final _minOrderController = TextEditingController(text: '0');
-  final _maxUsageController = TextEditingController();
+class _VoucherFormScreenState extends State<_VoucherFormScreen> {
+  late final TextEditingController _codeController;
+  late final TextEditingController _nameController;
+  late final TextEditingController _descController;
+  late final TextEditingController _percentController;
+  late final TextEditingController _amountController;
+  late final TextEditingController _minOrderController;
+  late final TextEditingController _maxUsageController;
   DateTime? _expiresAt;
-  String _discountMode = 'percent'; // 'percent' atau 'amount'
+  String _discountMode = 'percent';
   bool _saving = false;
+
+  bool get _isEdit => widget.existing != null;
+  String? get _voucherId => widget.existing?['id']?.toString();
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.existing;
+    final percent = e?['discountPercent'];
+    final amount = e?['discountAmount'];
+    _codeController =
+        TextEditingController(text: (e?['code'] ?? '').toString());
+    _nameController =
+        TextEditingController(text: (e?['name'] ?? '').toString());
+    _descController =
+        TextEditingController(text: (e?['description'] ?? '').toString());
+    _percentController = TextEditingController(
+      text: percent is num && percent > 0 ? percent.toInt().toString() : '',
+    );
+    _amountController = TextEditingController(
+      text: amount is num && amount > 0 ? amount.toInt().toString() : '',
+    );
+    _minOrderController = TextEditingController(
+      text: e?['minimumOrder'] is num
+          ? (e!['minimumOrder'] as num).toInt().toString()
+          : '0',
+    );
+    _maxUsageController = TextEditingController(
+      text: e?['maxUsage'] is num && (e!['maxUsage'] as num) > 0
+          ? (e['maxUsage'] as num).toInt().toString()
+          : '',
+    );
+    if (percent is num && percent > 0) {
+      _discountMode = 'percent';
+    } else if (amount is num && amount > 0) {
+      _discountMode = 'amount';
+    }
+    final exp = e?['expiresAt'];
+    if (exp is String && exp.isNotEmpty) {
+      _expiresAt = DateTime.tryParse(exp)?.toLocal();
+    }
+  }
 
   @override
   void dispose() {
@@ -398,10 +630,9 @@ class _CreateVoucherScreenState extends State<_CreateVoucherScreen> {
   Future<void> _save() async {
     if (_saving) return;
     final code = _codeController.text.trim().toUpperCase();
-    if (code.isEmpty) return _err('Kode wajib diisi');
+    if (!_isEdit && code.isEmpty) return _err('Kode wajib diisi');
 
-    final percent =
-        int.tryParse(_percentController.text.trim()) ?? 0;
+    final percent = int.tryParse(_percentController.text.trim()) ?? 0;
     final amount = int.tryParse(_amountController.text.trim()) ?? 0;
 
     if (_discountMode == 'percent' && percent <= 0) {
@@ -413,32 +644,71 @@ class _CreateVoucherScreenState extends State<_CreateVoucherScreen> {
 
     setState(() => _saving = true);
     try {
-      await adminApi.postJson(
-        '/api/admin/vouchers',
-        body: {
-          'code': code,
-          if (_nameController.text.trim().isNotEmpty)
-            'name': _nameController.text.trim(),
-          if (_descController.text.trim().isNotEmpty)
-            'description': _descController.text.trim(),
-          if (_discountMode == 'percent') 'discountPercent': percent,
-          if (_discountMode == 'amount') 'discountAmount': amount,
-          'minimumOrder':
-              int.tryParse(_minOrderController.text.trim()) ?? 0,
-          if (_maxUsageController.text.trim().isNotEmpty)
-            'maxUsage': int.tryParse(_maxUsageController.text.trim()),
-          if (_expiresAt != null)
-            'expiresAt': _expiresAt!.toIso8601String(),
-        },
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Voucher dibuat ✓'),
-          backgroundColor: AdminColors.success,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      if (_isEdit) {
+        final id = _voucherId;
+        if (id == null) {
+          _err('Voucher ID tidak ditemukan.');
+          return;
+        }
+        // PATCH endpoint pakai semantic "field hadir = update". Kita
+        // selalu kirim diskon (sesuai mode) supaya jenis diskon bisa
+        // di-switch percent ↔ amount. expiresAt selalu dikirim (null
+        // berarti hapus tanggal berakhir).
+        await adminApi.patchJson(
+          '/api/admin/vouchers/${Uri.encodeComponent(id)}',
+          body: {
+            'name': _nameController.text.trim().isEmpty
+                ? null
+                : _nameController.text.trim(),
+            'description': _descController.text.trim().isEmpty
+                ? null
+                : _descController.text.trim(),
+            if (_discountMode == 'percent') 'discountPercent': percent,
+            if (_discountMode == 'amount') 'discountAmount': amount,
+            'minimumOrder':
+                int.tryParse(_minOrderController.text.trim()) ?? 0,
+            'maxUsage': _maxUsageController.text.trim().isEmpty
+                ? null
+                : int.tryParse(_maxUsageController.text.trim()),
+            'expiresAt': _expiresAt?.toIso8601String(),
+          },
+        );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Voucher diperbarui ✓'),
+            backgroundColor: AdminColors.success,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } else {
+        await adminApi.postJson(
+          '/api/admin/vouchers',
+          body: {
+            'code': code,
+            if (_nameController.text.trim().isNotEmpty)
+              'name': _nameController.text.trim(),
+            if (_descController.text.trim().isNotEmpty)
+              'description': _descController.text.trim(),
+            if (_discountMode == 'percent') 'discountPercent': percent,
+            if (_discountMode == 'amount') 'discountAmount': amount,
+            'minimumOrder':
+                int.tryParse(_minOrderController.text.trim()) ?? 0,
+            if (_maxUsageController.text.trim().isNotEmpty)
+              'maxUsage': int.tryParse(_maxUsageController.text.trim()),
+            if (_expiresAt != null)
+              'expiresAt': _expiresAt!.toIso8601String(),
+          },
+        );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Voucher dibuat ✓'),
+            backgroundColor: AdminColors.success,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
       Navigator.of(context).pop(true);
     } on AdminApiException catch (e) {
       _err('Gagal: ${e.message}');
@@ -472,7 +742,7 @@ class _CreateVoucherScreenState extends State<_CreateVoucherScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Buat Voucher'),
+        title: Text(_isEdit ? 'Edit Voucher' : 'Buat Voucher'),
         actions: [
           TextButton(
             onPressed: _saving ? null : _save,
@@ -497,13 +767,17 @@ class _CreateVoucherScreenState extends State<_CreateVoucherScreen> {
                 const _L('Kode Voucher *'),
                 TextField(
                   controller: _codeController,
+                  enabled: !_isEdit,
                   textCapitalization: TextCapitalization.characters,
                   inputFormatters: [
                     FilteringTextInputFormatter.allow(
                         RegExp(r'[A-Z0-9_-]')),
                   ],
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     hintText: 'PROMO2026',
+                    helperText: _isEdit
+                        ? 'Kode voucher tidak bisa diubah setelah dibuat.'
+                        : null,
                   ),
                 ),
                 const SizedBox(height: 14),

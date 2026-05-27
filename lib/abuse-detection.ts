@@ -47,7 +47,7 @@ async function createFlagIfMissing(input: FlagInput): Promise<boolean> {
     select: { id: true },
   });
   if (existing) return false;
-  await prisma.abuseFlag.create({
+  const flag = await prisma.abuseFlag.create({
     data: {
       userId: input.userId,
       ruleCode: input.ruleCode,
@@ -55,6 +55,17 @@ async function createFlagIfMissing(input: FlagInput): Promise<boolean> {
       details: input.details as object,
       status: "OPEN",
     },
+    select: { id: true, user: { select: { name: true, email: true } } },
+  });
+  // Push notif ke admin — hanya untuk HIGH severity supaya tidak noisy.
+  // Helper internal-side filter severity, kita kirim saja.
+  void import("@/lib/push-admin").then(({ sendAdminAbuseFlagPush }) => {
+    sendAdminAbuseFlagPush({
+      flagId: flag.id,
+      ruleCode: input.ruleCode,
+      severity: input.severity,
+      userName: flag.user.name || flag.user.email || "User",
+    });
   });
   return true;
 }

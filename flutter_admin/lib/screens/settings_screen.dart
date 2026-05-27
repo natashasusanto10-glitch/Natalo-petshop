@@ -2,8 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/api_client.dart';
+import '../services/fcm_service.dart';
 import '../theme/admin_theme.dart';
+import '../services/notification_counts.dart';
+import 'abuse_flags_screen.dart';
+import 'audit_log_screen.dart';
 import 'broadcast_screen.dart';
+import 'feed_create_screen.dart';
+import 'feed_moderation_screen.dart';
 import 'login_screen.dart';
 import 'vouchers_screen.dart';
 
@@ -30,6 +36,7 @@ class SettingsScreen extends StatelessWidget {
       ),
     );
     if (confirmed != true) return;
+    await FcmService.instance.unregister();
     await adminApi.logout();
     if (!context.mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
@@ -42,8 +49,12 @@ class SettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Akun')),
-      body: ListView(
-        children: [
+      body: RefreshIndicator(
+        color: AdminColors.primary,
+        onRefresh: () => NotificationCounts.instance.refresh(),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
           // Header.
           Container(
             padding: const EdgeInsets.all(16),
@@ -94,6 +105,23 @@ class SettingsScreen extends StatelessWidget {
 
           _SectionHeader(label: 'Manajemen'),
           _SettingsTile(
+            icon: Icons.feed_outlined,
+            label: 'Post Feed Baru',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const FeedCreateScreen()),
+            ),
+          ),
+          _SettingsTile(
+            icon: Icons.rule_outlined,
+            label: 'Moderasi Feed',
+            subtitle: 'Review post komunitas customer',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const FeedModerationScreen(),
+              ),
+            ),
+          ),
+          _SettingsTile(
             icon: Icons.campaign_outlined,
             label: 'Broadcast Notifikasi',
             onTap: () => Navigator.of(context).push(
@@ -119,6 +147,25 @@ class SettingsScreen extends StatelessWidget {
           ),
 
           const SizedBox(height: 12),
+          _SectionHeader(label: 'Trust & Safety'),
+          _SettingsTile(
+            icon: Icons.shield_outlined,
+            label: 'Abuse Flags',
+            subtitle: 'Review akun suspicious + voucher abuse',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AbuseFlagsScreen()),
+            ),
+          ),
+          _SettingsTile(
+            icon: Icons.fact_check_outlined,
+            label: 'Audit Log',
+            subtitle: 'Jejak aksi admin (read-only)',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AuditLogScreen()),
+            ),
+          ),
+
+          const SizedBox(height: 12),
           _SectionHeader(label: 'Lainnya'),
           _SettingsTile(
             icon: Icons.web_outlined,
@@ -134,12 +181,12 @@ class SettingsScreen extends StatelessWidget {
           _SettingsTile(
             icon: Icons.info_outline_rounded,
             label: 'Tentang Aplikasi',
-            subtitle: 'Natalo Admin v1.0.0',
+            subtitle: 'Natalo Admin v1.0.2',
             onTap: () {
               showAboutDialog(
                 context: context,
                 applicationName: 'Natalo Admin',
-                applicationVersion: '1.0.0',
+                applicationVersion: '1.0.2',
                 applicationIcon: Container(
                   width: 48,
                   height: 48,
@@ -182,6 +229,7 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 24),
         ],
+      ),
       ),
     );
   }

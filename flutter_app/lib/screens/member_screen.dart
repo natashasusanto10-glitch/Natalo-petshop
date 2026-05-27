@@ -162,7 +162,8 @@ class _ProfilePageState extends State<_ProfilePage>
       if (!mounted) return;
       setState(() {
         _loadingPosts = false;
-        _postsError = 'Postingan belum bisa dimuat. Tarik ke bawah untuk coba lagi.';
+        _postsError =
+            'Postingan belum bisa dimuat. Tarik ke bawah untuk coba lagi.';
       });
     }
   }
@@ -216,6 +217,8 @@ class _ProfilePageState extends State<_ProfilePage>
       appBar: _ProfileAppBar(onCreatePost: _openCreatePost),
       body: NataloPawRefreshIndicator(
         onRefresh: _refresh,
+        topPadding: 4,
+        translateChild: true,
         child: NestedScrollView(
           headerSliverBuilder: (context, innerScrolled) => [
             // Banner reminder pilih @username — auto-hide kalau user
@@ -532,8 +535,7 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
         // Splash + hover di-disable supaya tap area clean — bukan ada
         // splash bulat material yang clash dengan custom indicator.
         splashFactory: NoSplash.splashFactory,
-        overlayColor:
-            WidgetStateProperty.all<Color>(Colors.transparent),
+        overlayColor: WidgetStateProperty.all<Color>(Colors.transparent),
         labelStyle: const TextStyle(
           fontSize: 0,
           fontWeight: FontWeight.w800,

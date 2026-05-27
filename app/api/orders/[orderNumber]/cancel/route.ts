@@ -153,11 +153,20 @@ export async function POST(
         },
       });
 
-      // TODO: notify admin via push/email/dashboard count badge.
-      // Saat ini admin lihat via order detail saja — fitur "Pending
-      // Cancellation Requests" filter di admin list bisa ditambah nanti.
       console.log(
         `[order-cancel-request] order=${order.orderNumber} user=${session.sub} reason=${reason || "(none)"}`,
+      );
+
+      // Push notif ke admin — supaya admin tidak perlu polling, langsung
+      // tahu ada cancel request masuk dan bisa respond cepat.
+      void import("@/lib/push-admin").then(
+        ({ sendAdminCancellationRequestPush }) => {
+          sendAdminCancellationRequestPush({
+            orderNumber: order.orderNumber,
+            customerName: order.customerName,
+            reason: reason || null,
+          });
+        },
       );
 
       return NextResponse.json({

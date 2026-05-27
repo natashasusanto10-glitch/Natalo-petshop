@@ -57,6 +57,22 @@ export async function GET(
           phoneNumber: true,
         },
       },
+      // Refund history — mobile detail screen menampilkan badge total
+      // refunded + breakdown per-case (item-level vs whole-order).
+      refundCases: {
+        select: {
+          id: true,
+          orderItemId: true,
+          reason: true,
+          amount: true,
+          destination: true,
+          status: true,
+          adminNote: true,
+          createdAt: true,
+          creditedAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+      },
     },
   });
 
@@ -64,7 +80,21 @@ export async function GET(
     return NextResponse.json({ error: "Order tidak ditemukan" }, { status: 404 });
   }
 
-  return NextResponse.json(order);
+  // Flatten — schema yang sudah ada sebenarnya sudah include semua field
+  // cancellation* + payment*. Tapi Prisma Json fields (cancellationReason
+  // is plain string), DateTime serialized as ISO via Next response — jadi
+  // langsung return order udah cukup. Tambahkan flag boleh-refund supaya
+  // mobile tidak perlu duplicate logic status guard.
+  const refundEligible =
+    order.status !== "DELIVERED" &&
+    order.status !== "CANCELLED" &&
+    order.status !== "REFUNDED" &&
+    order.userId !== null;
+
+  return NextResponse.json({
+    ...order,
+    refundEligible,
+  });
 }
 
 /**

@@ -1,9 +1,14 @@
+import 'dart:io';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../services/api_client.dart';
+import '../services/upload_service.dart';
 import '../theme/admin_theme.dart';
+import 'variant_management_screen.dart';
 
 /// Edit form untuk satu produk — nama, harga, stok, status aktif.
 ///
@@ -37,7 +42,12 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
   late TextEditingController _priceController;
   late TextEditingController _stockController;
   late bool _isActive;
+  late String? _currentImageUrl;
   bool _saving = false;
+  bool _uploadingImage = false;
+  File? _pickedImage;
+  bool _imageChanged = false;
+  final _picker = ImagePicker();
 
   @override
   void initState() {
@@ -48,6 +58,40 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
     _stockController =
         TextEditingController(text: widget.initialStock.toString());
     _isActive = widget.initialActive;
+    _currentImageUrl = widget.imageUrl;
+  }
+
+  Future<void> _pickAndUploadImage() async {
+    if (_uploadingImage || _saving) return;
+    try {
+      final picked = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+        maxWidth: 1600,
+        maxHeight: 1600,
+      );
+      if (picked == null) return;
+      final file = File(picked.path);
+      setState(() {
+        _pickedImage = file;
+        _uploadingImage = true;
+      });
+      final url = await AdminUploadService.instance.uploadProductImage(file);
+      if (!mounted) return;
+      setState(() {
+        _currentImageUrl = url;
+        _imageChanged = true;
+        _uploadingImage = false;
+      });
+    } on AdminUploadException catch (e) {
+      if (!mounted) return;
+      setState(() => _uploadingImage = false);
+      _showError(e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _uploadingImage = false);
+      _showError('Gagal upload foto. Coba lagi.');
+    }
   }
 
   @override
@@ -77,11 +121,19 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
       return;
     }
 
+    if (_uploadingImage) {
+      _showError('Tunggu upload foto selesai dulu');
+      return;
+    }
+
     final body = <String, dynamic>{};
     if (name != widget.initialName) body['name'] = name;
     if (price != widget.initialPrice) body['price'] = price;
     if (stock != widget.initialStock) body['stock'] = stock;
     if (_isActive != widget.initialActive) body['isActive'] = _isActive;
+    if (_imageChanged && _currentImageUrl != null) {
+      body['imageUrl'] = _currentImageUrl;
+    }
 
     if (body.isEmpty) {
       Navigator.of(context).pop(null);
@@ -95,12 +147,7 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
         body: body,
       );
       if (!mounted) return;
-      Navigator.of(context).pop(_ProductUpdateResult(
-        name: name,
-        price: price,
-        stock: stock,
-        isActive: _isActive,
-      ));
+      Navigator.of(context).pop(true);
     } on AdminApiException catch (e) {
       _showError('Gagal simpan: ${e.message}');
     } catch (_) {
@@ -136,27 +183,22 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
       ),
       body: ListView(
         children: [
-          if (widget.imageUrl != null)
-            Container(
-              color: Colors.white,
-              padding: const EdgeInsets.all(16),
-              child: Center(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: CachedNetworkImage(
-                    imageUrl: widget.imageUrl!,
-                    width: 160,
-                    height: 160,
-                    fit: BoxFit.cover,
-                    placeholder: (_, __) => Container(
-                      width: 160,
-                      height: 160,
-                      color: AdminColors.background,
-                    ),
-                  ),
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _FieldLabel('Foto Produk'),
+                _EditImagePicker(
+                  pickedImage: _pickedImage,
+                  imageUrl: _currentImageUrl,
+                  uploading: _uploadingImage,
+                  onPick: _pickAndUploadImage,
                 ),
-              ),
+              ],
             ),
+          ),
           const SizedBox(height: 8),
           Container(
             color: Colors.white,
@@ -223,6 +265,54 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
               ],
             ),
           ),
+          const SizedBox(height: 12),
+          Container(
+            color: Colors.white,
+            child: ListTile(
+              leading: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AdminColors.primaryLight,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.layers_outlined,
+                  color: AdminColors.primary,
+                ),
+              ),
+              title: const Text(
+                'Kelola Varian',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              subtitle: const Text(
+                'Ukuran, warna, atau opsi lain — harga & stok per kombinasi',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  color: AdminColors.textMuted,
+                ),
+              ),
+              trailing: const Icon(
+                Icons.chevron_right_rounded,
+                color: AdminColors.textMuted,
+              ),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => VariantManagementScreen(
+                      productId: widget.productId,
+                      productName: _nameController.text.trim().isEmpty
+                          ? widget.initialName
+                          : _nameController.text.trim(),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
           if (_saving)
             const Padding(
               padding: EdgeInsets.all(24),
@@ -256,15 +346,115 @@ class _FieldLabel extends StatelessWidget {
   }
 }
 
-class _ProductUpdateResult {
-  final String name;
-  final int price;
-  final int stock;
-  final bool isActive;
-  const _ProductUpdateResult({
-    required this.name,
-    required this.price,
-    required this.stock,
-    required this.isActive,
+class _EditImagePicker extends StatelessWidget {
+  final File? pickedImage;
+  final String? imageUrl;
+  final bool uploading;
+  final VoidCallback onPick;
+
+  const _EditImagePicker({
+    required this.pickedImage,
+    required this.imageUrl,
+    required this.uploading,
+    required this.onPick,
   });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasImage = pickedImage != null || imageUrl != null;
+    return Stack(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: pickedImage != null
+              ? Image.file(
+                  pickedImage!,
+                  width: double.infinity,
+                  height: 200,
+                  fit: BoxFit.cover,
+                )
+              : imageUrl != null
+                  ? CachedNetworkImage(
+                      imageUrl: imageUrl!,
+                      width: double.infinity,
+                      height: 200,
+                      fit: BoxFit.cover,
+                      placeholder: (_, _) => Container(
+                        height: 200,
+                        color: AdminColors.background,
+                      ),
+                    )
+                  : Container(
+                      width: double.infinity,
+                      height: 200,
+                      color: AdminColors.background,
+                      child: const Icon(
+                        Icons.image_outlined,
+                        size: 48,
+                        color: AdminColors.textMuted,
+                      ),
+                    ),
+        ),
+        if (uploading)
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: Colors.white),
+                    SizedBox(height: 10),
+                    Text(
+                      'Mengupload foto...',
+                      style: TextStyle(color: Colors.white, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        Positioned(
+          bottom: 8,
+          right: 8,
+          child: Material(
+            color: AdminColors.primary,
+            borderRadius: BorderRadius.circular(20),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(20),
+              onTap: uploading ? null : onPick,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      hasImage
+                          ? Icons.refresh_rounded
+                          : Icons.add_a_photo_outlined,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      hasImage ? 'Ganti foto' : 'Pilih foto',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }

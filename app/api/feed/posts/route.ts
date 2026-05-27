@@ -536,6 +536,14 @@ export async function POST(request: NextRequest) {
 
   if (!isAdmin && post.status === "PENDING_REVIEW") {
     void sendFeedPendingReviewNotification({ postId: post.id });
+    // Push notif ke semua admin — review queue jadi cepat ditindak.
+    void import("@/lib/push-admin").then(({ sendAdminFeedPendingPush }) => {
+      sendAdminFeedPendingPush({
+        postId: post.id,
+        authorName: session.name ?? "Customer",
+        title: title,
+      });
+    });
   }
 
   // @mention notification — caption (title + description) di-parse,

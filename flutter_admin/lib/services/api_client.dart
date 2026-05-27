@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -120,46 +122,105 @@ class AdminApiClient {
     String path, {
     Map<String, dynamic>? query,
     Duration timeout = const Duration(seconds: 10),
-  }) async {
-    await _ensureHydrated();
-    final uri = ApiConfig.uri(path, query);
-    final res =
-        await http.get(uri, headers: await _headers()).timeout(timeout);
-    return _decode(res);
+  }) {
+    return _send(
+      () async => http
+          .get(ApiConfig.uri(path, query), headers: await _headers())
+          .timeout(timeout),
+    );
   }
 
   Future<dynamic> postJson(
     String path, {
     Object? body,
     Duration timeout = const Duration(seconds: 10),
-  }) async {
-    await _ensureHydrated();
-    final uri = ApiConfig.uri(path);
-    final res = await http
-        .post(
-          uri,
-          headers: await _headers(json: true),
-          body: body == null ? null : jsonEncode(body),
-        )
-        .timeout(timeout);
-    return _decode(res);
+  }) {
+    return _send(
+      () async => http
+          .post(
+            ApiConfig.uri(path),
+            headers: await _headers(json: true),
+            body: body == null ? null : jsonEncode(body),
+          )
+          .timeout(timeout),
+    );
   }
 
   Future<dynamic> patchJson(
     String path, {
     Object? body,
     Duration timeout = const Duration(seconds: 10),
-  }) async {
+  }) {
+    return _send(
+      () async => http
+          .patch(
+            ApiConfig.uri(path),
+            headers: await _headers(json: true),
+            body: body == null ? null : jsonEncode(body),
+          )
+          .timeout(timeout),
+    );
+  }
+
+  Future<dynamic> putJson(
+    String path, {
+    Object? body,
+    Duration timeout = const Duration(seconds: 10),
+  }) {
+    return _send(
+      () async => http
+          .put(
+            ApiConfig.uri(path),
+            headers: await _headers(json: true),
+            body: body == null ? null : jsonEncode(body),
+          )
+          .timeout(timeout),
+    );
+  }
+
+  Future<dynamic> deleteJson(
+    String path, {
+    Duration timeout = const Duration(seconds: 10),
+  }) {
+    return _send(
+      () async =>
+          http.delete(ApiConfig.uri(path), headers: await _headers()).timeout(timeout),
+    );
+  }
+
+  /// Wrapper sentralized untuk semua HTTP call. Translate
+  /// SocketException / TimeoutException ke AdminApiException dengan
+  /// pesan ramah supaya UI bisa tampilkan message konsisten tanpa
+  /// duplicate try/catch di tiap caller.
+  Future<dynamic> _send(Future<http.Response> Function() request) async {
     await _ensureHydrated();
-    final uri = ApiConfig.uri(path);
-    final res = await http
-        .patch(
-          uri,
-          headers: await _headers(json: true),
-          body: body == null ? null : jsonEncode(body),
-        )
-        .timeout(timeout);
-    return _decode(res);
+    try {
+      final res = await request();
+      return _decode(res);
+    } on AdminApiException {
+      rethrow;
+    } on SocketException catch (e) {
+      if (kDebugMode) debugPrint('[adminApi] socket: $e');
+      throw const AdminApiException(
+        'Tidak ada koneksi internet. Cek WiFi/data.',
+        statusCode: -1,
+      );
+    } on TimeoutException catch (e) {
+      if (kDebugMode) debugPrint('[adminApi] timeout: $e');
+      throw const AdminApiException(
+        'Koneksi lambat — request timeout. Coba lagi.',
+        statusCode: -2,
+      );
+    } on http.ClientException catch (e) {
+      if (kDebugMode) debugPrint('[adminApi] client: $e');
+      throw const AdminApiException(
+        'Tidak bisa terhubung ke server. Coba lagi.',
+        statusCode: -3,
+      );
+    } catch (e) {
+      if (kDebugMode) debugPrint('[adminApi] unknown: $e');
+      throw const AdminApiException('Terjadi kesalahan tidak terduga.');
+    }
   }
 
   Future<Map<String, String>> _headers({bool json = false}) async {

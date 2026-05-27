@@ -827,6 +827,16 @@ export async function POST(request: Request) {
     // status update berikutnya (PAID, SHIPPED, dst.) lewat sendOrderStatusPush
     // di route lain. WA Fonnte sekarang reserved khusus untuk OTP.
 
+    // Push notif ke admin — fire-and-forget supaya tidak block response.
+    // Admin akan dapat banner "Order baru!" dgn quick action ke detail.
+    void import("@/lib/push-admin").then(({ sendAdminOrderNewPush }) => {
+      sendAdminOrderNewPush({
+        orderNumber,
+        customerName: input.customerName,
+        total,
+      });
+    });
+
     return NextResponse.json({
       message: input.paymentProvider === "MANUAL"
         ? "Order dibuat. Silakan lanjutkan instruksi transfer manual."
