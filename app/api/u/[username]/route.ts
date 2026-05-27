@@ -23,6 +23,7 @@ import type { FeedPostKind } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { resolveUserByUsername } from "@/lib/username";
 import { getSession } from "@/lib/auth";
+import { signBunnyUrl } from "@/lib/feed/bunny";
 
 const VISIBLE_KINDS: FeedPostKind[] = [
   "COMMUNITY",
@@ -143,13 +144,20 @@ export async function GET(
     },
     isOwner,
     isFollowing: Boolean(viewerFollow),
+    // Sign Bunny URLs supaya hotlink protection tidak return 401. Tanpa
+    // signing thumbnailUrl video → CachedNetworkImage di grid public
+    // profile dapat 401 → fallback ColoredBox abu-abu (terlihat tile
+    // kosong dengan icon play). Tanpa signing videoUrl → player tidak
+    // bisa fetch HLS playlist → "video tidak bisa diputar".
+    // `signBunnyUrl` no-op untuk URL non-Bunny (UploadThing image
+    // carousel return as-is), jadi aman apply ke semua URL.
     items: sliced.map((p) => ({
       id: p.id,
       kind: p.kind,
       title: p.title,
       description: p.description,
-      thumbnailUrl: p.thumbnailUrl,
-      videoUrl: p.videoUrl,
+      thumbnailUrl: signBunnyUrl(p.thumbnailUrl) ?? null,
+      videoUrl: signBunnyUrl(p.videoUrl) ?? null,
       videoDurationSec: p.videoDurationSec,
       videoWidth: p.videoWidth,
       videoHeight: p.videoHeight,
@@ -159,8 +167,8 @@ export async function GET(
       viewCount: p.viewCount,
       media: p.media.map((m) => ({
         id: m.id,
-        url: m.url,
-        thumbnailUrl: m.thumbnailUrl,
+        url: signBunnyUrl(m.url) ?? m.url,
+        thumbnailUrl: signBunnyUrl(m.thumbnailUrl) ?? null,
         mediaType: m.mediaType,
         width: m.width,
         height: m.height,
