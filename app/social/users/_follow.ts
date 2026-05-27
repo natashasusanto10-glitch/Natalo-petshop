@@ -1,3 +1,16 @@
+/**
+ * Social follow/unfollow shared helpers — single source of truth.
+ *
+ * History: pernah ada NestJS microservice (`social_service/`) yang
+ * mirror logic file ini lewat `SOCIAL_API_BASE_URL` dart-define di
+ * Flutter. Dual implementation di-kill May 2026 karena cost maintenance
+ * (sync 2 file setiap perubahan, risiko drift schema Prisma) melebihi
+ * manfaatnya — Nest service belum aktif serve traffic, semua follow
+ * traffic tetap ke Vercel Next.js. Kalau ke depan ada trigger nyata
+ * (Vercel cost spike dari social traffic, fitur real-time chat/live
+ * notif, atau timeout di endpoint social), resurrect Nest dari branch
+ * `codex/deploy-social-routes` yang preserve di git history.
+ */
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { getSession } from "@/lib/auth";

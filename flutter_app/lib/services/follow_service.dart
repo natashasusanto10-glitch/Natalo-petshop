@@ -1,11 +1,14 @@
-import 'dart:convert';
-
-import 'package:http/http.dart' as http;
-
-import '../config/api_config.dart';
-import '../state/member_store.dart';
 import 'api_client.dart';
 
+/// Follow/unfollow service — pakai endpoint Next.js (`/social/users/...`)
+/// yang dihost di Vercel. Sebelumnya ada dual implementation dengan
+/// NestJS microservice (`social_service/`) yang access lewat
+/// `SOCIAL_API_BASE_URL` dart-define; itu sudah di-kill (commit "kill
+/// NestJS social service") karena overhead maintenance dual code
+/// melebihi manfaatnya untuk solo dev di pre-DAU app. Resurrect Nest
+/// kalau muncul trigger nyata: Vercel bill spike dari social traffic,
+/// real-time feature (chat/live notif), atau Vercel function timeout di
+/// social endpoint.
 class FollowState {
   final bool isFollowing;
   final int followersCount;
@@ -106,27 +109,24 @@ class FollowService {
   FollowService._();
 
   Future<FollowState> follow(String userId) async {
-    final data = await _send(
-      'POST',
+    final data = await apiClient.postJson(
       '/social/users/${Uri.encodeComponent(userId)}/follow',
     );
-    return FollowState.fromJson(data);
+    return FollowState.fromJson(_asMap(data));
   }
 
   Future<FollowState> unfollow(String userId) async {
-    final data = await _send(
-      'DELETE',
+    final data = await apiClient.deleteJson(
       '/social/users/${Uri.encodeComponent(userId)}/follow',
     );
-    return FollowState.fromJson(data);
+    return FollowState.fromJson(_asMap(data));
   }
 
   Future<FollowState> fetchState(String userId) async {
-    final data = await _send(
-      'GET',
+    final data = await apiClient.getJson(
       '/social/users/${Uri.encodeComponent(userId)}/follow-state',
     );
-    return FollowState.fromJson(data);
+    return FollowState.fromJson(_asMap(data));
   }
 
   Future<FollowListResult> fetchFollowers(
@@ -134,15 +134,14 @@ class FollowService {
     String? cursor,
     int limit = 20,
   }) async {
-    final data = await _send(
-      'GET',
+    final data = await apiClient.getJson(
       '/social/users/${Uri.encodeComponent(userId)}/followers',
       query: {
         'limit': limit,
         if (cursor != null) 'cursor': cursor,
       },
     );
-    return FollowListResult.fromJson(data);
+    return FollowListResult.fromJson(_asMap(data));
   }
 
   Future<FollowListResult> fetchFollowing(
@@ -150,66 +149,20 @@ class FollowService {
     String? cursor,
     int limit = 20,
   }) async {
-    final data = await _send(
-      'GET',
+    final data = await apiClient.getJson(
       '/social/users/${Uri.encodeComponent(userId)}/following',
       query: {
         'limit': limit,
         if (cursor != null) 'cursor': cursor,
       },
     );
-    return FollowListResult.fromJson(data);
+    return FollowListResult.fromJson(_asMap(data));
   }
 
-  Future<Map<String, dynamic>> _send(
-    String method,
-    String path, {
-    Map<String, dynamic>? query,
-  }) async {
-    final uri = ApiConfig.socialUri(path, query);
-    final request = http.Request(method, uri)..headers.addAll(_headers());
-    try {
-      final streamed = await request.send().timeout(
-            const Duration(seconds: 12),
-          );
-      final response = await http.Response.fromStream(streamed);
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw ApiException(
-          _messageFor(response),
-          statusCode: response.statusCode,
-        );
-      }
-      final decoded = response.body.isEmpty ? null : jsonDecode(response.body);
-      if (decoded is Map<String, dynamic>) return decoded;
-      throw const ApiException('Format response follow tidak valid.');
-    } catch (e) {
-      if (e is ApiException) rethrow;
-      throw ApiException(e.toString(), cause: e);
-    }
-  }
-
-  Map<String, String> _headers() {
-    final token = memberStore.sessionToken;
-    return {
-      'accept': 'application/json',
-      if (token != null) 'authorization': 'Bearer $token',
-      if (token != null) 'cookie': 'member_session=$token',
-    };
-  }
-
-  String _messageFor(http.Response response) {
-    try {
-      final decoded = jsonDecode(response.body);
-      if (decoded is Map) {
-        final message = decoded['message'] ?? decoded['error'];
-        if (message != null && message.toString().trim().isNotEmpty) {
-          return message.toString();
-        }
-      }
-    } catch (_) {}
-    if (response.statusCode == 401) return 'Login dulu untuk follow user.';
-    if (response.statusCode == 404) return 'User tidak ditemukan.';
-    return 'Gagal memproses follow. Coba lagi.';
+  Map<String, dynamic> _asMap(dynamic data) {
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    throw const ApiException('Format response follow tidak valid.');
   }
 }
 
