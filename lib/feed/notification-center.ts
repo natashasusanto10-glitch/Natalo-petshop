@@ -5,6 +5,11 @@ import { sendPushToUser, type PushPayload } from "@/lib/push";
 
 export const FEED_NOTIFICATION_CATEGORY = "feed";
 export const FEED_NOTIFICATION_SOURCE = "feed";
+export const SOCIAL_NOTIFICATION_SOURCE = "social";
+
+export type NotificationSurface =
+  | typeof FEED_NOTIFICATION_SOURCE
+  | typeof SOCIAL_NOTIFICATION_SOURCE;
 
 export type FeedNotificationEventType =
   | "feed_review_pending"
@@ -72,8 +77,10 @@ export async function createFeedNotification(params: {
   tag?: string | null;
   data?: Record<string, string | null | undefined>;
   dedupeByEvent?: boolean;
+  surface?: NotificationSurface;
 }) {
   const url = params.url ?? feedPostOwnerUrl(params.feedPostId);
+  const surface = params.surface ?? FEED_NOTIFICATION_SOURCE;
 
   try {
     if (params.dedupeByEvent) {
@@ -90,7 +97,7 @@ export async function createFeedNotification(params: {
     }
 
     const pushData: Record<string, string> = {
-      source: FEED_NOTIFICATION_SOURCE,
+      source: surface,
       type: params.eventType,
       feed_post_id: params.feedPostId,
       post_id: params.feedPostId,
@@ -130,8 +137,8 @@ export async function createFeedNotification(params: {
           body: params.message,
           url,
           segment: "all",
-          type: FEED_NOTIFICATION_CATEGORY,
-          source: FEED_NOTIFICATION_SOURCE,
+          type: surface,
+          source: surface,
           eventType: params.eventType,
           feedPostId: params.feedPostId,
           thumbnailUrl: params.thumbnailUrl ?? null,

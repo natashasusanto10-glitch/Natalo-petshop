@@ -142,11 +142,11 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
 
   Future<void> _refresh() async => _load();
 
-  void _openFollowList(FollowListKind kind) {
+  Future<void> _openFollowList(FollowListKind kind) async {
     final profile = _profile;
     if (profile == null) return;
     AppHaptics.tap();
-    Navigator.push(
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => PublicProfileFollowListScreen(
@@ -155,6 +155,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         ),
       ),
     );
+    if (mounted) _refresh();
   }
 
   void _openPost(int index) {
@@ -467,9 +468,10 @@ class _Header extends StatelessWidget {
                   )
                 : profile.isFollowing
                     ? OutlinedButton(
-                        onPressed: followBusy ? null : onFollowToggle,
+                        onPressed: onFollowToggle,
                         style: OutlinedButton.styleFrom(
                           foregroundColor: _darkNavy,
+                          disabledForegroundColor: _darkNavy,
                           side: const BorderSide(color: _borderSoft),
                           textStyle: const TextStyle(
                             fontSize: 13,
@@ -479,22 +481,19 @@ class _Header extends StatelessWidget {
                             borderRadius: BorderRadius.circular(8),
                           ),
                         ),
-                        child: followBusy
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: _textSecondary,
-                                ),
-                              )
-                            : const Text('Mengikuti'),
+                        child: _FollowButtonContent(
+                          label: 'Mengikuti',
+                          busy: followBusy,
+                          spinnerColor: _textSecondary,
+                        ),
                       )
                     : FilledButton(
-                        onPressed: followBusy ? null : onFollowToggle,
+                        onPressed: onFollowToggle,
                         style: FilledButton.styleFrom(
                           backgroundColor: _brandBlue,
+                          disabledBackgroundColor: _brandBlue,
                           foregroundColor: Colors.white,
+                          disabledForegroundColor: Colors.white,
                           textStyle: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w800,
@@ -503,18 +502,51 @@ class _Header extends StatelessWidget {
                             borderRadius: BorderRadius.circular(8),
                           ),
                         ),
-                        child: followBusy
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Text('Follow'),
+                        child: _FollowButtonContent(
+                          label: 'Follow',
+                          busy: followBusy,
+                          spinnerColor: Colors.white,
+                        ),
                       ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FollowButtonContent extends StatelessWidget {
+  final String label;
+  final bool busy;
+  final Color spinnerColor;
+
+  const _FollowButtonContent({
+    required this.label,
+    required this.busy,
+    required this.spinnerColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 140),
+      child: Row(
+        key: ValueKey('$label-$busy'),
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (busy) ...[
+            SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: spinnerColor,
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+          Text(label),
         ],
       ),
     );
@@ -766,10 +798,8 @@ class _SafeNetworkImage extends StatelessWidget {
       return CachedNetworkImage(
         imageUrl: url,
         fit: BoxFit.cover,
-        placeholder: (_, __) =>
-            const ColoredBox(color: Color(0xFFE2E8F0)),
-        errorWidget: (_, __, ___) =>
-            const ColoredBox(color: Color(0xFFE2E8F0)),
+        placeholder: (_, __) => const ColoredBox(color: Color(0xFFE2E8F0)),
+        errorWidget: (_, __, ___) => const ColoredBox(color: Color(0xFFE2E8F0)),
       );
     } catch (_) {
       return const ColoredBox(color: Color(0xFFE2E8F0));

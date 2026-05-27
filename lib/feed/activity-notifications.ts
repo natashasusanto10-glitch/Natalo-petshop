@@ -22,6 +22,7 @@ import {
   createFeedNotification,
   feedPostOwnerUrl,
   quoteFeedTitle,
+  SOCIAL_NOTIFICATION_SOURCE,
   truncateFeedText,
 } from "@/lib/feed/notification-center";
 
@@ -74,6 +75,7 @@ export async function sendCommentNotification(params: {
       ctaLabel: "Lihat Komentar",
       tag: `feed-comment-${post.id}`,
       data: { comment_id: params.commentId },
+      surface: SOCIAL_NOTIFICATION_SOURCE,
     });
   } catch (err) {
     console.warn("[feed-activity] sendCommentNotification:", err);
@@ -124,6 +126,7 @@ export async function sendReplyNotification(params: {
         parent_comment_id: params.parentCommentId,
         reply_comment_id: params.replyCommentId,
       },
+      surface: SOCIAL_NOTIFICATION_SOURCE,
     });
   } catch (err) {
     console.warn("[feed-activity] sendReplyNotification:", err);
@@ -203,6 +206,7 @@ export async function sendMentionNotifications(params: {
               ? { comment_id: params.commentId }
               : {}),
           },
+          surface: SOCIAL_NOTIFICATION_SOURCE,
         }),
       ),
     );
@@ -262,6 +266,7 @@ export async function sendLikeMilestoneNotification(params: {
       ctaLabel: "Lihat Postingan",
       tag: `feed-milestone-${post.id}-${params.milestone}`,
       data: { milestone: String(params.milestone) },
+      surface: SOCIAL_NOTIFICATION_SOURCE,
     });
   } catch (err) {
     console.warn("[feed-activity] sendLikeMilestoneNotification:", err);
@@ -292,7 +297,7 @@ export async function sendLikeNotification(params: {
     const recentUnread = await prisma.announcement.findFirst({
       where: {
         targetUserId: post.authorId,
-        source: "feed",
+        source: SOCIAL_NOTIFICATION_SOURCE,
         eventType: "feed_new_like",
         feedPostId: post.id,
         createdAt: { gte: since },
@@ -330,6 +335,7 @@ export async function sendLikeNotification(params: {
       ctaLabel: "Lihat Postingan",
       tag: `feed-like-${post.id}`,
       data: { like_count: String(params.likeCount) },
+      surface: SOCIAL_NOTIFICATION_SOURCE,
     });
   } catch (err) {
     console.warn("[feed-activity] sendLikeNotification:", err);
@@ -365,6 +371,7 @@ export async function sendShareNotification(params: {
       ctaLabel: "Lihat Postingan",
       tag: `feed-share-${post.id}`,
       data: { share_count: String(params.shareCount) },
+      surface: SOCIAL_NOTIFICATION_SOURCE,
     });
   } catch (err) {
     console.warn("[feed-activity] sendShareNotification:", err);

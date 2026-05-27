@@ -9,13 +9,14 @@ import {
   IoChevronForward,
   IoMegaphoneOutline,
   IoNotificationsOutline,
+  IoPersonAddOutline,
   IoPlayCircleOutline,
   IoPricetagOutline,
 } from "react-icons/io5";
 import { NotificationReviewSheet } from "@/components/NotificationReviewSheet";
 
-type NotificationType = "order" | "promo" | "feed" | "announcement";
-type TabId = "all" | "order" | "promo" | "feed" | "announcement";
+type NotificationType = "order" | "promo" | "feed" | "social" | "announcement";
+type TabId = "all" | "order" | "promo" | "feed" | "social" | "announcement";
 
 type Notification = {
   id: string;
@@ -54,6 +55,7 @@ const TABS: Array<{ id: TabId; label: string }> = [
   { id: "order", label: "Pesanan" },
   { id: "promo", label: "Promo" },
   { id: "feed", label: "Feed" },
+  { id: "social", label: "Sosial" },
   { id: "announcement", label: "Pengumuman" },
 ];
 
@@ -85,6 +87,14 @@ function notificationType(item: Notification): NotificationType {
   }
   if (item.type === "promo") return "promo";
   if (item.type === "order") return "order";
+  if (
+    item.source === "social" ||
+    item.category === "social" ||
+    item.type === "social" ||
+    item.eventType === "user_followed"
+  ) {
+    return "social";
+  }
   return "announcement";
 }
 
@@ -106,9 +116,11 @@ function EmptyState({ tab }: { tab: TabId }) {
         ? "Promo resmi dari admin Natalo Petshop akan muncul di sini."
         : tab === "feed"
           ? "Update postingan Feed kamu — review admin, komentar, dan like — akan muncul di sini."
+          : tab === "social"
+            ? "Aktivitas sosial seperti pengikut baru akan muncul di sini."
           : tab === "announcement"
             ? "Pengumuman resmi dari admin Natalo Petshop akan muncul di sini."
-            : "Update pesanan, promo, Feed, dan pengumuman akan muncul di sini.";
+            : "Update pesanan, promo, Feed, sosial, dan pengumuman akan muncul di sini.";
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white px-6 py-12 text-center shadow-sm">
@@ -122,9 +134,11 @@ function EmptyState({ tab }: { tab: TabId }) {
 function IconBadge({
   type,
   thumbnailUrl,
+  eventType,
 }: {
   type: NotificationType;
   thumbnailUrl?: string | null;
+  eventType?: string | null;
 }) {
   if (type === "order") {
     return (
@@ -156,6 +170,31 @@ function IconBadge({
     return (
       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-natalo-50 text-natalo-600">
         <IoPlayCircleOutline className="h-6 w-6" aria-hidden="true" />
+      </span>
+    );
+  }
+
+  if (type === "social") {
+    if (thumbnailUrl && eventType === "user_followed") {
+      return (
+        <span className="relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full bg-slate-100 text-white">
+          <img src={thumbnailUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+        </span>
+      );
+    }
+    if (thumbnailUrl) {
+      return (
+        <span className="relative flex h-10 w-10 shrink-0 overflow-hidden rounded-xl bg-slate-900 text-white">
+          <img src={thumbnailUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+          <span className="absolute inset-0 grid place-items-center bg-black/20">
+            <IoPlayCircleOutline className="h-6 w-6 drop-shadow" aria-hidden="true" />
+          </span>
+        </span>
+      );
+    }
+    return (
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-50 text-sky-600">
+        <IoPersonAddOutline className="h-5 w-5" aria-hidden="true" />
       </span>
     );
   }
@@ -221,7 +260,7 @@ function NotificationCard({
     type === "announcement"
       ? "Lihat Detail"
       : item.ctaLabel ??
-        (reviewPrompt ? "Lihat Pesanan" : type === "order" ? "Lihat Pesanan" : type === "promo" ? "Lihat Promo" : "Lihat Detail");
+        (reviewPrompt ? "Lihat Pesanan" : type === "order" ? "Lihat Pesanan" : type === "promo" ? "Lihat Promo" : type === "social" ? "Lihat Profil" : "Lihat Detail");
   const href =
     type === "announcement"
       ? `/notifications/${item.id}`
@@ -233,6 +272,18 @@ function NotificationCard({
       ? "Promo dari Admin"
       : type === "announcement"
         ? "Pengumuman dari Admin"
+        : type === "social"
+          ? item.eventType === "user_followed"
+            ? "Pengikut baru"
+            : item.eventType === "feed_new_comment"
+              ? "Komentar Feed"
+              : item.eventType === "feed_new_like"
+                ? "Like Feed"
+                : item.eventType === "feed_mention"
+                  ? "Mention"
+                  : item.eventType === "feed_new_share"
+                    ? "Share Feed"
+                    : "Sosial Natalo"
         : type === "feed"
           ? "Feed Natalo"
           : orderNumber
@@ -245,6 +296,8 @@ function NotificationCard({
         ? "bg-gradient-to-b from-blue-500 via-emerald-500 to-orange-400"
         : type === "feed"
           ? "bg-natalo-500"
+          : type === "social"
+            ? "bg-sky-500"
           : "bg-violet-500";
 
   return (
@@ -255,7 +308,7 @@ function NotificationCard({
     >
       <span className={`absolute inset-y-0 left-0 w-1.5 ${accent}`} aria-hidden="true" />
       <div className="flex items-start gap-3 pl-1.5">
-        <IconBadge type={type} thumbnailUrl={item.thumbnailUrl} />
+        <IconBadge type={type} thumbnailUrl={item.thumbnailUrl} eventType={item.eventType} />
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -286,7 +339,7 @@ function NotificationCard({
               href={href}
               onClick={() => onRead(item)}
               className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-extrabold text-white transition active:scale-[0.99] ${
-                type === "order" ? "bg-blue-600 hover:bg-blue-700" : type === "promo" ? "bg-blue-600 hover:bg-blue-700" : "bg-slate-900 hover:bg-slate-800"
+                type === "order" ? "bg-blue-600 hover:bg-blue-700" : type === "promo" ? "bg-blue-600 hover:bg-blue-700" : type === "social" ? "bg-sky-600 hover:bg-sky-700" : "bg-slate-900 hover:bg-slate-800"
               }`}
             >
               {ctaLabel}

@@ -15,6 +15,7 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { sendFollowNotification } from "@/lib/social/notifications";
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
@@ -56,7 +57,7 @@ export async function followUser(viewerUserId: string, targetUserId: string) {
       }),
       tx.user.findUnique({
         where: { id: viewerUserId },
-        select: { id: true, name: true, username: true },
+        select: { id: true },
       }),
     ]);
 
@@ -93,20 +94,6 @@ export async function followUser(viewerUserId: string, targetUserId: string) {
         data: { followingCount: { increment: 1 } },
         select: { id: true },
       }),
-      tx.announcement.create({
-        data: {
-          title: "Pengikut baru",
-          body: `${actor.username || actor.name} mulai mengikuti kamu.`,
-          url: actor.username ? `/u/${actor.username}` : null,
-          segment: "all",
-          type: "social",
-          source: "social",
-          eventType: "user_followed",
-          ctaLabel: "Lihat Profil",
-          publishedAt: new Date(),
-          targetUserId,
-        },
-      }),
     ]);
 
     return {
@@ -116,6 +103,13 @@ export async function followUser(viewerUserId: string, targetUserId: string) {
       followingCount: updatedTarget.followingCount,
     };
   });
+
+  if (result.changed) {
+    await sendFollowNotification({
+      followerId: viewerUserId,
+      followingId: targetUserId,
+    });
+  }
 
   return stateResponse(targetUserId, false, result);
 }
@@ -209,6 +203,7 @@ export async function getFollowState(viewerUserId: string, targetUserId: string)
 
 export async function listFollowers(targetUserId: string, query: ListQuery) {
   await assertTargetExists(targetUserId);
+  const viewerUserId = await getOptionalSocialUserId();
   const limit = normalizeLimit(query.limit);
   const rows = await prisma.userFollow.findMany({
     where: { followingId: targetUserId },
@@ -224,15 +219,26 @@ export async function listFollowers(targetUserId: string, query: ListQuery) {
 
   const hasMore = rows.length > limit;
   const sliced = hasMore ? rows.slice(0, limit) : rows;
+  const users = sliced.map((row) => row.follower);
+  const viewerFollowing = await getViewerFollowingSet(
+    viewerUserId,
+    users.map((user) => user.id),
+  );
   return {
     ok: true,
-    items: sliced.map((row) => mapPublicUser(row.follower)),
+    items: users.map((user) =>
+      mapPublicUser(user, {
+        viewerUserId,
+        isFollowing: viewerFollowing.has(user.id),
+      }),
+    ),
     nextCursor: hasMore ? sliced[sliced.length - 1].id : null,
   };
 }
 
 export async function listFollowing(targetUserId: string, query: ListQuery) {
   await assertTargetExists(targetUserId);
+  const viewerUserId = await getOptionalSocialUserId();
   const limit = normalizeLimit(query.limit);
   const rows = await prisma.userFollow.findMany({
     where: { followerId: targetUserId },
@@ -248,9 +254,19 @@ export async function listFollowing(targetUserId: string, query: ListQuery) {
 
   const hasMore = rows.length > limit;
   const sliced = hasMore ? rows.slice(0, limit) : rows;
+  const users = sliced.map((row) => row.following);
+  const viewerFollowing = await getViewerFollowingSet(
+    viewerUserId,
+    users.map((user) => user.id),
+  );
   return {
     ok: true,
-    items: sliced.map((row) => mapPublicUser(row.following)),
+    items: users.map((user) =>
+      mapPublicUser(user, {
+        viewerUserId,
+        isFollowing: viewerFollowing.has(user.id),
+      }),
+    ),
     nextCursor: hasMore ? sliced[sliced.length - 1].id : null,
   };
 }
@@ -280,6 +296,26 @@ async function assertTargetExists(targetUserId: string) {
     select: { id: true },
   });
   if (!target) throw new SocialHttpError(404, "User tidak ditemukan.");
+}
+
+async function getOptionalSocialUserId() {
+  const session = await getSession("CUSTOMER").catch(() => null);
+  return session?.sub ?? null;
+}
+
+async function getViewerFollowingSet(
+  viewerUserId: string | null,
+  listedUserIds: string[],
+) {
+  if (!viewerUserId || listedUserIds.length === 0) return new Set<string>();
+  const rows = await prisma.userFollow.findMany({
+    where: {
+      followerId: viewerUserId,
+      followingId: { in: listedUserIds },
+    },
+    select: { followingId: true },
+  });
+  return new Set(rows.map((row) => row.followingId));
 }
 
 function assertDifferentUsers(viewerUserId: string, targetUserId: string) {
@@ -318,7 +354,12 @@ const publicUserSelect = {
 
 function mapPublicUser(
   user: Prisma.UserGetPayload<{ select: typeof publicUserSelect }>,
+  viewer?: {
+    viewerUserId: string | null;
+    isFollowing: boolean;
+  },
 ) {
+  const isSelf = Boolean(viewer?.viewerUserId && viewer.viewerUserId === user.id);
   return {
     id: user.id,
     name: user.name,
@@ -327,6 +368,8 @@ function mapPublicUser(
     bio: user.bio,
     followersCount: user.followersCount,
     followingCount: user.followingCount,
+    isFollowing: isSelf ? false : viewer?.isFollowing === true,
+    isSelf,
   };
 }
 

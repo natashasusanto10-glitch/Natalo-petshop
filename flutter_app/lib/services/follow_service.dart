@@ -43,6 +43,8 @@ class FollowUserSummary {
   final String? bio;
   final int followersCount;
   final int followingCount;
+  final bool isFollowing;
+  final bool isSelf;
 
   const FollowUserSummary({
     required this.id,
@@ -52,6 +54,8 @@ class FollowUserSummary {
     this.bio,
     this.followersCount = 0,
     this.followingCount = 0,
+    this.isFollowing = false,
+    this.isSelf = false,
   });
 
   String get initial =>
@@ -73,6 +77,27 @@ class FollowUserSummary {
       bio: _nullableString(json['bio']),
       followersCount: (json['followersCount'] as num?)?.toInt() ?? 0,
       followingCount: (json['followingCount'] as num?)?.toInt() ?? 0,
+      isFollowing: json['isFollowing'] == true,
+      isSelf: json['isSelf'] == true,
+    );
+  }
+
+  FollowUserSummary copyWith({
+    int? followersCount,
+    int? followingCount,
+    bool? isFollowing,
+    bool? isSelf,
+  }) {
+    return FollowUserSummary(
+      id: id,
+      name: name,
+      username: username,
+      profilePhotoUrl: profilePhotoUrl,
+      bio: bio,
+      followersCount: followersCount ?? this.followersCount,
+      followingCount: followingCount ?? this.followingCount,
+      isFollowing: isFollowing ?? this.isFollowing,
+      isSelf: isSelf ?? this.isSelf,
     );
   }
 }

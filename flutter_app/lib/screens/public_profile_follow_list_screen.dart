@@ -2,7 +2,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../models/public_profile.dart';
+import '../services/api_client.dart';
 import '../services/follow_service.dart';
+import '../state/member_store.dart';
 import '../utils/haptics.dart';
 
 const _brandBlue = Color(0xFF0B7FEA);
@@ -34,6 +36,8 @@ class _PublicProfileFollowListScreenState
     extends State<PublicProfileFollowListScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
+  late int _followersCount;
+  late int _followingCount;
 
   @override
   void initState() {
@@ -43,6 +47,8 @@ class _PublicProfileFollowListScreenState
       vsync: this,
       initialIndex: widget.initialKind == FollowListKind.followers ? 0 : 1,
     );
+    _followersCount = widget.profile.followersCount;
+    _followingCount = widget.profile.followingCount;
   }
 
   @override
@@ -107,8 +113,8 @@ class _PublicProfileFollowListScreenState
                 fontWeight: FontWeight.w700,
               ),
               tabs: [
-                Tab(text: 'Pengikut ${profile.followersCount}'),
-                Tab(text: 'Mengikuti ${profile.followingCount}'),
+                Tab(text: 'Pengikut $_followersCount'),
+                Tab(text: 'Mengikuti $_followingCount'),
               ],
             ),
           ),
@@ -120,24 +126,51 @@ class _PublicProfileFollowListScreenState
           _FollowListPane(
             profile: profile,
             kind: FollowListKind.followers,
+            onFollowChanged: _handleFollowChanged,
           ),
           _FollowListPane(
             profile: profile,
             kind: FollowListKind.following,
+            onFollowChanged: _handleFollowChanged,
           ),
         ],
       ),
     );
+  }
+
+  void _handleFollowChanged(
+    FollowUserSummary user,
+    FollowState state,
+    bool wasFollowing,
+  ) {
+    if (user.id == widget.profile.id) {
+      setState(() {
+        _followersCount = state.followersCount;
+      });
+      return;
+    }
+
+    final viewerId = memberStore.profile?.id;
+    if (viewerId == widget.profile.id && wasFollowing != state.isFollowing) {
+      setState(() {
+        _followingCount += state.isFollowing ? 1 : -1;
+        if (_followingCount < 0) _followingCount = 0;
+      });
+    }
   }
 }
 
 class _FollowListPane extends StatefulWidget {
   final PublicProfile profile;
   final FollowListKind kind;
+  final void Function(
+          FollowUserSummary user, FollowState state, bool wasFollowing)
+      onFollowChanged;
 
   const _FollowListPane({
     required this.profile,
     required this.kind,
+    required this.onFollowChanged,
   });
 
   @override
@@ -152,6 +185,7 @@ class _FollowListPaneState extends State<_FollowListPane>
   bool _loading = true;
   bool _loadingMore = false;
   String? _errorText;
+  final Set<String> _busyUserIds = <String>{};
 
   @override
   bool get wantKeepAlive => true;
@@ -234,10 +268,85 @@ class _FollowListPaneState extends State<_FollowListPane>
       ? 'Belum ada pengikut'
       : 'Belum mengikuti user lain';
 
-  void _openUser(FollowUserSummary user) {
+  Future<void> _openUser(FollowUserSummary user) async {
     if (!user.canOpenProfile) return;
     AppHaptics.tap();
-    Navigator.pushNamed(context, '/u', arguments: user.username);
+    await Navigator.pushNamed(context, '/u', arguments: user.username);
+    if (mounted) _load();
+  }
+
+  Future<void> _toggleFollow(FollowUserSummary user) async {
+    if (user.isSelf || _busyUserIds.contains(user.id)) return;
+    AppHaptics.tap();
+    if (!memberStore.isLoggedIn) {
+      Navigator.pushNamed(context, '/member/login');
+      return;
+    }
+
+    final wasFollowing = user.isFollowing;
+    final optimistic = user.copyWith(
+      isFollowing: !wasFollowing,
+      followersCount: _nonNegative(
+        user.followersCount + (wasFollowing ? -1 : 1),
+      ),
+    );
+
+    setState(() {
+      _busyUserIds.add(user.id);
+      _replaceUser(optimistic);
+    });
+
+    try {
+      final state = wasFollowing
+          ? await followService.unfollow(user.id)
+          : await followService.follow(user.id);
+      if (!mounted) return;
+      final updated = user.copyWith(
+        isFollowing: state.isFollowing,
+        followersCount: state.followersCount,
+        followingCount: state.followingCount,
+      );
+      setState(() {
+        _busyUserIds.remove(user.id);
+        _replaceUser(updated);
+      });
+      widget.onFollowChanged(updated, state, wasFollowing);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busyUserIds.remove(user.id);
+        _replaceUser(user);
+      });
+      if (e.isUnauthorized) {
+        Navigator.pushNamed(context, '/member/login');
+      } else {
+        _showSnack(e.message);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _busyUserIds.remove(user.id);
+        _replaceUser(user);
+      });
+      _showSnack('Gagal memproses follow. Coba lagi.');
+    }
+  }
+
+  void _replaceUser(FollowUserSummary user) {
+    _items = _items
+        .map((item) => item.id == user.id ? user : item)
+        .toList(growable: false);
+  }
+
+  int _nonNegative(int value) => value < 0 ? 0 : value;
+
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
@@ -295,7 +404,10 @@ class _FollowListPaneState extends State<_FollowListPane>
           final user = _items[index];
           return _FollowUserTile(
             user: user,
+            kind: widget.kind,
+            followBusy: _busyUserIds.contains(user.id),
             onTap: user.canOpenProfile ? () => _openUser(user) : null,
+            onFollowToggle: user.isSelf ? null : () => _toggleFollow(user),
           );
         },
       ),
@@ -305,11 +417,17 @@ class _FollowListPaneState extends State<_FollowListPane>
 
 class _FollowUserTile extends StatelessWidget {
   final FollowUserSummary user;
+  final FollowListKind kind;
+  final bool followBusy;
   final VoidCallback? onTap;
+  final VoidCallback? onFollowToggle;
 
   const _FollowUserTile({
     required this.user,
+    required this.kind,
+    required this.followBusy,
     this.onTap,
+    this.onFollowToggle,
   });
 
   @override
@@ -318,6 +436,15 @@ class _FollowUserTile extends StatelessWidget {
       if (user.username != null && user.username!.isNotEmpty) user.username!,
       if (user.bio != null && user.bio!.isNotEmpty) user.bio!,
     ].join(' - ');
+
+    final followLabel = user.isSelf
+        ? 'Kamu'
+        : user.isFollowing
+            ? 'Mengikuti'
+            : kind == FollowListKind.followers
+                ? 'Follow balik'
+                : 'Follow';
+    final useFilled = !user.isSelf && !user.isFollowing;
 
     return InkWell(
       onTap: onTap,
@@ -359,14 +486,16 @@ class _FollowUserTile extends StatelessWidget {
                 ],
               ),
             ),
-            if (user.canOpenProfile) ...[
-              const SizedBox(width: 12),
-              OutlinedButton(
-                onPressed: onTap,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _darkNavy,
-                  side: const BorderSide(color: _borderSoft),
-                  minimumSize: const Size(64, 34),
+            const SizedBox(width: 12),
+            if (useFilled)
+              FilledButton(
+                onPressed: followBusy ? null : onFollowToggle,
+                style: FilledButton.styleFrom(
+                  backgroundColor: _brandBlue,
+                  disabledBackgroundColor: _brandBlue,
+                  foregroundColor: Colors.white,
+                  disabledForegroundColor: Colors.white,
+                  minimumSize: const Size(92, 34),
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   textStyle: const TextStyle(
                     fontSize: 12,
@@ -376,12 +505,84 @@ class _FollowUserTile extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                child: const Text('Lihat'),
+                child: _FollowTileButtonContent(
+                  label: followLabel,
+                  busy: followBusy,
+                  spinnerColor: Colors.white,
+                ),
+              )
+            else
+              OutlinedButton(
+                onPressed: user.isSelf || followBusy ? null : onFollowToggle,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _darkNavy,
+                  disabledForegroundColor:
+                      user.isSelf ? _textSecondary : _darkNavy,
+                  side: BorderSide(
+                    color: user.isSelf ? const Color(0xFFE5E7EB) : _borderSoft,
+                  ),
+                  minimumSize: const Size(92, 34),
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  textStyle: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: _FollowTileButtonContent(
+                  label: followLabel,
+                  busy: followBusy,
+                  spinnerColor: _textSecondary,
+                ),
+              ),
+            if (user.canOpenProfile) ...[
+              const SizedBox(width: 12),
+              IconButton(
+                onPressed: onTap,
+                icon: const Icon(Icons.chevron_right_rounded),
+                color: _textSecondary,
+                tooltip: 'Lihat profil',
               ),
             ],
           ],
         ),
       ),
+    );
+  }
+}
+
+class _FollowTileButtonContent extends StatelessWidget {
+  final String label;
+  final bool busy;
+  final Color spinnerColor;
+
+  const _FollowTileButtonContent({
+    required this.label,
+    required this.busy,
+    required this.spinnerColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        if (busy) ...[
+          SizedBox(
+            width: 13,
+            height: 13,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: spinnerColor,
+            ),
+          ),
+          const SizedBox(width: 7),
+        ],
+        Text(label),
+      ],
     );
   }
 }
