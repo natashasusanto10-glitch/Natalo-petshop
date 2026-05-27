@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -143,11 +144,29 @@ class PushNotificationService {
       FirebaseMessaging.onMessageOpenedApp.listen(_handleMessage);
 
       _initialized = true;
-    } catch (error) {
+    } catch (error, stack) {
       if (kDebugMode) {
         debugPrint(
           '[push] Init failed (kemungkinan google-services.json belum ada): $error',
         );
+      }
+      // Surface ke Crashlytics — sebelumnya silent swallow, jadi kalau
+      // Firebase init gagal di production (mis. FirebaseApp.configure()
+      // belum di-call di AppDelegate.swift), kita tidak punya visibility.
+      // Now: every init failure recorded di Crashlytics dashboard dengan
+      // stack trace lengkap untuk diagnose.
+      try {
+        await FirebaseCrashlytics.instance.recordError(
+          error,
+          stack,
+          reason: 'pushNotificationService.initialize() failed',
+          fatal: false,
+        );
+      } catch (_) {
+        // Crashlytics belum init (kalau Firebase iOS SDK gak boot sama
+        // sekali) — fallback silent. Init di main.dart panggil
+        // AppCrashlytics.initialize() AFTER pushNotificationService, jadi
+        // mungkin race condition di first launch.
       }
       _initialized = true;
       // Silent fail — push notif tidak available, tapi app tetap jalan.
