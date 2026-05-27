@@ -63,6 +63,12 @@ export async function GET(
         kind: { in: VISIBLE_KINDS },
         status: "ACTIVE",
         deletedAt: null,
+        // Mirror reels feed filter (lib/feed/queries.ts) — skip video yang
+        // masih encoding di Bunny Stream. Tanpa filter ini: video baru
+        // tampil dengan videoUrl=null + thumbnail saja → Flutter player
+        // gagal load → "Video belum bisa diputar". Legacy UploadThing post
+        // default 'ready' jadi tetap surface.
+        encodingStatus: "ready",
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: limit + 1,
@@ -109,13 +115,16 @@ export async function GET(
         },
       },
     }),
-    // Total post count untuk header stats.
+    // Total post count untuk header stats. Konsisten dengan findMany —
+    // post yang masih encoding tidak ikut count (kalau ikut, header
+    // tampil "5 Postingan" tapi grid cuma show 4 → bingung user).
     prisma.feedPost.count({
       where: {
         authorId: target.id,
         kind: { in: VISIBLE_KINDS },
         status: "ACTIVE",
         deletedAt: null,
+        encodingStatus: "ready",
       },
     }),
     // Liked count — total likes yang user ini kasih ke feed posts.
