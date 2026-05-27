@@ -1,11 +1,13 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../models/feed_post.dart';
 import '../models/my_feed_post.dart';
 import '../models/public_profile.dart';
 import '../services/api_client.dart';
 import '../services/follow_service.dart';
 import '../services/profile_service.dart';
+import '../state/feed_store.dart';
 import '../utils/haptics.dart';
 import 'member_post_detail_screen.dart';
 import 'public_profile_follow_list_screen.dart';
@@ -76,10 +78,20 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       _errorText = null;
       _notFound = false;
     });
+    // Capture sebelum await — stale-write guard. Kalau user tap like di
+    // tile saat fetch jalan, store skip overwrite interaction fields.
+    final fetchedAt = DateTime.now();
     try {
       final result =
           await profileService.fetchPublicProfile(username: widget.username);
       if (!mounted) return;
+      // Seed FeedStore — supaya kalau user tap tile masuk Detail dan like
+      // dari sana, post di store ke-update + grid bisa observe (kalau
+      // suatu saat grid tile tampilkan likeCount visible).
+      feedStore.mergeFromServer(
+        result.posts.map(feedPostFromMyFeedPost),
+        fetchedAt: fetchedAt,
+      );
       setState(() {
         _profile = result.profile;
         _posts = result.posts;
@@ -107,12 +119,17 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   Future<void> _loadMore() async {
     if (_nextCursor == null) return;
     setState(() => _loadingMore = true);
+    final fetchedAt = DateTime.now();
     try {
       final result = await profileService.fetchPublicProfile(
         username: widget.username,
         cursor: _nextCursor,
       );
       if (!mounted) return;
+      feedStore.mergeFromServer(
+        result.posts.map(feedPostFromMyFeedPost),
+        fetchedAt: fetchedAt,
+      );
       setState(() {
         _posts = [..._posts, ...result.posts];
         _nextCursor = result.nextCursor;

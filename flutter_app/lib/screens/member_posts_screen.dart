@@ -7,8 +7,10 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 
+import '../models/feed_post.dart';
 import '../models/my_feed_post.dart';
 import '../services/feed_service.dart';
+import '../state/feed_store.dart';
 import '../state/member_store.dart';
 import '../utils/haptics.dart';
 import '../widgets/feed_upload_sheet.dart';
@@ -90,9 +92,18 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
       _initialLoadDone = false;
       _nextCursor = null;
     });
+    final fetchedAt = DateTime.now();
     try {
       final page = await feedService.fetchMyPosts(filter: 'all');
       if (!mounted) return;
+      // Seed FeedStore — supaya cross-screen sync (Reels → grid count
+      // refresh, Detail → grid count refresh) kalau di masa depan grid
+      // tile expose count. Sekaligus protect dari stale overwrite via
+      // fetchedAt.
+      feedStore.mergeFromServer(
+        page.items.map(feedPostFromMyFeedPost),
+        fetchedAt: fetchedAt,
+      );
       setState(() {
         _allPosts = page.items;
         _nextCursor = page.nextCursor;
@@ -124,12 +135,17 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
   Future<void> _loadMore() async {
     if (_loadingMore || _nextCursor == null) return;
     setState(() => _loadingMore = true);
+    final fetchedAt = DateTime.now();
     try {
       final page = await feedService.fetchMyPosts(
         filter: 'all',
         cursor: _nextCursor,
       );
       if (!mounted) return;
+      feedStore.mergeFromServer(
+        page.items.map(feedPostFromMyFeedPost),
+        fetchedAt: fetchedAt,
+      );
       setState(() {
         // Append + dedupe by id (defensive: backend cursor pattern
         // sudah skip:1 tapi tetap guard kalau ada race condition).

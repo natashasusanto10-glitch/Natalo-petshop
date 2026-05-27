@@ -5,6 +5,7 @@ import 'package:shimmer/shimmer.dart';
 import '../models/my_feed_post.dart';
 import '../services/api_client.dart';
 import '../services/feed_service.dart';
+import '../state/feed_store.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
@@ -59,6 +60,17 @@ class _MemberPostEditScreenState extends State<MemberPostEditScreen> {
       );
       if (!mounted) return;
       final wasActive = widget.post.statusInfo == MyFeedPostStatus.active;
+      // Sync ke FeedStore — semua screen lain (Reels, grid Postingan Saya,
+      // Detail) yang baca caption/status post ini ikut update. Status
+      // backend reset ke PENDING_REVIEW kalau wasActive (re-review).
+      final existing = feedStore.get(widget.post.id);
+      if (existing != null) {
+        feedStore.applyPostUpdate(existing.copyWith(
+          caption: caption.isEmpty ? null : caption,
+          description: caption.isEmpty ? '' : caption,
+          status: wasActive ? 'PENDING_REVIEW' : existing.status,
+        ));
+      }
       AppToast.show(
         context,
         wasActive

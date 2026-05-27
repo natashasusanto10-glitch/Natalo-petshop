@@ -3,9 +3,11 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../models/feed_post.dart';
 import '../models/my_feed_post.dart';
 import '../services/api_client.dart';
 import '../services/feed_service.dart';
+import '../state/feed_store.dart';
 import '../state/member_store.dart';
 import '../utils/haptics.dart';
 import '../widgets/app_notification_button.dart';
@@ -129,6 +131,7 @@ class _ProfilePageState extends State<_ProfilePage>
       _loadingPosts = true;
       _postsError = null;
     });
+    final fetchedAt = DateTime.now();
     try {
       final results = await Future.wait<dynamic>([
         feedService.fetchMyPosts(filter: 'all'),
@@ -141,6 +144,12 @@ class _ProfilePageState extends State<_ProfilePage>
       // via len(items) untuk preview, atau ambil dari totalCount kalau
       // butuh exact (future enhancement).
       final page = results[0] as MyFeedPostPage;
+      // Seed FeedStore — cross-screen sync (Reels/Detail toggle ke-reflect
+      // di Postingan Saya preview kalau di masa depan tile tampil count).
+      feedStore.mergeFromServer(
+        page.items.map(feedPostFromMyFeedPost),
+        fetchedAt: fetchedAt,
+      );
       setState(() {
         _allPosts = page.items;
         _likedPostsCount = results[1] as int;
