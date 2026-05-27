@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -279,8 +280,17 @@ class _NotificationPreferencesScreenState
               ),
             ),
           ),
-          const SizedBox(height: 24),
-          const _PushDiagnosticPanel(),
+          // Diagnostik panel — DEBUG BUILD ONLY. Production user tidak
+          // perlu lihat raw FCM token / tombol Daftar Ulang / Test push
+          // (debugging tool internal, bukan fitur user). `kDebugMode`
+          // di-strip oleh tree-shaker saat release, jadi zero overhead
+          // untuk APK yang dipublish. Untuk debug remote di lapangan,
+          // build APK debug dengan `flutter build apk --debug` lalu kirim
+          // ke device target.
+          if (kDebugMode) ...[
+            const SizedBox(height: 24),
+            const _PushDiagnosticPanel(),
+          ],
         ],
       ),
     );
