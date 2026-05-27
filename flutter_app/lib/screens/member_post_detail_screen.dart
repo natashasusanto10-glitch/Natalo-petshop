@@ -199,6 +199,12 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
     // widget.authorName non-null → respect itu, fallback baru ke memberStore.
     final override = widget.authorName?.trim();
     if (override != null && override.isNotEmpty) return override;
+    // CRITICAL: !isOwner = viewing post user lain. JANGAN fallback ke
+    // memberStore.profile.name — itu nama VIEWER, bukan author. Privacy
+    // leak + identity confusion (lihat bug "Halaman user lain profile
+    // picture juga bug" — user srimulyanta br manik tanpa foto, tapi
+    // muncul foto viewer karena fallback ini).
+    if (!widget.isOwner) return 'Pengguna';
     final name = memberStore.profile?.name.trim();
     return name == null || name.isEmpty ? 'Member Natalo' : name;
   }
@@ -206,6 +212,12 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
   String get _memberInitial {
     final override = widget.authorInitial?.trim();
     if (override != null && override.isNotEmpty) return override;
+    if (!widget.isOwner) {
+      // Non-owner: derive dari nama author, BUKAN dari memberStore
+      // (yang isinya viewer).
+      final nm = _memberName;
+      return nm.isEmpty ? '?' : nm.substring(0, 1).toUpperCase();
+    }
     final fromStore = memberStore.profile?.initial.trim();
     if (fromStore != null && fromStore.isNotEmpty) return fromStore;
     final nm = _memberName;
@@ -215,6 +227,9 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
   String? get _memberPhotoUrl {
     final override = widget.authorPhotoUrl?.trim();
     if (override != null && override.isNotEmpty) return override;
+    // Non-owner + author belum upload foto profil → return null supaya
+    // initial-letter avatar yang render, BUKAN foto viewer.
+    if (!widget.isOwner) return null;
     return memberStore.profile?.profilePhotoUrl;
   }
 
