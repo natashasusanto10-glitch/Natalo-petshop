@@ -241,6 +241,23 @@ class PushNotificationService {
   /// `messaging.getAPNSToken()` return raw 64-char hex APNs device token.
   /// Android: getAPNSToken() return null (no-op silently).
   Future<void> registerWithServer() async {
+    // DIAGNOSTIC ping ke backend supaya bisa verify di Vercel logs apakah
+    // function ini bener-bener ke-call. Hapus setelah debug push iOS done.
+    // /api/log-error endpoint always return 200, no auth required.
+    try {
+      await apiClient.postJson('/api/log-error', body: {
+        'source': 'registerWithServer-entry',
+        'message': '[diag] registerWithServer called',
+        'context': {
+          'platform': Platform.isIOS ? 'ios' : (Platform.isAndroid ? 'android' : 'other'),
+          'hasCurrentToken': (_currentToken != null && _currentToken!.isNotEmpty),
+          'initialized': _initialized,
+        },
+      });
+    } catch (_) {
+      // Network error / auth issue — silent, gak block flow utama
+    }
+
     // Refactor: HAPUS early-return kalau _currentToken null. APNs token
     // registration adalah independent channel — bisa jalan walaupun FCM
     // token belum ready (jarang terjadi tapi mungkin di iOS fresh install
