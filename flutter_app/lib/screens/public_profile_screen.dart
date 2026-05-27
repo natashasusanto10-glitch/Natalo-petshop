@@ -143,11 +143,25 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
 
   void _openPost(int index) {
     if (index < 0 || index >= _posts.length) return;
+    final profile = _profile;
     AppHaptics.tap();
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => MemberPostDetailScreen(post: _posts[index]),
+        // IG-style: bukan single-post screen, tapi vertical-scroll feed
+        // dari SEMUA posts user — initial scrolled ke tile yang di-tap.
+        // Author header pakai data dari PublicProfile (bukan memberStore,
+        // karena viewer != author). isOwner: false → sembunyikan menu
+        // edit/delete (cuma owner di "Postingan Saya" yang lihat itu).
+        builder: (_) => MemberPostDetailScreen(
+          post: _posts[index],
+          posts: _posts,
+          initialIndex: index,
+          authorName: profile?.name,
+          authorPhotoUrl: profile?.profilePhotoUrl,
+          authorInitial: profile?.initial,
+          isOwner: profile?.isOwner ?? false,
+        ),
       ),
     );
   }

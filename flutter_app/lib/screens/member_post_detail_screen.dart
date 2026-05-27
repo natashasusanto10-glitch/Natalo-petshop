@@ -43,11 +43,29 @@ class MemberPostDetailScreen extends StatefulWidget {
   final List<MyFeedPost>? posts;
   final int initialIndex;
 
+  /// Override author header info — dipakai saat screen ini di-open dari
+  /// public profile orang lain (`/u/{username}`), bukan dari "Postingan
+  /// Saya". Kalau null, fallback ke memberStore.profile (asumsi viewer
+  /// adalah author = original behavior untuk "Postingan Saya").
+  final String? authorName;
+  final String? authorPhotoUrl;
+  final String? authorInitial;
+
+  /// Owner mode flag. True (default) untuk "Postingan Saya" — show
+  /// Edit/Delete menu di "...". False saat view post user lain — sembunyikan
+  /// menu owner-only (edit caption + hapus), supaya tidak ada aksi destructive
+  /// yang bocor ke viewer non-owner.
+  final bool isOwner;
+
   const MemberPostDetailScreen({
     super.key,
     required this.post,
     this.posts,
     this.initialIndex = 0,
+    this.authorName,
+    this.authorPhotoUrl,
+    this.authorInitial,
+    this.isOwner = true,
   });
 
   @override
@@ -143,8 +161,27 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
   }
 
   String get _memberName {
+    // Override path: viewing another user's post via public profile.
+    // widget.authorName non-null → respect itu, fallback baru ke memberStore.
+    final override = widget.authorName?.trim();
+    if (override != null && override.isNotEmpty) return override;
     final name = memberStore.profile?.name.trim();
     return name == null || name.isEmpty ? 'Member Natalo' : name;
+  }
+
+  String get _memberInitial {
+    final override = widget.authorInitial?.trim();
+    if (override != null && override.isNotEmpty) return override;
+    final fromStore = memberStore.profile?.initial.trim();
+    if (fromStore != null && fromStore.isNotEmpty) return fromStore;
+    final nm = _memberName;
+    return nm.isEmpty ? 'N' : nm.substring(0, 1).toUpperCase();
+  }
+
+  String? get _memberPhotoUrl {
+    final override = widget.authorPhotoUrl?.trim();
+    if (override != null && override.isNotEmpty) return override;
+    return memberStore.profile?.profilePhotoUrl;
   }
 
   Future<void> _toggleLike(int index) async {
@@ -214,7 +251,6 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
   Future<void> _openComments(int index) async {
     AppHaptics.tap();
     final post = _posts[index];
-    final profile = memberStore.profile;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -224,10 +260,11 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
       ),
       builder: (_) => _MyPostCommentSheet(
         post: post,
-        // Author info — di my-posts viewer = author = self,
-        // jadi pakai memberStore.profile sebagai source.
+        // Author info — pakai resolver yang sudah respect override
+        // dari public profile (widget.authorName / authorPhotoUrl).
+        // Owner viewing own post → fallback ke memberStore.
         authorName: _memberName,
-        authorAvatarUrl: profile?.profilePhotoUrl,
+        authorAvatarUrl: _memberPhotoUrl,
       ),
     );
   }
@@ -334,7 +371,6 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final profile = memberStore.profile;
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -412,13 +448,18 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
                   key: _postKeys[index],
                   post: post,
                   memberName: _memberName,
-                  memberInitial: profile?.initial ?? 'N',
-                  memberPhotoUrl: profile?.profilePhotoUrl,
+                  memberInitial: _memberInitial,
+                  memberPhotoUrl: _memberPhotoUrl,
                   liked: _likedCache[post.id] ?? false,
+                  // Hide ... menu ketika viewing post user lain — tidak ada
+                  // edit/delete option untuk non-owner. (Bisa ekspansi nanti
+                  // ke Report/Block via tombol terpisah kalau perlu.)
+                  showMenu: widget.isOwner,
                   onLike: () => _toggleLike(index),
                   onComment: () => _openComments(index),
                   onShare: () => _shareNative(index),
-                  onMenuTap: () => _openPostMenu(index),
+                  onMenuTap:
+                      widget.isOwner ? () => _openPostMenu(index) : null,
                 );
               },
             ),
@@ -489,10 +530,13 @@ class _PostFeedItem extends StatefulWidget {
   final String memberInitial;
   final String? memberPhotoUrl;
   final bool liked;
+  final bool showMenu;
   final VoidCallback onLike;
   final VoidCallback onComment;
   final VoidCallback onShare;
-  final VoidCallback onMenuTap;
+  // Nullable — null ketika viewing post user lain (showMenu = false).
+  // Author row builder cek null untuk decide render trailing menu icon.
+  final VoidCallback? onMenuTap;
 
   const _PostFeedItem({
     super.key,
@@ -501,6 +545,7 @@ class _PostFeedItem extends StatefulWidget {
     required this.memberInitial,
     required this.memberPhotoUrl,
     required this.liked,
+    this.showMenu = true,
     required this.onLike,
     required this.onComment,
     required this.onShare,
@@ -794,7 +839,8 @@ class _PostAuthorRow extends StatelessWidget {
   final String memberName;
   final String memberInitial;
   final String? memberPhotoUrl;
-  final VoidCallback onMenuTap;
+  // Nullable — non-owner viewer tidak punya menu actions di sini.
+  final VoidCallback? onMenuTap;
 
   const _PostAuthorRow({
     required this.memberName,
@@ -830,14 +876,17 @@ class _PostAuthorRow extends StatelessWidget {
               ),
             ),
           ),
-          IconButton(
-            onPressed: onMenuTap,
-            visualDensity: VisualDensity.compact,
-            icon: const Icon(
-              Icons.more_horiz_rounded,
-              color: NataloColors.textPrimary,
-            ),
-          ),
+          if (onMenuTap != null)
+            IconButton(
+              onPressed: onMenuTap,
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(
+                Icons.more_horiz_rounded,
+                color: NataloColors.textPrimary,
+              ),
+            )
+          else
+            const SizedBox(width: 8),
         ],
       ),
     );
@@ -848,7 +897,8 @@ class _VideoPostAuthorOverlay extends StatelessWidget {
   final String memberName;
   final String memberInitial;
   final String? memberPhotoUrl;
-  final VoidCallback onMenuTap;
+  // Nullable — non-owner viewer tidak punya menu actions di sini.
+  final VoidCallback? onMenuTap;
 
   const _VideoPostAuthorOverlay({
     required this.memberName,
@@ -898,17 +948,20 @@ class _VideoPostAuthorOverlay extends StatelessWidget {
                 ),
               ),
             ),
-            IconButton(
-              onPressed: onMenuTap,
-              visualDensity: VisualDensity.compact,
-              icon: const Icon(
-                Icons.more_horiz_rounded,
-                color: Colors.white,
-                shadows: [
-                  Shadow(color: Colors.black54, blurRadius: 10),
-                ],
-              ),
-            ),
+            if (onMenuTap != null)
+              IconButton(
+                onPressed: onMenuTap,
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(
+                  Icons.more_horiz_rounded,
+                  color: Colors.white,
+                  shadows: [
+                    Shadow(color: Colors.black54, blurRadius: 10),
+                  ],
+                ),
+              )
+            else
+              const SizedBox(width: 8),
           ],
         ),
       ),
