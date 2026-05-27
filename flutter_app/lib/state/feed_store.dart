@@ -198,7 +198,16 @@ class FeedStore extends ChangeNotifier {
   Future<FeedLikeResult> toggleLike(String postId) async {
     final oldPost = _byId[postId];
     if (oldPost == null) {
-      throw StateError('toggleLike: post $postId not in store');
+      // Defensive: post not in store (e.g. caller lupa seed, atau post
+      // sudah ke-remove via concurrent action). Fallback: panggil API
+      // langsung dengan currentlyLiked=false (safer default — server
+      // toggle berdasar DB state, bukan trust client param). Hasil tidak
+      // di-cache karena no anchor post; caller bertanggung jawab handle.
+      try {
+        return await feedService.toggleLike(postId, currentlyLiked: false);
+      } catch (e) {
+        rethrow;
+      }
     }
     if (_likeInFlight.contains(postId)) {
       // Already toggling — return current state. Caller bisa abaikan.

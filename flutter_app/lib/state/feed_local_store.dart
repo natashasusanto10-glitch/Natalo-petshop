@@ -27,7 +27,13 @@ class FeedLocalStore extends ChangeNotifier {
   FeedLocalStore._();
 
   static const _likedKey = 'feed_liked_v1';
-  static const _cacheKey = 'feed_offline_cache_v1';
+  // v2: schema FeedPost berubah (rename media→mediaItems, tambah status,
+  // rejectionReason, approvedAt, recentLikers). Bump key supaya client
+  // lama drop cache v1 dan re-fetch dari backend. Tanpa bump, FeedPost.
+  // fromJson tetap parse cache lama tapi field baru kosong → grid degraded.
+  static const _cacheKey = 'feed_offline_cache_v2';
+  // Old key tetap di-reference untuk one-time cleanup (lihat initialize).
+  static const _legacyCacheKey = 'feed_offline_cache_v1';
   static const _maxLikedEntries = 500;
   static const _maxCacheEntries = 10;
 
@@ -60,6 +66,11 @@ class FeedLocalStore extends ChangeNotifier {
           );
         }
       }
+
+      // One-time cleanup: hapus key cache lama (v1) — schema migrate ke v2.
+      // Idempotent: kalau key tidak ada, NoOp. Fire-and-forget, gagal pun OK.
+      // ignore: unawaited_futures
+      prefs.remove(_legacyCacheKey);
 
       // Load offline cache.
       final rawCache = prefs.getString(_cacheKey);
@@ -163,10 +174,11 @@ class FeedLocalStore extends ChangeNotifier {
     notifyListeners();
     try {
       final prefs = await SharedPreferences.getInstance();
-      // Serialize using a minimal fromJson-compatible map. Kita reuse
-      // field names yang sama dengan FeedPost.fromJson — tidak ada
-      // FeedPost.toJson, jadi build manual.
-      final list = capped.map(_postToJson).toList();
+      // Pakai canonical FeedPost.toJson — single source of truth supaya
+      // shape tidak drift dengan fromJson. Sebelumnya ada _postToJson
+      // helper yang manual dan ketinggalan field (mediaItems, status,
+      // recentLikers, dll) → cache lama load jadi partial.
+      final list = capped.map((p) => p.toJson()).toList();
       await prefs.setString(_cacheKey, jsonEncode(list));
     } catch (e) {
       if (kDebugMode) debugPrint('[feedLocalStore.cachePosts] $e');
@@ -180,45 +192,9 @@ class FeedLocalStore extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_cacheKey);
+      // Juga clear legacy key supaya storage clean.
+      await prefs.remove(_legacyCacheKey);
     } catch (_) {}
-  }
-
-  /// Serialize FeedPost ke shape yang compatible dengan
-  /// FeedPost.fromJson. Hanya field core, no products (post detail
-  /// sheet akan fetch fresh).
-  Map<String, dynamic> _postToJson(FeedPost post) {
-    return {
-      'id': post.id,
-      'slug': post.slug,
-      'title': post.title,
-      'description': post.description,
-      'caption': post.caption,
-      'videoUrl': post.videoUrl,
-      'thumbnailUrl': post.thumbnailUrl,
-      'thumbnailBlurhash': post.thumbnailBlurhash,
-      'durationSec': post.durationSec,
-      'aspectRatio': post.aspectRatio,
-      'videoWidth': post.videoWidth,
-      'videoHeight': post.videoHeight,
-      'kind': post.kind,
-      'author': {
-        'id': post.author.id,
-        'name': post.author.name,
-        'username': post.author.username,
-        'avatarUrl': post.author.avatarUrl,
-        'profilePhotoUrl': post.author.profilePhotoUrl,
-        'role': post.author.role,
-        'isAdmin': post.author.isAdmin,
-        'isOfficial': post.author.isOfficial,
-      },
-      'likeCount': post.likeCount,
-      'commentCount': post.commentCount,
-      'viewCount': post.viewCount,
-      'shareCount': post.shareCount,
-      'viewerLiked': post.viewerLiked || post.isLiked,
-      'isLiked': post.isLiked,
-      'createdAt': post.createdAt.toIso8601String(),
-    };
   }
 
   // ──────────── Viewed (session-scoped) ────────────
