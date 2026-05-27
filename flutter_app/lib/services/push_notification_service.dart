@@ -72,7 +72,17 @@ class PushNotificationService {
 
   /// Initialize Firebase + register token handlers. Idempotent.
   /// Call ini di main() setelah memberStore + cartStore di-init.
-  Future<void> initialize(GlobalKey<NavigatorState> navigatorKey) async {
+  ///
+  /// `isLoggedIn` callback (optional) di-evaluate AFTER Firebase init
+  /// success — kalau return true, langsung fire registerWithServer().
+  /// Catches auto-login case: user reinstall app, session persist dari
+  /// disk, gak ada explicit login event → tanpa callback ini token
+  /// gak akan ke-register sampai user logout-login. Dengan callback,
+  /// cold start dengan saved session auto-trigger registration.
+  Future<void> initialize(
+    GlobalKey<NavigatorState> navigatorKey, {
+    bool Function()? isLoggedIn,
+  }) async {
     if (_initialized) return;
     _navigatorKey = navigatorKey;
     try {
@@ -144,6 +154,17 @@ class PushNotificationService {
       FirebaseMessaging.onMessageOpenedApp.listen(_handleMessage);
 
       _initialized = true;
+
+      // Cold start auto-registration. Saat user reinstall app dengan
+      // session persist (auto-login dari saved cookie), gak ada explicit
+      // login event yang fire registerWithServer. Tanpa hook ini, token
+      // gak akan ke-register ke backend sampai user logout-login manual.
+      //
+      // Check isLoggedIn callback (passed dari main.dart) — kalau true,
+      // langsung register. Fire-and-forget supaya gak block init.
+      if (isLoggedIn?.call() == true) {
+        registerWithServer();
+      }
     } catch (error, stack) {
       if (kDebugMode) {
         debugPrint(
@@ -199,8 +220,23 @@ class PushNotificationService {
     // Allow backend untuk bypass Firebase saat investigate "FCM ok tapi
     // device gak terima". Skip kalau bukan iOS atau APNs token gak
     // tersedia (no permission / not yet registered).
+    //
+    // RETRY LOGIC: getAPNSToken() bisa return null di first call kalau
+    // iOS belum kasih APNs token (timing race — iOS registerForRemote
+    // Notifications async, kadang butuh 1-2 detik untuk Apple respond).
+    // Retry up to 3× dengan exponential backoff 500ms/1s/2s sebelum give
+    // up. Pattern ini necessary untuk fresh install scenario dimana
+    // registerWithServer dipanggil immediately setelah login, sebelum
+    // iOS sempat round-trip ke APNs.
     try {
-      final apnsToken = await FirebaseMessaging.instance.getAPNSToken();
+      String? apnsToken;
+      for (var attempt = 0; attempt < 3; attempt++) {
+        apnsToken = await FirebaseMessaging.instance.getAPNSToken();
+        if (apnsToken != null && apnsToken.isNotEmpty) break;
+        // Backoff: 500ms, 1000ms, 2000ms (gak fire after attempt #3 karena
+        // loop exit). Total max wait ~3.5s sebelum kasih up.
+        await Future.delayed(Duration(milliseconds: 500 << attempt));
+      }
       if (apnsToken != null && apnsToken.isNotEmpty) {
         await apiClient.postJson(
           '/api/push/subscribe-apns',
@@ -209,6 +245,8 @@ class PushNotificationService {
         if (kDebugMode) {
           debugPrint('[push] APNs token registered: ${apnsToken.substring(0, 16)}...');
         }
+      } else if (kDebugMode) {
+        debugPrint('[push] APNs token still null after 3 retries — iOS belum register dengan Apple atau permission denied');
       }
     } catch (error) {
       if (kDebugMode) {

@@ -163,14 +163,36 @@ Future<void> main() async {
   deepLinkService.initialize(rootNavigatorKey);
   // Register launcher quick actions (long-press app icon → shortcut).
   AppQuickActions.initialize(rootNavigatorKey);
-  // Initialize FCM push notification — gracefully no-op kalau Firebase
-  // belum di-setup (lihat FIREBASE_SETUP.md).
-  pushNotificationService.initialize(rootNavigatorKey);
   // Initialize Crashlytics — auto-report crashes. Aman dipanggil sebelum
   // ada user (setUserId akan di-call nanti saat login). Hook
   // FlutterError.onError + PlatformDispatcher.onError untuk capture
   // semua jenis error.
+  //
+  // CRITICAL: Crashlytics WAJIB init SEBELUM pushNotificationService.
+  // Sebelumnya order kebalik → kalau push init throw (Firebase iOS SDK
+  // gagal boot), recordError() di push catch block silently fail karena
+  // Crashlytics belum init. Kita lose visibility ke error yang exact.
   AppCrashlytics.initialize();
+  // Initialize FCM push notification — gracefully no-op kalau Firebase
+  // belum di-setup (lihat FIREBASE_SETUP.md). Pass isLoggedIn callback
+  // supaya push service bisa auto-register token saat cold start kalau
+  // user sudah punya session persist (auto-login case yang sebelumnya
+  // miss registerWithServer karena gak ada explicit login event).
+  pushNotificationService.initialize(
+    rootNavigatorKey,
+    isLoggedIn: () => memberStore.isLoggedIn,
+  );
+  // Listen memberStore — fire registerWithServer setiap profile berubah
+  // dari null → non-null (login event OR initial profile load dari disk
+  // async). Idempotent: backend upsert, multiple calls aman. Catches
+  // race condition dimana memberStore.initialize() async load profile
+  // dari disk SETELAH initialize call selesai (listener nangkep yang
+  // initialize() body miss karena isLoggedIn masih false saat itu).
+  memberStore.addListener(() {
+    if (memberStore.isLoggedIn) {
+      pushNotificationService.registerWithServer();
+    }
+  });
   // Initialize Analytics — track funnel events di release build, no-op
   // di debug supaya dashboard tidak polluted dengan dev data.
   AppAnalytics.initialize();
