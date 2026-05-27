@@ -241,38 +241,72 @@ class PushNotificationService {
   /// `messaging.getAPNSToken()` return raw 64-char hex APNs device token.
   /// Android: getAPNSToken() return null (no-op silently).
   Future<void> registerWithServer() async {
-    final token = _currentToken;
-    if (token == null || token.isEmpty) return;
-    try {
-      await apiClient.postJson(
-        '/api/push/subscribe-fcm',
-        body: {'token': token},
-      );
-    } catch (error) {
-      if (kDebugMode) {
-        debugPrint('[push] Register FCM token failed: $error');
+    // Refactor: HAPUS early-return kalau _currentToken null. APNs token
+    // registration adalah independent channel — bisa jalan walaupun FCM
+    // token belum ready (jarang terjadi tapi mungkin di iOS fresh install
+    // timing race). Sebelumnya design-nya `if FCM null return` yang skip
+    // APNs juga = lose redundancy.
+
+    // FCM token registration — retry inline kalau _currentToken null.
+    // Bisa terjadi kalau registerWithServer dipanggil sebelum initialize()
+    // selesai retry getToken di iOS.
+    String? fcmToken = _currentToken;
+    if (fcmToken == null || fcmToken.isEmpty) {
+      // Inline retry sekali — kalau initialize() retry udah ngambil,
+      // _currentToken seharusnya udah set. Kalau masih null, attempt
+      // fresh getToken() dengan retry.
+      for (var attempt = 0; attempt < 3; attempt++) {
+        try {
+          fcmToken = await FirebaseMessaging.instance.getToken();
+          if (fcmToken != null && fcmToken.isNotEmpty) {
+            _currentToken = fcmToken;
+            break;
+          }
+        } catch (e) {
+          if (kDebugMode) debugPrint('[push] getToken retry $attempt failed: $e');
+        }
+        await Future.delayed(Duration(milliseconds: 500 << attempt));
       }
     }
 
+    if (fcmToken != null && fcmToken.isNotEmpty) {
+      try {
+        await apiClient.postJson(
+          '/api/push/subscribe-fcm',
+          body: {'token': fcmToken},
+        );
+        if (kDebugMode) {
+          debugPrint('[push] FCM token registered: ${fcmToken.substring(0, 16)}...');
+        }
+      } catch (error) {
+        if (kDebugMode) {
+          debugPrint('[push] Register FCM token failed: $error');
+        }
+      }
+    } else {
+      // Log explicit visibility kalau FCM token bener-bener gak tersedia.
+      // Crashlytics akan capture supaya kita lihat di dashboard.
+      if (kDebugMode) {
+        debugPrint('[push] FCM token unavailable after retry — skip subscribe-fcm');
+      }
+      try {
+        await FirebaseCrashlytics.instance.recordError(
+          Exception('FCM token null after retry — getToken() persistent fail'),
+          StackTrace.current,
+          reason: 'registerWithServer() FCM token unavailable',
+          fatal: false,
+        );
+      } catch (_) {}
+    }
+
     // iOS — register raw APNs token sebagai diagnostic backup channel.
-    // Allow backend untuk bypass Firebase saat investigate "FCM ok tapi
-    // device gak terima". Skip kalau bukan iOS atau APNs token gak
-    // tersedia (no permission / not yet registered).
-    //
-    // RETRY LOGIC: getAPNSToken() bisa return null di first call kalau
-    // iOS belum kasih APNs token (timing race — iOS registerForRemote
-    // Notifications async, kadang butuh 1-2 detik untuk Apple respond).
-    // Retry up to 3× dengan exponential backoff 500ms/1s/2s sebelum give
-    // up. Pattern ini necessary untuk fresh install scenario dimana
-    // registerWithServer dipanggil immediately setelah login, sebelum
-    // iOS sempat round-trip ke APNs.
+    // ALWAYS attempt — independent dari FCM token availability. Retry up
+    // to 3× dengan exponential backoff. Total max wait ~3.5s.
     try {
       String? apnsToken;
       for (var attempt = 0; attempt < 3; attempt++) {
         apnsToken = await FirebaseMessaging.instance.getAPNSToken();
         if (apnsToken != null && apnsToken.isNotEmpty) break;
-        // Backoff: 500ms, 1000ms, 2000ms (gak fire after attempt #3 karena
-        // loop exit). Total max wait ~3.5s sebelum kasih up.
         await Future.delayed(Duration(milliseconds: 500 << attempt));
       }
       if (apnsToken != null && apnsToken.isNotEmpty) {
@@ -283,8 +317,23 @@ class PushNotificationService {
         if (kDebugMode) {
           debugPrint('[push] APNs token registered: ${apnsToken.substring(0, 16)}...');
         }
-      } else if (kDebugMode) {
-        debugPrint('[push] APNs token still null after 3 retries — iOS belum register dengan Apple atau permission denied');
+      } else {
+        // APNs token null — Android case (expected) OR iOS dengan
+        // permission denied / not yet registered.
+        if (kDebugMode) {
+          debugPrint('[push] APNs token unavailable after retry');
+        }
+        // Cuma log ke Crashlytics di iOS karena Android expected null.
+        if (Platform.isIOS) {
+          try {
+            await FirebaseCrashlytics.instance.recordError(
+              Exception('APNs token null after retry on iOS'),
+              StackTrace.current,
+              reason: 'registerWithServer() APNs token unavailable iOS',
+              fatal: false,
+            );
+          } catch (_) {}
+        }
       }
     } catch (error) {
       if (kDebugMode) {
