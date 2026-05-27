@@ -1,10 +1,10 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../models/my_feed_post.dart';
 import '../models/public_profile.dart';
 import '../services/api_client.dart';
+import '../services/follow_service.dart';
 import '../services/profile_service.dart';
 import '../utils/haptics.dart';
 import 'member_post_detail_screen.dart';
@@ -18,11 +18,11 @@ const _borderSoft = Color(0xFFE2E8F0);
 /// Public profile screen — `/u/{username}` deep link target +
 /// destination saat user tap @username di feed/komentar.
 ///
-/// Layout: header (avatar + handle + bio + stats) → tombol Bagikan
+/// Layout: header (avatar + handle + bio + stats) → tombol Follow
 /// (atau Edit Profil kalau owner) → grid 3-kolom postingan public.
 ///
 /// Owner view: tombol "Edit Profil" → /member/profile. Other view:
-/// tombol "Bagikan" → share sheet system dengan URL natalopetshop.com/u/X.
+/// tombol "Follow" / "Mengikuti" via NestJS social service.
 class PublicProfileScreen extends StatefulWidget {
   /// Handle target (raw — server lowercase + validate). Bisa di-set
   /// dari deep link, navigator argument, atau tap @mention nanti.
@@ -40,6 +40,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   String? _nextCursor;
   bool _loading = true;
   bool _loadingMore = false;
+  bool _followBusy = false;
   String? _errorText;
   bool _notFound = false;
 
@@ -124,21 +125,6 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
 
   Future<void> _refresh() async => _load();
 
-  void _share() {
-    AppHaptics.tap();
-    final p = _profile;
-    if (p == null) return;
-    final handle = p.username ?? widget.username.toLowerCase();
-    final url = 'https://natalopetshop.com/u/$handle';
-    // Share text: identity label = bare username (IG pattern, no `@`).
-    // URL path tetap pakai handle apa adanya. `@` cuma untuk mention
-    // di dalam body text.
-    final text = p.bio != null && p.bio!.isNotEmpty
-        ? 'Cek profil $handle di Natalo Petshop\n\n${p.bio}\n\n$url'
-        : 'Cek profil $handle di Natalo Petshop\n\n$url';
-    Share.share(text, subject: '$handle di Natalo Petshop');
-  }
-
   void _openPost(int index) {
     if (index < 0 || index >= _posts.length) return;
     AppHaptics.tap();
@@ -146,6 +132,65 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => MemberPostDetailScreen(post: _posts[index]),
+      ),
+    );
+  }
+
+  Future<void> _toggleFollow() async {
+    final current = _profile;
+    if (current == null || current.isOwner || _followBusy) return;
+    AppHaptics.tap();
+
+    final wasFollowing = current.isFollowing;
+    final optimisticFollowers =
+        current.followersCount + (wasFollowing ? -1 : 1);
+    setState(() {
+      _followBusy = true;
+      _profile = current.copyWith(
+        isFollowing: !wasFollowing,
+        followersCount: optimisticFollowers < 0 ? 0 : optimisticFollowers,
+      );
+    });
+
+    try {
+      final state = wasFollowing
+          ? await followService.unfollow(current.id)
+          : await followService.follow(current.id);
+      if (!mounted) return;
+      setState(() {
+        _followBusy = false;
+        _profile = (_profile ?? current).copyWith(
+          isFollowing: state.isFollowing,
+          followersCount: state.followersCount,
+          followingCount: state.followingCount,
+        );
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _followBusy = false;
+        _profile = current;
+      });
+      if (e.isUnauthorized) {
+        Navigator.pushNamed(context, '/member/login');
+      } else {
+        _showSnack(e.message);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _followBusy = false;
+        _profile = current;
+      });
+      _showSnack('Gagal memproses follow. Coba lagi.');
+    }
+  }
+
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
@@ -206,7 +251,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           SliverToBoxAdapter(
             child: _Header(
               profile: profile,
-              onShare: _share,
+              followBusy: _followBusy,
+              onFollowToggle: profile.isOwner ? null : _toggleFollow,
               onEditProfile: profile.isOwner
                   ? () => Navigator.pushNamed(context, '/member/profile')
                   : null,
@@ -267,12 +313,14 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
 
 class _Header extends StatelessWidget {
   final PublicProfile profile;
-  final VoidCallback onShare;
+  final bool followBusy;
+  final VoidCallback? onFollowToggle;
   final VoidCallback? onEditProfile;
 
   const _Header({
     required this.profile,
-    required this.onShare,
+    required this.followBusy,
+    this.onFollowToggle,
     this.onEditProfile,
   });
 
@@ -317,8 +365,12 @@ class _Header extends StatelessWidget {
                           label: 'Postingan',
                         ),
                         _StatColumn(
-                          value: profile.likedCount,
-                          label: 'Disukai',
+                          value: profile.followersCount,
+                          label: 'Pengikut',
+                        ),
+                        _StatColumn(
+                          value: profile.followingCount,
+                          label: 'Mengikuti',
                         ),
                       ],
                     ),
@@ -359,21 +411,55 @@ class _Header extends StatelessWidget {
                     ),
                     child: const Text('Edit Profil'),
                   )
-                : FilledButton(
-                    onPressed: onShare,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: _brandBlue,
-                      foregroundColor: Colors.white,
-                      textStyle: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
+                : profile.isFollowing
+                    ? OutlinedButton(
+                        onPressed: followBusy ? null : onFollowToggle,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: _darkNavy,
+                          side: const BorderSide(color: _borderSoft),
+                          textStyle: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: followBusy
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: _textSecondary,
+                                ),
+                              )
+                            : const Text('Mengikuti'),
+                      )
+                    : FilledButton(
+                        onPressed: followBusy ? null : onFollowToggle,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _brandBlue,
+                          foregroundColor: Colors.white,
+                          textStyle: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: followBusy
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text('Follow'),
                       ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: const Text('Bagikan Profil'),
-                  ),
           ),
         ],
       ),
@@ -435,7 +521,7 @@ class _StatColumn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 92,
+      width: 70,
       child: Column(
         children: [
           Text(

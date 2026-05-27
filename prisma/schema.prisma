@@ -108,6 +108,10 @@ model User {
   /// + placeholder "Tambahkan bio". Dipakai juga di /feed/u/[id] public
   /// profile page (future) dan comment hover di web.
   bio                 String?
+  /// Social graph counters. Maintained by the NestJS social service follow
+  /// transaction. Kept denormalized so profile reads stay cheap.
+  followersCount      Int                  @default(0)
+  followingCount      Int                  @default(0)
   orders              Order[]
   points              CustomerPoint[]
   reviews             Review[]
@@ -137,6 +141,8 @@ model User {
   feedReportsFiled    FeedReport[]         @relation("FeedReporter")
   feedReportsResolved FeedReport[]         @relation("FeedReportResolver")
   feedModerationLogs  FeedModerationLog[]  @relation("FeedModerationActor")
+  following           UserFollow[]         @relation("UserFollowing")
+  followers           UserFollow[]         @relation("UserFollowers")
   usernameHistory     UsernameHistory[]
   adminActionLogs     AdminActionLog[]
   abuseFlags          AbuseFlag[]          @relation("AbuseFlagTarget")
@@ -210,6 +216,21 @@ model UsernameHistory {
   @@index([username])
   @@index([reservedUntil])
   @@index([userId])
+}
+
+/// User-to-user follow graph for the social layer. V1 is public follow only:
+/// no private accounts, no request approval, and no brand/shop follow yet.
+model UserFollow {
+  id          String   @id @default(cuid())
+  followerId  String
+  follower    User     @relation("UserFollowing", fields: [followerId], references: [id], onDelete: Cascade)
+  followingId String
+  following   User     @relation("UserFollowers", fields: [followingId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([followerId, followingId])
+  @@index([followerId, createdAt])
+  @@index([followingId, createdAt])
 }
 
 model CartItem {
