@@ -455,6 +455,8 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
                   // edit/delete option untuk non-owner. (Bisa ekspansi nanti
                   // ke Report/Block via tombol terpisah kalau perlu.)
                   showMenu: widget.isOwner,
+                  // Status badge owner-only (Menunggu review/Ditolak).
+                  showStatusBadge: widget.isOwner,
                   onLike: () => _toggleLike(index),
                   onComment: () => _openComments(index),
                   onShare: () => _shareNative(index),
@@ -531,6 +533,14 @@ class _PostFeedItem extends StatefulWidget {
   final String? memberPhotoUrl;
   final bool liked;
   final bool showMenu;
+  // Status badge (Menunggu review / Ditolak) hanya relevan untuk owner —
+  // bagian dari moderation pipeline pribadi. Saat viewer membuka post user
+  // lain dari public profile, status tidak ditampilkan (mereka cuma lihat
+  // post yang sudah PUBLISHED toh — atau setidaknya yang dianggap public
+  // oleh backend). Bonus: kalau backend tidak mengirim `status` field di
+  // public endpoint, MyFeedPost.fromJson defaultkan ke 'PENDING_REVIEW',
+  // yang bisa salah picu badge. Gate by isOwner mencegah false positive.
+  final bool showStatusBadge;
   final VoidCallback onLike;
   final VoidCallback onComment;
   final VoidCallback onShare;
@@ -546,6 +556,7 @@ class _PostFeedItem extends StatefulWidget {
     required this.memberPhotoUrl,
     required this.liked,
     this.showMenu = true,
+    this.showStatusBadge = true,
     required this.onLike,
     required this.onComment,
     required this.onShare,
@@ -673,8 +684,14 @@ class _PostFeedItemState extends State<_PostFeedItem>
       children: [
         // Status badge (pending / rejected) — di ATAS media supaya jelas
         // tanpa harus scroll. Auto-hide kalau published (clean Instagram-feel).
-        if (post.statusInfo == MyFeedPostStatus.pending ||
-            post.statusInfo == MyFeedPostStatus.rejected) ...[
+        // Hanya ditampilkan untuk owner (showStatusBadge=true) — viewer
+        // dari public profile tidak melihat status moderation post orang
+        // lain. Tanpa gate ini, default status='PENDING_REVIEW' di
+        // MyFeedPost.fromJson bisa kelihatan ke viewer kalau backend
+        // /api/u/{username} tidak set field status di response.
+        if (widget.showStatusBadge &&
+            (post.statusInfo == MyFeedPostStatus.pending ||
+                post.statusInfo == MyFeedPostStatus.rejected)) ...[
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
             child: _PostStatusBadge(post: post),
