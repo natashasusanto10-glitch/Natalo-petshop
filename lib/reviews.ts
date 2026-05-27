@@ -44,11 +44,12 @@ const REVIEW_POINTS_SOURCE_PREFIX = "REVIEW:";
 export function isCompleteReview(input: {
   rating: number;
   content: string | null;
-  imageCount: number;
+  mediaCount: number;
 }): boolean {
   if (input.rating <= 0) return false;
-  if ((input.content?.trim().length ?? 0) < REVIEW_MIN_CONTENT_LENGTH) return false;
-  if (input.imageCount < 1) return false;
+  if ((input.content?.trim().length ?? 0) < REVIEW_MIN_CONTENT_LENGTH)
+    return false;
+  if (input.mediaCount < 1) return false;
   return true;
 }
 
@@ -64,7 +65,7 @@ export function isCompleteReview(input: {
 export async function awardReviewPoints(
   tx: Prisma.TransactionClient,
   reviewId: string,
-  userId: string,
+  userId: string
 ): Promise<boolean> {
   const source = `${REVIEW_POINTS_SOURCE_PREFIX}${reviewId}`;
   const existing = await tx.customerPoint.findFirst({
@@ -92,7 +93,7 @@ export async function awardReviewPoints(
  */
 export async function rollbackReviewPoints(
   tx: Prisma.TransactionClient,
-  reviewId: string,
+  reviewId: string
 ): Promise<number> {
   const source = `${REVIEW_POINTS_SOURCE_PREFIX}${reviewId}`;
   const result = await tx.customerPoint.deleteMany({
@@ -157,6 +158,46 @@ interface CreateReviewInput {
   title?: string | null;
   content?: string | null;
   imageUrls?: string[];
+  media?: ReviewMediaInput[];
+}
+
+type ReviewMediaInput = {
+  mediaType?: string | null;
+  url?: string | null;
+  imageUrl?: string | null;
+  videoUrl?: string | null;
+  thumbnailUrl?: string | null;
+};
+
+function normalizeReviewMedia(input: {
+  imageUrls?: string[];
+  media?: ReviewMediaInput[];
+}) {
+  const media: ReviewMediaInput[] =
+    Array.isArray(input.media) && input.media.length > 0
+      ? input.media
+      : (input.imageUrls ?? []).map((url) => ({ mediaType: "image", url }));
+
+  return media
+    .map((item, position) => {
+      const mediaType = item.mediaType === "video" ? "video" : "image";
+      const url = String(item.url ?? item.imageUrl ?? "").trim();
+      const videoUrl = String(
+        item.videoUrl ?? (mediaType === "video" ? url : "")
+      ).trim();
+      const thumbnailUrl = String(item.thumbnailUrl ?? "").trim();
+      const imageUrl =
+        mediaType === "video" ? thumbnailUrl || url || videoUrl : url;
+      if (!imageUrl) return null;
+      return {
+        imageUrl,
+        mediaType,
+        videoUrl: mediaType === "video" ? videoUrl || url : null,
+        thumbnailUrl: mediaType === "video" ? thumbnailUrl || imageUrl : null,
+        position,
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null);
 }
 
 /**
@@ -172,15 +213,19 @@ export type CreateReviewResult = {
 };
 
 export async function createReview(
-  input: CreateReviewInput,
+  input: CreateReviewInput
 ): Promise<CreateReviewResult> {
   const { userId, orderItemId, rating, title, content, imageUrls = [] } = input;
+  const reviewMedia = normalizeReviewMedia({ imageUrls, media: input.media });
 
   if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
     throw new Error("Rating harus antara 1–5.");
   }
-  if (imageUrls.length > 5) {
-    throw new Error("Maksimal 5 foto per review.");
+  if (reviewMedia.length > 5) {
+    throw new Error("Maksimal 5 media per review.");
+  }
+  if (reviewMedia.filter((item) => item.mediaType === "video").length > 1) {
+    throw new Error("Maksimal 1 video per review.");
   }
 
   return prisma.$transaction(async (tx) => {
@@ -196,14 +241,15 @@ export async function createReview(
     if (orderItem.order.userId !== userId)
       throw new Error("Anda tidak berhak mereview item ini.");
     if (orderItem.order.status !== "DELIVERED")
-      throw new Error("Hanya pesanan yang sudah selesai (Diterima) yang bisa direview.");
+      throw new Error(
+        "Hanya pesanan yang sudah selesai (Diterima) yang bisa direview."
+      );
 
     // Cek tidak ada review aktif (VISIBLE/HIDDEN) untuk item yang sama
     const activeReview = await tx.review.findFirst({
       where: { orderItemId, status: { not: "DELETED" } },
     });
-    if (activeReview)
-      throw new Error("Item ini sudah pernah direview.");
+    if (activeReview) throw new Error("Item ini sudah pernah direview.");
 
     // Buat review + foto
     const review = await tx.review.create({
@@ -217,12 +263,9 @@ export async function createReview(
         title: title?.trim() || null,
         content: content?.trim() || null,
         status: "VISIBLE",
-        images: imageUrls.length
+        images: reviewMedia.length
           ? {
-              create: imageUrls.map((url, i) => ({
-                imageUrl: url,
-                position: i,
-              })),
+              create: reviewMedia,
             }
           : undefined,
       },
@@ -239,7 +282,7 @@ export async function createReview(
       isCompleteReview({
         rating,
         content: content ?? null,
-        imageCount: imageUrls.length,
+        mediaCount: reviewMedia.length,
       })
     ) {
       const awarded = await awardReviewPoints(tx, review.id, userId);
@@ -259,6 +302,7 @@ interface EditReviewInput {
   title?: string | null;
   content?: string | null;
   imageUrls?: string[];
+  media?: ReviewMediaInput[];
 }
 
 export type EditReviewResult = {
@@ -268,16 +312,21 @@ export type EditReviewResult = {
   pointsAwarded: number;
 };
 
-export async function editReview(input: EditReviewInput): Promise<EditReviewResult> {
+export async function editReview(
+  input: EditReviewInput
+): Promise<EditReviewResult> {
   const { reviewId, userId, rating, title, content, imageUrls } = input;
+  const reviewMedia =
+    input.media !== undefined || imageUrls !== undefined
+      ? normalizeReviewMedia({ imageUrls, media: input.media })
+      : undefined;
 
   return prisma.$transaction(async (tx) => {
     const review = await tx.review.findUnique({ where: { id: reviewId } });
     if (!review) throw new Error("Review tidak ditemukan.");
     if (review.userId !== userId)
       throw new Error("Anda tidak berhak mengedit review ini.");
-    if (review.status === "DELETED")
-      throw new Error("Review sudah dihapus.");
+    if (review.status === "DELETED") throw new Error("Review sudah dihapus.");
     if (!canEdit(review))
       throw new Error("Review hanya bisa diedit dalam 30 hari setelah dibuat.");
 
@@ -285,8 +334,14 @@ export async function editReview(input: EditReviewInput): Promise<EditReviewResu
       if (!Number.isInteger(rating) || rating < 1 || rating > 5)
         throw new Error("Rating harus antara 1–5.");
     }
-    if (imageUrls !== undefined && imageUrls.length > 5) {
-      throw new Error("Maksimal 5 foto per review.");
+    if (reviewMedia !== undefined && reviewMedia.length > 5) {
+      throw new Error("Maksimal 5 media per review.");
+    }
+    if (
+      reviewMedia !== undefined &&
+      reviewMedia.filter((item) => item.mediaType === "video").length > 1
+    ) {
+      throw new Error("Maksimal 1 video per review.");
     }
 
     // Update review fields
@@ -299,14 +354,17 @@ export async function editReview(input: EditReviewInput): Promise<EditReviewResu
       },
     });
 
-    // Replace images kalau imageUrls dikirim (full replace)
-    if (imageUrls !== undefined) {
+    // Replace media kalau imageUrls/media dikirim (full replace)
+    if (reviewMedia !== undefined) {
       await tx.reviewImage.deleteMany({ where: { reviewId } });
-      if (imageUrls.length > 0) {
+      if (reviewMedia.length > 0) {
         await tx.reviewImage.createMany({
-          data: imageUrls.map((url, i) => ({
+          data: reviewMedia.map((item, i) => ({
             reviewId,
-            imageUrl: url,
+            imageUrl: item.imageUrl,
+            mediaType: item.mediaType,
+            videoUrl: item.videoUrl,
+            thumbnailUrl: item.thumbnailUrl,
             position: i,
           })),
         });
@@ -328,11 +386,10 @@ export async function editReview(input: EditReviewInput): Promise<EditReviewResu
     //   - content: dari input atau dari existing
     //   - imageCount: dari input length atau dari existing count
     const effectiveRating = rating !== undefined ? rating : review.rating;
-    const effectiveContent =
-      content !== undefined ? content : review.content;
+    const effectiveContent = content !== undefined ? content : review.content;
     let effectiveImageCount: number;
-    if (imageUrls !== undefined) {
-      effectiveImageCount = imageUrls.length;
+    if (reviewMedia !== undefined) {
+      effectiveImageCount = reviewMedia.length;
     } else {
       effectiveImageCount = await tx.reviewImage.count({ where: { reviewId } });
     }
@@ -342,7 +399,7 @@ export async function editReview(input: EditReviewInput): Promise<EditReviewResu
       isCompleteReview({
         rating: effectiveRating,
         content: effectiveContent,
-        imageCount: effectiveImageCount,
+        mediaCount: effectiveImageCount,
       })
     ) {
       const awarded = await awardReviewPoints(tx, reviewId, userId);
@@ -364,7 +421,7 @@ export type DeleteReviewResult = {
 
 export async function softDeleteReview(
   reviewId: string,
-  userId: string,
+  userId: string
 ): Promise<DeleteReviewResult> {
   return prisma.$transaction(async (tx) => {
     const review = await tx.review.findUnique({ where: { id: reviewId } });
@@ -399,8 +456,7 @@ export async function toggleHelpful(reviewId: string, userId: string) {
   return prisma.$transaction(async (tx) => {
     const review = await tx.review.findUnique({ where: { id: reviewId } });
     if (!review) throw new Error("Review tidak ditemukan.");
-    if (review.status !== "VISIBLE")
-      throw new Error("Review tidak tersedia.");
+    if (review.status !== "VISIBLE") throw new Error("Review tidak tersedia.");
 
     const existing = await tx.reviewVote.findUnique({
       where: { reviewId_userId: { reviewId, userId } },

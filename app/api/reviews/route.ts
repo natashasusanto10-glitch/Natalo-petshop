@@ -37,7 +37,8 @@ export async function POST(req: NextRequest) {
   if (!body)
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
 
-  const { productId, orderItemId, rating, title, content, imageUrls } = body;
+  const { productId, orderItemId, rating, title, content, imageUrls, media } =
+    body;
   if (!productId || !orderItemId || !rating) {
     return NextResponse.json(
       { error: "productId, orderItemId, rating wajib diisi" },
@@ -56,6 +57,7 @@ export async function POST(req: NextRequest) {
       title: title ? String(title).slice(0, 120) : null,
       content: content ? String(content).slice(0, 2000) : null,
       imageUrls: Array.isArray(imageUrls) ? imageUrls.map(String) : [],
+      media: Array.isArray(media) ? media : undefined,
     });
 
     // pointsAwarded = 5 kalau review LENGKAP (bintang+desk min 10 char+min 1 foto),
@@ -65,7 +67,7 @@ export async function POST(req: NextRequest) {
         id: result.review.id,
         pointsAwarded: result.pointsAwarded,
       },
-      { status: 201 },
+      { status: 201 }
     );
   } catch (error) {
     return NextResponse.json(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:video_player/video_player.dart';
 
 import '../config/api_config.dart';
 import '../config/natalo_store_config.dart';
@@ -337,6 +338,31 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
+  void _openAllReviews() {
+    AppHaptics.tap();
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => _ProductReviewsScreen(
+          product: product,
+          initialSummary: _reviewSummary,
+          selectedVariant: _selectedVariant,
+          needsVariantSelection: _needsVariantSelection,
+          displayStock: _displayStock,
+          onSelectVariant: () {
+            Navigator.of(context).pop();
+            _openVariantSheet();
+          },
+          onAddToCart: (variant, quantity) {
+            _addToCart(variant: variant, quantity: quantity);
+          },
+          onBuyNow: (variant, quantity) {
+            _buyNow(variant: variant, quantity: quantity);
+          },
+        ),
+      ),
+    );
+  }
+
   Future<void> _loadRelated() async {
     final result = await productService.fetchRecommendations(
       viewedIds: [product.id],
@@ -503,6 +529,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 product: product,
                 summary: _reviewSummary,
                 reviews: _reviewPreview,
+                onViewAll: _openAllReviews,
               ),
             ),
           ),
@@ -2288,11 +2315,13 @@ class _ProductReviewPreviewSection extends StatelessWidget {
   final Product product;
   final ReviewSummary? summary;
   final List<ProductReview> reviews;
+  final VoidCallback onViewAll;
 
   const _ProductReviewPreviewSection({
     required this.product,
     required this.summary,
     required this.reviews,
+    required this.onViewAll,
   });
 
   @override
@@ -2304,16 +2333,16 @@ class _ProductReviewPreviewSection extends StatelessWidget {
     final ratingCount = (ratingCountFromBreakdown ?? 0) > 0
         ? ratingCountFromBreakdown!
         : reviewCount;
-    final photoUrls =
-        reviews.expand((review) => review.images).take(8).toList();
+    final mediaItems =
+        reviews.expand((review) => review.media).take(8).toList();
 
     return _SectionShell(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Expanded(
+              const Expanded(
                 child: Text(
                   'Ulasan pembeli',
                   style: TextStyle(
@@ -2323,15 +2352,31 @@ class _ProductReviewPreviewSection extends StatelessWidget {
                   ),
                 ),
               ),
-              Text(
-                'Lihat Semua',
-                style: TextStyle(
-                  color: _brandBlue,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
+              InkWell(
+                borderRadius: BorderRadius.circular(999),
+                onTap: onViewAll,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Lihat Semua',
+                        style: TextStyle(
+                          color: _brandBlue,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        color: _brandBlue,
+                        size: 22,
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              Icon(Icons.chevron_right_rounded, color: _brandBlue, size: 22),
             ],
           ),
           const SizedBox(height: 12),
@@ -2372,24 +2417,22 @@ class _ProductReviewPreviewSection extends StatelessWidget {
                 fontWeight: FontWeight.w700,
               ),
             ),
-          if (photoUrls.isNotEmpty) ...[
+          if (mediaItems.isNotEmpty) ...[
             const SizedBox(height: 14),
             SizedBox(
               height: 78,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
-                itemCount: photoUrls.length,
+                itemCount: mediaItems.length,
                 separatorBuilder: (_, __) => const SizedBox(width: 10),
                 itemBuilder: (context, index) {
-                  return ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: SizedBox(
-                      width: 78,
-                      height: 78,
-                      child: AppProductImage(
-                        imageUrl: photoUrls[index],
-                        fit: BoxFit.cover,
-                      ),
+                  return _ReviewMediaThumb(
+                    media: mediaItems[index],
+                    size: 78,
+                    onTap: () => _openReviewMediaViewer(
+                      context,
+                      mediaItems,
+                      index,
                     ),
                   );
                 },
@@ -2405,6 +2448,859 @@ class _ProductReviewPreviewSection extends StatelessWidget {
             ],
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _ReviewMediaThumb extends StatelessWidget {
+  final ProductReviewMedia media;
+  final double size;
+  final VoidCallback onTap;
+
+  const _ReviewMediaThumb({
+    required this.media,
+    required this.size,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: SizedBox(
+            width: size,
+            height: size,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                AppProductImage(
+                  imageUrl: media.previewUrl,
+                  fit: BoxFit.cover,
+                ),
+                if (media.isVideo)
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.18),
+                    ),
+                    child: const Center(
+                      child: Icon(
+                        Icons.play_circle_fill_rounded,
+                        color: Colors.white,
+                        size: 32,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+void _openReviewMediaViewer(
+  BuildContext context,
+  List<ProductReviewMedia> media,
+  int initialIndex,
+) {
+  Navigator.of(context).push<void>(
+    MaterialPageRoute<void>(
+      builder: (_) => _ReviewMediaViewerScreen(
+        media: media,
+        initialIndex: initialIndex,
+      ),
+    ),
+  );
+}
+
+class _ProductReviewsScreen extends StatefulWidget {
+  final Product product;
+  final ReviewSummary? initialSummary;
+  final ProductVariant? selectedVariant;
+  final bool needsVariantSelection;
+  final int displayStock;
+  final VoidCallback onSelectVariant;
+  final void Function(ProductVariant? variant, int quantity) onAddToCart;
+  final void Function(ProductVariant? variant, int quantity) onBuyNow;
+
+  const _ProductReviewsScreen({
+    required this.product,
+    required this.initialSummary,
+    required this.selectedVariant,
+    required this.needsVariantSelection,
+    required this.displayStock,
+    required this.onSelectVariant,
+    required this.onAddToCart,
+    required this.onBuyNow,
+  });
+
+  @override
+  State<_ProductReviewsScreen> createState() => _ProductReviewsScreenState();
+}
+
+class _ProductReviewsScreenState extends State<_ProductReviewsScreen> {
+  ReviewSummary? _summary;
+  List<ProductReview> _reviews = const [];
+  String? _nextCursor;
+  int? _ratingFilter;
+  bool _mediaOnly = false;
+  bool _loading = true;
+  bool _loadingMore = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _summary = widget.initialSummary;
+    _loadInitial();
+  }
+
+  ReviewFilter get _filter => ReviewFilter(
+        rating: _ratingFilter,
+        withImage: _mediaOnly,
+      );
+
+  Future<void> _loadInitial() async {
+    setState(() => _loading = true);
+    try {
+      final results = await Future.wait([
+        reviewService.fetchSummary(widget.product.slug),
+        reviewService.fetchReviews(widget.product.slug,
+            filter: _filter, limit: 20),
+      ]);
+      if (!mounted) return;
+      final summary = results[0] as ReviewSummary;
+      final page = results[1] as ProductReviewPage;
+      setState(() {
+        _summary = summary;
+        _reviews = page.reviews;
+        _nextCursor = page.nextCursor;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_loadingMore || _nextCursor == null) return;
+    setState(() => _loadingMore = true);
+    try {
+      final page = await reviewService.fetchReviews(
+        widget.product.slug,
+        filter: _filter.copyWith(cursor: _nextCursor),
+        limit: 20,
+      );
+      if (!mounted) return;
+      setState(() {
+        _reviews = [..._reviews, ...page.reviews];
+        _nextCursor = page.nextCursor;
+        _loadingMore = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingMore = false);
+    }
+  }
+
+  void _setRatingFilter(int? rating) {
+    if (_ratingFilter == rating) return;
+    AppHaptics.tap();
+    setState(() => _ratingFilter = rating);
+    _loadInitial();
+  }
+
+  void _toggleMediaOnly() {
+    AppHaptics.tap();
+    setState(() => _mediaOnly = !_mediaOnly);
+    _loadInitial();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final summary = _summary;
+    final rating = summary?.avgRating ?? widget.product.rating;
+    final reviewCount = summary?.reviewCount ?? widget.product.reviewCount;
+    final ratingCount = summary?.ratingBreakdown.values
+            .fold<int>(0, (sum, count) => sum + count) ??
+        reviewCount;
+
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        foregroundColor: _textDark,
+        elevation: 0.6,
+        shadowColor: Colors.black.withValues(alpha: 0.12),
+        titleSpacing: 0,
+        title: const Text(
+          'Ulasan',
+          style: TextStyle(
+            color: _textDark,
+            fontSize: 20,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: AppCartButton(),
+          ),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: _loadInitial,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 126),
+          children: [
+            _ReviewSummaryHeader(
+              rating: rating,
+              ratingCount: ratingCount,
+              reviewCount: reviewCount,
+            ),
+            const SizedBox(height: 16),
+            _ReviewFilterBar(
+              selectedRating: _ratingFilter,
+              mediaOnly: _mediaOnly,
+              onRatingChanged: _setRatingFilter,
+              onToggleMedia: _toggleMediaOnly,
+            ),
+            const SizedBox(height: 12),
+            if (_loading)
+              const _ReviewListSkeleton()
+            else if (_reviews.isEmpty)
+              const _ReviewsEmptyState()
+            else ...[
+              for (var i = 0; i < _reviews.length; i++) ...[
+                _FullReviewTile(review: _reviews[i]),
+                if (i != _reviews.length - 1)
+                  const Divider(height: 28, color: _borderGray),
+              ],
+              if (_nextCursor != null) ...[
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: _loadingMore ? null : _loadMore,
+                  child: Text(_loadingMore ? 'Memuat...' : 'Muat lainnya'),
+                ),
+              ],
+            ],
+          ],
+        ),
+      ),
+      bottomNavigationBar: _StickyPurchaseBar(
+        product: widget.product,
+        selectedVariant: widget.selectedVariant,
+        needsVariantSelection: widget.needsVariantSelection,
+        displayStock: widget.displayStock,
+        onSelectVariant: widget.onSelectVariant,
+        onAddToCart: widget.onAddToCart,
+        onBuyNow: widget.onBuyNow,
+      ),
+    );
+  }
+}
+
+class _ReviewSummaryHeader extends StatelessWidget {
+  final double rating;
+  final int ratingCount;
+  final int reviewCount;
+
+  const _ReviewSummaryHeader({
+    required this.rating,
+    required this.ratingCount,
+    required this.reviewCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _borderGray),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.star_rounded, color: _starAmber, size: 38),
+          const SizedBox(width: 10),
+          Text(
+            rating > 0 ? rating.toStringAsFixed(1) : '-',
+            style: const TextStyle(
+              color: _textDark,
+              fontSize: 30,
+              fontWeight: FontWeight.w900,
+              height: 1,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'dari ${_formatCompactCount(ratingCount)} rating • ${_formatCompactCount(reviewCount)} ulasan',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: _textGray,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReviewFilterBar extends StatelessWidget {
+  final int? selectedRating;
+  final bool mediaOnly;
+  final ValueChanged<int?> onRatingChanged;
+  final VoidCallback onToggleMedia;
+
+  const _ReviewFilterBar({
+    required this.selectedRating,
+    required this.mediaOnly,
+    required this.onRatingChanged,
+    required this.onToggleMedia,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 40,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          _ReviewFilterChip(
+            label: 'Semua',
+            selected: selectedRating == null && !mediaOnly,
+            onTap: () {
+              if (mediaOnly) onToggleMedia();
+              onRatingChanged(null);
+            },
+          ),
+          const SizedBox(width: 8),
+          _ReviewFilterChip(
+            label: 'Foto & Video',
+            icon: Icons.photo_library_outlined,
+            selected: mediaOnly,
+            onTap: onToggleMedia,
+          ),
+          const SizedBox(width: 8),
+          for (var rating = 5; rating >= 1; rating--) ...[
+            _ReviewFilterChip(
+              label: '$rating',
+              icon: Icons.star_rounded,
+              selected: selectedRating == rating,
+              onTap: () => onRatingChanged(rating),
+            ),
+            const SizedBox(width: 8),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ReviewFilterChip extends StatelessWidget {
+  final String label;
+  final IconData? icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ReviewFilterChip({
+    required this.label,
+    this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ChoiceChip(
+      selected: selected,
+      onSelected: (_) => onTap(),
+      avatar: icon == null
+          ? null
+          : Icon(
+              icon,
+              size: 16,
+              color: selected ? Colors.white : _brandBlue,
+            ),
+      label: Text(label),
+      selectedColor: _brandBlue,
+      backgroundColor: Colors.white,
+      labelStyle: TextStyle(
+        color: selected ? Colors.white : _textMedium,
+        fontSize: 13,
+        fontWeight: FontWeight.w800,
+      ),
+      side: BorderSide(
+        color: selected ? _brandBlue : _borderGray,
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+    );
+  }
+}
+
+class _FullReviewTile extends StatelessWidget {
+  final ProductReview review;
+
+  const _FullReviewTile({required this.review});
+
+  @override
+  Widget build(BuildContext context) {
+    final name = review.userName.trim().isEmpty
+        ? 'Pembeli Natalo'
+        : review.userName.trim();
+    final text = [
+      if ((review.title ?? '').trim().isNotEmpty) review.title!.trim(),
+      if ((review.content ?? '').trim().isNotEmpty) review.content!.trim(),
+    ].join('\n');
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 21,
+            backgroundColor: const Color(0xFFE5E7EB),
+            child: Text(
+              name.isEmpty ? 'N' : name.substring(0, 1).toUpperCase(),
+              style: const TextStyle(
+                color: _textGray,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: _textDark,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    if (!review.isMine)
+                      InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () => showModerationActions(
+                          context,
+                          targetKind: ReportTargetKind.productReview,
+                          targetId: review.id,
+                          authorName: review.userName,
+                        ),
+                        child: const Padding(
+                          padding: EdgeInsets.all(4),
+                          child: Icon(
+                            Icons.more_vert_rounded,
+                            size: 19,
+                            color: _textGray,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                Row(
+                  children: [
+                    for (var i = 0; i < 5; i++)
+                      Icon(
+                        Icons.star_rounded,
+                        size: 17,
+                        color: i < review.rating
+                            ? _starAmber
+                            : const Color(0xFFE5E7EB),
+                      ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _formatDateId(review.createdAt),
+                      style: const TextStyle(
+                        color: _textGray,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+                if ((review.variantLabel ?? '').isNotEmpty) ...[
+                  const SizedBox(height: 7),
+                  Text(
+                    'Varian: ${review.variantLabel}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: _textGray,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+                if (text.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    text,
+                    style: const TextStyle(
+                      color: _textMedium,
+                      fontSize: 14,
+                      height: 1.45,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+                if (review.media.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 88,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: review.media.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 10),
+                      itemBuilder: (context, index) => _ReviewMediaThumb(
+                        media: review.media[index],
+                        size: 88,
+                        onTap: () => _openReviewMediaViewer(
+                          context,
+                          review.media,
+                          index,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+                if (review.reply != null) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: _borderGray),
+                    ),
+                    child: Text(
+                      'Admin Natalo: ${review.reply!.content}',
+                      style: const TextStyle(
+                        color: _textMedium,
+                        fontSize: 13,
+                        height: 1.4,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReviewListSkeleton extends StatelessWidget {
+  const _ReviewListSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: List.generate(
+        4,
+        (index) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFE5E7EB),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 130,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE5E7EB),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFF4FA),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    Container(
+                      width: 220,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFF4FA),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReviewsEmptyState extends StatelessWidget {
+  const _ReviewsEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 54),
+      child: Column(
+        children: [
+          Icon(Icons.rate_review_outlined, color: _textGray, size: 42),
+          SizedBox(height: 12),
+          Text(
+            'Ulasan tidak ditemukan',
+            style: TextStyle(
+              color: _textDark,
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          SizedBox(height: 5),
+          Text(
+            'Coba gunakan filter lain.',
+            style: TextStyle(
+              color: _textGray,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReviewMediaViewerScreen extends StatefulWidget {
+  final List<ProductReviewMedia> media;
+  final int initialIndex;
+
+  const _ReviewMediaViewerScreen({
+    required this.media,
+    required this.initialIndex,
+  });
+
+  @override
+  State<_ReviewMediaViewerScreen> createState() =>
+      _ReviewMediaViewerScreenState();
+}
+
+class _ReviewMediaViewerScreenState extends State<_ReviewMediaViewerScreen> {
+  late final PageController _pageController;
+  late int _index;
+
+  @override
+  void initState() {
+    super.initState();
+    final maxIndex = widget.media.length - 1;
+    _index = widget.initialIndex.clamp(0, maxIndex < 0 ? 0 : maxIndex);
+    _pageController = PageController(initialPage: _index);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          PageView.builder(
+            controller: _pageController,
+            itemCount: widget.media.length,
+            onPageChanged: (value) => setState(() => _index = value),
+            itemBuilder: (context, index) {
+              final media = widget.media[index];
+              if (media.isVideo) return _ReviewVideoPlayer(media: media);
+              return InteractiveViewer(
+                minScale: 1,
+                maxScale: 4,
+                child: SizedBox.expand(
+                  child: AppProductImage(
+                    imageUrl: media.url,
+                    fit: BoxFit.contain,
+                    borderRadius: BorderRadius.zero,
+                  ),
+                ),
+              );
+            },
+          ),
+          SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 8, top: 8),
+              child: IconButton(
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(
+                  Icons.arrow_back_rounded,
+                  color: Colors.white,
+                  size: 30,
+                ),
+              ),
+            ),
+          ),
+          if (widget.media.length > 1)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: MediaQuery.paddingOf(context).bottom + 22,
+              child: Center(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.55),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '${_index + 1}/${widget.media.length}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReviewVideoPlayer extends StatefulWidget {
+  final ProductReviewMedia media;
+
+  const _ReviewVideoPlayer({required this.media});
+
+  @override
+  State<_ReviewVideoPlayer> createState() => _ReviewVideoPlayerState();
+}
+
+class _ReviewVideoPlayerState extends State<_ReviewVideoPlayer> {
+  VideoPlayerController? _controller;
+  bool _ready = false;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initVideo();
+  }
+
+  Future<void> _initVideo() async {
+    final controller =
+        VideoPlayerController.networkUrl(Uri.parse(widget.media.url));
+    _controller = controller;
+    try {
+      await controller.initialize();
+      await controller.setLooping(true);
+      await controller.play();
+      if (!mounted) return;
+      setState(() => _ready = true);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _failed = true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  void _togglePlay() {
+    final controller = _controller;
+    if (controller == null || !_ready) return;
+    setState(() {
+      controller.value.isPlaying ? controller.pause() : controller.play();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    if (_failed) {
+      return const Center(
+        child: Text(
+          'Video tidak bisa diputar',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      );
+    }
+    if (!_ready || controller == null) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          AppProductImage(
+            imageUrl: widget.media.previewUrl,
+            fit: BoxFit.contain,
+            borderRadius: BorderRadius.zero,
+          ),
+          const Center(child: CircularProgressIndicator(color: Colors.white)),
+        ],
+      );
+    }
+    return GestureDetector(
+      onTap: _togglePlay,
+      child: Center(
+        child: AspectRatio(
+          aspectRatio: controller.value.aspectRatio,
+          child: VideoPlayer(controller),
+        ),
       ),
     );
   }

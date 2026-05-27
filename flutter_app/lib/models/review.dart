@@ -133,6 +133,7 @@ class ProductReview {
   final DateTime createdAt;
   final String userName;
   final List<String> images;
+  final List<ProductReviewMedia> media;
   final ReviewReply? reply;
 
   /// True kalau review ini milik user yang sedang login. Backend Capacitor
@@ -151,6 +152,7 @@ class ProductReview {
     required this.createdAt,
     required this.userName,
     required this.images,
+    this.media = const [],
     this.reply,
     this.isMine = false,
   });
@@ -166,6 +168,7 @@ class ProductReview {
       createdAt: createdAt,
       userName: userName,
       images: images,
+      media: media,
       reply: reply,
       isMine: isMine,
     );
@@ -173,7 +176,25 @@ class ProductReview {
 
   factory ProductReview.fromJson(Map<String, dynamic> json) {
     final rawImages = json['images'];
+    final rawMedia = json['media'];
     final rawReply = json['reply'];
+    final parsedMedia = rawMedia is List
+        ? rawMedia
+            .whereType<Map<String, dynamic>>()
+            .map(ProductReviewMedia.fromJson)
+            .where((item) => item.url.isNotEmpty)
+            .toList()
+        : <ProductReviewMedia>[];
+    final legacyImages = rawImages is List
+        ? rawImages.map((item) => _absoluteUrl(item.toString())).toList()
+        : const <String>[];
+    final media = parsedMedia.isNotEmpty
+        ? parsedMedia
+        : legacyImages
+            .map((url) => ProductReviewMedia.image(url: url))
+            .toList();
+    final imageUrls =
+        media.where((item) => !item.isVideo).map((item) => item.url).toList();
 
     return ProductReview(
       id: _string(json['id']),
@@ -185,9 +206,8 @@ class ProductReview {
       createdAt: DateTime.tryParse(_string(json['createdAt'])) ??
           DateTime.fromMillisecondsSinceEpoch(0),
       userName: _string(json['userName'], fallback: 'Pembeli Natalo'),
-      images: rawImages is List
-          ? rawImages.map((item) => _absoluteUrl(item.toString())).toList()
-          : const [],
+      images: imageUrls.isNotEmpty ? imageUrls : legacyImages,
+      media: media,
       reply: rawReply is Map<String, dynamic>
           ? ReviewReply.fromJson(rawReply)
           : null,
@@ -196,6 +216,48 @@ class ProductReview {
       // tampilkan menu edit/delete (safe). Backend update untuk include flag
       // = UI otomatis nampilkan menu tanpa client release baru.
       isMine: json['isMine'] == true,
+    );
+  }
+}
+
+class ProductReviewMedia {
+  final String type;
+  final String url;
+  final String? thumbnailUrl;
+
+  const ProductReviewMedia({
+    required this.type,
+    required this.url,
+    this.thumbnailUrl,
+  });
+
+  const ProductReviewMedia.image({required String url})
+      : this(type: 'image', url: url);
+
+  bool get isVideo => type == 'video';
+  String get previewUrl =>
+      (thumbnailUrl?.isNotEmpty == true) ? thumbnailUrl! : url;
+
+  Map<String, dynamic> toJson() => {
+        'mediaType': type,
+        'url': url,
+        if (thumbnailUrl != null && thumbnailUrl!.isNotEmpty)
+          'thumbnailUrl': thumbnailUrl,
+      };
+
+  factory ProductReviewMedia.fromJson(Map<String, dynamic> json) {
+    final type = (json['type'] ?? json['mediaType']).toString() == 'video'
+        ? 'video'
+        : 'image';
+    final rawUrl = type == 'video'
+        ? (json['url'] ?? json['videoUrl'] ?? json['imageUrl'])
+        : (json['url'] ?? json['imageUrl']);
+    final thumbnail = json['thumbnailUrl'] ?? json['imageUrl'];
+    return ProductReviewMedia(
+      type: type,
+      url: _absoluteUrl(_string(rawUrl)),
+      thumbnailUrl:
+          thumbnail == null ? null : _absoluteUrl(thumbnail.toString()),
     );
   }
 }

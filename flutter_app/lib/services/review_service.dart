@@ -55,10 +55,11 @@ class ReviewService {
   Future<ProductReviewPage> fetchReviews(
     String productSlug, {
     ReviewFilter filter = const ReviewFilter(),
+    int limit = 6,
   }) async {
     final data = await apiClient.getJson(
       '/api/products/${Uri.encodeComponent(productSlug)}/reviews',
-      query: filter.toQuery(),
+      query: filter.toQuery(limit: limit),
     );
     return ProductReviewPage.fromJson(data);
   }
@@ -95,6 +96,7 @@ class ReviewService {
     String? title,
     String? content,
     List<String> imageUrls = const [],
+    List<ProductReviewMedia> media = const [],
   }) async {
     readOnlyMode.assertWritable('review_submit');
     final response = await apiClient.postJson(
@@ -106,11 +108,12 @@ class ReviewService {
         'title': title,
         'content': content,
         'imageUrls': imageUrls,
+        if (media.isNotEmpty)
+          'media': media.map((item) => item.toJson()).toList(),
       },
     );
-    final data = response is Map<String, dynamic>
-        ? response
-        : const <String, dynamic>{};
+    final data =
+        response is Map<String, dynamic> ? response : const <String, dynamic>{};
     final points = data['pointsAwarded'];
     return ReviewSubmitResult(
       reviewId: (data['id'] ?? '').toString(),
@@ -130,10 +133,29 @@ class ReviewService {
     return (data['url'] ?? '').toString();
   }
 
+  Future<ReviewUploadResult> uploadReviewMedia(XFile file) async {
+    readOnlyMode.assertWritable('review_media_upload');
+    final data = await apiClient.postMultipartFile(
+      '/api/reviews/upload',
+      fieldName: 'file',
+      filePath: file.path,
+      filename: file.name,
+      contentType: file.mimeType ?? _mimeTypeFromPath(file.path),
+      timeout: const Duration(seconds: 60),
+    );
+    return ReviewUploadResult(
+      url: (data['url'] ?? '').toString(),
+      mediaType: (data['mediaType'] ?? 'image').toString(),
+    );
+  }
+
   String _mimeTypeFromPath(String path) {
     final lower = path.toLowerCase();
     if (lower.endsWith('.png')) return 'image/png';
     if (lower.endsWith('.webp')) return 'image/webp';
+    if (lower.endsWith('.mov')) return 'video/quicktime';
+    if (lower.endsWith('.mp4')) return 'video/mp4';
+    if (lower.endsWith('.webm')) return 'video/webm';
     return 'image/jpeg';
   }
 
@@ -146,6 +168,7 @@ class ReviewService {
     String? content,
     int? rating,
     List<String>? imageUrls,
+    List<ProductReviewMedia>? media,
   }) async {
     readOnlyMode.assertWritable('review_update');
     final response = await apiClient.patchJson(
@@ -155,11 +178,11 @@ class ReviewService {
         if (content != null) 'content': content,
         if (rating != null) 'rating': rating,
         if (imageUrls != null) 'imageUrls': imageUrls,
+        if (media != null) 'media': media.map((item) => item.toJson()).toList(),
       },
     );
-    final data = response is Map<String, dynamic>
-        ? response
-        : const <String, dynamic>{};
+    final data =
+        response is Map<String, dynamic> ? response : const <String, dynamic>{};
     final points = data['pointsAwarded'];
     return ReviewUpdateResult(
       pointsAwarded: points is num ? points.toInt() : 0,
@@ -173,9 +196,8 @@ class ReviewService {
     final response = await apiClient.deleteJson(
       '/api/reviews/${Uri.encodeComponent(reviewId)}',
     );
-    final data = response is Map<String, dynamic>
-        ? response
-        : const <String, dynamic>{};
+    final data =
+        response is Map<String, dynamic> ? response : const <String, dynamic>{};
     final points = data['pointsRolledBack'];
     return ReviewDeleteResult(
       pointsRolledBack: points is num ? points.toInt() : 0,
@@ -217,3 +239,15 @@ class ReviewDeleteResult {
 }
 
 final reviewService = ReviewService();
+
+class ReviewUploadResult {
+  final String url;
+  final String mediaType;
+
+  const ReviewUploadResult({
+    required this.url,
+    required this.mediaType,
+  });
+
+  bool get isVideo => mediaType == 'video';
+}

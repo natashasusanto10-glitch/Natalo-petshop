@@ -12,7 +12,8 @@ export async function PATCH(
 ) {
   try {
     const session = await getSession("CUSTOMER");
-    if (!session) return NextResponse.json({ error: "Login dulu" }, { status: 401 });
+    if (!session)
+      return NextResponse.json({ error: "Login dulu" }, { status: 401 });
 
     const { id } = await params;
     const body = await request.json();
@@ -24,6 +25,7 @@ export async function PATCH(
       title: body.title,
       content: body.content,
       imageUrls: Array.isArray(body.imageUrls) ? body.imageUrls : undefined,
+      media: Array.isArray(body.media) ? body.media : undefined,
     });
 
     // pointsAwarded > 0 = user upgrade review jadi LENGKAP via edit
@@ -46,7 +48,8 @@ export async function DELETE(
 ) {
   try {
     const session = await getSession("CUSTOMER");
-    if (!session) return NextResponse.json({ error: "Login dulu" }, { status: 401 });
+    if (!session)
+      return NextResponse.json({ error: "Login dulu" }, { status: 401 });
 
     const { id } = await params;
     const result = await softDeleteReview(id, session.sub);

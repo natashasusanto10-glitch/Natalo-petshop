@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:video_compress/video_compress.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
 
 import '../models/review.dart';
 import '../services/api_client.dart';
@@ -52,9 +54,8 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
         if (!mounted) return;
         final target = items.firstWhere(
           (i) => i.orderItemId == targetItemId && !i.hasReviewed,
-          orElse: () => items.isNotEmpty
-              ? items.first
-              : throw StateError('no items'),
+          orElse: () =>
+              items.isNotEmpty ? items.first : throw StateError('no items'),
         );
         if (target.orderItemId == targetItemId && !target.hasReviewed) {
           _openReviewForm(target);
@@ -756,15 +757,16 @@ class _ReviewSubmitSheet extends StatefulWidget {
 }
 
 class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
-  static const _maxPhotos = 5;
+  static const _maxMedia = 5;
+  static const _maxVideos = 1;
 
   final _contentController = TextEditingController();
   final _picker = ImagePicker();
-  final List<String> _imageUrls = [];
+  final List<ProductReviewMedia> _mediaItems = [];
   final Set<String> _selectedSuggestions = {};
   int _rating = 0;
   bool _submitting = false;
-  bool _uploadingPhoto = false;
+  bool _uploadingMedia = false;
 
   @override
   void initState() {
@@ -787,9 +789,9 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
     super.dispose();
   }
 
-  Future<void> _choosePhotoSource() async {
-    if (_imageUrls.length >= _maxPhotos || _uploadingPhoto) return;
-    final source = await showModalBottomSheet<ImageSource>(
+  Future<void> _chooseMediaSource() async {
+    if (_mediaItems.length >= _maxMedia || _uploadingMedia) return;
+    final source = await showModalBottomSheet<_ReviewMediaSource>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => SafeArea(
@@ -806,13 +808,51 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
                 _PhotoSourceTile(
                   icon: Icons.photo_camera_outlined,
                   label: 'Ambil Foto',
-                  onTap: () => Navigator.pop(context, ImageSource.camera),
+                  onTap: () => Navigator.pop(
+                    context,
+                    const _ReviewMediaSource.image(ImageSource.camera),
+                  ),
                 ),
                 _PhotoSourceTile(
                   icon: Icons.photo_library_outlined,
-                  label: 'Pilih dari Galeri',
-                  onTap: () => Navigator.pop(context, ImageSource.gallery),
+                  label: 'Pilih Foto',
+                  onTap: () => Navigator.pop(
+                    context,
+                    const _ReviewMediaSource.image(ImageSource.gallery),
+                  ),
                 ),
+                if (_mediaItems.where((item) => item.isVideo).length <
+                    _maxVideos) ...[
+                  _PhotoSourceTile(
+                    icon: Icons.videocam_outlined,
+                    label: 'Rekam Video',
+                    onTap: () => Navigator.pop(
+                      context,
+                      const _ReviewMediaSource.video(ImageSource.camera),
+                    ),
+                  ),
+                  _PhotoSourceTile(
+                    icon: Icons.video_library_outlined,
+                    label: 'Pilih Video',
+                    onTap: () => Navigator.pop(
+                      context,
+                      const _ReviewMediaSource.video(ImageSource.gallery),
+                    ),
+                  ),
+                ],
+                if (_mediaItems.where((item) => item.isVideo).length >=
+                    _maxVideos)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Text(
+                      'Maksimal 1 video per review.',
+                      style: TextStyle(
+                        color: _textSecondary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
                 _PhotoSourceTile(
                   icon: Icons.close_rounded,
                   label: 'Batal',
@@ -825,7 +865,11 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
       ),
     );
     if (source == null) return;
-    await _pickAndUploadPhoto(source);
+    if (source.isVideo) {
+      await _pickAndUploadVideo(source.source);
+    } else {
+      await _pickAndUploadPhoto(source.source);
+    }
   }
 
   Future<void> _pickAndUploadPhoto(ImageSource source) async {
@@ -837,12 +881,13 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
     );
     if (picked == null) return;
 
-    setState(() => _uploadingPhoto = true);
+    setState(() => _uploadingMedia = true);
     try {
-      final url = await reviewService.uploadReviewPhoto(picked);
+      final result = await reviewService.uploadReviewMedia(picked);
       if (!mounted) return;
-      if (url.isEmpty) throw const ApiException('Upload foto gagal.');
-      setState(() => _imageUrls.add(url));
+      if (result.url.isEmpty) throw const ApiException('Upload foto gagal.');
+      setState(
+          () => _mediaItems.add(ProductReviewMedia.image(url: result.url)));
     } on ApiException catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -863,7 +908,83 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
         ),
       );
     } finally {
-      if (mounted) setState(() => _uploadingPhoto = false);
+      if (mounted) setState(() => _uploadingMedia = false);
+    }
+  }
+
+  Future<void> _pickAndUploadVideo(ImageSource source) async {
+    final picked = await _picker.pickVideo(
+      source: source,
+      maxDuration: const Duration(seconds: 30),
+    );
+    if (picked == null) return;
+
+    setState(() => _uploadingMedia = true);
+    try {
+      var videoPath = picked.path;
+      try {
+        final compressed = await VideoCompress.compressVideo(
+          picked.path,
+          quality: VideoQuality.MediumQuality,
+          includeAudio: true,
+          deleteOrigin: false,
+        );
+        final compressedPath = compressed?.path;
+        if (compressedPath != null && compressedPath.isNotEmpty) {
+          videoPath = compressedPath;
+        }
+      } catch (_) {
+        videoPath = picked.path;
+      }
+      final thumbnailPath = await VideoThumbnail.thumbnailFile(
+        video: videoPath,
+        imageFormat: ImageFormat.JPEG,
+        maxWidth: 720,
+        quality: 76,
+      );
+      if (thumbnailPath == null || thumbnailPath.isEmpty) {
+        throw const ApiException('Thumbnail video gagal dibuat.');
+      }
+      final thumbnail = await reviewService.uploadReviewMedia(
+        XFile(thumbnailPath, mimeType: 'image/jpeg', name: 'review-thumb.jpg'),
+      );
+      final video = await reviewService.uploadReviewMedia(
+        XFile(
+          videoPath,
+          mimeType: _reviewVideoMimeType(videoPath, picked.mimeType),
+          name: picked.name,
+        ),
+      );
+      if (!mounted) return;
+      if (video.url.isEmpty) throw const ApiException('Upload video gagal.');
+      setState(() {
+        _mediaItems.add(ProductReviewMedia(
+          type: 'video',
+          url: video.url,
+          thumbnailUrl: thumbnail.url,
+        ));
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.message),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } on ReadOnlyModeException catch (error) {
+      if (!mounted) return;
+      showReadOnlySnackbar(context, error);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Upload video gagal: $error'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _uploadingMedia = false);
     }
   }
 
@@ -889,7 +1010,11 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
         content: _contentController.text.trim().isEmpty
             ? null
             : _contentController.text.trim(),
-        imageUrls: List.unmodifiable(_imageUrls),
+        imageUrls: _mediaItems
+            .where((item) => !item.isVideo)
+            .map((item) => item.url)
+            .toList(growable: false),
+        media: List.unmodifiable(_mediaItems),
       );
       if (!mounted) return;
       HapticFeedback.mediumImpact();
@@ -976,7 +1101,7 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
                       _ReviewBonusHint(
                         hasRating: _rating > 0,
                         hasContent: _contentController.text.trim().length >= 10,
-                        hasPhoto: _imageUrls.isNotEmpty,
+                        hasMedia: _mediaItems.isNotEmpty,
                       ),
                       const SizedBox(height: 16),
                       const Text(
@@ -1034,13 +1159,13 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
                         onSelected: _applySuggestion,
                       ),
                       const SizedBox(height: 16),
-                      _ReviewPhotoPicker(
-                        imageUrls: _imageUrls,
-                        uploading: _uploadingPhoto,
-                        maxPhotos: _maxPhotos,
-                        onAdd: _choosePhotoSource,
-                        onRemove: (url) =>
-                            setState(() => _imageUrls.remove(url)),
+                      _ReviewMediaPicker(
+                        mediaItems: _mediaItems,
+                        uploading: _uploadingMedia,
+                        maxMedia: _maxMedia,
+                        onAdd: _chooseMediaSource,
+                        onRemove: (item) =>
+                            setState(() => _mediaItems.remove(item)),
                       ),
                     ],
                   ),
@@ -1232,17 +1357,25 @@ class _SuggestionChips extends StatelessWidget {
   }
 }
 
-class _ReviewPhotoPicker extends StatelessWidget {
-  final List<String> imageUrls;
-  final bool uploading;
-  final int maxPhotos;
-  final VoidCallback onAdd;
-  final ValueChanged<String> onRemove;
+class _ReviewMediaSource {
+  final ImageSource source;
+  final bool isVideo;
 
-  const _ReviewPhotoPicker({
-    required this.imageUrls,
+  const _ReviewMediaSource.image(this.source) : isVideo = false;
+  const _ReviewMediaSource.video(this.source) : isVideo = true;
+}
+
+class _ReviewMediaPicker extends StatelessWidget {
+  final List<ProductReviewMedia> mediaItems;
+  final bool uploading;
+  final int maxMedia;
+  final VoidCallback onAdd;
+  final ValueChanged<ProductReviewMedia> onRemove;
+
+  const _ReviewMediaPicker({
+    required this.mediaItems,
     required this.uploading,
-    required this.maxPhotos,
+    required this.maxMedia,
     required this.onAdd,
     required this.onRemove,
   });
@@ -1256,7 +1389,7 @@ class _ReviewPhotoPicker extends StatelessWidget {
           children: [
             const Expanded(
               child: Text(
-                'Foto Review',
+                'Foto / Video Review',
                 style: TextStyle(
                   color: _textPrimary,
                   fontSize: 14,
@@ -1265,7 +1398,7 @@ class _ReviewPhotoPicker extends StatelessWidget {
               ),
             ),
             Text(
-              '${imageUrls.length}/$maxPhotos',
+              '${mediaItems.length}/$maxMedia',
               style: const TextStyle(
                 color: _textSecondary,
                 fontSize: 12,
@@ -1280,21 +1413,21 @@ class _ReviewPhotoPicker extends StatelessWidget {
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount:
-                imageUrls.length + (imageUrls.length < maxPhotos ? 1 : 0),
+                mediaItems.length + (mediaItems.length < maxMedia ? 1 : 0),
             separatorBuilder: (_, __) => const SizedBox(width: 9),
             itemBuilder: (context, index) {
-              if (index == imageUrls.length) {
-                return _AddPhotoTile(uploading: uploading, onTap: onAdd);
+              if (index == mediaItems.length) {
+                return _AddMediaTile(uploading: uploading, onTap: onAdd);
               }
 
-              final url = imageUrls[index];
+              final item = mediaItems[index];
               return Stack(
                 clipBehavior: Clip.none,
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(16),
                     child: Image.network(
-                      url,
+                      item.previewUrl,
                       height: 84,
                       width: 84,
                       fit: BoxFit.cover,
@@ -1306,11 +1439,27 @@ class _ReviewPhotoPicker extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (item.isVideo)
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Center(
+                          child: Icon(
+                            Icons.play_circle_fill_rounded,
+                            color: Colors.white,
+                            size: 34,
+                          ),
+                        ),
+                      ),
+                    ),
                   Positioned(
                     right: -6,
                     top: -6,
                     child: IconButton.filled(
-                      onPressed: () => onRemove(url),
+                      onPressed: () => onRemove(item),
                       icon: const Icon(Icons.close_rounded, size: 16),
                       style: IconButton.styleFrom(
                         backgroundColor: const Color(0xFFEF4444),
@@ -1331,11 +1480,11 @@ class _ReviewPhotoPicker extends StatelessWidget {
   }
 }
 
-class _AddPhotoTile extends StatelessWidget {
+class _AddMediaTile extends StatelessWidget {
   final bool uploading;
   final VoidCallback onTap;
 
-  const _AddPhotoTile({required this.uploading, required this.onTap});
+  const _AddMediaTile({required this.uploading, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1361,10 +1510,10 @@ class _AddPhotoTile extends StatelessWidget {
             : const Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.add_a_photo_outlined, color: _brandBlue),
+                  Icon(Icons.add_photo_alternate_outlined, color: _brandBlue),
                   SizedBox(height: 6),
                   Text(
-                    '+ Tambah Foto',
+                    '+ Media',
                     style: TextStyle(
                       color: _brandBlue,
                       fontSize: 12,
@@ -1428,7 +1577,7 @@ class _MiniStars extends StatelessWidget {
 /// 3 check items dengan icon + warna conditional:
 ///   ⭐ Beri bintang
 ///   📝 Tulis deskripsi (min 10 huruf)
-///   📸 Tambah min 1 foto
+///   📸 Tambah min 1 foto/video
 ///
 /// Saat satu check terpenuhi, icon berubah warna jadi hijau + checkmark.
 /// Saat semua 3 terpenuhi, banner berubah jadi hijau celebration
@@ -1436,30 +1585,26 @@ class _MiniStars extends StatelessWidget {
 class _ReviewBonusHint extends StatelessWidget {
   final bool hasRating;
   final bool hasContent;
-  final bool hasPhoto;
+  final bool hasMedia;
 
   const _ReviewBonusHint({
     required this.hasRating,
     required this.hasContent,
-    required this.hasPhoto,
+    required this.hasMedia,
   });
 
-  bool get _isComplete => hasRating && hasContent && hasPhoto;
+  bool get _isComplete => hasRating && hasContent && hasMedia;
 
   @override
   Widget build(BuildContext context) {
     final accent = _isComplete
         ? const Color(0xFF059669) // emerald saat lengkap
         : const Color(0xFFFBBF24); // amber saat masih ada yang kosong
-    final bg = _isComplete
-        ? const Color(0xFFECFDF5)
-        : const Color(0xFFFFFBEB);
-    final borderColor = _isComplete
-        ? const Color(0xFFA7F3D0)
-        : const Color(0xFFFCD34D);
-    final headlineColor = _isComplete
-        ? const Color(0xFF065F46)
-        : const Color(0xFF92400E);
+    final bg = _isComplete ? const Color(0xFFECFDF5) : const Color(0xFFFFFBEB);
+    final borderColor =
+        _isComplete ? const Color(0xFFA7F3D0) : const Color(0xFFFCD34D);
+    final headlineColor =
+        _isComplete ? const Color(0xFF065F46) : const Color(0xFF92400E);
 
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -1515,8 +1660,8 @@ class _ReviewBonusHint extends StatelessWidget {
           ),
           const SizedBox(height: 3),
           _BonusCheckRow(
-            label: 'Tambah min 1 foto',
-            checked: hasPhoto,
+            label: 'Tambah min 1 foto/video',
+            checked: hasMedia,
           ),
         ],
       ),
@@ -1550,9 +1695,8 @@ class _BonusCheckRow extends StatelessWidget {
             color: checked ? const Color(0xFF065F46) : const Color(0xFF6B7280),
             fontSize: 11.5,
             fontWeight: checked ? FontWeight.w800 : FontWeight.w600,
-            decoration: checked
-                ? TextDecoration.lineThrough
-                : TextDecoration.none,
+            decoration:
+                checked ? TextDecoration.lineThrough : TextDecoration.none,
             decorationColor: color.withValues(alpha: 0.4),
           ),
         ),
@@ -1564,8 +1708,9 @@ class _BonusCheckRow extends StatelessWidget {
 class _SubmittedReview {
   final int rating;
   final String? content;
+
   /// Bonus poin yang di-award oleh server kalau review LENGKAP
-  /// (rating + deskripsi >= 10 char + min 1 foto). 0 kalau belum lengkap.
+  /// (rating + deskripsi >= 10 char + min 1 foto/video). 0 kalau belum lengkap.
   /// Parent snackbar tampilkan feedback conditional.
   final int pointsAwarded;
 
@@ -1599,6 +1744,18 @@ String _ratingLabel(int rating) {
     5 => 'Sangat puas',
     _ => '',
   };
+}
+
+String _reviewVideoMimeType(String path, String? mimeType) {
+  if (mimeType == 'video/mp4' ||
+      mimeType == 'video/webm' ||
+      mimeType == 'video/quicktime') {
+    return mimeType!;
+  }
+  final lower = path.toLowerCase();
+  if (lower.endsWith('.mov')) return 'video/quicktime';
+  if (lower.endsWith('.webm')) return 'video/webm';
+  return 'video/mp4';
 }
 
 String _priceText(ReviewableItem item) {

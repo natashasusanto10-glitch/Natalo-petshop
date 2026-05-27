@@ -29,7 +29,10 @@ export async function GET(
       select: { id: true },
     });
     if (!product) {
-      return NextResponse.json({ error: "Produk tidak ditemukan" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Produk tidak ditemukan" },
+        { status: 404 }
+      );
     }
 
     const where: Prisma.ReviewWhereInput = {
@@ -44,10 +47,15 @@ export async function GET(
       where.images = { some: {} };
     }
 
-    let orderBy: Prisma.ReviewOrderByWithRelationInput | Prisma.ReviewOrderByWithRelationInput[] = { createdAt: "desc" };
-    if (sort === "helpful") orderBy = [{ helpfulCount: "desc" }, { createdAt: "desc" }];
-    else if (sort === "rating_high") orderBy = [{ rating: "desc" }, { createdAt: "desc" }];
-    else if (sort === "rating_low") orderBy = [{ rating: "asc" }, { createdAt: "desc" }];
+    let orderBy:
+      | Prisma.ReviewOrderByWithRelationInput
+      | Prisma.ReviewOrderByWithRelationInput[] = { createdAt: "desc" };
+    if (sort === "helpful")
+      orderBy = [{ helpfulCount: "desc" }, { createdAt: "desc" }];
+    else if (sort === "rating_high")
+      orderBy = [{ rating: "desc" }, { createdAt: "desc" }];
+    else if (sort === "rating_low")
+      orderBy = [{ rating: "asc" }, { createdAt: "desc" }];
 
     const reviews = await prisma.review.findMany({
       where,
@@ -66,25 +74,45 @@ export async function GET(
     const nextCursor = hasMore ? results[results.length - 1].id : null;
 
     return NextResponse.json({
-      reviews: results.map((r) => ({
-        id: r.id,
-        rating: r.rating,
-        title: r.title,
-        content: r.content,
-        variantLabel: r.variantLabel,
-        helpfulCount: r.helpfulCount,
-        createdAt: r.createdAt,
-        userName: maskName(r.user.name),
-        images: r.images.map((i) => i.imageUrl),
-        reply: r.reply
-          ? { content: r.reply.content, createdAt: r.reply.createdAt }
-          : null,
-      })),
+      reviews: results.map((r) => {
+        const reviewImages = r.images as Array<{
+          imageUrl: string;
+          mediaType?: string | null;
+          videoUrl?: string | null;
+          thumbnailUrl?: string | null;
+        }>;
+
+        return {
+          id: r.id,
+          rating: r.rating,
+          title: r.title,
+          content: r.content,
+          variantLabel: r.variantLabel,
+          helpfulCount: r.helpfulCount,
+          createdAt: r.createdAt,
+          userName: maskName(r.user.name),
+          images: reviewImages
+            .filter((i) => i.mediaType !== "video")
+            .map((i) => i.imageUrl),
+          media: reviewImages.map((i) => ({
+            type: i.mediaType === "video" ? "video" : "image",
+            url:
+              i.mediaType === "video" ? i.videoUrl ?? i.imageUrl : i.imageUrl,
+            thumbnailUrl: i.thumbnailUrl ?? i.imageUrl,
+          })),
+          reply: r.reply
+            ? { content: r.reply.content, createdAt: r.reply.createdAt }
+            : null,
+        };
+      }),
       nextCursor,
     });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Gagal mengambil review" },
+      {
+        error:
+          error instanceof Error ? error.message : "Gagal mengambil review",
+      },
       { status: 500 }
     );
   }
