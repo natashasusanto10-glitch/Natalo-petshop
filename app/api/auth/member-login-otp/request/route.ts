@@ -11,6 +11,11 @@ import {
 } from "@/lib/rate-limit";
 
 const OTP_EXPIRES_MS = 5 * 60_000;
+// Harus match MAX_VERIFY_ATTEMPTS di verify/route.ts. Window di mana
+// attempts di-carry-forward antar OTP re-request — supaya attacker tidak
+// bisa reset brute-force counter dengan minta OTP baru.
+const MAX_VERIFY_ATTEMPTS = 5;
+const ATTEMPT_CARRY_WINDOW_MS = 15 * 60_000;
 
 function generateOtp() {
   return String(randomInt(100000, 1000000));
@@ -128,6 +133,32 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Anti brute-force counter-reset: baca attempts dari OTP pending
+    // terbaru dalam window. Tanpa ini, attacker bisa bypass
+    // MAX_VERIFY_ATTEMPTS dengan terus minta OTP baru (request menghapus
+    // OTP lama → attempts reset ke 0). Carry-forward attempts ke OTP baru
+    // supaya counter survive re-request. Kalau sudah >= MAX, lockout:
+    // tidak buat OTP baru + tidak kirim WA (hemat biaya Fonnte).
+    const recentOtp = await prisma.loginOtp.findFirst({
+      where: {
+        userId: user.id,
+        verifiedAt: null,
+        createdAt: { gte: new Date(Date.now() - ATTEMPT_CARRY_WINDOW_MS) },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { attempts: true },
+    });
+    const carriedAttempts = recentOtp?.attempts ?? 0;
+    if (carriedAttempts >= MAX_VERIFY_ATTEMPTS) {
+      return NextResponse.json(
+        {
+          error:
+            "Terlalu banyak percobaan OTP salah. Coba lagi dalam beberapa menit.",
+        },
+        { status: 429 },
+      );
+    }
+
     const otp = generateOtp();
     const otpHash = await bcrypt.hash(otp, 12);
 
@@ -146,6 +177,9 @@ export async function POST(request: NextRequest) {
           userId: user.id,
           phone: user.phone!,
           otpHash,
+          // Carry-forward attempts (lihat komentar di atas) supaya
+          // re-request tidak reset brute-force counter.
+          attempts: carriedAttempts,
           expiresAt: new Date(Date.now() + OTP_EXPIRES_MS),
         },
       });
