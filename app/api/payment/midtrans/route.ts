@@ -77,6 +77,28 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Amount integrity gate — verify gross_amount callback == order.total
+  // SEBELUM mark PAID. Signature sudah verified, tapi signature dihitung
+  // DARI gross_amount notif itu sendiri, jadi tidak menjamin amount ==
+  // yang seharusnya dibayar. Tanpa cek ini, kalau ada Snap transaction
+  // dengan amount mismatch (partial settlement, edited tx, dll), order
+  // bisa flip PAID tanpa bayar penuh. gross_amount Midtrans string
+  // desimal ("150000.00") → round ke int rupiah untuk compare.
+  if (paymentStatus === "PAID") {
+    const paidAmount = Math.round(Number(notification.gross_amount));
+    if (!Number.isFinite(paidAmount) || paidAmount !== order.total) {
+      console.warn(
+        `[midtrans] amount mismatch order=${notification.order_id} ` +
+          `paid=${notification.gross_amount} expected=${order.total} — ` +
+          `NOT marking PAID`,
+      );
+      return NextResponse.json(
+        { message: "Jumlah pembayaran tidak sesuai." },
+        { status: 409 },
+      );
+    }
+  }
+
   const updatedOrder = await prisma.order.update({
     where: { orderNumber: notification.order_id },
     data: {

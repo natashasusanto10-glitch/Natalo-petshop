@@ -313,6 +313,7 @@ export async function POST(request: Request) {
     type AppliedVoucher = {
       id: string;
       maxUsage: number | null;
+      usageLimitPerUser: number | null;
       code: string;
       type: string;
       scope: string;
@@ -422,6 +423,7 @@ export async function POST(request: Request) {
         voucher: {
           id: voucher.id,
           maxUsage: voucher.maxUsage,
+          usageLimitPerUser: voucher.usageLimitPerUser,
           code: voucher.code,
           type: voucherType,
           scope: voucherScopeOf(voucher),
@@ -717,6 +719,24 @@ export async function POST(request: Request) {
           throw new Error(
             `Voucher ${v.code} sudah mencapai batas pemakaian. Silakan coba lagi.`,
           );
+        }
+        // Per-user usage limit guard — ENFORCED DI DALAM txn. Pre-check
+        // di luar txn (isVoucherUsageLimitReached, L365) bisa di-bypass
+        // race: 2 order concurrent user sama dengan voucher
+        // usageLimitPerUser=1 dua-duanya lolos pre-check. updateMany di
+        // atas cuma guard maxUsage GLOBAL, bukan per-user. Hitung
+        // VoucherUsage existing untuk (voucher, user) di dalam txn
+        // Serializable (write-skew terdeteksi → 1 txn rollback). Count
+        // BEFORE createMany di bawah, jadi compare ke limit langsung.
+        if (v.usageLimitPerUser !== null && effectiveUserId) {
+          const usedByUser = await tx.voucherUsage.count({
+            where: { voucherId: v.id, userId: effectiveUserId },
+          });
+          if (usedByUser >= v.usageLimitPerUser) {
+            throw new Error(
+              `Voucher ${v.code} sudah pernah kamu gunakan. Silakan coba lagi.`,
+            );
+          }
         }
       }
 
