@@ -575,7 +575,16 @@ class _CartScreenState extends State<CartScreen> {
       );
       return;
     }
-    Navigator.pushNamed(context, '/checkout');
+    // CRITICAL: pass HANYA item yang dipilih (_selectedItems) ke checkout.
+    // Tanpa argument ini, route fallback ke `const CheckoutScreen()` yang
+    // pakai SEMUA cartStore.items — bug: user uncheck 2 dari 5 item, cart
+    // bar tampilkan total 3 item, tapi order ke-create 5 item. Seluruh
+    // fitur multi-select jadi bohong soal apa yang di-order.
+    Navigator.pushNamed(
+      context,
+      '/checkout',
+      arguments: _selectedItems,
+    );
   }
 
   Future<void> _openVoucherSheet() async {
