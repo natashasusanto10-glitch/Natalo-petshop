@@ -45,10 +45,24 @@ export async function GET(
     return NextResponse.json({ error: "Post tidak ditemukan." }, { status: 404 });
   }
 
+  // Compound keyset cursor — format "<ISO>_<userId>". FeedLike composite
+  // PK (userId, postId) tanpa id sendiri, jadi createdAt saja TIDAK
+  // cukup sebagai cursor: kalau ≥2 like punya createdAt identik
+  // (bulk/seeded data atau like cepat berturut), filter `lt: createdAt`
+  // bakal exclude SELURUH timestamp itu → rows sisa di boundary
+  // ke-skip silent. Encode userId sebagai tiebreaker supaya keyset
+  // pagination strict-total-order: (createdAt, userId) DESC.
   const cursorRaw = request.nextUrl.searchParams.get("cursor");
-  const cursor =
-    cursorRaw && cursorRaw.length > 0 ? new Date(cursorRaw) : null;
-  const isValidCursor = cursor && !Number.isNaN(cursor.getTime());
+  let cursorDate: Date | null = null;
+  let cursorUserId: string | null = null;
+  if (cursorRaw && cursorRaw.length > 0) {
+    const sep = cursorRaw.lastIndexOf("_");
+    const datePart = sep >= 0 ? cursorRaw.slice(0, sep) : cursorRaw;
+    cursorUserId = sep >= 0 ? cursorRaw.slice(sep + 1) : null;
+    const parsed = new Date(datePart);
+    if (!Number.isNaN(parsed.getTime())) cursorDate = parsed;
+  }
+  const isValidCursor = cursorDate !== null;
 
   const limitRaw = Number(
     request.nextUrl.searchParams.get("limit") ?? `${DEFAULT_LIMIT}`,
@@ -61,12 +75,30 @@ export async function GET(
   const rows = await prisma.feedLike.findMany({
     where: {
       postId,
-      ...(isValidCursor ? { createdAt: { lt: cursor! } } : {}),
+      // Keyset: (createdAt < cursor) OR (createdAt == cursor AND
+      // userId < cursorUserId). Match orderBy [createdAt desc,
+      // userId desc] supaya tidak ada row ke-skip maupun duplikat.
+      ...(isValidCursor
+        ? {
+            OR: [
+              { createdAt: { lt: cursorDate! } },
+              ...(cursorUserId
+                ? [
+                    {
+                      createdAt: cursorDate!,
+                      userId: { lt: cursorUserId },
+                    },
+                  ]
+                : []),
+            ],
+          }
+        : {}),
     },
     orderBy: [{ createdAt: "desc" }, { userId: "desc" }],
     take: limit + 1,
     select: {
       createdAt: true,
+      userId: true,
       user: {
         select: {
           id: true,
@@ -117,7 +149,9 @@ export async function GET(
       isSelf: viewerUserId === row.user.id,
     })),
     nextCursor: hasMore
-      ? sliced[sliced.length - 1].createdAt.toISOString()
+      ? `${sliced[sliced.length - 1].createdAt.toISOString()}_${
+          sliced[sliced.length - 1].userId
+        }`
       : null,
   });
 }

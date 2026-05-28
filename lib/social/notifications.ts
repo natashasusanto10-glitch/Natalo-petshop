@@ -37,6 +37,28 @@ export async function sendFollowNotification(params: {
     const body = `${actorName} mulai mengikuti kamu.`;
     const eventType: SocialNotificationEventType = "user_followed";
 
+    // Dedup — cegah spam follow→unfollow→follow. Kalau follower ini sudah
+    // trigger notif "user_followed" ke target dalam 7 hari terakhir, skip
+    // (tidak push + tidak buat Announcement baru). Keyed by `url` yang
+    // unik per follower-username. Hanya dedup kalau follower punya
+    // username (url unik); follower tanpa username pakai url generic
+    // "/notifications" yang collide antar user, jadi skip dedup supaya
+    // tidak over-suppress notif dari follower berbeda.
+    if (follower.username) {
+      const recent = await prisma.announcement.findFirst({
+        where: {
+          targetUserId: params.followingId,
+          eventType,
+          url,
+          createdAt: {
+            gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+          },
+        },
+        select: { id: true },
+      });
+      if (recent) return;
+    }
+
     const payload: PushPayload = {
       title,
       body,

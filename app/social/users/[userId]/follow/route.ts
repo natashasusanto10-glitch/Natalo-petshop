@@ -1,3 +1,5 @@
+import type { NextRequest } from "next/server";
+import { assertSameOrigin } from "@/lib/csrf";
 import {
   followUser,
   requireSocialUserId,
@@ -7,9 +9,14 @@ import {
 } from "../../_follow";
 
 export async function POST(
-  _request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ userId: string }> },
 ) {
+  // CSRF defense-in-depth — match pola mutation feed lain (like/share/
+  // comments/post). Native Flutter request tanpa Origin header di-allow
+  // oleh assertSameOrigin (return null), jadi tidak break mobile app.
+  const csrfReject = assertSameOrigin(request);
+  if (csrfReject) return csrfReject;
   try {
     const viewerUserId = await requireSocialUserId();
     const { userId } = await params;
@@ -20,9 +27,11 @@ export async function POST(
 }
 
 export async function DELETE(
-  _request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ userId: string }> },
 ) {
+  const csrfReject = assertSameOrigin(request);
+  if (csrfReject) return csrfReject;
   try {
     const viewerUserId = await requireSocialUserId();
     const { userId } = await params;
