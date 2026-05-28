@@ -306,7 +306,11 @@ class _CartScreenState extends State<CartScreen> {
     return _shippingEstimate;
   }
 
-  double get _totalVoucherSaving => _voucherDiscount + _shippingDiscount;
+  // Cart cuma tampilkan saving dari voucher produk/loyalty (yang apply ke
+  // subtotal). Saving gratis-ongkir TIDAK ditampilkan di cart karena
+  // ongkir sendiri tidak ditampilkan di cart (baru dihitung di checkout
+  // setelah pilih alamat + kurir). Gratis-ongkir saving muncul di checkout.
+  double get _totalVoucherSaving => _voucherDiscount;
 
   bool get _shippingVoucherEligible =>
       _selectedItems.isNotEmpty && _selectedSubtotal >= 250000;
@@ -323,11 +327,15 @@ class _CartScreenState extends State<CartScreen> {
     return _isCartShippingVoucherData(voucher);
   }
 
+  // Cart bar tampilkan SUBTOTAL produk (setelah diskon voucher produk/
+  // loyalty), BUKAN total bayar final. Ongkir TIDAK dimasukkan di sini
+  // karena belum diketahui (baru dihitung di checkout setelah user pilih
+  // alamat + kurir). Sebelumnya cart pakai ongkir hardcode Rp15.000 yang
+  // bikin angka cart hampir selalu beda dengan total asli di checkout →
+  // user bingung. Sekarang cart = subtotal akurat, checkout = total
+  // lengkap (subtotal + ongkir asli - semua diskon). Pola Shopee/Tokped.
   double get _grandTotal {
-    final total = _selectedSubtotal +
-        _shippingEstimate -
-        _voucherDiscount -
-        _shippingDiscount;
+    final total = _selectedSubtotal - _voucherDiscount;
     return total < 0 ? 0 : total;
   }
 
@@ -3039,7 +3047,17 @@ class _CartSummaryBar extends StatelessWidget {
                           fontWeight: FontWeight.w900,
                         ),
                       )
-                    else
+                    else ...[
+                      // Label "Subtotal" — jelaskan angka ini BUKAN total
+                      // bayar final (ongkir + total lengkap di checkout).
+                      const Text(
+                        'Subtotal',
+                        style: TextStyle(
+                          color: NataloColors.textMuted,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                       AnimatedRupiah(
                         value: grandTotal,
                         style: NataloTextStyles.totalPaymentPrice.copyWith(
@@ -3047,6 +3065,7 @@ class _CartSummaryBar extends StatelessWidget {
                           fontWeight: FontWeight.w900,
                         ),
                       ),
+                    ],
                     if (!disabled && totalSaving > 0) ...[
                       const SizedBox(height: 3),
                       Text(
