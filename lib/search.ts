@@ -152,11 +152,21 @@ export async function syncProduct(productId: string) {
     );
 
     if (isMeiliEnabled()) {
-      const doc = mapProductToSearchDoc(product);
-      await productIndex.addDocuments([doc]);
+      if (product.isActive) {
+        const doc = mapProductToSearchDoc(product);
+        await productIndex.addDocuments([doc]);
+      } else {
+        // Produk non-aktif → HAPUS dari index, bukan push ulang. Tanpa
+        // ini, produk yang di-hide admin tetap "nyangkut" di index
+        // (walau query selalu filter is_active=true, jadi tidak muncul
+        // ke pembeli — ini defense-in-depth + index bersih). Catatan:
+        // saat ini Meili tidak aktif (isMeiliEnabled=false), jadi branch
+        // ini no-op; benar otomatis kalau Meili nanti diaktifkan.
+        await productIndex.deleteDocument(productId).catch(() => {});
+      }
     }
 
-    return { synced: true, deleted: false };
+    return { synced: true, deleted: !product.isActive };
   } catch (e) {
     console.error("[search.syncProduct] failed:", e);
     return { synced: false, deleted: false, error: String(e) };

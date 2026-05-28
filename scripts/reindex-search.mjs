@@ -92,6 +92,10 @@ async function setupIndex(uid = INDEX_NAME) {
 async function fetchProducts() {
   console.log("Fetching products dari database...");
   const products = await prisma.product.findMany({
+    // Cuma index produk aktif. Produk non-aktif tidak boleh masuk index
+    // (query selalu filter is_active=true, tapi ini cegah index kotor +
+    // defense-in-depth kalau ada code path baru yg lupa filter).
+    where: { isActive: true },
     include: {
       category: { select: { id: true, name: true, slug: true } },
       brand: { select: { id: true, name: true, slug: true } },
