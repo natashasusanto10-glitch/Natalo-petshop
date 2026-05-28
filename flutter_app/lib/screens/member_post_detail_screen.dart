@@ -590,12 +590,13 @@ class _PostFeedItemState extends State<_PostFeedItem>
   late final AnimationController _heartScaleController;
   late final Animation<double> _heartScale;
 
-  // Heart burst controller — big heart pop di tengah image saat user
-  // double-tap media. Signature Instagram-style: scale 0.35→1.42→1.0→0
-  // dengan opacity fade in/out. 620ms total.
+  // Heart burst controller — big red heart pop di posisi double-tap user.
+  // Signature Instagram-style: scale 0.35→1.42→1.0→0 dengan opacity
+  // fade in/out. 620ms total.
   late final AnimationController _heartBurstController;
   late final Animation<double> _burstScale;
   late final Animation<double> _burstOpacity;
+  Offset? _heartBurstPosition;
 
   @override
   void initState() {
@@ -674,6 +675,10 @@ class _PostFeedItemState extends State<_PostFeedItem>
     widget.onLike();
   }
 
+  void _rememberHeartBurstPosition(TapDownDetails details) {
+    _heartBurstPosition = details.localPosition;
+  }
+
   void _handleDoubleTap() {
     // Double-tap = LIKE only (Instagram behavior — tidak un-like).
     // Kalau belum liked, fire onLike. Kalau sudah liked, skip toggle
@@ -683,9 +688,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
     if (!widget.liked) {
       _handleLikeTap();
     }
-    if (!_heartBurstController.isAnimating) {
-      _heartBurstController.forward(from: 0);
-    }
+    _heartBurstController.forward(from: 0);
   }
 
   @override
@@ -729,6 +732,7 @@ class _PostFeedItemState extends State<_PostFeedItem>
         // jalan karena swipe ≠ tap gesture.
         GestureDetector(
           behavior: HitTestBehavior.opaque,
+          onDoubleTapDown: _rememberHeartBurstPosition,
           onDoubleTap: _handleDoubleTap,
           child: Stack(
             children: [
@@ -745,35 +749,56 @@ class _PostFeedItemState extends State<_PostFeedItem>
                     onMenuTap: widget.onMenuTap,
                   ),
                 ),
-              // Heart burst overlay — big white heart pop di tengah image
-              // saat double-tap. Signature Instagram-style. IgnorePointer
-              // supaya tidak intercept tap (gesture wrap di luar Stack udah
-              // handle double-tap).
+              // Heart burst overlay — posisi mengikuti titik double-tap.
+              // IgnorePointer supaya tidak intercept tap berikutnya.
               Positioned.fill(
                 child: IgnorePointer(
-                  child: Center(
-                    child: AnimatedBuilder(
-                      animation: _heartBurstController,
-                      builder: (context, _) {
-                        if (_burstOpacity.value == 0) {
-                          return const SizedBox.shrink();
-                        }
-                        return Opacity(
-                          opacity: _burstOpacity.value,
+                  child: AnimatedBuilder(
+                    animation: _heartBurstController,
+                    builder: (context, _) {
+                      if (_burstOpacity.value == 0) {
+                        return const SizedBox.shrink();
+                      }
+                      final position = _heartBurstPosition;
+                      final progress = _heartBurstController.value;
+                      final heart = Opacity(
+                        opacity: _burstOpacity.value,
+                        child: Transform.translate(
+                          offset: Offset(0, -14 * progress),
                           child: Transform.scale(
                             scale: _burstScale.value,
-                            child: const Icon(
-                              Icons.favorite_rounded,
-                              color: Colors.white,
-                              size: 128,
-                              shadows: [
-                                Shadow(color: Colors.black54, blurRadius: 28),
-                              ],
+                            child: Transform.rotate(
+                              angle: -0.08,
+                              child: const Icon(
+                                Icons.favorite_rounded,
+                                color: Color(0xFFEF4444),
+                                size: 128,
+                                shadows: [
+                                  Shadow(
+                                    color: Colors.black54,
+                                    blurRadius: 28,
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        );
-                      },
-                    ),
+                        ),
+                      );
+                      if (position == null) {
+                        return Center(child: heart);
+                      }
+                      return Stack(
+                        children: [
+                          Positioned(
+                            left: position.dx - 64,
+                            top: position.dy - 64,
+                            width: 128,
+                            height: 128,
+                            child: Center(child: heart),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                 ),
               ),

@@ -1087,10 +1087,11 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   bool _captionExpanded = false;
   bool _hideOverlayForLongPress = false;
 
-  // Heart burst (sama dengan _FeedPostView)
+  // Heart burst (sama dengan _FeedPostView) — posisi mengikuti double tap.
   late final AnimationController _heartBurstController;
   late final Animation<double> _heartScale;
   late final Animation<double> _heartOpacity;
+  Offset? _heartBurstPosition;
 
   // Product chip rotation — sama pattern dengan _FeedPostView untuk video.
   // Tagged products di PHOTO_CAROUSEL/COMMUNITY post juga butuh chip
@@ -1279,14 +1280,16 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     }
   }
 
+  void _rememberHeartBurstPosition(TapDownDetails details) {
+    _heartBurstPosition = details.localPosition;
+  }
+
   void _onDoubleTapLike() {
     AppHaptics.impact();
     if (!_liked) {
       _onLikePressed();
     }
-    if (!_heartBurstController.isAnimating) {
-      _heartBurstController.forward(from: 0);
-    }
+    _heartBurstController.forward(from: 0);
   }
 
   void _onComment() {
@@ -1564,6 +1567,8 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
             // product di studio).
             // Foto carousel — PageView horizontal swipe.
             GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onDoubleTapDown: _rememberHeartBurstPosition,
               onDoubleTap: _onDoubleTapLike,
               onLongPressStart: _onLongPressStart,
               onLongPressEnd: _onLongPressEnd,
@@ -1604,31 +1609,52 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                 },
               ),
             ),
-            // Heart burst overlay (double-tap signature).
+            // Heart burst overlay (double-tap signature) di titik jari.
             IgnorePointer(
-              child: Center(
-                child: AnimatedBuilder(
-                  animation: _heartBurstController,
-                  builder: (context, _) {
-                    if (_heartOpacity.value == 0) {
-                      return const SizedBox.shrink();
-                    }
-                    return Opacity(
-                      opacity: _heartOpacity.value,
+              child: AnimatedBuilder(
+                animation: _heartBurstController,
+                builder: (context, _) {
+                  if (_heartOpacity.value == 0) {
+                    return const SizedBox.shrink();
+                  }
+
+                  final position = _heartBurstPosition;
+                  final progress = _heartBurstController.value;
+                  final heart = Opacity(
+                    opacity: _heartOpacity.value,
+                    child: Transform.translate(
+                      offset: Offset(0, -14 * progress),
                       child: Transform.scale(
                         scale: _heartScale.value,
-                        child: const Icon(
-                          Icons.favorite_rounded,
-                          color: Color(0xFFEF4444),
-                          size: 128,
-                          shadows: [
-                            Shadow(color: Colors.black54, blurRadius: 28),
-                          ],
+                        child: Transform.rotate(
+                          angle: -0.08,
+                          child: const Icon(
+                            Icons.favorite_rounded,
+                            color: Color(0xFFEF4444),
+                            size: 128,
+                            shadows: [
+                              Shadow(color: Colors.black54, blurRadius: 28),
+                            ],
+                          ),
                         ),
                       ),
-                    );
-                  },
-                ),
+                    ),
+                  );
+                  if (position == null) {
+                    return Center(child: heart);
+                  }
+                  return Stack(
+                    children: [
+                      Positioned(
+                        left: position.dx - 64,
+                        top: position.dy - 64,
+                        width: 128,
+                        height: 128,
+                        child: Center(child: heart),
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
             // Dots indicator (kalau >1 foto) — tengah atas, Instagram-style
