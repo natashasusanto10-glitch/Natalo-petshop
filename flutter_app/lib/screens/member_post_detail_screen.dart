@@ -13,6 +13,7 @@ import '../models/feed_comment.dart';
 import '../models/feed_post.dart';
 import '../services/api_client.dart';
 import '../services/feed_service.dart';
+import '../state/feed_local_store.dart';
 import '../state/feed_store.dart';
 import '../state/member_store.dart';
 import '../theme/natalo_colors.dart';
@@ -102,12 +103,13 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
     // pertama bakal accidentally UN-LIKE (backend toggle berdasar DB,
     // bukan trust client). Lihat bug "klik like 1x hilang harus klik
     // kedua kali baru bisa di-like".
-    for (final post in _posts) {
-      _likedCache[post.id] = post.viewerLiked;
-    }
     // Seed shared FeedStore — supaya like/comment count di sini sinkron
     // ke screen lain (Reels feed, Postingan Saya grid, Public Profile).
     feedStore.seed(_posts);
+    for (final post in _posts) {
+      final fresh = feedStore.get(post.id) ?? post;
+      _likedCache[post.id] = fresh.viewerLiked || fresh.isLiked;
+    }
     feedStore.addListener(_onFeedStoreChanged);
     // Jump ke post target setelah first frame settled. Pakai
     // Scrollable.ensureVisible via GlobalKey context — Flutter handle
@@ -247,7 +249,8 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
     // _likedCache + _posts[i] saat store notify. Reels feed dan screen
     // lain yang ikut listen ke store juga akan ke-update.
     try {
-      await feedStore.toggleLike(post.id);
+      final result = await feedStore.toggleLike(post.id);
+      await feedLocalStore.setLiked(post.id, result.liked);
     } catch (_) {
       if (!mounted) return;
       AppToast.show(context, 'Gagal update suka, coba lagi');
@@ -1091,8 +1094,7 @@ class _LikedByLineState extends State<_LikedByLine> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) =>
-                      PublicProfileScreen(username: myUsername),
+                  builder: (_) => PublicProfileScreen(username: myUsername),
                 ),
               );
             }

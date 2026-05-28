@@ -1189,10 +1189,11 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   /// Read latest state dari shared FeedStore, fallback ke widget.post.
   /// Dipanggil di initState + setiap notifyListeners dari store.
   void _syncFromStore() {
-    final fresh = feedStore.get(widget.post.id) ?? widget.post;
+    final storePost = feedStore.get(widget.post.id);
+    final fresh = storePost ?? widget.post;
     _liked = fresh.viewerLiked ||
         fresh.isLiked ||
-        feedLocalStore.isLiked(widget.post.id);
+        (storePost == null && feedLocalStore.isLiked(widget.post.id));
     _likeCount = fresh.likeCount;
     _commentCount = fresh.commentCount;
     _shareCount = fresh.shareCount;
@@ -1202,9 +1203,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     if (!mounted) return;
     final fresh = feedStore.get(widget.post.id);
     if (fresh == null) return;
-    final newLiked = fresh.viewerLiked ||
-        fresh.isLiked ||
-        feedLocalStore.isLiked(widget.post.id);
+    final newLiked = fresh.viewerLiked || fresh.isLiked;
     if (newLiked == _liked &&
         fresh.likeCount == _likeCount &&
         fresh.commentCount == _commentCount &&
@@ -1845,11 +1844,14 @@ class _FeedPostViewState extends State<_FeedPostView>
     // store akan auto-update kalau user toggle dari sini, dan sebaliknya.
     feedStore.seed([widget.post]);
     feedStore.addListener(_onFeedStoreChanged);
-    // Gap #7: initialize _liked dari union backend + local cache.
-    // Backend `viewerLiked` win kalau ada (true source), tapi kalau
-    // backend false + local cache true → trust local (just-liked
-    // optimistic update yang belum di-flush ke backend).
-    _liked = widget.post.viewerLiked || feedLocalStore.isLiked(widget.post.id);
+    // Gap #7: initialize _liked dari backend/store + local cache.
+    // Kalau FeedStore sudah punya post, store/backend adalah source of
+    // truth. Local cache hanya fallback awal agar launch offline tetap
+    // terasa instant, dan tidak boleh membuat unlike terbaru tetap merah.
+    _liked = widget.post.viewerLiked ||
+        widget.post.isLiked ||
+        (feedStore.get(widget.post.id) == null &&
+            feedLocalStore.isLiked(widget.post.id));
     _likeCount = widget.post.likeCount;
     _commentCount = widget.post.commentCount;
     _shareCount = widget.post.shareCount;
@@ -2268,9 +2270,7 @@ class _FeedPostViewState extends State<_FeedPostView>
     if (!mounted) return;
     final fresh = feedStore.get(widget.post.id);
     if (fresh == null) return;
-    final newLiked = fresh.viewerLiked ||
-        fresh.isLiked ||
-        feedLocalStore.isLiked(widget.post.id);
+    final newLiked = fresh.viewerLiked || fresh.isLiked;
     if (newLiked == _liked &&
         fresh.likeCount == _likeCount &&
         fresh.commentCount == _commentCount &&
