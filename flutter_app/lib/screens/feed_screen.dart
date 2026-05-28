@@ -21,6 +21,7 @@ import '../models/cart_item.dart';
 import '../models/feed_post.dart';
 import '../models/product.dart';
 import '../screens/checkout_screen.dart';
+import '../screens/home_search_page.dart';
 import '../services/api_client.dart';
 import '../services/block_service.dart';
 import '../services/feed_service.dart';
@@ -53,6 +54,8 @@ const _feedActionStrokeWidth = 2.2;
 const _feedActionCountFontSize = 12.0;
 const _feedActionItemSpacing = 18.0;
 const _feedActionBottomInset = 24.0;
+const _feedActionRailRightInset = 8.0;
+const _feedTopActionRightInset = 12.0;
 
 /// Instagram Reels-style fullscreen vertical video feed.
 /// - Fullscreen video/image background per post (cover fit)
@@ -191,6 +194,14 @@ class _FeedScreenState extends State<FeedScreen> {
       context,
       '/cart',
       arguments: const {'origin': 'feed'},
+    );
+  }
+
+  void _openFeedSearch() {
+    AppHaptics.tap();
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const HomeSearchPage()),
     );
   }
 
@@ -608,7 +619,7 @@ class _FeedScreenState extends State<FeedScreen> {
                   );
                 }),
               ),
-            // Top overlay — `+` upload (kiri) + cart icon dengan badge (kanan).
+            // Top overlay — `+` upload (kiri) + search/cart stack (kanan).
             // Plain icons (no glass/blur pill) per mockup TikTok-style. Safe
             // area aware via MediaQuery.padding.top supaya tidak overlap
             // dengan notch / status bar di iOS+Android. Hide saat interaction
@@ -625,17 +636,28 @@ class _FeedScreenState extends State<FeedScreen> {
               ),
               Positioned(
                 top: MediaQuery.paddingOf(context).top + 8,
-                right: 4,
-                child: _FeedTopIconButton(
-                  // Icon SHAPE match home AppCartButton: shopping_cart_outlined
-                  // (sebelumnya bag, sekarang cart). Size tetap 28 (default
-                  // _FeedTopIconButton) supaya tetap prominent di atas video
-                  // — beda dari home yang 24 karena context-nya beda
-                  // (header dense dengan banyak icon).
-                  icon: Icons.shopping_cart_outlined,
-                  onTap: _openCartPage,
-                  tooltip: 'Keranjang',
-                  badgeCount: _cartCount > 0 ? _cartCount : null,
+                right: _feedTopActionRightInset,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _FeedTopIconButton(
+                      icon: Icons.search_rounded,
+                      onTap: _openFeedSearch,
+                      tooltip: 'Cari',
+                    ),
+                    const SizedBox(height: 2),
+                    _FeedTopIconButton(
+                      // Icon SHAPE match home AppCartButton:
+                      // shopping_cart_outlined. Size tetap 28 (default
+                      // _FeedTopIconButton) supaya tetap prominent di atas
+                      // video — beda dari home yang 24 karena context-nya
+                      // beda (header dense dengan banyak icon).
+                      icon: Icons.shopping_cart_outlined,
+                      onTap: _openCartPage,
+                      tooltip: 'Keranjang',
+                      badgeCount: _cartCount > 0 ? _cartCount : null,
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -715,7 +737,7 @@ class _LoadingState extends StatelessWidget {
           // Right action rail mock — Like/Comment/Share only. Match
           // positioning aktual yang duduk tepat di atas bottom nav.
           const Positioned(
-            right: 18,
+            right: _feedActionRailRightInset,
             bottom: actionRailInset,
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -1649,7 +1671,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
             // Right action rail — sama pattern dengan _FeedPostView:
             // Like / Comment / Share / More (Report/Block).
             Positioned(
-              right: 18,
+              right: _feedActionRailRightInset,
               bottom: actionRailInset,
               child: AnimatedOpacity(
                 opacity: _hideOverlayForLongPress ? 0 : 1,
@@ -3110,7 +3132,7 @@ class _FeedPostViewState extends State<_FeedPostView>
                         // long-press. Per user spec: video preview clean,
                         // tidak ada actions yang mengganggu.
                         Positioned(
-                          right: 18,
+                          right: _feedActionRailRightInset,
                           bottom: actionRailInset,
                           child: AnimatedOpacity(
                             opacity:
