@@ -53,8 +53,6 @@ const _feedActionStrokeWidth = 2.2;
 const _feedActionCountFontSize = 12.0;
 const _feedActionItemSpacing = 18.0;
 const _feedActionBottomInset = 24.0;
-const _feedProductCtaRightInset = 86.0;
-const _feedProductCtaBottomInset = 188.0;
 
 /// Instagram Reels-style fullscreen vertical video feed.
 /// - Fullscreen video/image background per post (cover fit)
@@ -3154,47 +3152,7 @@ class _FeedPostViewState extends State<_FeedPostView>
                             ),
                           ),
                         ),
-                        // ── End-of-video product CTA — slide-in card 2.5s
-                        //    sebelum video selesai loop. Lebih prominent dari
-                        //    `_ProductLinkChip` yang selalu visible, untuk
-                        //    convert user yang nonton sampai abis. Hide saat
-                        //    long-press / comment sheet open.
-                        if (featuredProduct != null)
-                          Positioned(
-                            left: 16,
-                            right: _feedProductCtaRightInset,
-                            bottom: feedInfoInset + _feedProductCtaBottomInset,
-                            child: AnimatedSlide(
-                              duration: const Duration(milliseconds: 280),
-                              curve: Curves.easeOutCubic,
-                              offset: _endOfVideoCtaVisible &&
-                                      !_hideOverlayForLongPress &&
-                                      !_commentSheetOpen
-                                  ? Offset.zero
-                                  : const Offset(0, 0.5),
-                              child: AnimatedOpacity(
-                                duration: const Duration(milliseconds: 220),
-                                opacity: _endOfVideoCtaVisible &&
-                                        !_hideOverlayForLongPress &&
-                                        !_commentSheetOpen
-                                    ? 1
-                                    : 0,
-                                child: IgnorePointer(
-                                  ignoring: !_endOfVideoCtaVisible ||
-                                      _hideOverlayForLongPress ||
-                                      _commentSheetOpen,
-                                  child: _EndOfVideoProductCta(
-                                    product: featuredProduct,
-                                    onTap: () => _onProductsTap(products),
-                                    onBuy: () =>
-                                        _quickAddProduct(featuredProduct),
-                                    onDismiss: _dismissEndOfVideoCta,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        // ── Bottom info: product tag + creator + caption ──
+                        // ── Bottom info: commerce group + creator + caption ──
                         // Same AnimatedOpacity wrapper untuk hide saat long-press.
                         Positioned(
                           left: 16,
@@ -3207,16 +3165,21 @@ class _FeedPostViewState extends State<_FeedPostView>
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 if (products.isNotEmpty) ...[
-                                  _ProductLinkChip(
+                                  _ProductCommerceOverlayGroup(
                                     products: products,
                                     featuredProduct: featuredProduct!,
                                     featuredIndex:
                                         _featuredProductIndex % products.length,
+                                    showProductCard: _endOfVideoCtaVisible &&
+                                        !_commentSheetOpen,
                                     onTap: () => _onProductsTap(products),
+                                    onBuy: () =>
+                                        _quickAddProduct(featuredProduct),
                                     onQuickAdd: () =>
                                         _quickAddProduct(featuredProduct),
+                                    onDismiss: _dismissEndOfVideoCta,
                                   ),
-                                  const SizedBox(height: 9),
+                                  const SizedBox(height: 12),
                                 ],
                                 _FeedCreatorIdentity(
                                   author: post.author,
@@ -4521,6 +4484,113 @@ class _MoreGlyphPainter extends CustomPainter {
 /// - Chevron bawah → onTap buka bottom sheet "Lihat Produk".
 /// - Background: dark translucent (Colors.black 0.55) + backdrop blur.
 /// - No quick-add button (removed per spec) — full pill area tap-to-open.
+class _ProductCommerceOverlayGroup extends StatelessWidget {
+  final List<FeedProductLink> products;
+  final FeedProductLink featuredProduct;
+  final int featuredIndex;
+  final bool showProductCard;
+  final VoidCallback onTap;
+  final VoidCallback onBuy;
+  final VoidCallback? onQuickAdd;
+  final VoidCallback onDismiss;
+
+  const _ProductCommerceOverlayGroup({
+    required this.products,
+    required this.featuredProduct,
+    required this.featuredIndex,
+    required this.showProductCard,
+    required this.onTap,
+    required this.onBuy,
+    this.onQuickAdd,
+    required this.onDismiss,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AnimatedSize(
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.bottomCenter,
+          child: showProductCard
+              ? Column(
+                  key: const ValueKey('product-card-open'),
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AnimatedSlide(
+                      duration: const Duration(milliseconds: 280),
+                      curve: Curves.easeOutCubic,
+                      offset: Offset.zero,
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 220),
+                        opacity: 1,
+                        child: _EndOfVideoProductCta(
+                          product: featuredProduct,
+                          onTap: onTap,
+                          onBuy: onBuy,
+                          onDismiss: onDismiss,
+                        ),
+                      ),
+                    ),
+                    const _ProductCardArrowPointer(),
+                  ],
+                )
+              : const SizedBox.shrink(key: ValueKey('product-card-closed')),
+        ),
+        _ProductLinkChip(
+          products: products,
+          featuredProduct: featuredProduct,
+          featuredIndex: featuredIndex,
+          onTap: onTap,
+          onQuickAdd: onQuickAdd,
+        ),
+      ],
+    );
+  }
+}
+
+class _ProductCardArrowPointer extends StatelessWidget {
+  const _ProductCardArrowPointer();
+
+  @override
+  Widget build(BuildContext context) {
+    return const CustomPaint(
+      size: Size(22, 10),
+      painter: _DownArrowPainter(),
+    );
+  }
+}
+
+class _DownArrowPainter extends CustomPainter {
+  const _DownArrowPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = Path()
+      ..moveTo(0, 0)
+      ..lineTo(size.width / 2, size.height)
+      ..lineTo(size.width, 0)
+      ..close();
+
+    final fill = Paint()
+      ..color = Colors.black.withValues(alpha: 0.50)
+      ..style = PaintingStyle.fill;
+    canvas.drawPath(path, fill);
+
+    final stroke = Paint()
+      ..color = Colors.white.withValues(alpha: 0.14)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+    canvas.drawPath(path, stroke);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
 class _ProductLinkChip extends StatelessWidget {
   final List<FeedProductLink> products;
   final FeedProductLink featuredProduct;
@@ -4543,50 +4613,78 @@ class _ProductLinkChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final product = featuredProduct;
+    final badgeText = product.hasActiveDiscount
+        ? 'Flash Sale ${product.discountPercent}%'
+        : null;
     return Material(
       color: Colors.transparent,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(18),
         child: BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
           child: InkWell(
             onTap: onTap,
+            borderRadius: BorderRadius.circular(18),
             child: Container(
-              constraints: const BoxConstraints(maxWidth: 320),
+              height: 50,
               decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.55),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+                color: Colors.black.withValues(alpha: 0.48),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.16),
+                  width: 1,
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.32),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
+                    color: Colors.black.withValues(alpha: 0.25),
+                    blurRadius: 18,
+                    offset: const Offset(0, 8),
                   ),
                 ],
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Row(
-                mainAxisSize: MainAxisSize.min,
                 children: [
-                  // ── Icon bag biru Natalo + stroke putih ──
                   Container(
-                    width: 30,
-                    height: 30,
+                    width: 34,
+                    height: 34,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1E5BFF),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.white, width: 1.4),
+                      color: const Color(0xFF1E7BFF),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.18),
+                      ),
                     ),
                     child: const Icon(
                       Icons.shopping_bag_outlined,
                       color: Colors.white,
-                      size: 16,
+                      size: 20,
                     ),
                   ),
-                  const SizedBox(width: 9),
-                  // ── Diskon badge (kalau ada) + separator + nama produk ──
-                  Flexible(
+                  if (badgeText != null) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        badgeText,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          height: 1,
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(width: 8),
+                  Expanded(
                     child: AnimatedSwitcher(
                       duration: const Duration(milliseconds: 260),
                       switchInCurve: Curves.easeOutCubic,
@@ -4595,36 +4693,16 @@ class _ProductLinkChip extends StatelessWidget {
                           FadeTransition(opacity: animation, child: child),
                       child: Row(
                         key: ValueKey(product.id),
-                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (product.hasActiveDiscount) ...[
-                            Text(
-                              'Diskon ${product.discountPercent}%',
-                              style: const TextStyle(
-                                color: Color(0xFFFF4D4F),
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w900,
-                                height: 1,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Container(
-                              width: 1,
-                              height: 12,
-                              color: Colors.white.withValues(alpha: 0.32),
-                            ),
-                            const SizedBox(width: 8),
-                          ],
-                          Flexible(
+                          Expanded(
                             child: Text(
                               product.name,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                 color: Colors.white,
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w700,
-                                height: 1,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
                           ),
@@ -4632,15 +4710,12 @@ class _ProductLinkChip extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  // ── Chevron arrow-down ── per spec mockup (bukan
-                  // chevron_right). Tap pill area = onTap (open sheet).
-                  const Icon(
-                    Icons.keyboard_arrow_down_rounded,
-                    color: Colors.white70,
-                    size: 20,
+                  const SizedBox(width: 8),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: Colors.white.withValues(alpha: 0.90),
+                    size: 24,
                   ),
-                  const SizedBox(width: 2),
                 ],
               ),
             ),
@@ -6276,215 +6351,198 @@ class _EndOfVideoProductCta extends StatelessWidget {
 
     return Material(
       color: Colors.transparent,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.72),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.40),
-                  blurRadius: 26,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: InkWell(
-              onTap: onTap,
-              borderRadius: BorderRadius.circular(18),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // ── Thumbnail produk (4:5 portrait) ──
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: SizedBox(
-                        width: 72,
-                        height: 90,
-                        child: imageUrl != null && imageUrl.isNotEmpty
-                            ? CachedNetworkImage(
-                                imageUrl: imageUrl,
-                                fit: BoxFit.cover,
-                                placeholder: (_, __) =>
-                                    Container(color: const Color(0xFF2A2F36)),
-                                errorWidget: (_, __, ___) =>
-                                    Container(color: const Color(0xFF2A2F36)),
-                              )
-                            : Container(color: const Color(0xFF2A2F36)),
-                      ),
+      borderRadius: BorderRadius.circular(18),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: Stack(
+            children: [
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.50),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.14),
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.30),
+                      blurRadius: 24,
+                      offset: const Offset(0, 12),
                     ),
-                    const SizedBox(width: 10),
-                    // ── Content right ──
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Spacer kecil supaya beri ruang untuk X di top-right
-                          // tanpa overlap text. Padding right ~20 lewat
-                          // contentPadding gak available — pakai SizedBox.
-                          Padding(
-                            padding: const EdgeInsets.only(right: 22),
-                            child: Text(
-                              product.name,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w800,
-                                height: 1.18,
-                              ),
-                            ),
+                  ],
+                ),
+                child: InkWell(
+                  onTap: onTap,
+                  borderRadius: BorderRadius.circular(18),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // ── Thumbnail produk (4:5 portrait) ──
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: SizedBox(
+                            width: 72,
+                            height: 90,
+                            child: imageUrl != null && imageUrl.isNotEmpty
+                                ? CachedNetworkImage(
+                                    imageUrl: imageUrl,
+                                    fit: BoxFit.cover,
+                                    placeholder: (_, __) => Container(
+                                        color: const Color(0xFF2A2F36)),
+                                    errorWidget: (_, __, ___) => Container(
+                                        color: const Color(0xFF2A2F36)),
+                                  )
+                                : Container(color: const Color(0xFF2A2F36)),
                           ),
-                          const SizedBox(height: 5),
-                          // Badges row
-                          Wrap(
-                            spacing: 5,
-                            runSpacing: 4,
-                            crossAxisAlignment: WrapCrossAlignment.center,
+                        ),
+                        const SizedBox(width: 10),
+                        // ── Content right ──
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              if (pricing.hasPromo)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 5,
-                                    vertical: 2,
+                              // Spacer kecil supaya beri ruang untuk X di top-right
+                              // tanpa overlap text. Padding right ~20 lewat
+                              // contentPadding gak available — pakai SizedBox.
+                              Padding(
+                                padding: const EdgeInsets.only(right: 22),
+                                child: Text(
+                                  product.name,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w800,
+                                    height: 1.18,
                                   ),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFFF4D4F),
-                                    borderRadius: BorderRadius.circular(5),
-                                  ),
-                                  child: Text(
-                                    'Diskon ${pricing.discountPercent}%',
+                                ),
+                              ),
+                              const SizedBox(height: 5),
+                              // Badges row
+                              Wrap(
+                                spacing: 5,
+                                runSpacing: 4,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  if (pricing.hasPromo)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 5,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFFF4D4F),
+                                        borderRadius: BorderRadius.circular(5),
+                                      ),
+                                      child: Text(
+                                        'Diskon ${pricing.discountPercent}%',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 9.5,
+                                          fontWeight: FontWeight.w900,
+                                          height: 1,
+                                        ),
+                                      ),
+                                    ),
+                                  const _KhususVideoBadge(),
+                                ],
+                              ),
+                              // Rating row (conditional)
+                              if (hasRatingData) ...[
+                                const SizedBox(height: 5),
+                                _ProductRatingRow(
+                                  avgRating: product.avgRating,
+                                  soldCount: product.soldCount,
+                                ),
+                              ],
+                              const SizedBox(height: 6),
+                              // Harga row
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 3,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  if (pricing.hasPromo)
+                                    Text(
+                                      formatRupiah(pricing.originalPrice),
+                                      style: TextStyle(
+                                        color: Colors.white
+                                            .withValues(alpha: 0.45),
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.w700,
+                                        decoration: TextDecoration.lineThrough,
+                                        decorationColor: Colors.white
+                                            .withValues(alpha: 0.45),
+                                        height: 1,
+                                      ),
+                                    ),
+                                  Text(
+                                    formatRupiah(pricing.displayPrice),
                                     style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 9.5,
+                                      color: Color(0xFFFF4D4F),
+                                      fontSize: 14,
                                       fontWeight: FontWeight.w900,
                                       height: 1,
                                     ),
                                   ),
-                                ),
-                              const _KhususVideoBadge(),
-                            ],
-                          ),
-                          // Rating row (conditional)
-                          if (hasRatingData) ...[
-                            const SizedBox(height: 5),
-                            _ProductRatingRow(
-                              avgRating: product.avgRating,
-                              soldCount: product.soldCount,
-                            ),
-                          ],
-                          const SizedBox(height: 6),
-                          // Harga row
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 3,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: [
-                              if (pricing.hasPromo)
-                                Text(
-                                  formatRupiah(pricing.originalPrice),
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.45),
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.w700,
-                                    decoration: TextDecoration.lineThrough,
-                                    decorationColor:
-                                        Colors.white.withValues(alpha: 0.45),
-                                    height: 1,
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              // Cart icon + Beli button row
+                              Row(
+                                children: [
+                                  _PopupCartButton(
+                                    enabled: canBuy,
+                                    onTap: canBuy ? onBuy : null,
                                   ),
-                                ),
-                              Text(
-                                formatRupiah(pricing.displayPrice),
-                                style: const TextStyle(
-                                  color: Color(0xFFFF4D4F),
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w900,
-                                  height: 1,
-                                ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: _CtaBuyButton(
+                                      enabled: canBuy,
+                                      onTap: canBuy ? onBuy : null,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
-                          const SizedBox(height: 8),
-                          // Cart icon + Beli button row
-                          Row(
-                            children: [
-                              _PopupCartButton(
-                                enabled: canBuy,
-                                onTap: canBuy ? onBuy : null,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: _CtaBuyButton(
-                                  enabled: canBuy,
-                                  onTap: canBuy ? onBuy : null,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          // Pointer kecil ke mini product bar di bawahnya. Ini bikin
-          // hierarchy jelas: popup besar adalah detail dari bar produk aktif.
-          Positioned(
-            bottom: -6,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Transform.rotate(
-                angle: math.pi / 4,
-                child: Container(
-                  width: 14,
-                  height: 14,
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.72),
-                    border: Border(
-                      right: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.10),
-                      ),
-                      bottom: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.10),
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
               ),
-            ),
-          ),
-          // ── X dismiss (top-right) ──
-          Positioned(
-            top: 6,
-            right: 6,
-            child: InkResponse(
-              onTap: onDismiss,
-              radius: 18,
-              child: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.45),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.close_rounded,
-                  size: 14,
-                  color: Colors.white,
+              // ── X dismiss (top-right) ──
+              Positioned(
+                top: 6,
+                right: 6,
+                child: InkResponse(
+                  onTap: onDismiss,
+                  radius: 18,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.45),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.close_rounded,
+                      size: 14,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
