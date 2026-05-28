@@ -315,6 +315,11 @@ class FeedPost {
   /// Thumbnail URL untuk grid tile dengan fallback chain:
   ///   thumbnailUrl → first mediaItem.thumbnailUrl → first mediaItem.mediaUrl
   ///   → videoUrl (last resort)
+  ///
+  /// **PENTING:** ini untuk PREVIEW/THUMBNAIL (gambar), BUKAN untuk source
+  /// video player. Untuk playback video pakai [videoPlaybackUrl] — getter
+  /// ini return thumbnailUrl (JPG) duluan, kalau di-feed ke VideoPlayer
+  /// akan gagal initialize ("Video belum bisa diputar").
   String get previewMediaUrl {
     final t = thumbnailUrl?.trim();
     if (t != null && t.isNotEmpty) return t;
@@ -324,6 +329,24 @@ class FeedPost {
       if (m.mediaUrl.isNotEmpty) return m.mediaUrl;
     }
     return videoUrl;
+  }
+
+  /// URL untuk PLAYBACK video (bukan thumbnail). Source untuk
+  /// VideoPlayerController / CachedVideoPlayerPlus. Chain:
+  ///   videoUrl → first video mediaItem.mediaUrl → first mediaItem.mediaUrl
+  ///
+  /// Beda dari [previewMediaUrl] yang sengaja thumbnail-first untuk grid.
+  /// Bug "Video belum bisa diputar" muncul saat player keliru di-feed
+  /// previewMediaUrl (thumbnail JPG) — pakai getter ini untuk video source.
+  String get videoPlaybackUrl {
+    if (videoUrl.trim().isNotEmpty) return videoUrl;
+    for (final m in mediaItems) {
+      if (m.isVideo && m.mediaUrl.trim().isNotEmpty) return m.mediaUrl;
+    }
+    for (final m in mediaItems) {
+      if (m.mediaUrl.trim().isNotEmpty) return m.mediaUrl;
+    }
+    return '';
   }
 
   // ───────── Moderation helpers (owner-only) ─────────

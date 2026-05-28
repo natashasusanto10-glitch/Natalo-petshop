@@ -1,5 +1,6 @@
 // ignore_for_file: use_build_context_synchronously
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cached_video_player_plus/cached_video_player_plus.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
@@ -1381,7 +1382,9 @@ class _PostMediaSurface extends StatelessWidget {
       child: switch (post.contentType) {
         FeedContentType.video => _InlineVideoPlayer(
             postId: post.id,
-            mediaUrl: post.previewMediaUrl,
+            // videoPlaybackUrl (videoUrl-first), BUKAN previewMediaUrl
+            // (yang thumbnail-first → JPG → player gagal initialize).
+            mediaUrl: post.videoPlaybackUrl,
             thumbnailUrl: post.thumbnailUrl,
             aspectRatio: aspectRatio,
           ),
@@ -1419,13 +1422,19 @@ class _CarouselSurfaceState extends State<_CarouselSurface> {
 
   List<FeedMedia> get _items {
     if (widget.post.mediaItems.isNotEmpty) return widget.post.mediaItems;
-    if (widget.post.previewMediaUrl.isEmpty) return const [];
+    // Fallback single item. Untuk video pakai videoPlaybackUrl (video
+    // source), untuk photo pakai previewMediaUrl (thumbnail/image). Jangan
+    // kasih thumbnail JPG ke item video → player gagal.
+    final isVideo = widget.post.isVideo;
+    final fallbackUrl =
+        isVideo ? widget.post.videoPlaybackUrl : widget.post.previewMediaUrl;
+    if (fallbackUrl.trim().isEmpty) return const [];
     return [
       FeedMedia(
         id: '${widget.post.id}-fallback',
-        mediaUrl: widget.post.previewMediaUrl,
+        mediaUrl: fallbackUrl,
         thumbnailUrl: widget.post.thumbnailUrl,
-        mediaType: widget.post.isVideo ? 'video' : 'image',
+        mediaType: isVideo ? 'video' : 'image',
         durationSeconds: widget.post.durationSec,
       ),
     ];
@@ -1769,6 +1778,11 @@ class _InlineVideoPlayer extends StatefulWidget {
 }
 
 class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
+  // Wrapper CachedVideoPlayerPlus — handle HLS (.m3u8) Bunny + disk cache.
+  // Sama seperti Reels feed (lihat feed_screen.dart). Plain
+  // VideoPlayerController.networkUrl kurang reliable untuk HLS signed URL;
+  // wrapper ini expose .controller (underlying VideoPlayerController).
+  CachedVideoPlayerPlus? _cachedPlayer;
   VideoPlayerController? _controller;
   bool _initializing = false;
   String? _error;
@@ -1797,13 +1811,19 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
       _initializing = true;
       _error = null;
     });
-    final controller = VideoPlayerController.networkUrl(
+    final wrapper = CachedVideoPlayerPlus.networkUrl(
       Uri.parse(widget.mediaUrl),
+      invalidateCacheIfOlderThan: const Duration(days: 7),
     );
-    _controller = controller;
+    _cachedPlayer = wrapper;
     try {
-      await controller.initialize();
-      if (!mounted || _controller != controller) return;
+      await wrapper.initialize();
+      final controller = wrapper.controller;
+      if (!mounted || _cachedPlayer != wrapper) {
+        await wrapper.dispose();
+        return;
+      }
+      _controller = controller;
       // Muted by default (Instagram-style auto-play). User unmute via
       // sound button in the media corner.
       await controller.setVolume(_muted ? 0 : 1);
@@ -1813,9 +1833,10 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
       // langsung play.
       _applyVisibility();
     } catch (_) {
-      await controller.dispose();
-      if (!mounted || _controller != controller) return;
+      await wrapper.dispose();
+      if (!mounted || _cachedPlayer != wrapper) return;
       setState(() {
+        _cachedPlayer = null;
         _controller = null;
         _initializing = false;
         _error = 'Video belum bisa diputar';
@@ -1824,10 +1845,17 @@ class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
   }
 
   Future<void> _disposeController() async {
+    final wrapper = _cachedPlayer;
     final controller = _controller;
+    _cachedPlayer = null;
     _controller = null;
+    // Dispose via wrapper — handle underlying controller + cache reference.
     await controller?.pause();
-    await controller?.dispose();
+    if (wrapper != null) {
+      await wrapper.dispose();
+    } else {
+      await controller?.dispose();
+    }
   }
 
   void _onVisibilityChanged(VisibilityInfo info) {
