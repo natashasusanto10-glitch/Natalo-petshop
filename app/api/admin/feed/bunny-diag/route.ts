@@ -1,19 +1,27 @@
 /**
  * GET /api/admin/feed/bunny-diag
  *
- * Read-only diagnostic endpoint. Returns enough state about the latest
- * feed posts to debug "why isn't my upload showing in the feed" without
- * requiring an admin session — useful when we (the developer) need to
- * inspect from a server-side curl. No PII / no full URLs / no internal
- * details that aren't already public via /api/feed/posts. Strip this
- * endpoint once the migration is stable.
+ * Read-only diagnostic endpoint untuk debug "kenapa upload-ku tidak
+ * muncul di feed". Return state 10 post feed terbaru.
+ *
+ * SECURITY: sekarang WAJIB admin session. Sebelumnya endpoint ini
+ * sengaja unauthenticated ("untuk curl server-side") tapi itu bocorkan
+ * internal feed lintas user — title, status, encodingStatus, bahkan
+ * post PENDING_REVIEW / deleted yang belum public — ke siapa saja. Info
+ * disclosure. Sekarang di-guard sama seperti admin endpoint lain.
  */
 import { NextResponse } from "next/server";
+import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const session = await getSession("ADMIN");
+  if (!session || session.role !== "ADMIN") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const recent = await prisma.feedPost.findMany({
     orderBy: { createdAt: "desc" },
     take: 10,

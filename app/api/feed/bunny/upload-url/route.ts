@@ -45,7 +45,6 @@ import {
   deleteBunnyVideo,
   generateBunnyTusCredentials,
   getBunnyConfig,
-  bunnyUploadUrl,
 } from "@/lib/feed/bunny";
 
 export const dynamic = "force-dynamic";
@@ -335,24 +334,23 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Generate TUS credentials selain PUT URL. Client pilih path:
-  //   - File besar (>50 MB) atau koneksi unstable → TUS resumable
-  //   - File kecil → PUT simple (lebih cepat setup, 1 round-trip)
-  // Both authenticate the same Bunny video record (videoGuid), jadi
-  // client bisa fallback PUT → TUS atau sebaliknya kalau salah satu gagal.
+  // TUS resumable upload — SATU-SATUNYA path sekarang. Pakai signature
+  // scoped per-video (generateBunnyTusCredentials), bukan master key.
+  //
+  // SECURITY: legacy PUT path DIHAPUS. Sebelumnya response include
+  // `uploadHeaders.AccessKey = cfg.apiKey` (full BUNNY_API_KEY = master
+  // write key library) ke SETIAP customer login. Customer bisa pakai key
+  // itu buat create/delete/list SEMUA video di library langsung ke
+  // video.bunnycdn.com. Flutter client sudah pakai TUS sebagai path
+  // utama (`if (provision.tus != null)` dulu, PUT cuma fallback), dan
+  // backend selalu generate TUS, jadi PUT fallback praktis tidak pernah
+  // kepakai — aman dihapus tanpa break upload.
   const tusCredentials = await generateBunnyTusCredentials(bunnyCreated.guid);
 
   return NextResponse.json({
     ok: true,
     postId: post.id,
     videoGuid: bunnyCreated.guid,
-    // Legacy PUT path (backward compat untuk client lama)
-    uploadUrl: bunnyUploadUrl(bunnyCreated.guid),
-    uploadHeaders: {
-      AccessKey: cfg.apiKey,
-      "Content-Type": "application/octet-stream",
-    },
-    // TUS resumable upload — recommended path
     tus: tusCredentials,
   });
 }
