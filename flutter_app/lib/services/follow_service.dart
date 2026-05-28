@@ -154,6 +154,28 @@ class FollowService {
     return FollowState.fromJson(_asMap(data));
   }
 
+  Future<List<FollowUserSummary>> searchUsers(
+    String query, {
+    int limit = 20,
+  }) async {
+    final data = await apiClient.getJson(
+      '/api/users/search',
+      query: {
+        'q': query,
+        'limit': limit,
+      },
+      timeout: const Duration(seconds: 5),
+    );
+    final map = _asMap(data);
+    final rawItems = map['items'];
+    if (rawItems is! List) return const [];
+    return rawItems
+        .whereType<Map<String, dynamic>>()
+        .map(FollowUserSummary.fromJson)
+        .where((user) => user.canOpenProfile)
+        .toList(growable: false);
+  }
+
   Future<FollowListResult> fetchFollowers(
     String userId, {
     String? cursor,

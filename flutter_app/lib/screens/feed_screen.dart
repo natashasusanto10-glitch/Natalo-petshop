@@ -21,7 +21,7 @@ import '../models/cart_item.dart';
 import '../models/feed_post.dart';
 import '../models/product.dart';
 import '../screens/checkout_screen.dart';
-import '../screens/home_search_page.dart';
+import '../screens/feed_user_search_screen.dart';
 import '../services/api_client.dart';
 import '../services/block_service.dart';
 import '../services/feed_service.dart';
@@ -54,8 +54,8 @@ const _feedActionStrokeWidth = 2.2;
 const _feedActionCountFontSize = 12.0;
 const _feedActionItemSpacing = 18.0;
 const _feedActionBottomInset = 24.0;
-const _feedActionRailRightInset = 8.0;
-const _feedTopActionRightInset = 12.0;
+const _feedActionRailRightInset = 4.0;
+const _feedTopActionRightInset = 8.0;
 
 /// Instagram Reels-style fullscreen vertical video feed.
 /// - Fullscreen video/image background per post (cover fit)
@@ -201,7 +201,7 @@ class _FeedScreenState extends State<FeedScreen> {
     AppHaptics.tap();
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const HomeSearchPage()),
+      MaterialPageRoute(builder: (_) => const FeedUserSearchScreen()),
     );
   }
 
