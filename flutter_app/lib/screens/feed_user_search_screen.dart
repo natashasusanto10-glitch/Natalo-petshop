@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/api_client.dart';
 import '../services/follow_service.dart';
@@ -15,6 +17,8 @@ const _divider = Color(0xFF141A22);
 const _muted = Color(0xFF8D96A3);
 const _text = Color(0xFFF8FAFC);
 const _brandBlue = Color(0xFF0B7FEA);
+const _recentStorageKey = 'feed_user_search_recent_v1';
+const _maxRecentUsers = 12;
 
 class FeedUserSearchScreen extends StatefulWidget {
   const FeedUserSearchScreen({super.key});
@@ -34,11 +38,16 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
   bool _loginRequired = false;
   String? _error;
   List<FollowUserSummary> _items = const [];
+  bool _suggestedLoading = false;
+  List<FollowUserSummary> _recentUsers = const [];
+  List<FollowUserSummary> _suggestedUsers = const [];
 
   @override
   void initState() {
     super.initState();
     _controller.addListener(_onInputChanged);
+    _loadRecentUsers();
+    _loadSuggestedUsers();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _focusNode.requestFocus();
     });
@@ -56,16 +65,17 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
   void _onInputChanged() {
     final next = _controller.text.trim();
     if (next == _query) return;
+    _debounce?.cancel();
     setState(() {
       _query = next;
       _error = null;
       _loginRequired = false;
       if (next.length < 2) {
+        _lastRunQuery = '';
         _items = const [];
         _loading = false;
       }
     });
-    _debounce?.cancel();
     if (next.length < 2) return;
     _debounce = Timer(const Duration(milliseconds: 250), () {
       _runSearch(next);
@@ -83,10 +93,10 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
     });
     try {
       final items = await followService.searchUsers(q, limit: 20);
-      if (!mounted || _lastRunQuery != q) return;
+      if (!mounted || _lastRunQuery != q || _normalizedQuery != q) return;
       setState(() => _items = items);
     } catch (error) {
-      if (!mounted || _lastRunQuery != q) return;
+      if (!mounted || _lastRunQuery != q || _normalizedQuery != q) return;
       if (error is ApiException && error.statusCode == 401) {
         setState(() {
           _loginRequired = true;
@@ -99,11 +109,13 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
         });
       }
     } finally {
-      if (mounted && _lastRunQuery == q) {
+      if (mounted && _lastRunQuery == q && _normalizedQuery == q) {
         setState(() => _loading = false);
       }
     }
   }
+
+  String get _normalizedQuery => _controller.text.trim().toLowerCase();
 
   void _clear() {
     AppHaptics.tap();
@@ -115,53 +127,125 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
     Navigator.pop(context);
   }
 
+  Future<void> _loadRecentUsers() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getStringList(_recentStorageKey) ?? const <String>[];
+    final users = <FollowUserSummary>[];
+    for (final raw in stored) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map<String, dynamic>) {
+          final user = FollowUserSummary.fromJson(decoded);
+          if (user.canOpenProfile) users.add(user);
+        } else if (decoded is Map) {
+          final user = FollowUserSummary.fromJson(
+            Map<String, dynamic>.from(decoded),
+          );
+          if (user.canOpenProfile) users.add(user);
+        }
+      } catch (_) {
+        // Abaikan entry lama yang rusak supaya recent tetap bisa tampil.
+      }
+    }
+    if (!mounted) return;
+    setState(() => _recentUsers = users.take(_maxRecentUsers).toList());
+  }
+
+  Future<void> _loadSuggestedUsers() async {
+    setState(() => _suggestedLoading = true);
+    try {
+      final users = await followService.fetchSuggestedUsers(limit: 12);
+      if (!mounted) return;
+      setState(() => _suggestedUsers = users);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _suggestedUsers = const []);
+    } finally {
+      if (mounted) setState(() => _suggestedLoading = false);
+    }
+  }
+
+  Future<void> _persistRecentUsers() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      _recentStorageKey,
+      _recentUsers.map((user) => jsonEncode(user.toJson())).toList(),
+    );
+  }
+
+  Future<void> _rememberRecentUser(FollowUserSummary user) async {
+    if (!user.canOpenProfile) return;
+    setState(() {
+      final next = <FollowUserSummary>[
+        user,
+        ..._recentUsers.where((item) => item.id != user.id),
+      ];
+      _recentUsers = next.take(_maxRecentUsers).toList(growable: false);
+    });
+    await _persistRecentUsers();
+  }
+
+  Future<void> _removeRecentUser(FollowUserSummary user) async {
+    AppHaptics.tap();
+    setState(() {
+      _recentUsers = _recentUsers
+          .where((item) => item.id != user.id)
+          .toList(growable: false);
+    });
+    await _persistRecentUsers();
+  }
+
+  Future<void> _clearRecentUsers() async {
+    AppHaptics.tap();
+    setState(() => _recentUsers = const []);
+    await _persistRecentUsers();
+  }
+
   void _openProfile(FollowUserSummary user) {
     final username = user.username;
     if (username == null || username.isEmpty) return;
     AppHaptics.tap();
+    unawaited(_rememberRecentUser(user));
     Navigator.pushNamed(context, '/u', arguments: username);
   }
 
   Future<void> _toggleFollow(FollowUserSummary user) async {
     if (user.isSelf || _busyUserIds.contains(user.id)) return;
     AppHaptics.impact();
-    final index = _items.indexWhere((item) => item.id == user.id);
-    if (index < 0) return;
     final wasFollowing = user.isFollowing;
+    final optimistic = user.copyWith(
+      isFollowing: !wasFollowing,
+      followersCount: wasFollowing
+          ? (user.followersCount - 1).clamp(0, 999999)
+          : user.followersCount + 1,
+    );
     setState(() {
       _busyUserIds.add(user.id);
-      _items = List<FollowUserSummary>.from(_items)
-        ..[index] = user.copyWith(
-          isFollowing: !wasFollowing,
-          followersCount: wasFollowing
-              ? (user.followersCount - 1).clamp(0, 999999)
-              : user.followersCount + 1,
-        );
+      _replaceUserEverywhere(optimistic);
     });
+    if (_recentUsers.any((item) => item.id == user.id)) {
+      unawaited(_persistRecentUsers());
+    }
     try {
       final state = wasFollowing
           ? await followService.unfollow(user.id)
           : await followService.follow(user.id);
       if (!mounted) return;
-      final currentIndex = _items.indexWhere((item) => item.id == user.id);
-      if (currentIndex >= 0) {
-        setState(() {
-          _items = List<FollowUserSummary>.from(_items)
-            ..[currentIndex] = _items[currentIndex].copyWith(
-              isFollowing: state.isFollowing,
-              followersCount: state.followersCount,
-              followingCount: state.followingCount,
-              isSelf: state.isSelf,
-            );
-        });
+      final updated = optimistic.copyWith(
+        isFollowing: state.isFollowing,
+        followersCount: state.followersCount,
+        followingCount: state.followingCount,
+        isSelf: state.isSelf,
+      );
+      setState(() => _replaceUserEverywhere(updated));
+      if (_recentUsers.any((item) => item.id == user.id)) {
+        unawaited(_persistRecentUsers());
       }
     } catch (_) {
       if (!mounted) return;
-      final currentIndex = _items.indexWhere((item) => item.id == user.id);
-      if (currentIndex >= 0) {
-        setState(() {
-          _items = List<FollowUserSummary>.from(_items)..[currentIndex] = user;
-        });
+      setState(() => _replaceUserEverywhere(user));
+      if (_recentUsers.any((item) => item.id == user.id)) {
+        unawaited(_persistRecentUsers());
       }
       AppToast.show(context, 'Gagal update follow. Coba lagi.');
     } finally {
@@ -169,6 +253,25 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
         setState(() => _busyUserIds.remove(user.id));
       }
     }
+  }
+
+  void _replaceUserEverywhere(FollowUserSummary user) {
+    _items = _replaceUser(_items, user);
+    _recentUsers = _replaceUser(_recentUsers, user);
+    _suggestedUsers = _replaceUser(_suggestedUsers, user);
+  }
+
+  List<FollowUserSummary> _replaceUser(
+    List<FollowUserSummary> users,
+    FollowUserSummary user,
+  ) {
+    var changed = false;
+    final next = users.map((item) {
+      if (item.id != user.id) return item;
+      changed = true;
+      return user;
+    }).toList(growable: false);
+    return changed ? next : users;
   }
 
   @override
@@ -205,7 +308,7 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
 
   Widget _buildBody() {
     if (_query.length < 2) {
-      return const _IntroState();
+      return _buildDefaultBody();
     }
     if (_loginRequired) {
       return _MessageState(
@@ -236,14 +339,20 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
         query: _query,
       );
     }
-    return ListView.separated(
+    return ListView(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      itemCount: _items.length + (_loading ? 1 : 0),
-      separatorBuilder: (_, __) => const SizedBox(height: 2),
-      itemBuilder: (context, index) {
-        if (index >= _items.length) {
-          return const Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      children: [
+        const _SectionHeader(title: 'Hasil pencarian'),
+        for (final user in _items)
+          _UserResultTile(
+            user: user,
+            busy: _busyUserIds.contains(user.id),
+            onTap: () => _openProfile(user),
+            onFollowTap: user.isSelf ? null : () => _toggleFollow(user),
+          ),
+        if (_loading)
+          const Padding(
             padding: EdgeInsets.symmetric(vertical: 18),
             child: Center(
               child: SizedBox(
@@ -255,16 +364,68 @@ class _FeedUserSearchScreenState extends State<FeedUserSearchScreen> {
                 ),
               ),
             ),
-          );
-        }
-        final user = _items[index];
-        return _UserResultTile(
-          user: user,
-          busy: _busyUserIds.contains(user.id),
-          onTap: () => _openProfile(user),
-          onFollowTap: user.isSelf ? null : () => _toggleFollow(user),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildDefaultBody() {
+    final children = <Widget>[];
+
+    if (_recentUsers.isNotEmpty) {
+      children
+        ..add(
+          _SectionHeader(
+            title: 'Recent',
+            actionLabel: 'Hapus',
+            onAction: () => _clearRecentUsers(),
+          ),
+        )
+        ..addAll(
+          _recentUsers.map(
+            (user) => _UserResultTile(
+              user: user,
+              busy: _busyUserIds.contains(user.id),
+              onTap: () => _openProfile(user),
+              onFollowTap: user.isSelf ? null : () => _toggleFollow(user),
+              onRemove: () => _removeRecentUser(user),
+            ),
+          ),
+        )
+        ..add(const SizedBox(height: 14));
+    }
+
+    if (_suggestedLoading && _suggestedUsers.isEmpty) {
+      children
+        ..add(const _SectionHeader(title: 'Akun yang mungkin kamu kenal'))
+        ..addAll(List.generate(4, (_) => const _SkeletonRow()));
+    } else if (_suggestedUsers.isNotEmpty) {
+      children
+        ..add(const _SectionHeader(title: 'Akun yang mungkin kamu kenal'))
+        ..addAll(
+          _suggestedUsers.map(
+            (user) => _UserResultTile(
+              user: user,
+              busy: _busyUserIds.contains(user.id),
+              onTap: () => _openProfile(user),
+              onFollowTap: user.isSelf ? null : () => _toggleFollow(user),
+            ),
+          ),
         );
-      },
+    }
+
+    if (children.isEmpty) {
+      return const _MessageState(
+        icon: Icons.person_search_rounded,
+        title: 'Cari akun',
+        body: 'Mulai ketik username atau nama.',
+      );
+    }
+
+    return ListView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      children: children,
     );
   }
 }
@@ -304,6 +465,7 @@ class _SearchHeader extends StatelessWidget {
                 focusNode: focusNode,
                 autofocus: true,
                 keyboardAppearance: Brightness.dark,
+                cursorColor: _text,
                 textInputAction: TextInputAction.search,
                 onSubmitted: onSubmitted,
                 inputFormatters: [LengthLimitingTextInputFormatter(60)],
@@ -315,10 +477,14 @@ class _SearchHeader extends StatelessWidget {
                 ),
                 decoration: InputDecoration(
                   isDense: true,
+                  filled: true,
+                  fillColor: Colors.transparent,
                   border: InputBorder.none,
                   enabledBorder: InputBorder.none,
                   focusedBorder: InputBorder.none,
-                  hintText: 'Cari username atau nama...',
+                  disabledBorder: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                  hintText: 'Cari akun',
                   hintStyle: const TextStyle(
                     color: _muted,
                     fontSize: 15,
@@ -366,17 +532,69 @@ class _SearchHeader extends StatelessWidget {
   }
 }
 
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  const _SectionHeader({
+    required this.title,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(
+                color: _text,
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+                height: 1.1,
+              ),
+            ),
+          ),
+          if (actionLabel != null && onAction != null)
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onAction,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Text(
+                  actionLabel!,
+                  style: const TextStyle(
+                    color: _brandBlue,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _UserResultTile extends StatelessWidget {
   final FollowUserSummary user;
   final bool busy;
   final VoidCallback onTap;
   final VoidCallback? onFollowTap;
+  final VoidCallback? onRemove;
 
   const _UserResultTile({
     required this.user,
     required this.busy,
     required this.onTap,
     required this.onFollowTap,
+    this.onRemove,
   });
 
   @override
@@ -390,7 +608,7 @@ class _UserResultTile extends StatelessWidget {
       splashColor: Colors.white.withValues(alpha: 0.06),
       highlightColor: Colors.white.withValues(alpha: 0.04),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
         child: Row(
           children: [
             _Avatar(user: user),
@@ -426,7 +644,17 @@ class _UserResultTile extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
-            if (user.isSelf)
+            if (onRemove != null)
+              IconButton(
+                tooltip: 'Hapus dari recent',
+                onPressed: onRemove,
+                icon: const Icon(
+                  Icons.close_rounded,
+                  color: _muted,
+                  size: 22,
+                ),
+              )
+            else if (user.isSelf)
               const Text(
                 'Kamu',
                 style: TextStyle(
@@ -579,19 +807,6 @@ class _ButtonContent extends StatelessWidget {
         strokeWidth: 2,
         color: spinnerColor,
       ),
-    );
-  }
-}
-
-class _IntroState extends StatelessWidget {
-  const _IntroState();
-
-  @override
-  Widget build(BuildContext context) {
-    return const _MessageState(
-      icon: Icons.person_search_rounded,
-      title: 'Cari akun Natalo',
-      body: 'Temukan username atau nama user untuk follow dan lihat profilnya.',
     );
   }
 }

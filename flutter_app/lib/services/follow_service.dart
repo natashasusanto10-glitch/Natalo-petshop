@@ -82,6 +82,18 @@ class FollowUserSummary {
     );
   }
 
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'username': username,
+        'profilePhotoUrl': profilePhotoUrl,
+        'bio': bio,
+        'followersCount': followersCount,
+        'followingCount': followingCount,
+        'isFollowing': isFollowing,
+        'isSelf': isSelf,
+      };
+
   FollowUserSummary copyWith({
     int? followersCount,
     int? followingCount,
@@ -158,11 +170,34 @@ class FollowService {
     String query, {
     int limit = 20,
   }) async {
+    return _fetchUserSearch(
+      query: query,
+      limit: limit,
+      suggested: false,
+    );
+  }
+
+  Future<List<FollowUserSummary>> fetchSuggestedUsers({
+    int limit = 12,
+  }) async {
+    return _fetchUserSearch(
+      query: '',
+      limit: limit,
+      suggested: true,
+    );
+  }
+
+  Future<List<FollowUserSummary>> _fetchUserSearch({
+    required String query,
+    required int limit,
+    required bool suggested,
+  }) async {
     final data = await apiClient.getJson(
       '/api/users/search',
       query: {
         'q': query,
         'limit': limit,
+        if (suggested) 'suggested': '1',
       },
       timeout: const Duration(seconds: 5),
     );

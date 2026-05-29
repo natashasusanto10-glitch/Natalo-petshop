@@ -32,9 +32,9 @@ export async function GET(request: NextRequest) {
 
   const qRaw = request.nextUrl.searchParams.get("q") ?? "";
   const q = qRaw.trim().toLowerCase().replace(/^@+/, "");
-  if (q.length === 0) {
-    return NextResponse.json({ items: [] });
-  }
+  const wantsSuggested =
+    request.nextUrl.searchParams.get("suggested") === "1" ||
+    request.nextUrl.searchParams.get("suggested") === "true";
 
   const rawLimit = Number(
     request.nextUrl.searchParams.get("limit") ?? `${DEFAULT_LIMIT}`,
@@ -44,32 +44,36 @@ export async function GET(request: NextRequest) {
       ? Math.min(MAX_LIMIT, Math.max(1, Math.floor(rawLimit)))
       : DEFAULT_LIMIT;
 
-  // Username tersimpan lowercase, jadi direct string match cukup.
-  // Name pakai insensitive contains supaya Feed Search bisa cari nama asli.
-  const users = await prisma.user.findMany({
-    where: {
-      OR: [
-        { username: { startsWith: q } },
-        { username: { contains: q } },
-        { name: { contains: qRaw.trim(), mode: "insensitive" } },
-      ],
-      // Skip null usernames (existing user yang belum set) — gak bisa
-      // di-mention anyway.
-      NOT: { username: null },
-    },
-    select: {
-      id: true,
-      name: true,
-      username: true,
-      profilePhotoUrl: true,
-      bio: true,
-      followersCount: true,
-      followingCount: true,
-    },
-    // Fetch 2× limit untuk reorder client-side (exact match dulu).
-    take: limit * 2,
-    orderBy: { username: "asc" },
-  });
+  const users =
+    q.length === 0
+      ? wantsSuggested
+        ? await prisma.user.findMany({
+            where: {
+              id: { not: session.sub },
+              role: "CUSTOMER",
+              NOT: { username: null },
+            },
+            select: userSearchSelect,
+            take: limit,
+            orderBy: [{ followersCount: "desc" }, { createdAt: "desc" }],
+          })
+        : []
+      : await prisma.user.findMany({
+          where: {
+            OR: [
+              { username: { startsWith: q } },
+              { username: { contains: q } },
+              { name: { contains: qRaw.trim(), mode: "insensitive" } },
+            ],
+            // Skip null usernames (existing user yang belum set) — gak bisa
+            // di-mention anyway.
+            NOT: { username: null },
+          },
+          select: userSearchSelect,
+          // Fetch 2× limit untuk reorder client-side (exact match dulu).
+          take: limit * 2,
+          orderBy: { username: "asc" },
+        });
 
   const followedIds = new Set<string>();
   const candidateIds = users.map((u) => u.id);
@@ -85,15 +89,20 @@ export async function GET(request: NextRequest) {
   }
 
   // Sort: exact username first, username prefix next, then name matches.
-  // Alphabetical tie-break supaya hasil stabil.
-  const sorted = users.sort((a, b) => {
-    const aRank = relevanceRank(a, q);
-    const bRank = relevanceRank(b, q);
-    if (aRank !== bRank) return aRank - bRank;
-    const lenDiff = (a.username?.length ?? 0) - (b.username?.length ?? 0);
-    if (lenDiff !== 0) return lenDiff;
-    return (a.username ?? "").localeCompare(b.username ?? "");
-  });
+  // Alphabetical tie-break supaya hasil stabil. Suggested list already
+  // sorted by followersCount/newness from DB.
+  const sorted =
+    q.length === 0
+      ? users
+      : users.sort((a, b) => {
+          const aRank = relevanceRank(a, q);
+          const bRank = relevanceRank(b, q);
+          if (aRank !== bRank) return aRank - bRank;
+          const lenDiff =
+            (a.username?.length ?? 0) - (b.username?.length ?? 0);
+          if (lenDiff !== 0) return lenDiff;
+          return (a.username ?? "").localeCompare(b.username ?? "");
+        });
 
   return NextResponse.json({
     items: sorted.slice(0, limit).map((u) => ({
@@ -109,6 +118,16 @@ export async function GET(request: NextRequest) {
     })),
   });
 }
+
+const userSearchSelect = {
+  id: true,
+  name: true,
+  username: true,
+  profilePhotoUrl: true,
+  bio: true,
+  followersCount: true,
+  followingCount: true,
+} as const;
 
 function relevanceRank(
   user: { name: string; username: string | null },
