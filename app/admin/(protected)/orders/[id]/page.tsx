@@ -235,6 +235,7 @@ export default async function AdminOrderDetailPage({
                         itemQuantity={item.quantity}
                         orderSubtotal={order.subtotal ?? 0}
                         orderProductDiscount={order.productDiscount ?? 0}
+                        paymentPaid={order.paymentStatus === "PAID"}
                         action={markItemOutOfStockAction}
                       />
                     </div>

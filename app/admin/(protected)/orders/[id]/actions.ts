@@ -684,7 +684,14 @@ export async function issueRefundToWallet(
 
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    select: { id: true, userId: true, total: true, status: true, orderNumber: true },
+    select: {
+      id: true,
+      userId: true,
+      total: true,
+      status: true,
+      paymentStatus: true,
+      orderNumber: true,
+    },
   });
   if (!order) return { ok: false, message: "Order tidak ditemukan." };
   if (!order.userId) {
@@ -720,6 +727,16 @@ export async function issueRefundToWallet(
     return {
       ok: false,
       message: `Order #${order.orderNumber} sudah ditandai REFUNDED (full refund). Tidak bisa refund tambahan.`,
+    };
+  }
+  // Payment guard — sama dengan markItemPartiallyOutOfStock + cancel flow.
+  // Refund ke SALDO hanya untuk order yang uangnya sudah masuk (PAID).
+  // PENDING (manual transfer "Menunggu verifikasi") = state default, uang
+  // belum tentu diterima → kredit wallet di sini = kebocoran.
+  if (order.paymentStatus !== "PAID") {
+    return {
+      ok: false,
+      message: `Order #${order.orderNumber} belum lunas. Refund ke Saldo hanya untuk order yang sudah dibayar. Verifikasi pembayaran dulu, atau batalkan order kalau dana belum masuk.`,
     };
   }
 
@@ -945,6 +962,7 @@ export async function markItemPartiallyOutOfStock(
       subtotal: true,
       productDiscount: true,
       status: true,
+      paymentStatus: true,
       orderNumber: true,
     },
   });
@@ -952,6 +970,25 @@ export async function markItemPartiallyOutOfStock(
   if (!order.userId) {
     throw new Error(
       "Order guest checkout — tidak bisa refund ke Saldo. Refund manual ke metode bayar asal.",
+    );
+  }
+
+  // Guard pembayaran — refund ke SALDO hanya boleh kalau uang sudah benar
+  // masuk (paymentStatus PAID). Untuk order manual, PENDING = "Menunggu
+  // verifikasi" adalah state DEFAULT begitu order dibuat — uang belum tentu
+  // masuk. Kalau kita kredit wallet di sini, Natalo kasih saldo nyata yang
+  // bisa dibelanjakan untuk uang yang BELUM diterima → kebocoran.
+  //
+  // Konsisten dengan cancel flow (markAsCancelled line ~468) yang juga guard
+  // paymentStatus === "PAID" sebelum auto-refund. Admin yang ketemu item
+  // kosong di order belum-lunas: verifikasi pembayaran dulu (tandai Lunas)
+  // lalu refund, ATAU batalkan order (cancel restore stok + notif user,
+  // tanpa kredit saldo karena memang belum bayar).
+  if (order.paymentStatus !== "PAID") {
+    throw new Error(
+      `Order #${order.orderNumber} belum lunas (status bayar belum PAID). ` +
+        `Refund item kosong ke Saldo hanya untuk order yang sudah dibayar. ` +
+        `Verifikasi pembayaran dulu lalu refund, atau batalkan order kalau dana belum masuk.`,
     );
   }
 

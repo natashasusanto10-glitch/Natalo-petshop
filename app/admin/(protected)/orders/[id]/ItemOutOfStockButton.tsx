@@ -32,6 +32,7 @@ export default function ItemOutOfStockButton({
   itemQuantity,
   orderSubtotal,
   orderProductDiscount,
+  paymentPaid,
   action,
 }: {
   itemId: string;
@@ -40,9 +41,27 @@ export default function ItemOutOfStockButton({
   itemQuantity: number;
   orderSubtotal: number;
   orderProductDiscount: number;
+  paymentPaid: boolean;
   action: (formData: FormData) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+
+  // Order belum lunas → refund ke Saldo TIDAK boleh (uang belum masuk;
+  // server action juga reject via guard paymentStatus). Daripada tombol
+  // yang submit lalu error, tampilkan hint yang arahkan admin ke aksi yang
+  // benar: verifikasi pembayaran dulu, atau batalkan order (cancel restore
+  // stok + notif user tanpa kredit saldo). Cancel button ada di panel aksi
+  // kanan halaman ini.
+  if (!paymentPaid) {
+    return (
+      <span
+        className="rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-[11px] font-medium text-zinc-500"
+        title="Order belum lunas. Verifikasi pembayaran dulu untuk refund item kosong, atau batalkan order (panel aksi kanan) kalau dana belum masuk."
+      >
+        Belum lunas — batalkan order untuk item kosong
+      </span>
+    );
+  }
   const [missingQty, setMissingQty] = useState<number>(itemQuantity);
   const [note, setNote] = useState<string>("");
 
