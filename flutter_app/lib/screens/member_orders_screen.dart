@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../config/natalo_store_config.dart';
 import '../models/member_profile.dart';
 import '../services/home_widget_service.dart';
 import '../services/member_service.dart';
@@ -349,6 +351,7 @@ class _LoginRequiredScaffold extends StatelessWidget {
 class _OrderCard extends StatefulWidget {
   final OrderSummary order;
   final int index;
+
   /// Callback untuk re-fetch list dari parent setelah action yang ubah
   /// status (mis. konfirmasi terima → DELIVERED). Tanpa ini, card stuck
   /// nampilin status lama sampai user refresh manual.
@@ -366,6 +369,7 @@ class _OrderCard extends StatefulWidget {
 
 class _OrderCardState extends State<_OrderCard> {
   bool _confirming = false;
+  bool _cancelling = false;
 
   OrderSummary get order => widget.order;
   int get index => widget.index;
@@ -449,6 +453,57 @@ class _OrderCardState extends State<_OrderCard> {
       final message = error.toString().replaceFirst('Exception: ', '');
       _showSnack(context, 'Beli lagi gagal: $message');
     }
+  }
+
+  Future<void> _copyOrderNumber(BuildContext context) async {
+    AppHaptics.tap();
+    await Clipboard.setData(ClipboardData(text: order.orderNumber));
+    if (!context.mounted) return;
+    AppToast.show(context, 'Nomor pesanan disalin.');
+  }
+
+  Future<void> _copyTrackingNumber(BuildContext context) async {
+    final tracking = order.trackingNumber?.trim();
+    if (tracking == null || tracking.isEmpty) return;
+    AppHaptics.tap();
+    await Clipboard.setData(ClipboardData(text: tracking));
+    if (!context.mounted) return;
+    AppToast.show(context, 'Nomor resi disalin.');
+  }
+
+  Future<void> _openOrderHelp(BuildContext context) async {
+    AppHaptics.tap();
+    final uri = NataloStoreConfig.whatsappUri(
+      message:
+          'Halo Natalo, saya butuh bantuan untuk pesanan ${order.orderNumber}.',
+    );
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!context.mounted) return;
+    if (!opened) {
+      AppToast.show(
+        context,
+        'Tidak bisa buka WhatsApp. Pastikan WhatsApp terpasang.',
+        kind: ToastKind.error,
+      );
+    }
+  }
+
+  Future<void> _openTracking(BuildContext context) async {
+    AppHaptics.tap();
+    final trackingUrl = order.biteshipTrackingUrl?.trim();
+    if (trackingUrl != null && trackingUrl.isNotEmpty) {
+      final uri = Uri.tryParse(trackingUrl);
+      if (uri != null) {
+        final opened = await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication,
+        );
+        if (!context.mounted) return;
+        if (opened) return;
+      }
+    }
+    if (!context.mounted) return;
+    _openOrderDetail(context);
   }
 
   /// User konfirmasi paket sudah diterima (langsung dari list card,
@@ -567,6 +622,14 @@ class _OrderCardState extends State<_OrderCard> {
     return _isCancelled || status == 'DELIVERED' || status == 'COMPLETED';
   }
 
+  bool get _canCancelOrder {
+    final status = order.status.toUpperCase();
+    if (status != 'PENDING' && status != 'PAID' && status != 'PROCESSING') {
+      return false;
+    }
+    return !order.hasPendingCancellationRequest;
+  }
+
   bool get _isUnpaid {
     if (_isFinalized) return false;
     // Order full saldo refund (total 0 + paid status) — TIDAK butuh
@@ -587,6 +650,13 @@ class _OrderCardState extends State<_OrderCard> {
   bool get _needsDeliveryConfirmation {
     final status = order.status.toUpperCase();
     return status == 'SHIPPED' && !order.isSelfPickup;
+  }
+
+  bool get _isReadyForPickup {
+    final status = order.status.toUpperCase();
+    return status == 'READY_FOR_PICKUP' ||
+        status == 'READY_TO_PICKUP' ||
+        status == 'READY_PICKUP';
   }
 
   String? get _actionLabel {
@@ -615,6 +685,207 @@ class _OrderCardState extends State<_OrderCard> {
     if (_isReorderable) {
       _buyAgain(context);
     }
+  }
+
+  Future<void> _confirmCancelOrder(BuildContext context) async {
+    if (_cancelling || !_canCancelOrder) return;
+    final paid = order.paymentStatus.toUpperCase() == 'PAID';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        icon: Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: const Color(0xFFFEE2E2),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: const Icon(
+            Icons.cancel_outlined,
+            color: Color(0xFFDC2626),
+            size: 28,
+          ),
+        ),
+        title: Text(
+          paid ? 'Ajukan pembatalan?' : 'Batalkan pesanan?',
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontWeight: FontWeight.w900),
+        ),
+        content: Text(
+          paid
+              ? 'Pesanan sudah dibayar. Pembatalan akan dikirim ke admin untuk disetujui dulu.'
+              : 'Pesanan akan dibatalkan dan tidak akan diproses lagi.',
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Color(0xFF4B5563),
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            height: 1.45,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: const Text('Tidak'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFDC2626),
+            ),
+            child: Text(paid ? 'Ajukan' : 'Batalkan'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _cancelling = true);
+    try {
+      final result = await orderService.cancelOrder(
+        orderNumber: order.orderNumber,
+        reason: 'Dibatalkan dari aplikasi oleh pelanggan.',
+      );
+      if (!context.mounted) return;
+      AppHaptics.success();
+      await widget.onRefresh();
+      if (!context.mounted) return;
+      final credited = result.totalCredited;
+      final message = result.serverMessage ??
+          (result.isRequested
+              ? 'Permintaan pembatalan dikirim. Menunggu konfirmasi admin.'
+              : credited > 0
+                  ? 'Pesanan dibatalkan. Saldo refund ${formatRupiah(credited.toDouble())} masuk.'
+                  : 'Pesanan dibatalkan.');
+      _showSnack(context, message);
+    } catch (error) {
+      if (!context.mounted) return;
+      AppHaptics.warning();
+      final message = error.toString().replaceFirst('Exception: ', '');
+      _showSnack(context, 'Pembatalan gagal: $message');
+    } finally {
+      if (mounted) setState(() => _cancelling = false);
+    }
+  }
+
+  void _showOrderOptions(BuildContext context) {
+    AppHaptics.tap();
+    final actions = <_OrderQuickAction>[];
+    final status = order.status.toUpperCase();
+    final tracking = order.trackingNumber?.trim();
+
+    if (_isUnpaid) {
+      actions.add(
+        _OrderQuickAction(
+          icon: Icons.payment_rounded,
+          title: 'Bayar sekarang',
+          color: _brandBlue,
+          onTap: () => _openPayment(context),
+        ),
+      );
+    }
+    if (_needsDeliveryConfirmation) {
+      actions.add(
+        _OrderQuickAction(
+          icon: Icons.check_circle_outline_rounded,
+          title: 'Sudah diterima',
+          color: const Color(0xFF059669),
+          onTap: () => _confirmDelivered(context),
+        ),
+      );
+    }
+    if (status == 'SHIPPED' || _isReadyForPickup) {
+      actions.add(
+        _OrderQuickAction(
+          icon: Icons.local_shipping_outlined,
+          title: order.isSelfPickup
+              ? 'Lihat info pengambilan'
+              : 'Lacak pengiriman',
+          onTap: () => _openTracking(context),
+        ),
+      );
+    }
+    if (tracking != null && tracking.isNotEmpty) {
+      actions.add(
+        _OrderQuickAction(
+          icon: Icons.confirmation_number_outlined,
+          title: 'Salin nomor resi',
+          onTap: () => _copyTrackingNumber(context),
+        ),
+      );
+    }
+    if (status == 'DELIVERED' || status == 'COMPLETED') {
+      actions.add(
+        _OrderQuickAction(
+          icon: Icons.rate_review_outlined,
+          title: 'Beri ulasan',
+          onTap: () => Navigator.pushNamed(context, '/member/reviews'),
+        ),
+      );
+    }
+    if (_isReorderable) {
+      actions.add(
+        _OrderQuickAction(
+          icon: Icons.shopping_bag_outlined,
+          title: 'Beli lagi',
+          color: _brandBlue,
+          onTap: () => _buyAgain(context),
+        ),
+      );
+    }
+    if (_canCancelOrder) {
+      final paid = order.paymentStatus.toUpperCase() == 'PAID';
+      actions.add(
+        _OrderQuickAction(
+          icon: Icons.cancel_outlined,
+          title: paid ? 'Ajukan pembatalan' : 'Batalkan pesanan',
+          color: const Color(0xFFDC2626),
+          onTap: () => _confirmCancelOrder(context),
+        ),
+      );
+    }
+    if (!_isFinalized) {
+      actions.add(
+        _OrderQuickAction(
+          icon: Icons.chat_bubble_outline_rounded,
+          title: 'Hubungi admin',
+          onTap: () => _openOrderHelp(context),
+        ),
+      );
+    }
+    actions
+      ..add(
+        _OrderQuickAction(
+          icon: Icons.copy_rounded,
+          title: 'Salin nomor pesanan',
+          onTap: () => _copyOrderNumber(context),
+        ),
+      )
+      ..add(
+        _OrderQuickAction(
+          icon: Icons.receipt_long_outlined,
+          title: 'Lihat detail pesanan',
+          onTap: () => _openOrderDetail(context),
+        ),
+      );
+
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) => _OrderOptionsSheet(
+        order: order,
+        actions: actions,
+        onActionTap: (action) {
+          Navigator.pop(sheetContext);
+          action.onTap();
+        },
+      ),
+    );
   }
 
   @override
@@ -663,7 +934,7 @@ class _OrderCardState extends State<_OrderCard> {
                         ),
                         const SizedBox(width: 4),
                         IconButton(
-                          onPressed: () => _openOrderDetail(context),
+                          onPressed: () => _showOrderOptions(context),
                           icon: const Icon(Icons.more_vert_rounded),
                           color: const Color(0xFF9CA3AF),
                           tooltip: 'Opsi pesanan',
@@ -802,6 +1073,134 @@ class _OrderCardState extends State<_OrderCard> {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OrderQuickAction {
+  final IconData icon;
+  final String title;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _OrderQuickAction({
+    required this.icon,
+    required this.title,
+    required this.onTap,
+    this.color = const Color(0xFF17202A),
+  });
+}
+
+class _OrderOptionsSheet extends StatelessWidget {
+  final OrderSummary order;
+  final List<_OrderQuickAction> actions;
+  final ValueChanged<_OrderQuickAction> onActionTap;
+
+  const _OrderOptionsSheet({
+    required this.order,
+    required this.actions,
+    required this.onActionTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEAF5FF),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.receipt_long_outlined,
+                    color: _brandBlue,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        order.orderNumber,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF17202A),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        _statusLabel(order.status),
+                        style: TextStyle(
+                          color: _statusColor(order.status),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            for (final action in actions)
+              _OrderQuickActionTile(
+                action: action,
+                onTap: () => onActionTap(action),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _OrderQuickActionTile extends StatelessWidget {
+  final _OrderQuickAction action;
+  final VoidCallback onTap;
+
+  const _OrderQuickActionTile({
+    required this.action,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      onTap: onTap,
+      contentPadding: EdgeInsets.zero,
+      minLeadingWidth: 0,
+      leading: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: action.color.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(action.icon, color: action.color, size: 20),
+      ),
+      title: Text(
+        action.title,
+        style: TextStyle(
+          color: action.color,
+          fontSize: 14.5,
+          fontWeight: FontWeight.w900,
         ),
       ),
     );
