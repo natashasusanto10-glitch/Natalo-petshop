@@ -10,6 +10,19 @@
  * Config: lihat WELCOME_VOUCHER_CONFIG. Tweak nominal/min order sesuai
  * business strategy. Voucher di-issue 1× per user (enforced via cek
  * existing voucher code-prefix WELCOME- di voucher table).
+ *
+ * KEPUTUSAN BISNIS (Mei 2026): WELCOME adalah SATU-SATUNYA voucher
+ * new-customer. Voucher manual NATA-NEW (Rp50k) sengaja di-nonaktifkan
+ * (di dashboard admin, bukan code) untuk konsolidasi ke 1 sistem:
+ *   - Auto-grant (semua customer baru pasti kebagian, NATA-NEW butuh
+ *     user tau kodenya + pool terbatas 50x yg habis di customer ke-51).
+ *   - Per-user, tak terbatas jumlah customer.
+ * Nominal SENGAJA ditahan Rp25k (BUKAN Rp50k seperti NATA-NEW): WELCOME
+ * auto-dikasih ke siapa saja yg daftar (cukup nomor HP + OTP), jadi
+ * nominal besar = umpan farming akun. NATA-NEW boleh Rp50k DULU karena
+ * pool-nya dibatasi 50x (kerugian max terkunci). JANGAN naikkan ke Rp50k
+ * tanpa proteksi tambahan (mis. min belanja naik / syarat akun verified)
+ * + data abuse yg menunjukkan aman.
  */
 import { randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
