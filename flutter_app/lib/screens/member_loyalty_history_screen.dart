@@ -190,6 +190,9 @@ class _LoyaltyHistoryEntryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isEarn = entry.isEarn;
     final color = isEarn ? _success : _danger;
+    final subtitle = entry.isReviewBonus
+        ? 'Terima kasih sudah memberi ulasan'
+        : formatRelativeTime(entry.createdAt);
 
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
@@ -254,7 +257,7 @@ class _LoyaltyHistoryEntryCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    formatRelativeTime(entry.createdAt),
+                    subtitle,
                     style: const TextStyle(
                       color: Color(0xFF6B7280),
                       fontSize: 11.5,

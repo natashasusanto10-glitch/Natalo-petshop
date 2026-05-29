@@ -11,6 +11,9 @@ function describeSource(source: string, points: number) {
     const code = source.replace(/^CLAIM:/, "");
     return `Tukar poin -> Voucher ${code}`;
   }
+  if (source.startsWith("REVIEW:")) {
+    return "Bonus ulasan produk";
+  }
   if (points > 0) return source || "Bonus poin";
   if (points < 0) return source || "Pemakaian poin";
   return source || "Aktivitas poin";

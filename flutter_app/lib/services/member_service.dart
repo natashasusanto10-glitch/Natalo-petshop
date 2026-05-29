@@ -412,32 +412,49 @@ List<dynamic> _asList(dynamic raw) => raw is List ? raw : const [];
 class LoyaltyHistoryEntry {
   final String id;
   final int delta;
+  final String source;
   final String description;
   final DateTime createdAt;
 
   const LoyaltyHistoryEntry({
     required this.id,
     required this.delta,
+    required this.source,
     required this.description,
     required this.createdAt,
   });
 
   bool get isEarn => delta > 0;
+  bool get isReviewBonus => source.startsWith('REVIEW:');
 
   factory LoyaltyHistoryEntry.fromJson(Map<String, dynamic> json) {
     final rawDelta = json['delta'] ?? json['points'] ?? 0;
     final rawDate = json['createdAt'] ?? json['date'] ?? json['created_at'];
+    final source = (json['source'] ?? '').toString();
     return LoyaltyHistoryEntry(
       id: (json['id'] ?? '').toString(),
       delta: rawDelta is num
           ? rawDelta.round()
           : int.tryParse(rawDelta.toString()) ?? 0,
-      description: (json['description'] ?? json['note'] ?? '').toString(),
+      source: source,
+      description: _loyaltyHistoryDescription(
+        source: source,
+        rawDescription: (json['description'] ?? json['note'] ?? '').toString(),
+      ),
       createdAt: DateTime.tryParse(rawDate?.toString() ?? '') ?? DateTime.now(),
     );
   }
 }
 
+String _loyaltyHistoryDescription({
+  required String source,
+  required String rawDescription,
+}) {
+  if (source.startsWith('REVIEW:') || rawDescription.startsWith('REVIEW:')) {
+    return 'Bonus ulasan produk';
+  }
+  return rawDescription;
+}
 
 /// Hasil cek availability username dari /api/me/username/check.
 /// reason values dari backend: TAKEN, RESERVED, INVALID_FORMAT,
