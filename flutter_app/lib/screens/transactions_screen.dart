@@ -659,18 +659,7 @@ class _BalancePointsCardState extends State<_BalancePointsCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Expanded(child: _SectionTitle('Saldo & Poin')),
-                TextButton(
-                  onPressed: () => Navigator.pushNamed(
-                    context,
-                    '/member/loyalty/history',
-                  ),
-                  child: const Text('Lihat Detail'),
-                ),
-              ],
-            ),
+            const _SectionTitle('Saldo & Poin'),
             const SizedBox(height: 12),
             IntrinsicHeight(
               child: Row(
