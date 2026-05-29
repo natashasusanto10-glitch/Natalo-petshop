@@ -189,6 +189,11 @@ export async function POST(
     // tidak boleh pakai saldo untuk order yang belum konfirm bayar).
     let reversedSaldo = 0;
     let autoRefundedAmount = 0;
+    // Hoist RefundCase.id keluar transaction supaya push notif bisa embed
+    // caseId yang BENAR (RefundCase.id, bukan order.id). Tanpa ini notif
+    // refund-detail link 404 — GET /api/member/refund-cases/{id} cari by
+    // RefundCase.id, kalau dikasih order.id → NOT_FOUND.
+    let autoRefundCaseId: string | null = null;
 
     await prisma.$transaction(async (tx) => {
       // 1. Restore stock — increment back product + variant counts.
@@ -320,6 +325,7 @@ export async function POST(
           });
 
           autoRefundedAmount = amountToRefund;
+          autoRefundCaseId = refundCase.id;
         }
       }
 
@@ -338,10 +344,14 @@ export async function POST(
     });
 
     // Push notif user — auto-refund jadi instant feedback. Fire-and-forget.
-    if (autoRefundedAmount > 0 && order.userId) {
+    // caseId WAJIB RefundCase.id (bukan order.id) supaya tap notif →
+    // /member/refund-detail?caseId=... resolve di GET /api/member/refund-
+    // cases/{id}. Guard autoRefundCaseId non-null (pasti ke-set kalau
+    // autoRefundedAmount > 0, tapi defensive).
+    if (autoRefundedAmount > 0 && order.userId && autoRefundCaseId != null) {
       void sendRefundIssuedPush({
         userId: order.userId,
-        caseId: order.id,
+        caseId: autoRefundCaseId,
         amount: autoRefundedAmount,
         reason: "ORDER_CANCELLED",
         itemName: null,

@@ -339,6 +339,9 @@ export async function markAsCancelled(orderId: string) {
   // yang sama supaya tidak ada celah "lupa refund setelah cancel" yang
   // berakibat duit user mengambang di kas Natalo.
   let autoRefundedAmount: number = 0;
+  // Hoist RefundCase.id keluar transaction untuk push notif caseId yang
+  // benar. Pakai order.id di sini bikin refund-detail link 404.
+  let autoRefundCaseId: string | null = null;
 
   await prisma.$transaction(async (tx) => {
     const order = await tx.order.findUnique({
@@ -509,6 +512,7 @@ export async function markAsCancelled(orderId: string) {
         });
 
         autoRefundedAmount = amountToRefund;
+        autoRefundCaseId = refundCase.id;
       }
     }
 
@@ -546,7 +550,12 @@ export async function markAsCancelled(orderId: string) {
   // Kirim hanya kalau ada auto-refund (kalau cuma cancel PENDING tanpa
   // bayar, user gak perlu notif refund — sudah dapat notif cancel via
   // sendOrderStatusPush di atas).
-  if (didCancel && autoRefundedAmount > 0 && cancelledOrderNumber) {
+  if (
+    didCancel &&
+    autoRefundedAmount > 0 &&
+    cancelledOrderNumber &&
+    autoRefundCaseId != null
+  ) {
     const orderInfo = await prisma.order.findUnique({
       where: { id: orderId },
       select: { userId: true },
@@ -554,7 +563,10 @@ export async function markAsCancelled(orderId: string) {
     if (orderInfo?.userId) {
       void sendRefundIssuedPush({
         userId: orderInfo.userId,
-        caseId: orderId, // not the refundCase id but order id is enough for deep link
+        // RefundCase.id, BUKAN orderId — deep link /member/refund-detail
+        // resolve via GET /api/member/refund-cases/{id} yang cari by
+        // RefundCase.id. order.id → 404 NOT_FOUND.
+        caseId: autoRefundCaseId,
         amount: autoRefundedAmount,
         reason: "ORDER_CANCELLED",
         itemName: null,

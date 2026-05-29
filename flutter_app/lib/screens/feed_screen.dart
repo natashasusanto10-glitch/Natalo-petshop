@@ -91,6 +91,7 @@ class _FeedScreenState extends State<FeedScreen> {
   bool _loading = true;
   bool _loadingMore = false;
   bool _interactionLocked = false;
+  bool _mediaZooming = false;
   int _activeIndex = 0;
   int _cartCount = 0;
 
@@ -510,6 +511,11 @@ class _FeedScreenState extends State<FeedScreen> {
     setState(() => _interactionLocked = locked);
   }
 
+  void _setFeedMediaZooming(bool zooming) {
+    if (!mounted || _mediaZooming == zooming) return;
+    setState(() => _mediaZooming = zooming);
+  }
+
   Future<void> _onUpload() async {
     AppHaptics.tap();
     _setFeedInteractionLocked(true);
@@ -581,7 +587,7 @@ class _FeedScreenState extends State<FeedScreen> {
                   return PageView.builder(
                     controller: _pageController,
                     scrollDirection: Axis.vertical,
-                    physics: _interactionLocked
+                    physics: (_interactionLocked || _mediaZooming)
                         ? const NeverScrollableScrollPhysics()
                         // BouncingScrollPhysics di parent untuk rubber-band
                         // overscroll di Android (iOS default sudah elastic).
@@ -602,6 +608,7 @@ class _FeedScreenState extends State<FeedScreen> {
                           post: post,
                           isActive: index == _activeIndex,
                           onOverlayStateChanged: _setFeedInteractionLocked,
+                          onMediaZoomChanged: _setFeedMediaZooming,
                         );
                       }
                       return _FeedPostView(
@@ -614,6 +621,7 @@ class _FeedScreenState extends State<FeedScreen> {
                         preloadedCachedPlayer:
                             _preloadedCachedPlayers.remove(post.id),
                         onOverlayStateChanged: _setFeedInteractionLocked,
+                        onMediaZoomChanged: _setFeedMediaZooming,
                       );
                     },
                   );
@@ -624,43 +632,53 @@ class _FeedScreenState extends State<FeedScreen> {
             // area aware via MediaQuery.padding.top supaya tidak overlap
             // dengan notch / status bar di iOS+Android. Hide saat interaction
             // locked (comment drawer / cinema mode) supaya tidak distract.
-            if (!_interactionLocked) ...[
-              Positioned(
-                top: MediaQuery.paddingOf(context).top + 8,
-                left: 4,
-                child: _FeedTopIconButton(
-                  icon: Icons.add_rounded,
-                  onTap: _onUpload,
-                  tooltip: 'Upload video',
+            if (!_interactionLocked)
+              AnimatedOpacity(
+                opacity: _mediaZooming ? 0 : 1,
+                duration: const Duration(milliseconds: 160),
+                child: IgnorePointer(
+                  ignoring: _mediaZooming,
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        top: MediaQuery.paddingOf(context).top + 8,
+                        left: 4,
+                        child: _FeedTopIconButton(
+                          icon: Icons.add_rounded,
+                          onTap: _onUpload,
+                          tooltip: 'Upload video',
+                        ),
+                      ),
+                      Positioned(
+                        top: MediaQuery.paddingOf(context).top + 8,
+                        right: _feedTopActionRightInset,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _FeedTopIconButton(
+                              icon: Icons.search_rounded,
+                              onTap: _openFeedSearch,
+                              tooltip: 'Cari',
+                            ),
+                            const SizedBox(height: 2),
+                            _FeedTopIconButton(
+                              // Icon SHAPE match home AppCartButton:
+                              // shopping_cart_outlined. Size tetap 28 (default
+                              // _FeedTopIconButton) supaya tetap prominent di atas
+                              // video — beda dari home yang 24 karena context-nya
+                              // beda (header dense dengan banyak icon).
+                              icon: Icons.shopping_cart_outlined,
+                              onTap: _openCartPage,
+                              tooltip: 'Keranjang',
+                              badgeCount: _cartCount > 0 ? _cartCount : null,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              Positioned(
-                top: MediaQuery.paddingOf(context).top + 8,
-                right: _feedTopActionRightInset,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _FeedTopIconButton(
-                      icon: Icons.search_rounded,
-                      onTap: _openFeedSearch,
-                      tooltip: 'Cari',
-                    ),
-                    const SizedBox(height: 2),
-                    _FeedTopIconButton(
-                      // Icon SHAPE match home AppCartButton:
-                      // shopping_cart_outlined. Size tetap 28 (default
-                      // _FeedTopIconButton) supaya tetap prominent di atas
-                      // video — beda dari home yang 24 karena context-nya
-                      // beda (header dense dengan banyak icon).
-                      icon: Icons.shopping_cart_outlined,
-                      onTap: _openCartPage,
-                      tooltip: 'Keranjang',
-                      badgeCount: _cartCount > 0 ? _cartCount : null,
-                    ),
-                  ],
-                ),
-              ),
-            ],
           ],
         ),
       ),
@@ -1064,11 +1082,13 @@ class _PhotoCarouselPostView extends StatefulWidget {
   final FeedPost post;
   final bool isActive;
   final ValueChanged<bool> onOverlayStateChanged;
+  final ValueChanged<bool> onMediaZoomChanged;
 
   const _PhotoCarouselPostView({
     required this.post,
     required this.isActive,
     required this.onOverlayStateChanged,
+    required this.onMediaZoomChanged,
   });
 
   @override
@@ -1086,6 +1106,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
   bool _likeBusy = false;
   bool _captionExpanded = false;
   bool _hideOverlayForLongPress = false;
+  bool _hideOverlayForPinchZoom = false;
 
   // Heart burst (sama dengan _FeedPostView) — posisi mengikuti double tap.
   late final AnimationController _heartBurstController;
@@ -1513,6 +1534,12 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
     setState(() => _hideOverlayForLongPress = false);
   }
 
+  void _onMediaZoomChanged(bool zooming) {
+    if (!mounted || _hideOverlayForPinchZoom == zooming) return;
+    setState(() => _hideOverlayForPinchZoom = zooming);
+    widget.onMediaZoomChanged(zooming);
+  }
+
   Future<void> _showMoreActionsSheet() async {
     AppHaptics.tap();
     final result = await showModerationActions(
@@ -1586,6 +1613,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                       clipBehavior: Clip.none,
                       minScale: 1,
                       maxScale: 4,
+                      onZoomingChanged: _onMediaZoomChanged,
                       child: AspectRatio(
                         aspectRatio: _instagramImageAspectRatio(
                           photo.width,
@@ -1659,7 +1687,9 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
             ),
             // Dots indicator (kalau >1 foto) — tengah atas, Instagram-style
             // pill background semi-transparent. Active dot widen ke 16px.
-            if (photos.length > 1 && !_hideOverlayForLongPress)
+            if (photos.length > 1 &&
+                !_hideOverlayForLongPress &&
+                !_hideOverlayForPinchZoom)
               Positioned(
                 top: MediaQuery.paddingOf(context).top + 12,
                 left: 0,
@@ -1699,35 +1729,41 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
               right: _feedActionRailRightInset,
               bottom: actionRailInset,
               child: AnimatedOpacity(
-                opacity: _hideOverlayForLongPress ? 0 : 1,
+                opacity: (_hideOverlayForLongPress || _hideOverlayForPinchZoom)
+                    ? 0
+                    : 1,
                 duration: const Duration(milliseconds: 200),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _ReelsAction(
-                      iconChild: _ReelsHeartGlyph(liked: _liked),
-                      count: _likeCount,
-                      onTap: _onLikePressed,
-                    ),
-                    const SizedBox(height: _feedActionItemSpacing),
-                    _ReelsAction(
-                      iconChild: const _ReelsCommentGlyph(),
-                      count: _commentCount,
-                      onTap: _onComment,
-                    ),
-                    const SizedBox(height: _feedActionItemSpacing),
-                    _ReelsAction(
-                      iconChild: const _ReelsShareGlyph(),
-                      count: _shareCount,
-                      onTap: _onShare,
-                    ),
-                    const SizedBox(height: _feedActionItemSpacing),
-                    // More actions (Report/Block) — Google Play UGC policy.
-                    _ReelsAction(
-                      iconChild: const _ReelsMoreGlyph(),
-                      onTap: () => _showMoreActionsSheet(),
-                    ),
-                  ],
+                child: IgnorePointer(
+                  ignoring:
+                      _hideOverlayForLongPress || _hideOverlayForPinchZoom,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _ReelsAction(
+                        iconChild: _ReelsHeartGlyph(liked: _liked),
+                        count: _likeCount,
+                        onTap: _onLikePressed,
+                      ),
+                      const SizedBox(height: _feedActionItemSpacing),
+                      _ReelsAction(
+                        iconChild: const _ReelsCommentGlyph(),
+                        count: _commentCount,
+                        onTap: _onComment,
+                      ),
+                      const SizedBox(height: _feedActionItemSpacing),
+                      _ReelsAction(
+                        iconChild: const _ReelsShareGlyph(),
+                        count: _shareCount,
+                        onTap: _onShare,
+                      ),
+                      const SizedBox(height: _feedActionItemSpacing),
+                      // More actions (Report/Block) — Google Play UGC policy.
+                      _ReelsAction(
+                        iconChild: const _ReelsMoreGlyph(),
+                        onTap: () => _showMoreActionsSheet(),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1737,37 +1773,45 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
               right: 78,
               bottom: feedInfoInset,
               child: AnimatedOpacity(
-                opacity: _hideOverlayForLongPress ? 0 : 1,
+                opacity: (_hideOverlayForLongPress || _hideOverlayForPinchZoom)
+                    ? 0
+                    : 1,
                 duration: const Duration(milliseconds: 150),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Product chip — only when post has tagged products.
-                    // Reuse widget yang sama dengan _FeedPostView untuk
-                    // consistency visual antar video post & photo carousel.
-                    if (products.isNotEmpty) ...[
-                      _ProductLinkChip(
-                        products: products,
-                        featuredProduct: featuredProduct!,
-                        featuredIndex: _featuredProductIndex % products.length,
-                        onTap: () => _onProductsTap(products),
-                        onQuickAdd: () => _quickAddProduct(featuredProduct),
+                child: IgnorePointer(
+                  ignoring:
+                      _hideOverlayForLongPress || _hideOverlayForPinchZoom,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Product chip — only when post has tagged products.
+                      // Reuse widget yang sama dengan _FeedPostView untuk
+                      // consistency visual antar video post & photo carousel.
+                      if (products.isNotEmpty) ...[
+                        _ProductLinkChip(
+                          products: products,
+                          featuredProduct: featuredProduct!,
+                          featuredIndex:
+                              _featuredProductIndex % products.length,
+                          onTap: () => _onProductsTap(products),
+                          onQuickAdd: () => _quickAddProduct(featuredProduct),
+                        ),
+                        const SizedBox(height: 9),
+                      ],
+                      _FeedCreatorIdentity(
+                        author: post.author,
+                        displayName: post.author.displayHandle,
                       ),
-                      const SizedBox(height: 9),
+                      const SizedBox(height: 7),
+                      _ExpandableCaption(
+                        text: post.title.isNotEmpty
+                            ? post.title
+                            : post.description,
+                        expanded: _captionExpanded,
+                        onToggle: () => setState(
+                            () => _captionExpanded = !_captionExpanded),
+                      ),
                     ],
-                    _FeedCreatorIdentity(
-                      author: post.author,
-                      displayName: post.author.displayHandle,
-                    ),
-                    const SizedBox(height: 7),
-                    _ExpandableCaption(
-                      text:
-                          post.title.isNotEmpty ? post.title : post.description,
-                      expanded: _captionExpanded,
-                      onToggle: () =>
-                          setState(() => _captionExpanded = !_captionExpanded),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -1790,12 +1834,14 @@ class _FeedPostView extends StatefulWidget {
   /// proper handle cache file lifecycle via wrapper.dispose().
   final CachedVideoPlayerPlus? preloadedCachedPlayer;
   final ValueChanged<bool> onOverlayStateChanged;
+  final ValueChanged<bool> onMediaZoomChanged;
 
   const _FeedPostView({
     required this.post,
     required this.isActive,
     required this.preloadedController,
     required this.onOverlayStateChanged,
+    required this.onMediaZoomChanged,
     this.preloadedCachedPlayer,
   });
 
@@ -2061,8 +2107,10 @@ class _FeedPostViewState extends State<_FeedPostView>
         _longPressPaused = false;
         _longPressSpeedActive = false;
         _hideOverlayForLongPress = false;
+        _hideOverlayForPinchZoom = false;
         _isScrubbing = false;
         widget.onOverlayStateChanged(false);
+        widget.onMediaZoomChanged(false);
         _videoController?.pause();
         try {
           _videoController?.setPlaybackSpeed(1.0);
@@ -2772,6 +2820,7 @@ class _FeedPostViewState extends State<_FeedPostView>
   bool _longPressPaused = false;
   bool _longPressSpeedActive = false;
   bool _hideOverlayForLongPress = false;
+  bool _hideOverlayForPinchZoom = false;
   // Last-known media area width (set di build LayoutBuilder). Dipakai
   // untuk hitung zone dari localPosition.dx. Default screen width — akan
   // di-update ke real value saat build pertama.
@@ -2780,6 +2829,12 @@ class _FeedPostViewState extends State<_FeedPostView>
   /// Scrubber state — true saat user lagi drag/tap progress bar.
   /// Disable long-press handler supaya gesture tidak conflict.
   bool _isScrubbing = false;
+
+  void _onMediaZoomChanged(bool zooming) {
+    if (!mounted || _hideOverlayForPinchZoom == zooming) return;
+    setState(() => _hideOverlayForPinchZoom = zooming);
+    widget.onMediaZoomChanged(zooming);
+  }
 
   void _onLongPressStart(LongPressStartDetails details) {
     if (_isScrubbing) return; // Scrubber priority
@@ -2996,6 +3051,7 @@ class _FeedPostViewState extends State<_FeedPostView>
                           child: _SnapBackZoomMedia(
                             minScale: 1,
                             maxScale: 4,
+                            onZoomingChanged: _onMediaZoomChanged,
                             child: _MediaBackground(
                               post: post,
                               videoController: _videoController,
@@ -3161,42 +3217,51 @@ class _FeedPostViewState extends State<_FeedPostView>
                           right: _feedActionRailRightInset,
                           bottom: actionRailInset,
                           child: AnimatedOpacity(
-                            opacity:
-                                (_hideOverlayForLongPress || _commentSheetOpen)
-                                    ? 0
-                                    : 1,
+                            opacity: (_hideOverlayForLongPress ||
+                                    _hideOverlayForPinchZoom ||
+                                    _commentSheetOpen)
+                                ? 0
+                                : 1,
                             duration: const Duration(milliseconds: 200),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _ReelsAction(
-                                  iconChild: _ReelsHeartGlyph(liked: _liked),
-                                  count: _likeCount,
-                                  onTap: _onLikePressed,
-                                ),
-                                const SizedBox(height: _feedActionItemSpacing),
-                                _ReelsAction(
-                                  iconChild: const _ReelsCommentGlyph(),
-                                  count: _commentCount,
-                                  onTap: _onComment,
-                                ),
-                                const SizedBox(height: _feedActionItemSpacing),
-                                _ReelsAction(
-                                  iconChild: const _ReelsShareGlyph(),
-                                  count: _shareCount,
-                                  onTap: _onShare,
-                                ),
-                                const SizedBox(height: _feedActionItemSpacing),
-                                // ── More actions (Report / Block) ──
-                                // Google Play UGC policy requirement: setiap
-                                // post UGC harus ada cara user laporkan +
-                                // blokir kreator. Tanpa button ini, app
-                                // ditolak Google saat submit Production.
-                                _ReelsAction(
-                                  iconChild: const _ReelsMoreGlyph(),
-                                  onTap: _onMoreActions,
-                                ),
-                              ],
+                            child: IgnorePointer(
+                              ignoring: _hideOverlayForLongPress ||
+                                  _hideOverlayForPinchZoom ||
+                                  _commentSheetOpen,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _ReelsAction(
+                                    iconChild: _ReelsHeartGlyph(liked: _liked),
+                                    count: _likeCount,
+                                    onTap: _onLikePressed,
+                                  ),
+                                  const SizedBox(
+                                      height: _feedActionItemSpacing),
+                                  _ReelsAction(
+                                    iconChild: const _ReelsCommentGlyph(),
+                                    count: _commentCount,
+                                    onTap: _onComment,
+                                  ),
+                                  const SizedBox(
+                                      height: _feedActionItemSpacing),
+                                  _ReelsAction(
+                                    iconChild: const _ReelsShareGlyph(),
+                                    count: _shareCount,
+                                    onTap: _onShare,
+                                  ),
+                                  const SizedBox(
+                                      height: _feedActionItemSpacing),
+                                  // ── More actions (Report / Block) ──
+                                  // Google Play UGC policy requirement: setiap
+                                  // post UGC harus ada cara user laporkan +
+                                  // blokir kreator. Tanpa button ini, app
+                                  // ditolak Google saat submit Production.
+                                  _ReelsAction(
+                                    iconChild: const _ReelsMoreGlyph(),
+                                    onTap: _onMoreActions,
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -3207,42 +3272,49 @@ class _FeedPostViewState extends State<_FeedPostView>
                           right: 78,
                           bottom: feedInfoInset,
                           child: AnimatedOpacity(
-                            opacity: _hideOverlayForLongPress ? 0 : 1,
+                            opacity: (_hideOverlayForLongPress ||
+                                    _hideOverlayForPinchZoom)
+                                ? 0
+                                : 1,
                             duration: const Duration(milliseconds: 150),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                if (products.isNotEmpty) ...[
-                                  _ProductCommerceOverlayGroup(
-                                    products: products,
-                                    featuredProduct: featuredProduct!,
-                                    featuredIndex:
-                                        _featuredProductIndex % products.length,
-                                    showProductCard: _endOfVideoCtaVisible &&
-                                        !_commentSheetOpen,
-                                    onTap: () => _onProductsTap(products),
-                                    onBuy: () =>
-                                        _quickAddProduct(featuredProduct),
-                                    onQuickAdd: () =>
-                                        _quickAddProduct(featuredProduct),
-                                    onDismiss: _dismissEndOfVideoCta,
+                            child: IgnorePointer(
+                              ignoring: _hideOverlayForLongPress ||
+                                  _hideOverlayForPinchZoom,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (products.isNotEmpty) ...[
+                                    _ProductCommerceOverlayGroup(
+                                      products: products,
+                                      featuredProduct: featuredProduct!,
+                                      featuredIndex: _featuredProductIndex %
+                                          products.length,
+                                      showProductCard: _endOfVideoCtaVisible &&
+                                          !_commentSheetOpen,
+                                      onTap: () => _onProductsTap(products),
+                                      onBuy: () =>
+                                          _quickAddProduct(featuredProduct),
+                                      onQuickAdd: () =>
+                                          _quickAddProduct(featuredProduct),
+                                      onDismiss: _dismissEndOfVideoCta,
+                                    ),
+                                    const SizedBox(height: 12),
+                                  ],
+                                  _FeedCreatorIdentity(
+                                    author: post.author,
+                                    displayName: post.author.displayHandle,
                                   ),
-                                  const SizedBox(height: 12),
+                                  const SizedBox(height: 7),
+                                  _ExpandableCaption(
+                                    text: post.title.isNotEmpty
+                                        ? post.title
+                                        : post.description,
+                                    expanded: _captionExpanded,
+                                    onToggle: () => setState(() =>
+                                        _captionExpanded = !_captionExpanded),
+                                  ),
                                 ],
-                                _FeedCreatorIdentity(
-                                  author: post.author,
-                                  displayName: post.author.displayHandle,
-                                ),
-                                const SizedBox(height: 7),
-                                _ExpandableCaption(
-                                  text: post.title.isNotEmpty
-                                      ? post.title
-                                      : post.description,
-                                  expanded: _captionExpanded,
-                                  onToggle: () => setState(() =>
-                                      _captionExpanded = !_captionExpanded),
-                                ),
-                              ],
+                              ),
                             ),
                           ),
                         ),
@@ -3599,12 +3671,14 @@ class _SnapBackZoomMedia extends StatefulWidget {
   final Clip clipBehavior;
   final double minScale;
   final double maxScale;
+  final ValueChanged<bool>? onZoomingChanged;
 
   const _SnapBackZoomMedia({
     required this.child,
     this.clipBehavior = Clip.hardEdge,
     this.minScale = 1,
     this.maxScale = 4,
+    this.onZoomingChanged,
   });
 
   @override
@@ -3620,6 +3694,7 @@ class _SnapBackZoomMediaState extends State<_SnapBackZoomMedia>
   double _gestureStartScale = 1;
   double _gestureStartDistance = 1;
   bool _pinching = false;
+  bool _notifiedZooming = false;
 
   @override
   void initState() {
@@ -3677,6 +3752,7 @@ class _SnapBackZoomMediaState extends State<_SnapBackZoomMedia>
       _snapBackController.stop();
     }
     _pinching = true;
+    _setZooming(true);
     _gestureStartScale = _scale;
     _gestureStartDistance = math.max(1.0, _currentPointerDistance());
   }
@@ -3685,6 +3761,7 @@ class _SnapBackZoomMediaState extends State<_SnapBackZoomMedia>
     _pinching = false;
     if ((_scale - widget.minScale).abs() <= 0.001) {
       setState(() => _scale = widget.minScale);
+      _setZooming(false);
       return;
     }
 
@@ -3704,6 +3781,15 @@ class _SnapBackZoomMediaState extends State<_SnapBackZoomMedia>
     final animation = _snapBackAnimation;
     if (animation == null) return;
     setState(() => _scale = animation.value);
+    if (_snapBackController.isCompleted) {
+      _setZooming(false);
+    }
+  }
+
+  void _setZooming(bool zooming) {
+    if (_notifiedZooming == zooming) return;
+    _notifiedZooming = zooming;
+    widget.onZoomingChanged?.call(zooming);
   }
 
   double _currentPointerDistance() {
