@@ -314,6 +314,7 @@ export async function POST(request: Request) {
       id: string;
       maxUsage: number | null;
       usageLimitPerUser: number | null;
+      usageLimitPeriod: string | null;
       code: string;
       type: string;
       scope: string;
@@ -424,6 +425,7 @@ export async function POST(request: Request) {
           id: voucher.id,
           maxUsage: voucher.maxUsage,
           usageLimitPerUser: voucher.usageLimitPerUser,
+          usageLimitPeriod: voucher.usageLimitPeriod,
           code: voucher.code,
           type: voucherType,
           scope: voucherScopeOf(voucher),
@@ -720,21 +722,42 @@ export async function POST(request: Request) {
             `Voucher ${v.code} sudah mencapai batas pemakaian. Silakan coba lagi.`,
           );
         }
-        // Per-user usage limit guard — ENFORCED DI DALAM txn. Pre-check
-        // di luar txn (isVoucherUsageLimitReached, L365) bisa di-bypass
-        // race: 2 order concurrent user sama dengan voucher
-        // usageLimitPerUser=1 dua-duanya lolos pre-check. updateMany di
-        // atas cuma guard maxUsage GLOBAL, bukan per-user. Hitung
-        // VoucherUsage existing untuk (voucher, user) di dalam txn
-        // Serializable (write-skew terdeteksi → 1 txn rollback). Count
-        // BEFORE createMany di bawah, jadi compare ke limit langsung.
-        if (v.usageLimitPerUser !== null && effectiveUserId) {
+        // Per-user usage limit guard — ENFORCED DI DALAM txn Serializable,
+        // mirror logika isVoucherUsageLimitReached (lib/voucher-helpers.ts).
+        // Pre-check di luar txn (L365) bisa di-bypass race: 2 order
+        // concurrent user sama dua-duanya lolos pre-check; updateMany di
+        // atas cuma guard maxUsage GLOBAL, bukan per-user.
+        //
+        // KONVENSI (sama dengan check lama): usageLimitPerUser <= 0 ATAU
+        // period NONE = TANPA BATAS per-user → skip. (Bug sebelumnya:
+        // pakai `!== null` → treat 0/"Tanpa batas" sebagai "maks 0x" →
+        // tolak voucher unlimited di pemakaian pertama. Lihat regresi
+        // NATA-OKS.) Untuk limit > 0: count VoucherUsage (voucher, user)
+        // DALAM window period (DAY/WEEK/MONTH/LIFETIME), throw kalau
+        // sudah >= limit. Count BEFORE createMany di bawah.
+        const perUserLimit = v.usageLimitPerUser ?? 1;
+        const period = v.usageLimitPeriod ?? "LIFETIME";
+        if (period !== "NONE" && perUserLimit > 0 && effectiveUserId) {
+          const nowMs = Date.now();
+          let cutoff: Date | null = null;
+          if (period === "DAY") {
+            cutoff = new Date(nowMs - 24 * 60 * 60 * 1000);
+          } else if (period === "WEEK") {
+            cutoff = new Date(nowMs - 7 * 24 * 60 * 60 * 1000);
+          } else if (period === "MONTH") {
+            cutoff = new Date(nowMs - 30 * 24 * 60 * 60 * 1000);
+          }
+          // LIFETIME → cutoff null → count semua usage.
           const usedByUser = await tx.voucherUsage.count({
-            where: { voucherId: v.id, userId: effectiveUserId },
+            where: {
+              voucherId: v.id,
+              userId: effectiveUserId,
+              ...(cutoff ? { usedAt: { gte: cutoff } } : {}),
+            },
           });
-          if (usedByUser >= v.usageLimitPerUser) {
+          if (usedByUser >= perUserLimit) {
             throw new Error(
-              `Voucher ${v.code} sudah pernah kamu gunakan. Silakan coba lagi.`,
+              `Voucher ${v.code} sudah mencapai batas pemakaian kamu. Silakan coba lagi.`,
             );
           }
         }
