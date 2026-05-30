@@ -44,14 +44,29 @@ export default function ItemOutOfStockButton({
   paymentPaid: boolean;
   action: (formData: FormData) => void;
 }) {
+  // CRITICAL: SEMUA hooks harus dipanggil unconditional di tiap render
+  // (Rules of Hooks). JANGAN early-return sebelum hooks di bawah — kalau
+  // paymentPaid flip false→true (saat admin klik Konfirmasi Pembayaran,
+  // order PENDING→PAID, komponen re-render), jumlah hooks berubah →
+  // React throw "Rendered more hooks than previous render" → error
+  // boundary "Terjadi Kesalahan". Itu bug yang bikin konfirmasi bayar
+  // selalu error walau DB-nya sukses. Guard paymentPaid dipindah ke
+  // SETELAH semua hooks.
   const [expanded, setExpanded] = useState(false);
+  const [missingQty, setMissingQty] = useState<number>(itemQuantity);
+  const [note, setNote] = useState<string>("");
+
+  const discountRatio = useMemo(() => {
+    if (orderSubtotal <= 0) return 0;
+    return Math.min(1, orderProductDiscount / orderSubtotal);
+  }, [orderSubtotal, orderProductDiscount]);
 
   // Order belum lunas → refund ke Saldo TIDAK boleh (uang belum masuk;
   // server action juga reject via guard paymentStatus). Daripada tombol
   // yang submit lalu error, tampilkan hint yang arahkan admin ke aksi yang
   // benar: verifikasi pembayaran dulu, atau batalkan order (cancel restore
   // stok + notif user tanpa kredit saldo). Cancel button ada di panel aksi
-  // kanan halaman ini.
+  // kanan halaman ini. Return ini AMAN di sini — sudah setelah semua hooks.
   if (!paymentPaid) {
     return (
       <span
@@ -62,13 +77,6 @@ export default function ItemOutOfStockButton({
       </span>
     );
   }
-  const [missingQty, setMissingQty] = useState<number>(itemQuantity);
-  const [note, setNote] = useState<string>("");
-
-  const discountRatio = useMemo(() => {
-    if (orderSubtotal <= 0) return 0;
-    return Math.min(1, orderProductDiscount / orderSubtotal);
-  }, [orderSubtotal, orderProductDiscount]);
 
   const gross = itemPrice * missingQty;
   const net = Math.round(gross * (1 - discountRatio));
