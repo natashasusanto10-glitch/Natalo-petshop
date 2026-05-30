@@ -1504,7 +1504,11 @@ class _OrderHeader extends StatelessWidget {
                                   order.status,
                                   order.paymentStatus,
                                 )
-                              : _paymentLabel(order.paymentStatus),
+                              : _paymentLabel(
+                                  order.paymentStatus,
+                                  hasProof: (order.paymentProofUrl ?? '')
+                                      .isNotEmpty,
+                                ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -2447,8 +2451,17 @@ String _pickupStatusSubtitle(String orderStatus, String paymentStatus) {
   };
 }
 
-String _paymentLabel(String status) {
-  return switch (status) {
+/// Label status bayar — "turunan": kalau order MANUAL belum lunas TAPI
+/// user sudah upload bukti (hasProof), tampilkan "Menunggu verifikasi"
+/// alih-alih "Menunggu bayar". Status di DB tetap PENDING (Opsi B — tidak
+/// nambah enum status baru), label dihitung dari status + ada-tidaknya
+/// bukti. User jadi tahu buktinya sudah masuk + sedang dicek admin.
+String _paymentLabel(String status, {bool hasProof = false}) {
+  final s = status.toUpperCase();
+  if (hasProof && (s == 'PENDING' || s == 'UNPAID')) {
+    return 'Menunggu verifikasi';
+  }
+  return switch (s) {
     'UNPAID' => 'Belum dibayar',
     'PENDING' => 'Menunggu bayar',
     'PAID' => 'Lunas',

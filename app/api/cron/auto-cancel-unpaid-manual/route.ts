@@ -62,6 +62,14 @@ export async function GET(request: NextRequest) {
       status: "PENDING",
       createdAt: { lt: threshold },
       cancellationRequestStatus: { not: "PENDING" },
+      // CRITICAL: JANGAN cancel order yang user sudah upload bukti bayar.
+      // Upload bukti tidak mengubah paymentStatus (tetap PENDING) — cuma
+      // set paymentProofUrl. Order ini sedang "menunggu verifikasi admin",
+      // bukan "user belum bayar". Tanpa guard ini, customer yg sudah
+      // transfer + upload bukti bisa ke-cancel sistem kalau admin telat
+      // verifikasi > threshold. Order ber-bukti = tanggung jawab admin
+      // untuk verifikasi/tolak manual, bukan auto-cancel.
+      paymentProofUrl: null,
     },
     select: {
       id: true,

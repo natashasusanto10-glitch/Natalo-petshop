@@ -1264,7 +1264,11 @@ class _OrderProductPreview extends StatelessWidget {
     final extraCount = (_displayItemCount(order) - 1).clamp(0, 999).toInt();
     final subtitle = extraCount > 0
         ? '+$extraCount produk lainnya'
-        : first.variantLabel ?? _paymentLabel(order.paymentStatus);
+        : first.variantLabel ??
+            _paymentLabel(
+              order.paymentStatus,
+              hasProof: (order.paymentProofUrl ?? '').isNotEmpty,
+            );
 
     return Row(
       children: [
@@ -1532,8 +1536,14 @@ String _statusLabel(String status) {
   };
 }
 
-String _paymentLabel(String status) {
-  return switch (status.toUpperCase()) {
+/// Label status bayar (lihat penjelasan di member_order_detail_screen).
+/// hasProof = order MANUAL sudah upload bukti → "Menunggu verifikasi".
+String _paymentLabel(String status, {bool hasProof = false}) {
+  final s = status.toUpperCase();
+  if (hasProof && (s == 'PENDING' || s == 'UNPAID')) {
+    return 'Menunggu verifikasi';
+  }
+  return switch (s) {
     'UNPAID' => 'Belum dibayar',
     'PENDING' => 'Menunggu bayar',
     'PAID' => 'Lunas',
