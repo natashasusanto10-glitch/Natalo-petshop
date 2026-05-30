@@ -9,45 +9,45 @@ import 'services/api_client.dart';
 import 'services/fcm_service.dart';
 import 'theme/admin_theme.dart';
 
+// Global error untuk ditampilkan ke layar kalau startup crash.
+String? _startupError;
+
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  // Tangkap semua uncaught Dart error — tampilkan ke layar supaya bisa
+  // debug tanpa ADB. Hapus ini setelah isu teridentifikasi.
+  FlutterError.onError = (details) {
+    _startupError ??= '${details.exception}\n\n${details.stack}';
+    FlutterError.presentError(details);
+  };
 
-  // Portrait-only — admin tools rarely benefit from landscape; mengunci
-  // orientation sederhana-kan layout (terutama bottom sheet & form).
-  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-
-  // System UI styling: status bar transparan dengan icon gelap supaya
-  // terbaca di atas AppBar putih. Nav bar (Android gesture / button)
-  // transparan menyatu dengan content — Material 3 default edge-to-edge.
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-      statusBarBrightness: Brightness.light, // iOS
-      systemNavigationBarColor: Colors.white,
-      systemNavigationBarIconBrightness: Brightness.dark,
-      systemNavigationBarDividerColor: Color(0xFFEEEEEE),
-    ),
-  );
-
-  // Init DateFormat locale 'id_ID' — wajib SEBELUM panggil DateFormat
-  // dengan locale custom (sebelumnya crash diam-diam karena baru di-trigger
-  // saat user buka voucher list / audit log).
-  await initializeDateFormatting('id_ID');
-
-  // Hydrate session dari SharedPreferences — adminApi internal _ensureHydrated
-  // dipanggil saat request pertama, tapi kita "warm" dulu di sini lewat
-  // ping /api/auth/me. Kalau response 401, cookie auto-dihapus.
   try {
-    await adminApi.getJson('/api/auth/me');
-  } catch (_) {
-    // Silent — gate via isAuthenticated di build.
-  }
+    WidgetsFlutterBinding.ensureInitialized();
 
-  // FCM init — try/catch internal, no-op kalau google-services.json belum
-  // di-drop. Awaited supaya getInitialMessage (cold start dari tap notif)
-  // tertangani sebelum first frame.
-  await FcmService.instance.init();
+    await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
+        systemNavigationBarColor: Colors.white,
+        systemNavigationBarIconBrightness: Brightness.dark,
+        systemNavigationBarDividerColor: Color(0xFFEEEEEE),
+      ),
+    );
+
+    await initializeDateFormatting('id_ID');
+
+    try {
+      await adminApi.getJson('/api/auth/me');
+    } catch (_) {
+      // Silent — gate via isAuthenticated di build.
+    }
+
+    await FcmService.instance.init();
+  } catch (e, st) {
+    _startupError = '$e\n\n$st';
+  }
 
   runApp(const NataloAdminApp());
 }
@@ -57,12 +57,19 @@ class NataloAdminApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Kalau ada startup error — tampilkan layar merah dengan pesan error
+    // supaya bisa dibaca langsung di HP tanpa perlu ADB/logcat.
+    if (_startupError != null) {
+      return MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: _ErrorScreen(error: _startupError!),
+      );
+    }
+
     return MaterialApp(
       title: 'Natalo Admin',
       debugShowCheckedModeBanner: false,
       theme: adminThemeLight(),
-      // Localizations supaya date picker, time picker, dll. tampil dalam
-      // Bahasa Indonesia. Default Inggris kalau locale device bukan id.
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
@@ -74,6 +81,36 @@ class NataloAdminApp extends StatelessWidget {
       ],
       locale: const Locale('id', 'ID'),
       home: adminApi.isAuthenticated ? const HomeShell() : const LoginScreen(),
+    );
+  }
+}
+
+/// Layar debug sementara — tampil saat startup crash sebelum UI normal muncul.
+class _ErrorScreen extends StatelessWidget {
+  final String error;
+  const _ErrorScreen({required this.error});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFB71C1C),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFFB71C1C),
+        foregroundColor: Colors.white,
+        title: const Text('Startup Error — kirim screenshot ke dev'),
+        elevation: 0,
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: SelectableText(
+          error,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 11,
+            fontFamily: 'monospace',
+          ),
+        ),
+      ),
     );
   }
 }
