@@ -4,7 +4,10 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { createOrderNumber } from "@/lib/format";
 import { createOrderSchema } from "@/lib/validation";
-import type { CheckedOutItem } from "@/lib/checkout-items";
+import {
+  buildCheckoutItemsFromInventory,
+  type CheckedOutItem,
+} from "@/lib/checkout-items";
 import { InvalidCustomerSessionError, resolveOrderIdentity } from "@/lib/order-identity";
 import { buildOrderDetailPath, buildOrderSuccessUrl, createTrackingToken } from "@/lib/order-detail";
 import { debitWallet, getOrCreateWallet } from "@/lib/refund-wallet";
@@ -125,7 +128,40 @@ export async function POST(request: Request) {
   const [products, variants] = await Promise.all([
     prisma.product.findMany({
       where: { id: { in: productIds } },
-      select: { id: true, name: true, price: true, discountPrice: true, stock: true, weightGram: true, categoryId: true, isActive: true, hasVariants: true },
+      select: {
+        id: true,
+        name: true,
+        price: true,
+        discountPrice: true,
+        // Flash Sale window — dipakai resolveActiveDiscount untuk hitung
+        // harga efektif. Tanpa ini order POST abaikan flash sale.
+        flashSaleEndsAt: true,
+        stock: true,
+        weightGram: true,
+        categoryId: true,
+        isActive: true,
+        hasVariants: true,
+        // Active Promo Toko items — HARUS di-fetch supaya order creation
+        // apply diskon yang sama dengan checkout preview (recalculate).
+        // Tanpa ini: customer lihat harga promo di app, tapi order
+        // di-charge harga penuh → overcharge + admin nagih sisa yang
+        // sebenarnya sudah ke-cover. Filter inline now() = fresh per request.
+        discountItems: {
+          where: {
+            isItemActive: true,
+            discount: {
+              isActive: true,
+              startsAt: { lte: new Date() },
+              endsAt: { gt: new Date() },
+            },
+          },
+          select: {
+            variantId: true,
+            discountedPrice: true,
+            discount: { select: { endsAt: true } },
+          },
+        },
+      },
     }),
     variantIds.length
       ? prisma.productVariant.findMany({
@@ -135,65 +171,17 @@ export async function POST(request: Request) {
       : Promise.resolve([]),
   ]);
 
-  const checkoutItems: CheckedOutItem[] = [];
-  const stockErrors: string[] = [];
-
-  for (const [, requested] of requestedMap) {
-    const product = products.find((p) => p.id === requested.productId);
-    if (!product || !product.isActive) {
-      stockErrors.push("Produk di keranjang sudah tidak tersedia.");
-      continue;
-    }
-
-    if (requested.variantId) {
-      if (!product.hasVariants) {
-        stockErrors.push(`Produk "${product.name}" tidak memakai varian.`);
-        continue;
-      }
-      // ── Produk dengan varian ────────────────────────────────
-      const variant = variants.find(
-        (v) => v.id === requested.variantId && v.productId === requested.productId,
-      );
-      if (!variant) {
-        stockErrors.push(`Varian produk "${product.name}" sudah tidak tersedia.`);
-        continue;
-      }
-      if (variant.stock < requested.quantity) {
-        stockErrors.push(`"${product.name} (${requested.variantLabel ?? ""})" hanya tersedia ${variant.stock} unit.`);
-        continue;
-      }
-      checkoutItems.push({
-        productId: product.id,
-        variantId: variant.id,
-        variantLabel: requested.variantLabel,
-        name: product.name,
-        price: variant.price,
-        quantity: requested.quantity,
-        weightGram: variant.weightGram,
-      });
-    } else {
-      // ── Produk tanpa varian ─────────────────────────────────
-      if (product.hasVariants) {
-        stockErrors.push(`Pilih varian untuk produk "${product.name}" sebelum checkout.`);
-        continue;
-      }
-      if (product.stock < requested.quantity) {
-        stockErrors.push(`${product.name} hanya tersedia ${product.stock}, sedangkan keranjang berisi ${requested.quantity}.`);
-        continue;
-      }
-      checkoutItems.push({
-        productId: product.id,
-        variantId: null,
-        variantLabel: null,
-        name: product.name,
-        price: product.discountPrice !== null && product.discountPrice < product.price
-          ? product.discountPrice
-          : product.price,
-        quantity: requested.quantity,
-        weightGram: product.weightGram,
-      });
-    }
-  }
+  // SINGLE SOURCE OF TRUTH untuk harga checkout — helper yang SAMA dipakai
+  // /api/checkout/recalculate. Apply Flash Sale + Promo Toko (discountItems)
+  // via singleProductPrice/variantPrice. SEBELUMNYA order POST hand-roll
+  // sendiri dan cuma cek discountPrice → abaikan Promo Toko + Flash Sale →
+  // harga di order != harga di preview → customer overcharge + admin nagih
+  // sisa yang sebenarnya sudah ke-cover saldo. Sekarang dijamin konsisten.
+  const { checkoutItems, stockErrors } = buildCheckoutItemsFromInventory({
+    requestedItems: requestedMap.values(),
+    products,
+    variants,
+  });
 
   if (stockErrors.length > 0) {
     return NextResponse.json({ message: stockErrors.join(" ") }, { status: 409 });
