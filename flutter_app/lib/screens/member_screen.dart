@@ -211,8 +211,7 @@ class _ProfilePageState extends State<_ProfilePage>
     });
   }
 
-  List<FeedPost> get _videoPosts =>
-      _allPosts.where((p) => p.isVideo).toList();
+  List<FeedPost> get _videoPosts => _allPosts.where((p) => p.isVideo).toList();
 
   List<FeedPost> get _taggedPosts =>
       _allPosts.where((p) => p.productIds.isNotEmpty).toList();
@@ -321,22 +320,37 @@ class _ProfileAppBar extends StatelessWidget implements PreferredSizeWidget {
           IconButton(
             onPressed: onCreatePost,
             tooltip: 'Buat postingan',
+            style: IconButton.styleFrom(
+              minimumSize: const Size(52, 52),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
             icon: const Icon(
               Icons.add_rounded,
-              size: 28,
+              size: 36,
               color: _textPrimary,
             ),
           ),
         ],
       ),
       actions: [
-        const AppNotificationButton(),
+        const IconTheme(
+          data: IconThemeData(
+            color: _textPrimary,
+            size: 28,
+          ),
+          child: AppNotificationButton(),
+        ),
         IconButton(
           onPressed: () => Navigator.pushNamed(context, '/account/settings'),
           tooltip: 'Pengaturan akun',
+          style: IconButton.styleFrom(
+            minimumSize: const Size(48, 48),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
           icon: const Icon(
             Icons.settings_outlined,
             color: _textPrimary,
+            size: 28,
           ),
         ),
         const SizedBox(width: 8),
@@ -392,7 +406,7 @@ class _ProfileSection extends StatelessWidget {
                       style: const TextStyle(
                         color: _textPrimary,
                         fontSize: 20,
-                        fontWeight: FontWeight.w900,
+                        fontWeight: FontWeight.w700,
                         height: 1.15,
                       ),
                     ),
@@ -438,7 +452,7 @@ class _ProfileSection extends StatelessWidget {
               style: const TextStyle(
                 color: _textPrimary,
                 fontSize: 13.5,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w500,
                 height: 1.4,
               ),
             ),
@@ -467,7 +481,7 @@ class _ProfileStat extends StatelessWidget {
           style: const TextStyle(
             color: _textPrimary,
             fontSize: 18,
-            fontWeight: FontWeight.w900,
+            fontWeight: FontWeight.w700,
             height: 1.0,
           ),
         ),
@@ -480,7 +494,7 @@ class _ProfileStat extends StatelessWidget {
           style: const TextStyle(
             color: _textSecondary,
             fontSize: 12,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w500,
             height: 1.05,
           ),
         ),
@@ -546,11 +560,11 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
         overlayColor: WidgetStateProperty.all<Color>(Colors.transparent),
         labelStyle: const TextStyle(
           fontSize: 0,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w600,
         ),
         unselectedLabelStyle: const TextStyle(
           fontSize: 0,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w500,
         ),
         tabs: [
           Tab(
@@ -558,7 +572,7 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
             iconMargin: EdgeInsets.zero,
             icon: Semantics(
               label: 'Postingan',
-              child: const Icon(Icons.grid_on_rounded, size: 24),
+              child: const Icon(Icons.grid_on_rounded, size: 22),
             ),
           ),
           Tab(
@@ -566,7 +580,7 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
             iconMargin: EdgeInsets.zero,
             icon: Semantics(
               label: 'Video',
-              child: const Icon(Icons.play_circle_outline_rounded, size: 24),
+              child: const Icon(Icons.play_circle_outline_rounded, size: 22),
             ),
           ),
           Tab(
@@ -574,7 +588,7 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
             iconMargin: EdgeInsets.zero,
             icon: Semantics(
               label: 'Produk Ditag',
-              child: const Icon(Icons.shopping_bag_outlined, size: 24),
+              child: const Icon(Icons.shopping_bag_outlined, size: 22),
             ),
           ),
         ],
@@ -700,7 +714,7 @@ class _ErrorState extends StatelessWidget {
               style: const TextStyle(
                 color: _textSecondary,
                 fontSize: 14,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w500,
                 height: 1.35,
               ),
             ),
@@ -716,7 +730,7 @@ class _ErrorState extends StatelessWidget {
               ),
               child: const Text(
                 'Coba Lagi',
-                style: TextStyle(fontWeight: FontWeight.w900),
+                style: TextStyle(fontWeight: FontWeight.w600),
               ),
             ),
           ],
@@ -888,7 +902,7 @@ class _EmptyState extends StatelessWidget {
               style: const TextStyle(
                 color: _textPrimary,
                 fontSize: 16.5,
-                fontWeight: FontWeight.w900,
+                fontWeight: FontWeight.w700,
               ),
             ),
             const SizedBox(height: 6),
@@ -898,7 +912,7 @@ class _EmptyState extends StatelessWidget {
               style: const TextStyle(
                 color: _textSecondary,
                 fontSize: 13.5,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w500,
                 height: 1.4,
               ),
             ),
@@ -906,10 +920,10 @@ class _EmptyState extends StatelessWidget {
               const SizedBox(height: 20),
               ElevatedButton.icon(
                 onPressed: onCreateCta,
-                icon: const Icon(Icons.add_rounded, size: 18),
+                icon: const Icon(Icons.add_rounded, size: 20),
                 label: const Text(
                   'Buat Postingan',
-                  style: TextStyle(fontWeight: FontWeight.w900),
+                  style: TextStyle(fontWeight: FontWeight.w700),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _brandBlue,
