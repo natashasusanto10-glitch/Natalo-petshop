@@ -197,6 +197,7 @@ export async function resolveUserByUsername(
   followersCount: number;
   followingCount: number;
   createdAt: Date;
+  role: string;
 } | null> {
   const normalized = normalizeUsername(rawUsername);
   if (normalized.length === 0) return null;
@@ -213,6 +214,7 @@ export async function resolveUserByUsername(
       followersCount: true,
       followingCount: true,
       createdAt: true,
+      role: true,
     },
   });
   if (current) return current;
@@ -236,6 +238,7 @@ export async function resolveUserByUsername(
           followersCount: true,
           followingCount: true,
           createdAt: true,
+          role: true,
         },
       },
     },

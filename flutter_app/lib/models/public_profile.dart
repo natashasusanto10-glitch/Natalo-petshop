@@ -14,6 +14,10 @@ class PublicProfile {
   final bool isFollowing;
   final bool isOwner;
 
+  /// Akun official Natalo (admin). Profil tampil brand "Natalo Petshop"
+  /// + badge centang + logo, BUKAN nama/foto pribadi pemilik.
+  final bool isOfficial;
+
   const PublicProfile({
     required this.id,
     required this.name,
@@ -27,6 +31,7 @@ class PublicProfile {
     this.followingCount = 0,
     this.isFollowing = false,
     this.isOwner = false,
+    this.isOfficial = false,
   });
 
   String get initial =>
@@ -57,6 +62,7 @@ class PublicProfile {
       followingCount: 0,
       isFollowing: json['isFollowing'] == true,
       isOwner: isOwner,
+      isOfficial: json['isOfficial'] == true,
     );
   }
 
@@ -67,6 +73,7 @@ class PublicProfile {
     int? followingCount,
     bool? isFollowing,
     bool? isOwner,
+    bool? isOfficial,
   }) {
     return PublicProfile(
       id: id,
@@ -81,6 +88,7 @@ class PublicProfile {
       followingCount: followingCount ?? this.followingCount,
       isFollowing: isFollowing ?? this.isFollowing,
       isOwner: isOwner ?? this.isOwner,
+      isOfficial: isOfficial ?? this.isOfficial,
     );
   }
 }

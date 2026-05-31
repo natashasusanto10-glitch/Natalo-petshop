@@ -397,16 +397,31 @@ class _Header extends StatelessWidget {
                   children: [
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        profile.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: _darkNavy,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          height: 1.1,
-                        ),
+                      child: Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              profile.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: _darkNavy,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                height: 1.1,
+                              ),
+                            ),
+                          ),
+                          // Badge centang biru untuk akun official Natalo.
+                          if (profile.isOfficial) ...[
+                            const SizedBox(width: 4),
+                            const Icon(
+                              Icons.verified_rounded,
+                              color: _brandBlue,
+                              size: 16,
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                     const SizedBox(height: 20),
@@ -560,6 +575,24 @@ class _Avatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Akun official Natalo → tampilkan logo brand (bukan foto/initial
+    // pribadi). API sudah set profilePhotoUrl null untuk official.
+    if (profile.isOfficial) {
+      return Container(
+        width: 82,
+        height: 82,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          color: Color(0xFFEFF6FF),
+        ),
+        clipBehavior: Clip.antiAlias,
+        padding: const EdgeInsets.all(14),
+        child: Image.asset(
+          'assets/native/icon-only.png',
+          fit: BoxFit.contain,
+        ),
+      );
+    }
     final url = profile.profilePhotoUrl;
     if (url != null && url.isNotEmpty) {
       return ClipOval(

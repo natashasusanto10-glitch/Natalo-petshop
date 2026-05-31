@@ -25,7 +25,23 @@ import { resolveUserByUsername } from "@/lib/username";
 import { getSession } from "@/lib/auth";
 import { signBunnyUrl } from "@/lib/feed/bunny";
 
+// Postingan customer biasa: video komunitas + foto carousel.
 const VISIBLE_KINDS: FeedPostKind[] = ["COMMUNITY", "PHOTO_CAROUSEL"];
+// Postingan admin (akun official Natalo Petshop): video edukasi/jualan +
+// promo + foto. Tanpa ini, grid profil admin selalu "0 Postingan" karena
+// admin tidak pernah pakai kind COMMUNITY.
+const ADMIN_VISIBLE_KINDS: FeedPostKind[] = [
+  "VIDEO_ONLY",
+  "VIDEO_PRODUCT",
+  "PROMO",
+  "PHOTO_CAROUSEL",
+];
+
+// Branding akun official — saat target.role ADMIN, tampilkan sebagai
+// brand "Natalo Petshop" (BUKAN nama asli pemilik). Hide foto + bio
+// pribadi (privacy), Flutter render badge official + logo brand.
+const OFFICIAL_BRAND_NAME = "Natalo Petshop";
+const OFFICIAL_BRAND_BIO = "Akun resmi Natalo Petshop & Aquarium 🐾";
 
 const MAX_LIMIT = 50;
 const DEFAULT_LIMIT = 20;
@@ -47,6 +63,11 @@ export async function GET(
   const viewerUserId = session?.sub ?? null;
   const isOwner = viewerUserId === target.id;
 
+  // Akun official (admin) → branding "Natalo Petshop" + tampilkan
+  // postingan admin (ADMIN_VISIBLE_KINDS), bukan COMMUNITY/PHOTO user.
+  const isOfficial = target.role === "ADMIN";
+  const visibleKinds = isOfficial ? ADMIN_VISIBLE_KINDS : VISIBLE_KINDS;
+
   const cursor = request.nextUrl.searchParams.get("cursor") || null;
   const rawLimit = Number(
     request.nextUrl.searchParams.get("limit") ?? `${DEFAULT_LIMIT}`
@@ -60,7 +81,7 @@ export async function GET(
     prisma.feedPost.findMany({
       where: {
         authorId: target.id,
-        kind: { in: VISIBLE_KINDS },
+        kind: { in: visibleKinds },
         status: "ACTIVE",
         deletedAt: null,
         // Mirror reels feed filter (lib/feed/queries.ts) — skip video yang
@@ -121,7 +142,7 @@ export async function GET(
     prisma.feedPost.count({
       where: {
         authorId: target.id,
-        kind: { in: VISIBLE_KINDS },
+        kind: { in: visibleKinds },
         status: "ACTIVE",
         deletedAt: null,
         encodingStatus: "ready",
@@ -165,11 +186,14 @@ export async function GET(
   return NextResponse.json({
     user: {
       id: target.id,
-      name: target.name,
+      // Official → brand name "Natalo Petshop", hide nama asli pemilik +
+      // foto/bio pribadi (privacy). Flutter render badge + logo brand.
+      name: isOfficial ? OFFICIAL_BRAND_NAME : target.name,
       username: target.username,
-      profilePhotoUrl: target.profilePhotoUrl,
-      bio: target.bio,
+      profilePhotoUrl: isOfficial ? null : target.profilePhotoUrl,
+      bio: isOfficial ? OFFICIAL_BRAND_BIO : target.bio,
       memberSince: target.createdAt.toISOString(),
+      isOfficial,
     },
     stats: {
       postCount: totalCount,
@@ -178,6 +202,7 @@ export async function GET(
       followingCount: target.followingCount,
     },
     isOwner,
+    isOfficial,
     isFollowing: Boolean(viewerFollow),
     // Sign Bunny URLs supaya hotlink protection tidak return 401. Tanpa
     // signing thumbnailUrl video → CachedNetworkImage di grid public
