@@ -572,7 +572,16 @@ class FeedPost {
       slug: (json['slug'] ?? json['id']) as String? ?? id,
       title: (json['title'] as String?) ?? '',
       description: (json['description'] as String?) ?? '',
-      caption: json['caption'] as String?,
+      // Fallback chain — backend TIDAK kirim field `caption` (cuma
+      // `description` full + `title` truncated). description = caption
+      // penuh yang user tulis, prefer itu; title fallback terakhir.
+      // Tanpa fallback ini post.caption selalu null → caption hilang di
+      // Detail Postingan + edit box mulai kosong (regresi unify FeedPost).
+      caption: _firstNonEmpty([
+        json['caption'] as String?,
+        json['description'] as String?,
+        json['title'] as String?,
+      ]),
       videoUrl: (json['videoUrl'] ?? json['mediaUrl']) as String? ?? '',
       thumbnailUrl: json['thumbnailUrl'] as String?,
       blurhash: blurhash,
@@ -684,6 +693,16 @@ class FeedPost {
       'approvedAt': approvedAt?.toIso8601String(),
     };
   }
+}
+
+/// Return string non-empty pertama dari list (trim-aware), null kalau
+/// semua null/kosong. Untuk fallback chain caption → description → title.
+String? _firstNonEmpty(List<String?> candidates) {
+  for (final c in candidates) {
+    final t = c?.trim();
+    if (t != null && t.isNotEmpty) return t;
+  }
+  return null;
 }
 
 double? _aspectFromIntPair(int? w, int? h) {

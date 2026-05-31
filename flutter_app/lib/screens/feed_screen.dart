@@ -1803,9 +1803,7 @@ class _PhotoCarouselPostViewState extends State<_PhotoCarouselPostView>
                       ),
                       const SizedBox(height: 7),
                       _ExpandableCaption(
-                        text: post.title.isNotEmpty
-                            ? post.title
-                            : post.description,
+                        text: post.caption ?? '',
                         expanded: _captionExpanded,
                         onToggle: () => setState(
                             () => _captionExpanded = !_captionExpanded),
@@ -3306,9 +3304,7 @@ class _FeedPostViewState extends State<_FeedPostView>
                                   ),
                                   const SizedBox(height: 7),
                                   _ExpandableCaption(
-                                    text: post.title.isNotEmpty
-                                        ? post.title
-                                        : post.description,
+                                    text: post.caption ?? '',
                                     expanded: _captionExpanded,
                                     onToggle: () => setState(() =>
                                         _captionExpanded = !_captionExpanded),
