@@ -115,6 +115,10 @@ export async function GET(request: NextRequest) {
       followingCount: u.followingCount,
       isFollowing: u.id === session.sub ? false : followedIds.has(u.id),
       isSelf: u.id === session.sub,
+      // Akun admin = brand "Natalo Petshop" + badge official. Client
+      // brand-override display di picker (sama dgn FeedAuthor di feed).
+      // Tanpa flag ini picker tampil nama personal admin ("natasha").
+      isOfficial: u.role === "ADMIN",
     })),
   });
 }
@@ -123,6 +127,7 @@ const userSearchSelect = {
   id: true,
   name: true,
   username: true,
+  role: true,
   profilePhotoUrl: true,
   bio: true,
   followersCount: true,

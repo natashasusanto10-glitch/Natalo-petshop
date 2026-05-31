@@ -16,12 +16,21 @@ class MentionUser {
   final String username;
   final String? profilePhotoUrl;
 
+  /// Akun admin = brand "Natalo Petshop" + badge official. Saat true,
+  /// picker tampil brand (bukan nama/username personal). Konsisten dgn
+  /// FeedAuthor.displayName di feed.
+  final bool isOfficial;
+
   const MentionUser({
     required this.id,
     required this.name,
     required this.username,
     this.profilePhotoUrl,
+    this.isOfficial = false,
   });
+
+  /// Nama tampil di picker — brand untuk admin, nama personal untuk user.
+  String get displayLabel => isOfficial ? 'Natalo Petshop' : name;
 
   factory MentionUser.fromJson(Map<String, dynamic> json) {
     return MentionUser(
@@ -32,6 +41,7 @@ class MentionUser {
               true
           ? json['profilePhotoUrl'] as String
           : null,
+      isOfficial: json['isOfficial'] == true,
     );
   }
 }
@@ -322,37 +332,79 @@ class _SuggestionTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Row(
           children: [
-            _Avatar(url: user.profilePhotoUrl, fallback: user.name),
+            _Avatar(url: user.profilePhotoUrl, fallback: user.displayLabel),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // IG pattern: suggestion row tampil bare `username`.
-                  // `@` cuma muncul setelah user tap → insertMention()
-                  // yang prepend `@` saat inject ke TextField.
-                  Text(
-                    user.username,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: textPrimary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
+                  // Admin = brand "Natalo Petshop" + badge official (primary),
+                  // username sebagai secondary supaya user tahu handle yg
+                  // di-insert. User biasa: IG pattern — username primary,
+                  // nama secondary.
+                  if (user.isOfficial) ...[
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            user.displayLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: textPrimary,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(
+                          Icons.verified_rounded,
+                          size: 15,
+                          color: Color(0xFF0B7FEA),
+                        ),
+                      ],
                     ),
-                  ),
-                  if (user.name.isNotEmpty && user.name != user.username) ...[
-                    const SizedBox(height: 1),
+                    if (user.username.isNotEmpty) ...[
+                      const SizedBox(height: 1),
+                      Text(
+                        '@${user.username}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: textMuted,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ] else ...[
+                    // IG pattern: suggestion row tampil bare `username`.
+                    // `@` cuma muncul setelah user tap → insertMention()
+                    // yang prepend `@` saat inject ke TextField.
                     Text(
-                      user.name,
+                      user.username,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: textMuted,
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
+                        color: textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
+                    if (user.name.isNotEmpty && user.name != user.username) ...[
+                      const SizedBox(height: 1),
+                      Text(
+                        user.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: textMuted,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ],
                 ],
               ),
