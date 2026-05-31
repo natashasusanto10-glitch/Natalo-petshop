@@ -96,33 +96,12 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
                 controller: _controller,
                 itemCount: images.length,
                 onPageChanged: (value) => setState(() => _index = value),
-                // Per-page LayoutBuilder → kasih ukuran EKSPLISIT (bukan
-                // SizedBox.expand yang bisa collapse di dalam InteractiveViewer
-                // saat constraint unbounded). Mirror pola Detail Hero yang
-                // terbukti jalan (width/height eksplisit). Center supaya
-                // BoxFit.contain rapi + placeholder tidak ngumpet di pojok.
-                itemBuilder: (context, i) => LayoutBuilder(
-                  builder: (context, constraints) {
-                    final w = constraints.maxWidth.isFinite
-                        ? constraints.maxWidth
-                        : MediaQuery.sizeOf(context).width;
-                    final h = constraints.maxHeight.isFinite
-                        ? constraints.maxHeight
-                        : MediaQuery.sizeOf(context).height;
-                    return InteractiveViewer(
-                      minScale: 1,
-                      maxScale: 4,
-                      child: Center(
-                        child: AppProductImage(
-                          imageUrl: images[i],
-                          width: w,
-                          height: h,
-                          fit: BoxFit.contain,
-                          borderRadius: BorderRadius.zero,
-                        ),
-                      ),
-                    );
-                  },
+                // Peek-zoom (IG-style): pinch zoom, lepas → snap balik
+                // normal, swipe kiri/kanan navigasi antar foto. panEnabled
+                // false supaya drag 1-jari horizontal diteruskan ke PageView
+                // (navigasi), bukan dipan oleh InteractiveViewer.
+                itemBuilder: (context, i) => _ZoomableImage(
+                  imageUrl: images[i],
                 ),
               ),
             ),
@@ -182,6 +161,90 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
         ],
         ),
       ),
+    );
+  }
+}
+
+/// Foto fullscreen dengan peek-zoom IG-style:
+///  - Pinch (2 jari) → zoom in (scale 1-4).
+///  - Lepas → animasi balik ke ukuran normal (snap-back).
+///  - Swipe 1 jari horizontal → diteruskan ke PageView (navigasi antar
+///    foto), karena panEnabled=false (InteractiveViewer tidak konsumsi
+///    drag 1-jari).
+class _ZoomableImage extends StatefulWidget {
+  final String imageUrl;
+
+  const _ZoomableImage({required this.imageUrl});
+
+  @override
+  State<_ZoomableImage> createState() => _ZoomableImageState();
+}
+
+class _ZoomableImageState extends State<_ZoomableImage>
+    with SingleTickerProviderStateMixin {
+  final TransformationController _controller = TransformationController();
+  late final AnimationController _anim;
+  Animation<Matrix4>? _resetAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _anim = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    )..addListener(() {
+        final m = _resetAnim?.value;
+        if (m != null) _controller.value = m;
+      });
+  }
+
+  @override
+  void dispose() {
+    _anim.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onInteractionEnd(ScaleEndDetails _) {
+    // Snap balik ke identity (ukuran normal) saat jari dilepas.
+    if (_controller.value == Matrix4.identity()) return;
+    _resetAnim = Matrix4Tween(
+      begin: _controller.value,
+      end: Matrix4.identity(),
+    ).animate(CurvedAnimation(parent: _anim, curve: Curves.easeOut));
+    _anim.forward(from: 0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final h = constraints.maxHeight.isFinite
+            ? constraints.maxHeight
+            : MediaQuery.sizeOf(context).height;
+        return InteractiveViewer(
+          transformationController: _controller,
+          // panEnabled false → drag 1-jari horizontal diteruskan ke
+          // PageView (swipe navigasi). Zoom tetap via pinch 2-jari.
+          panEnabled: false,
+          scaleEnabled: true,
+          minScale: 1,
+          maxScale: 4,
+          onInteractionEnd: _onInteractionEnd,
+          child: Center(
+            child: AppProductImage(
+              imageUrl: widget.imageUrl,
+              width: w,
+              height: h,
+              fit: BoxFit.contain,
+              borderRadius: BorderRadius.zero,
+            ),
+          ),
+        );
+      },
     );
   }
 }
