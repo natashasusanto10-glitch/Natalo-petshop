@@ -81,6 +81,11 @@ class FeedProductLink {
   final int price;
   final int? discountPrice;
   final int? promoPrice;
+  /// Sumber diskon dari backend (resolveActiveDiscount): 'FLASH_SALE' atau
+  /// 'PROMO_TOKO'. null kalau tidak ada diskon aktif. Dipakai untuk label:
+  /// Flash Sale → "Flash Sale X%", Promo Toko → "Diskon X%". Tanpa ini app
+  /// dulu hardcode "Flash Sale" untuk semua diskon (salah untuk Promo Toko).
+  final String? discountSource;
   final int stock;
   final int weightGram;
   final bool hasVariants;
@@ -100,6 +105,7 @@ class FeedProductLink {
     required this.price,
     this.discountPrice,
     this.promoPrice,
+    this.discountSource,
     this.stock = 0,
     this.weightGram = 500,
     this.hasVariants = false,
@@ -110,6 +116,10 @@ class FeedProductLink {
   });
 
   bool get isAvailable => isActive && stock > 0;
+
+  /// True kalau diskon aktif berasal dari Flash Sale (bukan Promo Toko).
+  /// Dipakai untuk pilih label badge.
+  bool get isFlashSale => discountSource == 'FLASH_SALE';
 
   /// Diskon aktif → tampilkan badge "Diskon X%" + harga coret di UI.
   bool get hasActiveDiscount {
@@ -143,6 +153,7 @@ class FeedProductLink {
       price: (json['price'] as num?)?.toInt() ?? 0,
       discountPrice: (json['discountPrice'] as num?)?.toInt(),
       promoPrice: (json['promoPrice'] as num?)?.toInt(),
+      discountSource: json['discountSource'] as String?,
       stock: (json['stock'] as num?)?.toInt() ?? 0,
       weightGram: (json['weightGram'] as num?)?.toInt() ?? 500,
       hasVariants: json['hasVariants'] as bool? ?? false,

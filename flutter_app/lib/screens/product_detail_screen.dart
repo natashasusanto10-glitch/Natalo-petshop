@@ -6,11 +6,13 @@ import 'package:video_player/video_player.dart';
 import '../config/api_config.dart';
 import '../config/natalo_store_config.dart';
 import '../models/cart_item.dart';
+import '../models/feed_post.dart';
 import '../models/product.dart';
 import '../models/review.dart';
 import '../services/api_client.dart';
 import '../services/app_analytics.dart';
 import '../services/app_crashlytics.dart';
+import '../services/feed_service.dart';
 import '../services/product_service.dart';
 import '../services/report_service.dart';
 import '../services/review_service.dart';
@@ -20,6 +22,7 @@ import '../state/cart_store.dart';
 import '../state/member_store.dart';
 import '../state/recently_viewed_store.dart';
 import 'checkout_screen.dart';
+import 'member_post_detail_screen.dart';
 import '../utils/fly_to_cart.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
@@ -1885,19 +1888,65 @@ class _CustomerPostCard extends StatelessWidget {
 
   const _CustomerPostCard({required this.post});
 
+  /// Buka postingan pelanggan DI DALAM app (bukan browser web). Fetch
+  /// detail postingan by ID lalu push MemberPostDetailScreen sebagai
+  /// viewer (video native, like, komentar pakai session app). Sebelumnya
+  /// pakai launchUrl ke web — keluar app, video lambat, harus login ulang.
+  /// Reuse infra deep-link notif (feedService.fetchPostById + viewer
+  /// screen). Tampilkan spinner saat fetch (~1 dtk); gagal → toast.
   Future<void> _openPost(BuildContext context) async {
     AppHaptics.tap();
-    final uri = Uri.parse(
-      '${ApiConfig.publicSiteUrl}/feed/${Uri.encodeComponent(post.id)}',
+    // Dialog loading di-pop via rootNavigator supaya pasti nutup overlay
+    // dialog (showDialog default mount di root navigator), bukan nebak
+    // canPop yang bisa salah pop route lain.
+    final rootNav = Navigator.of(context, rootNavigator: true);
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black.withValues(alpha: 0.25),
+      builder: (_) => const Center(
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: CircularProgressIndicator(strokeWidth: 2.6),
+        ),
+      ),
     );
-    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!opened && context.mounted) {
+
+    FeedPost? feedPost;
+    var failed = false;
+    try {
+      feedPost = await feedService.fetchPostById(post.id);
+    } catch (_) {
+      failed = true;
+    }
+
+    rootNav.pop(); // tutup loading dialog
+    if (!context.mounted) return;
+
+    if (feedPost == null) {
       AppToast.show(
         context,
-        'Postingan belum bisa dibuka.',
+        failed
+            ? 'Postingan belum bisa dibuka. Coba lagi.'
+            : 'Postingan sudah tidak tersedia.',
         kind: ToastKind.warning,
       );
+      return;
     }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MemberPostDetailScreen(
+          post: feedPost!,
+          authorName: feedPost.author.displayName,
+          authorPhotoUrl: feedPost.author.profilePhotoUrl,
+          authorInitial: feedPost.author.initial,
+          isOwner: false,
+        ),
+      ),
+    );
   }
 
   @override

@@ -25,7 +25,12 @@ export type FeedPostProduct = {
   slug: string;
   name: string;
   price: number;
+  // Harga AKTIF setelah resolveActiveDiscount (flash sale / Promo Toko
+  // yang sedang berlaku). null kalau tidak ada diskon aktif.
   discountPrice: number | null;
+  // Sumber diskon → app label: FLASH_SALE="Flash Sale X%", PROMO_TOKO=
+  // "Diskon X%". null kalau tidak ada diskon.
+  discountSource: "FLASH_SALE" | "PROMO_TOKO" | null;
   stock: number;
   weightGram: number;
   isAvailable: boolean;
@@ -52,6 +57,7 @@ export type FeedPostTaggedProduct = {
   name: string;
   price: number;
   discountPrice: number | null;
+  discountSource: "FLASH_SALE" | "PROMO_TOKO" | null;
   stock: number;
   weightGram: number;
   isAvailable: boolean;

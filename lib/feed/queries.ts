@@ -10,6 +10,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import type { FeedPostTab } from "@prisma/client";
+import { resolveActiveDiscount } from "@/lib/product-pricing";
 import { signBunnyUrl } from "./bunny";
 import type {
   FeedCommentItem,
@@ -20,6 +21,66 @@ import type {
 
 const FEED_PAGE_SIZE = 10;
 const COMMENT_PAGE_SIZE = 20;
+
+/**
+ * Resolve diskon AKTIF untuk produk di feed — pakai logika canonical yang
+ * sama dengan checkout + halaman produk (resolveActiveDiscount). Mengecek
+ * window aktif (flash sale endsAt + Promo Toko endsAt) DAN mengembalikan
+ * SUMBER diskon supaya UI bisa label benar:
+ *   - FLASH_SALE → badge "Flash Sale X%"
+ *   - PROMO_TOKO → badge "Diskon X%"
+ *
+ * SEBELUMNYA feed kirim raw Product.discountPrice (field flash sale) apa
+ * adanya tanpa cek aktif/tidak, dan tidak fetch Promo Toko sama sekali →
+ * produk dengan Promo Toko -12% salah tampil "Flash Sale 25%". Helper ini
+ * mengirim effectivePrice (harga aktif sebenarnya) + discountSource.
+ *
+ * `tagPromoPrice` opsional — promoPrice per-tag di video PROMO/Shop the
+ * Look (FeedPostProduct.promoPrice). Diperlakukan sebagai Promo Toko;
+ * lowest wins.
+ */
+function resolveFeedProductDiscount(
+  product: {
+    price: number;
+    discountPrice: number | null;
+    flashSaleEndsAt: Date | null;
+    discountItems?: Array<{
+      variantId: string | null;
+      discountedPrice: number;
+      discount: { endsAt: Date };
+    }>;
+  },
+  now: Date,
+  tagPromoPrice?: number | null,
+): { discountPrice: number | null; discountSource: "FLASH_SALE" | "PROMO_TOKO" | null } {
+  const promoItems = (product.discountItems ?? [])
+    .filter((it) => it.variantId === null)
+    .map((it) => ({ discountedPrice: it.discountedPrice, endsAt: it.discount.endsAt }));
+  let best = resolveActiveDiscount(
+    product.price,
+    { discountPrice: product.discountPrice, endsAt: product.flashSaleEndsAt },
+    promoItems,
+    now,
+  );
+  if (
+    tagPromoPrice != null &&
+    tagPromoPrice > 0 &&
+    tagPromoPrice < product.price &&
+    (!best || tagPromoPrice < best.effectivePrice)
+  ) {
+    best = {
+      source: "PROMO_TOKO",
+      effectivePrice: tagPromoPrice,
+      discountAmount: product.price - tagPromoPrice,
+      discountPercent: Math.round(
+        ((product.price - tagPromoPrice) / product.price) * 100,
+      ),
+      endsAt: now,
+    };
+  }
+  if (!best) return { discountPrice: null, discountSource: null };
+  return { discountPrice: best.effectivePrice, discountSource: best.source };
+}
 
 type FeedListOptions = {
   tab?: FeedPostTab | null;
@@ -55,6 +116,11 @@ export async function listFeedPosts({
     }
     productIdFilter = product.id;
   }
+
+  // Single `now` per request — dipakai untuk filter discountItems aktif
+  // (di select) + resolveFeedProductDiscount (di serialization). Konsisten
+  // supaya tidak ada drift antara filter query dan resolve.
+  const now = new Date();
 
   const posts = await prisma.feedPost.findMany({
     where: {
@@ -118,6 +184,25 @@ export async function listFeedPosts({
           name: true,
           price: true,
           discountPrice: true,
+          // Flash sale window + Promo Toko (discountItems) — supaya
+          // resolveActiveDiscount bisa tentukan diskon AKTIF + sumbernya.
+          // Tanpa ini feed salah label "Flash Sale" untuk Promo Toko.
+          flashSaleEndsAt: true,
+          discountItems: {
+            where: {
+              isItemActive: true,
+              discount: {
+                isActive: true,
+                startsAt: { lte: now },
+                endsAt: { gt: now },
+              },
+            },
+            select: {
+              variantId: true,
+              discountedPrice: true,
+              discount: { select: { endsAt: true } },
+            },
+          },
           stock: true,
           weightGram: true,
           isActive: true,
@@ -146,6 +231,22 @@ export async function listFeedPosts({
               name: true,
               price: true,
               discountPrice: true,
+              flashSaleEndsAt: true,
+              discountItems: {
+            where: {
+              isItemActive: true,
+              discount: {
+                isActive: true,
+                startsAt: { lte: now },
+                endsAt: { gt: now },
+              },
+            },
+            select: {
+              variantId: true,
+              discountedPrice: true,
+              discount: { select: { endsAt: true } },
+            },
+          },
               stock: true,
               weightGram: true,
               imageUrl: true,
@@ -266,43 +367,55 @@ export async function listFeedPosts({
     videoWidth: p.videoWidth,
     videoHeight: p.videoHeight,
     product: p.product
-      ? {
-          id: p.product.id,
-          slug: p.product.slug,
-          name: p.product.name,
-          price: p.product.price,
-          discountPrice: p.product.discountPrice,
-          stock: p.product.stock,
-          weightGram: p.product.weightGram,
-          isAvailable: p.product.isActive,
-          imageUrl: p.product.imageUrl,
-          hasVariants: p.product.hasVariants,
-          avgRating: p.product.avgRating ?? 0,
-          reviewCount: p.product.reviewCount ?? 0,
-          soldCount: soldCountMap.get(p.product.id) ?? 0,
-        }
+      ? (() => {
+          // discountPrice = harga AKTIF (effectivePrice) hasil
+          // resolveActiveDiscount, BUKAN raw Product.discountPrice. Plus
+          // discountSource supaya app label "Flash Sale" vs "Diskon" benar.
+          const d = resolveFeedProductDiscount(p.product!, now);
+          return {
+            id: p.product!.id,
+            slug: p.product!.slug,
+            name: p.product!.name,
+            price: p.product!.price,
+            discountPrice: d.discountPrice,
+            discountSource: d.discountSource,
+            stock: p.product!.stock,
+            weightGram: p.product!.weightGram,
+            isAvailable: p.product!.isActive,
+            imageUrl: p.product!.imageUrl,
+            hasVariants: p.product!.hasVariants,
+            avgRating: p.product!.avgRating ?? 0,
+            reviewCount: p.product!.reviewCount ?? 0,
+            soldCount: soldCountMap.get(p.product!.id) ?? 0,
+          };
+        })()
       : null,
     // Shop the Look: keep inactive tagged products visible for context, but
     // mark them unavailable so UI can disable commerce safely.
     taggedProducts: p.taggedProducts
       .filter((tp) => tp.product)
-      .map((tp) => ({
-        id: tp.product!.id,
-        slug: tp.product!.slug,
-        name: tp.product!.name,
-        price: tp.product!.price,
-        discountPrice: tp.product!.discountPrice,
-        stock: tp.product!.stock,
-        weightGram: tp.product!.weightGram,
-        isAvailable: tp.product!.isActive,
-        imageUrl: tp.product!.imageUrl,
-        position: tp.position,
-        promoPrice: tp.promoPrice ?? null,
-        hasVariants: tp.product!.hasVariants,
-        avgRating: tp.product!.avgRating ?? 0,
-        reviewCount: tp.product!.reviewCount ?? 0,
-        soldCount: soldCountMap.get(tp.product!.id) ?? 0,
-      })),
+      .map((tp) => {
+        // Per-tag promoPrice ikut dipertimbangkan (lowest wins).
+        const d = resolveFeedProductDiscount(tp.product!, now, tp.promoPrice);
+        return {
+          id: tp.product!.id,
+          slug: tp.product!.slug,
+          name: tp.product!.name,
+          price: tp.product!.price,
+          discountPrice: d.discountPrice,
+          discountSource: d.discountSource,
+          stock: tp.product!.stock,
+          weightGram: tp.product!.weightGram,
+          isAvailable: tp.product!.isActive,
+          imageUrl: tp.product!.imageUrl,
+          position: tp.position,
+          promoPrice: tp.promoPrice ?? null,
+          hasVariants: tp.product!.hasVariants,
+          avgRating: tp.product!.avgRating ?? 0,
+          reviewCount: tp.product!.reviewCount ?? 0,
+          soldCount: soldCountMap.get(tp.product!.id) ?? 0,
+        };
+      }),
     promo:
       p.kind === "PROMO" &&
       p.promoOriginalPrice != null &&

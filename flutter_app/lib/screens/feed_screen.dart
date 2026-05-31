@@ -4747,8 +4747,13 @@ class _ProductLinkChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final product = featuredProduct;
+    // Label by discountSource dari backend: Flash Sale → "Flash Sale X%",
+    // Promo Toko → "Diskon X%". Sebelumnya hardcode "Flash Sale" untuk
+    // semua diskon → Promo Toko salah tampil "Flash Sale".
     final badgeText = product.hasActiveDiscount
-        ? 'Flash Sale ${product.discountPercent}%'
+        ? (product.isFlashSale
+            ? 'Flash Sale ${product.discountPercent}%'
+            : 'Diskon ${product.discountPercent}%')
         : null;
     return Material(
       color: Colors.transparent,

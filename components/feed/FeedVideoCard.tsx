@@ -64,6 +64,7 @@ export function FeedVideoCard({
           name: product.name,
           price: product.price,
           discountPrice: product.discountPrice,
+          discountSource: product.discountSource,
           stock: product.stock,
           weightGram: product.weightGram,
           isAvailable: product.isAvailable,
