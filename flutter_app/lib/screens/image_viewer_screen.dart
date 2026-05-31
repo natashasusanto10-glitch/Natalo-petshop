@@ -69,8 +69,16 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       extendBodyBehindAppBar: true,
-      body: Stack(
-        children: [
+      // ROOT CAUSE blank-hitam/squished-pojok: Stack default StackFit.loose
+      // → kalau Scaffold body kasih constraint longgar (min 0), Stack
+      // mengkerut ke ukuran child non-positioned terkecil (tombol back ~48px)
+      // → SEMUA isi (PageView, chrome) ter-squish ke kotak kecil pojok
+      // kiri-atas, sisanya hitam. SizedBox.expand + StackFit.expand memaksa
+      // Stack isi penuh layar apapun constraint-nya.
+      body: SizedBox.expand(
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
           // Guard: kalau images kosong (data tidak terkirim), jangan render
           // PageView 0-item (layar hitam total + chrome nyangkut di pojok).
           // Tampilkan placeholder eksplisit.
@@ -172,6 +180,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
             ),
           ],
         ],
+        ),
       ),
     );
   }
