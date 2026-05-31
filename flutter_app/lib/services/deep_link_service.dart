@@ -4,6 +4,8 @@ import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../screens/member_post_detail_screen.dart';
+import 'feed_service.dart';
 import 'product_service.dart';
 
 /// Deep link handler — terima link share (mis. wa.me share product) dari
@@ -52,7 +54,13 @@ class DeepLinkService {
     }
     switch (segments.first) {
       case 'feed':
-        nav.pushNamed('/feed');
+        // /feed/<postId> → buka 1 postingan (deep-link notif "X posting
+        // baru"). /feed saja → buka feed utama.
+        if (segments.length > 1 && segments[1].isNotEmpty) {
+          await _openPostById(nav, segments[1]);
+        } else {
+          nav.pushNamed('/feed');
+        }
         break;
       case 'cart':
       case 'keranjang':
@@ -91,6 +99,34 @@ class DeepLinkService {
         break;
       default:
         nav.pushNamed('/');
+    }
+  }
+
+  /// Fetch postingan by ID lalu buka MemberPostDetailScreen sebagai viewer
+  /// (isOwner: false → sembunyikan menu edit/hapus, pakai author info dari
+  /// post bukan memberStore). Fallback ke /feed kalau post tidak ada
+  /// (dihapus / belum tayang) atau fetch gagal.
+  Future<void> _openPostById(NavigatorState nav, String postId) async {
+    try {
+      final post = await feedService.fetchPostById(postId);
+      if (post == null) {
+        nav.pushNamed('/feed');
+        return;
+      }
+      nav.push(
+        MaterialPageRoute(
+          builder: (_) => MemberPostDetailScreen(
+            post: post,
+            authorName: post.author.displayName,
+            authorPhotoUrl: post.author.profilePhotoUrl,
+            authorInitial: post.author.initial,
+            isOwner: false,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (kDebugMode) debugPrint('[DeepLink] fetchPostById failed: $e');
+      nav.pushNamed('/feed');
     }
   }
 

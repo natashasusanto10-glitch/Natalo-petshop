@@ -33,6 +33,7 @@ import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
 import { deleteFeedAssets } from "@/lib/feed/cleanup";
+import { sendNewPostToFollowersNotification } from "@/lib/social/notifications";
 
 type BulkAction =
   | "approve"
@@ -341,6 +342,12 @@ export async function POST(request: NextRequest) {
           videoGuid: post.videoGuid,
           context: `bulk reject ${postId}`,
         });
+      }
+
+      // Notif follower saat APPROVE (PENDING_REVIEW → ACTIVE), bukan unhide.
+      // Helper dedup internal + skip author admin. Fire-and-forget.
+      if (action === "approve" && post.status === "PENDING_REVIEW") {
+        void sendNewPostToFollowersNotification(postId);
       }
 
       results.push({ postId, status: "applied" });

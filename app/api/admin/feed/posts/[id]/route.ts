@@ -19,6 +19,7 @@ import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
 import { sendFeedModerationNotification } from "@/lib/feed/notifications";
+import { sendNewPostToFollowersNotification } from "@/lib/social/notifications";
 import { deleteFeedAssets } from "@/lib/feed/cleanup";
 import { reconcileFeedPost } from "@/lib/feed/reconcile";
 
@@ -202,6 +203,14 @@ export async function PATCH(
     action: action as Exclude<ModerationAction, "restore">,
     note: noteStr || null,
   });
+
+  // Notif ke follower author saat postingan APPROVE (PENDING_REVIEW →
+  // ACTIVE). Hanya pada "approve" — bukan "unhide" (HIDDEN → ACTIVE)
+  // supaya hide/unhide postingan lama tidak re-notify. Helper dedup
+  // internal + skip author admin. Fire-and-forget.
+  if (action === "approve") {
+    void sendNewPostToFollowersNotification(postId);
+  }
 
   // Storage cleanup. Reject is terminal — free the video + thumbnail from
   // UploadThing since the post will never come back. Hide is reversible

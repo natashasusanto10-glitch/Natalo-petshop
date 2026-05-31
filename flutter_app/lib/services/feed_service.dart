@@ -77,6 +77,30 @@ class FeedService {
     }
   }
 
+  /// Fetch 1 postingan by ID (viewer) — dipakai saat tap deep-link notif
+  /// "X posting video/foto baru" (`/feed/<id>`). Return null kalau 404
+  /// (postingan dihapus / belum tayang) supaya caller bisa fallback
+  /// (mis. buka feed) tanpa crash.
+  Future<FeedPost?> fetchPostById(String id) async {
+    try {
+      final uri = ApiConfig.uri('/api/feed/posts/${Uri.encodeComponent(id)}');
+      final res = await http
+          .get(uri, headers: _headers)
+          .timeout(const Duration(seconds: 12));
+      if (res.statusCode == 404) return null;
+      if (res.statusCode != 200) {
+        throw ApiException('post fetch failed', statusCode: res.statusCode);
+      }
+      final body = jsonDecode(res.body);
+      if (body is! Map<String, dynamic>) return null;
+      return FeedPost.fromJson(body);
+    } catch (e) {
+      if (kDebugMode) debugPrint('[feedService.fetchPostById] $e');
+      if (e is ApiException) rethrow;
+      throw ApiException(e.toString(), cause: e);
+    }
+  }
+
   /// Fetch user's own posts. Cursor-paginated:
   /// - Page pertama: omit `cursor`, default 20 items (max 50)
   /// - Page selanjutnya: pass `cursor` dari `nextCursor` page sebelumnya

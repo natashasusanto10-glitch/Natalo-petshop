@@ -5,7 +5,14 @@ import { sendPushToUser, type PushPayload } from "@/lib/push";
 
 export const SOCIAL_NOTIFICATION_SOURCE = "social";
 
-export type SocialNotificationEventType = "user_followed";
+export type SocialNotificationEventType =
+  | "user_followed"
+  | "followed_user_posted";
+
+/** Batas follower per postingan untuk fan-out notif. Di atas ini, kita
+ *  cap + log supaya tahu kapan perlu pindah ke queue/batch worker.
+ *  Untuk Natalo (follower sedikit) tidak akan kena. */
+const FOLLOWER_NOTIFY_CAP = 500;
 
 function displayName(user: { name: string | null; username: string | null }) {
   return user.username || user.name || "Seseorang";
@@ -96,5 +103,126 @@ export async function sendFollowNotification(params: {
     ]);
   } catch (err) {
     console.warn("[social-notification] follow failed:", err);
+  }
+}
+
+/**
+ * Notif ke SEMUA follower saat author posting baru di-APPROVE admin
+ * (PENDING_REVIEW → ACTIVE). Bukan saat submit, supaya follower tidak
+ * dapat notif untuk postingan yang masih pending / akhirnya ditolak.
+ *
+ * Idempotent: dedup via Announcement dengan eventType + url (postId).
+ * Kalau postingan ini sudah pernah trigger notif "followed_user_posted"
+ * (mis. admin hide lalu approve ulang, atau double-call), skip total.
+ * Skip kalau author ADMIN (postingan official tidak butuh notif follower).
+ *
+ * Fire-and-forget di call site (jangan await — jangan block response
+ * admin approve). Semua error di-swallow + log.
+ */
+export async function sendNewPostToFollowersNotification(postId: string) {
+  try {
+    const post = await prisma.feedPost.findUnique({
+      where: { id: postId },
+      select: {
+        id: true,
+        kind: true,
+        status: true,
+        thumbnailUrl: true,
+        author: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            role: true,
+          },
+        },
+      },
+    });
+    if (!post) return;
+    // Hanya untuk postingan yang sudah tayang + author customer (bukan
+    // admin official).
+    if (post.status !== "ACTIVE") return;
+    if (post.author.role === "ADMIN") return;
+
+    const eventType: SocialNotificationEventType = "followed_user_posted";
+    const url = `/feed/${post.id}`;
+
+    // Dedup — kalau postingan ini sudah pernah trigger notif (1 Announcement
+    // saja cukup jadi penanda, semua follower share url+eventType yg sama),
+    // skip. Cegah double-notif saat re-approve / double admin click.
+    const already = await prisma.announcement.findFirst({
+      where: { eventType, url },
+      select: { id: true },
+    });
+    if (already) return;
+
+    // Ambil semua follower author.
+    const follows = await prisma.userFollow.findMany({
+      where: { followingId: post.author.id },
+      select: { followerId: true },
+    });
+    if (follows.length === 0) return;
+
+    let followerIds = follows.map((f) => f.followerId);
+    if (followerIds.length > FOLLOWER_NOTIFY_CAP) {
+      console.warn(
+        `[social-notification] author ${post.author.id} punya ` +
+          `${followerIds.length} follower > cap ${FOLLOWER_NOTIFY_CAP}. ` +
+          `Notif di-cap; pertimbangkan queue/batch worker.`,
+      );
+      followerIds = followerIds.slice(0, FOLLOWER_NOTIFY_CAP);
+    }
+
+    const actorName = post.author.username || post.author.name || "Seseorang";
+    const kindLabel = post.kind === "PHOTO_CAROUSEL" ? "foto" : "video";
+    const title = "Postingan baru";
+    const body = `${actorName} posting ${kindLabel} baru`;
+    const thumb = post.thumbnailUrl ?? null;
+
+    const payload: PushPayload = {
+      title,
+      body,
+      url,
+      tag: `${eventType}-${post.id}`,
+      imageUrl: thumb,
+      data: {
+        source: SOCIAL_NOTIFICATION_SOURCE,
+        type: eventType,
+        post_id: post.id,
+        author_username: post.author.username ?? "",
+        category: "feed",
+        url,
+      },
+    };
+
+    // Announcement batch — 1 row per follower (targetUserId) supaya muncul
+    // di bell masing-masing.
+    await prisma.announcement.createMany({
+      data: followerIds.map((fid) => ({
+        title,
+        body,
+        url,
+        segment: "all",
+        type: "feed",
+        source: SOCIAL_NOTIFICATION_SOURCE,
+        eventType,
+        feedPostId: post.id,
+        thumbnailUrl: thumb,
+        ctaLabel: "Lihat Postingan",
+        publishedAt: new Date(),
+        targetUserId: fid,
+      })),
+    });
+
+    // Push fan-out — paralel, error per-follower di-swallow oleh allSettled.
+    await Promise.allSettled(
+      followerIds.flatMap((fid) => [
+        sendPushToUser(fid, payload),
+        sendApnsToUser(fid, payload),
+        sendFcmToUser(fid, payload),
+      ]),
+    );
+  } catch (err) {
+    console.warn("[social-notification] new-post-to-followers failed:", err);
   }
 }

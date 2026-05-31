@@ -4,9 +4,148 @@ import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
 import { MY_FEED_VISIBLE_STATUSES } from "@/lib/feed/my-posts";
 import { deleteFeedAssets } from "@/lib/feed/cleanup";
+import { signBunnyUrl } from "@/lib/feed/bunny";
 
 const MAX_TITLE_LENGTH = 200;
 const MAX_DESC_LENGTH = 2000;
+
+/**
+ * GET /api/feed/posts/[id]
+ *
+ * Viewer-facing single post fetch. Dipakai saat user tap deep-link
+ * notif "X posting video/foto baru" (`/feed/<postId>`) → Flutter fetch
+ * post by ID lalu buka MemberPostDetailScreen.
+ *
+ * Hanya return post yang ACTIVE + tidak deleted (public visibility) —
+ * post PENDING/REJECTED/HIDDEN return 404 (viewer tidak boleh lihat).
+ * Shape mirror item `/api/u/[username]` supaya `FeedPost.fromJson` di
+ * Flutter parse tanpa perubahan. Bunny URL di-sign untuk hotlink
+ * protection. viewerLiked di-resolve kalau ada session.
+ */
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  if (!id) {
+    return NextResponse.json({ error: "Post ID required" }, { status: 400 });
+  }
+
+  const post = await prisma.feedPost.findFirst({
+    where: { id, status: "ACTIVE", deletedAt: null },
+    select: {
+      id: true,
+      kind: true,
+      title: true,
+      description: true,
+      thumbnailUrl: true,
+      thumbnailBlurhash: true,
+      videoUrl: true,
+      videoDurationSec: true,
+      videoWidth: true,
+      videoHeight: true,
+      createdAt: true,
+      likeCount: true,
+      commentCount: true,
+      viewCount: true,
+      author: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          role: true,
+          profilePhotoUrl: true,
+        },
+      },
+      media: {
+        orderBy: { sortOrder: "asc" },
+        select: {
+          id: true,
+          url: true,
+          thumbnailUrl: true,
+          mediaType: true,
+          width: true,
+          height: true,
+        },
+      },
+      likes: {
+        orderBy: { createdAt: "desc" },
+        take: 3,
+        select: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              username: true,
+              role: true,
+              profilePhotoUrl: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!post) {
+    return NextResponse.json(
+      { error: "Postingan tidak ditemukan." },
+      { status: 404 },
+    );
+  }
+
+  const session = await getSession("CUSTOMER").catch(() => null);
+  let viewerLiked = false;
+  if (session?.sub) {
+    const like = await prisma.feedLike
+      .findUnique({
+        where: { userId_postId: { userId: session.sub, postId: post.id } },
+        select: { userId: true },
+      })
+      .catch(() => null);
+    viewerLiked = Boolean(like);
+  }
+
+  return NextResponse.json({
+    id: post.id,
+    kind: post.kind,
+    title: post.title,
+    description: post.description,
+    thumbnailUrl: signBunnyUrl(post.thumbnailUrl) ?? null,
+    thumbnailBlurhash: post.thumbnailBlurhash,
+    videoUrl: signBunnyUrl(post.videoUrl) ?? null,
+    videoDurationSec: post.videoDurationSec,
+    videoWidth: post.videoWidth,
+    videoHeight: post.videoHeight,
+    createdAt: post.createdAt.toISOString(),
+    likeCount: post.likeCount,
+    commentCount: post.commentCount,
+    viewCount: post.viewCount,
+    viewerLiked,
+    author: {
+      id: post.author.id,
+      name: post.author.name,
+      username: post.author.username,
+      role: post.author.role === "ADMIN" ? "ADMIN" : "CUSTOMER",
+      profilePhotoUrl: post.author.profilePhotoUrl,
+    },
+    media: post.media.map((m) => ({
+      id: m.id,
+      url: signBunnyUrl(m.url) ?? m.url,
+      thumbnailUrl: signBunnyUrl(m.thumbnailUrl) ?? null,
+      mediaType: m.mediaType,
+      width: m.width,
+      height: m.height,
+    })),
+    recentLikers: post.likes.map((l) => ({
+      id: l.user.id,
+      name: l.user.name,
+      username: l.user.username,
+      role: l.user.role === "ADMIN" ? "ADMIN" : "CUSTOMER",
+      profilePhotoUrl: l.user.profilePhotoUrl,
+      avatarUrl: l.user.profilePhotoUrl,
+    })),
+  });
+}
 
 /**
  * PATCH /api/feed/posts/[id]
