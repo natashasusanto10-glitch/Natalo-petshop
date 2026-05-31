@@ -84,6 +84,8 @@ const STATUS_TITLES: Record<string, string> = {
   DELIVERED: "✅ Pesanan Sampai",
   CANCELLED: "❌ Pesanan Dibatalkan",
   REFUNDED: "💸 Refund Diproses",
+  FAILED: "⏰ Pembayaran Kadaluarsa",
+  EXPIRED: "⏰ Pembayaran Kadaluarsa",
 };
 
 STATUS_TITLES.READY_FOR_PICKUP = "Pesanan Siap Diambil";
@@ -266,6 +268,11 @@ export async function sendOrderStatusPush(
       break;
     case "REFUNDED":
       body = `Refund untuk ${orderNumber} sudah diproses. Dana akan masuk dalam 3-5 hari kerja.`;
+      break;
+    case "FAILED":
+    case "EXPIRED":
+      body = `Batas waktu pembayaran ${orderNumber} sudah lewat. Pesanan dibatalkan otomatis — silakan pesan ulang kalau masih mau.`;
+      actions = [{ action: "reorder", title: "Pesan Lagi" }];
       break;
     default:
       return;

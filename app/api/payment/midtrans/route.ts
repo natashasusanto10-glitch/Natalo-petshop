@@ -139,5 +139,18 @@ export async function POST(request: NextRequest) {
     ).catch(() => {});
   }
 
+  // Pembayaran kadaluarsa/gagal (deny/cancel/expire dari Midtrans) →
+  // kabari user supaya tahu order hangus + bisa pesan ulang. Sebelumnya
+  // tidak ada push untuk FAILED — user nunggu bayar VA, kadaluarsa,
+  // tidak dikasih tahu → bingung "kok order hilang". Guard transition
+  // supaya tidak re-push kalau webhook FAILED datang berkali-kali.
+  if (paymentStatus === "FAILED" && order.paymentStatus !== "FAILED") {
+    sendOrderStatusPush(
+      updatedOrder.id,
+      updatedOrder.orderNumber,
+      "FAILED"
+    ).catch(() => {});
+  }
+
   return NextResponse.json({ message: "OK" });
 }

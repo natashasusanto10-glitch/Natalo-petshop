@@ -7,6 +7,9 @@
 
 import { prisma } from "@/lib/prisma";
 import type { Prisma, ReviewStatus } from "@prisma/client";
+import { sendApnsToUser } from "@/lib/apns";
+import { sendFcmToUser } from "@/lib/fcm";
+import { sendPushToUser, type PushPayload } from "@/lib/push";
 
 const EDIT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // 30 hari
 
@@ -522,9 +525,75 @@ export async function upsertAdminReply(
     throw new Error("Admin user tidak valid.");
   }
 
-  return prisma.reviewReply.upsert({
+  const reply = await prisma.reviewReply.upsert({
     where: { reviewId },
     create: { reviewId, adminUserId, content: content.trim() },
     update: { content: content.trim(), adminUserId },
   });
+
+  // Notif push ke author ulasan — kasih tahu toko sudah membalas review
+  // mereka. Fire-and-forget; error di-swallow supaya tidak gagalkan reply.
+  void notifyReviewReply(reviewId, content.trim());
+
+  return reply;
+}
+
+async function notifyReviewReply(reviewId: string, content: string) {
+  try {
+    const review = await prisma.review.findUnique({
+      where: { id: reviewId },
+      select: {
+        userId: true,
+        product: { select: { slug: true, name: true, imageUrl: true } },
+      },
+    });
+    if (!review?.userId) return;
+
+    const productName = review.product?.name ?? "produk";
+    const url = review.product?.slug
+      ? `/products/${encodeURIComponent(review.product.slug)}`
+      : "/akun/ulasan";
+    const excerpt =
+      content.length > 90 ? `${content.slice(0, 90).trim()}…` : content;
+    const title = "Toko membalas ulasanmu";
+    const body = `Natalo Petshop membalas ulasan kamu untuk ${productName}: ${excerpt}`;
+
+    const payload: PushPayload = {
+      title,
+      body,
+      url,
+      tag: `review-reply-${reviewId}`,
+      imageUrl: review.product?.imageUrl ?? null,
+      data: {
+        source: "review",
+        type: "review_reply",
+        review_id: reviewId,
+        category: "chat",
+        url,
+      },
+    };
+
+    await Promise.allSettled([
+      sendPushToUser(review.userId, payload),
+      sendApnsToUser(review.userId, payload),
+      sendFcmToUser(review.userId, payload),
+      prisma.announcement.create({
+        data: {
+          title,
+          body,
+          url,
+          segment: "all",
+          type: "review",
+          source: "review",
+          eventType: "review_reply",
+          thumbnailUrl: review.product?.imageUrl ?? null,
+          ctaLabel: "Lihat Ulasan",
+          publishedAt: new Date(),
+          targetUserId: review.userId,
+        },
+      }),
+    ]);
+  } catch (err) {
+    console.warn("[reviews] notifyReviewReply failed:", err);
+  }
 }
