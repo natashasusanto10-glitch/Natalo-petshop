@@ -342,6 +342,82 @@ export async function sendLikeNotification(params: {
   }
 }
 
+/**
+ * Fired saat komentar user di-like orang lain. Notif ke author komentar.
+ * Skip self-like + skip kalau author komentar = admin (akun official,
+ * tidak ada recipient manusia). Debounce: kalau ada notif comment-like
+ * unread untuk komentar yg sama dalam window, update (bukan spam baru) —
+ * cegah notif beruntun saat like/unlike cepat atau banyak yg like.
+ */
+export async function sendCommentLikeNotification(params: {
+  commentId: string;
+  postId: string;
+  commentAuthorId: string;
+  actorUserId: string;
+  likeCount: number;
+}) {
+  try {
+    if (!params.commentAuthorId) return;
+    if (params.commentAuthorId === params.actorUserId) return; // self-like
+
+    const author = await prisma.user.findUnique({
+      where: { id: params.commentAuthorId },
+      select: { role: true },
+    });
+    if (!author) return;
+    if (author.role === "ADMIN") return; // akun official, no recipient
+
+    const post = await prisma.feedPost.findUnique({
+      where: { id: params.postId },
+      select: { thumbnailUrl: true },
+    });
+
+    const since = new Date(Date.now() - LIKE_BATCH_WINDOW_MS);
+    const recentUnread = await prisma.announcement.findFirst({
+      where: {
+        targetUserId: params.commentAuthorId,
+        source: SOCIAL_NOTIFICATION_SOURCE,
+        eventType: "feed_new_like",
+        createdAt: { gte: since },
+        tag: `feed-comment-like-${params.commentId}`,
+        reads: { none: { userId: params.commentAuthorId } },
+      },
+      select: { id: true },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (recentUnread) {
+      await prisma.announcement.update({
+        where: { id: recentUnread.id },
+        data: {
+          title: `${params.likeCount} orang menyukai komentarmu`,
+          publishedAt: new Date(),
+        },
+      });
+      return;
+    }
+
+    await createFeedNotification({
+      userId: params.commentAuthorId,
+      eventType: "feed_new_like",
+      title: "Komentarmu mendapat like",
+      message: "Seseorang menyukai komentarmu di Feed.",
+      feedPostId: params.postId,
+      thumbnailUrl: post?.thumbnailUrl ?? null,
+      url: feedPostOwnerUrl(params.postId),
+      ctaLabel: "Lihat Komentar",
+      tag: `feed-comment-like-${params.commentId}`,
+      data: {
+        comment_id: params.commentId,
+        like_count: String(params.likeCount),
+      },
+      surface: SOCIAL_NOTIFICATION_SOURCE,
+    });
+  } catch (err) {
+    console.warn("[feed-activity] sendCommentLikeNotification:", err);
+  }
+}
+
 export async function sendShareNotification(params: {
   postId: string;
   shareCount: number;

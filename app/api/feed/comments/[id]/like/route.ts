@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
+import { sendCommentLikeNotification } from "@/lib/feed/activity-notifications";
 
 export async function POST(
   request: NextRequest,
@@ -29,7 +30,7 @@ export async function POST(
   const comment = await prisma.feedComment
     .findUnique({
       where: { id: commentId },
-      select: { id: true, isHidden: true },
+      select: { id: true, isHidden: true, authorId: true, postId: true },
     })
     .catch(() => null);
   if (!comment || comment.isHidden) {
@@ -63,6 +64,18 @@ export async function POST(
     });
     return { liked: true, likeCount: updated.likeCount };
   });
+
+  // Notif ke author komentar — hanya saat LIKE baru (bukan unlike).
+  // Fire-and-forget; self-like + admin di-guard di dalam fungsi.
+  if (result.liked) {
+    void sendCommentLikeNotification({
+      commentId,
+      postId: comment.postId,
+      commentAuthorId: comment.authorId,
+      actorUserId: session.sub,
+      likeCount: result.likeCount,
+    });
+  }
 
   return NextResponse.json({ ok: true, ...result });
 }
