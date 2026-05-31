@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../config/api_config.dart';
 import '../models/app_notification.dart';
+import '../models/feed_post.dart';
 import '../models/product.dart';
 import '../services/api_client.dart';
+import '../services/feed_service.dart';
 import '../services/notification_service.dart';
 import '../state/member_store.dart';
 import '../utils/formatters.dart';
@@ -12,6 +14,7 @@ import '../widgets/app_ui.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import 'announcement_detail_screen.dart';
 import 'in_app_browser_screen.dart';
+import 'member_post_detail_screen.dart';
 
 const _brandBlue = Color(0xFF1677FF);
 const _textDark = Color(0xFF111827);
@@ -212,9 +215,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return;
     }
 
-    if (url.contains('/feed') ||
-        item.feedPostId?.isNotEmpty == true ||
-        _NotificationFilter.feed.matches(item)) {
+    // Notif terkait 1 postingan spesifik (punya feedPostId, mis. "X
+    // posting baru", komentar, like, mention) → buka postingan itu
+    // langsung di dalam app, BUKAN feed utama / webview. Reuse infra
+    // fetchPostById + MemberPostDetailScreen. Fallback ke feed kalau
+    // postId kosong / fetch gagal.
+    final feedPostId = item.feedPostId?.trim() ?? '';
+    if (feedPostId.isNotEmpty) {
+      await _openFeedPostInApp(feedPostId);
+      return;
+    }
+
+    if (url.contains('/feed') || _NotificationFilter.feed.matches(item)) {
       await Navigator.pushNamed(context, '/feed');
       return;
     }
@@ -240,6 +252,56 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) => AnnouncementDetailScreen(notification: item),
+      ),
+    );
+  }
+
+  /// Fetch postingan by ID lalu buka MemberPostDetailScreen di dalam app.
+  /// isOwner dihitung dari apakah viewer == author (post sendiri → bisa
+  /// edit/hapus; post orang → viewer). Spinner saat fetch; fallback ke
+  /// feed kalau postingan tidak ada / fetch gagal. Reuse infra deep-link.
+  Future<void> _openFeedPostInApp(String postId) async {
+    final rootNav = Navigator.of(context, rootNavigator: true);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black.withValues(alpha: 0.25),
+      builder: (_) => const Center(
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: CircularProgressIndicator(strokeWidth: 2.6),
+        ),
+      ),
+    );
+
+    FeedPost? post;
+    try {
+      post = await feedService.fetchPostById(postId);
+    } catch (_) {
+      post = null;
+    }
+
+    rootNav.pop(); // tutup loading dialog
+    if (!mounted) return;
+
+    if (post == null) {
+      // Postingan dihapus / belum tayang / error → fallback ke feed utama.
+      await Navigator.pushNamed(context, '/feed');
+      return;
+    }
+
+    final myId = memberStore.profile?.id;
+    final isOwner = myId != null && myId == post.author.id;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => MemberPostDetailScreen(
+          post: post!,
+          authorName: post.author.displayName,
+          authorPhotoUrl: post.author.profilePhotoUrl,
+          authorInitial: post.author.initial,
+          isOwner: isOwner,
+        ),
       ),
     );
   }
