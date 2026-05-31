@@ -688,9 +688,14 @@ class _PaymentActionCard extends StatelessWidget {
             label: 'Total transfer',
             value: formatRupiah(totalTransfer),
             strong: true,
+            // Emphasize transfer PERSIS — kode unik (sudah termasuk di
+            // nominal) bikin tiap order beda supaya admin gampang cocokkan
+            // dengan bukti. User cukup transfer angka pas ini, JANGAN
+            // dibulatkan (kalau dibulatkan, kode unik hilang → admin susah
+            // verifikasi).
             helper: order.uniqueCode == null
-                ? null
-                : 'Termasuk kode unik ${order.uniqueCode}.',
+                ? 'Transfer dengan nominal pas, jangan dibulatkan ya.'
+                : 'Transfer PAS sampai 3 digit terakhir (sudah termasuk kode unik ${order.uniqueCode}). Jangan dibulatkan.',
             onCopy: () => _copy(
               context,
               totalTransfer.round().toString(),

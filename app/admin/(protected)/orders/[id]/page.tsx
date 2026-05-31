@@ -346,6 +346,30 @@ export default async function AdminOrderDetailPage({
               </p>
             )}
 
+            {/* Total transfer manual = order.total + kode unik. WAJIB
+                tampil supaya admin tahu nominal PERSIS yang harus masuk
+                ke rekening saat verifikasi bukti transfer. Tanpa ini
+                admin lihat "Total 195.400" tapi bukti customer tunjuk
+                196.156 → bingung "kok lebih". Kode unik bikin tiap order
+                punya nominal beda (bantu rekonsiliasi bank). */}
+            {order.paymentProvider === "MANUAL" &&
+              order.uniqueCode != null &&
+              order.total > 0 && (
+                <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
+                  <div className="flex justify-between text-sm font-bold text-blue-900">
+                    <span>Total transfer yang harus masuk</span>
+                    <span>
+                      {formatRupiah(order.total + order.uniqueCode)}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-xs font-medium text-blue-700">
+                    Termasuk kode unik{" "}
+                    <span className="font-black">{order.uniqueCode}</span>{" "}
+                    — cocokkan nominal ini dengan bukti transfer customer.
+                  </p>
+                </div>
+              )}
+
             {/* Already-refunded — beda dari refundBalanceUsed (Q3 keep
                 terpisah). Ini nominal yang DI-credit balik ke user dari
                 order ini (mis. partial refund OOS), bukan saldo yang
