@@ -19,8 +19,10 @@ import '../state/member_store.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
+import '../utils/mention_text.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/emoji_picker_panel.dart';
+import '../widgets/mention_picker.dart';
 import '../widgets/post_likers_sheet.dart';
 import '../widgets/profile_avatar.dart';
 import '../shared/widgets/natalo_post_action_icon.dart';
@@ -2397,6 +2399,10 @@ class _MyPostCommentSheet extends StatefulWidget {
 class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
   final TextEditingController _inputController = TextEditingController();
   final FocusNode _inputFocusNode = FocusNode();
+  // @mention autocomplete — attach ke input controller. Saat user ketik
+  // `@partial`, panel suggestion muncul (search /api/users/search).
+  late final MentionPickerController _mentionCtrl =
+      MentionPickerController(textController: _inputController);
   List<FeedComment> _comments = const [];
   bool _loading = true;
   bool _posting = false;
@@ -2449,6 +2455,7 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
 
   @override
   void dispose() {
+    _mentionCtrl.dispose();
     _inputController.dispose();
     _inputFocusNode.dispose();
     super.dispose();
@@ -2634,6 +2641,66 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
     }
   }
 
+  /// Hapus komentar milik viewer sendiri. Optimistic remove + rollback
+  /// kalau API gagal. Decrement commentCount di FeedStore (backend
+  /// decrement hanya top-level — match pattern itu).
+  Future<void> _deleteComment(FeedComment comment) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Hapus komentar?'),
+        content: const Text('Komentar akan dihapus permanen.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: const Text('Batal'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFFDC2626),
+            ),
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final isTopLevel = comment.parentCommentId == null;
+    final snapshot = _comments;
+    // Optimistic remove — top-level: drop dari list. Reply: drop dari
+    // replies parent + recompute replyCount.
+    setState(() {
+      if (isTopLevel) {
+        _comments = _comments.where((c) => c.id != comment.id).toList();
+      } else {
+        _comments = _comments.map((top) {
+          if (top.id != comment.parentCommentId) return top;
+          final newReplies =
+              top.replies.where((r) => r.id != comment.id).toList();
+          return top.copyWith(
+            replies: newReplies,
+            replyCount: newReplies.length,
+          );
+        }).toList();
+      }
+    });
+
+    try {
+      await feedService.deleteComment(comment.id);
+      if (isTopLevel) {
+        final fresh = feedStore.get(widget.post.id);
+        final current = fresh?.commentCount ?? widget.post.commentCount;
+        feedStore.setCommentCount(widget.post.id, current - 1);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _comments = snapshot);
+      AppToast.show(context, 'Gagal hapus komentar, coba lagi');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
@@ -2742,6 +2809,9 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
                           );
                         case _CommentEntryKind.comment:
                           final c = entry.comment!;
+                          // Hapus hanya untuk komentar milik viewer sendiri.
+                          final isOwn = memberStore.profile?.id != null &&
+                              c.author.id == memberStore.profile!.id;
                           return _CommentTile(
                             comment: c,
                             isReply: entry.isReply,
@@ -2749,6 +2819,9 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
                             likeBusy: _likeBusy.contains(c.id),
                             onToggleLike: () => _toggleCommentLike(c),
                             onReply: () => _startReply(c),
+                            onDelete: isOwn ? () => _deleteComment(c) : null,
+                            onMentionTap: (handle) => Navigator.of(context)
+                                .pushNamed('/u', arguments: handle),
                           );
                         case _CommentEntryKind.repliesToggle:
                           return _RepliesToggle(
@@ -2793,6 +2866,14 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
                     ],
                   ),
                 ),
+              // @mention autocomplete panel — muncul di atas input row saat
+              // user ketik `@partial`. darkTheme:false → tema terang sesuai
+              // sheet ini (beda dgn FeedCommentSheet Reels yg dark).
+              MentionSuggestionsPanel(
+                controller: _mentionCtrl,
+                darkTheme: false,
+                maxHeight: 200,
+              ),
               Container(
                 padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
                 decoration: const BoxDecoration(
@@ -2932,6 +3013,13 @@ class _CommentTile extends StatelessWidget {
   final VoidCallback? onToggleLike;
   final VoidCallback? onReply;
 
+  /// Non-null kalau komentar ini milik viewer (boleh dihapus). Null = tidak
+  /// tampil tombol "Hapus" (komentar orang lain / caption / non-owner).
+  final VoidCallback? onDelete;
+
+  /// Handle username untuk navigate saat tap @mention.
+  final void Function(String handle)? onMentionTap;
+
   const _CommentTile({
     required this.comment,
     required this.isReply,
@@ -2939,6 +3027,8 @@ class _CommentTile extends StatelessWidget {
     required this.likeBusy,
     this.onToggleLike,
     this.onReply,
+    this.onDelete,
+    this.onMentionTap,
   });
 
   @override
@@ -2971,7 +3061,20 @@ class _CommentTile extends StatelessWidget {
                         text: '${author.name} ',
                         style: const TextStyle(fontWeight: FontWeight.w900),
                       ),
-                      TextSpan(text: comment.content),
+                      // @mention di-style + tappable + brand-override admin
+                      // (officialMentions dari backend). Sebelumnya plain
+                      // TextSpan → mention tidak ke-style/link.
+                      ...buildMentionSpans(
+                        comment.content,
+                        onMentionTap: onMentionTap ?? (_) {},
+                        defaultStyle: TextStyle(
+                          color: NataloColors.textPrimary,
+                          fontSize: isReply ? 13 : 13.5,
+                          fontWeight: FontWeight.w600,
+                          height: 1.35,
+                        ),
+                        officialHandles: comment.officialMentions.toSet(),
+                      ),
                     ],
                   ),
                   style: TextStyle(
@@ -3014,6 +3117,23 @@ class _CommentTile extends StatelessWidget {
                           'Balas',
                           style: TextStyle(
                             color: NataloColors.textSecondary,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                    // Hapus — hanya untuk komentar milik viewer sendiri
+                    // (onDelete non-null). Backend authorize author + admin.
+                    if (!isCaption && onDelete != null) ...[
+                      const SizedBox(width: 12),
+                      GestureDetector(
+                        onTap: onDelete,
+                        behavior: HitTestBehavior.opaque,
+                        child: const Text(
+                          'Hapus',
+                          style: TextStyle(
+                            color: Color(0xFFDC2626),
                             fontSize: 11,
                             fontWeight: FontWeight.w800,
                           ),
