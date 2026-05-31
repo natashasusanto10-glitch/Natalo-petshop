@@ -71,29 +71,53 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
       extendBodyBehindAppBar: true,
       body: Stack(
         children: [
-          Positioned.fill(
-            child: PageView.builder(
-              controller: _controller,
-              itemCount: images.length,
-              onPageChanged: (value) => setState(() => _index = value),
-              itemBuilder: (context, i) => InteractiveViewer(
-                minScale: 1,
-                maxScale: 4,
-                // Wrap dengan SizedBox.expand supaya image (atau placeholder
-                // kalau fail load) fill full viewport area. Tanpa ini,
-                // AppProductImage tanpa width/height shrink ke child intrinsic
-                // size → kalau image fail load + placeholder render icon kecil,
-                // sisanya hitam → user lihat "blank screen".
-                child: SizedBox.expand(
-                  child: AppProductImage(
-                    imageUrl: images[i],
-                    fit: BoxFit.contain,
-                    borderRadius: BorderRadius.zero,
-                  ),
+          // Guard: kalau images kosong (data tidak terkirim), jangan render
+          // PageView 0-item (layar hitam total + chrome nyangkut di pojok).
+          // Tampilkan placeholder eksplisit.
+          if (images.isEmpty)
+            const Center(
+              child: Icon(
+                Icons.image_not_supported_outlined,
+                color: Colors.white38,
+                size: 48,
+              ),
+            )
+          else
+            Positioned.fill(
+              child: PageView.builder(
+                controller: _controller,
+                itemCount: images.length,
+                onPageChanged: (value) => setState(() => _index = value),
+                // Per-page LayoutBuilder → kasih ukuran EKSPLISIT (bukan
+                // SizedBox.expand yang bisa collapse di dalam InteractiveViewer
+                // saat constraint unbounded). Mirror pola Detail Hero yang
+                // terbukti jalan (width/height eksplisit). Center supaya
+                // BoxFit.contain rapi + placeholder tidak ngumpet di pojok.
+                itemBuilder: (context, i) => LayoutBuilder(
+                  builder: (context, constraints) {
+                    final w = constraints.maxWidth.isFinite
+                        ? constraints.maxWidth
+                        : MediaQuery.sizeOf(context).width;
+                    final h = constraints.maxHeight.isFinite
+                        ? constraints.maxHeight
+                        : MediaQuery.sizeOf(context).height;
+                    return InteractiveViewer(
+                      minScale: 1,
+                      maxScale: 4,
+                      child: Center(
+                        child: AppProductImage(
+                          imageUrl: images[i],
+                          width: w,
+                          height: h,
+                          fit: BoxFit.contain,
+                          borderRadius: BorderRadius.zero,
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
-          ),
           SafeArea(
             bottom: false,
             child: Padding(
