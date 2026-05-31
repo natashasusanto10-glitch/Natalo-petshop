@@ -1090,6 +1090,8 @@ class _CommentTile extends StatelessWidget {
                   const SizedBox(height: 2),
                   MentionText(
                     comment.content,
+                    // Brand-override mention admin → "@Natalo Petshop" + badge.
+                    officialHandles: comment.officialMentions.toSet(),
                     style: TextStyle(
                       // White alpha 90% — primary content content readable
                       // di dark bg, slightly softer dari 100% white untuk

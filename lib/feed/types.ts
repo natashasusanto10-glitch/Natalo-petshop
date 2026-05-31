@@ -139,6 +139,11 @@ export type FeedCommentItem = {
   createdAt: string;
   author: FeedPostAuthor;
   viewerLiked: boolean;
+  // Username (lowercase) yang di-mention di `content` dan merupakan akun
+  // admin/official. Client brand-override "@username" → "@Natalo Petshop"
+  // + badge saat render. Hanya official yang dikirim (user biasa tidak
+  // perlu override). Empty array kalau tidak ada mention official.
+  officialMentions: string[];
   // Server cuma fetch 1-level reply child sebagai "preview". UI bisa
   // expand untuk fetch full reply thread per comment.
   replies?: FeedCommentItem[];

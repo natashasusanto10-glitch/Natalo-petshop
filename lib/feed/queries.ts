@@ -11,6 +11,7 @@
 import { prisma } from "@/lib/prisma";
 import type { FeedPostTab } from "@prisma/client";
 import { resolveActiveDiscount } from "@/lib/product-pricing";
+import { extractMentionHandles } from "./mentions";
 import { signBunnyUrl } from "./bunny";
 import type {
   FeedCommentItem,
@@ -513,14 +514,25 @@ function mapFeedComment(
       };
     }>;
   },
-  viewerLikedIds: Set<string>
+  viewerLikedIds: Set<string>,
+  officialHandles: Set<string> = new Set()
 ): FeedCommentItem {
+  // Mention handle di content yang merupakan akun official → kirim ke
+  // client untuk brand-override render. Skip kalau tidak ada official
+  // handle yang ke-mention (mayoritas komentar).
+  const officialMentions =
+    officialHandles.size > 0
+      ? [...extractMentionHandles(c.content)].filter((h) =>
+          officialHandles.has(h),
+        )
+      : [];
   return {
     id: c.id,
     postId: c.postId,
     parentCommentId: c.parentCommentId,
     content: c.content,
     isAdminOfficial: c.isAdminOfficial,
+    officialMentions,
     isHidden: c.isHidden,
     likeCount: c.likeCount,
     createdAt: c.createdAt.toISOString(),
@@ -535,9 +547,37 @@ function mapFeedComment(
     },
     viewerLiked: viewerLikedIds.has(c.id),
     replies:
-      c.replies?.map((reply) => mapFeedComment(reply, viewerLikedIds)) ?? [],
+      c.replies?.map((reply) =>
+        mapFeedComment(reply, viewerLikedIds, officialHandles),
+      ) ?? [],
     replyCount: c.replies?.length ?? 0,
   };
+}
+
+/**
+ * Batch-resolve handle @mention di sekumpulan komentar (+ replies) ke set
+ * username (lowercase) yang merupakan akun ADMIN/official. Dipakai
+ * mapFeedComment untuk kirim officialMentions → client brand-override.
+ *
+ * 1 query saja (findMany username IN [...]) — efisien untuk 1 page komentar.
+ */
+async function resolveOfficialMentionHandles(
+  contents: string[],
+): Promise<Set<string>> {
+  const handles = new Set<string>();
+  for (const content of contents) {
+    for (const h of extractMentionHandles(content)) handles.add(h);
+  }
+  if (handles.size === 0) return new Set();
+  const admins = await prisma.user.findMany({
+    where: { username: { in: [...handles] }, role: "ADMIN" },
+    select: { username: true },
+  });
+  return new Set(
+    admins
+      .map((a) => a.username?.toLowerCase())
+      .filter((u): u is string => Boolean(u)),
+  );
 }
 
 /**
@@ -608,8 +648,17 @@ export async function listFeedComments({
   const hasMore = comments.length > COMMENT_PAGE_SIZE;
   const sliced = hasMore ? comments.slice(0, COMMENT_PAGE_SIZE) : comments;
 
+  // Resolve handle official yang ke-mention di seluruh page (parent +
+  // reply) → 1 query. Dipakai untuk brand-override render di client.
+  const officialHandles = await resolveOfficialMentionHandles(
+    sliced.flatMap((c) => [
+      c.content,
+      ...c.replies.map((reply) => reply.content),
+    ]),
+  );
+
   const items: FeedCommentItem[] = sliced.map((c) =>
-    mapFeedComment(c, viewerLikedIds)
+    mapFeedComment(c, viewerLikedIds, officialHandles)
   );
 
   return {

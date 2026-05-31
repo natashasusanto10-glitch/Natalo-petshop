@@ -31,6 +31,12 @@ class FeedComment {
   final List<FeedComment> replies;
   final int replyCount;
 
+  /// Username (lowercase) yang di-mention di `content` dan merupakan akun
+  /// admin/official. Dipakai untuk brand-override render: "@username" →
+  /// "@Natalo Petshop" + badge. Dari backend (officialMentions). Empty
+  /// kalau tidak ada mention official.
+  final List<String> officialMentions;
+
   const FeedComment({
     required this.id,
     required this.postId,
@@ -44,6 +50,7 @@ class FeedComment {
     required this.viewerLiked,
     this.replies = const [],
     this.replyCount = 0,
+    this.officialMentions = const [],
   });
 
   factory FeedComment.fromApiJson(Map<String, dynamic> json) {
@@ -77,6 +84,11 @@ class FeedComment {
       replyCount: _asInt(json['replyCount']) > 0
           ? _asInt(json['replyCount'])
           : replies.length,
+      officialMentions: (json['officialMentions'] as List?)
+              ?.whereType<String>()
+              .map((h) => h.toLowerCase())
+              .toList() ??
+          const [],
     );
   }
 
@@ -99,6 +111,7 @@ class FeedComment {
       viewerLiked: viewerLiked ?? this.viewerLiked,
       replies: replies ?? this.replies,
       replyCount: replyCount ?? this.replyCount,
+      officialMentions: officialMentions,
     );
   }
 }

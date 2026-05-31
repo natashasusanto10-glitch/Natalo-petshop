@@ -28,6 +28,11 @@ List<InlineSpan> buildMentionSpans(
   /// dispose() lifecycle widget. Add ke list ini supaya caller bisa
   /// iterate clean up.
   List<TapGestureRecognizer>? collectRecognizers,
+  /// Username (lowercase) yang merupakan akun admin/official. Mention ke
+  /// handle ini di-brand-override: "@username" → "@Natalo Petshop" + badge
+  /// verified inline. Tap tetap navigate ke profil (handle asli). Konsisten
+  /// dengan FeedAuthor di feed + mention picker.
+  Set<String> officialHandles = const {},
 }) {
   if (text.isEmpty) return const [];
   final defaultMentionStyle = (defaultStyle ?? const TextStyle()).copyWith(
@@ -49,6 +54,28 @@ List<InlineSpan> buildMentionSpans(
     final recognizer = TapGestureRecognizer()
       ..onTap = () => onMentionTap(handle);
     collectRecognizers?.add(recognizer);
+    if (officialHandles.contains(handle)) {
+      // Brand-override: tampil "@Natalo Petshop" + badge verified inline.
+      // Tap tetap pakai handle asli (navigate ke /u/<handle>).
+      spans.add(TextSpan(
+        text: '@Natalo Petshop',
+        style: effectiveMentionStyle,
+        recognizer: recognizer,
+      ));
+      spans.add(WidgetSpan(
+        alignment: PlaceholderAlignment.middle,
+        child: Padding(
+          padding: const EdgeInsets.only(left: 2),
+          child: Icon(
+            Icons.verified_rounded,
+            size: (effectiveMentionStyle.fontSize ?? 14) + 1,
+            color: const Color(0xFF0B7FEA),
+          ),
+        ),
+      ));
+      cursor = match.end;
+      continue;
+    }
     spans.add(TextSpan(
       text: '@$handle',
       style: effectiveMentionStyle,
@@ -76,6 +103,9 @@ class MentionText extends StatefulWidget {
   final int? maxLines;
   final TextOverflow overflow;
 
+  /// Handle official → brand-override render (lihat buildMentionSpans).
+  final Set<String> officialHandles;
+
   const MentionText(
     this.text, {
     super.key,
@@ -84,6 +114,7 @@ class MentionText extends StatefulWidget {
     this.mentionStyle,
     this.maxLines,
     this.overflow = TextOverflow.clip,
+    this.officialHandles = const {},
   });
 
   @override
@@ -118,6 +149,7 @@ class _MentionTextState extends State<MentionText> {
       defaultStyle: widget.style,
       mentionStyle: widget.mentionStyle,
       collectRecognizers: _recognizers,
+      officialHandles: widget.officialHandles,
     );
     return Text.rich(
       TextSpan(children: spans, style: widget.style),
