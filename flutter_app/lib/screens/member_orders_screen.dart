@@ -374,12 +374,17 @@ class _OrderCardState extends State<_OrderCard> {
   OrderSummary get order => widget.order;
   int get index => widget.index;
 
-  void _openOrderDetail(BuildContext context) {
-    Navigator.pushNamed(
+  Future<void> _openOrderDetail(BuildContext context) async {
+    // Await — user mungkin upload bukti transfer / batalkan di detail.
+    // Saat balik, refresh list supaya badge + tombol ikut update
+    // (mis. "Belum Bayar/Bayar Sekarang" → "Menunggu Verifikasi" setelah
+    // bukti diupload). Tanpa ini list stale, gejala yang dilaporkan user.
+    await Navigator.pushNamed(
       context,
       '/member/order-detail',
       arguments: order,
     );
+    if (mounted) await widget.onRefresh();
   }
 
   Future<void> _openPayment(BuildContext context) async {
@@ -644,6 +649,16 @@ class _OrderCardState extends State<_OrderCard> {
     return payment == 'UNPAID' || payment == 'PENDING' || status == 'PENDING';
   }
 
+  /// User sudah upload bukti transfer (paymentProofUrl terisi). Untuk order
+  /// manual, ini sinyal "Menunggu Verifikasi" — admin tinggal verifikasi.
+  bool get _hasProof => (order.paymentProofUrl ?? '').trim().isNotEmpty;
+
+  /// Order belum lunas TAPI bukti sudah diupload → tampil chip "Menunggu
+  /// Verifikasi" (bukan tombol "Bayar Sekarang"). Kartu tetap tappable ke
+  /// detail untuk upload ulang kalau bukti salah (tidak ada alur admin
+  /// "tolak bukti", jadi recovery lewat re-upload / hubungi admin).
+  bool get _isAwaitingVerification => _isUnpaid && _hasProof;
+
   /// Order yang udah SHIPPED + bukan self-pickup → user butuh konfirmasi
   /// "Sudah Diterima". Self-pickup tidak transit SHIPPED (PROCESSING →
   /// READY_FOR_PICKUP → DELIVERED via admin scan), jadi skip.
@@ -660,6 +675,9 @@ class _OrderCardState extends State<_OrderCard> {
   }
 
   String? get _actionLabel {
+    // Bukti sudah diupload → tidak ada tombol bayar; render chip
+    // "Menunggu Verifikasi" terpisah (lihat build). Kartu tetap tappable.
+    if (_isAwaitingVerification) return null;
     if (_isUnpaid) return 'Bayar Sekarang';
     if (_needsDeliveryConfirmation) return 'Sudah Diterima';
     if (_isReorderable) return 'Beli Lagi';
@@ -1064,6 +1082,44 @@ class _OrderCardState extends State<_OrderCard> {
                                       fontWeight: FontWeight.w900,
                                     ),
                                   ),
+                          ),
+                        ] else if (_isAwaitingVerification) ...[
+                          // Bukti transfer sudah masuk → chip non-aktif
+                          // "Menunggu Verifikasi" (ganti tombol Bayar
+                          // Sekarang). Kartu tetap bisa di-tap ke detail
+                          // untuk upload ulang kalau perlu.
+                          const SizedBox(width: 12),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 9,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFEF3C7),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: const Color(0xFFFCD34D),
+                              ),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.schedule_rounded,
+                                  size: 15,
+                                  color: Color(0xFFB45309),
+                                ),
+                                SizedBox(width: 5),
+                                Text(
+                                  'Menunggu Verifikasi',
+                                  style: TextStyle(
+                                    color: Color(0xFFB45309),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ],
