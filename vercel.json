@@ -53,6 +53,10 @@
     {
       "path": "/api/cron/auto-cancel-unpaid-manual",
       "schedule": "30 20 * * *"
+    },
+    {
+      "path": "/api/cron/loyalty-points-reminder",
+      "schedule": "0 3 * * 1"
     }
   ]
 }

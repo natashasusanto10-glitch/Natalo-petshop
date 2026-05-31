@@ -78,6 +78,17 @@ class DeepLinkService {
           nav.pushNamed('/member');
         }
         break;
+      case 'member':
+        // /member/loyalty → halaman tukar poin (deep-link notif reminder
+        // poin). /member/orders → daftar pesanan. /member → halaman akun.
+        if (segments.length > 1 && segments[1] == 'loyalty') {
+          nav.pushNamed('/member/loyalty');
+        } else if (segments.length > 1 && segments[1] == 'orders') {
+          nav.pushNamed('/member/orders');
+        } else {
+          nav.pushNamed('/member');
+        }
+        break;
       case 'products':
       case 'produk':
         if (segments.length > 1) {

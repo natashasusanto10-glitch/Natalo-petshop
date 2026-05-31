@@ -197,6 +197,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return;
     }
 
+    // Loyalty redeem reminder → halaman tukar poin. Cek SEBELUM /orders
+    // matcher (loyalty url tidak mengandung /orders, tapi eksplisit dulu).
+    if (url.contains('/member/loyalty') ||
+        item.eventType?.toLowerCase() == 'loyalty_redeem_reminder') {
+      await Navigator.pushNamed(context, '/member/loyalty');
+      return;
+    }
+
     if (url.contains('/member/orders') ||
         url.contains('/orders') ||
         haystack.contains('pesanan') ||
