@@ -119,6 +119,31 @@ export async function GET(request: NextRequest) {
             },
           },
         },
+        // Produk yang di-tag di post — TANPA ini tab "Produk Ditag" di
+        // profil user selalu kosong (Flutter productIds derive dari
+        // products yg tidak terkirim). Ordered by position untuk konsisten
+        // dgn carousel di feed.
+        taggedProducts: {
+          orderBy: { position: "asc" },
+          select: {
+            product: {
+              select: {
+                id: true,
+                slug: true,
+                name: true,
+                price: true,
+                discountPrice: true,
+                stock: true,
+                weightGram: true,
+                isActive: true,
+                imageUrl: true,
+                hasVariants: true,
+                avgRating: true,
+                reviewCount: true,
+              },
+            },
+          },
+        },
       },
     }),
     prisma.feedPost.count({ where: baseWhere }),
@@ -234,6 +259,25 @@ export async function GET(request: NextRequest) {
           profilePhotoUrl: like.user.profilePhotoUrl,
           avatarUrl: like.user.profilePhotoUrl,
         })),
+        // Produk yang di-tag → Flutter FeedPost.fromJson baca `products`
+        // → productIds non-empty → muncul di tab "Produk Ditag". Shape
+        // FeedProductLink (sama dgn reels feed).
+        products: post.taggedProducts
+          .filter((t) => t.product)
+          .map((t) => ({
+            id: t.product!.id,
+            slug: t.product!.slug,
+            name: t.product!.name,
+            price: t.product!.price,
+            discountPrice: t.product!.discountPrice,
+            stock: t.product!.stock,
+            weightGram: t.product!.weightGram,
+            isActive: t.product!.isActive,
+            imageUrl: t.product!.imageUrl,
+            hasVariants: t.product!.hasVariants,
+            avgRating: t.product!.avgRating ?? 0,
+            reviewCount: t.product!.reviewCount ?? 0,
+          })),
       };
     }),
     filter,
