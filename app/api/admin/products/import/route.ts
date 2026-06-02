@@ -63,6 +63,7 @@ interface ProductData {
   weightGram: number;
   hasVariants: boolean;
   variants: VariantData[];
+  imageUrl?: string;
 }
 
 interface CategoryData {
@@ -172,6 +173,7 @@ export async function POST(request: NextRequest) {
             // di create. Sebelumnya overwrite manual brand assignment
             // admin tiap import dijalankan.
             brandId,
+            imageUrl: prod.imageUrl ?? null,
           },
           create: {
             name: prod.name,
@@ -185,6 +187,7 @@ export async function POST(request: NextRequest) {
             categoryId,
             brandId,
             brandAutoAssigned: true,
+            imageUrl: prod.imageUrl ?? null,
           },
         });
         changedProductIds.add(product.id);
