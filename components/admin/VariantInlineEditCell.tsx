@@ -179,23 +179,29 @@ export function VariantInlineEditCell({
 
       {open && (
         <>
-          {/* Backdrop & dialog SIBLINGS (bukan parent-child) — `backdrop-filter`
-              di parent + child `bg-white` memicu Chromium stacking-context bug
-              yang bikin dialog tampak setengah transparan. Sebagai siblings,
-              dialog tidak share stacking context dengan backdrop-filter. */}
+          {/* HISTORY: pernah pakai backdrop-blur-md (frosted-glass), tapi user
+              lapor dialog tampak transparan/blur di Chromium — kemungkinan
+              compositor bleed dari backdrop-filter ke sibling layer. SOLUSI:
+              backdrop pakai bg-black/50 SAJA (tanpa backdrop-filter), depth
+              dialog dari shadow-2xl + ring. Tidak ada lagi backdrop-filter
+              di tree modal → tidak ada chance stacking bleed. */}
           <div
-            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-md"
+            className="fixed inset-0 z-50 bg-black/50"
             onClick={() => !saving && setOpen(false)}
           />
           <div
             className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center p-4"
           >
             <div
-              // `bg-white` + inline `backgroundColor` sebagai guarantee solid
-              // walau ada CSS cascade aneh. `isolate` cegah backdrop-filter parent
-              // ikutan pengaruhi dialog kalau di future ada wrapper baru.
-              className="pointer-events-auto isolate w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-black/5"
-              style={{ backgroundColor: "#ffffff" }}
+              // Inline backgroundColor + isolation sebagai double-guarantee
+              // solid putih walau ada CSS cascade aneh di future.
+              className="pointer-events-auto w-full max-w-lg rounded-2xl p-5 shadow-2xl ring-1 ring-black/10"
+              style={{
+                backgroundColor: "#ffffff",
+                isolation: "isolate",
+                backdropFilter: "none",
+                WebkitBackdropFilter: "none",
+              }}
               onClick={(e) => e.stopPropagation()}
             >
             <div className="flex items-start justify-between gap-3">
