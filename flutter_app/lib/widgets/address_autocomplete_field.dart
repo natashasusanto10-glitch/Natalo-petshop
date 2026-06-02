@@ -161,6 +161,7 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
     _removeOverlay();
     if (_suggestions.isEmpty) return;
 
+    final cs = Theme.of(context).colorScheme;
     _overlay = OverlayEntry(
       builder: (context) {
         return Positioned(
@@ -182,10 +183,10 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
                   borderRadius: BorderRadius.circular(14),
                   child: Container(
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: cs.surface,
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                        color: const Color(0xFFE5E7EB),
+                        color: cs.outlineVariant,
                         width: 1,
                       ),
                     ),
@@ -193,9 +194,9 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
                       shrinkWrap: true,
                       padding: EdgeInsets.zero,
                       itemCount: _suggestions.length,
-                      separatorBuilder: (_, __) => const Divider(
+                      separatorBuilder: (_, __) => Divider(
                         height: 1,
-                        color: Color(0xFFF1F5F9),
+                        color: cs.outlineVariant,
                         indent: 12,
                         endIndent: 12,
                       ),
@@ -226,8 +227,8 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
                                         s.mainText ?? s.description,
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: Color(0xFF111827),
+                                        style: TextStyle(
+                                          color: cs.onSurface,
                                           fontSize: 13.5,
                                           fontWeight: FontWeight.w800,
                                           height: 1.3,
@@ -242,8 +243,8 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
                                             s.secondaryText!,
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              color: Color(0xFF6B7280),
+                                            style: TextStyle(
+                                              color: cs.onSurfaceVariant,
                                               fontSize: 12,
                                               fontWeight: FontWeight.w600,
                                               height: 1.3,
@@ -277,6 +278,7 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final hasText = widget.controller.text.isNotEmpty;
     final showLoadingSuffix = _searching || _fetchingDetails;
     return CompositedTransformTarget(
@@ -288,26 +290,26 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
         maxLines: widget.maxLines,
         textInputAction: TextInputAction.search,
         onChanged: _onChanged,
-        style: const TextStyle(fontSize: 14, color: Color(0xFF111827)),
+        style: TextStyle(fontSize: 14, color: cs.onSurface),
         decoration: InputDecoration(
           // Empty label → placeholder-only style. Non-empty → floating label.
           labelText: widget.label.isEmpty ? null : widget.label,
           hintText: widget.hint,
-          hintStyle: const TextStyle(
-            color: Color(0xFF9CA3AF),
+          hintStyle: TextStyle(
+            color: cs.onSurfaceVariant,
             fontSize: 14,
             fontWeight: FontWeight.w500,
           ),
           filled: true,
-          fillColor: const Color(0xFFFAFBFC),
+          fillColor: cs.surfaceContainerHighest,
           isDense: true,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 12,
             vertical: 14,
           ),
-          prefixIcon: const Icon(
+          prefixIcon: Icon(
             Icons.search_rounded,
-            color: Color(0xFF6B7280),
+            color: cs.onSurfaceVariant,
             size: 20,
           ),
           // Loading spinner override clear button saat lagi fetch.
@@ -324,10 +326,10 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
               : (hasText
                   ? IconButton(
                       tooltip: 'Hapus',
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.close_rounded,
                         size: 18,
-                        color: Color(0xFF9CA3AF),
+                        color: cs.onSurfaceVariant,
                       ),
                       onPressed: _clearField,
                       splashRadius: 18,
@@ -335,11 +337,11 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
                   : null),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+            borderSide: BorderSide(color: cs.outlineVariant),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+            borderSide: BorderSide(color: cs.outlineVariant),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),

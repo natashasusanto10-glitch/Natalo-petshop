@@ -18,15 +18,16 @@ class SkeletonProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Shimmer.fromColors(
-      baseColor: const Color(0xFFEFF2F6),
-      highlightColor: const Color(0xFFE2E8F0),
+      baseColor: cs.surfaceContainerHighest,
+      highlightColor: cs.surface,
       child: Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: cs.surface,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFE8EEF7)),
+          border: Border.all(color: cs.outlineVariant),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -36,32 +37,32 @@ class SkeletonProductCard extends StatelessWidget {
               aspectRatio: 1,
               child: Container(
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE2E8F0),
+                  color: cs.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(16),
                 ),
               ),
             ),
             const SizedBox(height: 8),
             // Name line 1
-            _line(height: 12, widthFactor: 0.9),
+            _line(cs, height: 12, widthFactor: 0.9),
             const SizedBox(height: 6),
             // Name line 2
-            _line(height: 12, widthFactor: 0.7),
+            _line(cs, height: 12, widthFactor: 0.7),
             const SizedBox(height: 10),
             // Price
-            _line(height: 14, widthFactor: 0.5),
+            _line(cs, height: 14, widthFactor: 0.5),
             const SizedBox(height: 8),
             // Soft hemat badge
-            _line(height: 14, widthFactor: 0.62),
+            _line(cs, height: 14, widthFactor: 0.62),
             const SizedBox(height: 8),
             // Rating + sold metadata
-            _line(height: 11, widthFactor: 0.72),
+            _line(cs, height: 11, widthFactor: 0.72),
             if (showAddToCart) ...[
               const SizedBox(height: 10),
               Container(
                 height: 34,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE2E8F0),
+                  color: cs.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
@@ -72,14 +73,15 @@ class SkeletonProductCard extends StatelessWidget {
     );
   }
 
-  Widget _line({required double height, required double widthFactor}) {
+  Widget _line(ColorScheme cs,
+      {required double height, required double widthFactor}) {
     return FractionallySizedBox(
       alignment: Alignment.centerLeft,
       widthFactor: widthFactor,
       child: Container(
         height: height,
         decoration: BoxDecoration(
-          color: const Color(0xFFE2E8F0),
+          color: cs.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(4),
         ),
       ),

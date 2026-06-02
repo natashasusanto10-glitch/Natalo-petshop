@@ -5,7 +5,6 @@ import '../screens/public_profile_screen.dart';
 import '../services/api_client.dart';
 import '../services/follow_service.dart';
 import '../services/post_likers_service.dart';
-import '../theme/natalo_colors.dart';
 import '../utils/haptics.dart';
 
 const _brandBlue = Color(0xFF0B7FEA);
@@ -186,25 +185,27 @@ class _PostLikersSheetState extends State<PostLikersSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         _buildHandle(),
         _buildHeader(),
-        const Divider(height: 1, color: Color(0xFFE5E7EB)),
+        Divider(height: 1, color: cs.outlineVariant),
         Expanded(child: _buildBody()),
       ],
     );
   }
 
   Widget _buildHandle() {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Container(
         width: 36,
         height: 4,
         decoration: BoxDecoration(
-          color: const Color(0xFFD1D5DB),
+          color: cs.outlineVariant,
           borderRadius: BorderRadius.circular(2),
         ),
       ),
@@ -212,15 +213,16 @@ class _PostLikersSheetState extends State<PostLikersSheet> {
   }
 
   Widget _buildHeader() {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 6, 12, 12),
       child: Row(
         children: [
-          const Expanded(
+          Expanded(
             child: Text(
               'Disukai oleh',
               style: TextStyle(
-                color: NataloColors.textPrimary,
+                color: cs.onSurface,
                 fontSize: 15,
                 fontWeight: FontWeight.w900,
               ),
@@ -239,6 +241,7 @@ class _PostLikersSheetState extends State<PostLikersSheet> {
   }
 
   Widget _buildBody() {
+    final cs = Theme.of(context).colorScheme;
     if (_loading) {
       return const Center(
         child: CircularProgressIndicator(
@@ -257,8 +260,8 @@ class _PostLikersSheetState extends State<PostLikersSheet> {
               Text(
                 _errorText!,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: NataloColors.textSecondary,
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                 ),
@@ -275,14 +278,14 @@ class _PostLikersSheetState extends State<PostLikersSheet> {
       );
     }
     if (_items.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
+          padding: const EdgeInsets.all(24),
           child: Text(
             'Belum ada yang menyukai postingan ini.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: NataloColors.textSecondary,
+              color: cs.onSurfaceVariant,
               fontSize: 13,
               fontWeight: FontWeight.w600,
             ),
@@ -326,10 +329,11 @@ class _Container extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
       clipBehavior: Clip.antiAlias,
       child: child,
@@ -352,6 +356,7 @@ class _LikerRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return InkWell(
       onTap: liker.canOpenProfile ? onTap : null,
       child: Padding(
@@ -371,8 +376,8 @@ class _LikerRow extends StatelessWidget {
                         : liker.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: NataloColors.textPrimary,
+                    style: TextStyle(
+                      color: cs.onSurface,
                       fontSize: 14,
                       fontWeight: FontWeight.w800,
                       height: 1.15,
@@ -383,8 +388,8 @@ class _LikerRow extends StatelessWidget {
                     liker.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: NataloColors.textSecondary,
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
                       height: 1.15,
@@ -414,6 +419,7 @@ class _Avatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const size = 42.0;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final url = liker.profilePhotoUrl;
     if (url != null && url.isNotEmpty) {
       return ClipOval(
@@ -422,21 +428,23 @@ class _Avatar extends StatelessWidget {
           width: size,
           height: size,
           fit: BoxFit.cover,
-          placeholder: (_, __) => _initialAvatar(size),
-          errorWidget: (_, __, ___) => _initialAvatar(size),
+          placeholder: (_, __) => _initialAvatar(size, isDark),
+          errorWidget: (_, __, ___) => _initialAvatar(size, isDark),
         ),
       );
     }
-    return _initialAvatar(size);
+    return _initialAvatar(size, isDark);
   }
 
-  Widget _initialAvatar(double size) {
+  Widget _initialAvatar(double size, bool isDark) {
     return Container(
       width: size,
       height: size,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: Color(0xFFEFF6FF),
+        color: isDark
+            ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+            : const Color(0xFFEFF6FF),
       ),
       child: Center(
         child: Text(
@@ -465,6 +473,7 @@ class _FollowButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     // IG-style compact button: Follow = brand blue filled, Mengikuti =
     // outlined neutral. Width fixed supaya tidak shift size saat toggle.
     final width = isFollowing ? 96.0 : 80.0;
@@ -475,8 +484,8 @@ class _FollowButton extends StatelessWidget {
         child: OutlinedButton(
           onPressed: busy ? null : onPressed,
           style: OutlinedButton.styleFrom(
-            foregroundColor: NataloColors.textPrimary,
-            side: const BorderSide(color: Color(0xFFCBD5E1)),
+            foregroundColor: cs.onSurface,
+            side: BorderSide(color: cs.outlineVariant),
             padding: EdgeInsets.zero,
             textStyle: const TextStyle(
               fontSize: 12,

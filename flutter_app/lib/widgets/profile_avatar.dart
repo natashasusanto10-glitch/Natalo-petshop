@@ -25,6 +25,7 @@ class ProfileAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final avatar = Stack(
       clipBehavior: Clip.none,
       children: [
@@ -32,9 +33,9 @@ class ProfileAvatar extends StatelessWidget {
           height: size,
           width: size,
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: cs.surface,
             shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 2),
+            border: Border.all(color: cs.surface, width: 2),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.10),
@@ -127,9 +128,12 @@ class _InitialAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       alignment: Alignment.center,
-      color: const Color(0xFFEAF5FF),
+      color: isDark
+          ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+          : const Color(0xFFEAF5FF),
       child: Text(
         initial.isEmpty ? 'N' : initial,
         style: TextStyle(

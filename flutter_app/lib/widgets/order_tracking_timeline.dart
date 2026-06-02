@@ -54,6 +54,7 @@ class OrderTrackingTimeline extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final active = _activeIndex;
     if (active < 0) {
       return const _CancelledTimeline();
@@ -63,9 +64,9 @@ class OrderTrackingTimeline extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 18, 16, 14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE5EAF3)),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -74,8 +75,8 @@ class OrderTrackingTimeline extends StatelessWidget {
             type == OrderTimelineType.pickup
                 ? 'Status Pengambilan'
                 : 'Status Pengiriman',
-            style: const TextStyle(
-              color: NataloColors.textPrimary,
+            style: TextStyle(
+              color: cs.onSurface,
               fontSize: 15,
               fontWeight: FontWeight.w900,
             ),
@@ -97,7 +98,7 @@ class OrderTrackingTimeline extends StatelessWidget {
                               height: 2,
                               color: index < active
                                   ? NataloColors.primary
-                                  : NataloColors.border,
+                                  : cs.outlineVariant,
                             ),
                           ),
                       ],
@@ -111,8 +112,8 @@ class OrderTrackingTimeline extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: reached
-                              ? NataloColors.textPrimary
-                              : NataloColors.textTertiary,
+                              ? cs.onSurface
+                              : cs.onSurfaceVariant,
                           fontSize: 11,
                           fontWeight:
                               reached ? FontWeight.w800 : FontWeight.w600,
@@ -144,11 +145,12 @@ class _TimelineDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       width: 24,
       height: 24,
       decoration: BoxDecoration(
-        color: reached ? NataloColors.primary : NataloColors.border,
+        color: reached ? NataloColors.primary : cs.outlineVariant,
         shape: BoxShape.circle,
       ),
       child: reached

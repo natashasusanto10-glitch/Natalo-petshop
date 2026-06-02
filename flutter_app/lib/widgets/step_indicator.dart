@@ -20,6 +20,7 @@ class StepIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     const brandBlue = Color(0xFF1E5FBF);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -38,7 +39,7 @@ class StepIndicator extends StatelessWidget {
                 margin: const EdgeInsets.symmetric(horizontal: 6),
                 height: 2,
                 color:
-                    reached ? brandBlue : const Color(0xFFE2E8F0),
+                    reached ? brandBlue : cs.outlineVariant,
               ),
             );
           }
@@ -64,7 +65,7 @@ class StepIndicator extends StatelessWidget {
                   style: TextStyle(
                     color: isDone || isActive
                         ? brandBlue
-                        : const Color(0xFF9CA3AF),
+                        : cs.onSurfaceVariant,
                     fontSize: 11,
                     fontWeight: FontWeight.w800,
                   ),
@@ -125,6 +126,7 @@ class _StageDotState extends State<_StageDot>
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     const brandBlue = Color(0xFF1E5FBF);
     final reduce = MotionPrefs.shouldReduce(context);
     return AnimatedBuilder(
@@ -139,12 +141,12 @@ class _StageDotState extends State<_StageDot>
           decoration: BoxDecoration(
             color: widget.isDone || widget.isActive
                 ? brandBlue
-                : Colors.white,
+                : cs.surface,
             shape: BoxShape.circle,
             border: Border.all(
               color: widget.isDone || widget.isActive
                   ? brandBlue
-                  : const Color(0xFFE2E8F0),
+                  : cs.outlineVariant,
               width: 1.6,
             ),
             boxShadow: glow > 0
@@ -169,7 +171,7 @@ class _StageDotState extends State<_StageDot>
                   style: TextStyle(
                     color: widget.isActive
                         ? Colors.white
-                        : const Color(0xFF9CA3AF),
+                        : cs.onSurfaceVariant,
                     fontSize: 12,
                     fontWeight: FontWeight.w900,
                   ),

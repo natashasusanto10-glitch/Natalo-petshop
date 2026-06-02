@@ -41,6 +41,7 @@ class ProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final hasMemberPrice =
         product.memberPrice != null && product.memberPrice! < product.price;
     final discountPercent = productDiscountPercent(product);
@@ -77,9 +78,9 @@ class ProductCard extends StatelessWidget {
         child: Container(
           padding: AppSpacing.cardPaddingSmall,
           decoration: BoxDecoration(
-            color: NataloColors.surface,
+            color: cs.surface,
             borderRadius: AppRadius.large,
-            border: Border.all(color: NataloColors.border),
+            border: Border.all(color: cs.outlineVariant),
             boxShadow: [
               BoxShadow(
                 color: NataloColors.black.withValues(alpha: 0.04),
@@ -100,7 +101,7 @@ class ProductCard extends StatelessWidget {
                       child: ClipRRect(
                         borderRadius: AppRadius.large,
                         child: Container(
-                          color: NataloColors.white,
+                          color: cs.surfaceContainerHighest,
                           padding: const EdgeInsets.all(AppSpacing.sm),
                           child: Hero(
                             tag: 'product-image-${product.id}',
@@ -207,8 +208,8 @@ class ProductCard extends StatelessWidget {
                   product.title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: NataloColors.textPrimary,
+                  style: TextStyle(
+                    color: cs.onSurface,
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                     height: 1.3,
@@ -384,6 +385,7 @@ Future<void> _showVoucherPreviewSheet(
     useSafeArea: true,
     backgroundColor: Colors.transparent,
     builder: (context) {
+      final cs = Theme.of(context).colorScheme;
       final isLoggedIn = memberStore.isLoggedIn;
       final isShippingVoucher = voucher.isShippingVoucher;
       final isNewMemberVoucher = voucher.isNewMemberOnly;
@@ -414,7 +416,7 @@ Future<void> _showVoucherPreviewSheet(
             AppSpacing.xl,
           ),
           decoration: BoxDecoration(
-            color: NataloColors.white,
+            color: cs.surface,
             borderRadius: AppRadius.extraExtraLarge,
             boxShadow: [
               BoxShadow(
@@ -433,7 +435,7 @@ Future<void> _showVoucherPreviewSheet(
                   width: 42,
                   height: 5,
                   decoration: BoxDecoration(
-                    color: NataloColors.grey200,
+                    color: cs.outlineVariant,
                     borderRadius: AppRadius.pill,
                   ),
                 ),
@@ -463,8 +465,8 @@ Future<void> _showVoucherPreviewSheet(
                       children: [
                         Text(
                           voucherTitle,
-                          style: const TextStyle(
-                            color: NataloColors.grey900,
+                          style: TextStyle(
+                            color: cs.onSurface,
                             fontSize: 18,
                             fontWeight: FontWeight.w900,
                           ),
@@ -474,8 +476,8 @@ Future<void> _showVoucherPreviewSheet(
                           product.title,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: NataloColors.grey500,
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
                             height: 1.25,
@@ -559,8 +561,8 @@ Future<void> _showVoucherPreviewSheet(
               const SizedBox(height: AppSpacing.md),
               Text(
                 voucherNote,
-                style: const TextStyle(
-                  color: NataloColors.grey500,
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
                   fontSize: 12.5,
                   fontWeight: FontWeight.w600,
                   height: 1.35,
@@ -617,6 +619,7 @@ class ProductRatingSoldMeta extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final hasRating = product.rating > 0;
     final hasReview = product.reviewCount > 0;
     final hasSold = product.soldCount > 0;
@@ -639,8 +642,8 @@ class ProductRatingSoldMeta extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 text: TextSpan(
-                  style: const TextStyle(
-                    color: NataloColors.grey600,
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
                     fontSize: 11.2,
                     fontWeight: FontWeight.w800,
                     height: 1,
@@ -655,7 +658,6 @@ class ProductRatingSoldMeta extends StatelessWidget {
                             ? '(${formatSoldCount(product.reviewCount)})'
                             : '${formatSoldCount(product.reviewCount)} ulasan',
                         style: const TextStyle(
-                          color: NataloColors.grey500,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -666,10 +668,10 @@ class ProductRatingSoldMeta extends StatelessWidget {
           ],
           if ((hasRating || hasReview) && hasSold) ...[
             const SizedBox(width: AppSpacing.sm),
-            const Text(
+            Text(
               '•',
               style: TextStyle(
-                color: NataloColors.grey400,
+                color: cs.onSurfaceVariant,
                 fontSize: 11,
                 fontWeight: FontWeight.w800,
                 height: 1,
@@ -683,8 +685,8 @@ class ProductRatingSoldMeta extends StatelessWidget {
                 '${formatSoldCount(product.soldCount)} terjual',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: NataloColors.grey600,
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
                   fontSize: 11.2,
                   fontWeight: FontWeight.w700,
                   height: 1,

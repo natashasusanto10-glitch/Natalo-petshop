@@ -10,8 +10,6 @@ import 'app_toast.dart';
 
 const _brandBlue = Color(0xFF0B7FEA);
 const _dangerRed = Color(0xFFEF4444);
-const _darkNavy = Color(0xFF101828);
-const _textSecondary = Color(0xFF667085);
 
 /// Bottom sheet "Ubah Foto Profil".
 ///
@@ -34,7 +32,7 @@ Future<void> showUpdateProfilePhotoSheet(BuildContext context) {
     context: context,
     useSafeArea: true,
     isScrollControlled: false,
-    backgroundColor: Colors.white,
+    backgroundColor: Theme.of(context).colorScheme.surface,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
     ),
@@ -172,6 +170,8 @@ class _UpdateProfilePhotoSheetState extends State<_UpdateProfilePhotoSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
       child: Column(
@@ -182,25 +182,25 @@ class _UpdateProfilePhotoSheetState extends State<_UpdateProfilePhotoSheet> {
             width: 44,
             height: 4,
             decoration: BoxDecoration(
-              color: const Color(0xFFD5DCE8),
+              color: cs.outlineVariant,
               borderRadius: BorderRadius.circular(999),
             ),
           ),
           const SizedBox(height: 18),
-          const Text(
+          Text(
             'Ubah Foto Profil',
             style: TextStyle(
-              color: _darkNavy,
+              color: cs.onSurface,
               fontSize: 18,
               fontWeight: FontWeight.w900,
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             'Pilih foto terbaik agar akun Natalo kamu lebih mudah dikenali.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: _textSecondary,
+              color: cs.onSurfaceVariant,
               fontSize: 13,
               fontWeight: FontWeight.w600,
               height: 1.45,
@@ -210,7 +210,9 @@ class _UpdateProfilePhotoSheetState extends State<_UpdateProfilePhotoSheet> {
           _PhotoActionTile(
             icon: Icons.photo_camera_rounded,
             iconColor: _brandBlue,
-            iconBg: const Color(0xFFEAF5FF),
+            iconBg: isDark
+                ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                : const Color(0xFFEAF5FF),
             title: 'Ambil Foto',
             subtitle: 'Buka kamera dan ambil foto baru',
             onTap: _busy ? null : () => _pickFromSource(ImageSource.camera),
@@ -243,7 +245,7 @@ class _UpdateProfilePhotoSheetState extends State<_UpdateProfilePhotoSheet> {
             child: TextButton(
               onPressed: _busy ? null : () => Navigator.of(context).maybePop(),
               style: TextButton.styleFrom(
-                foregroundColor: _textSecondary,
+                foregroundColor: cs.onSurfaceVariant,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
@@ -294,6 +296,7 @@ class _PhotoActionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final disabled = onTap == null;
     return Material(
       color: Colors.transparent,
@@ -305,9 +308,9 @@ class _PhotoActionTile extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFD),
+              color: cs.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE5E7EB)),
+              border: Border.all(color: cs.outlineVariant),
             ),
             child: Row(
               children: [
@@ -329,7 +332,7 @@ class _PhotoActionTile extends StatelessWidget {
                       Text(
                         title,
                         style: TextStyle(
-                          color: titleColor ?? _darkNavy,
+                          color: titleColor ?? cs.onSurface,
                           fontSize: 14.5,
                           fontWeight: FontWeight.w900,
                         ),
@@ -339,8 +342,8 @@ class _PhotoActionTile extends StatelessWidget {
                         subtitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: _textSecondary,
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                           height: 1.35,
@@ -350,9 +353,9 @@ class _PhotoActionTile extends StatelessWidget {
                   ),
                 ),
                 if (titleColor == null)
-                  const Icon(
+                  Icon(
                     Icons.chevron_right_rounded,
-                    color: Color(0xFF94A3B8),
+                    color: cs.onSurfaceVariant,
                   ),
               ],
             ),

@@ -194,10 +194,11 @@ class _WilayahPickerSheetState extends State<_WilayahPickerSheet> {
       maxChildSize: 0.95,
       expand: false,
       builder: (context, scrollController) {
+        final cs = Theme.of(context).colorScheme;
         return Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          decoration: BoxDecoration(
+            color: cs.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
           padding: EdgeInsets.only(
             left: 16,
@@ -214,7 +215,7 @@ class _WilayahPickerSheetState extends State<_WilayahPickerSheet> {
                   width: 40,
                   margin: const EdgeInsets.only(bottom: 12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE2E8F0),
+                    color: cs.outlineVariant,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -233,16 +234,16 @@ class _WilayahPickerSheetState extends State<_WilayahPickerSheet> {
                       children: [
                         Text(
                           _title,
-                          style: const TextStyle(
-                            color: Color(0xFF111111),
+                          style: TextStyle(
+                            color: cs.onSurface,
                             fontSize: 17,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
                         Text(
                           'Langkah $_stepNumber dari 4',
-                          style: const TextStyle(
-                            color: Color(0xFF6B7280),
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
                           ),
@@ -277,8 +278,8 @@ class _WilayahPickerSheetState extends State<_WilayahPickerSheet> {
                         ].whereType<String>().join(' › '),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF6B7280),
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
@@ -317,19 +318,19 @@ class _WilayahPickerSheetState extends State<_WilayahPickerSheet> {
                     }
                     final all = snapshot.data ?? const [];
                     if (all.isEmpty) {
-                      return const Center(
+                      return Center(
                         child: Padding(
-                          padding: EdgeInsets.all(24),
+                          padding: const EdgeInsets.all(24),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(Icons.search_off_rounded,
-                                  color: Color(0xFF9CA3AF), size: 48),
-                              SizedBox(height: 12),
+                                  color: cs.onSurfaceVariant, size: 48),
+                              const SizedBox(height: 12),
                               Text(
                                 'Data wilayah tidak tersedia',
                                 style: TextStyle(
-                                  color: Color(0xFF6B7280),
+                                  color: cs.onSurfaceVariant,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
@@ -351,8 +352,8 @@ class _WilayahPickerSheetState extends State<_WilayahPickerSheet> {
                           padding: const EdgeInsets.all(24),
                           child: Text(
                             'Tidak ditemukan: "$_searchQuery"',
-                            style: const TextStyle(
-                              color: Color(0xFF6B7280),
+                            style: TextStyle(
+                              color: cs.onSurfaceVariant,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -363,7 +364,7 @@ class _WilayahPickerSheetState extends State<_WilayahPickerSheet> {
                       controller: scrollController,
                       itemCount: filtered.length,
                       separatorBuilder: (_, __) =>
-                          const Divider(height: 1, color: Color(0xFFE5E7EB)),
+                          Divider(height: 1, color: cs.outlineVariant),
                       itemBuilder: (context, index) {
                         final region = filtered[index];
                         return ListTile(
@@ -375,9 +376,9 @@ class _WilayahPickerSheetState extends State<_WilayahPickerSheet> {
                               fontSize: 14,
                             ),
                           ),
-                          trailing: const Icon(
+                          trailing: Icon(
                             Icons.chevron_right_rounded,
-                            color: Color(0xFF9CA3AF),
+                            color: cs.onSurfaceVariant,
                           ),
                           dense: true,
                         );

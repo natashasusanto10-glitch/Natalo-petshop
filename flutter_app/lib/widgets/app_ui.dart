@@ -58,6 +58,7 @@ class AppSearchField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     Widget? suffix;
     if (query.isNotEmpty) {
       suffix = IconButton(
@@ -94,8 +95,8 @@ class AppSearchField extends StatelessWidget {
       textInputAction: TextInputAction.search,
       decoration: InputDecoration(
         hintText: hintText,
-        hintStyle: const TextStyle(
-          color: Color(0xFF94A3B8),
+        hintStyle: TextStyle(
+          color: cs.onSurfaceVariant,
           fontSize: 13,
           fontWeight: FontWeight.w600,
         ),
@@ -107,15 +108,15 @@ class AppSearchField extends StatelessWidget {
         suffixIcon: suffix,
         filled: true,
         fillColor: compact
-            ? const Color(0xFFF8FAFC)
-            : Colors.white.withValues(alpha: 0.90),
+            ? cs.surfaceContainerHighest
+            : cs.surface.withValues(alpha: 0.90),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: NataloColors.border),
+          borderSide: BorderSide(color: cs.outlineVariant),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: NataloColors.border),
+          borderSide: BorderSide(color: cs.outlineVariant),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -155,17 +156,18 @@ class AppSkeletonList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return ListView.separated(
       padding: padding,
       itemCount: itemCount,
       separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.md),
       itemBuilder: (_, __) => Shimmer.fromColors(
-        baseColor: NataloColors.surface,
-        highlightColor: NataloColors.border,
+        baseColor: cs.surfaceContainerHighest,
+        highlightColor: cs.surface,
         child: Container(
           height: itemHeight,
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: cs.surfaceContainerHighest,
             borderRadius: AppRadius.medium,
           ),
         ),
@@ -479,7 +481,7 @@ class AppLottieAsset extends StatelessWidget {
     return Icon(
       fallbackIcon,
       size: size,
-      color: NataloColors.textTertiary,
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
     );
   }
 }
@@ -517,6 +519,7 @@ class AppEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.xxl),
@@ -536,11 +539,11 @@ class AppEmptyState extends StatelessWidget {
                   // Error fallback: kalau asset tidak ada / corrupt,
                   // render icon biasa supaya UI tidak crash.
                   errorBuilder: (_, __, ___) =>
-                      Icon(icon, size: 56, color: NataloColors.textTertiary),
+                      Icon(icon, size: 56, color: cs.onSurfaceVariant),
                 ),
               )
             else
-              Icon(icon, size: 56, color: NataloColors.textTertiary),
+              Icon(icon, size: 56, color: cs.onSurfaceVariant),
             const SizedBox(height: AppSpacing.md),
             Text(
               title,
@@ -555,7 +558,7 @@ class AppEmptyState extends StatelessWidget {
               Text(
                 subtitle ?? body!,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: NataloColors.textSecondary),
+                style: TextStyle(color: cs.onSurfaceVariant),
               ),
             ],
             if (action != null ||
@@ -696,6 +699,7 @@ class AppErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final pad = compact ? AppSpacing.lg : AppSpacing.xxl;
     final iconSize = compact ? 44.0 : 56.0;
     return Center(
@@ -730,7 +734,7 @@ class AppErrorState extends StatelessWidget {
               _resolvedDescription,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: NataloColors.textSecondary,
+                color: cs.onSurfaceVariant,
                 fontSize: compact ? 12.5 : 13.5,
                 height: 1.4,
               ),

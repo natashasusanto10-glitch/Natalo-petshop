@@ -6,9 +6,6 @@ import '../utils/formatters.dart';
 import 'app_product_image.dart';
 
 const _cardBlue = Color(0xFF1565D8);
-const _textDark = Color(0xFF111827);
-const _textMuted = Color(0xFF6B7280);
-const _borderSoft = Color(0xFFE5E7EB);
 const _discountRed = Color(0xFFE11D48);
 const _discountSoft = Color(0xFFFFF1F2);
 const _shippingGreen = Color(0xFF16A34A);
@@ -35,6 +32,7 @@ class CompactCommerceProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final adminDiscount = _adminDiscount(product);
     final discountPercent = _adminDiscountPercent(product);
     final promoChips = _promoChips(product);
@@ -48,9 +46,9 @@ class CompactCommerceProductCard extends StatelessWidget {
           width: width,
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: cs.surface,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: _borderSoft, width: 1),
+            border: Border.all(color: cs.outlineVariant, width: 1),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.045),
@@ -71,8 +69,8 @@ class CompactCommerceProductCard extends StatelessWidget {
                 product.title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: _textDark,
+                style: TextStyle(
+                  color: cs.onSurface,
                   fontSize: 13.5,
                   height: 1.22,
                   fontWeight: FontWeight.w800,
@@ -124,6 +122,7 @@ class _ProductImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return AspectRatio(
       aspectRatio: 1.14,
       child: Stack(
@@ -132,7 +131,7 @@ class _ProductImage extends StatelessWidget {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: Container(
-                color: const Color(0xFFF8FAFC),
+                color: cs.surfaceContainerHighest,
                 padding: const EdgeInsets.all(8),
                 child: AppProductImage(
                   imageUrl: product.imageUrl,
@@ -242,6 +241,7 @@ class _RatingSoldRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final hasRating = product.rating > 0;
     final hasSold = product.soldCount > 0;
 
@@ -254,8 +254,8 @@ class _RatingSoldRow extends StatelessWidget {
           const SizedBox(width: 3),
           Text(
             product.rating.toStringAsFixed(1),
-            style: const TextStyle(
-              color: _textDark,
+            style: TextStyle(
+              color: cs.onSurface,
               fontSize: 11.8,
               fontWeight: FontWeight.w800,
               height: 1,
@@ -264,10 +264,10 @@ class _RatingSoldRow extends StatelessWidget {
         ],
         if (hasRating && hasSold) ...[
           const SizedBox(width: 6),
-          const Text(
+          Text(
             '•',
             style: TextStyle(
-              color: Color(0xFF9CA3AF),
+              color: cs.onSurfaceVariant,
               fontSize: 11.5,
               fontWeight: FontWeight.w900,
               height: 1,
@@ -281,8 +281,8 @@ class _RatingSoldRow extends StatelessWidget {
               '${_formatSoldCount(product.soldCount)} terjual',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: _textMuted,
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
                 fontSize: 11.8,
                 fontWeight: FontWeight.w700,
                 height: 1,
@@ -305,13 +305,14 @@ class _PriceBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     if (!hasAdminDiscount) {
       return Text(
         formatRupiah(product.finalPrice),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: const TextStyle(
-          color: _textDark,
+        style: TextStyle(
+          color: cs.onSurface,
           fontSize: 20,
           height: 1.04,
           fontWeight: FontWeight.w900,
@@ -328,8 +329,8 @@ class _PriceBlock extends StatelessWidget {
           formatRupiah(product.price),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: _textDark,
+          style: TextStyle(
+            color: cs.onSurfaceVariant,
             fontSize: 12.5,
             height: 1.05,
             fontWeight: FontWeight.w700,
@@ -375,8 +376,9 @@ class _CartButtonState extends State<_CartButton> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Material(
-      color: Colors.white,
+      color: cs.surface,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: widget.enabled ? () => _throttle.run(widget.onTap) : null,
@@ -387,14 +389,14 @@ class _CartButtonState extends State<_CartButton> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: widget.enabled ? const Color(0xFFBFD5FF) : _borderSoft,
+              color: widget.enabled ? const Color(0xFFBFD5FF) : cs.outlineVariant,
               width: 1.2,
             ),
           ),
           child: Icon(
             widget.enabled ? Icons.shopping_cart_outlined : Icons.block_rounded,
             size: 22,
-            color: widget.enabled ? _cardBlue : const Color(0xFF9CA3AF),
+            color: widget.enabled ? _cardBlue : cs.onSurfaceVariant,
           ),
         ),
       ),
