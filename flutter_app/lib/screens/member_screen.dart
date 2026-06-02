@@ -27,10 +27,10 @@ import 'member_post_detail_screen.dart';
 /// Semua menu transaksi (Pesanan, Voucher, Wishlist, Alamat, Poin, Ulasan)
 /// SUDAH DIPINDAH ke halaman /transactions. Halaman ini fokus jadi
 /// profile sosial.
+// Brand accent — bright blue, kontras OK di light & dark, dipertahankan.
 const _brandBlue = Color(0xFF0B7FEA);
-const _pageBg = Colors.white;
-const _textPrimary = Color(0xFF0F172A);
-const _textSecondary = Color(0xFF64748B);
+// Catatan dark mode: warna page bg / text TIDAK lagi const — di-resolve
+// via Theme.of(context).colorScheme di tiap build supaya adaptif gelap.
 
 class MemberScreen extends StatefulWidget {
   const MemberScreen({super.key});
@@ -84,12 +84,12 @@ class _LoadingShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      backgroundColor: _pageBg,
-      body: Center(
+    return Scaffold(
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      body: const Center(
         child: CircularProgressIndicator(color: _brandBlue, strokeWidth: 2.4),
       ),
-      bottomNavigationBar: BottomNavBar(currentIndex: 4),
+      bottomNavigationBar: const BottomNavBar(currentIndex: 4),
     );
   }
 }
@@ -220,7 +220,7 @@ class _ProfilePageState extends State<_ProfilePage>
   Widget build(BuildContext context) {
     final profile = memberStore.profile!;
     return Scaffold(
-      backgroundColor: _pageBg,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: _ProfileAppBar(onCreatePost: _openCreatePost),
       body: NataloPawRefreshIndicator(
         onRefresh: _refresh,
@@ -307,9 +307,12 @@ class _ProfileAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final pageBg = cs.surface;
+    final ink = cs.onSurface;
     return AppBar(
-      backgroundColor: _pageBg,
-      surfaceTintColor: _pageBg,
+      backgroundColor: pageBg,
+      surfaceTintColor: pageBg,
       elevation: 0,
       scrolledUnderElevation: 0,
       automaticallyImplyLeading: false,
@@ -324,21 +327,21 @@ class _ProfileAppBar extends StatelessWidget implements PreferredSizeWidget {
               minimumSize: const Size(52, 52),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
-            icon: const Icon(
+            icon: Icon(
               Icons.add_rounded,
               size: 36,
-              color: _textPrimary,
+              color: ink,
             ),
           ),
         ],
       ),
       actions: [
-        const IconTheme(
+        IconTheme(
           data: IconThemeData(
-            color: _textPrimary,
+            color: ink,
             size: 28,
           ),
-          child: AppNotificationButton(),
+          child: const AppNotificationButton(),
         ),
         IconButton(
           onPressed: () => Navigator.pushNamed(context, '/account/settings'),
@@ -347,9 +350,9 @@ class _ProfileAppBar extends StatelessWidget implements PreferredSizeWidget {
             minimumSize: const Size(48, 48),
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
-          icon: const Icon(
+          icon: Icon(
             Icons.settings_outlined,
-            color: _textPrimary,
+            color: ink,
             size: 28,
           ),
         ),
@@ -378,6 +381,7 @@ class _ProfileSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ink = Theme.of(context).colorScheme.onSurface;
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 6, 18, 10),
       child: Column(
@@ -403,8 +407,8 @@ class _ProfileSection extends StatelessWidget {
                       (profile.name as String?) ?? 'Member Natalo',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: _textPrimary,
+                      style: TextStyle(
+                        color: ink,
                         fontSize: 20,
                         fontWeight: FontWeight.w700,
                         height: 1.15,
@@ -449,8 +453,8 @@ class _ProfileSection extends StatelessWidget {
               profile.bio as String,
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: _textPrimary,
+              style: TextStyle(
+                color: ink,
                 fontSize: 13.5,
                 fontWeight: FontWeight.w500,
                 height: 1.4,
@@ -471,6 +475,7 @@ class _ProfileStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -478,8 +483,8 @@ class _ProfileStat extends StatelessWidget {
           _formatCount(value),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: _textPrimary,
+          style: TextStyle(
+            color: cs.onSurface,
             fontSize: 18,
             fontWeight: FontWeight.w700,
             height: 1.0,
@@ -491,8 +496,8 @@ class _ProfileStat extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: _textSecondary,
+          style: TextStyle(
+            color: cs.onSurfaceVariant,
             fontSize: 12,
             fontWeight: FontWeight.w500,
             height: 1.05,
@@ -534,12 +539,13 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
     double shrinkOffset,
     bool overlapsContent,
   ) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
-      color: _pageBg,
+      color: cs.surface,
       child: TabBar(
         controller: controller,
         labelColor: _brandBlue,
-        unselectedLabelColor: _textSecondary,
+        unselectedLabelColor: cs.onSurfaceVariant,
         // Custom UnderlineTabIndicator dengan ketebalan 3 + bottom inset
         // 4dp supaya indikator floating subtle di bawah icon, bukan
         // nempel mati di edge bottom. Animated transition antar tab
@@ -688,6 +694,8 @@ class _ErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return SingleChildScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       child: Padding(
@@ -698,7 +706,11 @@ class _ErrorState extends StatelessWidget {
               width: 82,
               height: 82,
               decoration: BoxDecoration(
-                color: const Color(0xFFEAF5FF),
+                // Soft-blue tint: di dark, tint terang nyala → pakai brand
+                // blue alpha rendah supaya icon tetap kebaca.
+                color: isDark
+                    ? _brandBlue.withValues(alpha: 0.20)
+                    : const Color(0xFFEAF5FF),
                 borderRadius: BorderRadius.circular(26),
               ),
               child: const Icon(
@@ -711,8 +723,8 @@ class _ErrorState extends StatelessWidget {
             Text(
               text,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: _textSecondary,
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
                 height: 1.35,
@@ -752,12 +764,13 @@ class _PostThumbnail extends StatelessWidget {
             ? post.thumbnailUrl
             : null) ??
         (post.previewMediaUrl.trim().isNotEmpty ? post.previewMediaUrl : null);
+    final cs = Theme.of(context).colorScheme;
     return InkWell(
       onTap: onTap,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Container(color: const Color(0xFFF1F5F9)),
+          Container(color: cs.surfaceContainerHighest),
           if (mediaUrl != null)
             // Hero animation source — wraps thumbnail dengan tag unik
             // per-post. Detail screen wrap image dengan tag yang sama
@@ -771,7 +784,7 @@ class _PostThumbnail extends StatelessWidget {
                 fit: BoxFit.cover,
                 fadeInDuration: const Duration(milliseconds: 180),
                 placeholder: (_, __) =>
-                    Container(color: const Color(0xFFE2E8F0)),
+                    Container(color: cs.surfaceContainerHigh),
                 errorWidget: (_, __, ___) => const Center(
                   child: Icon(
                     Icons.image_not_supported_outlined,
@@ -849,6 +862,8 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return SingleChildScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       child: Padding(
@@ -865,7 +880,9 @@ class _EmptyState extends StatelessWidget {
                     width: 82,
                     height: 82,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFEAF5FF),
+                      color: isDark
+                          ? _brandBlue.withValues(alpha: 0.20)
+                          : const Color(0xFFEAF5FF),
                       borderRadius: BorderRadius.circular(26),
                     ),
                     child: const Icon(
@@ -883,7 +900,9 @@ class _EmptyState extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: _brandBlue,
                         shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 3),
+                        // Ring "cutout" — match page bg supaya badge nampak
+                        // floating; di dark ikut surface gelap.
+                        border: Border.all(color: cs.surface, width: 3),
                       ),
                       child: const Icon(
                         Icons.photo_camera_outlined,
@@ -899,8 +918,8 @@ class _EmptyState extends StatelessWidget {
             Text(
               text,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: _textPrimary,
+              style: TextStyle(
+                color: cs.onSurface,
                 fontSize: 16.5,
                 fontWeight: FontWeight.w700,
               ),
@@ -909,8 +928,8 @@ class _EmptyState extends StatelessWidget {
             Text(
               subtext,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: _textSecondary,
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
                 fontSize: 13.5,
                 fontWeight: FontWeight.w500,
                 height: 1.4,
