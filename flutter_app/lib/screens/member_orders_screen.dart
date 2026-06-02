@@ -122,7 +122,7 @@ class _MemberOrdersScreenState extends State<MemberOrdersScreen> {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F8FC),
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
         title: const Text('Pesanan Saya'),
         actions: [
@@ -228,10 +228,11 @@ class _OrderFilterTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return DecoratedBox(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: Color(0xFFE5E7EB))),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        border: Border(bottom: BorderSide(color: cs.outlineVariant)),
       ),
       child: SafeArea(
         top: false,
@@ -258,7 +259,7 @@ class _OrderFilterTabs extends StatelessWidget {
                       Text(
                         filter.label,
                         style: TextStyle(
-                          color: active ? _brandBlue : const Color(0xFF4B5563),
+                          color: active ? _brandBlue : cs.onSurfaceVariant,
                           fontSize: 14,
                           fontWeight:
                               active ? FontWeight.w900 : FontWeight.w800,
@@ -294,6 +295,7 @@ class _LoginRequiredScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: Text(title)),
       body: Center(
@@ -306,7 +308,9 @@ class _LoginRequiredScaffold extends StatelessWidget {
                 height: 76,
                 width: 76,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEAF5FF),
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                      : const Color(0xFFEAF5FF),
                   borderRadius: BorderRadius.circular(26),
                 ),
                 child: const Icon(
@@ -316,21 +320,21 @@ class _LoginRequiredScaffold extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 'Login member diperlukan',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Color(0xFF17202A),
+                  color: cs.onSurface,
                   fontSize: 20,
                   fontWeight: FontWeight.w900,
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'Masuk untuk melihat data terbaru dari akun Natalo kamu.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Color(0xFF6B7280),
+                  color: cs.onSurfaceVariant,
                   fontWeight: FontWeight.w700,
                   height: 1.4,
                 ),
@@ -539,7 +543,7 @@ class _OrderCardState extends State<_OrderCard> {
           textAlign: TextAlign.center,
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
-        content: const Column(
+        content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
@@ -547,18 +551,18 @@ class _OrderCardState extends State<_OrderCard> {
               'Window komplain/refund akan tutup setelah ini.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Color(0xFF374151),
+                color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
                 height: 1.5,
               ),
             ),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             Text(
               'Kalau ada masalah, jangan tap dulu — hubungi admin via WA.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Color(0xFF6B7280),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 height: 1.5,
@@ -735,8 +739,8 @@ class _OrderCardState extends State<_OrderCard> {
               ? 'Pesanan sudah dibayar. Pembatalan akan dikirim ke admin untuk disetujui dulu.'
               : 'Pesanan akan dibatalkan dan tidak akan diproses lagi.',
           textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Color(0xFF4B5563),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
             fontSize: 13,
             fontWeight: FontWeight.w700,
             height: 1.45,
@@ -891,7 +895,7 @@ class _OrderCardState extends State<_OrderCard> {
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -908,6 +912,7 @@ class _OrderCardState extends State<_OrderCard> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final statusColor = _statusColor(order.status);
     final actionLabel = _actionLabel;
 
@@ -919,10 +924,10 @@ class _OrderCardState extends State<_OrderCard> {
         child: Container(
           decoration: _cardDecoration(),
           child: Material(
-            color: Colors.white,
+            color: cs.surface,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(24),
-              side: const BorderSide(color: Color(0xFFEEF3FB)),
+              side: BorderSide(color: cs.outlineVariant),
             ),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
@@ -940,8 +945,8 @@ class _OrderCardState extends State<_OrderCard> {
                         Expanded(
                           child: Text(
                             order.orderNumber,
-                            style: const TextStyle(
-                              color: Color(0xFF17202A),
+                            style: TextStyle(
+                              color: cs.onSurface,
                               fontWeight: FontWeight.w900,
                             ),
                           ),
@@ -954,7 +959,7 @@ class _OrderCardState extends State<_OrderCard> {
                         IconButton(
                           onPressed: () => _showOrderOptions(context),
                           icon: const Icon(Icons.more_vert_rounded),
-                          color: const Color(0xFF9CA3AF),
+                          color: cs.onSurfaceVariant,
                           tooltip: 'Opsi pesanan',
                           constraints: const BoxConstraints(
                             minHeight: 34,
@@ -969,15 +974,15 @@ class _OrderCardState extends State<_OrderCard> {
                     const SizedBox(height: 4),
                     Text(
                       '${_formatDate(order.createdAt)} • ${_displayItemCount(order)} item',
-                      style: const TextStyle(
-                        color: Color(0xFF6B7280),
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
                     const SizedBox(height: 12),
                     _OrderProductPreview(order: order),
                     const SizedBox(height: 12),
-                    const Divider(height: 1, color: Color(0xFFE5E7EB)),
+                    Divider(height: 1, color: cs.outlineVariant),
                     const SizedBox(height: 12),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
@@ -987,10 +992,10 @@ class _OrderCardState extends State<_OrderCard> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Text(
+                              Text(
                                 'Total Belanja',
                                 style: TextStyle(
-                                  color: Color(0xFF6B7280),
+                                  color: cs.onSurfaceVariant,
                                   fontSize: 12,
                                   fontWeight: FontWeight.w800,
                                 ),
@@ -1138,14 +1143,17 @@ class _OrderCardState extends State<_OrderCard> {
 class _OrderQuickAction {
   final IconData icon;
   final String title;
-  final Color color;
+
+  /// Null = neutral action → resolve ke cs.onSurface di tile (adaptif
+  /// dark/light). Non-null = brand/semantic color (brandBlue, green, red).
+  final Color? color;
   final VoidCallback onTap;
 
   const _OrderQuickAction({
     required this.icon,
     required this.title,
     required this.onTap,
-    this.color = const Color(0xFF17202A),
+    this.color,
   });
 }
 
@@ -1176,7 +1184,9 @@ class _OrderOptionsSheet extends StatelessWidget {
                   width: 42,
                   height: 42,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFEAF5FF),
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                        : const Color(0xFFEAF5FF),
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: const Icon(
@@ -1194,8 +1204,8 @@ class _OrderOptionsSheet extends StatelessWidget {
                         order.orderNumber,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF17202A),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
                           fontSize: 15,
                           fontWeight: FontWeight.w900,
                         ),
@@ -1238,6 +1248,7 @@ class _OrderQuickActionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final color = action.color ?? Theme.of(context).colorScheme.onSurface;
     return ListTile(
       onTap: onTap,
       contentPadding: EdgeInsets.zero,
@@ -1246,15 +1257,15 @@ class _OrderQuickActionTile extends StatelessWidget {
         width: 36,
         height: 36,
         decoration: BoxDecoration(
-          color: action.color.withValues(alpha: 0.10),
+          color: color.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Icon(action.icon, color: action.color, size: 20),
+        child: Icon(action.icon, color: color, size: 20),
       ),
       title: Text(
         action.title,
         style: TextStyle(
-          color: action.color,
+          color: color,
           fontSize: 14.5,
           fontWeight: FontWeight.w900,
         ),
@@ -1270,6 +1281,7 @@ class _OrderProductPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final items = order.items;
     if (items.isEmpty) {
       return Row(
@@ -1278,7 +1290,9 @@ class _OrderProductPreview extends StatelessWidget {
             height: 58,
             width: 58,
             decoration: BoxDecoration(
-              color: const Color(0xFFEAF5FF),
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                  : const Color(0xFFEAF5FF),
               borderRadius: BorderRadius.circular(16),
             ),
             child: const Icon(
@@ -1288,23 +1302,23 @@ class _OrderProductPreview extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Produk pesanan',
                   style: TextStyle(
-                    color: Color(0xFF17202A),
+                    color: cs.onSurface,
                     fontSize: 15,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                SizedBox(height: 5),
+                const SizedBox(height: 5),
                 Text(
                   'Detail item akan dimuat di halaman detail.',
                   style: TextStyle(
-                    color: Color(0xFF6B7280),
+                    color: cs.onSurfaceVariant,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -1384,8 +1398,8 @@ class _OrderProductPreview extends StatelessWidget {
                 first.name,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF17202A),
+                style: TextStyle(
+                  color: cs.onSurface,
                   fontSize: 14.5,
                   fontWeight: FontWeight.w900,
                 ),
@@ -1395,8 +1409,8 @@ class _OrderProductPreview extends StatelessWidget {
                 subtitle,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF6B7280),
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
                   fontSize: 13.5,
                   fontWeight: FontWeight.w700,
                 ),
@@ -1421,7 +1435,7 @@ class _PreviewImage extends StatelessWidget {
       height: size,
       width: size,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(13),
         border: Border.all(color: Colors.white, width: 2),
         boxShadow: [
@@ -1461,25 +1475,25 @@ class _EmptyOrdersState extends StatelessWidget {
             size: 132,
           ),
           const SizedBox(height: 10),
-          const Text(
+          Text(
             'Belum ada pesanan',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Color(0xFF111111),
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 20,
               fontWeight: FontWeight.w900,
               letterSpacing: -0.2,
             ),
           ),
           const SizedBox(height: 8),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Text(
               'Yuk belanja kebutuhan hewan peliharaanmu — kasih makan, vitamin, '
               'dan mainan favorit. Pesanan kamu akan muncul di sini.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Color(0xFF6B7280),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 13.5,
                 fontWeight: FontWeight.w600,
                 height: 1.55,
@@ -1528,6 +1542,7 @@ class _FilteredOrdersEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return NataloPawRefreshIndicator(
       onRefresh: onRefresh,
       child: ListView(
@@ -1539,7 +1554,9 @@ class _FilteredOrdersEmptyState extends StatelessWidget {
               height: 76,
               width: 76,
               decoration: BoxDecoration(
-                color: const Color(0xFFEAF5FF),
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                    : const Color(0xFFEAF5FF),
                 borderRadius: BorderRadius.circular(26),
               ),
               child: const Icon(
@@ -1553,18 +1570,18 @@ class _FilteredOrdersEmptyState extends StatelessWidget {
           Text(
             'Tidak ada pesanan ${filter.label.toLowerCase()}',
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Color(0xFF17202A),
+            style: TextStyle(
+              color: cs.onSurface,
               fontSize: 18,
               fontWeight: FontWeight.w900,
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Tarik ke bawah untuk refresh atau pilih tab status lainnya.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Color(0xFF6B7280),
+              color: cs.onSurfaceVariant,
               fontWeight: FontWeight.w700,
               height: 1.4,
             ),

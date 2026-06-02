@@ -13,10 +13,6 @@ import '../widgets/app_ui.dart';
 import '../widgets/bottom_nav.dart';
 
 const _brandBlue = Color(0xFF2563EB);
-const _pageBg = Color(0xFFF8FAFC);
-const _textDark = Color(0xFF0F172A);
-const _textMuted = Color(0xFF64748B);
-const _border = Color(0xFFE5EAF2);
 const _danger = Color(0xFFEF4444);
 const _warning = Color(0xFFF97316);
 // Feature flag — Saldo Refund sekarang AKTIF (backend phase 1+2 ready).
@@ -36,10 +32,10 @@ class TransactionsScreen extends StatelessWidget {
           return const _LoginRequiredScaffold();
         }
 
-        return const Scaffold(
-          backgroundColor: _pageBg,
-          body: _TransactionsBody(),
-          bottomNavigationBar: BottomNavBar(currentIndex: 3),
+        return Scaffold(
+          backgroundColor: Theme.of(context).colorScheme.surface,
+          body: const _TransactionsBody(),
+          bottomNavigationBar: const BottomNavBar(currentIndex: 3),
         );
       },
     );
@@ -87,8 +83,9 @@ class _TransactionsHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.fromLTRB(20, 18, 14, 20),
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 18, 14, 20),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -99,17 +96,17 @@ class _TransactionsHeader extends StatelessWidget {
                 Text(
                   'Transaksi',
                   style: TextStyle(
-                    color: _textDark,
+                    color: cs.onSurface,
                     fontSize: 32,
                     fontWeight: FontWeight.w900,
                     height: 1.05,
                   ),
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 Text(
                   'Kelola pesanan dan aktivitas belanjamu',
                   style: TextStyle(
-                    color: _textMuted,
+                    color: cs.onSurfaceVariant,
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     height: 1.3,
@@ -118,9 +115,9 @@ class _TransactionsHeader extends StatelessWidget {
               ],
             ),
           ),
-          AppNotificationButton(),
-          SizedBox(width: 2),
-          AppCartButton(),
+          const AppNotificationButton(),
+          const SizedBox(width: 2),
+          const AppCartButton(),
         ],
       ),
     );
@@ -379,8 +376,8 @@ class _TransactionAlertCard extends StatelessWidget {
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: _textDark,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
                     fontSize: 14,
                     fontWeight: FontWeight.w900,
                   ),
@@ -681,7 +678,10 @@ class _BalancePointsCardState extends State<_BalancePointsCard> {
                       onTap: () => _openRefundBalance(context),
                     ),
                   ),
-                  const VerticalDivider(width: 24, color: _border),
+                  VerticalDivider(
+                    width: 24,
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
                   Expanded(
                     child: _BalanceItem(
                       icon: Icons.stars_rounded,
@@ -745,6 +745,7 @@ class _BalanceItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return AppPressable(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
@@ -770,8 +771,8 @@ class _BalanceItem extends StatelessWidget {
                     title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: _textMuted,
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
                       fontSize: 11.5,
                       fontWeight: FontWeight.w700,
                     ),
@@ -781,8 +782,8 @@ class _BalanceItem extends StatelessWidget {
                     value,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: _textDark,
+                    style: TextStyle(
+                      color: cs.onSurface,
                       fontSize: 15,
                       fontWeight: FontWeight.w900,
                     ),
@@ -903,6 +904,7 @@ class _TransactionMenuItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final opacity = muted ? 0.72 : 1.0;
     return Opacity(
       opacity: opacity,
@@ -940,8 +942,8 @@ class _TransactionMenuItem extends StatelessWidget {
                           title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: _textDark,
+                          style: TextStyle(
+                            color: cs.onSurface,
                             fontSize: 14,
                             fontWeight: FontWeight.w900,
                           ),
@@ -951,8 +953,8 @@ class _TransactionMenuItem extends StatelessWidget {
                           subtitle,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: _textMuted,
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                           ),
@@ -967,7 +969,7 @@ class _TransactionMenuItem extends StatelessWidget {
                   const SizedBox(width: 8),
                   Icon(
                     muted ? Icons.info_outline_rounded : Icons.chevron_right,
-                    color: const Color(0xFF94A3B8),
+                    color: cs.onSurfaceVariant,
                     size: muted ? 19 : 22,
                   ),
                 ],
@@ -975,10 +977,10 @@ class _TransactionMenuItem extends StatelessWidget {
             ),
           ),
           if (showDivider)
-            const Divider(
+            Divider(
               height: 1,
               thickness: 1,
-              color: Color(0xFFEEF2F7),
+              color: cs.outlineVariant,
               indent: 55,
             ),
         ],
@@ -992,11 +994,12 @@ class _HelpCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.only(top: 2),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FBFF),
+        color: cs.surface,
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: const Color(0xFFBFDBFE)),
       ),
@@ -1006,7 +1009,9 @@ class _HelpCard extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: const Color(0xFFEAF2FF),
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                  : const Color(0xFFEAF2FF),
               borderRadius: BorderRadius.circular(15),
             ),
             child: const Icon(
@@ -1016,23 +1021,23 @@ class _HelpCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Butuh bantuan?',
                   style: TextStyle(
-                    color: _textDark,
+                    color: cs.onSurface,
                     fontSize: 14,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                SizedBox(height: 4),
+                const SizedBox(height: 4),
                 Text(
                   'Kami siap membantumu',
                   style: TextStyle(
-                    color: _textMuted,
+                    color: cs.onSurfaceVariant,
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
@@ -1065,8 +1070,9 @@ class _LoginRequiredScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: _pageBg,
+      backgroundColor: cs.surface,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -1079,21 +1085,21 @@ class _LoginRequiredScaffold extends StatelessWidget {
                 size: 64,
               ),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 'Login dulu yuk',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: _textDark,
+                  color: cs.onSurface,
                   fontSize: 18,
                   fontWeight: FontWeight.w900,
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'Masuk untuk lihat pesanan, voucher, dan menu transaksi lainnya.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: _textMuted,
+                  color: cs.onSurfaceVariant,
                   fontSize: 13.5,
                   fontWeight: FontWeight.w600,
                   height: 1.4,
@@ -1275,8 +1281,8 @@ class _OrderStatusItem extends StatelessWidget {
                 textAlign: TextAlign.center,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF475569),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 11.5,
                   fontWeight: FontWeight.w800,
                   height: 1.12,
@@ -1322,22 +1328,23 @@ class _OrderStatusBadge extends StatelessWidget {
 class _PremiumCard extends StatelessWidget {
   final Widget child;
   final EdgeInsets padding;
-  final Color borderColor;
+  final Color? borderColor;
 
   const _PremiumCard({
     required this.child,
     this.padding = const EdgeInsets.all(18),
-    this.borderColor = _border,
+    this.borderColor,
   });
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: borderColor),
+        border: Border.all(color: borderColor ?? cs.outlineVariant),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.035),
@@ -1394,8 +1401,8 @@ class _SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       title,
-      style: const TextStyle(
-        color: _textDark,
+      style: TextStyle(
+        color: Theme.of(context).colorScheme.onSurface,
         fontSize: 18,
         fontWeight: FontWeight.w900,
       ),
@@ -1429,13 +1436,14 @@ void _showRefundBalanceInfo(BuildContext context) {
     context: context,
     backgroundColor: Colors.transparent,
     builder: (context) {
+      final cs = Theme.of(context).colorScheme;
       return SafeArea(
         top: false,
         child: Container(
           margin: const EdgeInsets.all(16),
           padding: const EdgeInsets.all(22),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: cs.surface,
             borderRadius: BorderRadius.circular(26),
           ),
           child: Column(
@@ -1447,25 +1455,25 @@ void _showRefundBalanceInfo(BuildContext context) {
                   width: 46,
                   height: 5,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE2E8F0),
+                    color: cs.outlineVariant,
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
               ),
               const SizedBox(height: 22),
-              const Text(
+              Text(
                 'Saldo Refund',
                 style: TextStyle(
-                  color: _textDark,
+                  color: cs.onSurface,
                   fontSize: 20,
                   fontWeight: FontWeight.w900,
                 ),
               ),
               const SizedBox(height: 10),
-              const Text(
+              Text(
                 'Saldo Refund adalah dana pengembalian dari pesanan Natalo, misalnya jika produk kosong, pesanan dibatalkan sebagian, atau refund disetujui admin.\n\nSaldo ini nantinya dapat digunakan untuk mengurangi pembayaran pesanan berikutnya.',
                 style: TextStyle(
-                  color: _textMuted,
+                  color: cs.onSurfaceVariant,
                   fontSize: 14,
                   height: 1.45,
                   fontWeight: FontWeight.w600,

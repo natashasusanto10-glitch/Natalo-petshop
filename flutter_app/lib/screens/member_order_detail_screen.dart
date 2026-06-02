@@ -131,20 +131,20 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
             Text(
               refundText,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Color(0xFF17202A),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
                 height: 1.5,
               ),
             ),
             const SizedBox(height: 10),
-            const Text(
+            Text(
               'Voucher atau promo yang dipakai akan dibebaskan dan stok '
               'produk dikembalikan. Aksi ini tidak bisa dibatalkan.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Color(0xFF6B7280),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 height: 1.5,
@@ -267,7 +267,7 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
           textAlign: TextAlign.center,
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
-        content: const Column(
+        content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
@@ -276,19 +276,19 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
               'tutup.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Color(0xFF374151),
+                color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
                 height: 1.5,
               ),
             ),
-            SizedBox(height: 10),
+            const SizedBox(height: 10),
             Text(
               'Kalau ada masalah dengan paket, jangan tap dulu — hubungi admin '
               'via WhatsApp.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Color(0xFF6B7280),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 height: 1.5,
@@ -590,13 +590,14 @@ class _PaymentActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     if (order.paymentProvider.toUpperCase() == 'MIDTRANS') {
       return Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: cs.surface,
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: const Color(0xFFE5E7EB)),
+          border: Border.all(color: cs.outlineVariant),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.04),
@@ -641,9 +642,9 @@ class _PaymentActionCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: cs.outlineVariant),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
@@ -767,15 +768,16 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final statusColor =
         _hasProof ? const Color(0xFF16A34A) : const Color(0xFFF59E0B);
 
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: cs.outlineVariant),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
@@ -804,8 +806,8 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
                   children: [
                     Text(
                       _hasProof ? 'Bukti Transfer Terkirim' : 'Bukti Transfer',
-                      style: const TextStyle(
-                        color: Color(0xFF17202A),
+                      style: TextStyle(
+                        color: cs.onSurface,
                         fontSize: 16,
                         fontWeight: FontWeight.w900,
                       ),
@@ -814,8 +816,8 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
                       _hasProof
                           ? 'Admin akan mengecek pembayaran manual.'
                           : 'Upload foto bukti pembayaran manual.',
-                      style: const TextStyle(
-                        color: Color(0xFF6B7280),
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                       ),
@@ -889,13 +891,14 @@ class _PickupInfoCard extends StatelessWidget {
         ? order.pickupHours!.trim()
         : PickupStoreInfo.hours;
 
+    final cs = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE5EAF2)),
+        border: Border.all(color: cs.outlineVariant),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
@@ -910,11 +913,11 @@ class _PickupInfoCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Ambil Sendiri di Toko',
                   style: TextStyle(
-                    color: Color(0xFF111827),
+                    color: cs.onSurface,
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
                   ),
@@ -1031,13 +1034,14 @@ class _ReadyPickupNoticeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE5EAF2)),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1046,7 +1050,9 @@ class _ReadyPickupNoticeCard extends StatelessWidget {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: const Color(0xFFE8F4FF),
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                  : const Color(0xFFE8F4FF),
               borderRadius: BorderRadius.circular(14),
             ),
             child: const Icon(
@@ -1055,7 +1061,7 @@ class _ReadyPickupNoticeCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          const Expanded(
+          Expanded(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1063,16 +1069,16 @@ class _ReadyPickupNoticeCard extends StatelessWidget {
                 Text(
                   'Pesanan Anda sudah siap diambil.',
                   style: TextStyle(
-                    color: Color(0xFF111827),
+                    color: cs.onSurface,
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                SizedBox(height: 4),
+                const SizedBox(height: 4),
                 Text(
                   'Harap ambil pesanan sesuai jam operasional toko.',
                   style: TextStyle(
-                    color: Color(0xFF64748B),
+                    color: cs.onSurfaceVariant,
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
                   ),
@@ -1267,8 +1273,8 @@ class _PickupInfoRow extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: const TextStyle(
-                  color: Color(0xFF374151),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontSize: 13,
                   fontWeight: FontWeight.w900,
                 ),
@@ -1276,8 +1282,8 @@ class _PickupInfoRow extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 content,
-                style: const TextStyle(
-                  color: Color(0xFF17202A),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontSize: 14,
                   height: 1.45,
                   fontWeight: FontWeight.w700,
@@ -1304,6 +1310,7 @@ class _SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Row(
       children: [
         _OrderDetailIconTile(icon: icon, color: _brandBlue, size: 42),
@@ -1314,16 +1321,16 @@ class _SectionTitle extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: const TextStyle(
-                  color: Color(0xFF17202A),
+                style: TextStyle(
+                  color: cs.onSurface,
                   fontSize: 16,
                   fontWeight: FontWeight.w900,
                 ),
               ),
               Text(
                 subtitle,
-                style: const TextStyle(
-                  color: Color(0xFF6B7280),
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                 ),
@@ -1355,14 +1362,15 @@ class _CopyRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 160),
       curve: Curves.easeOutCubic,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.74),
+        color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.92)),
+        border: Border.all(color: cs.outlineVariant),
         boxShadow: [
           BoxShadow(
             color: const Color(0xFF60A5FA).withValues(alpha: 0.05),
@@ -1379,8 +1387,8 @@ class _CopyRow extends StatelessWidget {
               children: [
                 Text(
                   label,
-                  style: const TextStyle(
-                    color: Color(0xFF6B7280),
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
                   ),
@@ -1389,7 +1397,7 @@ class _CopyRow extends StatelessWidget {
                 Text(
                   value,
                   style: TextStyle(
-                    color: strong ? _brandBlue : const Color(0xFF17202A),
+                    color: strong ? _brandBlue : cs.onSurface,
                     fontSize: strong ? 20 : 16,
                     fontWeight: FontWeight.w900,
                     fontFamily: monospace ? 'monospace' : null,
@@ -1399,8 +1407,8 @@ class _CopyRow extends StatelessWidget {
                   const SizedBox(height: 3),
                   Text(
                     helper!,
-                    style: const TextStyle(
-                      color: Color(0xFF6B7280),
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                     ),
@@ -1664,15 +1672,16 @@ class _OrderItemsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final items = order.items;
     final canReviewOrder = order.status.toUpperCase() == 'DELIVERED';
 
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: cs.outlineVariant),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
@@ -1693,23 +1702,23 @@ class _OrderItemsCard extends StatelessWidget {
                 size: 42,
               ),
               const SizedBox(width: 12),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Produk Pesanan',
                       style: TextStyle(
-                        color: Color(0xFF17202A),
+                        color: cs.onSurface,
                         fontSize: 16,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 2),
                     Text(
                       'Item yang masuk dalam pesanan ini.',
                       style: TextStyle(
-                        color: Color(0xFF6B7280),
+                        color: cs.onSurfaceVariant,
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                       ),
@@ -1730,14 +1739,14 @@ class _OrderItemsCard extends StatelessWidget {
               width: double.infinity,
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: cs.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: const Color(0xFFE5E7EB)),
+                border: Border.all(color: cs.outlineVariant),
               ),
-              child: const Text(
+              child: Text(
                 'Item pesanan belum tersedia di response API.',
                 style: TextStyle(
-                  color: Color(0xFF6B7280),
+                  color: cs.onSurfaceVariant,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -1835,6 +1844,7 @@ class _OrderProductTileState extends State<_OrderProductTile> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final subtotal = item.price * item.quantity;
 
     return Material(
@@ -1845,9 +1855,9 @@ class _OrderProductTileState extends State<_OrderProductTile> {
         child: Ink(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: const Color(0xFFF8FAFC),
+            color: cs.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFFE7EEF7)),
+            border: Border.all(color: cs.outlineVariant),
           ),
           child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1872,8 +1882,8 @@ class _OrderProductTileState extends State<_OrderProductTile> {
                       item.name,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF17202A),
+                      style: TextStyle(
+                        color: cs.onSurface,
                         fontSize: 13.5,
                         fontWeight: FontWeight.w900,
                       ),
@@ -1901,8 +1911,8 @@ class _OrderProductTileState extends State<_OrderProductTile> {
                             '${formatRupiah(item.price)} / item',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Color(0xFF6B7280),
+                            style: TextStyle(
+                              color: cs.onSurfaceVariant,
                               fontSize: 12,
                               fontWeight: FontWeight.w800,
                             ),
@@ -1927,9 +1937,9 @@ class _OrderProductTileState extends State<_OrderProductTile> {
             Container(
               padding: const EdgeInsets.fromLTRB(12, 9, 8, 9),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: cs.surface,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFE5E7EB)),
+                border: Border.all(color: cs.outlineVariant),
               ),
               child: Row(
                 children: [
@@ -2006,17 +2016,18 @@ class _MiniChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 13, color: const Color(0xFF6B7280)),
+          Icon(icon, size: 13, color: cs.onSurfaceVariant),
           const SizedBox(width: 4),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 150),
@@ -2024,8 +2035,8 @@ class _MiniChip extends StatelessWidget {
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Color(0xFF6B7280),
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
                 fontSize: 11.5,
                 fontWeight: FontWeight.w800,
               ),
@@ -2044,13 +2055,14 @@ class _PaymentSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final subtotal = order.subtotal > 0 ? order.subtotal : order.total;
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: cs.outlineVariant),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
@@ -2165,6 +2177,7 @@ class _SummaryLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: EdgeInsets.only(bottom: bottomPadding),
       child: Row(
@@ -2173,8 +2186,7 @@ class _SummaryLine extends StatelessWidget {
             child: Text(
               label,
               style: TextStyle(
-                color:
-                    strong ? const Color(0xFF17202A) : const Color(0xFF6B7280),
+                color: strong ? cs.onSurface : cs.onSurfaceVariant,
                 fontWeight: strong ? FontWeight.w900 : FontWeight.w700,
               ),
             ),
@@ -2182,7 +2194,7 @@ class _SummaryLine extends StatelessWidget {
           Text(
             value,
             style: TextStyle(
-              color: strong ? _brandBlue : const Color(0xFF17202A),
+              color: strong ? _brandBlue : cs.onSurface,
               fontWeight: FontWeight.w900,
               fontSize: strong ? 18 : 14,
             ),
@@ -2222,8 +2234,8 @@ class _DiscountLineWithVoucher extends StatelessWidget {
               children: [
                 Text(
                   label,
-                  style: const TextStyle(
-                    color: Color(0xFF6B7280),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                   ),
@@ -2560,12 +2572,13 @@ class _CancelOrderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: Row(
         children: [
@@ -2583,7 +2596,7 @@ class _CancelOrderCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -2591,16 +2604,16 @@ class _CancelOrderCard extends StatelessWidget {
                 Text(
                   'Mau batalkan pesanan?',
                   style: TextStyle(
-                    color: Color(0xFF17202A),
+                    color: cs.onSurface,
                     fontSize: 14.5,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                SizedBox(height: 2),
+                const SizedBox(height: 2),
                 Text(
                   'Bisa dibatalkan sebelum paket dikirim.',
                   style: TextStyle(
-                    color: Color(0xFF6B7280),
+                    color: cs.onSurfaceVariant,
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
@@ -2676,13 +2689,14 @@ class _ShippingInfoCard extends StatelessWidget {
         order.shippingDriverInfo!.trim().isNotEmpty;
     final courierLabel =
         order.courierService ?? order.courierCode ?? 'Kurir';
+    final cs = Theme.of(context).colorScheme;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2693,7 +2707,9 @@ class _ShippingInfoCard extends StatelessWidget {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEAF2FF),
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                      : const Color(0xFFEAF2FF),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
@@ -2710,10 +2726,10 @@ class _ShippingInfoCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text(
+                    Text(
                       'Info Pengiriman',
                       style: TextStyle(
-                        color: Color(0xFF17202A),
+                        color: cs.onSurface,
                         fontSize: 14,
                         fontWeight: FontWeight.w900,
                       ),
@@ -2722,8 +2738,8 @@ class _ShippingInfoCard extends StatelessWidget {
                       hasDriver
                           ? '$courierLabel · Same-day delivery'
                           : courierLabel,
-                      style: const TextStyle(
-                        color: Color(0xFF6B7280),
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
                         fontSize: 11.5,
                         fontWeight: FontWeight.w700,
                       ),
@@ -2741,17 +2757,17 @@ class _ShippingInfoCard extends StatelessWidget {
                 vertical: 10,
               ),
               decoration: BoxDecoration(
-                color: const Color(0xFFF9FAFB),
+                color: cs.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFE5E7EB)),
+                border: Border.all(color: cs.outlineVariant),
               ),
               child: Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       'Nomor Resi',
                       style: TextStyle(
-                        color: Color(0xFF6B7280),
+                        color: cs.onSurfaceVariant,
                         fontSize: 11.5,
                         fontWeight: FontWeight.w700,
                       ),
@@ -2759,8 +2775,8 @@ class _ShippingInfoCard extends StatelessWidget {
                   ),
                   Text(
                     order.trackingNumber!,
-                    style: const TextStyle(
-                      color: Color(0xFF17202A),
+                    style: TextStyle(
+                      color: cs.onSurface,
                       fontSize: 13,
                       fontWeight: FontWeight.w900,
                       fontFamily: 'monospace',
@@ -2770,10 +2786,10 @@ class _ShippingInfoCard extends StatelessWidget {
               ),
             )
           else if (hasDriver) ...[
-            const Text(
+            Text(
               'Info Driver',
               style: TextStyle(
-                color: Color(0xFF6B7280),
+                color: cs.onSurfaceVariant,
                 fontSize: 11.5,
                 fontWeight: FontWeight.w700,
               ),
@@ -2786,15 +2802,15 @@ class _ShippingInfoCard extends StatelessWidget {
                 vertical: 10,
               ),
               decoration: BoxDecoration(
-                color: const Color(0xFFF9FAFB),
+                color: cs.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFE5E7EB)),
+                border: Border.all(color: cs.outlineVariant),
               ),
               // SelectableText supaya user bisa copy nomor HP / link GPS.
               child: SelectableText(
                 order.shippingDriverInfo!,
-                style: const TextStyle(
-                  color: Color(0xFF17202A),
+                style: TextStyle(
+                  color: cs.onSurface,
                   fontSize: 12.5,
                   fontWeight: FontWeight.w600,
                   height: 1.5,
