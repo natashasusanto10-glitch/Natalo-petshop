@@ -12,8 +12,6 @@ import '../widgets/app_toast.dart';
 const _brandBlue = Color(0xFF0B7FEA);
 const _successGreen = Color(0xFF10B981);
 const _dangerRed = Color(0xFFEF4444);
-const _pageBg = Color(0xFFF8FAFC);
-const _textMuted = Color(0xFF64748B);
 
 /// Username set/change screen — IG/TikTok-style flow.
 /// Live availability check sambil user ketik (debounced 350ms).
@@ -142,11 +140,12 @@ class _UsernameSetupScreenState extends State<UsernameSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: _pageBg,
+      backgroundColor: cs.surface,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
+        backgroundColor: cs.surface,
+        surfaceTintColor: cs.surface,
         elevation: 0,
         scrolledUnderElevation: 1,
         leading: IconButton(
@@ -162,22 +161,22 @@ class _UsernameSetupScreenState extends State<UsernameSetupScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
         children: [
-          const Text(
+          Text(
             'Username publik @kamu',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w900,
-              color: Color(0xFF0F172A),
+              color: cs.onSurface,
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             'Username dipakai untuk @mention di komentar/caption dan '
             'URL profile kamu. Ganti kapan aja — handle lama akan '
             'di-reserve 30 hari supaya tidak diambil orang lain.',
             style: TextStyle(
               fontSize: 13,
-              color: _textMuted,
+              color: cs.onSurfaceVariant,
               height: 1.4,
             ),
           ),
@@ -245,6 +244,7 @@ class _UsernameField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final hasError = formatError != null ||
         (result != null && !result!.available && !isUnchanged);
     final isValidLive = !checking &&
@@ -257,26 +257,26 @@ class _UsernameField extends StatelessWidget {
       children: [
         Container(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: cs.surface,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: hasError
                   ? _dangerRed
                   : isValidLive
                       ? _successGreen
-                      : const Color(0xFFE2E8F0),
+                      : cs.outlineVariant,
               width: hasError || isValidLive ? 1.6 : 1,
             ),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
           child: Row(
             children: [
-              const Text(
+              Text(
                 '@',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w900,
-                  color: _textMuted,
+                  color: cs.onSurfaceVariant,
                 ),
               ),
               const SizedBox(width: 4),
@@ -302,15 +302,15 @@ class _UsernameField extends StatelessWidget {
                     isCollapsed: true,
                     contentPadding: EdgeInsets.symmetric(vertical: 16),
                   ),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF0F172A),
+                    color: cs.onSurface,
                   ),
                 ),
               ),
               const SizedBox(width: 8),
-              _statusIcon(),
+              _statusIcon(cs),
             ],
           ),
         ),
@@ -344,7 +344,7 @@ class _UsernameField extends StatelessWidget {
     );
   }
 
-  Widget _statusIcon() {
+  Widget _statusIcon(ColorScheme cs) {
     if (checking) {
       return const SizedBox(
         width: 18,
@@ -364,8 +364,8 @@ class _UsernameField extends StatelessWidget {
       return const Icon(Icons.cancel_rounded, color: _dangerRed, size: 22);
     }
     if (isUnchanged && controller.text.trim().isNotEmpty) {
-      return const Icon(Icons.check_circle_outline_rounded,
-          color: _textMuted, size: 22);
+      return Icon(Icons.check_circle_outline_rounded,
+          color: cs.onSurfaceVariant, size: 22);
     }
     return const SizedBox(width: 22);
   }
@@ -401,13 +401,14 @@ class _ErrorRow extends StatelessWidget {
 class _RulesPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
+        color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: const Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
@@ -415,15 +416,15 @@ class _RulesPanel extends StatelessWidget {
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w900,
-              color: Color(0xFF0F172A),
+              color: cs.onSurface,
             ),
           ),
-          SizedBox(height: 8),
-          _RuleLine('3–30 karakter'),
-          _RuleLine('Huruf kecil, angka, _ (underscore), atau . (titik)'),
-          _RuleLine('Tidak boleh diawali atau diakhiri titik'),
-          _RuleLine('Tidak boleh dua titik berurutan'),
-          _RuleLine('Handle lama di-reserve 30 hari setelah diganti'),
+          const SizedBox(height: 8),
+          const _RuleLine('3–30 karakter'),
+          const _RuleLine('Huruf kecil, angka, _ (underscore), atau . (titik)'),
+          const _RuleLine('Tidak boleh diawali atau diakhiri titik'),
+          const _RuleLine('Tidak boleh dua titik berurutan'),
+          const _RuleLine('Handle lama di-reserve 30 hari setelah diganti'),
         ],
       ),
     );
@@ -436,18 +437,19 @@ class _RuleLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(top: 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('• ',
-              style: TextStyle(color: _textMuted, height: 1.4)),
+          Text('• ',
+              style: TextStyle(color: cs.onSurfaceVariant, height: 1.4)),
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(
-                color: _textMuted,
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
                 fontSize: 12.5,
                 height: 1.4,
               ),

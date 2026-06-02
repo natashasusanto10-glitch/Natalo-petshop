@@ -7,10 +7,6 @@ import '../widgets/loading_button.dart';
 // ── Design tokens (match login_screen.dart Natalo visual family) ──
 const _nataloBlue = Color(0xFF0787F5);
 const _nataloBlueDark = Color(0xFF075FCC);
-const _darkNavy = Color(0xFF101828);
-const _textSecondary = Color(0xFF667085);
-const _softBlueBg = Color(0xFFF1F7FF);
-const _borderSoft = Color(0xFFE0E7F0);
 const _heroGradientTop = Color(0xFFE6F2FF);
 const _heroGradientBottom = Color(0xFFF1F7FF);
 
@@ -108,8 +104,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: _softBlueBg,
+      backgroundColor: cs.surface,
       resizeToAvoidBottomInset: true,
       appBar: const _ForgotPasswordHeader(),
       body: SafeArea(
@@ -179,13 +176,14 @@ class _ForgotPasswordHeader extends StatelessWidget
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return AppBar(
-      backgroundColor: Colors.white,
+      backgroundColor: cs.surface,
       elevation: 0,
       scrolledUnderElevation: 0,
-      surfaceTintColor: Colors.white,
+      surfaceTintColor: cs.surface,
       leading: IconButton(
-        icon: const Icon(Icons.arrow_back_rounded, color: _darkNavy),
+        icon: Icon(Icons.arrow_back_rounded, color: cs.onSurface),
         tooltip: 'Kembali',
         onPressed: () {
           AppHaptics.tap();
@@ -196,10 +194,10 @@ class _ForgotPasswordHeader extends StatelessWidget
           }
         },
       ),
-      title: const Text(
+      title: Text(
         'Lupa Password',
         style: TextStyle(
-          color: _darkNavy,
+          color: cs.onSurface,
           fontSize: 18,
           fontWeight: FontWeight.w900,
         ),
@@ -375,27 +373,28 @@ class _ForgotPasswordCopy extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.fromLTRB(28, 6, 28, 0),
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(28, 6, 28, 0),
       child: Column(
         children: [
           Text(
             'Reset Password Akun Natalo',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: _darkNavy,
+              color: cs.onSurface,
               fontSize: 22,
               fontWeight: FontWeight.w900,
               height: 1.18,
               letterSpacing: -0.2,
             ),
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Text(
             'Masukkan email yang kamu pakai daftar. Kami akan kirim link aman untuk reset password kamu.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: _textSecondary,
+              color: cs.onSurfaceVariant,
               fontSize: 13.5,
               fontWeight: FontWeight.w600,
               height: 1.5,
@@ -427,12 +426,13 @@ class _ForgotPasswordFormCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: _borderSoft),
+        border: Border.all(color: cs.outlineVariant),
         boxShadow: [
           BoxShadow(
             color: _nataloBlueDark.withValues(alpha: 0.08),
@@ -444,10 +444,10 @@ class _ForgotPasswordFormCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Email',
             style: TextStyle(
-              color: _darkNavy,
+              color: cs.onSurface,
               fontSize: 14,
               fontWeight: FontWeight.w900,
             ),
@@ -488,6 +488,7 @@ class _ForgotPasswordEmailField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return SizedBox(
       height: 56,
       child: TextField(
@@ -497,21 +498,21 @@ class _ForgotPasswordEmailField extends StatelessWidget {
         textInputAction: TextInputAction.done,
         autocorrect: false,
         enableSuggestions: false,
-        style: const TextStyle(
-          color: _darkNavy,
+        style: TextStyle(
+          color: cs.onSurface,
           fontSize: 14.5,
           fontWeight: FontWeight.w600,
         ),
         decoration: InputDecoration(
           hintText: 'Email yang terdaftar di akun kamu',
-          hintStyle: const TextStyle(
-            color: Color(0xFF9CA3AF),
+          hintStyle: TextStyle(
+            color: cs.onSurfaceVariant,
             fontWeight: FontWeight.w600,
             fontSize: 14,
           ),
           isDense: true,
           filled: true,
-          fillColor: const Color(0xFFF8FAFD),
+          fillColor: cs.surfaceContainerHighest,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 14,
             vertical: 18,
@@ -530,11 +531,11 @@ class _ForgotPasswordEmailField extends StatelessWidget {
           ),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(18),
-            borderSide: const BorderSide(color: _borderSoft),
+            borderSide: BorderSide(color: cs.outlineVariant),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(18),
-            borderSide: const BorderSide(color: _borderSoft),
+            borderSide: BorderSide(color: cs.outlineVariant),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(18),
@@ -649,10 +650,11 @@ class _ForgotPasswordSuccessCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.fromLTRB(22, 26, 22, 22),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(26),
         border: Border.all(color: _successBorder),
         boxShadow: [
@@ -687,11 +689,11 @@ class _ForgotPasswordSuccessCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             'Cek email kamu',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: _darkNavy,
+              color: cs.onSurface,
               fontSize: 19,
               fontWeight: FontWeight.w900,
               height: 1.2,
@@ -701,8 +703,8 @@ class _ForgotPasswordSuccessCard extends StatelessWidget {
           Text.rich(
             TextSpan(
               text: 'Kami sudah kirim link reset password ke ',
-              style: const TextStyle(
-                color: _textSecondary,
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
                 fontSize: 13.5,
                 fontWeight: FontWeight.w600,
                 height: 1.55,
@@ -710,8 +712,8 @@ class _ForgotPasswordSuccessCard extends StatelessWidget {
               children: [
                 TextSpan(
                   text: email,
-                  style: const TextStyle(
-                    color: _darkNavy,
+                  style: TextStyle(
+                    color: cs.onSurface,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -724,13 +726,13 @@ class _ForgotPasswordSuccessCard extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 10),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 6),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
             child: Text(
               'Tidak menerima email dalam 5 menit? Cek folder Spam / Promosi.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Color(0xFF9CA3AF),
+                color: cs.onSurfaceVariant,
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 height: 1.5,
@@ -768,7 +770,7 @@ class _ForgotPasswordSuccessCard extends StatelessWidget {
               style: OutlinedButton.styleFrom(
                 foregroundColor: _nataloBlue,
                 minimumSize: const Size.fromHeight(50),
-                side: const BorderSide(color: _borderSoft, width: 1.2),
+                side: BorderSide(color: cs.outlineVariant, width: 1.2),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(999),
                 ),
@@ -806,6 +808,7 @@ class _BackToLoginLink extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return TextButton(
       onPressed: onTap,
       style: TextButton.styleFrom(
@@ -814,15 +817,15 @@ class _BackToLoginLink extends StatelessWidget {
         minimumSize: const Size(44, 44),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
-      child: const Text.rich(
+      child: Text.rich(
         TextSpan(
           text: 'Ingat password? ',
           style: TextStyle(
-            color: _textSecondary,
+            color: cs.onSurfaceVariant,
             fontSize: 14,
             fontWeight: FontWeight.w600,
           ),
-          children: [
+          children: const [
             TextSpan(
               text: 'Kembali ke Masuk',
               style: TextStyle(

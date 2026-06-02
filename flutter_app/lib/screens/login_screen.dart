@@ -15,10 +15,6 @@ import '../widgets/loading_button.dart';
 
 const _brandBlue = Color(0xFF0787F5);
 const _brandBlueDark = Color(0xFF075FCC);
-const _darkNavy = Color(0xFF101828);
-const _textSecondary = Color(0xFF667085);
-const _softBlueBg = Color(0xFFF1F7FF);
-const _borderSoft = Color(0xFFE0E7F0);
 
 /// Login member visual shell. Auth flow tetap memakai service existing.
 class LoginScreen extends StatefulWidget {
@@ -270,6 +266,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final size = MediaQuery.of(context).size;
     final isSmallHeight = size.height < 720;
     final isSmallWidth = size.width < 360;
@@ -277,25 +274,25 @@ class _LoginScreenState extends State<LoginScreen> {
     final sectionGap = isSmallHeight ? 20.0 : 26.0;
 
     return Scaffold(
-      backgroundColor: _softBlueBg,
+      backgroundColor: cs.surface,
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: cs.surface,
         elevation: 0,
         scrolledUnderElevation: 0,
-        surfaceTintColor: Colors.white,
+        surfaceTintColor: cs.surface,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: _darkNavy),
+          icon: Icon(Icons.arrow_back_rounded, color: cs.onSurface),
           onPressed: () => Navigator.pushNamedAndRemoveUntil(
             context,
             '/',
             (_) => false,
           ),
         ),
-        title: const Text(
+        title: Text(
           'Masuk',
           style: TextStyle(
-            color: _darkNavy,
+            color: cs.onSurface,
             fontSize: 18,
             fontWeight: FontWeight.w900,
           ),
@@ -305,11 +302,11 @@ class _LoginScreenState extends State<LoginScreen> {
       body: SafeArea(
         top: false,
         child: DecoratedBox(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Colors.white, Color(0xFFF1F7FF)],
+              colors: [cs.surface, cs.surfaceContainerHighest],
             ),
           ),
           child: SingleChildScrollView(
@@ -336,9 +333,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     Container(
                       padding: EdgeInsets.all(isSmallWidth ? 18 : 20),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: cs.surface,
                         borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: _borderSoft),
+                        border: Border.all(color: cs.outlineVariant),
                         boxShadow: [
                           BoxShadow(
                             color: _brandBlueDark.withValues(alpha: 0.08),
@@ -351,10 +348,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           // Email / No HP field
-                          const Text(
+                          Text(
                             'Email / No. HP',
                             style: TextStyle(
-                              color: _darkNavy,
+                              color: cs.onSurface,
                               fontSize: 14,
                               fontWeight: FontWeight.w900,
                             ),
@@ -370,11 +367,11 @@ class _LoginScreenState extends State<LoginScreen> {
                           // Password label + Lupa password? link
                           Row(
                             children: [
-                              const Expanded(
+                              Expanded(
                                 child: Text(
                                   'Password',
                                   style: TextStyle(
-                                    color: _darkNavy,
+                                    color: cs.onSurface,
                                     fontSize: 14,
                                     fontWeight: FontWeight.w900,
                                   ),
@@ -505,6 +502,7 @@ class _LoginHeroSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Stack(
       children: [
         Positioned(
@@ -556,7 +554,7 @@ class _LoginHeroSection extends StatelessWidget {
               maxLines: 2,
               overflow: TextOverflow.visible,
               style: TextStyle(
-                color: _darkNavy,
+                color: cs.onSurface,
                 fontSize: titleSize,
                 fontWeight: FontWeight.w900,
                 height: 1.05,
@@ -564,12 +562,12 @@ class _LoginHeroSection extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 14),
-            const Text(
+            Text(
               'Belanja kebutuhan hewan\njadi lebih mudah, cepat,\ndan hemat.',
               maxLines: 3,
               overflow: TextOverflow.visible,
               style: TextStyle(
-                color: _textSecondary,
+                color: cs.onSurfaceVariant,
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
                 height: 1.42,
@@ -622,6 +620,7 @@ class _BenefitCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 180;
@@ -642,8 +641,8 @@ class _BenefitCard extends StatelessWidget {
               title,
               maxLines: 2,
               overflow: TextOverflow.visible,
-              style: const TextStyle(
-                color: _darkNavy,
+              style: TextStyle(
+                color: cs.onSurface,
                 fontSize: 15,
                 fontWeight: FontWeight.w900,
                 height: 1.16,
@@ -654,8 +653,8 @@ class _BenefitCard extends StatelessWidget {
               subtitle,
               maxLines: 3,
               overflow: TextOverflow.visible,
-              style: const TextStyle(
-                color: _textSecondary,
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
                 fontSize: 12.8,
                 fontWeight: FontWeight.w600,
                 height: 1.28,
@@ -668,9 +667,9 @@ class _BenefitCard extends StatelessWidget {
           constraints: const BoxConstraints(minHeight: 118),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: cs.surface,
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: _borderSoft),
+            border: Border.all(color: cs.outlineVariant),
             boxShadow: [
               BoxShadow(
                 color: _brandBlueDark.withValues(alpha: 0.07),
@@ -720,12 +719,13 @@ class _LoginTextField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
       obscureText: obscureText,
-      style: const TextStyle(
-        color: _darkNavy,
+      style: TextStyle(
+        color: cs.onSurface,
         fontSize: 15,
         fontWeight: FontWeight.w700,
       ),
@@ -735,14 +735,14 @@ class _LoginTextField extends StatelessWidget {
           color: Color(0xFF98A2B3),
           fontWeight: FontWeight.w600,
         ),
-        prefixIcon: Icon(prefixIcon, color: const Color(0xFF667085), size: 23),
+        prefixIcon: Icon(prefixIcon, color: cs.onSurfaceVariant, size: 23),
         prefixIconConstraints: const BoxConstraints(
           minWidth: 48,
           minHeight: 52,
         ),
         suffixIcon: suffix,
         filled: true,
-        fillColor: const Color(0xFFF8FBFF),
+        fillColor: cs.surfaceContainerHighest,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 16,
@@ -769,21 +769,22 @@ class _LoginSeparator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Row(
+    final cs = Theme.of(context).colorScheme;
+    return Row(
       children: [
-        Expanded(child: Divider(color: _borderSoft, height: 1)),
+        Expanded(child: Divider(color: cs.outlineVariant, height: 1)),
         Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Text(
             'atau masuk lebih cepat',
             style: TextStyle(
-              color: _textSecondary,
+              color: cs.onSurfaceVariant,
               fontSize: 12,
               fontWeight: FontWeight.w700,
             ),
           ),
         ),
-        Expanded(child: Divider(color: _borderSoft, height: 1)),
+        Expanded(child: Divider(color: cs.outlineVariant, height: 1)),
       ],
     );
   }
@@ -812,6 +813,7 @@ class _WhatsAppOtpLoginButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return SizedBox(
       width: double.infinity,
       height: 52,
@@ -830,8 +832,8 @@ class _WhatsAppOtpLoginButton extends StatelessWidget {
         ),
         label: const Text('Masuk dengan OTP WhatsApp'),
         style: OutlinedButton.styleFrom(
-          foregroundColor: _darkNavy,
-          side: const BorderSide(color: _borderSoft, width: 1.3),
+          foregroundColor: cs.onSurface,
+          side: BorderSide(color: cs.outlineVariant, width: 1.3),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
@@ -852,12 +854,13 @@ class _RegisterBenefitCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: _borderSoft),
+        border: Border.all(color: cs.outlineVariant),
         boxShadow: [
           BoxShadow(
             color: _brandBlueDark.withValues(alpha: 0.07),
@@ -889,15 +892,15 @@ class _RegisterBenefitCard extends StatelessWidget {
                 GestureDetector(
                   onTap: onRegister,
                   behavior: HitTestBehavior.opaque,
-                  child: const Text.rich(
+                  child: Text.rich(
                     TextSpan(
                       text: 'Belum punya akun? ',
                       style: TextStyle(
-                        color: _darkNavy,
+                        color: cs.onSurface,
                         fontSize: 14,
                         fontWeight: FontWeight.w800,
                       ),
-                      children: [
+                      children: const [
                         TextSpan(
                           text: 'Daftar gratis',
                           style: TextStyle(
@@ -910,12 +913,12 @@ class _RegisterBenefitCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
-                const Text(
+                Text(
                   'Kumpulkan poin dan dapatkan voucher khusus member Natalo.',
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: _textSecondary,
+                    color: cs.onSurfaceVariant,
                     fontSize: 12.5,
                     fontWeight: FontWeight.w600,
                     height: 1.35,
@@ -952,21 +955,22 @@ class _SecurityNote extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Row(
+    final cs = Theme.of(context).colorScheme;
+    return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(Icons.lock_rounded, color: _brandBlue, size: 16),
-        SizedBox(width: 6),
+        const Icon(Icons.lock_rounded, color: _brandBlue, size: 16),
+        const SizedBox(width: 6),
         Flexible(
           child: Text.rich(
             TextSpan(
               text: 'Data akun kamu aman bersama ',
               style: TextStyle(
-                color: _textSecondary,
+                color: cs.onSurfaceVariant,
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
               ),
-              children: [
+              children: const [
                 TextSpan(
                   text: 'Natalo.',
                   style: TextStyle(color: _brandBlue),

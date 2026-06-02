@@ -146,22 +146,22 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: const Color(0xFFF7FAFF),
+      backgroundColor: cs.surface,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF7FAFF),
+        backgroundColor: cs.surface,
         elevation: 0,
         scrolledUnderElevation: 0,
-        surfaceTintColor: const Color(0xFFF7FAFF),
+        surfaceTintColor: cs.surface,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded,
-              color: Color(0xFF17202A)),
+          icon: Icon(Icons.arrow_back_rounded, color: cs.onSurface),
           onPressed: () => Navigator.maybePop(context),
         ),
-        title: const Text(
+        title: Text(
           'Reset Password',
           style: TextStyle(
-            color: Color(0xFF17202A),
+            color: cs.onSurface,
             fontSize: 18,
             fontWeight: FontWeight.w900,
           ),
@@ -174,14 +174,14 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-              color: const Color(0xFFEFF2F6),
+              color: cs.surfaceContainerHighest,
               child: Column(
                 children: [
                   Container(
                     height: 88,
                     width: 88,
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: cs.surface,
                       borderRadius: BorderRadius.circular(22),
                       boxShadow: [
                         BoxShadow(
@@ -199,24 +199,24 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const Text(
+                  Text(
                     'Buat Password Baru',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: Color(0xFF111111),
+                      color: cs.onSurface,
                       fontSize: 24,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
                   const SizedBox(height: 6),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Text(
                       'Pilih password baru untuk akun kamu. '
                       'Min 8 karakter, kombinasi huruf + angka.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: Color(0xFF6B7280),
+                        color: cs.onSurfaceVariant,
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                         height: 1.5,
@@ -231,9 +231,9 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
               child: Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: cs.surface,
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFFE5E7EB)),
+                  border: Border.all(color: cs.outlineVariant),
                 ),
                 child: Form(
                   key: _formKey,
@@ -324,12 +324,13 @@ class _FieldLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(left: 4),
       child: Text(
         label,
-        style: const TextStyle(
-          color: Color(0xFF111111),
+        style: TextStyle(
+          color: cs.onSurface,
           fontSize: 14,
           fontWeight: FontWeight.w900,
         ),

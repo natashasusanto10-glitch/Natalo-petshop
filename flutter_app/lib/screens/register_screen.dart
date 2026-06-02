@@ -23,11 +23,7 @@ const _kRegisterOtpCooldownKey = 'register_otp_resend_until_ms';
 
 const _brandBlue = Color(0xFF0787F5);
 const _brandBlueDark = Color(0xFF075FCC);
-const _darkNavy = Color(0xFF101828);
-const _textSecondary = Color(0xFF667085);
-const _softBlueBg = Color(0xFFF1F7FF);
 const _softBlueCard = Color(0xFFEAF5FF);
-const _borderSoft = Color(0xFFE0E7F0);
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -414,24 +410,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: _softBlueBg,
+      backgroundColor: cs.surface,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: cs.surface,
         elevation: 0,
         scrolledUnderElevation: 0,
-        surfaceTintColor: Colors.white,
+        surfaceTintColor: cs.surface,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: _darkNavy),
+          icon: Icon(Icons.arrow_back_rounded, color: cs.onSurface),
           onPressed: () => Navigator.pushReplacementNamed(
             context,
             '/member/login',
           ),
         ),
-        title: const Text(
+        title: Text(
           'Daftar Member',
           style: TextStyle(
-            color: _darkNavy,
+            color: cs.onSurface,
             fontSize: 20,
             fontWeight: FontWeight.w800,
           ),
@@ -449,9 +446,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
               child: Container(
                 padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: cs.surface,
                   borderRadius: BorderRadius.circular(26),
-                  border: Border.all(color: _borderSoft),
+                  border: Border.all(color: cs.outlineVariant),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.055),
@@ -580,12 +577,13 @@ class _FieldLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Text(
         label,
-        style: const TextStyle(
-          color: _darkNavy,
+        style: TextStyle(
+          color: cs.onSurface,
           fontSize: 14,
           fontWeight: FontWeight.w800,
         ),
@@ -602,10 +600,12 @@ class _RegisterHeroSection extends StatelessWidget {
     return Container(
       width: double.infinity,
       decoration: const BoxDecoration(
+        // Hero gradient terang tetap di-keep (artwork), pakai literal warna
+        // bekas _softBlueBg supaya tampilan hero tidak berubah.
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Colors.white, _softBlueBg],
+          colors: [Colors.white, Color(0xFFF1F7FF)],
         ),
       ),
       padding: const EdgeInsets.fromLTRB(0, 8, 0, 10),
@@ -629,7 +629,8 @@ class _RegisterHeroSection extends StatelessWidget {
               'Daftar Member Natalo',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: _darkNavy,
+                // Teks di atas hero gradient terang (di-keep) tetap gelap.
+                color: Color(0xFF101828),
                 fontSize: 30,
                 fontWeight: FontWeight.w900,
                 height: 1.08,
@@ -643,7 +644,7 @@ class _RegisterHeroSection extends StatelessWidget {
               'Gratis! Kumpulkan poin dan dapatkan voucher khusus member.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: _textSecondary,
+                color: Color(0xFF667085),
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
                 height: 1.38,
@@ -731,13 +732,14 @@ class _BenefitChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       width: 190,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: _borderSoft),
+        border: Border.all(color: cs.outlineVariant),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.045),
@@ -771,8 +773,8 @@ class _BenefitChip extends StatelessWidget {
                   item.title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: _darkNavy,
+                  style: TextStyle(
+                    color: cs.onSurface,
                     fontSize: 13,
                     fontWeight: FontWeight.w800,
                   ),
@@ -782,8 +784,8 @@ class _BenefitChip extends StatelessWidget {
                   item.subtitle,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: _textSecondary,
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
                     fontSize: 11.5,
                     fontWeight: FontWeight.w600,
                     height: 1.25,
@@ -819,13 +821,14 @@ class _RegisterTextField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
       obscureText: obscure,
       inputFormatters: inputFormatters,
-      style: const TextStyle(
-        color: _darkNavy,
+      style: TextStyle(
+        color: cs.onSurface,
         fontSize: 15,
         fontWeight: FontWeight.w700,
       ),
@@ -854,14 +857,14 @@ class _RegisterTextField extends StatelessWidget {
                 ),
               ),
         filled: true,
-        fillColor: const Color(0xFFF8FBFF),
+        fillColor: cs.surfaceContainerHighest,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(18),
-          borderSide: const BorderSide(color: _borderSoft),
+          borderSide: BorderSide(color: cs.outlineVariant),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(18),
-          borderSide: const BorderSide(color: _borderSoft),
+          borderSide: BorderSide(color: cs.outlineVariant),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(18),
@@ -961,10 +964,13 @@ class _OtpInfoBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: _softBlueCard,
+        color: isDark
+            ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+            : _softBlueCard,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: const Color(0xFFD7E8FF)),
       ),
@@ -1030,13 +1036,15 @@ class _RegisterMemberBenefitCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 4, 20, 18),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: _borderSoft),
+        border: Border.all(color: cs.outlineVariant),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.045),
@@ -1052,7 +1060,9 @@ class _RegisterMemberBenefitCard extends StatelessWidget {
             width: 72,
             height: 72,
             decoration: BoxDecoration(
-              color: _softBlueCard,
+              color: isDark
+                  ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                  : _softBlueCard,
               borderRadius: BorderRadius.circular(22),
             ),
             child: const Icon(
@@ -1062,28 +1072,28 @@ class _RegisterMemberBenefitCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 14),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Kenapa daftar member Natalo?',
                   style: TextStyle(
-                    color: _darkNavy,
+                    color: cs.onSurface,
                     fontSize: 15,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                SizedBox(height: 10),
-                _BenefitBullet(
+                const SizedBox(height: 10),
+                const _BenefitBullet(
                   text: 'Kumpulkan loyalty poin setiap transaksi',
                 ),
-                SizedBox(height: 7),
-                _BenefitBullet(
+                const SizedBox(height: 7),
+                const _BenefitBullet(
                   text: 'Dapat voucher dan promo khusus member',
                 ),
-                SizedBox(height: 7),
-                _BenefitBullet(
+                const SizedBox(height: 7),
+                const _BenefitBullet(
                   text: 'Checkout lebih cepat dengan data akun tersimpan',
                 ),
               ],
@@ -1102,6 +1112,7 @@ class _BenefitBullet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1116,8 +1127,8 @@ class _BenefitBullet extends StatelessWidget {
         Expanded(
           child: Text(
             text,
-            style: const TextStyle(
-              color: _darkNavy,
+            style: TextStyle(
+              color: cs.onSurface,
               fontSize: 13,
               fontWeight: FontWeight.w600,
               height: 1.25,
@@ -1136,20 +1147,21 @@ class _BackToLoginLink extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
-      child: const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
         child: Text.rich(
           TextSpan(
             text: 'Sudah punya akun? ',
             style: TextStyle(
-              color: _textSecondary,
+              color: cs.onSurfaceVariant,
               fontSize: 15,
               fontWeight: FontWeight.w700,
             ),
-            children: [
+            children: const [
               TextSpan(
                 text: 'Masuk',
                 style: TextStyle(
@@ -1196,12 +1208,13 @@ class _OtpDestinationHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: RichText(
         text: TextSpan(
-          style: const TextStyle(
-            color: _textSecondary,
+          style: TextStyle(
+            color: cs.onSurfaceVariant,
             fontSize: 12.5,
             fontWeight: FontWeight.w600,
             height: 1.4,
@@ -1210,16 +1223,16 @@ class _OtpDestinationHint extends StatelessWidget {
             const TextSpan(text: 'Kode dikirim ke '),
             TextSpan(
               text: _maskPhone(phone),
-              style: const TextStyle(
-                color: _darkNavy,
+              style: TextStyle(
+                color: cs.onSurface,
                 fontWeight: FontWeight.w800,
               ),
             ),
             const TextSpan(text: ' dan '),
             TextSpan(
               text: _maskEmail(email),
-              style: const TextStyle(
-                color: _darkNavy,
+              style: TextStyle(
+                color: cs.onSurface,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -1246,13 +1259,14 @@ class _ResendOtpRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final disabled = countdown > 0 || loading;
     final label = loading
         ? 'Mengirim ulang...'
         : countdown > 0
             ? 'Kirim ulang dalam ${countdown}s'
             : 'Kirim Ulang Kode';
-    final color = disabled ? _textSecondary : _brandBlueDark;
+    final color = disabled ? cs.onSurfaceVariant : _brandBlueDark;
 
     return Material(
       color: Colors.transparent,
@@ -1265,12 +1279,12 @@ class _ResendOtpRow extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (loading) ...[
-                const SizedBox(
+                SizedBox(
                   width: 14,
                   height: 14,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(_textSecondary),
+                    valueColor: AlwaysStoppedAnimation<Color>(cs.onSurfaceVariant),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -1307,21 +1321,22 @@ class _UsernameHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.only(left: 4, right: 4),
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, right: 4),
       child: Row(
         children: [
           Icon(
             Icons.info_outline_rounded,
-            color: Color(0xFF94A3B8),
+            color: cs.onSurfaceVariant,
             size: 14,
           ),
-          SizedBox(width: 6),
+          const SizedBox(width: 6),
           Expanded(
             child: Text(
               'Huruf kecil, angka, _ dan . (min 3 char). Bisa diganti nanti.',
               style: TextStyle(
-                color: Color(0xFF64748B),
+                color: cs.onSurfaceVariant,
                 fontSize: 11.5,
                 fontWeight: FontWeight.w600,
               ),
