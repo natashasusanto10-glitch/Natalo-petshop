@@ -655,23 +655,24 @@ class _CartScreenState extends State<CartScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       // Solid surface bg — override theme transparency yang bikin header
       // & content nampak semi-transparent / kurang sharp (spec: header
       // harus solid, tidak terkena efek glass/blur dari layer lain).
-      backgroundColor: NataloColors.surface,
+      backgroundColor: cs.surface,
       // Custom title dengan count subtitle — match PWA cart header
       // "Keranjang\n0 jenis produk (0 item)".
       // AppBar override eksplisit ke putih solid (theme global pakai
       // surface 0.90 = semi-transparent yang inherit ke cart → header
       // jadi kurang tajam). Border bawah tipis untuk crisp visual edge.
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
+        backgroundColor: cs.surface,
+        surfaceTintColor: cs.surface,
         elevation: 0,
         scrolledUnderElevation: 0,
-        shape: const Border(
-          bottom: BorderSide(color: Color(0xFFE5EAF2), width: 1),
+        shape: Border(
+          bottom: BorderSide(color: cs.outlineVariant, width: 1),
         ),
         title: const Text('Keranjang'),
         actions: [
@@ -739,12 +740,12 @@ class _CartScreenState extends State<CartScreen> {
                               // checkbox area supaya garis tidak full-width.
                               // Tokopedia style: divider sejajar dengan image kiri.
                               if (i < items.length - 1)
-                                const Padding(
-                                  padding: EdgeInsets.only(left: 42),
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 42),
                                   child: Divider(
                                     height: 1,
                                     thickness: 1,
-                                    color: Color(0xFFEEF2F6),
+                                    color: cs.outlineVariant,
                                   ),
                                 )
                               else
@@ -873,14 +874,15 @@ class _CartSelectedRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final hasSelection = selectedCount > 0;
     return Container(
       height: _selectionRowHeight,
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      decoration: const BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(
+        color: cs.surface,
         border: Border(
-          bottom: BorderSide(color: Color(0xFFE8EDF5), width: 1),
+          bottom: BorderSide(color: cs.outlineVariant, width: 1),
         ),
       ),
       child: Row(
@@ -891,9 +893,7 @@ class _CartSelectedRow extends StatelessWidget {
               style: TextStyle(
                 fontSize: 14.5,
                 fontWeight: FontWeight.w700,
-                color: hasSelection
-                    ? const Color(0xFF101828)
-                    : const Color(0xFF6B7280),
+                color: hasSelection ? cs.onSurface : cs.onSurfaceVariant,
               ),
             ),
           ),
@@ -903,9 +903,7 @@ class _CartSelectedRow extends StatelessWidget {
             icon: Icon(
               Icons.delete_outline_rounded,
               size: 22,
-              color: hasSelection
-                  ? const Color(0xFF101828)
-                  : const Color(0xFFB8C0CC),
+              color: hasSelection ? cs.onSurface : cs.onSurfaceVariant,
             ),
             splashRadius: 22,
             padding: EdgeInsets.zero,
@@ -935,6 +933,7 @@ class _CartDeleteConfirmDialog extends StatelessWidget {
         ? 'Produk terpilih akan dihapus dari keranjang.'
         : '$quantity item dari produk terpilih akan dihapus dari keranjang.';
 
+    final cs = Theme.of(context).colorScheme;
     return Dialog(
       elevation: 0,
       backgroundColor: Colors.transparent,
@@ -942,7 +941,7 @@ class _CartDeleteConfirmDialog extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: cs.surface,
           borderRadius: BorderRadius.circular(30),
           boxShadow: [
             BoxShadow(
@@ -973,8 +972,8 @@ class _CartDeleteConfirmDialog extends StatelessWidget {
             Text(
               'Yakin mau hapus $count produk?',
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: NataloColors.textPrimary,
+              style: TextStyle(
+                color: cs.onSurface,
                 fontSize: 17,
                 fontWeight: FontWeight.w900,
                 height: 1.25,
@@ -984,8 +983,8 @@ class _CartDeleteConfirmDialog extends StatelessWidget {
             Text(
               body,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: NataloColors.textSecondary,
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
                 height: 1.45,
@@ -1109,6 +1108,7 @@ class _CartItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final price = item.effectivePrice;
     final regular = item.variant?.price.toDouble() ?? item.product.price;
     final hasDiscount = regular > price;
@@ -1170,7 +1170,7 @@ class _CartItemCard extends StatelessWidget {
         // Compact marketplace-style — no big rounded card, thin divider
         // antar item (handled di parent ListView/Column).
         child: Container(
-          color: Colors.white,
+          color: cs.surface,
           // Padding kiri ringkas (4px) supaya checkbox nempel kiri ala
           // Tokopedia. Vertical 12 (sedikit lebih ringkas dari 14).
           padding: const EdgeInsets.fromLTRB(4, 12, 12, 12),
@@ -1218,8 +1218,8 @@ class _CartItemCard extends StatelessWidget {
                         item.product.title,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF17202A),
+                        style: TextStyle(
+                          color: cs.onSurface,
                           fontSize: 14,
                           height: 1.3,
                           fontWeight: FontWeight.w800,
@@ -1260,7 +1260,7 @@ class _CartItemCard extends StatelessWidget {
                                     style: TextStyle(
                                       color: hasDiscount
                                           ? const Color(0xFFEF4444)
-                                          : const Color(0xFF111827),
+                                          : cs.onSurface,
                                       fontSize: 17,
                                       fontWeight: FontWeight.w900,
                                     ),
@@ -1276,8 +1276,8 @@ class _CartItemCard extends StatelessWidget {
                                         formatRupiah(regular),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: Color(0xFF9CA3AF),
+                                        style: TextStyle(
+                                          color: cs.onSurfaceVariant,
                                           fontSize: 12,
                                           fontWeight: FontWeight.w500,
                                           decoration:
@@ -1350,13 +1350,14 @@ class _VariantChipDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(999),
       child: Container(
         padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
         decoration: BoxDecoration(
-          color: const Color(0xFFF1F5F9),
+          color: cs.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(999),
         ),
         child: Row(
@@ -1368,18 +1369,18 @@ class _VariantChipDropdown extends StatelessWidget {
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF374151),
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
                   fontSize: 12.5,
                   fontWeight: FontWeight.w700,
                 ),
               ),
             ),
             const SizedBox(width: 4),
-            const Icon(
+            Icon(
               Icons.keyboard_arrow_down_rounded,
               size: 18,
-              color: Color(0xFF6B7280),
+              color: cs.onSurfaceVariant,
             ),
           ],
         ),
@@ -1527,13 +1528,14 @@ class _CartVariantPickerSheetState extends State<_CartVariantPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final variant = _matchedVariant;
     return FractionallySizedBox(
       heightFactor: 0.78,
       child: ClipRRect(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         child: Container(
-          color: Colors.white,
+          color: cs.surface,
           child: Column(
             children: [
               const SizedBox(height: 10),
@@ -1541,7 +1543,7 @@ class _CartVariantPickerSheetState extends State<_CartVariantPickerSheet> {
                 width: 42,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFD1D5DB),
+                  color: cs.onSurfaceVariant,
                   borderRadius: BorderRadius.circular(99),
                 ),
               ),
@@ -1549,11 +1551,11 @@ class _CartVariantPickerSheetState extends State<_CartVariantPickerSheet> {
                 padding: const EdgeInsets.fromLTRB(20, 14, 12, 12),
                 child: Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Text(
                         'Variasi Produk',
                         style: TextStyle(
-                          color: Color(0xFF111827),
+                          color: cs.onSurface,
                           fontSize: 18,
                           fontWeight: FontWeight.w900,
                         ),
@@ -1561,23 +1563,23 @@ class _CartVariantPickerSheetState extends State<_CartVariantPickerSheet> {
                     ),
                     IconButton(
                       icon: const Icon(Icons.close_rounded),
-                      color: const Color(0xFF6B7280),
+                      color: cs.onSurfaceVariant,
                       onPressed: () => Navigator.pop(context),
                     ),
                   ],
                 ),
               ),
-              const Divider(height: 1, color: Color(0xFFE5E7EB)),
+              Divider(height: 1, color: cs.outlineVariant),
               Expanded(child: _buildBody()),
               if (_fullProduct != null && _error == null)
                 SafeArea(
                   top: false,
                   child: Container(
                     padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
+                    decoration: BoxDecoration(
+                      color: cs.surface,
                       border: Border(
-                        top: BorderSide(color: Color(0xFFE5E7EB)),
+                        top: BorderSide(color: cs.outlineVariant),
                       ),
                     ),
                     child: SizedBox(
@@ -1611,6 +1613,7 @@ class _CartVariantPickerSheetState extends State<_CartVariantPickerSheet> {
   }
 
   Widget _buildBody() {
+    final cs = Theme.of(context).colorScheme;
     if (_loading) {
       return const Center(
         child: SizedBox(
@@ -1627,8 +1630,8 @@ class _CartVariantPickerSheetState extends State<_CartVariantPickerSheet> {
           child: Text(
             _error ?? 'Produk tidak ditemukan.',
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Color(0xFF6B7280),
+            style: TextStyle(
+              color: cs.onSurfaceVariant,
               fontSize: 14,
               fontWeight: FontWeight.w600,
             ),
@@ -1645,8 +1648,8 @@ class _CartVariantPickerSheetState extends State<_CartVariantPickerSheet> {
         for (final attr in product.variantAttrs) ...[
           Text(
             attr.name,
-            style: const TextStyle(
-              color: Color(0xFF374151),
+            style: TextStyle(
+              color: cs.onSurfaceVariant,
               fontSize: 13,
               fontWeight: FontWeight.w800,
             ),
@@ -1669,15 +1672,15 @@ class _CartVariantPickerSheetState extends State<_CartVariantPickerSheet> {
                     color: selected
                         ? _brandBlue.withValues(alpha: 0.10)
                         : available
-                            ? Colors.white
-                            : const Color(0xFFF3F4F6),
+                            ? cs.surface
+                            : cs.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(99),
                     border: Border.all(
                       color: selected
                           ? _brandBlue
                           : available
-                              ? const Color(0xFFD1D5DB)
-                              : const Color(0xFFE5E7EB),
+                              ? cs.outlineVariant
+                              : cs.outlineVariant,
                       width: selected ? 1.4 : 1,
                     ),
                   ),
@@ -1687,8 +1690,8 @@ class _CartVariantPickerSheetState extends State<_CartVariantPickerSheet> {
                       color: selected
                           ? _brandBlue
                           : available
-                              ? const Color(0xFF374151)
-                              : const Color(0xFFB8C0CC),
+                              ? cs.onSurfaceVariant
+                              : cs.onSurfaceVariant,
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                     ),
@@ -1715,6 +1718,7 @@ class _CartVariantSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final selectedVariant = variant;
     final selectedVariantLabel = selectedVariant == null
         ? null
@@ -1759,15 +1763,15 @@ class _CartVariantSummary extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFEFF3F8),
+                    color: cs.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
                     selectedVariantLabel,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF64748B),
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
                       fontSize: 12,
                       fontWeight: FontWeight.w900,
                     ),
@@ -1779,8 +1783,8 @@ class _CartVariantSummary extends StatelessWidget {
                 formatRupiah(displayPrice.toDouble()),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF111827),
+                style: TextStyle(
+                  color: cs.onSurface,
                   fontSize: 22,
                   fontWeight: FontWeight.w900,
                 ),
@@ -1794,8 +1798,8 @@ class _CartVariantSummary extends StatelessWidget {
                         formatRupiah(originalPrice.toDouble()),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF9CA3AF),
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant,
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
                           decoration: TextDecoration.lineThrough,
@@ -1817,8 +1821,8 @@ class _CartVariantSummary extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 stock == null ? 'Pilih varian' : 'Stok: $stock',
-                style: const TextStyle(
-                  color: Color(0xFF374151),
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
                 ),
@@ -1930,15 +1934,16 @@ class _QtyStepperState extends State<_QtyStepper> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final canIncrement = widget.quantity < widget.maxQty;
     final decrementIsDelete = widget.quantity <= 1;
 
     return Container(
       height: 36,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1946,15 +1951,15 @@ class _QtyStepperState extends State<_QtyStepper> {
           _StepperCell(
             onTap: widget.onDecrement,
             child: decrementIsDelete
-                ? const Icon(
+                ? Icon(
                     Icons.delete_outline_rounded,
                     size: 16,
-                    color: Color(0xFF6B7280),
+                    color: cs.onSurfaceVariant,
                   )
-                : const Text(
+                : Text(
                     '−',
                     style: TextStyle(
-                      color: Color(0xFF6B7280),
+                      color: cs.onSurfaceVariant,
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
                       height: 1,
@@ -1989,8 +1994,8 @@ class _QtyStepperState extends State<_QtyStepper> {
                 _commitInlineQuantity(resetEmpty: true);
                 _focusNode.unfocus();
               },
-              style: const TextStyle(
-                color: Color(0xFF111827),
+              style: TextStyle(
+                color: cs.onSurface,
                 fontSize: 14,
                 fontWeight: FontWeight.w900,
                 height: 1,
@@ -2008,9 +2013,7 @@ class _QtyStepperState extends State<_QtyStepper> {
             child: Text(
               '+',
               style: TextStyle(
-                color: canIncrement
-                    ? const Color(0xFF6B7280)
-                    : const Color(0xFFE5E7EB),
+                color: canIncrement ? cs.onSurfaceVariant : cs.outlineVariant,
                 fontSize: 18,
                 fontWeight: FontWeight.w900,
                 height: 1,
@@ -2166,22 +2169,23 @@ class _StickyVoucherBar extends StatelessWidget {
     // hasDiscount predicate hanya cek amount > 0 (sebelumnya juga cek
     // discountVoucher != null, tapi sekarang loyalty voucher di-track
     // di slot terpisah, jadi cuma cek total discount aja).
+    final cs = Theme.of(context).colorScheme;
     final hasDiscount = discountAmount > 0;
     final hasShipping = shippingSelected && shippingDiscount > 0;
-    final leadingColor = hasSelection ? _discountRed : const Color(0xFF94A3B8);
+    final leadingColor = hasSelection ? _discountRed : cs.onSurfaceVariant;
     final leadingBackground =
-        hasSelection ? _discountRedSoft : const Color(0xFFF8FAFC);
+        hasSelection ? _discountRedSoft : cs.surfaceContainerHighest;
     final leadingBorder =
-        hasSelection ? _discountRedBorder : const Color(0xFFE2E8F0);
+        hasSelection ? _discountRedBorder : cs.outlineVariant;
 
     return Material(
-      color: NataloColors.surface,
+      color: cs.surface,
       child: Container(
         height: _voucherBarHeight,
         padding: const EdgeInsets.fromLTRB(16, 7, 16, 7),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          border: Border(top: BorderSide(color: Color(0xFFE5EAF1))),
+        decoration: BoxDecoration(
+          color: cs.surface,
+          border: Border(top: BorderSide(color: cs.outlineVariant)),
         ),
         child: InkWell(
           onTap: onTap,
@@ -2205,12 +2209,12 @@ class _StickyVoucherBar extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
-                const Text(
+                Text(
                   'Voucher',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: Color(0xFF334155),
+                    color: cs.onSurfaceVariant,
                     fontSize: 13,
                     fontWeight: FontWeight.w900,
                   ),
@@ -2231,9 +2235,7 @@ class _StickyVoucherBar extends StatelessWidget {
                 const SizedBox(width: 2),
                 Icon(
                   Icons.chevron_right_rounded,
-                  color: hasSelection
-                      ? const Color(0xFF64748B)
-                      : const Color(0xFFCBD5E1),
+                  color: hasSelection ? cs.onSurfaceVariant : cs.outlineVariant,
                 ),
               ],
             ),
@@ -2288,7 +2290,9 @@ class _VoucherBenefitChips extends StatelessWidget {
         _VoucherMiniChip(
           text: loading ? 'Cek...' : 'Pilih',
           color: _brandBlue,
-          background: const Color(0xFFEAF5FF),
+          background: Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+              : const Color(0xFFEAF5FF),
           border: const Color(0xFFBFDBFE),
         ),
       );
@@ -2474,6 +2478,7 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     final availableShippingVouchers =
         widget.availableDiscounts.where(_isCartShippingVoucher).toList();
@@ -2498,7 +2503,7 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
       builder: (context, controller) {
         return GlassSurface(
           radius: 28,
-          tint: Colors.white,
+          tint: cs.surface,
           padding: EdgeInsets.fromLTRB(18, 14, 18, 14 + bottomInset),
           child: Column(
             children: [
@@ -2506,18 +2511,18 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                 width: 44,
                 height: 5,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE2E8F0),
+                  color: cs.onSurfaceVariant,
                   borderRadius: BorderRadius.circular(99),
                 ),
               ),
               const SizedBox(height: 16),
               Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       'Pilih voucher atau promo',
                       style: TextStyle(
-                        color: Color(0xFF102033),
+                        color: cs.onSurface,
                         fontSize: 18,
                         fontWeight: FontWeight.w900,
                       ),
@@ -2619,13 +2624,13 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                       const SizedBox(height: 10),
                     ],
                     if (!hasAnyVoucher && !widget.loading)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 36),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 36),
                         child: Text(
                           'Belum ada voucher yang cocok',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: Color(0xFF64748B),
+                            color: cs.onSurfaceVariant,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
@@ -2633,10 +2638,10 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                     if (unavailableShippingVouchers.isNotEmpty ||
                         unavailableProductVouchers.isNotEmpty) ...[
                       const SizedBox(height: 8),
-                      const Text(
+                      Text(
                         'Belum bisa dipakai',
                         style: TextStyle(
-                          color: Color(0xFF64748B),
+                          color: cs.onSurfaceVariant,
                           fontSize: 12,
                           fontWeight: FontWeight.w900,
                         ),
@@ -2656,8 +2661,8 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                               : null,
                           icon: Icons.local_shipping_outlined,
                           accent: _shippingGreen,
-                          background: const Color(0xFFF8FAFC),
-                          border: const Color(0xFFE2E8F0),
+                          background: cs.surfaceContainerHighest,
+                          border: cs.outlineVariant,
                           selected: false,
                           enabled: false,
                           onTap: null,
@@ -2680,8 +2685,8 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                           accent: voucher.isLoyaltyClaim
                               ? _loyaltyPurple
                               : _discountRed,
-                          background: const Color(0xFFF8FAFC),
-                          border: const Color(0xFFE2E8F0),
+                          background: cs.surfaceContainerHighest,
+                          border: cs.outlineVariant,
                           selected: false,
                           enabled: false,
                           onTap: null,
@@ -2761,7 +2766,8 @@ class _CartVoucherCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveAccent = enabled ? accent : const Color(0xFF94A3B8);
+    final cs = Theme.of(context).colorScheme;
+    final effectiveAccent = enabled ? accent : cs.onSurfaceVariant;
     return InkWell(
       onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(20),
@@ -2831,9 +2837,7 @@ class _CartVoucherCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: enabled
-                          ? const Color(0xFF102033)
-                          : const Color(0xFF94A3B8),
+                      color: enabled ? cs.onSurface : cs.onSurfaceVariant,
                       fontSize: 14,
                       fontWeight: FontWeight.w900,
                     ),
@@ -2845,8 +2849,8 @@ class _CartVoucherCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: enabled
-                          ? const Color(0xFF64748B)
-                          : const Color(0xFF94A3B8),
+                          ? cs.onSurfaceVariant
+                          : cs.onSurfaceVariant,
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                     ),
@@ -2873,8 +2877,8 @@ class _CartVoucherCard extends StatelessWidget {
               color: selected
                   ? accent
                   : enabled
-                      ? const Color(0xFFCBD5E1)
-                      : const Color(0xFFE2E8F0),
+                      ? cs.outlineVariant
+                      : cs.outlineVariant,
             ),
           ],
         ),
@@ -2911,6 +2915,7 @@ class _CartRecommendationsSection extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
+    final cs = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2919,8 +2924,8 @@ class _CartRecommendationsSection extends StatelessWidget {
             Expanded(
               child: Text(
                 title,
-                style: const TextStyle(
-                  color: Color(0xFF17202A),
+                style: TextStyle(
+                  color: cs.onSurface,
                   fontSize: 16,
                   fontWeight: FontWeight.w900,
                 ),
@@ -3014,19 +3019,20 @@ class _CartSummaryBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final checkoutLabel =
         disabled ? 'Checkout' : 'Checkout ($selectedQuantity)';
     return Material(
-      color: NataloColors.surface,
+      color: cs.surface,
       elevation: 8,
       shadowColor: Colors.black.withValues(alpha: 0.08),
       child: SafeArea(
         top: false,
         child: Container(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             border: Border(
-              top: BorderSide(color: NataloColors.divider, width: 1),
+              top: BorderSide(color: cs.outlineVariant, width: 1),
             ),
           ),
           child: Row(
@@ -3039,10 +3045,10 @@ class _CartSummaryBar extends StatelessWidget {
                     // Animated ticker untuk total — smooth tween saat
                     // user toggle selection atau update qty.
                     if (disabled)
-                      const Text(
+                      Text(
                         'Belum ada pilihan',
                         style: TextStyle(
-                          color: NataloColors.textMuted,
+                          color: cs.onSurfaceVariant,
                           fontSize: 18,
                           fontWeight: FontWeight.w900,
                         ),
@@ -3050,10 +3056,10 @@ class _CartSummaryBar extends StatelessWidget {
                     else ...[
                       // Label "Subtotal" — jelaskan angka ini BUKAN total
                       // bayar final (ongkir + total lengkap di checkout).
-                      const Text(
+                      Text(
                         'Subtotal',
                         style: TextStyle(
-                          color: NataloColors.textMuted,
+                          color: cs.onSurfaceVariant,
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
                         ),
@@ -3237,11 +3243,12 @@ class _EmptyCartCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.fromLTRB(18, 20, 18, 22),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(28),
         border: Border.all(
           color: const Color(0xFFD9E7FF),
@@ -3266,26 +3273,26 @@ class _EmptyCartCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          const Text(
+          Text(
             'Keranjang kamu masih kosong',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 24,
               height: 1.18,
               fontWeight: FontWeight.w900,
-              color: Color(0xFF0F172A),
+              color: cs.onSurface,
               letterSpacing: -0.3,
             ),
           ),
           const SizedBox(height: 10),
-          const Text(
+          Text(
             'Yuk pilih makanan, vitamin, pasir, atau perlengkapan\nfavorit untuk hewan kesayanganmu.',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 16,
               height: 1.45,
               fontWeight: FontWeight.w500,
-              color: Color(0xFF64748B),
+              color: cs.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 22),
@@ -3336,6 +3343,7 @@ class _EmptyCartProductCarouselSection extends StatelessWidget {
   Widget build(BuildContext context) {
     if (products.isEmpty) return const SizedBox.shrink();
 
+    final cs = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -3346,10 +3354,10 @@ class _EmptyCartProductCarouselSection extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 21,
                     fontWeight: FontWeight.w900,
-                    color: Color(0xFF0F172A),
+                    color: cs.onSurface,
                     letterSpacing: -0.2,
                   ),
                 ),

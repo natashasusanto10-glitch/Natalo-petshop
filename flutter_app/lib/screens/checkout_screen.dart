@@ -745,7 +745,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       builder: (context) => _CheckoutProductsSheet(items: _checkoutItems),
     );
   }
@@ -757,7 +757,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       builder: (context) => _CheckoutNoteSheet(controller: draft),
     );
     draft.dispose();
@@ -771,7 +771,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       builder: (context) => _ShippingMethodSheet(
         rates: _shippingRates,
         selected: _selectedRate,
@@ -809,7 +809,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final picked = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       builder: (context) => _PaymentMethodSheet(selected: _payment),
     );
     if (!mounted || picked == null || picked == _payment) return;
@@ -1082,10 +1082,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     return AnimatedBuilder(
       animation: cartStore,
       builder: (context, _) {
+        final cs = Theme.of(context).colorScheme;
         if (_redirectingToLogin) {
-          return const Scaffold(
-            backgroundColor: Color(0xFFF8FAFC),
-            body: Center(
+          return Scaffold(
+            backgroundColor: cs.surface,
+            body: const Center(
               child: CircularProgressIndicator(color: _brandBlue),
             ),
           );
@@ -1103,19 +1104,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             }
           },
           child: Scaffold(
-            backgroundColor: const Color(0xFFF6F9FF),
+            backgroundColor: cs.surface,
             appBar: AppBar(
-              backgroundColor: const Color(0xFFF6F9FF),
+              backgroundColor: cs.surface,
               elevation: 0,
               scrolledUnderElevation: 0,
-              surfaceTintColor: const Color(0xFFF6F9FF),
+              surfaceTintColor: cs.surface,
               automaticallyImplyLeading: false,
               centerTitle: true,
               leading: IconButton(
                 tooltip: 'Kembali',
-                icon: const Icon(
+                icon: Icon(
                   Icons.arrow_back_rounded,
-                  color: Color(0xFF17202A),
+                  color: cs.onSurface,
                 ),
                 onPressed: () async {
                   AppHaptics.tap();
@@ -1125,10 +1126,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   }
                 },
               ),
-              title: const Text(
+              title: Text(
                 'Checkout',
                 style: TextStyle(
-                  color: Color(0xFF17202A),
+                  color: cs.onSurface,
                   fontSize: 18,
                   fontWeight: FontWeight.w900,
                 ),
@@ -1299,6 +1300,7 @@ class _BackToCartDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final hasVoucher = voucherDiscount > 0;
     final hasPoints = earnedPoints > 0;
     return Dialog(
@@ -1315,8 +1317,10 @@ class _BackToCartDialog extends StatelessWidget {
                 Container(
                   height: 72,
                   width: 72,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFEAF5FF),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                        : const Color(0xFFEAF5FF),
                     shape: BoxShape.circle,
                   ),
                   alignment: Alignment.center,
@@ -1336,8 +1340,8 @@ class _BackToCartDialog extends StatelessWidget {
                           : 'Lanjut order, dapat poin!')
                       : 'Yakin kembali ke keranjang?',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Color(0xFF111111),
+                  style: TextStyle(
+                    color: cs.onSurface,
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
                   ),
@@ -1353,7 +1357,7 @@ class _BackToCartDialog extends StatelessWidget {
                     width: double.infinity,
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF8FAFC),
+                      color: cs.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: Column(
@@ -1381,11 +1385,11 @@ class _BackToCartDialog extends StatelessWidget {
                     ),
                   ),
                 ] else
-                  const Text(
+                  Text(
                     'Pesanan kamu belum selesai.\nKamu bisa lanjut checkout atau kembali mengatur keranjang.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: Color(0xFF6B7280),
+                      color: cs.onSurfaceVariant,
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                       height: 1.55,
@@ -1423,7 +1427,7 @@ class _BackToCartDialog extends StatelessWidget {
                     Navigator.pop(context, true);
                   },
                   style: TextButton.styleFrom(
-                    foregroundColor: const Color(0xFF334155),
+                    foregroundColor: cs.onSurfaceVariant,
                     minimumSize: const Size.fromHeight(44),
                     textStyle: const TextStyle(
                       fontSize: 14,
@@ -1450,12 +1454,12 @@ class _BackToCartDialog extends StatelessWidget {
                   AppHaptics.tap();
                   Navigator.pop(context, true);
                 },
-                child: const Padding(
-                  padding: EdgeInsets.all(8),
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
                   child: Icon(
                     Icons.close_rounded,
                     size: 20,
-                    color: Color(0xFF94A3B8),
+                    color: cs.onSurfaceVariant,
                   ),
                 ),
               ),
@@ -1482,10 +1486,11 @@ class _BenefitSummaryText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final hasVoucher = voucherDiscount > 0;
     final hasPoints = earnedPoints > 0;
-    const baseStyle = TextStyle(
-      color: Color(0xFF334155),
+    final baseStyle = TextStyle(
+      color: cs.onSurfaceVariant,
       fontSize: 13,
       fontWeight: FontWeight.w600,
       height: 1.55,
@@ -1577,8 +1582,8 @@ class _BenefitRow extends StatelessWidget {
         Expanded(
           child: Text(
             label,
-            style: const TextStyle(
-              color: Color(0xFF334155),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 13,
               fontWeight: FontWeight.w700,
             ),
@@ -1610,6 +1615,7 @@ class _CheckoutCardShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final radius = BorderRadius.circular(16);
     return Container(
       decoration: BoxDecoration(
@@ -1623,7 +1629,7 @@ class _CheckoutCardShell extends StatelessWidget {
         ],
       ),
       child: Material(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: radius,
         clipBehavior: Clip.antiAlias,
         child: InkWell(
@@ -1633,7 +1639,7 @@ class _CheckoutCardShell extends StatelessWidget {
             padding: padding,
             decoration: BoxDecoration(
               borderRadius: radius,
-              border: Border.all(color: const Color(0xFFE8EEF7)),
+              border: Border.all(color: cs.outlineVariant),
             ),
             child: child,
           ),
@@ -1656,11 +1662,17 @@ class _CheckoutSectionIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // Soft pastel blue tile behind a blue icon → adapt in dark.
+    final effectiveBackground =
+        (isDark && background == const Color(0xFFEAF3FF))
+            ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+            : background;
     return Container(
       height: 42,
       width: 42,
       decoration: BoxDecoration(
-        color: background,
+        color: effectiveBackground,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Icon(icon, color: color, size: 22),
@@ -1683,9 +1695,10 @@ class _ShippingMethodIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final spec = _spec;
-    final bg = disabled ? const Color(0xFFF2F4F7) : spec.background;
-    final fg = disabled ? const Color(0xFF98A2B3) : spec.foreground;
+    final bg = disabled ? cs.surfaceContainerHighest : spec.background;
+    final fg = disabled ? cs.onSurfaceVariant : spec.foreground;
 
     return Container(
       height: size,
@@ -1733,6 +1746,7 @@ class _CheckoutOrderSuccessDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
       backgroundColor: Colors.transparent,
@@ -1740,7 +1754,7 @@ class _CheckoutOrderSuccessDialog extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: cs.surface,
           borderRadius: BorderRadius.circular(30),
           boxShadow: [
             BoxShadow(
@@ -1779,11 +1793,11 @@ class _CheckoutOrderSuccessDialog extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Pesanan Dibuat',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Color(0xFF17202A),
+                color: cs.onSurface,
                 fontSize: 24,
                 fontWeight: FontWeight.w900,
                 height: 1.15,
@@ -1793,8 +1807,8 @@ class _CheckoutOrderSuccessDialog extends StatelessWidget {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Color(0xFF667085),
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
                 height: 1.42,
@@ -1805,17 +1819,17 @@ class _CheckoutOrderSuccessDialog extends StatelessWidget {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: cs.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: const Color(0xFFE8EEF7)),
+                border: Border.all(color: cs.outlineVariant),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Nomor order',
                     style: TextStyle(
-                      color: Color(0xFF667085),
+                      color: cs.onSurfaceVariant,
                       fontSize: 12,
                       fontWeight: FontWeight.w900,
                     ),
@@ -1825,8 +1839,8 @@ class _CheckoutOrderSuccessDialog extends StatelessWidget {
                     orderNumber,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF17202A),
+                    style: TextStyle(
+                      color: cs.onSurface,
                       fontSize: 17,
                       fontWeight: FontWeight.w900,
                       letterSpacing: 0.2,
@@ -2063,6 +2077,7 @@ class _CheckoutAddressCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return _CheckoutCardShell(
       onTap: onTap,
       child: Row(
@@ -2074,10 +2089,10 @@ class _CheckoutAddressCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Alamat Pengiriman',
                   style: TextStyle(
-                    color: Color(0xFF17202A),
+                    color: cs.onSurface,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -2086,8 +2101,8 @@ class _CheckoutAddressCard extends StatelessWidget {
                   selected?.recipient.isNotEmpty == true
                       ? selected!.recipient
                       : 'Alamat belum dipilih',
-                  style: const TextStyle(
-                    color: Color(0xFF17202A),
+                  style: TextStyle(
+                    color: cs.onSurface,
                     fontSize: 14,
                     fontWeight: FontWeight.w900,
                   ),
@@ -2098,8 +2113,8 @@ class _CheckoutAddressCard extends StatelessWidget {
                     selected!.address,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF667085),
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
                       fontWeight: FontWeight.w700,
                       height: 1.35,
                     ),
@@ -2108,8 +2123,8 @@ class _CheckoutAddressCard extends StatelessWidget {
                     const SizedBox(height: 3),
                     Text(
                       selected!.phone,
-                      style: const TextStyle(
-                        color: Color(0xFF667085),
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                       ),
@@ -2117,10 +2132,10 @@ class _CheckoutAddressCard extends StatelessWidget {
                   ],
                 ] else ...[
                   const SizedBox(height: 3),
-                  const Text(
+                  Text(
                     'Pilih alamat member untuk melanjutkan checkout.',
                     style: TextStyle(
-                      color: Color(0xFF667085),
+                      color: cs.onSurfaceVariant,
                       fontWeight: FontWeight.w700,
                       height: 1.35,
                     ),
@@ -2129,7 +2144,7 @@ class _CheckoutAddressCard extends StatelessWidget {
               ],
             ),
           ),
-          const Icon(Icons.chevron_right_rounded, color: Color(0xFF98A2B3)),
+          Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant),
         ],
       ),
     );
@@ -2147,6 +2162,7 @@ class _CheckoutProductsSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final previewItems = items.take(3).toList();
     final totalQty = items.fold<int>(0, (sum, item) => sum + item.quantity);
     final remaining = items.length - previewItems.length;
@@ -2162,10 +2178,10 @@ class _CheckoutProductsSummaryCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Ringkasan Produk dibeli',
                       style: TextStyle(
-                        color: Color(0xFF17202A),
+                        color: cs.onSurface,
                         fontWeight: FontWeight.w900,
                         fontSize: 16,
                       ),
@@ -2173,8 +2189,8 @@ class _CheckoutProductsSummaryCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       '$totalQty produk dalam pesanan',
-                      style: const TextStyle(
-                        color: Color(0xFF667085),
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                       ),
@@ -2196,7 +2212,7 @@ class _CheckoutProductsSummaryCard extends StatelessWidget {
           }),
           if (remaining > 0 && onViewAll != null) ...[
             const SizedBox(height: 12),
-            const Divider(height: 1, color: Color(0xFFE8EEF7)),
+            Divider(height: 1, color: cs.outlineVariant),
             TextButton(
               onPressed: onViewAll,
               style: TextButton.styleFrom(
@@ -2234,6 +2250,7 @@ class _CheckoutProductRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Row(
       children: [
         ClipRRect(
@@ -2254,8 +2271,8 @@ class _CheckoutProductRow extends StatelessWidget {
                 item.product.title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF17202A),
+                style: TextStyle(
+                  color: cs.onSurface,
                   fontWeight: FontWeight.w900,
                   height: 1.25,
                 ),
@@ -2266,8 +2283,8 @@ class _CheckoutProductRow extends StatelessWidget {
                   item.variantLabel!,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF667085),
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
@@ -2292,13 +2309,13 @@ class _CheckoutProductRow extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
-            color: const Color(0xFFF2F6FC),
+            color: cs.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(999),
           ),
           child: Text(
             'Qty ${item.quantity}',
-            style: const TextStyle(
-              color: Color(0xFF344054),
+            style: TextStyle(
+              color: cs.onSurfaceVariant,
               fontSize: 12,
               fontWeight: FontWeight.w900,
             ),
@@ -2324,17 +2341,18 @@ class _CheckoutProductsSheet extends StatelessWidget {
         minChildSize: 0.45,
         maxChildSize: 0.92,
         builder: (context, controller) {
+          final cs = Theme.of(context).colorScheme;
           return Column(
             children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(20, 4, 20, 14),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 14),
                 child: Row(
                   children: [
                     Expanded(
                       child: Text(
                         'Produk dalam pesanan',
                         style: TextStyle(
-                          color: Color(0xFF17202A),
+                          color: cs.onSurface,
                           fontSize: 18,
                           fontWeight: FontWeight.w900,
                         ),
@@ -2343,7 +2361,7 @@ class _CheckoutProductsSheet extends StatelessWidget {
                   ],
                 ),
               ),
-              const Divider(height: 1, color: Color(0xFFE8EEF7)),
+              Divider(height: 1, color: cs.outlineVariant),
               Expanded(
                 child: ListView.separated(
                   controller: controller,
@@ -2377,6 +2395,7 @@ class _CheckoutNoteTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final hasNote = note.trim().isNotEmpty;
     return _CheckoutCardShell(
       onTap: onTap,
@@ -2392,10 +2411,10 @@ class _CheckoutNoteTile extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Catatan',
                   style: TextStyle(
-                    color: Color(0xFF17202A),
+                    color: cs.onSurface,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -2405,8 +2424,8 @@ class _CheckoutNoteTile extends StatelessWidget {
                     note.trim(),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF667085),
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                     ),
@@ -2415,7 +2434,7 @@ class _CheckoutNoteTile extends StatelessWidget {
               ],
             ),
           ),
-          const Icon(Icons.chevron_right_rounded, color: Color(0xFF98A2B3)),
+          Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant),
         ],
       ),
     );
@@ -2429,6 +2448,7 @@ class _CheckoutNoteSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final bottom = MediaQuery.viewInsetsOf(context).bottom;
     return AnimatedPadding(
       duration: const Duration(milliseconds: 180),
@@ -2442,10 +2462,10 @@ class _CheckoutNoteSheet extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Catatan',
                 style: TextStyle(
-                  color: Color(0xFF17202A),
+                  color: cs.onSurface,
                   fontSize: 18,
                   fontWeight: FontWeight.w900,
                 ),
@@ -2459,14 +2479,14 @@ class _CheckoutNoteSheet extends StatelessWidget {
                 decoration: InputDecoration(
                   hintText: 'Contoh: packing rapi ya admin.',
                   filled: true,
-                  fillColor: const Color(0xFFF6F9FF),
+                  fillColor: cs.surfaceContainerHighest,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(color: Color(0xFFE8EEF7)),
+                    borderSide: BorderSide(color: cs.outlineVariant),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(color: Color(0xFFE8EEF7)),
+                    borderSide: BorderSide(color: cs.outlineVariant),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
@@ -2512,6 +2532,7 @@ class _CheckoutShippingMethodCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final canChange = !loading && rates.isNotEmpty;
     return _CheckoutCardShell(
       onTap: canChange ? onTap : null,
@@ -2535,8 +2556,8 @@ class _CheckoutShippingMethodCard extends StatelessWidget {
                       hasSelection && selected.isSelfPickup
                           ? 'Metode Pengambilan'
                           : 'Metode Pengiriman',
-                      style: const TextStyle(
-                        color: Color(0xFF17202A),
+                      style: TextStyle(
+                        color: cs.onSurface,
                         fontWeight: FontWeight.w900,
                         fontSize: 16,
                       ),
@@ -2546,8 +2567,8 @@ class _CheckoutShippingMethodCard extends StatelessWidget {
                       hasSelection ? selected.label : 'Pilih metode pengiriman',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF17202A),
+                      style: TextStyle(
+                        color: cs.onSurface,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
@@ -2562,10 +2583,10 @@ class _CheckoutShippingMethodCard extends StatelessWidget {
                                   : formatRupiah(selected.price),
                       style: TextStyle(
                         color: !hasSelection
-                            ? const Color(0xFF667085)
+                            ? cs.onSurfaceVariant
                             : selected.price == 0
                                 ? const Color(0xFF16A34A)
-                                : NataloColors.priceText,
+                                : cs.onSurface,
                         fontSize: 13,
                         fontWeight: FontWeight.w900,
                       ),
@@ -2576,8 +2597,8 @@ class _CheckoutShippingMethodCard extends StatelessWidget {
                       const SizedBox(height: 3),
                       Text(
                         selected.duration,
-                        style: const TextStyle(
-                          color: Color(0xFF667085),
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant,
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
                         ),
@@ -2623,26 +2644,26 @@ class _CheckoutShippingMethodCard extends StatelessWidget {
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: cs.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFE8EEF7)),
+                border: Border.all(color: cs.outlineVariant),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Lokasi Toko',
                     style: TextStyle(
-                      color: Color(0xFF667085),
+                      color: cs.onSurfaceVariant,
                       fontSize: 12,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
                   const SizedBox(height: 4),
-                  const Text(
+                  Text(
                     '${PickupStoreInfo.name}\n${PickupStoreInfo.address}',
                     style: TextStyle(
-                      color: Color(0xFF17202A),
+                      color: cs.onSurface,
                       fontSize: 13,
                       fontWeight: FontWeight.w800,
                       height: 1.35,
@@ -2735,17 +2756,18 @@ class _ShippingMethodSheet extends StatelessWidget {
         minChildSize: 0.42,
         maxChildSize: 0.9,
         builder: (context, controller) {
+          final cs = Theme.of(context).colorScheme;
           return Column(
             children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(20, 4, 20, 10),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
                 child: Row(
                   children: [
                     Expanded(
                       child: Text(
                         'Metode Pengiriman',
                         style: TextStyle(
-                          color: Color(0xFF17202A),
+                          color: cs.onSurface,
                           fontSize: 18,
                           fontWeight: FontWeight.w900,
                         ),
@@ -2757,7 +2779,7 @@ class _ShippingMethodSheet extends StatelessWidget {
               if (loading)
                 const LinearProgressIndicator(minHeight: 2)
               else
-                const Divider(height: 1, color: Color(0xFFE8EEF7)),
+                Divider(height: 1, color: cs.outlineVariant),
               if (message != null && message!.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
@@ -2915,12 +2937,15 @@ class _ShippingRateGroupHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Row(
       children: [
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
           decoration: BoxDecoration(
-            color: const Color(0xFFEAF3FF),
+            color: Theme.of(context).brightness == Brightness.dark
+                ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                : const Color(0xFFEAF3FF),
             borderRadius: BorderRadius.circular(7),
           ),
           child: Text(
@@ -2936,8 +2961,8 @@ class _ShippingRateGroupHeader extends StatelessWidget {
         const SizedBox(width: 8),
         Text(
           group.title,
-          style: const TextStyle(
-            color: Color(0xFF17202A),
+          style: TextStyle(
+            color: cs.onSurface,
             fontSize: 14,
             fontWeight: FontWeight.w900,
           ),
@@ -2948,8 +2973,8 @@ class _ShippingRateGroupHeader extends StatelessWidget {
             group.hint,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Color(0xFF98A2B3),
+            style: TextStyle(
+              color: cs.onSurfaceVariant,
               fontSize: 12,
               fontWeight: FontWeight.w700,
             ),
@@ -2973,9 +2998,15 @@ class _ShippingRateTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final disabled = onTap == null;
     return Material(
-      color: active ? const Color(0xFFEAF5FF) : Colors.white,
+      color: active
+          ? (isDark
+              ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+              : const Color(0xFFEAF5FF))
+          : cs.surface,
       borderRadius: BorderRadius.circular(16),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -2985,7 +3016,7 @@ class _ShippingRateTile extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: active ? _brandBlue : const Color(0xFFE8EEF7),
+              color: active ? _brandBlue : cs.outlineVariant,
             ),
           ),
           child: Row(
@@ -2997,8 +3028,8 @@ class _ShippingRateTile extends StatelessWidget {
                 color: active
                     ? _brandBlue
                     : disabled
-                        ? const Color(0xFFD0D5DD)
-                        : const Color(0xFF98A2B3),
+                        ? cs.outlineVariant
+                        : cs.onSurfaceVariant,
               ),
               const SizedBox(width: 10),
               _ShippingMethodIcon(rate: rate, disabled: disabled, size: 42),
@@ -3012,9 +3043,7 @@ class _ShippingRateTile extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: disabled
-                            ? const Color(0xFF98A2B3)
-                            : const Color(0xFF17202A),
+                        color: disabled ? cs.onSurfaceVariant : cs.onSurface,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
@@ -3027,8 +3056,8 @@ class _ShippingRateTile extends StatelessWidget {
                               : rate.duration,
                       maxLines: rate.isSelfPickup ? 2 : 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF667085),
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                       ),
@@ -3041,10 +3070,10 @@ class _ShippingRateTile extends StatelessWidget {
                 rate.price == 0 ? 'Gratis' : formatRupiah(rate.price),
                 style: TextStyle(
                   color: disabled
-                      ? const Color(0xFF98A2B3)
+                      ? cs.onSurfaceVariant
                       : rate.price == 0
                           ? const Color(0xFF16A34A)
-                          : const Color(0xFF17202A),
+                          : cs.onSurface,
                   fontWeight: FontWeight.w900,
                 ),
               ),
@@ -3067,6 +3096,7 @@ class _CheckoutPaymentMethodCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final subtitle = payment == 'Midtrans'
         ? 'QRIS, Virtual Account, E-wallet'
         : 'Konfirmasi pembayaran setelah transfer';
@@ -3082,10 +3112,10 @@ class _CheckoutPaymentMethodCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Metode Pembayaran',
                   style: TextStyle(
-                    color: Color(0xFF17202A),
+                    color: cs.onSurface,
                     fontWeight: FontWeight.w900,
                     fontSize: 16,
                   ),
@@ -3093,16 +3123,16 @@ class _CheckoutPaymentMethodCard extends StatelessWidget {
                 const SizedBox(height: 8),
                 Text(
                   payment,
-                  style: const TextStyle(
-                    color: Color(0xFF17202A),
+                  style: TextStyle(
+                    color: cs.onSurface,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
                 const SizedBox(height: 3),
                 Text(
                   subtitle,
-                  style: const TextStyle(
-                    color: Color(0xFF667085),
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
@@ -3138,6 +3168,7 @@ class _PaymentMethodSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     const options = ['Transfer Manual', 'Midtrans'];
     return SafeArea(
       top: false,
@@ -3147,10 +3178,10 @@ class _PaymentMethodSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Metode Pembayaran',
               style: TextStyle(
-                color: Color(0xFF17202A),
+                color: cs.onSurface,
                 fontSize: 18,
                 fontWeight: FontWeight.w900,
               ),
@@ -3193,8 +3224,14 @@ class _PaymentMethodTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Material(
-      color: active ? const Color(0xFFEAF5FF) : Colors.white,
+      color: active
+          ? (isDark
+              ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+              : const Color(0xFFEAF5FF))
+          : cs.surface,
       borderRadius: BorderRadius.circular(16),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -3204,7 +3241,7 @@ class _PaymentMethodTile extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: active ? _brandBlue : const Color(0xFFE8EEF7),
+              color: active ? _brandBlue : cs.outlineVariant,
             ),
           ),
           child: Row(
@@ -3213,7 +3250,7 @@ class _PaymentMethodTile extends StatelessWidget {
                 active
                     ? Icons.radio_button_checked_rounded
                     : Icons.radio_button_off_rounded,
-                color: active ? _brandBlue : const Color(0xFF98A2B3),
+                color: active ? _brandBlue : cs.onSurfaceVariant,
               ),
               const SizedBox(width: 12),
               const _CheckoutSectionIcon(icon: Icons.credit_card_rounded),
@@ -3224,16 +3261,16 @@ class _PaymentMethodTile extends StatelessWidget {
                   children: [
                     Text(
                       option,
-                      style: const TextStyle(
-                        color: Color(0xFF17202A),
+                      style: TextStyle(
+                        color: cs.onSurface,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
                     const SizedBox(height: 3),
                     Text(
                       subtitle,
-                      style: const TextStyle(
-                        color: Color(0xFF667085),
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                       ),
@@ -3279,6 +3316,7 @@ class _RefundBalanceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return _CheckoutCardShell(
       child: Row(
         children: [
@@ -3286,7 +3324,9 @@ class _RefundBalanceCard extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: const Color(0xFFEAF2FF),
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                  : const Color(0xFFEAF2FF),
               borderRadius: BorderRadius.circular(14),
             ),
             child: const Icon(
@@ -3300,10 +3340,10 @@ class _RefundBalanceCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Saldo Refund',
                   style: TextStyle(
-                    color: Color(0xFF17202A),
+                    color: cs.onSurface,
                     fontSize: 14,
                     fontWeight: FontWeight.w900,
                   ),
@@ -3373,19 +3413,20 @@ class _PaymentSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return _CheckoutCardShell(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              _CheckoutSectionIcon(icon: Icons.receipt_long_rounded),
-              SizedBox(width: 12),
+              const _CheckoutSectionIcon(icon: Icons.receipt_long_rounded),
+              const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   'Rincian Pembayaran',
                   style: TextStyle(
-                    color: Color(0xFF17202A),
+                    color: cs.onSurface,
                     fontWeight: FontWeight.w900,
                     fontSize: 16,
                   ),
@@ -3742,13 +3783,14 @@ class _SummaryLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final valueColor = strong
-        ? const Color(0xFF17202A)
+        ? cs.onSurface
         : discount
             ? const Color(0xFFE91E63)
             : freeShipping
                 ? const Color(0xFF16A34A)
-                : const Color(0xFF17202A);
+                : cs.onSurface;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -3757,8 +3799,7 @@ class _SummaryLine extends StatelessWidget {
             child: Text(
               label,
               style: TextStyle(
-                color:
-                    strong ? const Color(0xFF17202A) : const Color(0xFF6B7280),
+                color: strong ? cs.onSurface : cs.onSurfaceVariant,
                 fontWeight: strong ? FontWeight.w900 : FontWeight.w700,
               ),
             ),
@@ -3798,6 +3839,7 @@ class _CheckoutBottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final totalSavings = productDiscount + shippingDiscount;
     return AnimatedSlide(
       duration: const Duration(milliseconds: 220),
@@ -3817,18 +3859,18 @@ class _CheckoutBottomBar extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Total Bayar',
                         style: TextStyle(
-                          color: Color(0xFF6B7280),
+                          color: cs.onSurfaceVariant,
                           fontSize: 12,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
                       Text(
                         formatRupiah(total),
-                        style: const TextStyle(
-                          color: Color(0xFF17202A),
+                        style: TextStyle(
+                          color: cs.onSurface,
                           fontSize: 18,
                           fontWeight: FontWeight.w900,
                         ),
@@ -3892,14 +3934,15 @@ class _CheckoutFinalPaymentPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return _CheckoutCardShell(
       padding: const EdgeInsets.all(18),
       child: Column(
         children: [
-          const Text(
+          Text(
             'Total Bayar',
             style: TextStyle(
-              color: Color(0xFF667085),
+              color: cs.onSurfaceVariant,
               fontSize: 13,
               fontWeight: FontWeight.w800,
             ),
@@ -3907,8 +3950,8 @@ class _CheckoutFinalPaymentPanel extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             formatRupiah(total),
-            style: const TextStyle(
-              color: Color(0xFF17202A),
+            style: TextStyle(
+              color: cs.onSurface,
               fontSize: 24,
               fontWeight: FontWeight.w900,
             ),
@@ -4042,6 +4085,7 @@ class _VoucherSlotState extends State<_VoucherSlot> {
     final emptyChipLabel = totalKnownVouchers > 0
         ? '$totalKnownVouchers tersedia'
         : 'Lihat voucher';
+    final cs = Theme.of(context).colorScheme;
 
     return _CheckoutCardShell(
       onTap: null,
@@ -4067,12 +4111,12 @@ class _VoucherSlotState extends State<_VoucherSlot> {
                     padding: const EdgeInsets.symmetric(vertical: 6),
                     child: Row(
                       children: [
-                        const Text(
+                        Text(
                           'Voucher',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: Color(0xFF17202A),
+                            color: cs.onSurface,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
@@ -4084,12 +4128,12 @@ class _VoucherSlotState extends State<_VoucherSlot> {
                             child: Row(
                               children: [
                                 if (widget.loading) ...[
-                                  const SizedBox(
+                                  SizedBox(
                                     height: 16,
                                     width: 16,
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
-                                      color: Color(0xFF667085),
+                                      color: cs.onSurfaceVariant,
                                     ),
                                   ),
                                   const SizedBox(width: 8),
@@ -4126,9 +4170,9 @@ class _VoucherSlotState extends State<_VoucherSlot> {
                                 ] else
                                   _VoucherSummaryChip(
                                     label: emptyChipLabel,
-                                    color: const Color(0xFF667085),
-                                    background: const Color(0xFFF2F4F7),
-                                    border: const Color(0xFFE4E7EC),
+                                    color: cs.onSurfaceVariant,
+                                    background: cs.surfaceContainerHighest,
+                                    border: cs.outlineVariant,
                                   ),
                               ],
                             ),
@@ -4139,7 +4183,7 @@ class _VoucherSlotState extends State<_VoucherSlot> {
                           Icons.chevron_right_rounded,
                           color: hasSelected
                               ? const Color(0xFFE91E63)
-                              : const Color(0xFF667085),
+                              : cs.onSurfaceVariant,
                           size: 22,
                         ),
                       ],
@@ -4360,10 +4404,12 @@ class _CheckoutVoucherDetailsSheet extends StatelessWidget {
         minChildSize: 0.46,
         maxChildSize: 0.92,
         builder: (context, controller) {
+          final cs = Theme.of(context).colorScheme;
           return Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            decoration: BoxDecoration(
+              color: cs.surface,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(28)),
             ),
             child: Column(
               children: [
@@ -4372,7 +4418,7 @@ class _CheckoutVoucherDetailsSheet extends StatelessWidget {
                   height: 5,
                   width: 44,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFD0D5DD),
+                    color: cs.onSurfaceVariant,
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
@@ -4380,23 +4426,23 @@ class _CheckoutVoucherDetailsSheet extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
                   child: Row(
                     children: [
-                      const Expanded(
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               'Voucher Natalo',
                               style: TextStyle(
-                                color: Color(0xFF17202A),
+                                color: cs.onSurface,
                                 fontSize: 20,
                                 fontWeight: FontWeight.w900,
                               ),
                             ),
-                            SizedBox(height: 3),
+                            const SizedBox(height: 3),
                             Text(
                               'Cek voucher yang dipakai otomatis dan voucher lain.',
                               style: TextStyle(
-                                color: Color(0xFF667085),
+                                color: cs.onSurfaceVariant,
                                 fontSize: 12,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -4412,7 +4458,7 @@ class _CheckoutVoucherDetailsSheet extends StatelessWidget {
                   ),
                 ),
                 if (loading) const LinearProgressIndicator(minHeight: 2),
-                const Divider(height: 1, color: Color(0xFFE8EEF7)),
+                Divider(height: 1, color: cs.outlineVariant),
                 Expanded(
                   child: hasAny
                       ? ListView(
@@ -4489,8 +4535,8 @@ class _VoucherSheetSectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: const TextStyle(
-        color: Color(0xFF667085),
+      style: TextStyle(
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
         fontSize: 12,
         fontWeight: FontWeight.w900,
       ),
@@ -4726,9 +4772,9 @@ class _VoucherDetailTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final accent = _voucherAccentColor(voucher);
-    final foreground =
-        enabled ? const Color(0xFF17202A) : const Color(0xFF98A2B3);
+    final foreground = enabled ? cs.onSurface : cs.onSurfaceVariant;
     final title = _voucherTypeLabel(voucher);
     final subtitle = voucher.disabledReason?.isNotEmpty == true
         ? voucher.disabledReason!
@@ -4739,10 +4785,10 @@ class _VoucherDetailTile extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: cs.surface,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: const Color(0xFFE8EEF7),
+            color: cs.outlineVariant,
             width: 1,
           ),
         ),
@@ -4787,8 +4833,8 @@ class _VoucherDetailTile extends StatelessWidget {
                       else
                         Text(
                           _voucherSavingsText(voucher),
-                          style: const TextStyle(
-                            color: Color(0xFF98A2B3),
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
                             fontSize: 12,
                             fontWeight: FontWeight.w900,
                           ),
@@ -4801,9 +4847,7 @@ class _VoucherDetailTile extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: enabled
-                          ? const Color(0xFF667085)
-                          : const Color(0xFF98A2B3),
+                      color: enabled ? cs.onSurfaceVariant : cs.onSurfaceVariant,
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                       height: 1.35,
@@ -4816,7 +4860,7 @@ class _VoucherDetailTile extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: enabled ? accent : const Color(0xFF98A2B3),
+                        color: enabled ? accent : cs.onSurfaceVariant,
                         fontSize: 11,
                         fontWeight: FontWeight.w900,
                       ),
@@ -4873,14 +4917,14 @@ class _VoucherEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    return Center(
       child: Padding(
-        padding: EdgeInsets.all(24),
+        padding: const EdgeInsets.all(24),
         child: Text(
           'Belum ada voucher yang bisa digunakan untuk pesanan ini.',
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: Color(0xFF667085),
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
             fontWeight: FontWeight.w800,
           ),
         ),
@@ -4904,6 +4948,7 @@ class _ManualVoucherCodeField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return TextField(
       controller: controller,
       textInputAction: TextInputAction.done,
@@ -4911,8 +4956,8 @@ class _ManualVoucherCodeField extends StatelessWidget {
       onSubmitted: (_) => onApply(),
       decoration: InputDecoration(
         hintText: 'Kode Manual',
-        hintStyle: const TextStyle(
-          color: Color(0xFF98A2B3),
+        hintStyle: TextStyle(
+          color: cs.onSurfaceVariant,
           fontWeight: FontWeight.w700,
         ),
         prefixIcon: const Icon(
@@ -4954,16 +4999,16 @@ class _ManualVoucherCodeField extends StatelessWidget {
           },
         ),
         filled: true,
-        fillColor: const Color(0xFFF8FAFC),
+        fillColor: cs.surfaceContainerHighest,
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: Color(0xFFE8EEF7)),
+          borderSide: BorderSide(color: cs.outlineVariant),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: Color(0xFFE8EEF7)),
+          borderSide: BorderSide(color: cs.outlineVariant),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
