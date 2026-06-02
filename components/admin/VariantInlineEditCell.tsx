@@ -178,18 +178,26 @@ export function VariantInlineEditCell({
       </button>
 
       {open && (
-        <div
-          // Modern frosted-glass: backdrop-blur halus + dim lebih ringan.
-          // Konten di belakang TERLIHAT samar (blur) — bukan sekadar gelap.
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-md"
-          onClick={() => !saving && setOpen(false)}
-        >
+        <>
+          {/* Backdrop & dialog SIBLINGS (bukan parent-child) — `backdrop-filter`
+              di parent + child `bg-white` memicu Chromium stacking-context bug
+              yang bikin dialog tampak setengah transparan. Sebagai siblings,
+              dialog tidak share stacking context dengan backdrop-filter. */}
           <div
-            // Dialog: solid white + ring halus + shadow-2xl elevation.
-            // ring-1 ring-black/5 = depth subtle tanpa heavy shadow.
-            className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-black/5"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-md"
+            onClick={() => !saving && setOpen(false)}
+          />
+          <div
+            className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center p-4"
           >
+            <div
+              // `bg-white` + inline `backgroundColor` sebagai guarantee solid
+              // walau ada CSS cascade aneh. `isolate` cegah backdrop-filter parent
+              // ikutan pengaruhi dialog kalau di future ada wrapper baru.
+              className="pointer-events-auto isolate w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-black/5"
+              style={{ backgroundColor: "#ffffff" }}
+              onClick={(e) => e.stopPropagation()}
+            >
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="font-black text-zinc-950">
@@ -264,8 +272,9 @@ export function VariantInlineEditCell({
                 {saving ? "Menyimpan..." : "Simpan"}
               </button>
             </div>
+            </div>
           </div>
-        </div>
+        </>
       )}
     </>
   );
