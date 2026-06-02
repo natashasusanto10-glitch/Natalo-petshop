@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { formatRupiah } from "@/lib/format";
 
 type Field = "price" | "stock";
@@ -72,6 +73,14 @@ export function VariantInlineEditCell({
   const [attributes, setAttributes] = useState<VariantAttribute[]>([]);
   const [variants, setVariants] = useState<Variant[]>([]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  // ROOT CAUSE bug "modal blur/transparan" yg user lapor di tab Arsip:
+  // row produk archived punya className `opacity-70` (lihat
+  // app/admin/(protected)/products/page.tsx:475). CSS opacity CASCADES
+  // ke semua descendants — termasuk `fixed` modal anak komponen ini —
+  // walau `position: fixed` lepas dari layout flow. Fix: portal modal
+  // ke document.body, lepas dari row's opacity cascade.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     setValue(initialValue);
@@ -177,14 +186,12 @@ export function VariantInlineEditCell({
         </p>
       </button>
 
-      {open && (
+      {open && mounted && createPortal(
         <>
-          {/* HISTORY: pernah pakai backdrop-blur-md (frosted-glass), tapi user
-              lapor dialog tampak transparan/blur di Chromium — kemungkinan
-              compositor bleed dari backdrop-filter ke sibling layer. SOLUSI:
-              backdrop pakai bg-black/50 SAJA (tanpa backdrop-filter), depth
-              dialog dari shadow-2xl + ring. Tidak ada lagi backdrop-filter
-              di tree modal → tidak ada chance stacking bleed. */}
+          {/* Portal'd ke document.body — lepas dari row produk archived yg
+              punya `opacity-70` cascade. Backdrop solid `bg-black/50` tanpa
+              backdrop-filter (history: backdrop-filter sempat dicurigai
+              tapi bukan akar; akar = opacity cascade dari parent row). */}
           <div
             className="fixed inset-0 z-50 bg-black/50"
             onClick={() => !saving && setOpen(false)}
@@ -280,7 +287,8 @@ export function VariantInlineEditCell({
             </div>
             </div>
           </div>
-        </>
+        </>,
+        document.body,
       )}
     </>
   );
