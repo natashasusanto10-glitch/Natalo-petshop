@@ -8,10 +8,6 @@ import '../utils/haptics.dart';
 const _brandBlue = Color(0xFF1677FF);
 const _announcementGreen = Color(0xFF20B26B);
 const _promoRed = Color(0xFFE11D48);
-const _pageBg = Color(0xFFF7F9FC);
-const _textPrimary = Color(0xFF101828);
-const _textSecondary = Color(0xFF667085);
-const _border = Color(0xFFE5EAF2);
 
 class AnnouncementDetailScreen extends StatefulWidget {
   final AppNotification notification;
@@ -52,9 +48,10 @@ class _AnnouncementDetailScreenState extends State<AnnouncementDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final notification = _notification;
+    final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: _pageBg,
+      backgroundColor: cs.surface,
       body: SafeArea(
         child: Column(
           children: [
@@ -90,31 +87,32 @@ class _AnnouncementHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       height: 64,
       padding: const EdgeInsets.symmetric(horizontal: 8),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: _border)),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        border: Border(bottom: BorderSide(color: cs.outlineVariant)),
       ),
       child: Row(
         children: [
           IconButton(
             onPressed: onBack,
-            icon: const Icon(
+            icon: Icon(
               Icons.arrow_back_rounded,
-              color: _textPrimary,
+              color: cs.onSurface,
               size: 27,
             ),
           ),
           const SizedBox(width: 4),
-          const Expanded(
+          Expanded(
             child: Text(
               'Detail Pengumuman',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: _textPrimary,
+                color: cs.onSurface,
                 fontSize: 21,
                 fontWeight: FontWeight.w900,
               ),
@@ -137,13 +135,14 @@ class _AnnouncementCard extends StatelessWidget {
         ? (notification.shortDescription ?? '').trim()
         : notification.body.trim();
 
+    final cs = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: _border),
+        border: Border.all(color: cs.outlineVariant),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
@@ -157,14 +156,14 @@ class _AnnouncementCard extends StatelessWidget {
         children: [
           _AnnouncementTitleSection(notification: notification),
           const SizedBox(height: 20),
-          const Divider(color: _border),
+          Divider(color: cs.outlineVariant),
           const SizedBox(height: 20),
           Text(
             body.isEmpty
                 ? 'Pengumuman dari Natalo Petshop belum memiliki isi lengkap.'
                 : body,
-            style: const TextStyle(
-              color: Color(0xFF1D2939),
+            style: TextStyle(
+              color: cs.onSurface,
               fontSize: 16,
               fontWeight: FontWeight.w500,
               height: 1.58,
@@ -172,8 +171,8 @@ class _AnnouncementCard extends StatelessWidget {
           ),
           _ImportantInfo(notification: notification),
           const SizedBox(height: 22),
-          const Text.rich(
-            TextSpan(
+          Text.rich(
+            const TextSpan(
               children: [
                 TextSpan(text: 'Salam hangat,\n'),
                 TextSpan(
@@ -183,7 +182,7 @@ class _AnnouncementCard extends StatelessWidget {
               ],
             ),
             style: TextStyle(
-              color: Color(0xFF1D2939),
+              color: cs.onSurface,
               fontSize: 16,
               height: 1.5,
               fontWeight: FontWeight.w500,
@@ -204,6 +203,7 @@ class _AnnouncementTitleSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tone = _AnnouncementTone.from(notification);
+    final cs = Theme.of(context).colorScheme;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -245,8 +245,8 @@ class _AnnouncementTitleSection extends StatelessWidget {
               const SizedBox(height: 12),
               Text(
                 notification.title,
-                style: const TextStyle(
-                  color: _textPrimary,
+                style: TextStyle(
+                  color: cs.onSurface,
                   fontSize: 23,
                   fontWeight: FontWeight.w900,
                   height: 1.18,
@@ -263,10 +263,10 @@ class _AnnouncementTitleSection extends StatelessWidget {
                     icon: Icons.calendar_today_rounded,
                     text: formatTanggal(notification.createdAt),
                   ),
-                  const Text(
+                  Text(
                     '•',
                     style: TextStyle(
-                      color: Color(0xFF98A2B3),
+                      color: cs.onSurfaceVariant,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
@@ -292,15 +292,16 @@ class _MetaChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 15, color: _textSecondary),
+        Icon(icon, size: 15, color: cs.onSurfaceVariant),
         const SizedBox(width: 5),
         Text(
           text,
-          style: const TextStyle(
-            color: _textSecondary,
+          style: TextStyle(
+            color: cs.onSurfaceVariant,
             fontSize: 13,
             fontWeight: FontWeight.w700,
           ),
@@ -328,6 +329,7 @@ class _ImportantInfo extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(top: 22),
       child: Container(
@@ -372,8 +374,8 @@ class _ImportantInfo extends StatelessWidget {
                     const SizedBox(height: 7),
                     Text(
                       value,
-                      style: const TextStyle(
-                        color: _textPrimary,
+                      style: TextStyle(
+                        color: cs.onSurface,
                         fontSize: 24,
                         fontWeight: FontWeight.w900,
                       ),
@@ -383,8 +385,8 @@ class _ImportantInfo extends StatelessWidget {
                     const SizedBox(height: 6),
                     Text(
                       description,
-                      style: const TextStyle(
-                        color: _textSecondary,
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
                         height: 1.35,
@@ -468,11 +470,12 @@ class _AnnouncementBottomActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.paddingOf(context).bottom;
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + bottom),
       decoration: BoxDecoration(
-        color: _pageBg,
-        border: const Border(top: BorderSide(color: _border)),
+        color: cs.surface,
+        border: Border(top: BorderSide(color: cs.outlineVariant)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),

@@ -230,8 +230,9 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: cs.surface,
       appBar: AppBar(title: const Text('Keamanan Akun')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
@@ -262,7 +263,7 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
                   icon: enabled
                       ? Icons.lock_rounded
                       : Icons.lock_open_rounded,
-                  iconColor: enabled ? _brandBlue : const Color(0xFF6B7280),
+                  iconColor: enabled ? _brandBlue : cs.onSurfaceVariant,
                   title: 'Kunci dengan Face ID / Touch ID',
                   subtitle: enabled
                       ? 'Aktif — app minta biometric saat dibuka.'
@@ -327,12 +328,13 @@ class _ToggleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: Row(
         children: [
@@ -353,8 +355,8 @@ class _ToggleCard extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    color: Color(0xFF17202A),
+                  style: TextStyle(
+                    color: cs.onSurface,
                     fontSize: 14.5,
                     fontWeight: FontWeight.w900,
                   ),
@@ -362,8 +364,8 @@ class _ToggleCard extends StatelessWidget {
                 const SizedBox(height: 3),
                 Text(
                   subtitle,
-                  style: const TextStyle(
-                    color: Color(0xFF64748B),
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                     height: 1.4,
@@ -392,12 +394,13 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(left: 4),
       child: Text(
         text,
         style: TextStyle(
-          color: color ?? const Color(0xFF111111),
+          color: color ?? cs.onSurface,
           fontSize: 14,
           fontWeight: FontWeight.w900,
           letterSpacing: 0.3,
@@ -426,10 +429,11 @@ class _ActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final ic = iconColor ?? _brandBlue;
     final enabled = onTap != null;
     return Material(
-      color: Colors.white,
+      color: cs.surface,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
@@ -440,7 +444,7 @@ class _ActionCard extends StatelessWidget {
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFE5E7EB)),
+              border: Border.all(color: cs.outlineVariant),
             ),
             child: Row(
               children: [
@@ -462,7 +466,7 @@ class _ActionCard extends StatelessWidget {
                       Text(
                         title,
                         style: TextStyle(
-                          color: titleColor ?? const Color(0xFF111111),
+                          color: titleColor ?? cs.onSurface,
                           fontSize: 14.5,
                           fontWeight: FontWeight.w900,
                         ),
@@ -470,8 +474,8 @@ class _ActionCard extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         subtitle,
-                        style: const TextStyle(
-                          color: Color(0xFF6B7280),
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant,
                           fontSize: 12.5,
                           fontWeight: FontWeight.w600,
                           height: 1.45,
@@ -481,9 +485,9 @@ class _ActionCard extends StatelessWidget {
                   ),
                 ),
                 if (enabled)
-                  const Icon(
+                  Icon(
                     Icons.chevron_right_rounded,
-                    color: Color(0xFF9CA3AF),
+                    color: cs.onSurfaceVariant,
                   ),
               ],
             ),
@@ -543,11 +547,12 @@ class _DeleteAccountSheetState extends State<_DeleteAccountSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return SafeArea(
       child: Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         padding: EdgeInsets.only(
           left: 20,
@@ -565,7 +570,7 @@ class _DeleteAccountSheetState extends State<_DeleteAccountSheet> {
                 width: 40,
                 margin: const EdgeInsets.only(bottom: 14),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE2E8F0),
+                  color: cs.outlineVariant,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -585,11 +590,11 @@ class _DeleteAccountSheetState extends State<_DeleteAccountSheet> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                const Expanded(
+                Expanded(
                   child: Text(
                     'Hapus Akun Permanen',
                     style: TextStyle(
-                      color: Color(0xFF111111),
+                      color: cs.onSurface,
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
                     ),
@@ -624,11 +629,11 @@ class _DeleteAccountSheetState extends State<_DeleteAccountSheet> {
               ),
             ),
             const SizedBox(height: 14),
-            const Text(
+            Text(
               'Ketik persis "HAPUS AKUN SAYA" (huruf besar, dengan spasi) '
               'untuk konfirmasi:',
               style: TextStyle(
-                color: Color(0xFF6B7280),
+                color: cs.onSurfaceVariant,
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
                 height: 1.45,

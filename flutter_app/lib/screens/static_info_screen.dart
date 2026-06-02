@@ -20,12 +20,13 @@ class StaticInfoScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: const Color(0xFFF7FAFF),
+      backgroundColor: cs.surface,
       appBar: AppBar(
         title: Text(_page.title),
-        backgroundColor: const Color(0xFFF7FAFF),
-        surfaceTintColor: const Color(0xFFF7FAFF),
+        backgroundColor: cs.surface,
+        surfaceTintColor: cs.surface,
         elevation: 0,
         scrolledUnderElevation: 1,
       ),
@@ -123,12 +124,13 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Text(
         label,
-        style: const TextStyle(
-          color: NataloColors.textSecondary,
+        style: TextStyle(
+          color: cs.onSurfaceVariant,
           fontSize: 12,
           fontWeight: FontWeight.w900,
           letterSpacing: 0.35,
@@ -145,11 +147,12 @@ class _InfoSectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFDDE8F8)),
+        border: Border.all(color: cs.outlineVariant),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.035),
@@ -163,11 +166,11 @@ class _InfoSectionCard extends StatelessWidget {
           for (var i = 0; i < section.items.length; i++) ...[
             _InfoItemTile(item: section.items[i]),
             if (i != section.items.length - 1)
-              const Divider(
+              Divider(
                 height: 1,
                 indent: 16,
                 endIndent: 16,
-                color: Color(0xFFE8EEF7),
+                color: cs.outlineVariant,
               ),
           ],
         ],
@@ -183,6 +186,7 @@ class _InfoItemTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.all(15),
       child: Row(
@@ -192,7 +196,9 @@ class _InfoItemTile extends StatelessWidget {
             width: 38,
             height: 38,
             decoration: BoxDecoration(
-              color: NataloColors.primarySoft,
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                  : NataloColors.primarySoft,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(item.icon, color: NataloColors.primary, size: 21),
@@ -204,8 +210,8 @@ class _InfoItemTile extends StatelessWidget {
               children: [
                 Text(
                   item.title,
-                  style: const TextStyle(
-                    color: NataloColors.textPrimary,
+                  style: TextStyle(
+                    color: cs.onSurface,
                     fontSize: 14.5,
                     fontWeight: FontWeight.w900,
                     height: 1.25,
@@ -214,8 +220,8 @@ class _InfoItemTile extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   item.body,
-                  style: const TextStyle(
-                    color: NataloColors.textSecondary,
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     height: 1.5,
@@ -237,13 +243,16 @@ class _InfoNote extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.only(top: 2),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: NataloColors.primarySoft,
+        color: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+            : NataloColors.primarySoft,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFD8E7FF)),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -257,8 +266,8 @@ class _InfoNote extends StatelessWidget {
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(
-                color: NataloColors.textSecondary,
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
                 fontSize: 12.5,
                 fontWeight: FontWeight.w600,
                 height: 1.45,

@@ -146,11 +146,12 @@ class _NotificationPreferencesScreenState
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: const Color(0xFFF7FAFF),
+      backgroundColor: cs.surface,
       appBar: AppBar(
         title: const Text('Preferensi Notifikasi'),
-        backgroundColor: const Color(0xFFF7FAFF),
+        backgroundColor: cs.surface,
         elevation: 0,
       ),
       body: ListView(
@@ -258,7 +259,7 @@ class _NotificationPreferencesScreenState
               icon: const Icon(Icons.refresh_rounded, size: 18),
               label: const Text('Kembalikan ke default'),
               style: TextButton.styleFrom(
-                foregroundColor: NataloColors.textSecondary,
+                foregroundColor: cs.onSurfaceVariant,
                 textStyle: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w800,
@@ -267,13 +268,13 @@ class _NotificationPreferencesScreenState
             ),
           ),
           const SizedBox(height: 8),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             child: Text(
               'Anda dapat mengubah pengaturan kapan saja. Notifikasi penting (mis. konfirmasi keamanan) tetap dikirim demi keamanan akun.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: NataloColors.textTertiary,
+                color: cs.onSurfaceVariant,
                 fontSize: 11,
                 fontWeight: FontWeight.w500,
                 height: 1.5,
@@ -417,29 +418,30 @@ class _PushDiagnosticPanelState extends State<_PushDiagnosticPanel> {
         : '${_fcmToken!.substring(0, _fcmToken!.length.clamp(0, 16))}…';
     final regCount = _status?.tokenCount ?? 0;
     final authed = _status?.authenticated ?? false;
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFDDE8F8)),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.bug_report_outlined,
                 size: 18,
-                color: NataloColors.textSecondary,
+                color: cs.onSurfaceVariant,
               ),
               const SizedBox(width: 6),
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Diagnostik Push',
                   style: TextStyle(
-                    color: NataloColors.textPrimary,
+                    color: cs.onSurface,
                     fontSize: 13,
                     fontWeight: FontWeight.w900,
                   ),
@@ -490,8 +492,8 @@ class _PushDiagnosticPanelState extends State<_PushDiagnosticPanel> {
                       : const Icon(Icons.sync_rounded, size: 16),
                   label: const Text('Daftar Ulang'),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: NataloColors.textPrimary,
-                    side: const BorderSide(color: Color(0xFFCBD5E1)),
+                    foregroundColor: cs.onSurface,
+                    side: BorderSide(color: cs.outlineVariant),
                     textStyle: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w800,
@@ -541,6 +543,7 @@ class _DiagRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -550,8 +553,8 @@ class _DiagRow extends StatelessWidget {
             width: 132,
             child: Text(
               label,
-              style: const TextStyle(
-                color: NataloColors.textSecondary,
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
               ),
@@ -560,8 +563,8 @@ class _DiagRow extends StatelessWidget {
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(
-                color: NataloColors.textPrimary,
+              style: TextStyle(
+                color: cs.onSurface,
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
                 height: 1.35,
@@ -679,12 +682,13 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
       child: Text(
         label,
-        style: const TextStyle(
-          color: NataloColors.textSecondary,
+        style: TextStyle(
+          color: cs.onSurfaceVariant,
           fontSize: 12,
           fontWeight: FontWeight.w800,
           letterSpacing: 0.4,
@@ -713,12 +717,13 @@ class _ToggleTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFDDE8F8)),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: SwitchListTile(
         secondary: Container(
@@ -732,8 +737,8 @@ class _ToggleTile extends StatelessWidget {
         ),
         title: Text(
           title,
-          style: const TextStyle(
-            color: NataloColors.textPrimary,
+          style: TextStyle(
+            color: cs.onSurface,
             fontSize: 14,
             fontWeight: FontWeight.w800,
           ),
@@ -742,8 +747,8 @@ class _ToggleTile extends StatelessWidget {
           padding: const EdgeInsets.only(top: 2),
           child: Text(
             subtitle,
-            style: const TextStyle(
-              color: NataloColors.textSecondary,
+            style: TextStyle(
+              color: cs.onSurfaceVariant,
               fontSize: 12,
               fontWeight: FontWeight.w500,
             ),

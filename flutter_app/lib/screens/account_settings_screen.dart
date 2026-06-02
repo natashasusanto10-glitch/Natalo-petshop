@@ -15,7 +15,6 @@ import '../utils/haptics.dart';
 import '../widgets/app_toast.dart';
 
 const _brandBlue = Color(0xFF0B7FEA);
-const _pageBg = Color(0xFFF8FAFC);
 const _dangerRed = Color(0xFFEF4444);
 
 class AccountSettingsScreen extends StatelessWidget {
@@ -23,11 +22,12 @@ class AccountSettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: _pageBg,
+      backgroundColor: cs.surface,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
+        backgroundColor: cs.surface,
+        surfaceTintColor: cs.surface,
         elevation: 0,
         scrolledUnderElevation: 1,
         shadowColor: Colors.black.withValues(alpha: 0.08),
@@ -267,6 +267,7 @@ class _SettingsSectionState extends State<SettingsSection>
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -297,9 +298,9 @@ class _SettingsSectionState extends State<SettingsSection>
                   AnimatedRotation(
                     turns: _expanded ? 0.5 : 0,
                     duration: const Duration(milliseconds: 180),
-                    child: const Icon(
+                    child: Icon(
                       Icons.keyboard_arrow_down_rounded,
-                      color: Color(0xFF94A3B8),
+                      color: cs.onSurfaceVariant,
                     ),
                   ),
               ],
@@ -315,9 +316,9 @@ class _SettingsSectionState extends State<SettingsSection>
               ? const SizedBox(width: double.infinity)
               : Container(
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: cs.surface,
                     borderRadius: BorderRadius.circular(22),
-                    border: Border.all(color: const Color(0xFFE5E7EB)),
+                    border: Border.all(color: cs.outlineVariant),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.04),
@@ -326,22 +327,24 @@ class _SettingsSectionState extends State<SettingsSection>
                       ),
                     ],
                   ),
-                  child: Column(children: _withDividers(widget.children)),
+                  child: Column(
+                    children: _withDividers(widget.children, cs.outlineVariant),
+                  ),
                 ),
         ),
       ],
     );
   }
 
-  List<Widget> _withDividers(List<Widget> children) {
+  List<Widget> _withDividers(List<Widget> children, Color dividerColor) {
     final result = <Widget>[];
     for (var i = 0; i < children.length; i++) {
       result.add(children[i]);
       if (i < children.length - 1) {
         result.add(
-          const Padding(
-            padding: EdgeInsets.only(left: 72),
-            child: Divider(height: 1, color: Color(0xFFEFF2F6)),
+          Padding(
+            padding: const EdgeInsets.only(left: 72),
+            child: Divider(height: 1, color: dividerColor),
           ),
         );
       }
@@ -376,6 +379,7 @@ class SettingsListItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final color = isDanger ? _dangerRed : iconColor ?? _brandBlue;
     return InkWell(
       onTap: onTap,
@@ -390,7 +394,9 @@ class SettingsListItem extends StatelessWidget {
                 color: iconBackgroundColor ??
                     (isDanger
                         ? const Color(0xFFFEE2E2)
-                        : const Color(0xFFEAF5FF)),
+                        : (Theme.of(context).brightness == Brightness.dark
+                            ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                            : const Color(0xFFEAF5FF))),
                 borderRadius: BorderRadius.circular(15),
               ),
               child: Icon(icon, color: color, size: 22),
@@ -403,7 +409,7 @@ class SettingsListItem extends StatelessWidget {
                   Text(
                     title,
                     style: TextStyle(
-                      color: isDanger ? _dangerRed : const Color(0xFF17202A),
+                      color: isDanger ? _dangerRed : cs.onSurface,
                       fontSize: 15,
                       fontWeight: FontWeight.w900,
                     ),
@@ -413,8 +419,8 @@ class SettingsListItem extends StatelessWidget {
                     subtitle,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF64748B),
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                       height: 1.35,
@@ -428,9 +434,9 @@ class SettingsListItem extends StatelessWidget {
               trailing!,
             ] else if (showChevron) ...[
               const SizedBox(width: 8),
-              const Icon(
+              Icon(
                 Icons.chevron_right_rounded,
-                color: Color(0xFF94A3B8),
+                color: cs.onSurfaceVariant,
               ),
             ],
           ],
@@ -490,6 +496,7 @@ class SettingsValueItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return SettingsListItem(
       icon: icon,
       title: title,
@@ -500,14 +507,14 @@ class SettingsValueItem extends StatelessWidget {
         children: [
           Text(
             valueText,
-            style: const TextStyle(
-              color: Color(0xFF64748B),
+            style: TextStyle(
+              color: cs.onSurfaceVariant,
               fontSize: 12,
               fontWeight: FontWeight.w900,
             ),
           ),
           const SizedBox(width: 5),
-          const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8)),
+          Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant),
         ],
       ),
       showChevron: false,
@@ -522,9 +529,10 @@ class _LogoutSettingsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: const Color(0xFFFECACA)),
       ),
@@ -567,13 +575,16 @@ class _AppVersionFooterState extends State<_AppVersionFooter> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Column(
       children: [
         Container(
           height: 34,
           width: 34,
-          decoration: const BoxDecoration(
-            color: Color(0xFFEAF5FF),
+          decoration: BoxDecoration(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                : const Color(0xFFEAF5FF),
             shape: BoxShape.circle,
           ),
           child: const Icon(Icons.pets_rounded, color: _brandBlue, size: 18),
@@ -582,8 +593,8 @@ class _AppVersionFooterState extends State<_AppVersionFooter> {
         Text(
           _version.isEmpty ? 'Memuat versi...' : _version,
           textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Color(0xFF94A3B8),
+          style: TextStyle(
+            color: cs.onSurfaceVariant,
             fontSize: 12,
             fontWeight: FontWeight.w700,
           ),
@@ -756,11 +767,11 @@ class _SheetOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return ListTile(
       onTap: onTap,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      leading:
-          Icon(icon, color: selected ? _brandBlue : const Color(0xFF64748B)),
+      leading: Icon(icon, color: selected ? _brandBlue : cs.onSurfaceVariant),
       title: Text(
         title,
         style: const TextStyle(fontWeight: FontWeight.w900),
@@ -828,14 +839,16 @@ Future<void> _confirmLogout(BuildContext context) async {
     context: context,
     barrierDismissible: true,
     barrierColor: Colors.black.withValues(alpha: 0.42),
-    builder: (ctx) => Dialog(
+    builder: (ctx) {
+      final cs = Theme.of(ctx).colorScheme;
+      return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 28),
       backgroundColor: Colors.transparent,
       elevation: 0,
       child: Container(
         padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: cs.surface,
           borderRadius: BorderRadius.circular(28),
           boxShadow: [
             BoxShadow(
@@ -862,25 +875,25 @@ Future<void> _confirmLogout(BuildContext context) async {
               ),
             ),
             const SizedBox(height: 22),
-            const Text(
+            Text(
               'Keluar dari akun?',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 22,
                 height: 1.25,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF101828),
+                color: cs.onSurface,
               ),
             ),
             const SizedBox(height: 14),
-            const Text(
+            Text(
               'Kamu perlu masuk kembali untuk melihat pesanan, poin, voucher, wishlist, dan data akunmu.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 15.5,
                 height: 1.55,
                 fontWeight: FontWeight.w500,
-                color: Color(0xFF667085),
+                color: cs.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 28),
@@ -891,10 +904,10 @@ Future<void> _confirmLogout(BuildContext context) async {
                     onPressed: () => Navigator.of(ctx).pop(false),
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size.fromHeight(50),
-                      backgroundColor: Colors.white,
+                      backgroundColor: cs.surface,
                       foregroundColor: _brandBlue,
-                      side: const BorderSide(
-                        color: Color(0xFFD0DCEB),
+                      side: BorderSide(
+                        color: cs.outlineVariant,
                         width: 1.2,
                       ),
                       shape: RoundedRectangleBorder(
@@ -934,7 +947,8 @@ Future<void> _confirmLogout(BuildContext context) async {
           ],
         ),
       ),
-    ),
+    );
+    },
   );
   if (confirmed != true) return;
   AppCrashlytics.log('User logout');

@@ -12,11 +12,12 @@ class HelpCenterScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: const Color(0xFFF7FAFF),
+      backgroundColor: cs.surface,
       appBar: AppBar(
         title: const Text('Pusat Bantuan'),
-        backgroundColor: const Color(0xFFF7FAFF),
+        backgroundColor: cs.surface,
         elevation: 0,
       ),
       body: ListView(
@@ -130,13 +131,13 @@ class HelpCenterScreen extends StatelessWidget {
                 'Bisa! Hubungi WhatsApp kami untuk konsultasi gratis seputar makanan, vitamin, atau perawatan hewan peliharaan.',
           ),
           const SizedBox(height: 16),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             child: Text(
               'Jam operasional: Senin-Sabtu 09.00-21.00 WIB',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: NataloColors.textTertiary,
+                color: cs.onSurfaceVariant,
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
               ),
@@ -198,12 +199,13 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
       child: Text(
         label,
-        style: const TextStyle(
-          color: NataloColors.textSecondary,
+        style: TextStyle(
+          color: cs.onSurfaceVariant,
           fontSize: 12,
           fontWeight: FontWeight.w800,
           letterSpacing: 0.4,
@@ -232,15 +234,16 @@ class _ContactCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: onTap,
       child: Ink(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: cs.surface,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFDDE8F8)),
+          border: Border.all(color: cs.outlineVariant),
         ),
         child: Row(
           children: [
@@ -260,8 +263,8 @@ class _ContactCard extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
-                      color: NataloColors.textPrimary,
+                    style: TextStyle(
+                      color: cs.onSurface,
                       fontSize: 14,
                       fontWeight: FontWeight.w800,
                     ),
@@ -269,8 +272,8 @@ class _ContactCard extends StatelessWidget {
                   const SizedBox(height: 3),
                   Text(
                     subtitle,
-                    style: const TextStyle(
-                      color: NataloColors.textSecondary,
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
@@ -278,9 +281,9 @@ class _ContactCard extends StatelessWidget {
                 ],
               ),
             ),
-            const Icon(
+            Icon(
               Icons.chevron_right_rounded,
-              color: NataloColors.textTertiary,
+              color: cs.onSurfaceVariant,
             ),
           ],
         ),
@@ -297,19 +300,20 @@ class _FaqItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFDDE8F8)),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: ExpansionTile(
         shape: const Border(),
         title: Text(
           question,
-          style: const TextStyle(
-            color: NataloColors.textPrimary,
+          style: TextStyle(
+            color: cs.onSurface,
             fontSize: 14,
             fontWeight: FontWeight.w800,
           ),
@@ -320,8 +324,8 @@ class _FaqItem extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             child: Text(
               answer,
-              style: const TextStyle(
-                color: NataloColors.textSecondary,
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
                 height: 1.55,

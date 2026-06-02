@@ -17,10 +17,6 @@ import 'in_app_browser_screen.dart';
 import 'member_post_detail_screen.dart';
 
 const _brandBlue = Color(0xFF1677FF);
-const _textDark = Color(0xFF111827);
-const _textGray = Color(0xFF667085);
-const _pageBg = Color(0xFFF6F9FF);
-const _border = Color(0xFFE8EEF7);
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -341,9 +337,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Widget _buildAuthenticatedContent(BuildContext context) {
     final result = _result;
     final unread = result?.unreadCount ?? 0;
+    final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: _pageBg,
+      backgroundColor: cs.surface,
       body: SafeArea(
         child: Column(
           children: [
@@ -440,15 +437,16 @@ class _NotificationHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
-      color: Colors.white,
+      color: cs.surface,
       padding: const EdgeInsets.fromLTRB(6, 10, 12, 14),
       child: Row(
         children: [
           IconButton(
             onPressed: onBack,
             icon: const Icon(Icons.arrow_back_rounded),
-            color: _textDark,
+            color: cs.onSurface,
           ),
           Expanded(
             child: Column(
@@ -456,13 +454,13 @@ class _NotificationHeader extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    const Flexible(
+                    Flexible(
                       child: Text(
                         'Notifikasi',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: _textDark,
+                          color: cs.onSurface,
                           fontSize: 28,
                           fontWeight: FontWeight.w900,
                           height: 1.05,
@@ -479,12 +477,12 @@ class _NotificationHeader extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 4),
-                const Text(
+                Text(
                   'Update pesanan, promo, dan pengumuman dari Natalo Petshop.',
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: _textGray,
+                    color: cs.onSurfaceVariant,
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
                     height: 1.25,
@@ -503,7 +501,7 @@ class _NotificationHeader extends StatelessWidget {
                     child: CircularProgressIndicator(strokeWidth: 2.4),
                   )
                 : const Icon(Icons.done_all_rounded),
-            color: unreadCount == 0 ? const Color(0xFF98A2B3) : _textDark,
+            color: unreadCount == 0 ? cs.onSurfaceVariant : cs.onSurface,
           ),
         ],
       ),
@@ -522,10 +520,11 @@ class _NotificationTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return DecoratedBox(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: _border)),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        border: Border(bottom: BorderSide(color: cs.outlineVariant)),
       ),
       child: SizedBox(
         height: 54,
@@ -548,7 +547,7 @@ class _NotificationTabs extends StatelessWidget {
                     child: Text(
                       filter.label,
                       style: TextStyle(
-                        color: active ? _brandBlue : const Color(0xFF98A2B3),
+                        color: active ? _brandBlue : cs.onSurfaceVariant,
                         fontSize: 16,
                         fontWeight: FontWeight.w900,
                       ),
@@ -588,9 +587,10 @@ class _NotificationTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final visual = _NotificationVisual.from(notification);
     final ctaLabel = _notificationCtaLabel(notification);
+    final cs = Theme.of(context).colorScheme;
 
     return Material(
-      color: Colors.white,
+      color: cs.surface,
       borderRadius: BorderRadius.circular(22),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -601,7 +601,7 @@ class _NotificationTile extends StatelessWidget {
             borderRadius: BorderRadius.circular(22),
             border: Border.all(
               color: notification.read
-                  ? _border
+                  ? cs.outlineVariant
                   : _brandBlue.withValues(alpha: 0.25),
             ),
             boxShadow: [
@@ -637,7 +637,7 @@ class _NotificationTile extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: const Color(0xFFE91E63),
                           shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
+                          border: Border.all(color: cs.surface, width: 2),
                         ),
                       ),
                     ),
@@ -655,8 +655,8 @@ class _NotificationTile extends StatelessWidget {
                             notification.title,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: _textDark,
+                            style: TextStyle(
+                              color: cs.onSurface,
                               fontSize: 14.5,
                               fontWeight: FontWeight.w900,
                               height: 1.25,
@@ -666,8 +666,8 @@ class _NotificationTile extends StatelessWidget {
                         const SizedBox(width: 8),
                         Text(
                           formatRelativeTime(notification.createdAt),
-                          style: const TextStyle(
-                            color: Color(0xFF98A2B3),
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
                           ),
@@ -680,8 +680,8 @@ class _NotificationTile extends StatelessWidget {
                         notification.body,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: _textGray,
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant,
                           fontSize: 12.5,
                           fontWeight: FontWeight.w600,
                           height: 1.35,
@@ -701,8 +701,8 @@ class _NotificationTile extends StatelessWidget {
                         ),
                         Text(
                           formatDateTime(notification.createdAt),
-                          style: const TextStyle(
-                            color: Color(0xFF98A2B3),
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
                           ),
@@ -722,9 +722,9 @@ class _NotificationTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 4),
-              const Icon(
+              Icon(
                 Icons.chevron_right_rounded,
-                color: Color(0xFF98A2B3),
+                color: cs.onSurfaceVariant,
               ),
             ],
           ),
@@ -741,6 +741,7 @@ class _NotificationEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Column(
       children: [
         Container(
@@ -762,18 +763,18 @@ class _NotificationEmptyState extends StatelessWidget {
               ? 'Belum ada notifikasi'
               : 'Belum ada ${filter.label.toLowerCase()}',
           textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: _textDark,
+          style: TextStyle(
+            color: cs.onSurface,
             fontSize: 20,
             fontWeight: FontWeight.w900,
           ),
         ),
         const SizedBox(height: 8),
-        const Text(
+        Text(
           'Update terbaru dari Natalo akan muncul di sini.',
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: _textGray,
+            color: cs.onSurfaceVariant,
             fontWeight: FontWeight.w700,
             height: 1.4,
           ),
@@ -794,6 +795,7 @@ class _NotificationErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -814,11 +816,11 @@ class _NotificationErrorState extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 18),
-            const Text(
+            Text(
               'Notifikasi gagal dimuat',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: _textDark,
+                color: cs.onSurface,
                 fontSize: 20,
                 fontWeight: FontWeight.w900,
               ),
@@ -827,8 +829,8 @@ class _NotificationErrorState extends StatelessWidget {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: _textGray,
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
                 fontWeight: FontWeight.w700,
                 height: 1.4,
               ),
@@ -1178,20 +1180,21 @@ class _NotifLoginRequiredScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: _pageBg,
+      backgroundColor: cs.surface,
       appBar: AppBar(
-        backgroundColor: _pageBg,
+        backgroundColor: cs.surface,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-          color: _textDark,
+          color: cs.onSurface,
           onPressed: () => Navigator.maybePop(context),
         ),
-        title: const Text(
+        title: Text(
           'Notifikasi',
           style: TextStyle(
-            color: _textDark,
+            color: cs.onSurface,
             fontSize: 17,
             fontWeight: FontWeight.w900,
           ),
@@ -1218,21 +1221,21 @@ class _NotifLoginRequiredScaffold extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 20),
-              const Text(
+              Text(
                 'Login dulu yuk',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: _textDark,
+                  color: cs.onSurface,
                   fontSize: 18,
                   fontWeight: FontWeight.w900,
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'Masuk member untuk lihat notifikasi pesanan, voucher, dan update lainnya.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: _textGray,
+                  color: cs.onSurfaceVariant,
                   fontSize: 13.5,
                   fontWeight: FontWeight.w600,
                   height: 1.4,
