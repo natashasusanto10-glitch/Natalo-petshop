@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../models/product.dart';
@@ -45,11 +47,19 @@ class ImageViewerScreen extends StatefulWidget {
 class _ImageViewerScreenState extends State<ImageViewerScreen> {
   late final PageController _controller;
   late int _index;
-  // Track scale state global — saat ada image yg sedang zoomed, PageView
-  // physics di-lock (NeverScrollableScrollPhysics) supaya pan zoomed image
-  // tidak ke-hijack PageView swipe. Combo dgn dynamic panEnabled di
-  // _ZoomableImage = solusi proven untuk InteractiveViewer+PageView arena.
+  // Dua sumber lock untuk PageView swipe:
+  //  - _zoomed: scale > 1 → user lagi pan zoomed image, swipe page harus
+  //    OFF biar pan tidak ke-hijack jadi pindah foto.
+  //  - _multiTouch: >=2 jari di layar → user lagi pinch. Detected via
+  //    Listener (manual pointer count) supaya KETAUAN langsung di pointer
+  //    landing, BEFORE gesture arena resolve. Tanpa ini, arena race antara
+  //    PageView.HorizontalDrag vs InteractiveViewer.Scale sering dimenangkan
+  //    PageView (drag claim duluan) → pinch GAGAL trigger.
+  //
+  // PageView physics = NeverScrollable kalau ANY dari dua flag aktif.
   bool _zoomed = false;
+  bool _multiTouch = false;
+  int _activePointers = 0;
 
   @override
   void initState() {
@@ -69,6 +79,20 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
     if (_zoomed == value) return;
     setState(() => _zoomed = value);
   }
+
+  void _onPointerDown(PointerDownEvent _) {
+    _activePointers++;
+    final next = _activePointers >= 2;
+    if (next != _multiTouch) setState(() => _multiTouch = next);
+  }
+
+  void _onPointerUp(PointerEvent _) {
+    _activePointers = math.max(0, _activePointers - 1);
+    final next = _activePointers >= 2;
+    if (next != _multiTouch) setState(() => _multiTouch = next);
+  }
+
+  bool get _lockSwipe => _zoomed || _multiTouch;
 
   @override
   Widget build(BuildContext context) {
@@ -102,19 +126,28 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
             )
           else
             Positioned.fill(
-              child: PageView.builder(
-                controller: _controller,
-                itemCount: images.length,
-                onPageChanged: (value) => setState(() => _index = value),
-                // Lock PageView scroll saat zoomed → pan dalam zoomed image
-                // bisa bebas, tidak hijack jadi swipe page. Saat scale=1,
-                // physics default → swipe kiri/kanan jalan.
-                physics: _zoomed
-                    ? const NeverScrollableScrollPhysics()
-                    : const PageScrollPhysics(),
-                itemBuilder: (context, i) => _ZoomableImage(
-                  imageUrl: images[i],
-                  onZoomChanged: _setZoomed,
+              // Listener wrap PageView — count pointers manually di pre-arena
+              // layer (Listener runs BEFORE gesture recognizers). Begitu jari
+              // ke-2 nempel → _multiTouch=true → physics lock instan,
+              // InteractiveViewer panEnabled=true → pinch claim arena tanpa
+              // kompetisi dari PageView.HorizontalDrag.
+              child: Listener(
+                onPointerDown: _onPointerDown,
+                onPointerUp: _onPointerUp,
+                onPointerCancel: _onPointerUp,
+                behavior: HitTestBehavior.translucent,
+                child: PageView.builder(
+                  controller: _controller,
+                  itemCount: images.length,
+                  onPageChanged: (value) => setState(() => _index = value),
+                  physics: _lockSwipe
+                      ? const NeverScrollableScrollPhysics()
+                      : const PageScrollPhysics(),
+                  itemBuilder: (context, i) => _ZoomableImage(
+                    imageUrl: images[i],
+                    multiTouch: _multiTouch,
+                    onZoomChanged: _setZoomed,
+                  ),
                 ),
               ),
             ),
@@ -195,10 +228,12 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
 /// false=normal) → parent toggle PageView physics.
 class _ZoomableImage extends StatefulWidget {
   final String imageUrl;
+  final bool multiTouch;
   final ValueChanged<bool> onZoomChanged;
 
   const _ZoomableImage({
     required this.imageUrl,
+    required this.multiTouch,
     required this.onZoomChanged,
   });
 
@@ -211,9 +246,10 @@ class _ZoomableImageState extends State<_ZoomableImage>
   final TransformationController _controller = TransformationController();
   late final AnimationController _anim;
   Animation<Matrix4>? _resetAnim;
-  // panEnabled dinamis. False di scale=1 (biar swipe ke PageView), true
-  // saat zoomed (biar pan dalam image bebas).
-  bool _panEnabled = false;
+  // _isZoomed: scale > threshold (TransformationController-driven).
+  // panEnabled effective = widget.multiTouch || _isZoomed.
+  // Single-finger di scale=1 → panEnabled false → InteractiveViewer tidak
+  // consume horizontal drag → PageView dapat swipe foto.
   bool _isZoomed = false;
 
   static const double _zoomedThreshold = 1.02;
@@ -244,10 +280,7 @@ class _ZoomableImageState extends State<_ZoomableImage>
     final scale = _controller.value.getMaxScaleOnAxis();
     final zoomed = scale > _zoomedThreshold;
     if (zoomed != _isZoomed) {
-      _isZoomed = zoomed;
-      // Notify parent untuk lock PageView physics. Pakai setState ringan
-      // (hanya panEnabled flag, repaint subtree saja).
-      setState(() => _panEnabled = zoomed);
+      setState(() => _isZoomed = zoomed);
       widget.onZoomChanged(zoomed);
     }
   }
@@ -279,9 +312,15 @@ class _ZoomableImageState extends State<_ZoomableImage>
         final h = constraints.maxHeight.isFinite
             ? constraints.maxHeight
             : MediaQuery.sizeOf(context).height;
+        // panEnabled aktif kalau (a) user lagi multi-touch (pinch) — biar
+        // ScaleGestureRecognizer langsung claim arena tanpa kompetisi, atau
+        // (b) image sudah zoomed — biar 1-finger pan dalam image bebas.
+        // Di kondisi default (1 finger + scale=1) panEnabled=false → drag
+        // diteruskan ke PageView untuk swipe ke foto lain.
+        final panEnabled = widget.multiTouch || _isZoomed;
         return InteractiveViewer(
           transformationController: _controller,
-          panEnabled: _panEnabled,
+          panEnabled: panEnabled,
           scaleEnabled: true,
           minScale: 1,
           maxScale: 4,
