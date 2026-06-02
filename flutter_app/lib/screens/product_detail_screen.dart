@@ -40,7 +40,6 @@ const _textDark = Color(0xFF111827);
 const _textMedium = Color(0xFF374151);
 const _textGray = Color(0xFF6B7280);
 const _borderGray = Color(0xFFE5E7EB);
-const _softBlueBg = Color(0xFFEAF3FF);
 const _discountRed = Color(0xFFE11D48);
 const _softDiscountBg = Color(0xFFFFEEF1);
 const _successGreen = Color(0xFF16A34A);
@@ -424,11 +423,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: cs.surface,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
+        backgroundColor: cs.surface,
+        surfaceTintColor: cs.surface,
         elevation: 0,
         scrolledUnderElevation: 1,
         shadowColor: Colors.black.withValues(alpha: 0.08),
@@ -603,6 +603,7 @@ class _ProductHeroState extends State<_ProductHero> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final images = _images;
     final showIndicators = images.length > 1;
 
@@ -613,7 +614,7 @@ class _ProductHeroState extends State<_ProductHero> {
             : 390.0;
 
         return ColoredBox(
-          color: Colors.white,
+          color: cs.surface,
           child: Stack(
             children: [
               SizedBox(
@@ -751,11 +752,12 @@ class _ImagePlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    final cs = Theme.of(context).colorScheme;
+    return Center(
       child: Icon(
         Icons.image_outlined,
         size: 64,
-        color: Color(0xFFE5E7EB),
+        color: cs.outlineVariant,
       ),
     );
   }
@@ -772,6 +774,7 @@ class _ProductInfo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final hasDiscount = product.hasDiscount;
     final discount = product.discountPercent;
     final savings = product.price - product.finalPrice;
@@ -786,8 +789,8 @@ class _ProductInfo extends StatelessWidget {
           formatRupiah(product.finalPrice),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: _textDark,
+          style: TextStyle(
+            color: cs.onSurface,
             fontSize: 32,
             fontWeight: FontWeight.w900,
             height: 1,
@@ -855,8 +858,8 @@ class _ProductInfo extends StatelessWidget {
                 product.title,
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: _textDark,
+                style: TextStyle(
+                  color: cs.onSurface,
                   fontSize: 20,
                   fontWeight: FontWeight.w900,
                   height: 1.22,
@@ -883,8 +886,8 @@ class _ProductInfo extends StatelessWidget {
                 const SizedBox(width: 4),
                 Text(
                   product.rating.toStringAsFixed(1),
-                  style: const TextStyle(
-                    color: _textMedium,
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
                   ),
@@ -894,8 +897,8 @@ class _ProductInfo extends StatelessWidget {
                 if (hasRating) const _InfoDot(),
                 Text(
                   '${product.reviewCount} ulasan',
-                  style: const TextStyle(
-                    color: _textGray,
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
                   ),
@@ -905,8 +908,8 @@ class _ProductInfo extends StatelessWidget {
                 if (hasRating || hasReviews) const _InfoDot(),
                 Text(
                   '${_formatCompactCount(product.soldCount)} terjual',
-                  style: const TextStyle(
-                    color: _textGray,
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
                   ),
@@ -1004,12 +1007,13 @@ class _InfoDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.symmetric(horizontal: 8),
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Text(
         '•',
         style: TextStyle(
-          color: Color(0xFF9CA3AF),
+          color: cs.onSurfaceVariant,
           fontSize: 14,
           fontWeight: FontWeight.w900,
         ),
@@ -1061,6 +1065,7 @@ class _VoucherAndTrust extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final resolved = _resolveVouchers(product, vouchers);
     if (resolved.isEmpty) return const SizedBox.shrink();
 
@@ -1071,10 +1076,11 @@ class _VoucherAndTrust extends StatelessWidget {
         constraints: const BoxConstraints(minHeight: 46),
         padding: const EdgeInsets.symmetric(vertical: 8),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: cs.surface,
           border: Border(
-            top: BorderSide(color: _borderGray.withValues(alpha: 0.72)),
-            bottom: BorderSide(color: _borderGray.withValues(alpha: 0.72)),
+            top: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.72)),
+            bottom:
+                BorderSide(color: cs.outlineVariant.withValues(alpha: 0.72)),
           ),
         ),
         child: Row(
@@ -1094,9 +1100,9 @@ class _VoucherAndTrust extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 4),
-            const Icon(
+            Icon(
               Icons.chevron_right_rounded,
-              color: _textDark,
+              color: cs.onSurface,
               size: 22,
             ),
           ],
@@ -1181,12 +1187,13 @@ class _PromoVoucherSheet extends StatelessWidget {
     final estimatedPrice =
         (product.finalPrice - bestVoucherDiscount).clamp(0, double.infinity);
 
+    final cs = Theme.of(context).colorScheme;
     return SafeArea(
       top: false,
       child: Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: DraggableScrollableSheet(
           expand: false,
@@ -1203,16 +1210,16 @@ class _PromoVoucherSheet extends StatelessWidget {
                     width: 72,
                     height: 5,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFD6DEE8),
+                      color: cs.outlineVariant,
                       borderRadius: BorderRadius.circular(999),
                     ),
                   ),
                 ),
                 const SizedBox(height: 20),
-                const Text(
+                Text(
                   'Promo & voucher',
                   style: TextStyle(
-                    color: _textDark,
+                    color: cs.onSurface,
                     fontSize: 22,
                     fontWeight: FontWeight.w900,
                     height: 1.1,
@@ -1239,10 +1246,10 @@ class _PromoVoucherSheet extends StatelessWidget {
                   ),
                 ],
                 const SizedBox(height: 22),
-                const Text(
+                Text(
                   'Voucher tersedia',
                   style: TextStyle(
-                    color: _textDark,
+                    color: cs.onSurface,
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
                   ),
@@ -1253,10 +1260,10 @@ class _PromoVoucherSheet extends StatelessWidget {
                   const SizedBox(height: 10),
                 ],
                 const SizedBox(height: 8),
-                const Text(
+                Text(
                   'Voucher final akan dihitung saat checkout.',
                   style: TextStyle(
-                    color: _textGray,
+                    color: cs.onSurfaceVariant,
                     fontSize: 12.5,
                     fontWeight: FontWeight.w600,
                     height: 1.25,
@@ -1611,13 +1618,14 @@ class _ProductSectionTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Material(
-      color: Colors.white,
+      color: cs.surface,
       elevation: elevated ? 1 : 0,
       shadowColor: Colors.black.withValues(alpha: 0.08),
       child: Container(
-        decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: _borderGray)),
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: cs.outlineVariant)),
         ),
         child: Row(
           children: [
@@ -1654,14 +1662,15 @@ class _ProductInformationSection extends StatelessWidget {
       if (product.category.isNotEmpty)
         _InfoRow(label: 'Kategori', value: product.category),
     ];
+    final cs = Theme.of(context).colorScheme;
     return _SectionShell(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Informasi Produk',
             style: TextStyle(
-              color: _textDark,
+              color: cs.onSurface,
               fontSize: 16,
               fontWeight: FontWeight.w900,
             ),
@@ -1685,6 +1694,7 @@ class _InfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -1694,8 +1704,8 @@ class _InfoRow extends StatelessWidget {
             width: 118,
             child: Text(
               '$label:',
-              style: const TextStyle(
-                color: _textGray,
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
               ),
@@ -1704,8 +1714,8 @@ class _InfoRow extends StatelessWidget {
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(
-                color: _textDark,
+              style: TextStyle(
+                color: cs.onSurface,
                 fontSize: 14,
                 fontWeight: FontWeight.w900,
               ),
@@ -1730,16 +1740,17 @@ class _ProductDescriptionSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final description = product.description.trim();
     final hasDescription = description.isNotEmpty;
     return _SectionShell(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Deskripsi Produk',
             style: TextStyle(
-              color: _textDark,
+              color: cs.onSurface,
               fontSize: 16,
               fontWeight: FontWeight.w900,
             ),
@@ -1751,8 +1762,8 @@ class _ProductDescriptionSection extends StatelessWidget {
                 : '${product.title} tersedia sebagai produk berkualitas untuk kebutuhan hewan peliharaan Anda.',
             maxLines: expanded ? null : 4,
             overflow: expanded ? TextOverflow.visible : TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: _textMedium,
+            style: TextStyle(
+              color: cs.onSurfaceVariant,
               fontSize: 14,
               height: 1.55,
               fontWeight: FontWeight.w600,
@@ -1804,17 +1815,18 @@ class _ProductCustomerPostsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!loading && posts.isEmpty) return const SizedBox.shrink();
 
+    final cs = Theme.of(context).colorScheme;
     return _SectionShell(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Postingan Pelanggan',
                   style: TextStyle(
-                    color: _textDark,
+                    color: cs.onSurface,
                     fontSize: 17,
                     fontWeight: FontWeight.w900,
                   ),
@@ -1823,8 +1835,8 @@ class _ProductCustomerPostsSection extends StatelessWidget {
               if (!loading && posts.isNotEmpty)
                 Text(
                   '${posts.length} post',
-                  style: const TextStyle(
-                    color: _textGray,
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
                   ),
@@ -1832,10 +1844,10 @@ class _ProductCustomerPostsSection extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'Foto dan video dari pelanggan yang men-tag produk ini.',
             style: TextStyle(
-              color: _textGray,
+              color: cs.onSurfaceVariant,
               fontSize: 12.5,
               fontWeight: FontWeight.w600,
               height: 1.35,
@@ -1866,6 +1878,7 @@ class _CustomerPostLoadingList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return ListView.separated(
       scrollDirection: Axis.horizontal,
       itemCount: 3,
@@ -1874,7 +1887,7 @@ class _CustomerPostLoadingList extends StatelessWidget {
         return Container(
           width: 118,
           decoration: BoxDecoration(
-            color: const Color(0xFFF3F4F6),
+            color: cs.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(14),
           ),
         );
@@ -2104,17 +2117,18 @@ class _ProductRecommendationSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (related.isEmpty) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
     return _SectionShell(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Rekomendasi Untukmu',
                   style: TextStyle(
-                    color: _textDark,
+                    color: cs.onSurface,
                     fontSize: 17,
                     fontWeight: FontWeight.w900,
                   ),
@@ -2166,6 +2180,7 @@ class _DetailRecommendationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final savings = product.price - product.finalPrice;
     final voucherLabel = product.voucherPreview?.badgeLabel.trim();
     final savingsLabel = voucherLabel != null && voucherLabel.isNotEmpty
@@ -2185,9 +2200,9 @@ class _DetailRecommendationCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: cs.surface,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: _borderGray),
+            border: Border.all(color: cs.outlineVariant),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2207,8 +2222,8 @@ class _DetailRecommendationCard extends StatelessWidget {
                 product.title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: _textDark,
+                style: TextStyle(
+                  color: cs.onSurface,
                   fontSize: 12.5,
                   fontWeight: FontWeight.w800,
                   height: 1.25,
@@ -2256,17 +2271,17 @@ class _DetailRecommendationCard extends StatelessWidget {
                       const SizedBox(width: 2),
                       Text(
                         product.rating.toStringAsFixed(1),
-                        style: const TextStyle(
-                          color: _textGray,
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant,
                           fontSize: 11,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
                     ],
                     if (product.rating > 0 && product.soldCount > 0)
-                      const Text(
+                      Text(
                         ' • ',
-                        style: TextStyle(color: _textGray, fontSize: 11),
+                        style: TextStyle(color: cs.onSurfaceVariant, fontSize: 11),
                       ),
                     if (product.soldCount > 0)
                       Expanded(
@@ -2274,8 +2289,8 @@ class _DetailRecommendationCard extends StatelessWidget {
                           '${_formatCompactCount(product.soldCount)} terjual',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: _textGray,
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
                             fontSize: 11,
                             fontWeight: FontWeight.w800,
                           ),
@@ -2385,17 +2400,18 @@ class _ProductReviewPreviewSection extends StatelessWidget {
     final mediaItems =
         reviews.expand((review) => review.media).take(8).toList();
 
+    final cs = Theme.of(context).colorScheme;
     return _SectionShell(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Ulasan pembeli',
                   style: TextStyle(
-                    color: _textDark,
+                    color: cs.onSurface,
                     fontSize: 20,
                     fontWeight: FontWeight.w900,
                   ),
@@ -2436,8 +2452,8 @@ class _ProductReviewPreviewSection extends StatelessWidget {
                 const SizedBox(width: 6),
                 Text(
                   rating > 0 ? rating.toStringAsFixed(1) : '-',
-                  style: const TextStyle(
-                    color: _textDark,
+                  style: TextStyle(
+                    color: cs.onSurface,
                     fontSize: 22,
                     fontWeight: FontWeight.w900,
                   ),
@@ -2448,8 +2464,8 @@ class _ProductReviewPreviewSection extends StatelessWidget {
                     'dari ${_formatCompactCount(ratingCount)} rating • ${_formatCompactCount(reviewCount)} ulasan',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: _textGray,
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
                     ),
@@ -2458,10 +2474,10 @@ class _ProductReviewPreviewSection extends StatelessWidget {
               ],
             )
           else
-            const Text(
+            Text(
               'Belum ada ulasan pembeli.',
               style: TextStyle(
-                color: _textGray,
+                color: cs.onSurfaceVariant,
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
               ),
@@ -2493,7 +2509,7 @@ class _ProductReviewPreviewSection extends StatelessWidget {
             for (var i = 0; i < reviews.length; i++) ...[
               _ReviewPreviewTile(review: reviews[i]),
               if (i != reviews.length - 1)
-                const Divider(height: 24, color: _borderGray),
+                Divider(height: 24, color: cs.outlineVariant),
             ],
           ],
         ],
@@ -2681,18 +2697,19 @@ class _ProductReviewsScreenState extends State<_ProductReviewsScreen> {
             .fold<int>(0, (sum, count) => sum + count) ??
         reviewCount;
 
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: cs.surface,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: _textDark,
+        backgroundColor: cs.surface,
+        foregroundColor: cs.onSurface,
         elevation: 0.6,
         shadowColor: Colors.black.withValues(alpha: 0.12),
         titleSpacing: 0,
-        title: const Text(
+        title: Text(
           'Ulasan',
           style: TextStyle(
-            color: _textDark,
+            color: cs.onSurface,
             fontSize: 20,
             fontWeight: FontWeight.w900,
           ),
@@ -2730,7 +2747,7 @@ class _ProductReviewsScreenState extends State<_ProductReviewsScreen> {
               for (var i = 0; i < _reviews.length; i++) ...[
                 _FullReviewTile(review: _reviews[i]),
                 if (i != _reviews.length - 1)
-                  const Divider(height: 28, color: _borderGray),
+                  Divider(height: 28, color: cs.outlineVariant),
               ],
               if (_nextCursor != null) ...[
                 const SizedBox(height: 12),
@@ -2769,12 +2786,13 @@ class _ReviewSummaryHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _borderGray),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: Row(
         children: [
@@ -2782,8 +2800,8 @@ class _ReviewSummaryHeader extends StatelessWidget {
           const SizedBox(width: 10),
           Text(
             rating > 0 ? rating.toStringAsFixed(1) : '-',
-            style: const TextStyle(
-              color: _textDark,
+            style: TextStyle(
+              color: cs.onSurface,
               fontSize: 30,
               fontWeight: FontWeight.w900,
               height: 1,
@@ -2795,8 +2813,8 @@ class _ReviewSummaryHeader extends StatelessWidget {
               'dari ${_formatCompactCount(ratingCount)} rating • ${_formatCompactCount(reviewCount)} ulasan',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: _textGray,
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
               ),
@@ -2874,6 +2892,7 @@ class _ReviewFilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return ChoiceChip(
       selected: selected,
       onSelected: (_) => onTap(),
@@ -2886,14 +2905,14 @@ class _ReviewFilterChip extends StatelessWidget {
             ),
       label: Text(label),
       selectedColor: _brandBlue,
-      backgroundColor: Colors.white,
+      backgroundColor: cs.surface,
       labelStyle: TextStyle(
-        color: selected ? Colors.white : _textMedium,
+        color: selected ? Colors.white : cs.onSurfaceVariant,
         fontSize: 13,
         fontWeight: FontWeight.w800,
       ),
       side: BorderSide(
-        color: selected ? _brandBlue : _borderGray,
+        color: selected ? _brandBlue : cs.outlineVariant,
       ),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
     );
@@ -2915,6 +2934,7 @@ class _FullReviewTile extends StatelessWidget {
       if ((review.content ?? '').trim().isNotEmpty) review.content!.trim(),
     ].join('\n');
 
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
@@ -2922,11 +2942,11 @@ class _FullReviewTile extends StatelessWidget {
         children: [
           CircleAvatar(
             radius: 21,
-            backgroundColor: const Color(0xFFE5E7EB),
+            backgroundColor: cs.surfaceContainerHighest,
             child: Text(
               name.isEmpty ? 'N' : name.substring(0, 1).toUpperCase(),
-              style: const TextStyle(
-                color: _textGray,
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
                 fontWeight: FontWeight.w900,
               ),
             ),
@@ -2943,8 +2963,8 @@ class _FullReviewTile extends StatelessWidget {
                         name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: _textDark,
+                        style: TextStyle(
+                          color: cs.onSurface,
                           fontSize: 15,
                           fontWeight: FontWeight.w900,
                         ),
@@ -2959,12 +2979,12 @@ class _FullReviewTile extends StatelessWidget {
                           targetId: review.id,
                           authorName: review.userName,
                         ),
-                        child: const Padding(
-                          padding: EdgeInsets.all(4),
+                        child: Padding(
+                          padding: const EdgeInsets.all(4),
                           child: Icon(
                             Icons.more_vert_rounded,
                             size: 19,
-                            color: _textGray,
+                            color: cs.onSurfaceVariant,
                           ),
                         ),
                       ),
@@ -2979,13 +2999,13 @@ class _FullReviewTile extends StatelessWidget {
                         size: 17,
                         color: i < review.rating
                             ? _starAmber
-                            : const Color(0xFFE5E7EB),
+                            : cs.outlineVariant,
                       ),
                     const SizedBox(width: 8),
                     Text(
                       _formatDateId(review.createdAt),
-                      style: const TextStyle(
-                        color: _textGray,
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
                         fontSize: 12.5,
                         fontWeight: FontWeight.w700,
                       ),
@@ -2998,8 +3018,8 @@ class _FullReviewTile extends StatelessWidget {
                     'Varian: ${review.variantLabel}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: _textGray,
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                     ),
@@ -3009,8 +3029,8 @@ class _FullReviewTile extends StatelessWidget {
                   const SizedBox(height: 8),
                   Text(
                     text,
-                    style: const TextStyle(
-                      color: _textMedium,
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
                       fontSize: 14,
                       height: 1.45,
                       fontWeight: FontWeight.w600,
@@ -3043,14 +3063,14 @@ class _FullReviewTile extends StatelessWidget {
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF8FAFC),
+                      color: cs.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: _borderGray),
+                      border: Border.all(color: cs.outlineVariant),
                     ),
                     child: Text(
                       'Admin Natalo: ${review.reply!.content}',
-                      style: const TextStyle(
-                        color: _textMedium,
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
                         fontSize: 13,
                         height: 1.4,
                         fontWeight: FontWeight.w600,
@@ -3072,6 +3092,7 @@ class _ReviewListSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Column(
       children: List.generate(
         4,
@@ -3083,8 +3104,8 @@ class _ReviewListSkeleton extends StatelessWidget {
               Container(
                 width: 42,
                 height: 42,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFE5E7EB),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest,
                   shape: BoxShape.circle,
                 ),
               ),
@@ -3097,7 +3118,7 @@ class _ReviewListSkeleton extends StatelessWidget {
                       width: 130,
                       height: 14,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFE5E7EB),
+                        color: cs.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(999),
                       ),
                     ),
@@ -3105,7 +3126,7 @@ class _ReviewListSkeleton extends StatelessWidget {
                     Container(
                       height: 12,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEFF4FA),
+                        color: cs.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(999),
                       ),
                     ),
@@ -3114,7 +3135,7 @@ class _ReviewListSkeleton extends StatelessWidget {
                       width: 220,
                       height: 12,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEFF4FA),
+                        color: cs.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(999),
                       ),
                     ),
@@ -3134,25 +3155,26 @@ class _ReviewsEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 54),
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 54),
       child: Column(
         children: [
-          Icon(Icons.rate_review_outlined, color: _textGray, size: 42),
-          SizedBox(height: 12),
+          Icon(Icons.rate_review_outlined, color: cs.onSurfaceVariant, size: 42),
+          const SizedBox(height: 12),
           Text(
             'Ulasan tidak ditemukan',
             style: TextStyle(
-              color: _textDark,
+              color: cs.onSurface,
               fontSize: 16,
               fontWeight: FontWeight.w900,
             ),
           ),
-          SizedBox(height: 5),
+          const SizedBox(height: 5),
           Text(
             'Coba gunakan filter lain.',
             style: TextStyle(
-              color: _textGray,
+              color: cs.onSurfaceVariant,
               fontSize: 13,
               fontWeight: FontWeight.w600,
             ),
@@ -3370,16 +3392,17 @@ class _ReviewPreviewTile extends StatelessWidget {
       if ((review.content ?? '').trim().isNotEmpty) review.content!.trim(),
     ].join('\n');
 
+    final cs = Theme.of(context).colorScheme;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         CircleAvatar(
           radius: 19,
-          backgroundColor: const Color(0xFFE5E7EB),
+          backgroundColor: cs.surfaceContainerHighest,
           child: Text(
             name.isEmpty ? 'N' : name.substring(0, 1).toUpperCase(),
-            style: const TextStyle(
-              color: _textGray,
+            style: TextStyle(
+              color: cs.onSurfaceVariant,
               fontWeight: FontWeight.w900,
             ),
           ),
@@ -3396,8 +3419,8 @@ class _ReviewPreviewTile extends StatelessWidget {
                       name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: _textDark,
+                      style: TextStyle(
+                        color: cs.onSurface,
                         fontSize: 14,
                         fontWeight: FontWeight.w900,
                       ),
@@ -3416,12 +3439,12 @@ class _ReviewPreviewTile extends StatelessWidget {
                         targetId: review.id,
                         authorName: review.userName,
                       ),
-                      child: const Padding(
-                        padding: EdgeInsets.all(4),
+                      child: Padding(
+                        padding: const EdgeInsets.all(4),
                         child: Icon(
                           Icons.more_horiz_rounded,
                           size: 18,
-                          color: _textGray,
+                          color: cs.onSurfaceVariant,
                         ),
                       ),
                     ),
@@ -3436,13 +3459,13 @@ class _ReviewPreviewTile extends StatelessWidget {
                       size: 15,
                       color: i < review.rating
                           ? _starAmber
-                          : const Color(0xFFE5E7EB),
+                          : cs.outlineVariant,
                     ),
                   const SizedBox(width: 8),
                   Text(
                     _formatDateId(review.createdAt),
-                    style: const TextStyle(
-                      color: _textGray,
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                     ),
@@ -3455,8 +3478,8 @@ class _ReviewPreviewTile extends StatelessWidget {
                   'Varian: ${review.variantLabel}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: _textGray,
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
                   ),
@@ -3468,8 +3491,8 @@ class _ReviewPreviewTile extends StatelessWidget {
                   text,
                   maxLines: 4,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: _textMedium,
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
                     fontSize: 13,
                     height: 1.45,
                     fontWeight: FontWeight.w600,
@@ -3516,6 +3539,7 @@ class _Tab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Expanded(
       child: Material(
         color: Colors.transparent,
@@ -3535,7 +3559,7 @@ class _Tab extends StatelessWidget {
               label,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: active ? _brandBlue : const Color(0xFF9CA3AF),
+                color: active ? _brandBlue : cs.onSurfaceVariant,
                 fontSize: 14,
                 fontWeight: FontWeight.w900,
               ),
@@ -3590,7 +3614,7 @@ class _VariantEntryRow extends StatelessWidget {
     return selectedOptions.values.every(variant.optionIds.contains);
   }
 
-  Widget _buildVariantThumb(ProductVariant variant) {
+  Widget _buildVariantThumb(ProductVariant variant, ColorScheme cs) {
     final selected = _isSelected(variant);
     final imageUrl = variant.imageUrl?.trim().isNotEmpty == true
         ? variant.imageUrl!
@@ -3601,10 +3625,10 @@ class _VariantEntryRow extends StatelessWidget {
       height: 48,
       padding: const EdgeInsets.all(2),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: selected ? _brandBlue : _borderGray,
+          color: selected ? _brandBlue : cs.outlineVariant,
           width: selected ? 1.6 : 1,
         ),
         boxShadow: [
@@ -3630,6 +3654,7 @@ class _VariantEntryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final previewVariants = _previewVariants();
 
     return AppPressable(
@@ -3638,11 +3663,11 @@ class _VariantEntryRow extends StatelessWidget {
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-        decoration: const BoxDecoration(
-          color: Colors.white,
+        decoration: BoxDecoration(
+          color: cs.surface,
           border: Border(
             bottom: BorderSide(
-              color: _borderGray,
+              color: cs.outlineVariant,
               width: 1,
             ),
           ),
@@ -3657,17 +3682,17 @@ class _VariantEntryRow extends StatelessWidget {
                     _availabilityLabel(),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: _textGray,
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
                       fontSize: 15,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),
                 const SizedBox(width: 8),
-                const Icon(
+                Icon(
                   Icons.chevron_right_rounded,
-                  color: _textDark,
+                  color: cs.onSurface,
                   size: 28,
                 ),
               ],
@@ -3682,7 +3707,7 @@ class _VariantEntryRow extends StatelessWidget {
                   itemCount: previewVariants.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 10),
                   itemBuilder: (context, index) {
-                    return _buildVariantThumb(previewVariants[index]);
+                    return _buildVariantThumb(previewVariants[index], cs);
                   },
                 ),
               ),
@@ -3700,14 +3725,14 @@ class _VariantEntryRow extends StatelessWidget {
                           vertical: 8,
                         ),
                         decoration: BoxDecoration(
-                          color: _softBlueBg,
+                          color: cs.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(999),
-                          border: Border.all(color: _borderGray),
+                          border: Border.all(color: cs.outlineVariant),
                         ),
                         child: Text(
                           option.value,
-                          style: const TextStyle(
-                            color: _textMedium,
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
                             fontSize: 12,
                             fontWeight: FontWeight.w800,
                           ),
@@ -3838,6 +3863,7 @@ class _ProductVariantBottomSheetState
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final stockTone = _stockStatus.tone;
     final originalPrice = _originalPrice;
@@ -3849,9 +3875,9 @@ class _ProductVariantBottomSheetState
       expand: false,
       builder: (context, scrollController) {
         return Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          decoration: BoxDecoration(
+            color: cs.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
           ),
           child: SafeArea(
             top: false,
@@ -3869,7 +3895,7 @@ class _ProductVariantBottomSheetState
                             width: 46,
                             height: 5,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFD1D5DB),
+                              color: cs.outlineVariant,
                               borderRadius: BorderRadius.circular(999),
                             ),
                           ),
@@ -3880,7 +3906,7 @@ class _ProductVariantBottomSheetState
                             IconButton(
                               onPressed: () => Navigator.of(context).pop(),
                               icon: const Icon(Icons.close_rounded, size: 30),
-                              color: _textDark,
+                              color: cs.onSurface,
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints.tightFor(
                                 width: 42,
@@ -3888,10 +3914,10 @@ class _ProductVariantBottomSheetState
                               ),
                             ),
                             const SizedBox(width: 6),
-                            const Text(
+                            Text(
                               'Varian produk',
                               style: TextStyle(
-                                color: _textDark,
+                                color: cs.onSurface,
                                 fontSize: 22,
                                 fontWeight: FontWeight.w900,
                               ),
@@ -3921,8 +3947,8 @@ class _ProductVariantBottomSheetState
                                     formatRupiah(_displayPrice),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: _textDark,
+                                    style: TextStyle(
+                                      color: cs.onSurface,
                                       fontSize: 26,
                                       height: 1,
                                       fontWeight: FontWeight.w900,
@@ -3957,8 +3983,8 @@ class _ProductVariantBottomSheetState
                                       )!,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        color: _textGray,
+                                      style: TextStyle(
+                                        color: cs.onSurfaceVariant,
                                         fontSize: 12,
                                         fontWeight: FontWeight.w700,
                                       ),
@@ -3973,8 +3999,8 @@ class _ProductVariantBottomSheetState
                         for (final attr in _product.variantAttrs) ...[
                           Text(
                             '${attr.name}:',
-                            style: const TextStyle(
-                              color: _textDark,
+                            style: TextStyle(
+                              color: cs.onSurface,
                               fontSize: 16,
                               fontWeight: FontWeight.w900,
                             ),
@@ -4047,7 +4073,7 @@ class _ProductVariantBottomSheetState
                 Container(
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: cs.surface,
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.08),
@@ -4226,12 +4252,13 @@ class _QuantityStepper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       height: 42,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFD1D5DB)),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -4240,7 +4267,7 @@ class _QuantityStepper extends StatelessWidget {
             onPressed: canDecrease ? onDecrease : null,
             icon: const Icon(Icons.remove_rounded),
             iconSize: 20,
-            color: _textDark,
+            color: cs.onSurface,
             disabledColor: const Color(0xFFCBD5E1),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints.tightFor(width: 40, height: 40),
@@ -4250,8 +4277,8 @@ class _QuantityStepper extends StatelessWidget {
             child: Text(
               '$quantity',
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: _textDark,
+              style: TextStyle(
+                color: cs.onSurface,
                 fontSize: 16,
                 fontWeight: FontWeight.w900,
               ),
@@ -4261,7 +4288,7 @@ class _QuantityStepper extends StatelessWidget {
             onPressed: canIncrease ? onIncrease : null,
             icon: const Icon(Icons.add_rounded),
             iconSize: 22,
-            color: _textDark,
+            color: cs.onSurface,
             disabledColor: const Color(0xFFCBD5E1),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints.tightFor(width: 40, height: 40),
@@ -4287,21 +4314,18 @@ class _VariantChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final bgColor = selected
         ? _brandBlue
         : enabled
-            ? Colors.white
-            : const Color(0xFFEFF2F6);
-    final borderColor = selected
-        ? _brandBlue
-        : enabled
-            ? const Color(0xFFE5E7EB)
-            : const Color(0xFFE5E7EB);
+            ? cs.surface
+            : cs.surfaceContainerHighest;
+    final borderColor = selected ? _brandBlue : cs.outlineVariant;
     final textColor = selected
         ? Colors.white
         : enabled
-            ? const Color(0xFF334155)
-            : const Color(0xFF9CA3AF);
+            ? cs.onSurface
+            : cs.onSurfaceVariant;
     return Material(
       color: Colors.transparent,
       child: InkWell(

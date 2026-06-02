@@ -271,6 +271,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     if (!memberStore.isLoggedIn) {
       return Scaffold(
         backgroundColor: Colors.transparent,
@@ -331,10 +332,10 @@ class _WishlistScreenState extends State<WishlistScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Text(
+                Text(
                   'Wishlist',
                   style: TextStyle(
-                    color: Color(0xFF17202A),
+                    color: cs.onSurface,
                     fontSize: 22,
                     fontWeight: FontWeight.w900,
                     height: 1.1,
@@ -344,8 +345,8 @@ class _WishlistScreenState extends State<WishlistScreen> {
                   const SizedBox(height: 2),
                   Text(
                     '${favoriteStore.count} produk disimpan',
-                    style: const TextStyle(
-                      color: Color(0xFF6B7280),
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
@@ -493,13 +494,14 @@ class _WishlistEmptyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 20, 18, 22),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(28),
         border: Border.all(
-          color: const Color(0xFFD9E7FF),
+          color: cs.outlineVariant,
           width: 1.2,
         ),
         boxShadow: [
@@ -514,11 +516,11 @@ class _WishlistEmptyCard extends StatelessWidget {
         children: [
           const _WishlistIllustration(),
           const SizedBox(height: 10),
-          const Text(
+          Text(
             'Wishlist kamu masih kosong',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Color(0xFF0F172A),
+              color: cs.onSurface,
               fontSize: 24,
               height: 1.18,
               fontWeight: FontWeight.w900,
@@ -526,22 +528,22 @@ class _WishlistEmptyCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          const Text(
+          Text(
             'Simpan makanan, vitamin, pasir, atau perlengkapan\nfavorit agar mudah dibeli lagi nanti.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Color(0xFF64748B),
+              color: cs.onSurfaceVariant,
               fontSize: 16,
               height: 1.45,
               fontWeight: FontWeight.w500,
             ),
           ),
           const SizedBox(height: 12),
-          const Text(
+          Text(
             'Tekan ikon hati pada produk yang kamu suka.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Color(0xFF98A2B3),
+              color: cs.onSurfaceVariant,
               fontSize: 15,
               height: 1.35,
               fontWeight: FontWeight.w500,
@@ -583,15 +585,16 @@ class _LookAgainHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 26, 20, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Ayo dilihat kembali',
             style: TextStyle(
-              color: Color(0xFF17202A),
+              color: cs.onSurface,
               fontSize: 18,
               fontWeight: FontWeight.w900,
             ),
@@ -601,8 +604,8 @@ class _LookAgainHeader extends StatelessWidget {
             hasSearchHistory
                 ? 'Dipilih dari kebiasaan pencarian dan produk yang kamu lihat.'
                 : 'Produk pilihan yang mungkin cocok untuk kamu.',
-            style: const TextStyle(
-              color: Color(0xFF6B7280),
+            style: TextStyle(
+              color: cs.onSurfaceVariant,
               fontSize: 12,
               fontWeight: FontWeight.w600,
               height: 1.35,
@@ -637,11 +640,12 @@ class _LookAgainFooter extends StatelessWidget {
       );
     }
     if (!hasMore && hasItems) {
-      return const Center(
+      final cs = Theme.of(context).colorScheme;
+      return Center(
         child: Text(
           'Semua rekomendasi sudah tampil',
           style: TextStyle(
-            color: Color(0xFF9CA3AF),
+            color: cs.onSurfaceVariant,
             fontSize: 12,
             fontWeight: FontWeight.w600,
           ),

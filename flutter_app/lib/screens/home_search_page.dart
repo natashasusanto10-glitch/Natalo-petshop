@@ -116,8 +116,9 @@ class _HomeSearchPageState extends State<HomeSearchPage> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: cs.surface,
       resizeToAvoidBottomInset: true,
       body: SafeArea(
         bottom: false,
@@ -131,7 +132,7 @@ class _HomeSearchPageState extends State<HomeSearchPage> {
               onSubmitted: _submitQuery,
               onClear: _clearInput,
             ),
-            const Divider(height: 1, thickness: 0.5, color: Color(0xFFEEF1F4)),
+            Divider(height: 1, thickness: 0.5, color: cs.outlineVariant),
             Expanded(
               child: _SearchInitialContent(
                 onTapKeyword: _tapKeyword,
@@ -166,9 +167,10 @@ class _SearchHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.fromLTRB(8, 6, 12, 8),
-      color: Colors.white,
+      color: cs.surface,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -179,12 +181,12 @@ class _SearchHeader extends StatelessWidget {
             child: InkWell(
               onTap: onBack,
               customBorder: const CircleBorder(),
-              child: const SizedBox(
+              child: SizedBox(
                 width: 44,
                 height: 44,
                 child: Icon(
                   Icons.arrow_back_rounded,
-                  color: Color(0xFF17202A),
+                  color: cs.onSurface,
                   size: 22,
                 ),
               ),
@@ -201,8 +203,8 @@ class _SearchHeader extends StatelessWidget {
                 autofocus: true,
                 textInputAction: TextInputAction.search,
                 onSubmitted: onSubmitted,
-                style: const TextStyle(
-                  color: Color(0xFF111827),
+                style: TextStyle(
+                  color: cs.onSurface,
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                 ),
@@ -217,15 +219,15 @@ class _SearchHeader extends StatelessWidget {
                   // saat itu (kontinuitas visual). Tetap static selama
                   // user di halaman ini.
                   hintText: trendingPlaceholderController.currentPlaceholder,
-                  hintStyle: const TextStyle(
-                    color: Color(0xFF94A3B8),
+                  hintStyle: TextStyle(
+                    color: cs.onSurfaceVariant,
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                   ),
-                  prefixIcon: const Icon(
+                  prefixIcon: Icon(
                     Icons.search_rounded,
                     size: 20,
-                    color: Color(0xFF94A3B8),
+                    color: cs.onSurfaceVariant,
                   ),
                   prefixIconConstraints:
                       const BoxConstraints(minWidth: 42, minHeight: 42),
@@ -235,26 +237,26 @@ class _SearchHeader extends StatelessWidget {
                           tooltip: 'Hapus',
                           padding: EdgeInsets.zero,
                           visualDensity: VisualDensity.compact,
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.close_rounded,
                             size: 18,
-                            color: Color(0xFF94A3B8),
+                            color: cs.onSurfaceVariant,
                           ),
                         )
                       : null,
                   filled: true,
-                  fillColor: const Color(0xFFF8FAFC),
+                  fillColor: cs.surfaceContainerHighest,
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 14,
                     vertical: 10,
                   ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+                    borderSide: BorderSide(color: cs.outlineVariant),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+                    borderSide: BorderSide(color: cs.outlineVariant),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
@@ -332,6 +334,7 @@ class _RecentlyViewedSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -339,11 +342,11 @@ class _RecentlyViewedSection extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 4, 8, 8),
           child: Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Terakhir Dilihat',
                   style: TextStyle(
-                    color: Color(0xFF111827),
+                    color: cs.onSurface,
                     fontSize: 15,
                     fontWeight: FontWeight.w900,
                   ),
@@ -393,6 +396,7 @@ class _ViewedCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
@@ -400,9 +404,9 @@ class _ViewedCard extends StatelessWidget {
         width: 138,
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: cs.surface,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFE5E7EB)),
+          border: Border.all(color: cs.outlineVariant),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -422,8 +426,8 @@ class _ViewedCard extends StatelessWidget {
               product.title,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Color(0xFF111827),
+              style: TextStyle(
+                color: cs.onSurface,
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
                 height: 1.25,
@@ -452,17 +456,17 @@ class _ViewedCard extends StatelessWidget {
                   const SizedBox(width: 2),
                   Text(
                     product.rating.toStringAsFixed(1),
-                    style: const TextStyle(
-                      color: Color(0xFF6B7280),
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
                       fontSize: 10.5,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                   if (product.soldCount > 0) ...[
                     const SizedBox(width: 4),
-                    const Text(
+                    Text(
                       '•',
-                      style: TextStyle(color: Color(0xFFCBD5E1)),
+                      style: TextStyle(color: cs.onSurfaceVariant),
                     ),
                     const SizedBox(width: 4),
                   ],
@@ -473,8 +477,8 @@ class _ViewedCard extends StatelessWidget {
                       '${_formatSold(product.soldCount)} terjual',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF6B7280),
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
                         fontSize: 10.5,
                         fontWeight: FontWeight.w600,
                       ),
@@ -510,6 +514,7 @@ class _RecentSearchSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -517,11 +522,11 @@ class _RecentSearchSection extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 8, 8, 4),
           child: Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Pencarian Terakhir',
                   style: TextStyle(
-                    color: Color(0xFF111827),
+                    color: cs.onSurface,
                     fontSize: 15,
                     fontWeight: FontWeight.w900,
                   ),
@@ -576,16 +581,17 @@ class _RecentSearchRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return InkWell(
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
           children: [
-            const Icon(
+            Icon(
               Icons.history_rounded,
               size: 18,
-              color: Color(0xFF94A3B8),
+              color: cs.onSurfaceVariant,
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -593,8 +599,8 @@ class _RecentSearchRow extends StatelessWidget {
                 entry,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF111827),
+                style: TextStyle(
+                  color: cs.onSurface,
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
                 ),
@@ -603,12 +609,12 @@ class _RecentSearchRow extends StatelessWidget {
             GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: onDelete,
-              child: const Padding(
-                padding: EdgeInsets.all(6),
+              child: Padding(
+                padding: const EdgeInsets.all(6),
                 child: Icon(
                   Icons.close_rounded,
                   size: 16,
-                  color: Color(0xFF94A3B8),
+                  color: cs.onSurfaceVariant,
                 ),
               ),
             ),
@@ -639,15 +645,16 @@ class _TrendingSearchSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 8, 16, 12),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
           child: Text(
             'Trending Search',
             style: TextStyle(
-              color: Color(0xFF111827),
+              color: cs.onSurface,
               fontSize: 15,
               fontWeight: FontWeight.w900,
             ),
@@ -693,8 +700,9 @@ class _TrendingChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Material(
-      color: const Color(0xFFF8FAFC),
+      color: cs.surfaceContainerHighest,
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         onTap: onTap,
@@ -703,7 +711,7 @@ class _TrendingChip extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFFE5E7EB)),
+            border: Border.all(color: cs.outlineVariant),
           ),
           child: Row(
             children: [
@@ -718,8 +726,8 @@ class _TrendingChip extends StatelessWidget {
                   keyword,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF111827),
+                  style: TextStyle(
+                    color: cs.onSurface,
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                   ),

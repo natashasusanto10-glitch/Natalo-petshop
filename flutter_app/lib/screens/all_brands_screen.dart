@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../models/product.dart';
-import '../theme/natalo_colors.dart';
 import '../utils/haptics.dart';
 
 /// Semua Brand — grid logo brand pet care yang tersedia di Natalo.
@@ -36,11 +35,12 @@ class AllBrandsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: const Color(0xFFF7FAFF),
+      backgroundColor: cs.surface,
       appBar: AppBar(
         title: const Text('Semua Brand'),
-        backgroundColor: const Color(0xFFF7FAFF),
+        backgroundColor: cs.surface,
         elevation: 0,
       ),
       body: GridView.builder(
@@ -79,14 +79,15 @@ class _BrandCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return InkWell(
       borderRadius: BorderRadius.circular(16),
       onTap: onTap,
       child: Ink(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: cs.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFDDE8F8)),
+          border: Border.all(color: cs.outlineVariant),
         ),
         child: Padding(
           padding: const EdgeInsets.all(8),
@@ -112,8 +113,8 @@ class _BrandCard extends StatelessWidget {
                 textAlign: TextAlign.center,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: NataloColors.textPrimary,
+                style: TextStyle(
+                  color: cs.onSurface,
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
                   height: 1.2,
