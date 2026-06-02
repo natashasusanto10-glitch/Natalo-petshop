@@ -3061,6 +3061,9 @@ class _CartSummaryBar extends StatelessWidget {
                       AnimatedRupiah(
                         value: grandTotal,
                         style: NataloTextStyles.totalPaymentPrice.copyWith(
+                          // Adaptif dark: priceText (slate gelap) invisible di
+                          // surface gelap → resolve via onSurface.
+                          color: Theme.of(context).colorScheme.onSurface,
                           fontSize: 18,
                           fontWeight: FontWeight.w900,
                         ),

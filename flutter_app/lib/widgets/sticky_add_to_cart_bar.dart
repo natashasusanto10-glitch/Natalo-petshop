@@ -66,6 +66,8 @@ class StickyAddToCartBar extends StatelessWidget {
                         Text(
                           formatRupiah(product.finalPrice),
                           style: NataloTextStyles.productPrice.copyWith(
+                            // Adaptif dark: priceText invisible di surface gelap.
+                            color: Theme.of(context).colorScheme.onSurface,
                             fontSize: 16,
                             fontWeight: FontWeight.w900,
                             height: 1,

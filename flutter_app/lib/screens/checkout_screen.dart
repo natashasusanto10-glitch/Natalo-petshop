@@ -2278,6 +2278,8 @@ class _CheckoutProductRow extends StatelessWidget {
                 Text(
                   formatRupiah(item.lineTotal),
                   style: NataloTextStyles.cartPrice.copyWith(
+                    // Adaptif dark: priceText invisible di surface gelap.
+                    color: Theme.of(context).colorScheme.onSurface,
                     fontSize: 12,
                     fontWeight: FontWeight.w900,
                   ),
