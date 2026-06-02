@@ -179,11 +179,15 @@ export function VariantInlineEditCell({
 
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          // Modern frosted-glass: backdrop-blur halus + dim lebih ringan.
+          // Konten di belakang TERLIHAT samar (blur) — bukan sekadar gelap.
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-md"
           onClick={() => !saving && setOpen(false)}
         >
           <div
-            className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl"
+            // Dialog: solid white + ring halus + shadow-2xl elevation.
+            // ring-1 ring-black/5 = depth subtle tanpa heavy shadow.
+            className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-black/5"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3">
