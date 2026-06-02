@@ -223,7 +223,16 @@ class NataloPetshopApp extends StatelessWidget {
           debugShowCheckedModeBanner: false,
           theme: NataloTheme.lightTheme,
           darkTheme: NataloTheme.darkTheme,
-          themeMode: appSettingsStore.themeMode,
+          // KILL SWITCH (v1.0.138): force light untuk SEMUA user, abaikan
+          // setting tersimpan & sistem HP. Alasan: dark theme masih rusak di
+          // ~93 screen yang hardcode warna terang (Colors.white /
+          // surfaceElevated) tanpa fork dark → text invisible, card putih
+          // nyala di tengah scaffold gelap. Karena default themeMode dulu
+          // `system`, user yang HP-nya auto-dark malam hari kena tampilan
+          // kacau TANPA pernah memilih dark. Force light = semua dapat light
+          // yang sudah dipoles. Balikin ke `appSettingsStore.themeMode`
+          // setelah audit dark theme selesai (ganti hardcoded → Theme.of).
+          themeMode: ThemeMode.light,
           builder: (context, child) {
             // Solid background dari ThemeData.scaffoldBackgroundColor —
             // no gradient overlay. Faster rendering di HP murah, better
