@@ -45,6 +45,11 @@ class ImageViewerScreen extends StatefulWidget {
 class _ImageViewerScreenState extends State<ImageViewerScreen> {
   late final PageController _controller;
   late int _index;
+  // Track scale state global — saat ada image yg sedang zoomed, PageView
+  // physics di-lock (NeverScrollableScrollPhysics) supaya pan zoomed image
+  // tidak ke-hijack PageView swipe. Combo dgn dynamic panEnabled di
+  // _ZoomableImage = solusi proven untuk InteractiveViewer+PageView arena.
+  bool _zoomed = false;
 
   @override
   void initState() {
@@ -58,6 +63,11 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  void _setZoomed(bool value) {
+    if (_zoomed == value) return;
+    setState(() => _zoomed = value);
   }
 
   @override
@@ -96,12 +106,15 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
                 controller: _controller,
                 itemCount: images.length,
                 onPageChanged: (value) => setState(() => _index = value),
-                // Peek-zoom (IG-style): pinch zoom, lepas → snap balik
-                // normal, swipe kiri/kanan navigasi antar foto. panEnabled
-                // false supaya drag 1-jari horizontal diteruskan ke PageView
-                // (navigasi), bukan dipan oleh InteractiveViewer.
+                // Lock PageView scroll saat zoomed → pan dalam zoomed image
+                // bisa bebas, tidak hijack jadi swipe page. Saat scale=1,
+                // physics default → swipe kiri/kanan jalan.
+                physics: _zoomed
+                    ? const NeverScrollableScrollPhysics()
+                    : const PageScrollPhysics(),
                 itemBuilder: (context, i) => _ZoomableImage(
                   imageUrl: images[i],
+                  onZoomChanged: _setZoomed,
                 ),
               ),
             ),
@@ -165,16 +178,29 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
   }
 }
 
-/// Foto fullscreen dengan peek-zoom IG-style:
-///  - Pinch (2 jari) → zoom in (scale 1-4).
-///  - Lepas → animasi balik ke ukuran normal (snap-back).
-///  - Swipe 1 jari horizontal → diteruskan ke PageView (navigasi antar
-///    foto), karena panEnabled=false (InteractiveViewer tidak konsumsi
-///    drag 1-jari).
+/// Foto fullscreen dengan peek-zoom IG-style.
+///
+/// Solusi gesture conflict InteractiveViewer↔PageView (known Flutter
+/// issue):
+///  - **scale=1 (default)**: `panEnabled=false` → InteractiveViewer tidak
+///    consume drag 1-jari → swipe horizontal diteruskan ke PageView
+///    (navigasi antar foto). Pinch (2-jari scale gesture) tetap detect.
+///  - **scale>1 (zoomed)**: `panEnabled=true` → user bisa pan zoomed
+///    image bebas. PageView physics di-lock di parent supaya pan tidak
+///    hijack jadi swipe.
+///  - **Lepas jari**: animasi snap-back ke identity (Matrix4.identity)
+///    → scale balik 1 → swipe PageView aktif lagi.
+///
+/// Callback [onZoomChanged] fire saat zoom state berubah (true=zoomed,
+/// false=normal) → parent toggle PageView physics.
 class _ZoomableImage extends StatefulWidget {
   final String imageUrl;
+  final ValueChanged<bool> onZoomChanged;
 
-  const _ZoomableImage({required this.imageUrl});
+  const _ZoomableImage({
+    required this.imageUrl,
+    required this.onZoomChanged,
+  });
 
   @override
   State<_ZoomableImage> createState() => _ZoomableImageState();
@@ -185,31 +211,59 @@ class _ZoomableImageState extends State<_ZoomableImage>
   final TransformationController _controller = TransformationController();
   late final AnimationController _anim;
   Animation<Matrix4>? _resetAnim;
+  // panEnabled dinamis. False di scale=1 (biar swipe ke PageView), true
+  // saat zoomed (biar pan dalam image bebas).
+  bool _panEnabled = false;
+  bool _isZoomed = false;
+
+  static const double _zoomedThreshold = 1.02;
 
   @override
   void initState() {
     super.initState();
     _anim = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 200),
+      duration: const Duration(milliseconds: 220),
     )..addListener(() {
         final m = _resetAnim?.value;
         if (m != null) _controller.value = m;
       });
+    _controller.addListener(_onTransform);
   }
 
   @override
   void dispose() {
+    _controller.removeListener(_onTransform);
     _anim.dispose();
     _controller.dispose();
     super.dispose();
   }
 
+  void _onTransform() {
+    // getMaxScaleOnAxis = effective scale factor dari transformation matrix.
+    final scale = _controller.value.getMaxScaleOnAxis();
+    final zoomed = scale > _zoomedThreshold;
+    if (zoomed != _isZoomed) {
+      _isZoomed = zoomed;
+      // Notify parent untuk lock PageView physics. Pakai setState ringan
+      // (hanya panEnabled flag, repaint subtree saja).
+      setState(() => _panEnabled = zoomed);
+      widget.onZoomChanged(zoomed);
+    }
+  }
+
   void _onInteractionEnd(ScaleEndDetails _) {
-    // Snap balik ke identity (ukuran normal) saat jari dilepas.
-    if (_controller.value == Matrix4.identity()) return;
+    // Snap balik ke identity (ukuran normal) saat jari dilepas, KECUALI
+    // sudah di identity. Compare via storage list bukan == karena Matrix4
+    // equality tidak reliable.
+    final current = _controller.value;
+    final isIdentity = current.storage
+        .asMap()
+        .entries
+        .every((e) => e.value == Matrix4.identity().storage[e.key]);
+    if (isIdentity) return;
     _resetAnim = Matrix4Tween(
-      begin: _controller.value,
+      begin: current,
       end: Matrix4.identity(),
     ).animate(CurvedAnimation(parent: _anim, curve: Curves.easeOut));
     _anim.forward(from: 0);
@@ -227,9 +281,7 @@ class _ZoomableImageState extends State<_ZoomableImage>
             : MediaQuery.sizeOf(context).height;
         return InteractiveViewer(
           transformationController: _controller,
-          // panEnabled false → drag 1-jari horizontal diteruskan ke
-          // PageView (swipe navigasi). Zoom tetap via pinch 2-jari.
-          panEnabled: false,
+          panEnabled: _panEnabled,
           scaleEnabled: true,
           minScale: 1,
           maxScale: 4,
