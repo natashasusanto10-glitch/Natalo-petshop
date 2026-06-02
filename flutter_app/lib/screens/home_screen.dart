@@ -755,24 +755,25 @@ class _ExploreSectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.fromLTRB(16, 28, 16, 0),
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 28, 16, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             'Jelajahi Produk Natalo',
             style: TextStyle(
-              color: Color(0xFF111827),
+              color: cs.onSurface,
               fontSize: 17,
               fontWeight: FontWeight.w900,
             ),
           ),
-          SizedBox(height: 4),
+          const SizedBox(height: 4),
           Text(
             'Temukan berbagai kebutuhan hewan kesayanganmu di Natalo',
             style: TextStyle(
-              color: Color(0xFF6B7280),
+              color: cs.onSurfaceVariant,
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
@@ -813,13 +814,13 @@ class _ExploreFooter extends StatelessWidget {
       );
     }
     if (!hasMore && initialLoaded && productsCount > 0) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
         child: Center(
           child: Text(
             'Semua produk sudah ditampilkan',
             style: TextStyle(
-              color: Color(0xFF9CA3AF),
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 13,
               fontWeight: FontWeight.w700,
             ),
@@ -905,15 +906,17 @@ class _HomeStickyHeaderDelegate extends SliverPersistentHeaderDelegate {
     // easeOutCubic untuk natural deceleration — match spec.
     final t = Curves.easeOutCubic.transform(rawProgress);
 
+    final cs = Theme.of(context).colorScheme;
+    final headerBorder = cs.outlineVariant;
     return SizedBox.expand(
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: cs.surface,
           border: Border(
             bottom: BorderSide(
               color: Color.lerp(
-                const Color(0x00EFF4FA),
-                const Color(0xFFEFF4FA),
+                headerBorder.withValues(alpha: 0),
+                headerBorder,
                 t,
               )!,
             ),
@@ -1029,7 +1032,7 @@ class _HomeHeader extends StatelessWidget {
                       style: TextStyle(
                         fontSize: titleSize,
                         fontWeight: FontWeight.w900,
-                        color: const Color(0xFF17202A),
+                        color: Theme.of(context).colorScheme.onSurface,
                         height: 1.15,
                       ),
                     ),
@@ -1040,15 +1043,16 @@ class _HomeHeader extends StatelessWidget {
                         height: subtitleHeight,
                         child: Opacity(
                           opacity: subtitleOpacity,
-                          child: const Padding(
-                            padding: EdgeInsets.only(top: 2),
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 2),
                             child: Text(
                               'Kebutuhan hewan kesayanganmu',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontSize: 12,
-                                color: Color(0xFF6B7280),
+                                color:
+                                    Theme.of(context).colorScheme.onSurfaceVariant,
                                 height: 1.1,
                               ),
                             ),
@@ -1074,16 +1078,18 @@ class _HomeHeader extends StatelessWidget {
               height: 42,
               padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFE5E7EB)),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                ),
               ),
               child: Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.search_rounded,
                     size: 18,
-                    color: Color(0xFF94A3B8),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                   const SizedBox(width: 10),
                   // Dynamic placeholder — rotates dari trending search API +
@@ -1133,8 +1139,9 @@ class _HomeHeader extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.left,
-                            style: const TextStyle(
-                              color: Color(0xFF94A3B8),
+                            style: TextStyle(
+                              color:
+                                  Theme.of(context).colorScheme.onSurfaceVariant,
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
                               height: 1.2,
@@ -1291,14 +1298,14 @@ class _HomeSearchSheetState extends State<_HomeSearchSheet> {
                   children: [
                     const SoftIconTile(icon: Icons.search_rounded, size: 44),
                     const SizedBox(width: 12),
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             'Cari Produk Natalo',
                             style: TextStyle(
-                              color: Color(0xFF17202A),
+                              color: Theme.of(context).colorScheme.onSurface,
                               fontSize: 18,
                               fontWeight: FontWeight.w900,
                             ),
@@ -1306,7 +1313,8 @@ class _HomeSearchSheetState extends State<_HomeSearchSheet> {
                           Text(
                             'Produk, brand, kategori, dan kebutuhan pet kamu.',
                             style: TextStyle(
-                              color: Color(0xFF6B7280),
+                              color:
+                                  Theme.of(context).colorScheme.onSurfaceVariant,
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
                             ),
@@ -1403,21 +1411,21 @@ class _HomeSearchContent extends StatelessWidget {
     }
 
     if (loading) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 20),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 20),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            SizedBox(
+            const SizedBox(
               height: 20,
               width: 20,
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
-            SizedBox(width: 10),
+            const SizedBox(width: 10),
             Text(
               'Mencari saran...',
               style: TextStyle(
-                color: Color(0xFF6B7280),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -1504,15 +1512,15 @@ class _PopularSearchSeeds extends StatelessWidget {
         ),
         if (trending.isNotEmpty) ...[
           const SizedBox(height: 12),
-          const Row(
+          Row(
             children: [
-              Icon(Icons.local_fire_department_rounded,
+              const Icon(Icons.local_fire_department_rounded,
                   color: Color(0xFFEF4444), size: 18),
-              SizedBox(width: 6),
+              const SizedBox(width: 6),
               Text(
                 'Trending sekarang',
                 style: TextStyle(
-                  color: Color(0xFF17202A),
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontWeight: FontWeight.w900,
                 ),
               ),
@@ -1533,10 +1541,10 @@ class _PopularSearchSeeds extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 14),
-        const Text(
+        Text(
           'Pencarian populer',
           style: TextStyle(
-            color: Color(0xFF17202A),
+            color: Theme.of(context).colorScheme.onSurface,
             fontWeight: FontWeight.w900,
           ),
         ),
@@ -1707,18 +1715,21 @@ class _TrustMarqueeState extends State<_TrustMarquee>
   Widget build(BuildContext context) {
     final items = _items(context);
     final groupWidth = _estimateGroupWidth(items);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       height: widget.height,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
+        // Strip gradient terang (biru→putih→krem) di light; di dark
+        // pakai tone gelap supaya tidak "nyala" di scaffold gelap.
         gradient: LinearGradient(
-          colors: [
-            Color(0xFFEAF5FF),
-            Colors.white,
-            Color(0xFFFFFBEB),
-          ],
+          colors: isDark
+              ? const [Color(0xFF141A29), Color(0xFF1B2233), Color(0xFF181F2D)]
+              : const [Color(0xFFEAF5FF), Colors.white, Color(0xFFFFFBEB)],
         ),
         border: Border.symmetric(
-          horizontal: BorderSide(color: Color(0xFFE6F1FF)),
+          horizontal: BorderSide(
+            color: isDark ? const Color(0xFF2A3142) : const Color(0xFFE6F1FF),
+          ),
         ),
       ),
       clipBehavior: Clip.antiAlias,
@@ -1798,15 +1809,21 @@ class _TrustMarqueeItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // Icon navy (#143E7E) terlalu gelap di strip dark → lift ke biru terang.
+    final iconColor = isDark && item.iconColor == const Color(0xFF143E7E)
+        ? const Color(0xFF60A5FA)
+        : item.iconColor;
     final content = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(item.icon, color: item.iconColor, size: 15),
+        Icon(item.icon, color: iconColor, size: 15),
         const SizedBox(width: 6),
         Text(
           item.text,
           maxLines: 1,
           style: _TrustMarqueeState._textStyle.copyWith(
+            color: isDark ? Theme.of(context).colorScheme.onSurface : null,
             decoration: item.onTap == null ? null : TextDecoration.underline,
             decorationColor: const Color(0xFF9CA3AF),
             decorationStyle: TextDecorationStyle.dotted,
@@ -2240,8 +2257,8 @@ class _ShortcutGrid extends StatelessWidget {
                   textAlign: TextAlign.center,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF3F3F46),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 10.5,
                     fontWeight: FontWeight.w700,
                     height: 1.12,
@@ -2303,23 +2320,23 @@ class _FlashSaleGrid extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       '⚡ Flash Sale',
                       style: TextStyle(
-                        color: Color(0xFF111827),
+                        color: Theme.of(context).colorScheme.onSurface,
                         fontSize: 18,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 2),
                     Text(
                       'Diskon Spesial dari Natalo Petshop',
                       style: TextStyle(
-                        color: Color(0xFF6B7280),
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
@@ -2398,7 +2415,7 @@ class _FlashSaleCard extends StatelessWidget {
     final discountPercent = _activeHomeProductDiscountPercent(product);
 
     return Material(
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.surface,
       borderRadius: BorderRadius.circular(16),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -2407,7 +2424,9 @@ class _FlashSaleCard extends StatelessWidget {
           padding: const EdgeInsets.all(7),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFE5E7EB)),
+            border: Border.all(
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
             boxShadow: const [
               BoxShadow(
                 color: Color(0x08000000),
@@ -2443,11 +2462,11 @@ class _FlashSaleCard extends StatelessWidget {
                   product.title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 10.8,
                     height: 1.18,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF111827),
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
               ),
@@ -2474,11 +2493,11 @@ class _FlashSalePriceBlock extends StatelessWidget {
         formatRupiah(product.finalPrice),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 13,
           height: 1.05,
           fontWeight: FontWeight.w900,
-          color: Color(0xFF111827),
+          color: Theme.of(context).colorScheme.onSurface,
         ),
       );
     }
@@ -2490,11 +2509,11 @@ class _FlashSalePriceBlock extends StatelessWidget {
           formatRupiah(product.price),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 9.5,
             height: 1,
             fontWeight: FontWeight.w600,
-            color: Color(0xFF111827),
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
             decoration: TextDecoration.lineThrough,
             decorationThickness: 1.4,
           ),
@@ -2540,22 +2559,22 @@ class _FlashSaleRatingSoldRow extends StatelessWidget {
             const SizedBox(width: 3),
             Text(
               product.rating.toStringAsFixed(1),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 10.2,
                 height: 1,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFF111827),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
           ],
           if (hasRating && hasSold) ...[
             const SizedBox(width: 4),
-            const Text(
+            Text(
               '•',
               style: TextStyle(
                 fontSize: 10.2,
                 height: 1,
-                color: Color(0xFF9CA3AF),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(width: 4),
@@ -2566,11 +2585,11 @@ class _FlashSaleRatingSoldRow extends StatelessWidget {
                 '${_formatHomeProductSoldCount(product.soldCount)} terjual',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 10.2,
                   height: 1,
                   fontWeight: FontWeight.w500,
-                  color: Color(0xFF6B7280),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
             ),
@@ -2608,7 +2627,7 @@ class _HomeProductCard extends StatelessWidget {
     return SizedBox(
       width: width,
       child: Material(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
@@ -2617,7 +2636,9 @@ class _HomeProductCard extends StatelessWidget {
             padding: EdgeInsets.all(padding),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFFE5E7EB)),
+              border: Border.all(
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
               boxShadow: const [
                 BoxShadow(
                   color: Color(0x08000000),
@@ -2659,11 +2680,11 @@ class _HomeProductCard extends StatelessWidget {
                     product.title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
                       height: 1.25,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF111827),
+                      color: Theme.of(context).colorScheme.onSurface,
                     ),
                   ),
                 ),
@@ -2729,18 +2750,19 @@ class _HomeProductImagePlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       height: height,
       width: double.infinity,
       decoration: BoxDecoration(
-        color: const Color(0xFFF3F7FF),
+        color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(14),
       ),
-      child: const Center(
+      child: Center(
         child: Icon(
           Icons.pets_rounded,
           size: 34,
-          color: Color(0xFF94A3B8),
+          color: cs.onSurfaceVariant,
         ),
       ),
     );
@@ -2795,7 +2817,7 @@ class _HomeProductPriceRow extends StatelessWidget {
         style: TextStyle(
           fontSize: fontSize,
           fontWeight: FontWeight.w900,
-          color: const Color(0xFF111827),
+          color: Theme.of(context).colorScheme.onSurface,
           height: 1.1,
         ),
       );
@@ -2811,7 +2833,7 @@ class _HomeProductPriceRow extends StatelessWidget {
           style: TextStyle(
             fontSize: compact ? fontSize - 2 : fontSize - 3,
             fontWeight: FontWeight.w600,
-            color: const Color(0xFF111827),
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
             height: 1.05,
             decoration: TextDecoration.lineThrough,
             decorationThickness: 1.5,
@@ -2972,7 +2994,7 @@ class _HomeProductRatingSoldRow extends StatelessWidget {
               style: TextStyle(
                 fontSize: textSize,
                 fontWeight: FontWeight.w500,
-                color: const Color(0xFF4B5563),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 height: 1,
               ),
             ),
@@ -2983,7 +3005,7 @@ class _HomeProductRatingSoldRow extends StatelessWidget {
               '•',
               style: TextStyle(
                 fontSize: textSize,
-                color: const Color(0xFF9CA3AF),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 height: 1,
               ),
             ),
@@ -3183,8 +3205,8 @@ class _HorizontalProductSection extends StatelessWidget {
                     children: [
                       Text(
                         title,
-                        style: const TextStyle(
-                          color: Color(0xFF111827),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
                           fontSize: 18,
                           fontWeight: FontWeight.w900,
                         ),
@@ -3192,8 +3214,8 @@ class _HorizontalProductSection extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         subtitle,
-                        style: const TextStyle(
-                          color: Color(0xFF6B7280),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
@@ -3383,11 +3405,11 @@ class _BrandChoiceSectionState extends State<_BrandChoiceSection> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
                     'Brand Favorit',
                     style: TextStyle(
-                      color: Color(0xFF111827),
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
                     ),
@@ -3451,7 +3473,7 @@ class _BrandGridCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.surface,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: onTap,
@@ -3460,7 +3482,9 @@ class _BrandGridCard extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFE5E7EB)),
+            border: Border.all(
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.025),
@@ -3485,8 +3509,8 @@ class _BrandGridCard extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Color(0xFF111827),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
                 ),
@@ -3627,11 +3651,11 @@ class _CategorySection extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
                     'Kategori Populer',
                     style: TextStyle(
-                      color: Color(0xFF17202A),
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
                     ),
@@ -3684,7 +3708,7 @@ class _PopularCategoryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.surface,
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         onTap: onTap,
@@ -3694,7 +3718,9 @@ class _PopularCategoryCard extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0xFFE5E7EB)),
+            border: Border.all(
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
           ),
           child: Row(
             children: [
@@ -3702,7 +3728,9 @@ class _PopularCategoryCard extends StatelessWidget {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEAF5FF),
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                      : const Color(0xFFEAF5FF),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(
@@ -3717,8 +3745,8 @@ class _PopularCategoryCard extends StatelessWidget {
                   category.name,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF17202A),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
                     fontSize: 13,
                     height: 1.2,
                     fontWeight: FontWeight.w800,
@@ -3752,10 +3780,10 @@ class _RecommendationGrid extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Rekomendasi Untuk Kamu',
             style: TextStyle(
-              color: Color(0xFF111827),
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 18,
               fontWeight: FontWeight.w900,
             ),
