@@ -118,13 +118,33 @@ export async function POST(request: NextRequest) {
     where: protectedIds.length > 0 ? { id: { notIn: protectedIds } } : {},
   });
 
-  // 5. Optional: hapus semua Category & Brand setelah produk bersih.
-  //    SetNull behavior pada Product.categoryId/brandId aman, tapi karena
-  //    produk sudah ke-delete di atas, query ini biasanya jalan tanpa
-  //    side-effect ke produk.
+  // 5. Optional: hapus semua Category & Brand.
+  //    CATATAN: Komentar lama keliru — Product.brand/category TIDAK
+  //    pakai onDelete: SetNull (defaultnya Restrict di Prisma). Selama
+  //    masih ada Product apapun (termasuk yang ARCHIVE dgn isActive=false)
+  //    yang refer brandId/categoryId, brand.deleteMany & category.deleteMany
+  //    akan throw FK constraint → reset gagal silent (brandsDeleted=0).
+  //    Pre-null brandId & categoryId di semua produk tersisa supaya bebas
+  //    dari FK lalu hapus brand/category aman.
   let categoriesDeleted = 0;
   let brandsDeleted = 0;
+  let productsBrandNulled = 0;
+  let productsCategoryNulled = 0;
   if (wipeTaxonomy) {
+    // Null-kan FK di SEMUA produk tersisa (termasuk archive). Tanpa filter
+    // — terlalu defensif tapi murah (cuma update int, dan kebanyakan case
+    // produk sudah ke-delete sebelumnya jadi count 0).
+    const brandNullResult = await prisma.product.updateMany({
+      where: { brandId: { not: null } },
+      data: { brandId: null },
+    });
+    productsBrandNulled = brandNullResult.count;
+    const catNullResult = await prisma.product.updateMany({
+      where: { categoryId: { not: null } },
+      data: { categoryId: null },
+    });
+    productsCategoryNulled = catNullResult.count;
+
     const catResult = await prisma.category.deleteMany({});
     const brandResult = await prisma.brand.deleteMany({});
     categoriesDeleted = catResult.count;
@@ -149,6 +169,12 @@ export async function POST(request: NextRequest) {
       ordersDeleted,
       categoriesDeleted,
       brandsDeleted,
+      // Jumlah produk yang brandId/categoryId-nya di-null-kan sebelum
+      // hapus taxonomy. Diagnostic: kalau ini > 0 berarti ada produk
+      // yang gagal di-delete sebelumnya (mis. ARCHIVE) — sekarang
+      // FK-nya di-clear supaya brand/category bisa di-wipe.
+      productsBrandNulled,
+      productsCategoryNulled,
       remainingCategories,
       remainingBrands,
     },
