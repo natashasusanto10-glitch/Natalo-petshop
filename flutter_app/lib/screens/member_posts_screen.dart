@@ -19,8 +19,6 @@ import 'feed_new_post_screen.dart';
 import 'member_post_detail_screen.dart';
 
 const _brandBlue = Color(0xFF0B7FEA);
-const _deepNavy = Color(0xFF0F172A);
-const _mutedText = Color(0xFF667085);
 const _draftPendingUploadKey = 'natalo-feed-upload-pending';
 
 class MemberPostsScreen extends StatefulWidget {
@@ -331,22 +329,23 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
     final visiblePosts = _visiblePosts;
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     final showDraft = _draftCount > 0 && _showDraftReminder;
+    final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: cs.surface,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: cs.surface,
         elevation: 0,
         scrolledUnderElevation: 0,
-        surfaceTintColor: Colors.white,
+        surfaceTintColor: cs.surface,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: _deepNavy),
+          icon: Icon(Icons.arrow_back_rounded, color: cs.onSurface),
           onPressed: () => Navigator.maybePop(context),
         ),
-        title: const Text(
+        title: Text(
           'Postingan Saya',
           style: TextStyle(
-            color: _deepNavy,
+            color: cs.onSurface,
             fontSize: 20,
             fontWeight: FontWeight.w900,
           ),
@@ -356,9 +355,9 @@ class _MemberPostsScreenState extends State<MemberPostsScreen> {
           IconButton(
             onPressed: _openUpload,
             tooltip: 'Buat postingan',
-            icon: const Icon(
+            icon: Icon(
               Icons.add_rounded,
-              color: _deepNavy,
+              color: cs.onSurface,
               size: 32,
             ),
           ),
@@ -475,6 +474,7 @@ class _NlFeedIntro extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return AnimatedBuilder(
       animation: memberStore,
       builder: (context, _) {
@@ -489,11 +489,11 @@ class _NlFeedIntro extends StatelessWidget {
               fontSize: 20,
             ),
             const SizedBox(width: 14),
-            const Expanded(
+            Expanded(
               child: Text(
                 'Cerita lucu, gemas, dan seru kamu kumpul di sini. 🐾💙',
                 style: TextStyle(
-                  color: Color(0xFF334155),
+                  color: cs.onSurfaceVariant,
                   fontSize: 15.5,
                   height: 1.36,
                   fontWeight: FontWeight.w800,
@@ -558,7 +558,7 @@ class _DraftReminderBanner extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color: _deepNavy,
+                        color: Color(0xFF0F172A),
                         fontSize: 13,
                         fontWeight: FontWeight.w800,
                       ),
@@ -580,7 +580,7 @@ class _DraftReminderBanner extends StatelessWidget {
                 visualDensity: VisualDensity.compact,
                 icon: const Icon(
                   Icons.close_rounded,
-                  color: _deepNavy,
+                  color: Color(0xFF0F172A),
                   size: 22,
                 ),
               ),
@@ -605,10 +605,11 @@ class _FeedGalleryTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: Color(0xFFE5EAF2))),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        border: Border(bottom: BorderSide(color: cs.outlineVariant)),
       ),
       height: 50,
       child: ListView.separated(
@@ -629,7 +630,7 @@ class _FeedGalleryTabs extends StatelessWidget {
                   Text(
                     filter.label,
                     style: TextStyle(
-                      color: active ? _brandBlue : const Color(0xFF64748B),
+                      color: active ? _brandBlue : cs.onSurfaceVariant,
                       fontSize: 14,
                       fontWeight: FontWeight.w900,
                     ),
@@ -739,12 +740,13 @@ class _PostThumbnailFallback extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
-      color: const Color(0xFFF3F7FF),
-      child: const Center(
+      color: cs.surfaceContainerHighest,
+      child: Center(
         child: Icon(
           Icons.photo_library_rounded,
-          color: Color(0xFF8AA4C2),
+          color: cs.onSurfaceVariant,
           size: 28,
         ),
       ),
@@ -850,30 +852,31 @@ class _EmptyPostsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Column(
       children: [
         const SizedBox(height: 18),
-        const Icon(
+        Icon(
           Icons.photo_library_outlined,
-          color: Color(0xFF94A3B8),
+          color: cs.onSurfaceVariant,
           size: 44,
         ),
         const SizedBox(height: 14),
-        const Text(
+        Text(
           'Belum ada postingan',
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: _deepNavy,
+            color: cs.onSurface,
             fontSize: 18,
             fontWeight: FontWeight.w900,
           ),
         ),
         const SizedBox(height: 7),
-        const Text(
+        Text(
           'Bagikan foto atau video hewan kesayanganmu ke Feed Natalo.',
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: _mutedText,
+            color: cs.onSurfaceVariant,
             fontSize: 13,
             height: 1.4,
             fontWeight: FontWeight.w600,
@@ -911,8 +914,8 @@ class _FilteredEmptyState extends StatelessWidget {
     return Text(
       'Belum ada postingan untuk $label.',
       textAlign: TextAlign.center,
-      style: const TextStyle(
-        color: _mutedText,
+      style: TextStyle(
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
         fontSize: 13,
         fontWeight: FontWeight.w700,
       ),

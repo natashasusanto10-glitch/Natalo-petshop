@@ -285,7 +285,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -304,7 +304,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
     AppHaptics.tap();
     final result = await showModalBottomSheet<_PostMenuAction>(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -327,7 +327,7 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
     final result = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -409,22 +409,23 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: cs.surface,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: cs.surface,
         elevation: 0,
         scrolledUnderElevation: 0.5,
-        surfaceTintColor: Colors.white,
+        surfaceTintColor: cs.surface,
         leading: IconButton(
           onPressed: () => Navigator.maybePop(context),
           // Back icon size 26 per spec Detail Postingan. Material Icon
           // (arrow_back_rounded) tidak punya strokeWidth — rendering dari
           // icon font, weight fixed. Visual thickness sudah mirip stroke
           // 2.5 di NataloPostActionIcon karena rounded variant Material.
-          icon: const Icon(
+          icon: Icon(
             Icons.arrow_back_rounded,
-            color: NataloColors.textPrimary,
+            color: cs.onSurface,
             size: 26,
           ),
         ),
@@ -432,10 +433,10 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
         title: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
+            Text(
               'Postingan',
               style: TextStyle(
-                color: NataloColors.textPrimary,
+                color: cs.onSurface,
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
                 height: 1.05,
@@ -446,8 +447,8 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
               _memberName,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: NataloColors.textSecondary,
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
                 height: 1.05,
@@ -457,11 +458,11 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen> {
         ),
       ),
       body: _posts.isEmpty
-          ? const Center(
+          ? Center(
               child: Text(
                 'Belum ada postingan',
                 style: TextStyle(
-                  color: NataloColors.textSecondary,
+                  color: cs.onSurfaceVariant,
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
                 ),
@@ -880,8 +881,8 @@ class _PostFeedItemState extends State<_PostFeedItem>
           padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
           child: Text(
             _hybridDateLabel(post.createdAt),
-            style: const TextStyle(
-              color: NataloColors.textSecondary,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 12,
               fontWeight: FontWeight.w700,
             ),
@@ -908,8 +909,9 @@ class _PostAuthorRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
-      color: Colors.white,
+      color: cs.surface,
       padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
       child: Row(
         children: [
@@ -925,8 +927,8 @@ class _PostAuthorRow extends StatelessWidget {
               memberName,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: NataloColors.textPrimary,
+              style: TextStyle(
+                color: cs.onSurface,
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
                 height: 1.15,
@@ -937,9 +939,9 @@ class _PostAuthorRow extends StatelessWidget {
             IconButton(
               onPressed: onMenuTap,
               visualDensity: VisualDensity.compact,
-              icon: const Icon(
+              icon: Icon(
                 Icons.more_horiz_rounded,
-                color: NataloColors.textPrimary,
+                color: cs.onSurface,
               ),
             )
           else
@@ -1169,8 +1171,8 @@ class _LikedByLineState extends State<_LikedByLine> {
             ),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: NataloColors.textPrimary,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 13,
               fontWeight: FontWeight.w600,
               height: 1.3,
@@ -1263,12 +1265,13 @@ class _MiniAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final url = photoUrl;
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: backgroundColor ?? const Color(0xFFE5E7EB),
+        color: backgroundColor ?? cs.surfaceContainerHighest,
         shape: BoxShape.circle,
         // Border putih supaya overlap antar avatar kelihatan jelas.
         border: Border.all(color: Colors.white, width: 1.6),
@@ -1278,20 +1281,19 @@ class _MiniAvatar extends StatelessWidget {
           ? CachedNetworkImage(
               imageUrl: url,
               fit: BoxFit.cover,
-              errorWidget: (_, __, ___) => _miniAvatarFallback(),
-              placeholder: (_, __) => _miniAvatarFallback(),
+              errorWidget: (_, __, ___) => _miniAvatarFallback(cs),
+              placeholder: (_, __) => _miniAvatarFallback(cs),
             )
-          : _miniAvatarFallback(),
+          : _miniAvatarFallback(cs),
     );
   }
 
-  Widget _miniAvatarFallback() {
+  Widget _miniAvatarFallback(ColorScheme cs) {
     return Center(
       child: Text(
         initial ?? 'N',
         style: TextStyle(
-          color:
-              backgroundColor != null ? Colors.white : NataloColors.textPrimary,
+          color: backgroundColor != null ? Colors.white : cs.onSurface,
           fontSize: size * 0.45,
           fontWeight: FontWeight.w900,
         ),
@@ -1318,8 +1320,8 @@ class _PostCaption extends StatelessWidget {
           TextSpan(text: caption.trim()),
         ],
       ),
-      style: const TextStyle(
-        color: NataloColors.textPrimary,
+      style: TextStyle(
+        color: Theme.of(context).colorScheme.onSurface,
         fontSize: 13.5,
         fontWeight: FontWeight.w600,
         height: 1.35,
@@ -1373,8 +1375,8 @@ class _PostStatusBadge extends StatelessWidget {
               text,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: NataloColors.textSecondary,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
               ),
@@ -2199,6 +2201,7 @@ class _PostMenuSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return SafeArea(
       top: false,
       child: Padding(
@@ -2212,17 +2215,16 @@ class _PostMenuSheet extends StatelessWidget {
               height: 4,
               margin: const EdgeInsets.only(top: 6, bottom: 12),
               decoration: BoxDecoration(
-                color: const Color(0xFFE5E7EB),
+                color: cs.outlineVariant,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
             ListTile(
-              leading: const Icon(Icons.edit_rounded,
-                  color: NataloColors.textPrimary),
-              title: const Text(
+              leading: Icon(Icons.edit_rounded, color: cs.onSurface),
+              title: Text(
                 'Edit caption',
                 style: TextStyle(
-                  color: NataloColors.textPrimary,
+                  color: cs.onSurface,
                   fontSize: 14,
                   fontWeight: FontWeight.w800,
                 ),
@@ -2263,6 +2265,7 @@ class _EditCaptionSheet extends StatefulWidget {
 class _EditCaptionSheetState extends State<_EditCaptionSheet> {
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
     return Padding(
       padding: EdgeInsets.only(bottom: keyboardInset),
@@ -2279,26 +2282,26 @@ class _EditCaptionSheetState extends State<_EditCaptionSheet> {
                 height: 4,
                 margin: const EdgeInsets.symmetric(vertical: 6),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE5E7EB),
+                  color: cs.outlineVariant,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
               const SizedBox(height: 6),
-              const Text(
+              Text(
                 'Edit Caption',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: NataloColors.textPrimary,
+                  color: cs.onSurface,
                   fontSize: 16,
                   fontWeight: FontWeight.w900,
                 ),
               ),
               const SizedBox(height: 4),
-              const Text(
+              Text(
                 'Caption diubah akan kembali ke status menunggu review admin.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: NataloColors.textSecondary,
+                  color: cs.onSurfaceVariant,
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),
@@ -2310,14 +2313,14 @@ class _EditCaptionSheetState extends State<_EditCaptionSheet> {
                 minLines: 3,
                 maxLength: 2000,
                 autofocus: true,
-                style: const TextStyle(
-                  color: NataloColors.textPrimary,
+                style: TextStyle(
+                  color: cs.onSurface,
                   fontSize: 14,
                 ),
                 decoration: InputDecoration(
                   hintText: 'Tulis caption…',
                   filled: true,
-                  fillColor: const Color(0xFFF3F4F6),
+                  fillColor: cs.surfaceContainerHighest,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
@@ -2334,15 +2337,15 @@ class _EditCaptionSheetState extends State<_EditCaptionSheet> {
                       onPressed: () => Navigator.pop(context),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
-                        side: const BorderSide(color: Color(0xFFE5E7EB)),
+                        side: BorderSide(color: cs.outlineVariant),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      child: const Text(
+                      child: Text(
                         'Batal',
                         style: TextStyle(
-                          color: NataloColors.textPrimary,
+                          color: cs.onSurface,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
@@ -2703,6 +2706,7 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
     final maxHeight = MediaQuery.of(context).size.height * 0.78;
     return Padding(
@@ -2719,22 +2723,22 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
                 height: 4,
                 margin: const EdgeInsets.symmetric(vertical: 8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE5E7EB),
+                  color: cs.outlineVariant,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 child: Text(
                   'Komentar',
                   style: TextStyle(
-                    color: NataloColors.textPrimary,
+                    color: cs.onSurface,
                     fontSize: 15,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
               ),
-              const Divider(height: 1, color: Color(0xFFEEF2F6)),
+              Divider(height: 1, color: cs.outlineVariant),
               Flexible(
                 child: Builder(builder: (context) {
                   if (_loading) {
@@ -2747,14 +2751,14 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
                   }
                   final captionRow = _captionRow;
                   if (_comments.isEmpty && captionRow == null) {
-                    return const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 28),
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 28),
                       child: Center(
                         child: Text(
                           'Belum ada komentar.\nJadi yang pertama!',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: NataloColors.textSecondary,
+                            color: cs.onSurfaceVariant,
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
                             height: 1.4,
@@ -2841,14 +2845,14 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
               if (_replyingTo != null)
                 Container(
                   padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
-                  color: const Color(0xFFF3F4F6),
+                  color: cs.surfaceContainerHighest,
                   child: Row(
                     children: [
                       Expanded(
                         child: Text(
                           'Membalas ${_replyingTo!.author.name}',
-                          style: const TextStyle(
-                            color: NataloColors.textSecondary,
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
                             fontSize: 12.5,
                             fontWeight: FontWeight.w700,
                           ),
@@ -2857,10 +2861,10 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
                       IconButton(
                         onPressed: _cancelReply,
                         visualDensity: VisualDensity.compact,
-                        icon: const Icon(
+                        icon: Icon(
                           Icons.close_rounded,
                           size: 18,
-                          color: NataloColors.textSecondary,
+                          color: cs.onSurfaceVariant,
                         ),
                       ),
                     ],
@@ -2876,9 +2880,9 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
               ),
               Container(
                 padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   border: Border(
-                    top: BorderSide(color: Color(0xFFEEF2F6), width: 1),
+                    top: BorderSide(color: cs.outlineVariant, width: 1),
                   ),
                 ),
                 child: Row(
@@ -2897,7 +2901,7 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
                             : Icons.emoji_emotions_outlined,
                         color: _emojiVisible
                             ? NataloColors.primary
-                            : NataloColors.textSecondary,
+                            : cs.onSurfaceVariant,
                         size: 22,
                       ),
                       tooltip: _emojiVisible ? 'Tutup emoji' : 'Buka emoji',
@@ -2920,7 +2924,7 @@ class _MyPostCommentSheetState extends State<_MyPostCommentSheet> {
                               ? 'Tulis komentar…'
                               : 'Balas ${_replyingTo!.author.name}…',
                           filled: true,
-                          fillColor: const Color(0xFFF3F4F6),
+                          fillColor: cs.surfaceContainerHighest,
                           counterText: '',
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(999),
@@ -3033,6 +3037,7 @@ class _CommentTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final liked = comment.viewerLiked;
     final author = comment.author;
     return Padding(
@@ -3068,7 +3073,7 @@ class _CommentTile extends StatelessWidget {
                         comment.content,
                         onMentionTap: onMentionTap ?? (_) {},
                         defaultStyle: TextStyle(
-                          color: NataloColors.textPrimary,
+                          color: cs.onSurface,
                           fontSize: isReply ? 13 : 13.5,
                           fontWeight: FontWeight.w600,
                           height: 1.35,
@@ -3078,7 +3083,7 @@ class _CommentTile extends StatelessWidget {
                     ],
                   ),
                   style: TextStyle(
-                    color: NataloColors.textPrimary,
+                    color: cs.onSurface,
                     fontSize: isReply ? 13 : 13.5,
                     fontWeight: FontWeight.w600,
                     height: 1.35,
@@ -3091,8 +3096,8 @@ class _CommentTile extends StatelessWidget {
                   children: [
                     Text(
                       formatRelativeTime(comment.createdAt),
-                      style: const TextStyle(
-                        color: NataloColors.textSecondary,
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
                       ),
@@ -3101,8 +3106,8 @@ class _CommentTile extends StatelessWidget {
                       const SizedBox(width: 12),
                       Text(
                         '${comment.likeCount} suka',
-                        style: const TextStyle(
-                          color: NataloColors.textSecondary,
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant,
                           fontSize: 11,
                           fontWeight: FontWeight.w800,
                         ),
@@ -3113,10 +3118,10 @@ class _CommentTile extends StatelessWidget {
                       GestureDetector(
                         onTap: onReply,
                         behavior: HitTestBehavior.opaque,
-                        child: const Text(
+                        child: Text(
                           'Balas',
                           style: TextStyle(
-                            color: NataloColors.textSecondary,
+                            color: cs.onSurfaceVariant,
                             fontSize: 11,
                             fontWeight: FontWeight.w800,
                           ),
@@ -3164,7 +3169,7 @@ class _CommentTile extends StatelessWidget {
                   size: isReply ? 14 : 16,
                   color: liked
                       ? const Color(0xFFE53935)
-                      : NataloColors.textSecondary,
+                      : cs.onSurfaceVariant,
                 ),
               ),
             ),
@@ -3190,6 +3195,7 @@ class _RepliesToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(left: 40, top: 2),
       child: GestureDetector(
@@ -3201,13 +3207,13 @@ class _RepliesToggle extends StatelessWidget {
             Container(
               width: 24,
               height: 1,
-              color: const Color(0xFFD1D5DB),
+              color: cs.outlineVariant,
               margin: const EdgeInsets.only(right: 8),
             ),
             Text(
               expanded ? 'Sembunyikan balasan' : 'Lihat $replyCount balasan',
-              style: const TextStyle(
-                color: NataloColors.textSecondary,
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
                 fontSize: 12,
                 fontWeight: FontWeight.w800,
               ),

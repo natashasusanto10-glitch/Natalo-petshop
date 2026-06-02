@@ -10,10 +10,6 @@ import '../widgets/profile_avatar.dart';
 import '../widgets/update_profile_photo_sheet.dart';
 
 const _brandBlue = Color(0xFF0B7FEA);
-const _darkNavy = Color(0xFF101828);
-const _textSecondary = Color(0xFF667085);
-const _pageBg = Color(0xFFF7FAFF);
-const _borderSoft = Color(0xFFE0E7F0);
 
 /// Focused EditProfile form.
 ///
@@ -125,7 +121,7 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
             textAlign: TextAlign.center,
             style: TextStyle(fontWeight: FontWeight.w900),
           ),
-          content: const Column(
+          content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
@@ -133,20 +129,20 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
                 'akan TERKUNCI dan tidak bisa kamu ubah sendiri.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Color(0xFF374151),
+                  color: Theme.of(dialogCtx).colorScheme.onSurface,
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                   height: 1.5,
                 ),
               ),
-              SizedBox(height: 10),
+              const SizedBox(height: 10),
               Text(
                 'Kalau salah input nanti, kamu harus hubungi admin via '
                 'WhatsApp untuk ralat. Pastikan tanggal yang kamu pilih '
                 'sudah BENAR.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Color(0xFF6B7280),
+                  color: Theme.of(dialogCtx).colorScheme.onSurfaceVariant,
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   height: 1.5,
@@ -189,7 +185,7 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
             colorScheme: const ColorScheme.light(
               primary: _brandBlue,
               onPrimary: Colors.white,
-              onSurface: _darkNavy,
+              onSurface: Color(0xFF101828),
             ),
             textButtonTheme: TextButtonThemeData(
               style: TextButton.styleFrom(foregroundColor: _brandBlue),
@@ -286,23 +282,24 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: _pageBg,
+      backgroundColor: cs.surface,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
+        backgroundColor: cs.surface,
+        surfaceTintColor: cs.surface,
         elevation: 0,
         scrolledUnderElevation: 1,
         shadowColor: Colors.black.withValues(alpha: 0.06),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: _darkNavy),
+          icon: Icon(Icons.arrow_back_rounded, color: cs.onSurface),
           onPressed: () => Navigator.maybePop(context),
           tooltip: 'Kembali',
         ),
-        title: const Text(
+        title: Text(
           'Ubah Profil',
           style: TextStyle(
-            color: _darkNavy,
+            color: cs.onSurface,
             fontSize: 18,
             fontWeight: FontWeight.w900,
           ),
@@ -314,13 +311,13 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
         builder: (context, _) {
           final profile = memberStore.profile;
           if (profile == null) {
-            return const Center(
+            return Center(
               child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 32),
+                padding: const EdgeInsets.symmetric(horizontal: 32),
                 child: Text(
                   'Sesi habis. Silakan login ulang.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: _textSecondary, fontSize: 14),
+                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14),
                 ),
               ),
             );
@@ -350,10 +347,10 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
                           },
                         ),
                         const SizedBox(height: 10),
-                        const Text(
+                        Text(
                           'Tap foto untuk mengubah',
                           style: TextStyle(
-                            color: _textSecondary,
+                            color: cs.onSurfaceVariant,
                             fontSize: 12.5,
                             fontWeight: FontWeight.w700,
                           ),
@@ -365,9 +362,9 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
                   // ── Form fields card ──
                   Container(
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: cs.surface,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: _borderSoft),
+                      border: Border.all(color: cs.outlineVariant),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withValues(alpha: 0.04),
@@ -406,7 +403,10 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
                           controller: _nameController,
                           icon: Icons.person_rounded,
                           iconColor: const Color(0xFF0B7FEA),
-                          iconBg: const Color(0xFFEAF5FF),
+                          iconBg: Theme.of(context).brightness ==
+                                  Brightness.dark
+                              ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                              : const Color(0xFFEAF5FF),
                           hint: 'Masukkan nama lengkap',
                           textCapitalization: TextCapitalization.words,
                         ),
@@ -552,6 +552,7 @@ class _ProfileFormField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
@@ -576,8 +577,8 @@ class _ProfileFormField extends StatelessWidget {
               children: [
                 Text(
                   label,
-                  style: const TextStyle(
-                    color: _textSecondary,
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
                     fontSize: 11.5,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 0.2,
@@ -590,15 +591,15 @@ class _ProfileFormField extends StatelessWidget {
                   maxLines: maxLines,
                   minLines: minLines,
                   maxLength: maxLength,
-                  style: const TextStyle(
-                    color: _darkNavy,
+                  style: TextStyle(
+                    color: cs.onSurface,
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
                   ),
                   decoration: InputDecoration(
                     hintText: hint,
-                    hintStyle: const TextStyle(
-                      color: Color(0xFFB6BEC9),
+                    hintStyle: TextStyle(
+                      color: cs.onSurfaceVariant,
                       fontSize: 14.5,
                       fontWeight: FontWeight.w600,
                     ),
@@ -612,8 +613,8 @@ class _ProfileFormField extends StatelessWidget {
                     // bawah, format "n / max"). Default style match design.
                     counterText: showCounter ? null : '',
                     counterStyle: showCounter
-                        ? const TextStyle(
-                            color: _textSecondary,
+                        ? TextStyle(
+                            color: cs.onSurfaceVariant,
                             fontSize: 11.5,
                             fontWeight: FontWeight.w700,
                           )
@@ -733,6 +734,7 @@ class _BirthDatePickerTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final hasDate = birthDate != null;
     final content = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
@@ -744,14 +746,14 @@ class _BirthDatePickerTile extends StatelessWidget {
             height: 40,
             decoration: BoxDecoration(
               color: isLocked
-                  ? const Color(0xFFF3F4F6)
+                  ? cs.surfaceContainerHighest
                   : const Color(0xFFFFF6CC),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
               isLocked ? Icons.lock_outline_rounded : Icons.cake_rounded,
               color: isLocked
-                  ? const Color(0xFF9CA3AF)
+                  ? cs.onSurfaceVariant
                   : const Color(0xFFFBBF24),
               size: 22,
             ),
@@ -763,10 +765,10 @@ class _BirthDatePickerTile extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    const Text(
+                    Text(
                       'Tanggal Lahir',
                       style: TextStyle(
-                        color: _textSecondary,
+                        color: cs.onSurfaceVariant,
                         fontSize: 11.5,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0.2,
@@ -780,13 +782,13 @@ class _BirthDatePickerTile extends StatelessWidget {
                           vertical: 2,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF3F4F6),
+                          color: cs.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: const Text(
+                        child: Text(
                           'TERKUNCI',
                           style: TextStyle(
-                            color: Color(0xFF6B7280),
+                            color: cs.onSurfaceVariant,
                             fontSize: 9,
                             fontWeight: FontWeight.w900,
                             letterSpacing: 0.5,
@@ -800,17 +802,17 @@ class _BirthDatePickerTile extends StatelessWidget {
                 Text(
                   hasDate ? _formatBirthDate(birthDate!) : 'Belum diatur',
                   style: TextStyle(
-                    color: hasDate ? _darkNavy : const Color(0xFFB6BEC9),
+                    color: hasDate ? cs.onSurface : cs.onSurfaceVariant,
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
                 if (isLocked) ...[
                   const SizedBox(height: 4),
-                  const Text(
+                  Text(
                     'Hubungi admin via WhatsApp untuk ubah.',
                     style: TextStyle(
-                      color: Color(0xFF6B7280),
+                      color: cs.onSurfaceVariant,
                       fontSize: 11.5,
                       fontWeight: FontWeight.w600,
                     ),
@@ -833,9 +835,9 @@ class _BirthDatePickerTile extends StatelessWidget {
             ),
           ),
           if (!isLocked)
-            const Icon(
+            Icon(
               Icons.chevron_right_rounded,
-              color: Color(0xFF94A3B8),
+              color: cs.onSurfaceVariant,
             ),
         ],
       ),
@@ -859,6 +861,7 @@ class _UsernameTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final hasUsername = username != null && username!.isNotEmpty;
     return InkWell(
       onTap: onTap,
@@ -885,10 +888,10 @@ class _UsernameTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Username',
                     style: TextStyle(
-                      color: _textSecondary,
+                      color: cs.onSurfaceVariant,
                       fontSize: 11.5,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 0.2,
@@ -899,8 +902,8 @@ class _UsernameTile extends StatelessWidget {
                     hasUsername ? username! : 'Belum diatur',
                     style: TextStyle(
                       color: hasUsername
-                          ? _darkNavy
-                          : const Color(0xFFB6BEC9),
+                          ? cs.onSurface
+                          : cs.onSurfaceVariant,
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
                     ),
@@ -928,9 +931,9 @@ class _UsernameTile extends StatelessWidget {
                   ),
                 ),
               ),
-            const Icon(
+            Icon(
               Icons.chevron_right_rounded,
-              color: Color(0xFF94A3B8),
+              color: cs.onSurfaceVariant,
             ),
           ],
         ),
@@ -968,11 +971,12 @@ class _LockedInfoTile extends StatelessWidget {
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
       builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
         final bottomInset = MediaQuery.viewPaddingOf(ctx).bottom;
         return Padding(
           padding: EdgeInsets.fromLTRB(20, 6, 20, 16 + bottomInset),
@@ -995,8 +999,8 @@ class _LockedInfoTile extends StatelessWidget {
                   Expanded(
                     child: Text(
                       'Ganti $label',
-                      style: const TextStyle(
-                        color: _darkNavy,
+                      style: TextStyle(
+                        color: cs.onSurface,
                         fontSize: 17,
                         fontWeight: FontWeight.w900,
                       ),
@@ -1005,23 +1009,23 @@ class _LockedInfoTile extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 14),
-              const Text(
+              Text(
                 'Email dan nomor WhatsApp dikunci setelah pendaftaran '
                 'untuk mencegah penyalahgunaan voucher 1× pakai.',
                 style: TextStyle(
-                  color: _textSecondary,
+                  color: cs.onSurfaceVariant,
                   fontSize: 13.5,
                   height: 1.45,
                   fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(height: 10),
-              const Text(
+              Text(
                 'Kalau kamu butuh ganti (mis. pindah nomor, typo saat '
                 'daftar), hubungi admin lewat WhatsApp dengan menyertakan '
                 'data lama + data baru.',
                 style: TextStyle(
-                  color: _textSecondary,
+                  color: cs.onSurfaceVariant,
                   fontSize: 13.5,
                   height: 1.45,
                   fontWeight: FontWeight.w600,
@@ -1074,7 +1078,7 @@ class _LockedInfoTile extends StatelessWidget {
                 onPressed: () => Navigator.of(ctx).maybePop(),
                 style: TextButton.styleFrom(
                   minimumSize: const Size.fromHeight(40),
-                  foregroundColor: _textSecondary,
+                  foregroundColor: cs.onSurfaceVariant,
                 ),
                 child: const Text(
                   'Tutup',
@@ -1090,6 +1094,7 @@ class _LockedInfoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return InkWell(
       onTap: () => _showInfoSheet(context),
       child: Padding(
@@ -1114,8 +1119,8 @@ class _LockedInfoTile extends StatelessWidget {
                 children: [
                   Text(
                     label,
-                    style: const TextStyle(
-                      color: _textSecondary,
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
                       fontSize: 11.5,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 0.2,
@@ -1126,8 +1131,8 @@ class _LockedInfoTile extends StatelessWidget {
                     value,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: _darkNavy,
+                    style: TextStyle(
+                      color: cs.onSurface,
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
                     ),
@@ -1138,9 +1143,9 @@ class _LockedInfoTile extends StatelessWidget {
             const SizedBox(width: 6),
             // Padlock indicator — visual cue "locked tapi tetap
             // interaktif (tap untuk info + admin contact)".
-            const Icon(
+            Icon(
               Icons.lock_outline_rounded,
-              color: Color(0xFF94A3B8),
+              color: cs.onSurfaceVariant,
               size: 18,
             ),
           ],
@@ -1155,9 +1160,12 @@ class _FormDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.only(left: 66),
-      child: Divider(height: 1, color: Color(0xFFEFF2F6)),
+    return Padding(
+      padding: const EdgeInsets.only(left: 66),
+      child: Divider(
+        height: 1,
+        color: Theme.of(context).colorScheme.outlineVariant,
+      ),
     );
   }
 }

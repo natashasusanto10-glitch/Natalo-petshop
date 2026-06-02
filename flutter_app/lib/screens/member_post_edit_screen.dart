@@ -179,11 +179,12 @@ class _MemberPostEditScreenState extends State<MemberPostEditScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: const Color(0xFFF7FAFF),
+      backgroundColor: cs.surface,
       appBar: AppBar(
         title: const Text('Edit Postingan'),
-        backgroundColor: const Color(0xFFF7FAFF),
+        backgroundColor: cs.surface,
         elevation: 0,
       ),
       body: ListView(
@@ -212,9 +213,9 @@ class _MemberPostEditScreenState extends State<MemberPostEditScreen> {
                         fadeOutDuration: const Duration(milliseconds: 120),
                         fadeInCurve: Curves.easeOut,
                         placeholder: (_, __) => Shimmer.fromColors(
-                          baseColor: NataloColors.surface,
-                          highlightColor: NataloColors.border,
-                          child: Container(color: NataloColors.surface),
+                          baseColor: cs.surfaceContainerHighest,
+                          highlightColor: cs.outlineVariant,
+                          child: Container(color: cs.surfaceContainerHighest),
                         ),
                         errorWidget: (_, __, ___) => Container(),
                       ),
@@ -245,8 +246,8 @@ class _MemberPostEditScreenState extends State<MemberPostEditScreen> {
               widget.post.isVideo
                   ? 'Video tidak bisa diganti. Untuk video baru, hapus postingan lalu upload ulang.'
                   : 'Media tidak bisa diganti. Untuk foto baru, hapus postingan lalu upload ulang.',
-              style: const TextStyle(
-                color: NataloColors.textTertiary,
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
                 fontSize: 11,
                 fontWeight: FontWeight.w500,
               ),
@@ -254,12 +255,12 @@ class _MemberPostEditScreenState extends State<MemberPostEditScreen> {
           ),
           const SizedBox(height: 20),
           // Caption editor
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
             child: Text(
               'Caption',
               style: TextStyle(
-                color: NataloColors.textPrimary,
+                color: cs.onSurface,
                 fontSize: 13,
                 fontWeight: FontWeight.w800,
               ),
@@ -271,11 +272,11 @@ class _MemberPostEditScreenState extends State<MemberPostEditScreen> {
             minLines: 3,
             maxLength: _maxCaptionLength,
             enabled: !_saving,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               hintText: 'Tulis caption postingan…',
               filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(),
+              fillColor: cs.surface,
+              border: const OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 16),
@@ -322,10 +323,10 @@ class _MemberPostEditScreenState extends State<MemberPostEditScreen> {
           const SizedBox(height: 8),
           TextButton(
             onPressed: _saving ? null : () => Navigator.pop(context),
-            child: const Text(
+            child: Text(
               'Batal',
               style: TextStyle(
-                color: NataloColors.textSecondary,
+                color: cs.onSurfaceVariant,
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
               ),
@@ -352,13 +353,14 @@ class _TaggedProductsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final hasResolvedProducts = selectedProducts.isNotEmpty;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFDDE8F8)),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: Column(
         children: [
@@ -382,10 +384,10 @@ class _TaggedProductsCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Produk Ditag',
                       style: TextStyle(
-                        color: NataloColors.textPrimary,
+                        color: cs.onSurface,
                         fontSize: 14,
                         fontWeight: FontWeight.w800,
                       ),
@@ -397,8 +399,8 @@ class _TaggedProductsCard extends StatelessWidget {
                           : selectedCount == 0
                               ? 'Belum ada produk'
                               : '$selectedCount produk ditag',
-                      style: const TextStyle(
-                        color: NataloColors.textSecondary,
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
@@ -446,13 +448,14 @@ class _SelectedProductChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       constraints: const BoxConstraints(maxWidth: 220),
       padding: const EdgeInsets.fromLTRB(6, 5, 9, 5),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -464,8 +467,8 @@ class _SelectedProductChip extends StatelessWidget {
               product.name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: NataloColors.textPrimary,
+              style: TextStyle(
+                color: cs.onSurface,
                 fontSize: 11.5,
                 fontWeight: FontWeight.w800,
               ),
@@ -569,6 +572,7 @@ class _TaggedProductPickerSheetState extends State<_TaggedProductPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final products = _filteredProducts;
     return DraggableScrollableSheet(
@@ -577,9 +581,9 @@ class _TaggedProductPickerSheetState extends State<_TaggedProductPickerSheet> {
       maxChildSize: 0.92,
       builder: (context, scrollController) {
         return Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+          decoration: BoxDecoration(
+            color: cs.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
           ),
           child: Padding(
             padding: EdgeInsets.only(bottom: bottomInset),
@@ -590,7 +594,7 @@ class _TaggedProductPickerSheetState extends State<_TaggedProductPickerSheet> {
                   width: 38,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFD1D5DB),
+                    color: cs.onSurfaceVariant,
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
@@ -598,11 +602,11 @@ class _TaggedProductPickerSheetState extends State<_TaggedProductPickerSheet> {
                   padding: const EdgeInsets.fromLTRB(18, 16, 18, 8),
                   child: Row(
                     children: [
-                      const Expanded(
+                      Expanded(
                         child: Text(
                           'Produk Ditag',
                           style: TextStyle(
-                            color: NataloColors.textPrimary,
+                            color: cs.onSurface,
                             fontSize: 17,
                             fontWeight: FontWeight.w900,
                           ),
@@ -626,17 +630,17 @@ class _TaggedProductPickerSheetState extends State<_TaggedProductPickerSheet> {
                       prefixIcon: const Icon(Icons.search_rounded),
                       isDense: true,
                       filled: true,
-                      fillColor: const Color(0xFFF8FAFC),
+                      fillColor: cs.surfaceContainerHighest,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(
-                          color: Color(0xFFE2E8F0),
+                        borderSide: BorderSide(
+                          color: cs.outlineVariant,
                         ),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(
-                          color: Color(0xFFE2E8F0),
+                        borderSide: BorderSide(
+                          color: cs.outlineVariant,
                         ),
                       ),
                     ),
@@ -648,8 +652,8 @@ class _TaggedProductPickerSheetState extends State<_TaggedProductPickerSheet> {
                     alignment: Alignment.centerLeft,
                     child: Text(
                       '${_selected.length}/${_MemberPostEditScreenState._maxTaggedProducts} produk dipilih',
-                      style: const TextStyle(
-                        color: NataloColors.textSecondary,
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                       ),
@@ -688,6 +692,7 @@ class _TaggedProductPickerSheetState extends State<_TaggedProductPickerSheet> {
     List<_EditableTaggedProduct> products,
     ScrollController scrollController,
   ) {
+    final cs = Theme.of(context).colorScheme;
     if (widget.loading || _retrying) {
       return const Center(
         child: CircularProgressIndicator(
@@ -706,8 +711,8 @@ class _TaggedProductPickerSheetState extends State<_TaggedProductPickerSheet> {
               Text(
                 _errorText!,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: NataloColors.textSecondary,
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                 ),
@@ -723,14 +728,14 @@ class _TaggedProductPickerSheetState extends State<_TaggedProductPickerSheet> {
       );
     }
     if (products.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(28),
+          padding: const EdgeInsets.all(28),
           child: Text(
             'Belum ada produk yang bisa ditag. Produk muncul setelah order dibayar dan diterima.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: NataloColors.textSecondary,
+              color: cs.onSurfaceVariant,
               fontSize: 13,
               fontWeight: FontWeight.w700,
               height: 1.4,
@@ -755,8 +760,8 @@ class _TaggedProductPickerSheetState extends State<_TaggedProductPickerSheet> {
             product.name,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: NataloColors.textPrimary,
+            style: TextStyle(
+              color: cs.onSurface,
               fontSize: 13.5,
               fontWeight: FontWeight.w800,
             ),
@@ -768,8 +773,8 @@ class _TaggedProductPickerSheetState extends State<_TaggedProductPickerSheet> {
             ].join(' • '),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: NataloColors.textSecondary,
+            style: TextStyle(
+              color: cs.onSurfaceVariant,
               fontSize: 11.5,
               fontWeight: FontWeight.w600,
             ),
@@ -778,7 +783,7 @@ class _TaggedProductPickerSheetState extends State<_TaggedProductPickerSheet> {
             selected
                 ? Icons.check_circle_rounded
                 : Icons.radio_button_unchecked_rounded,
-            color: selected ? NataloColors.primary : const Color(0xFFCBD5E1),
+            color: selected ? NataloColors.primary : cs.onSurfaceVariant,
           ),
         );
       },
@@ -794,24 +799,25 @@ class _ProductThumb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final imageUrl = url ?? '';
     return ClipRRect(
       borderRadius: BorderRadius.circular(size * 0.22),
       child: Container(
         width: size,
         height: size,
-        color: const Color(0xFFE2E8F0),
+        color: cs.surfaceContainerHighest,
         child: imageUrl.isEmpty
-            ? const Icon(
+            ? Icon(
                 Icons.inventory_2_outlined,
-                color: NataloColors.textTertiary,
+                color: cs.onSurfaceVariant,
               )
             : CachedNetworkImage(
                 imageUrl: imageUrl,
                 fit: BoxFit.cover,
-                errorWidget: (_, __, ___) => const Icon(
+                errorWidget: (_, __, ___) => Icon(
                   Icons.inventory_2_outlined,
-                  color: NataloColors.textTertiary,
+                  color: cs.onSurfaceVariant,
                 ),
               ),
       ),

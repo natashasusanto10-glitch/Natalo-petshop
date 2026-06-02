@@ -8,9 +8,6 @@ import '../state/member_store.dart';
 import '../utils/haptics.dart';
 
 const _brandBlue = Color(0xFF0B7FEA);
-const _darkNavy = Color(0xFF101828);
-const _textSecondary = Color(0xFF667085);
-const _borderSoft = Color(0xFFE2E8F0);
 
 enum FollowListKind {
   followers,
@@ -60,20 +57,21 @@ class _PublicProfileFollowListScreenState
   @override
   Widget build(BuildContext context) {
     final profile = widget.profile;
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: cs.surface,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
+        backgroundColor: cs.surface,
+        surfaceTintColor: cs.surface,
         elevation: 0,
         scrolledUnderElevation: 0.5,
         centerTitle: false,
         titleSpacing: 0,
         leading: IconButton(
           onPressed: () => Navigator.maybePop(context),
-          icon: const Icon(
+          icon: Icon(
             Icons.arrow_back_rounded,
-            color: _darkNavy,
+            color: cs.onSurface,
             size: 26,
           ),
           tooltip: 'Kembali',
@@ -82,8 +80,8 @@ class _PublicProfileFollowListScreenState
           profile.displayHandle,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: _darkNavy,
+          style: TextStyle(
+            color: cs.onSurface,
             fontSize: 18,
             fontWeight: FontWeight.w800,
             height: 1.1,
@@ -92,17 +90,17 @@ class _PublicProfileFollowListScreenState
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
           child: DecoratedBox(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               border: Border(
-                top: BorderSide(color: _borderSoft, width: 0.5),
-                bottom: BorderSide(color: _borderSoft, width: 0.5),
+                top: BorderSide(color: cs.outlineVariant, width: 0.5),
+                bottom: BorderSide(color: cs.outlineVariant, width: 0.5),
               ),
             ),
             child: TabBar(
               controller: _tabController,
-              labelColor: _darkNavy,
-              unselectedLabelColor: _textSecondary,
-              indicatorColor: _darkNavy,
+              labelColor: cs.onSurface,
+              unselectedLabelColor: cs.onSurfaceVariant,
+              indicatorColor: cs.onSurface,
               indicatorWeight: 2,
               labelStyle: const TextStyle(
                 fontSize: 13,
@@ -352,6 +350,7 @@ class _FollowListPaneState extends State<_FollowListPane>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    final cs = Theme.of(context).colorScheme;
     if (_loading) {
       return const Center(
         child: CircularProgressIndicator(
@@ -383,10 +382,10 @@ class _FollowListPaneState extends State<_FollowListPane>
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(vertical: 8),
         itemCount: _items.length + (_loadingMore ? 1 : 0),
-        separatorBuilder: (_, __) => const Divider(
+        separatorBuilder: (_, __) => Divider(
           height: 1,
           thickness: 0.5,
-          color: _borderSoft,
+          color: cs.outlineVariant,
           indent: 84,
         ),
         itemBuilder: (context, index) {
@@ -432,6 +431,7 @@ class _FollowUserTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final subtitle = [
       if (user.username != null && user.username!.isNotEmpty) user.username!,
       if (user.bio != null && user.bio!.isNotEmpty) user.bio!,
@@ -462,8 +462,8 @@ class _FollowUserTile extends StatelessWidget {
                     user.name.isEmpty ? user.displayHandle : user.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: _darkNavy,
+                    style: TextStyle(
+                      color: cs.onSurface,
                       fontSize: 14,
                       fontWeight: FontWeight.w800,
                       height: 1.2,
@@ -475,8 +475,8 @@ class _FollowUserTile extends StatelessWidget {
                       subtitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: _textSecondary,
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         height: 1.25,
@@ -515,11 +515,11 @@ class _FollowUserTile extends StatelessWidget {
               OutlinedButton(
                 onPressed: user.isSelf || followBusy ? null : onFollowToggle,
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: _darkNavy,
+                  foregroundColor: cs.onSurface,
                   disabledForegroundColor:
-                      user.isSelf ? _textSecondary : _darkNavy,
+                      user.isSelf ? cs.onSurfaceVariant : cs.onSurface,
                   side: BorderSide(
-                    color: user.isSelf ? const Color(0xFFE5E7EB) : _borderSoft,
+                    color: cs.outlineVariant,
                   ),
                   minimumSize: const Size(92, 34),
                   padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -534,7 +534,7 @@ class _FollowUserTile extends StatelessWidget {
                 child: _FollowTileButtonContent(
                   label: followLabel,
                   busy: followBusy,
-                  spinnerColor: _textSecondary,
+                  spinnerColor: cs.onSurfaceVariant,
                 ),
               ),
             if (user.canOpenProfile) ...[
@@ -542,7 +542,7 @@ class _FollowUserTile extends StatelessWidget {
               IconButton(
                 onPressed: onTap,
                 icon: const Icon(Icons.chevron_right_rounded),
-                color: _textSecondary,
+                color: cs.onSurfaceVariant,
                 tooltip: 'Lihat profil',
               ),
             ],
@@ -611,23 +611,28 @@ class _FollowAvatar extends StatelessWidget {
   }
 
   Widget _initialAvatar() {
-    return Container(
-      width: 52,
-      height: 52,
-      decoration: const BoxDecoration(
-        shape: BoxShape.circle,
-        color: Color(0xFFEFF6FF),
-      ),
-      child: Center(
-        child: Text(
-          user.initial,
-          style: const TextStyle(
-            color: Color(0xFF1D4ED8),
-            fontSize: 20,
-            fontWeight: FontWeight.w800,
+    return Builder(
+      builder: (context) {
+        final cs = Theme.of(context).colorScheme;
+        return Container(
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: cs.surfaceContainerHighest,
           ),
-        ),
-      ),
+          child: Center(
+            child: Text(
+              user.initial,
+              style: const TextStyle(
+                color: Color(0xFF1D4ED8),
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -647,6 +652,7 @@ class _FollowListMessage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(36),
@@ -655,15 +661,15 @@ class _FollowListMessage extends StatelessWidget {
           children: [
             Icon(
               icon,
-              color: const Color(0xFFCBD5E1),
+              color: cs.onSurfaceVariant,
               size: 42,
             ),
             const SizedBox(height: 10),
             Text(
               title,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: _darkNavy,
+              style: TextStyle(
+                color: cs.onSurface,
                 fontSize: 14,
                 fontWeight: FontWeight.w800,
               ),

@@ -12,10 +12,6 @@ import 'member_post_detail_screen.dart';
 import 'public_profile_follow_list_screen.dart';
 
 const _brandBlue = Color(0xFF0B7FEA);
-const _pageBg = Colors.white;
-const _darkNavy = Color(0xFF101828);
-const _textSecondary = Color(0xFF667085);
-const _borderSoft = Color(0xFFE2E8F0);
 
 /// Public profile screen — `/u/{username}` deep link target +
 /// destination saat user tap @username di feed/komentar.
@@ -244,20 +240,21 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: _pageBg,
+      backgroundColor: cs.surface,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
+        backgroundColor: cs.surface,
+        surfaceTintColor: cs.surface,
         elevation: 0,
         scrolledUnderElevation: 0.5,
         centerTitle: false,
         titleSpacing: 0,
         leading: IconButton(
           onPressed: () => Navigator.maybePop(context),
-          icon: const Icon(
+          icon: Icon(
             Icons.arrow_back_rounded,
-            color: _darkNavy,
+            color: cs.onSurface,
             size: 26,
           ),
           tooltip: 'Kembali',
@@ -266,8 +263,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           _profile?.displayHandle ?? widget.username,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: _darkNavy,
+          style: TextStyle(
+            color: cs.onSurface,
             fontSize: 18,
             fontWeight: FontWeight.w800,
             height: 1.1,
@@ -335,7 +332,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                       onTap: () => _openPost(idx),
                     );
                   } catch (_) {
-                    return const ColoredBox(color: Color(0xFFE2E8F0));
+                    return ColoredBox(
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    );
                   }
                 },
                 childCount: _posts.length,
@@ -379,9 +378,10 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
-      color: Colors.white,
+      color: cs.surface,
       padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -404,8 +404,8 @@ class _Header extends StatelessWidget {
                               profile.name,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: _darkNavy,
+                              style: TextStyle(
+                                color: cs.onSurface,
                                 fontSize: 15,
                                 fontWeight: FontWeight.w800,
                                 height: 1.1,
@@ -453,8 +453,8 @@ class _Header extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               profile.bio!,
-              style: const TextStyle(
-                color: Color(0xFF334155),
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
                 height: 1.4,
@@ -469,8 +469,8 @@ class _Header extends StatelessWidget {
                 ? OutlinedButton(
                     onPressed: onEditProfile,
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: _darkNavy,
-                      side: const BorderSide(color: _borderSoft),
+                      foregroundColor: cs.onSurface,
+                      side: BorderSide(color: cs.outlineVariant),
                       textStyle: const TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w800,
@@ -485,9 +485,9 @@ class _Header extends StatelessWidget {
                     ? OutlinedButton(
                         onPressed: onFollowToggle,
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: _darkNavy,
-                          disabledForegroundColor: _darkNavy,
-                          side: const BorderSide(color: _borderSoft),
+                          foregroundColor: cs.onSurface,
+                          disabledForegroundColor: cs.onSurface,
+                          side: BorderSide(color: cs.outlineVariant),
                           textStyle: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w800,
@@ -499,7 +499,7 @@ class _Header extends StatelessWidget {
                         child: _FollowButtonContent(
                           label: 'Mengikuti',
                           busy: followBusy,
-                          spinnerColor: _textSecondary,
+                          spinnerColor: cs.onSurfaceVariant,
                         ),
                       )
                     : FilledButton(
@@ -575,15 +575,16 @@ class _Avatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     // Akun official Natalo → tampilkan logo brand (bukan foto/initial
     // pribadi). API sudah set profilePhotoUrl null untuk official.
     if (profile.isOfficial) {
       return Container(
         width: 82,
         height: 82,
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: Color(0xFFEFF6FF),
+          color: cs.surfaceContainerHighest,
         ),
         clipBehavior: Clip.antiAlias,
         padding: const EdgeInsets.all(14),
@@ -601,21 +602,21 @@ class _Avatar extends StatelessWidget {
           width: 82,
           height: 82,
           fit: BoxFit.cover,
-          placeholder: (_, __) => _initialAvatar(),
-          errorWidget: (_, __, ___) => _initialAvatar(),
+          placeholder: (_, __) => _initialAvatar(cs),
+          errorWidget: (_, __, ___) => _initialAvatar(cs),
         ),
       );
     }
-    return _initialAvatar();
+    return _initialAvatar(cs);
   }
 
-  Widget _initialAvatar() {
+  Widget _initialAvatar(ColorScheme cs) {
     return Container(
       width: 82,
       height: 82,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: Color(0xFFEFF6FF),
+        color: cs.surfaceContainerHighest,
       ),
       child: Center(
         child: Text(
@@ -644,14 +645,15 @@ class _StatColumn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final content = SizedBox(
       width: 70,
       child: Column(
         children: [
           Text(
             '$value',
-            style: const TextStyle(
-              color: _darkNavy,
+            style: TextStyle(
+              color: cs.onSurface,
               fontSize: 17,
               fontWeight: FontWeight.w800,
               height: 1.08,
@@ -660,8 +662,8 @@ class _StatColumn extends StatelessWidget {
           const SizedBox(height: 3),
           Text(
             label,
-            style: const TextStyle(
-              color: _textSecondary,
+            style: TextStyle(
+              color: cs.onSurfaceVariant,
               fontSize: 12,
               fontWeight: FontWeight.w600,
               height: 1.08,
@@ -690,12 +692,13 @@ class _ProfileTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return DecoratedBox(
-      decoration: const BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(
+        color: cs.surface,
         border: Border(
-          top: BorderSide(color: _borderSoft, width: 0.5),
-          bottom: BorderSide(color: _borderSoft, width: 0.5),
+          top: BorderSide(color: cs.outlineVariant, width: 0.5),
+          bottom: BorderSide(color: cs.outlineVariant, width: 0.5),
         ),
       ),
       child: SizedBox(
@@ -703,9 +706,9 @@ class _ProfileTabs extends StatelessWidget {
         child: Stack(
           alignment: Alignment.center,
           children: [
-            const Icon(
+            Icon(
               Icons.grid_on_rounded,
-              color: _darkNavy,
+              color: cs.onSurface,
               size: 23,
             ),
             Positioned(
@@ -714,7 +717,7 @@ class _ProfileTabs extends StatelessWidget {
                 width: 44,
                 height: 2,
                 decoration: BoxDecoration(
-                  color: _darkNavy,
+                  color: cs.onSurface,
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
@@ -752,7 +755,9 @@ class _PostTile extends StatelessWidget {
           // Last-resort fallback — render plain colored box. Catatan: ini
           // CUMA catch error sync di build path. Async errors (download
           // image fail) sudah di-handle oleh CachedNetworkImage.errorWidget.
-          return const ColoredBox(color: Color(0xFFE2E8F0));
+          return ColoredBox(
+            color: Theme.of(innerContext).colorScheme.surfaceContainerHighest,
+          );
         }
       },
     );
@@ -774,6 +779,7 @@ class _PostTile extends StatelessWidget {
         (parsedUri.scheme == 'http' || parsedUri.scheme == 'https') &&
         parsedUri.hasAuthority;
 
+    final cs = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -784,7 +790,7 @@ class _PostTile extends StatelessWidget {
         // dan throw itu terjadi DI LUAR try-catch _buildSafeTile (sudah
         // return), bocor ke ErrorWidget.builder global = AppErrorWidget
         // di seluruh cell. Decoration eksplisit fix root cause.
-        decoration: const BoxDecoration(color: Color(0xFFE2E8F0)),
+        decoration: BoxDecoration(color: cs.surfaceContainerHighest),
         clipBehavior: Clip.hardEdge,
         child: Stack(
           fit: StackFit.expand,
@@ -792,7 +798,7 @@ class _PostTile extends StatelessWidget {
             if (isValidImageUrl)
               _SafeNetworkImage(url: thumb)
             else
-              const ColoredBox(color: Color(0xFFE2E8F0)),
+              ColoredBox(color: cs.surfaceContainerHighest),
             if (post.isVideo)
               Positioned(
                 top: 6,
@@ -827,15 +833,17 @@ class _SafeNetworkImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     try {
       return CachedNetworkImage(
         imageUrl: url,
         fit: BoxFit.cover,
-        placeholder: (_, __) => const ColoredBox(color: Color(0xFFE2E8F0)),
-        errorWidget: (_, __, ___) => const ColoredBox(color: Color(0xFFE2E8F0)),
+        placeholder: (_, __) => ColoredBox(color: cs.surfaceContainerHighest),
+        errorWidget: (_, __, ___) =>
+            ColoredBox(color: cs.surfaceContainerHighest),
       );
     } catch (_) {
-      return const ColoredBox(color: Color(0xFFE2E8F0));
+      return ColoredBox(color: cs.surfaceContainerHighest);
     }
   }
 }
@@ -845,22 +853,23 @@ class _EmptyPosts extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    final cs = Theme.of(context).colorScheme;
+    return Center(
       child: Padding(
-        padding: EdgeInsets.fromLTRB(24, 42, 24, 80),
+        padding: const EdgeInsets.fromLTRB(24, 42, 24, 80),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               Icons.photo_library_outlined,
-              color: Color(0xFFCBD5E1),
+              color: cs.onSurfaceVariant,
               size: 32,
             ),
-            SizedBox(height: 10),
+            const SizedBox(height: 10),
             Text(
               'Belum ada postingan',
               style: TextStyle(
-                color: _darkNavy,
+                color: cs.onSurface,
                 fontSize: 14,
                 fontWeight: FontWeight.w800,
                 height: 1.2,
@@ -880,32 +889,33 @@ class _NotFoundView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(36),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
+            Icon(
               Icons.person_off_rounded,
               size: 56,
-              color: Color(0xFFCBD5E1),
+              color: cs.onSurfaceVariant,
             ),
             const SizedBox(height: 12),
             Text(
               'User $handle tidak ditemukan',
-              style: const TextStyle(
-                color: _darkNavy,
+              style: TextStyle(
+                color: cs.onSurface,
                 fontSize: 16,
                 fontWeight: FontWeight.w900,
               ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Mungkin username diganti atau akun sudah dihapus.',
               style: TextStyle(
-                color: _textSecondary,
+                color: cs.onSurfaceVariant,
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
@@ -926,6 +936,7 @@ class _ErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(36),
@@ -934,8 +945,8 @@ class _ErrorView extends StatelessWidget {
           children: [
             Text(
               message,
-              style: const TextStyle(
-                color: _darkNavy,
+              style: TextStyle(
+                color: cs.onSurface,
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
               ),
