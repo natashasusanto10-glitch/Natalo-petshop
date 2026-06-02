@@ -16,9 +16,6 @@ import '../widgets/glass_surface.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 
 const _brandBlue = Color(0xFF0B7FEA);
-const _textPrimary = Color(0xFF17202A);
-const _textSecondary = Color(0xFF64748B);
-const _pageBg = Color(0xFFF8FAFC);
 const _starGold = Color(0xFFF6B73C);
 const _successGreen = Color(0xFF16A34A);
 
@@ -146,12 +143,13 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: _pageBg,
+      backgroundColor: cs.surface,
       appBar: AppBar(
         title: const Text('Ulasan Produk'),
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
+        backgroundColor: cs.surface,
+        surfaceTintColor: cs.surface,
       ),
       body: !memberStore.isLoggedIn
           ? AppEmptyState(
@@ -238,23 +236,24 @@ class _ReviewPageIntro extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Column(
+    final cs = Theme.of(context).colorScheme;
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'Ulasan Produk',
           style: TextStyle(
-            color: _textPrimary,
+            color: cs.onSurface,
             fontSize: 24,
             fontWeight: FontWeight.w700,
             height: 1.18,
           ),
         ),
-        SizedBox(height: 6),
+        const SizedBox(height: 6),
         Text(
           'Beri rating dan cerita pengalamanmu untuk produk yang sudah sampai.',
           style: TextStyle(
-            color: _textSecondary,
+            color: cs.onSurfaceVariant,
             fontSize: 14,
             fontWeight: FontWeight.w500,
             height: 1.42,
@@ -284,7 +283,9 @@ class _ReviewSummaryRow extends StatelessWidget {
             count: pendingCount,
             label: 'Menunggu Review',
             color: _brandBlue,
-            tint: const Color(0xFFEAF5FF),
+            tint: Theme.of(context).brightness == Brightness.dark
+                ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                : const Color(0xFFEAF5FF),
           ),
         ),
         const SizedBox(width: 12),
@@ -319,10 +320,11 @@ class _ReviewSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return GlassSurface(
       radius: 22,
       padding: const EdgeInsets.all(14),
-      tint: Colors.white,
+      tint: cs.surface,
       child: Row(
         children: [
           Container(
@@ -353,8 +355,8 @@ class _ReviewSummaryCard extends StatelessWidget {
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: _textSecondary,
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
@@ -383,12 +385,13 @@ class _ReviewSegmentedTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE5EAF1)),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: Row(
         children: [
@@ -439,7 +442,9 @@ class _ReviewTabButton extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: active ? Colors.white : _textSecondary,
+              color: active
+                  ? Colors.white
+                  : Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 12,
               fontWeight: FontWeight.w700,
             ),
@@ -524,10 +529,11 @@ class _ReviewableItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return GlassSurface(
       radius: 22,
       padding: const EdgeInsets.all(14),
-      tint: Colors.white,
+      tint: cs.surface,
       child: Column(
         children: [
           Row(
@@ -549,8 +555,8 @@ class _ReviewableItemCard extends StatelessWidget {
                       item.productName,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: _textPrimary,
+                      style: TextStyle(
+                        color: cs.onSurface,
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
                         height: 1.25,
@@ -562,8 +568,8 @@ class _ReviewableItemCard extends StatelessWidget {
                         item.variantLabel!,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: _textSecondary,
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
@@ -572,8 +578,8 @@ class _ReviewableItemCard extends StatelessWidget {
                     const SizedBox(height: 5),
                     Text(
                       '${_priceText(item)} x ${item.quantity}',
-                      style: const TextStyle(
-                        color: _textSecondary,
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
@@ -583,8 +589,8 @@ class _ReviewableItemCard extends StatelessWidget {
                       '${item.orderNumber ?? 'Pesanan selesai'} • ${_formatDate(item.orderDate)}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF94A3B8),
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
@@ -623,10 +629,11 @@ class _ReviewedItemCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final item = review.item;
     final content = review.content?.trim();
+    final cs = Theme.of(context).colorScheme;
     return GlassSurface(
       radius: 22,
       padding: const EdgeInsets.all(14),
-      tint: Colors.white,
+      tint: cs.surface,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -647,8 +654,8 @@ class _ReviewedItemCard extends StatelessWidget {
                   item.productName,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: _textPrimary,
+                  style: TextStyle(
+                    color: cs.onSurface,
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
                     height: 1.25,
@@ -661,8 +668,8 @@ class _ReviewedItemCard extends StatelessWidget {
                     const SizedBox(width: 8),
                     Text(
                       _formatDate(review.createdAt),
-                      style: const TextStyle(
-                        color: Color(0xFF94A3B8),
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                       ),
@@ -675,8 +682,8 @@ class _ReviewedItemCard extends StatelessWidget {
                     content,
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: _textSecondary,
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
                       height: 1.35,
@@ -705,17 +712,20 @@ class _ReviewEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return GlassSurface(
       radius: 24,
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 34),
-      tint: Colors.white,
+      tint: cs.surface,
       child: Column(
         children: [
           Container(
             height: 64,
             width: 64,
             decoration: BoxDecoration(
-              color: const Color(0xFFEAF5FF),
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                  : const Color(0xFFEAF5FF),
               borderRadius: BorderRadius.circular(22),
             ),
             child: Icon(icon, color: _brandBlue, size: 32),
@@ -724,8 +734,8 @@ class _ReviewEmptyState extends StatelessWidget {
           Text(
             title,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: _textPrimary,
+            style: TextStyle(
+              color: cs.onSurface,
               fontSize: 16,
               fontWeight: FontWeight.w700,
             ),
@@ -734,8 +744,8 @@ class _ReviewEmptyState extends StatelessWidget {
           Text(
             body,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: _textSecondary,
+            style: TextStyle(
+              color: cs.onSurfaceVariant,
               fontSize: 13,
               fontWeight: FontWeight.w500,
               height: 1.4,
@@ -801,7 +811,7 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
           child: GlassSurface(
             radius: 26,
             padding: const EdgeInsets.all(12),
-            tint: Colors.white,
+            tint: Theme.of(context).colorScheme.surface,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -842,12 +852,13 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
                 ],
                 if (_mediaItems.where((item) => item.isVideo).length >=
                     _maxVideos)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 8),
                     child: Text(
                       'Maksimal 1 video per review.',
                       style: TextStyle(
-                        color: _textSecondary,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                       ),
@@ -1053,6 +1064,7 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
+    final cs = Theme.of(context).colorScheme;
     return AnimatedPadding(
       duration: const Duration(milliseconds: 180),
       curve: Curves.easeOutCubic,
@@ -1062,7 +1074,7 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
           maxHeight: MediaQuery.sizeOf(context).height * 0.90,
         ),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: cs.surface,
           borderRadius: BorderRadius.circular(30),
           boxShadow: [
             BoxShadow(
@@ -1082,7 +1094,7 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
                 height: 5,
                 width: 50,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFD8DEE8),
+                  color: cs.outlineVariant,
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
@@ -1104,10 +1116,10 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
                         hasMedia: _mediaItems.isNotEmpty,
                       ),
                       const SizedBox(height: 16),
-                      const Text(
+                      Text(
                         'Bagaimana pengalamanmu dengan produk ini?',
                         style: TextStyle(
-                          color: _textPrimary,
+                          color: cs.onSurface,
                           fontSize: 17,
                           fontWeight: FontWeight.w700,
                           height: 1.25,
@@ -1134,7 +1146,9 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
                                 : _ratingLabel(_rating),
                             key: ValueKey(_rating),
                             style: TextStyle(
-                              color: _rating == 0 ? _textSecondary : _brandBlue,
+                              color: _rating == 0
+                                  ? cs.onSurfaceVariant
+                                  : _brandBlue,
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
                             ),
@@ -1261,6 +1275,7 @@ class _ReviewSheetProductPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Row(
       children: [
         ClipRRect(
@@ -1280,8 +1295,8 @@ class _ReviewSheetProductPreview extends StatelessWidget {
                 item.productName,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: _textPrimary,
+                style: TextStyle(
+                  color: cs.onSurface,
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
                   height: 1.25,
@@ -1290,8 +1305,8 @@ class _ReviewSheetProductPreview extends StatelessWidget {
               const SizedBox(height: 5),
               Text(
                 '${_priceText(item)} x ${item.quantity}',
-                style: const TextStyle(
-                  color: _textSecondary,
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),
@@ -1336,7 +1351,7 @@ class _SuggestionChips extends StatelessWidget {
             ),
             label: Text(suggestion.$2),
             selectedColor: _brandBlue,
-            backgroundColor: Colors.white,
+            backgroundColor: Theme.of(context).colorScheme.surface,
             labelStyle: TextStyle(
               color:
                   selected.contains(suggestion.$2) ? Colors.white : _brandBlue,
@@ -1382,16 +1397,17 @@ class _ReviewMediaPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            const Expanded(
+            Expanded(
               child: Text(
                 'Foto / Video Review',
                 style: TextStyle(
-                  color: _textPrimary,
+                  color: cs.onSurface,
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
                 ),
@@ -1399,8 +1415,8 @@ class _ReviewMediaPicker extends StatelessWidget {
             ),
             Text(
               '${mediaItems.length}/$maxMedia',
-              style: const TextStyle(
-                color: _textSecondary,
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
               ),
@@ -1434,7 +1450,7 @@ class _ReviewMediaPicker extends StatelessWidget {
                       errorBuilder: (_, __, ___) => Container(
                         height: 84,
                         width: 84,
-                        color: const Color(0xFFEFF4FA),
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
                         child: const Icon(Icons.image_not_supported_outlined),
                       ),
                     ),
@@ -1495,7 +1511,7 @@ class _AddMediaTile extends StatelessWidget {
         height: 84,
         width: 112,
         decoration: BoxDecoration(
-          color: const Color(0xFFF8FBFF),
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: const Color(0xFFBFDBFE)),
         ),

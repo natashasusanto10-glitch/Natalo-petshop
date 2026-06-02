@@ -59,6 +59,7 @@ class _MemberLoyaltyScreenState extends State<MemberLoyaltyScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
+        final cs = Theme.of(context).colorScheme;
         return AlertDialog(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24),
@@ -67,7 +68,9 @@ class _MemberLoyaltyScreenState extends State<MemberLoyaltyScreen> {
             height: 56,
             width: 56,
             decoration: BoxDecoration(
-              color: const Color(0xFFEAF5FF),
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                  : const Color(0xFFEAF5FF),
               borderRadius: BorderRadius.circular(999),
             ),
             child: const Icon(
@@ -87,8 +90,8 @@ class _MemberLoyaltyScreenState extends State<MemberLoyaltyScreen> {
                 'Voucher ${formatRupiah(tier.discountAmount.toDouble())} akan ditukar '
                 'dengan ${tier.points} poin.',
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Color(0xFF6B7280),
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
                   fontWeight: FontWeight.w600,
                   height: 1.5,
                 ),
@@ -98,18 +101,18 @@ class _MemberLoyaltyScreenState extends State<MemberLoyaltyScreen> {
                 'Voucher berlaku dengan minimal belanja '
                 '${formatRupiah(tier.minimumOrder.toDouble())}.',
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Color(0xFF6B7280),
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                 ),
               ),
               const SizedBox(height: 6),
-              const Text(
+              Text(
                 'Poin akan dipotong setelah kamu konfirmasi.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Color(0xFF6B7280),
+                  color: cs.onSurfaceVariant,
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),
@@ -191,12 +194,12 @@ class _MemberLoyaltyScreenState extends State<MemberLoyaltyScreen> {
               // besar. Pure client-side calculation dari _redeemTiers.
               _TierProgressCard(points: _availablePoints),
               const SizedBox(height: 18),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 4),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: Text(
                   'Pilih Voucher',
                   style: TextStyle(
-                    color: Color(0xFF17202A),
+                    color: Theme.of(context).colorScheme.onSurface,
                     fontSize: 17,
                     fontWeight: FontWeight.w900,
                   ),
@@ -298,6 +301,7 @@ class _TierProgressCardState extends State<_TierProgressCard>
   @override
   Widget build(BuildContext context) {
     final info = _calc();
+    final cs = Theme.of(context).colorScheme;
     return GlassSurface(
       radius: 20,
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
@@ -312,10 +316,10 @@ class _TierProgressCardState extends State<_TierProgressCard>
                 size: 18,
               ),
               const SizedBox(width: 6),
-              const Text(
+              Text(
                 'Progress Tier',
                 style: TextStyle(
-                  color: Color(0xFF111111),
+                  color: cs.onSurface,
                   fontSize: 14,
                   fontWeight: FontWeight.w900,
                 ),
@@ -324,8 +328,8 @@ class _TierProgressCardState extends State<_TierProgressCard>
               if (info.next != null)
                 Text(
                   '${widget.points} / ${info.next} poin',
-                  style: const TextStyle(
-                    color: Color(0xFF6B7280),
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
                   ),
@@ -341,7 +345,7 @@ class _TierProgressCardState extends State<_TierProgressCard>
                 child: LinearProgressIndicator(
                   value: info.progress * _animation.value,
                   minHeight: 10,
-                  backgroundColor: const Color(0xFFE2E8F0),
+                  backgroundColor: cs.outlineVariant,
                   valueColor: const AlwaysStoppedAnimation<Color>(_brandBlue),
                 ),
               );
@@ -353,7 +357,7 @@ class _TierProgressCardState extends State<_TierProgressCard>
             style: TextStyle(
               color: info.next == null
                   ? const Color(0xFF16A34A)
-                  : const Color(0xFF6B7280),
+                  : cs.onSurfaceVariant,
               fontSize: 12,
               fontWeight: FontWeight.w700,
               height: 1.4,
@@ -449,6 +453,7 @@ class _TierCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final canClaim = availablePoints >= tier.points;
+    final cs = Theme.of(context).colorScheme;
 
     return GlassSurface(
       radius: 20,
@@ -461,7 +466,9 @@ class _TierCard extends StatelessWidget {
             decoration: BoxDecoration(
               // Align ke NataloColors.primaryLight (sebelumnya 0xFFEEF5FF
               // sedikit beda dari 0xFFEAF5FF).
-              color: const Color(0xFFEAF5FF),
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                  : const Color(0xFFEAF5FF),
               borderRadius: BorderRadius.circular(14),
             ),
             // Icon color align ke _brandBlue (sebelumnya 0xFF1677FF).
@@ -477,8 +484,8 @@ class _TierCard extends StatelessWidget {
               children: [
                 Text(
                   'Voucher ${formatRupiah(tier.discountAmount.toDouble())}',
-                  style: const TextStyle(
-                    color: Color(0xFF17202A),
+                  style: TextStyle(
+                    color: cs.onSurface,
                     fontSize: 14,
                     fontWeight: FontWeight.w900,
                   ),
@@ -486,8 +493,8 @@ class _TierCard extends StatelessWidget {
                 const SizedBox(height: 3),
                 Text(
                   'Butuh ${tier.points} poin',
-                  style: const TextStyle(
-                    color: Color(0xFF6B7280),
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
@@ -495,8 +502,8 @@ class _TierCard extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   'Min. belanja ${formatRupiah(tier.minimumOrder.toDouble())}',
-                  style: const TextStyle(
-                    color: Color(0xFF94A3B8),
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
                     fontSize: 11.5,
                     fontWeight: FontWeight.w700,
                   ),
@@ -514,7 +521,7 @@ class _TierCard extends StatelessWidget {
                 alignment: Alignment.center,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 decoration: BoxDecoration(
-                  color: canClaim ? _brandBlue : const Color(0xFFEFF2F6),
+                  color: canClaim ? _brandBlue : cs.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: loading
@@ -530,7 +537,7 @@ class _TierCard extends StatelessWidget {
                         canClaim ? 'Tukar' : 'Poin belum cukup',
                         style: TextStyle(
                           color:
-                              canClaim ? Colors.white : const Color(0xFF9CA3AF),
+                              canClaim ? Colors.white : cs.onSurfaceVariant,
                           fontWeight: FontWeight.w900,
                           fontSize: 12,
                         ),
@@ -554,16 +561,17 @@ class _HowItWorksCard extends StatelessWidget {
       'Voucher masuk ke Voucher Member',
       'Voucher dapat dipakai saat checkout',
     ];
+    final cs = Theme.of(context).colorScheme;
     return GlassSurface(
       radius: 20,
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Cara kerja penukaran',
             style: TextStyle(
-              color: Color(0xFF17202A),
+              color: cs.onSurface,
               fontSize: 14,
               fontWeight: FontWeight.w900,
             ),
@@ -584,8 +592,8 @@ class _HowItWorksCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       item,
-                      style: const TextStyle(
-                        color: Color(0xFF475569),
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
                         height: 1.5,

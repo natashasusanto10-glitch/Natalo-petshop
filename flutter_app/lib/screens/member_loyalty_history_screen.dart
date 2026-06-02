@@ -8,7 +8,6 @@ import '../widgets/natalo_paw_refresh_indicator.dart';
 
 const _brandBlue = Color(0xFF0B7FEA);
 const _primaryDark = Color(0xFF075CB5);
-const _primaryLight = Color(0xFFEAF5FF);
 const _success = Color(0xFF16A34A);
 const _danger = Color(0xFFEF4444);
 
@@ -77,12 +76,12 @@ class _MemberLoyaltyHistoryScreenState
                   const SizedBox(height: 60),
                   const _LoyaltyHistoryEmpty(),
                 ] else ...[
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 10, left: 4),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10, left: 4),
                     child: Text(
                       'Transaksi Poin',
                       style: TextStyle(
-                        color: Color(0xFF111111),
+                        color: Theme.of(context).colorScheme.onSurface,
                         fontSize: 15,
                         fontWeight: FontWeight.w900,
                       ),
@@ -193,6 +192,7 @@ class _LoyaltyHistoryEntryCard extends StatelessWidget {
     final subtitle = entry.isReviewBonus
         ? 'Terima kasih sudah memberi ulasan'
         : formatRelativeTime(entry.createdAt);
+    final cs = Theme.of(context).colorScheme;
 
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
@@ -210,9 +210,9 @@ class _LoyaltyHistoryEntryCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: cs.surface,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFE5E7EB)),
+          border: Border.all(color: cs.outlineVariant),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.03),
@@ -248,8 +248,8 @@ class _LoyaltyHistoryEntryCard extends StatelessWidget {
                     entry.description,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF111111),
+                    style: TextStyle(
+                      color: cs.onSurface,
                       fontSize: 13.5,
                       fontWeight: FontWeight.w800,
                       height: 1.3,
@@ -258,8 +258,8 @@ class _LoyaltyHistoryEntryCard extends StatelessWidget {
                   const SizedBox(height: 3),
                   Text(
                     subtitle,
-                    style: const TextStyle(
-                      color: Color(0xFF6B7280),
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
                       fontSize: 11.5,
                       fontWeight: FontWeight.w700,
                     ),
@@ -290,6 +290,7 @@ class _LoyaltyHistoryEmpty extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -299,8 +300,10 @@ class _LoyaltyHistoryEmpty extends StatelessWidget {
             Container(
               width: 112,
               height: 112,
-              decoration: const BoxDecoration(
-                color: _primaryLight,
+              decoration: BoxDecoration(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                    : const Color(0xFFEAF5FF),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -310,21 +313,21 @@ class _LoyaltyHistoryEmpty extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 18),
-            const Text(
+            Text(
               'Belum ada transaksi poin',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Color(0xFF111111),
+                color: cs.onSurface,
                 fontSize: 18,
                 fontWeight: FontWeight.w900,
               ),
             ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Mulai belanja untuk dapat poin loyalty. Setiap pembelian akan tercatat di sini.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Color(0xFF6B7280),
+                color: cs.onSurfaceVariant,
                 fontSize: 13.5,
                 fontWeight: FontWeight.w600,
                 height: 1.55,

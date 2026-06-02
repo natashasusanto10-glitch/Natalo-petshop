@@ -8,8 +8,6 @@ import '../widgets/app_ui.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 
 const _brandBlue = Color(0xFF0B7FEA);
-const _textDark = Color(0xFF111111);
-const _textMuted = Color(0xFF6B7280);
 const _success = Color(0xFF059669);
 const _danger = Color(0xFFEF4444);
 
@@ -77,13 +75,15 @@ class _RefundBalanceScreenState extends State<RefundBalanceScreen> {
     if (!memberStore.isLoggedIn) {
       return Scaffold(
         appBar: AppBar(title: const Text('Saldo Refund')),
-        body: const Center(
+        body: Center(
           child: Padding(
-            padding: EdgeInsets.all(24),
+            padding: const EdgeInsets.all(24),
             child: Text(
               'Login dulu untuk lihat saldo refund.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: _textMuted),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
         ),
@@ -110,12 +110,12 @@ class _RefundBalanceScreenState extends State<RefundBalanceScreen> {
                 if (data.history.isEmpty)
                   const _EmptyHistory()
                 else ...[
-                  const Padding(
-                    padding: EdgeInsets.only(left: 4, bottom: 10),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4, bottom: 10),
                     child: Text(
                       'Riwayat Saldo',
                       style: TextStyle(
-                        color: _textDark,
+                        color: Theme.of(context).colorScheme.onSurface,
                         fontSize: 15,
                         fontWeight: FontWeight.w900,
                       ),
@@ -235,6 +235,7 @@ class _EmptyHistory extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 40, 20, 20),
       child: Column(
@@ -243,7 +244,9 @@ class _EmptyHistory extends StatelessWidget {
             width: 76,
             height: 76,
             decoration: BoxDecoration(
-              color: const Color(0xFFEAF5FF),
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                  : const Color(0xFFEAF5FF),
               borderRadius: BorderRadius.circular(24),
             ),
             child: const Icon(
@@ -253,20 +256,20 @@ class _EmptyHistory extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             'Belum ada riwayat saldo',
             style: TextStyle(
-              color: _textDark,
+              color: cs.onSurface,
               fontSize: 16,
               fontWeight: FontWeight.w900,
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             'Saldo refund akan muncul di sini jika ada pengembalian dana dari pesanan kamu.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: _textMuted,
+              color: cs.onSurfaceVariant,
               fontSize: 13,
               height: 1.45,
               fontWeight: FontWeight.w600,
@@ -341,12 +344,13 @@ class _LedgerCard extends StatelessWidget {
         (!isCredit &&
             entry.sourceOrderId != null &&
             entry.sourceOrderNumber != null);
+    final cs = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: cs.outlineVariant),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -381,8 +385,8 @@ class _LedgerCard extends StatelessWidget {
                     Expanded(
                       child: Text(
                         entry.title,
-                        style: const TextStyle(
-                          color: _textDark,
+                        style: TextStyle(
+                          color: cs.onSurface,
                           fontSize: 14,
                           fontWeight: FontWeight.w800,
                         ),
@@ -404,8 +408,8 @@ class _LedgerCard extends StatelessWidget {
                     entry.note!,
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: _textMuted,
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
                       fontSize: 12,
                       height: 1.4,
                       fontWeight: FontWeight.w600,
@@ -415,8 +419,8 @@ class _LedgerCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   entry.formattedDate,
-                  style: const TextStyle(
-                    color: Color(0xFF98A2B3),
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
                   ),
@@ -426,9 +430,9 @@ class _LedgerCard extends StatelessWidget {
           ),
           if (clickable) ...[
             const SizedBox(width: 4),
-            const Icon(
+            Icon(
               Icons.chevron_right_rounded,
-              color: Color(0xFF98A2B3),
+              color: cs.onSurfaceVariant,
               size: 18,
             ),
           ],

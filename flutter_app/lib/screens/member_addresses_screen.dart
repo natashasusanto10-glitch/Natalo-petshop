@@ -129,28 +129,29 @@ class _MemberAddressesScreenState extends State<MemberAddressesScreen> {
       return const _LoginRequiredScaffold(title: 'Alamat');
     }
 
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       // Solid white bg (was transparent → kalau parent transparent ke
       // device bg, content GlassSurface BackdropFilter bisa render
       // weird di iOS — text invisible, blank screen reports dari user).
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: cs.surface,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
+        backgroundColor: cs.surface,
+        surfaceTintColor: cs.surface,
         elevation: 0,
         scrolledUnderElevation: 0,
-        shape: const Border(
-          bottom: BorderSide(color: Color(0xFFE5EAF2), width: 1),
+        shape: Border(
+          bottom: BorderSide(color: cs.outlineVariant, width: 1),
         ),
-        title: const Text(
+        title: Text(
           'Alamat',
           style: TextStyle(
-            color: Color(0xFF17202A),
+            color: cs.onSurface,
             fontSize: 18,
             fontWeight: FontWeight.w900,
           ),
         ),
-        iconTheme: const IconThemeData(color: Color(0xFF17202A)),
+        iconTheme: IconThemeData(color: cs.onSurface),
         actions: [
           AppHeaderIconButton(
             onPressed: _openAddressForm,
@@ -204,6 +205,7 @@ class _LoginRequiredScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: Text(title)),
       body: Center(
@@ -216,7 +218,9 @@ class _LoginRequiredScaffold extends StatelessWidget {
                 height: 76,
                 width: 76,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEAF5FF),
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                      : const Color(0xFFEAF5FF),
                   borderRadius: BorderRadius.circular(26),
                 ),
                 child: const Icon(
@@ -226,21 +230,21 @@ class _LoginRequiredScaffold extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 'Login member diperlukan',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Color(0xFF17202A),
+                  color: cs.onSurface,
                   fontSize: 20,
                   fontWeight: FontWeight.w900,
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'Masuk untuk menyimpan dan mengedit alamat pengiriman.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Color(0xFF6B7280),
+                  color: cs.onSurfaceVariant,
                   fontWeight: FontWeight.w700,
                   height: 1.4,
                 ),
@@ -265,12 +269,13 @@ class _EmptyAddressesCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.fromLTRB(22, 28, 22, 24),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: Column(
         children: [
@@ -279,8 +284,10 @@ class _EmptyAddressesCard extends StatelessWidget {
           Container(
             width: 96,
             height: 96,
-            decoration: const BoxDecoration(
-              color: Color(0xFFEAF5FF),
+            decoration: BoxDecoration(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                  : const Color(0xFFEAF5FF),
               shape: BoxShape.circle,
             ),
             child: const Icon(
@@ -290,21 +297,21 @@ class _EmptyAddressesCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          const Text(
+          Text(
             'Belum ada alamat tersimpan',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Color(0xFF17202A),
+              color: cs.onSurface,
               fontSize: 18,
               fontWeight: FontWeight.w900,
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             'Tambahkan alamat member agar checkout pengiriman bisa lebih cepat.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Color(0xFF6B7280),
+              color: cs.onSurfaceVariant,
               fontWeight: FontWeight.w600,
               height: 1.45,
               fontSize: 13.5,
@@ -347,12 +354,13 @@ class _AddressHeader extends StatelessWidget {
     // render weird saat scaffold transparent dan tidak ada content
     // di belakang untuk di-blur (root cause user report "alamat error
     // blank page").
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: Row(
         children: [
@@ -360,7 +368,9 @@ class _AddressHeader extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: const Color(0xFFEAF5FF),
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                  : const Color(0xFFEAF5FF),
               borderRadius: BorderRadius.circular(14),
             ),
             child: const Icon(
@@ -370,11 +380,11 @@ class _AddressHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          const Expanded(
+          Expanded(
             child: Text(
               'Tambah, edit, atau jadikan alamat utama untuk checkout lebih cepat.',
               style: TextStyle(
-                color: Color(0xFF475569),
+                color: cs.onSurfaceVariant,
                 fontWeight: FontWeight.w700,
                 fontSize: 13,
                 height: 1.45,
@@ -404,6 +414,7 @@ class _AddressCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
       duration: Duration(milliseconds: 240 + index * 70),
@@ -420,9 +431,9 @@ class _AddressCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: cs.surface,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFE5E7EB)),
+          border: Border.all(color: cs.outlineVariant),
           boxShadow: [
             BoxShadow(
               color: const Color(0xFF111111).withValues(alpha: 0.04),
@@ -464,8 +475,8 @@ class _AddressCard extends StatelessWidget {
             // ── Nama - No HP bold ──
             Text(
               '${address.recipient} - ${address.phone}',
-              style: const TextStyle(
-                color: Color(0xFF111111),
+              style: TextStyle(
+                color: cs.onSurface,
                 fontSize: 15,
                 fontWeight: FontWeight.w900,
               ),
@@ -473,8 +484,8 @@ class _AddressCard extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               address.address,
-              style: const TextStyle(
-                color: Color(0xFF475569),
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
                 height: 1.4,
@@ -487,8 +498,8 @@ class _AddressCard extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 address.areaLabel!,
-                style: const TextStyle(
-                  color: Color(0xFF6B7280),
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                   height: 1.4,
@@ -502,13 +513,15 @@ class _AddressCard extends StatelessWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEAF5FF),
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                      : const Color(0xFFEAF5FF),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
                   'Pinpoint: ${address.pinpointAddress}',
-                  style: const TextStyle(
-                    color: Color(0xFF334155),
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                     height: 1.45,
@@ -517,7 +530,7 @@ class _AddressCard extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 14),
-            const Divider(color: Color(0xFFE5E7EB), height: 1),
+            Divider(color: cs.outlineVariant, height: 1),
             const SizedBox(height: 12),
             // ── Action buttons: Edit (outline gray) + Hapus (outline red) — right aligned ──
             Row(
@@ -525,8 +538,8 @@ class _AddressCard extends StatelessWidget {
               children: [
                 _AddressActionButton(
                   label: 'Edit',
-                  color: const Color(0xFF334155),
-                  borderColor: const Color(0xFFE5E7EB),
+                  color: cs.onSurfaceVariant,
+                  borderColor: cs.outlineVariant,
                   onTap: onEdit,
                 ),
                 const SizedBox(width: 10),
@@ -555,14 +568,15 @@ class _AddressTag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     late final Color bg;
     late final Color border;
     late final Color text;
     switch (variant) {
       case _TagVariant.neutral:
-        bg = Colors.white;
-        border = const Color(0xFFE5E7EB);
-        text = const Color(0xFF334155);
+        bg = cs.surface;
+        border = cs.outlineVariant;
+        text = cs.onSurfaceVariant;
         break;
       case _TagVariant.primary:
         bg = _brandBlue;
@@ -617,7 +631,7 @@ class _AddressActionButton extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(999),
             border: Border.all(color: borderColor),
           ),
@@ -756,8 +770,8 @@ class _AddressFormSheetState extends State<_AddressFormSheet> {
             children: [
               Text(
                 widget.address == null ? 'Tambah Alamat' : 'Edit Alamat',
-                style: const TextStyle(
-                  color: Color(0xFF17202A),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontSize: 20,
                   fontWeight: FontWeight.w900,
                 ),

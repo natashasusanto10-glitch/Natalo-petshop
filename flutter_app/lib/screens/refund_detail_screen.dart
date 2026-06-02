@@ -6,9 +6,6 @@ import '../utils/formatters.dart';
 import '../widgets/app_ui.dart';
 
 const _brandBlue = Color(0xFF0B7FEA);
-const _textDark = Color(0xFF111111);
-const _textMuted = Color(0xFF6B7280);
-const _border = Color(0xFFE5E7EB);
 const _success = Color(0xFF059669);
 const _danger = Color(0xFFEF4444);
 
@@ -85,8 +82,8 @@ class _RefundDetailScreenState extends State<RefundDetailScreen> {
                 title: 'Alasan',
                 child: Text(
                   _reasonLabel(d.case_.reason),
-                  style: const TextStyle(
-                    color: _textDark,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
                   ),
@@ -203,6 +200,7 @@ class _StatusHeader extends StatelessWidget {
     final icon = isSuccess
         ? Icons.check_circle_rounded
         : (isFail ? Icons.cancel_rounded : Icons.access_time_rounded);
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 22),
       decoration: BoxDecoration(
@@ -225,8 +223,8 @@ class _StatusHeader extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             '+${formatRupiah(detail.case_.amount.toDouble())}',
-            style: const TextStyle(
-              color: _textDark,
+            style: TextStyle(
+              color: cs.onSurface,
               fontSize: 28,
               fontWeight: FontWeight.w900,
               letterSpacing: -0.5,
@@ -235,8 +233,8 @@ class _StatusHeader extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             _formatDateTime(detail.case_.creditedAt ?? detail.case_.createdAt),
-            style: const TextStyle(
-              color: _textMuted,
+            style: TextStyle(
+              color: cs.onSurfaceVariant,
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
@@ -255,20 +253,21 @@ class _Section extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _border),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             title,
-            style: const TextStyle(
-              color: _textMuted,
+            style: TextStyle(
+              color: cs.onSurfaceVariant,
               fontSize: 11.5,
               fontWeight: FontWeight.w800,
               letterSpacing: 0.4,
@@ -289,10 +288,11 @@ class _ItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -301,7 +301,9 @@ class _ItemCard extends StatelessWidget {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: const Color(0xFFEAF2FF),
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                  : const Color(0xFFEAF2FF),
               borderRadius: BorderRadius.circular(10),
             ),
             child: const Icon(
@@ -317,8 +319,8 @@ class _ItemCard extends StatelessWidget {
               children: [
                 Text(
                   item.name,
-                  style: const TextStyle(
-                    color: _textDark,
+                  style: TextStyle(
+                    color: cs.onSurface,
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
                   ),
@@ -328,8 +330,8 @@ class _ItemCard extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     'Varian: ${item.variantLabel}',
-                    style: const TextStyle(
-                      color: _textMuted,
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
@@ -338,8 +340,8 @@ class _ItemCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   '${item.quantity}× ${formatRupiah(item.price.toDouble())} = ${formatRupiah(item.lineTotal.toDouble())}',
-                  style: const TextStyle(
-                    color: _textDark,
+                  style: TextStyle(
+                    color: cs.onSurface,
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
                   ),
@@ -366,6 +368,7 @@ class _CalcBreakdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final totalVoucherDeduction = voucherAllocations.values
         .map((v) => v is num ? v.toInt() : 0)
         .fold<int>(0, (a, b) => a + b);
@@ -373,6 +376,7 @@ class _CalcBreakdown extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _calcLine(
+          cs,
           'Harga item',
           formatRupiah(itemGrossPrice.toDouble()),
         ),
@@ -381,6 +385,7 @@ class _CalcBreakdown extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(bottom: 4, left: 12),
             child: _calcLine(
+              cs,
               '• ${entry.key}',
               '-${formatRupiah((entry.value as num).toDouble())}',
               dimmed: true,
@@ -389,6 +394,7 @@ class _CalcBreakdown extends StatelessWidget {
         if (voucherAllocations.isNotEmpty) ...[
           const SizedBox(height: 2),
           _calcLine(
+            cs,
             'Total alokasi voucher',
             '-${formatRupiah(totalVoucherDeduction.toDouble())}',
           ),
@@ -398,6 +404,7 @@ class _CalcBreakdown extends StatelessWidget {
           child: Divider(height: 1),
         ),
         _calcLine(
+          cs,
           'Nominal refund',
           formatRupiah(refundAmount.toDouble()),
           bold: true,
@@ -406,7 +413,7 @@ class _CalcBreakdown extends StatelessWidget {
     );
   }
 
-  Widget _calcLine(String label, String value,
+  Widget _calcLine(ColorScheme cs, String label, String value,
       {bool bold = false, bool dimmed = false}) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -415,7 +422,7 @@ class _CalcBreakdown extends StatelessWidget {
           child: Text(
             label,
             style: TextStyle(
-              color: dimmed ? _textMuted : _textDark,
+              color: dimmed ? cs.onSurfaceVariant : cs.onSurface,
               fontSize: 13,
               fontWeight: bold ? FontWeight.w900 : FontWeight.w600,
             ),
@@ -425,7 +432,7 @@ class _CalcBreakdown extends StatelessWidget {
         Text(
           value,
           style: TextStyle(
-            color: bold ? _success : _textDark,
+            color: bold ? _success : cs.onSurface,
             fontSize: bold ? 14 : 13,
             fontWeight: bold ? FontWeight.w900 : FontWeight.w700,
           ),
@@ -486,6 +493,7 @@ class _OrderSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Column(
       children: [
         Row(
@@ -496,8 +504,8 @@ class _OrderSummary extends StatelessWidget {
                 children: [
                   Text(
                     '#${order.orderNumber}',
-                    style: const TextStyle(
-                      color: _textDark,
+                    style: TextStyle(
+                      color: cs.onSurface,
                       fontSize: 14,
                       fontWeight: FontWeight.w900,
                     ),
@@ -505,8 +513,8 @@ class _OrderSummary extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     'Status: ${order.status} • ${_formatDateTime(order.createdAt)}',
-                    style: const TextStyle(
-                      color: _textMuted,
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
                       fontSize: 11.5,
                       fontWeight: FontWeight.w600,
                     ),
@@ -514,8 +522,8 @@ class _OrderSummary extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     'Total Pesanan ${formatRupiah(order.total.toDouble())}',
-                    style: const TextStyle(
-                      color: _textDark,
+                    style: TextStyle(
+                      color: cs.onSurface,
                       fontSize: 12.5,
                       fontWeight: FontWeight.w700,
                     ),
@@ -597,6 +605,7 @@ class _Timeline extends StatelessWidget {
           completed: true,
         ),
     ];
+    final cs = Theme.of(context).colorScheme;
     return Column(
       children: events.reversed.map((e) {
         return Padding(
@@ -616,16 +625,16 @@ class _Timeline extends StatelessWidget {
                   children: [
                     Text(
                       e.title,
-                      style: const TextStyle(
-                        color: _textDark,
+                      style: TextStyle(
+                        color: cs.onSurface,
                         fontSize: 13,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
                     Text(
                       _formatDateTime(e.timestamp),
-                      style: const TextStyle(
-                        color: _textMuted,
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                       ),
@@ -676,8 +685,8 @@ class _ErrorView extends StatelessWidget {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: _textMuted,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 13.5,
                 fontWeight: FontWeight.w600,
               ),

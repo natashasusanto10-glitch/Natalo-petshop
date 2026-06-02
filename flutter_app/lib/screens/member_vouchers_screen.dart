@@ -118,6 +118,7 @@ class _VoucherEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -128,7 +129,9 @@ class _VoucherEmptyState extends StatelessWidget {
               width: 120,
               height: 120,
               decoration: BoxDecoration(
-                color: const Color(0xFFEAF5FF),
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                    : const Color(0xFFEAF5FF),
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
@@ -145,23 +148,23 @@ class _VoucherEmptyState extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 20),
-            const Text(
+            Text(
               'Belum ada voucher',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Color(0xFF111111),
+                color: cs.onSurface,
                 fontSize: 20,
                 fontWeight: FontWeight.w900,
                 letterSpacing: -0.2,
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Tukar poin loyalty kamu jadi voucher belanja, atau pantau '
               'halaman promo untuk dapat voucher gratis.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Color(0xFF6B7280),
+                color: cs.onSurfaceVariant,
                 fontSize: 13.5,
                 fontWeight: FontWeight.w600,
                 height: 1.55,
@@ -203,6 +206,7 @@ class _LoginRequiredScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(title: Text(title)),
@@ -216,7 +220,9 @@ class _LoginRequiredScaffold extends StatelessWidget {
                 height: 76,
                 width: 76,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEAF5FF),
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                      : const Color(0xFFEAF5FF),
                   borderRadius: BorderRadius.circular(26),
                 ),
                 child: const Icon(
@@ -226,21 +232,21 @@ class _LoginRequiredScaffold extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 'Login member diperlukan',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Color(0xFF17202A),
+                  color: cs.onSurface,
                   fontSize: 20,
                   fontWeight: FontWeight.w900,
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'Masuk untuk melihat voucher yang aktif di akun kamu.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Color(0xFF6B7280),
+                  color: cs.onSurfaceVariant,
                   fontWeight: FontWeight.w700,
                   height: 1.4,
                 ),
@@ -265,10 +271,13 @@ class _VoucherHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFFEAF5FF),
+        color: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+            : const Color(0xFFEAF5FF),
         borderRadius: BorderRadius.circular(26),
         border: Border.all(color: const Color(0xFFBFDBFE)),
       ),
@@ -278,7 +287,7 @@ class _VoucherHeader extends StatelessWidget {
             height: 48,
             width: 48,
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: cs.surface,
               borderRadius: BorderRadius.circular(18),
             ),
             child: const Icon(Icons.local_offer_rounded, color: _brandBlue),
@@ -292,8 +301,8 @@ class _VoucherHeader extends StatelessWidget {
                   total > 0
                       ? '$total voucher siap dipakai'
                       : 'Belum ada voucher siap dipakai',
-                  style: const TextStyle(
-                    color: Color(0xFF17202A),
+                  style: TextStyle(
+                    color: cs.onSurface,
                     fontSize: 17,
                     fontWeight: FontWeight.w900,
                   ),
@@ -303,8 +312,8 @@ class _VoucherHeader extends StatelessWidget {
                   total > 0
                       ? 'Tap "Pakai" untuk salin kode, lalu tempel saat checkout.'
                       : 'Voucher yang belum cukup belanja masih bisa kamu lihat di bawah.',
-                  style: const TextStyle(
-                    color: Color(0xFF475569),
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
                     fontWeight: FontWeight.w700,
                     height: 1.35,
                   ),
@@ -339,7 +348,9 @@ class _VoucherCard extends StatelessWidget {
           ),
         );
       },
-      child: Opacity(
+      child: Builder(builder: (context) {
+        final cs = Theme.of(context).colorScheme;
+        return Opacity(
         // Voucher unavailable di-dim sedikit supaya user paham status-nya
         // beda dari yang ready dipakai. Tetap visible (per spec — tampil
         // sampai voucher tidak bisa dipakai sama sekali → hidden di backend).
@@ -348,13 +359,13 @@ class _VoucherCard extends StatelessWidget {
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
             color: voucher.applicable
-                ? Colors.white
-                : const Color(0xFFFAFAFA),
+                ? cs.surface
+                : cs.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(26),
             border: Border.all(
               color: voucher.applicable
                   ? const Color(0xFFBFDBFE)
-                  : const Color(0xFFE5E7EB),
+                  : cs.outlineVariant,
             ),
             boxShadow: voucher.applicable
                 ? [
@@ -376,7 +387,9 @@ class _VoucherCard extends StatelessWidget {
                     height: 56,
                     width: 56,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFEAF5FF),
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                          : const Color(0xFFEAF5FF),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: const Icon(Icons.confirmation_number_outlined,
@@ -400,8 +413,8 @@ class _VoucherCard extends StatelessWidget {
                         const SizedBox(height: 4),
                         Text(
                           voucher.title,
-                          style: const TextStyle(
-                            color: Color(0xFF17202A),
+                          style: TextStyle(
+                            color: cs.onSurface,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
@@ -410,8 +423,8 @@ class _VoucherCard extends StatelessWidget {
                           '${voucher.description} Berlaku sampai ${_formatDate(voucher.expiresAt)}.',
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Color(0xFF6B7280),
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
                             height: 1.35,
@@ -452,8 +465,8 @@ class _VoucherCard extends StatelessWidget {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: _brandBlue,
                         foregroundColor: Colors.white,
-                        disabledBackgroundColor: const Color(0xFFE5E7EB),
-                        disabledForegroundColor: const Color(0xFF9CA3AF),
+                        disabledBackgroundColor: cs.surfaceContainerHighest,
+                        disabledForegroundColor: cs.onSurfaceVariant,
                         elevation: 0,
                         padding:
                             const EdgeInsets.symmetric(horizontal: 18),
@@ -512,7 +525,8 @@ class _VoucherCard extends StatelessWidget {
             ],
           ),
         ),
-      ),
+      );
+      }),
     );
   }
 }
@@ -526,6 +540,7 @@ class _SectionDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(top: 4, bottom: 4),
       child: Row(
@@ -533,15 +548,15 @@ class _SectionDivider extends StatelessWidget {
           Expanded(
             child: Container(
               height: 1,
-              color: const Color(0xFFE5E7EB),
+              color: cs.outlineVariant,
             ),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Text(
               label,
-              style: const TextStyle(
-                color: Color(0xFF6B7280),
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
                 fontSize: 11.5,
                 fontWeight: FontWeight.w800,
               ),
@@ -550,7 +565,7 @@ class _SectionDivider extends StatelessWidget {
           Expanded(
             child: Container(
               height: 1,
-              color: const Color(0xFFE5E7EB),
+              color: cs.outlineVariant,
             ),
           ),
         ],
