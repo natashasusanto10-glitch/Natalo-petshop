@@ -243,6 +243,23 @@ class NataloTheme {
       secondary: NataloColors.accentOrange,
       error: NataloColors.danger,
       surface: isLight ? NataloColors.background : NataloColors.backgroundDark,
+    ).copyWith(
+      // PIN peran neutral ke palet brand. Tanpa ini, fill/border/teks yang
+      // di-refactor ke `colorScheme.*` ikut tonal Material 3 (di-generate
+      // dari seed biru) yang ber-tint abu di light → search bar, grid
+      // produk, border tampak lebih abu dari hex netral aslinya. Override
+      // di sini bikin LIGHT persis seperti sebelum dark-mode refactor,
+      // DARK tetap pakai token gelap.
+      surfaceContainerHighest:
+          isLight ? const Color(0xFFF1F5F9) : NataloColors.surfaceVariantDark,
+      surfaceContainerHigh:
+          isLight ? const Color(0xFFE2E8F0) : NataloColors.surfaceElevatedDark,
+      outlineVariant: isLight ? NataloColors.border : NataloColors.borderDark,
+      onSurface:
+          isLight ? NataloColors.textPrimary : NataloColors.textPrimaryDark,
+      onSurfaceVariant: isLight
+          ? const Color(0xFF6B7280)
+          : NataloColors.textSecondaryDark,
     );
     return ThemeData(
       useMaterial3: true,
@@ -482,6 +499,12 @@ class NataloTheme {
       primary: darkPrimary,
       surface: darkSurface,
       onSurface: darkInk,
+    ).copyWith(
+      // Samakan peran neutral dengan token dark Natalo (lihat _build light).
+      surfaceContainerHighest: NataloColors.surfaceVariantDark, // #22293A
+      surfaceContainerHigh: NataloColors.surfaceElevatedDark, // #1F2937
+      outlineVariant: NataloColors.borderDark, // #2A3142
+      onSurfaceVariant: NataloColors.textSecondaryDark, // #94A3B8
     );
 
     return ThemeData(
