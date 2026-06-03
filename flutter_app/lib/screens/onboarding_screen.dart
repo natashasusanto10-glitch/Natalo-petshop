@@ -129,8 +129,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     final isLast = _currentIndex == _slides.length - 1;
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: cs.surface,
       body: SafeArea(
         child: Column(
           children: [
@@ -146,10 +147,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     duration: const Duration(milliseconds: 200),
                     child: TextButton(
                       onPressed: isLast ? null : _finish,
-                      child: const Text(
+                      child: Text(
                         'Lewati',
                         style: TextStyle(
-                          color: NataloColors.textSecondary,
+                          color: cs.onSurfaceVariant,
                           fontWeight: FontWeight.w700,
                           fontSize: 14,
                         ),
@@ -187,9 +188,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     height: 8,
                     width: active ? 28 : 8,
                     decoration: BoxDecoration(
-                      color: active
-                          ? NataloColors.primary
-                          : const Color(0xFFD1D5DB),
+                      color: active ? NataloColors.primary : cs.outlineVariant,
                       borderRadius: BorderRadius.circular(999),
                     ),
                   );
@@ -261,6 +260,8 @@ class _OnboardingSlideView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 28),
       child: Column(
@@ -270,7 +271,12 @@ class _OnboardingSlideView extends StatelessWidget {
             width: 180,
             height: 180,
             decoration: BoxDecoration(
-              color: slide.iconBg,
+              // Lingkaran pastel terang nyala di dark → pakai tint warna
+              // ikon per-slide (biru/amber/pink/hijau) supaya identitas
+              // warna tetap, tapi gelap-friendly.
+              color: isDark
+                  ? slide.iconColor.withValues(alpha: 0.18)
+                  : slide.iconBg,
               shape: BoxShape.circle,
             ),
             child: Icon(
@@ -283,8 +289,8 @@ class _OnboardingSlideView extends StatelessWidget {
           Text(
             slide.title,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: NataloColors.textPrimary,
+            style: TextStyle(
+              color: cs.onSurface,
               fontSize: 24,
               fontWeight: FontWeight.w900,
               height: 1.25,
@@ -295,8 +301,8 @@ class _OnboardingSlideView extends StatelessWidget {
           Text(
             slide.body,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: NataloColors.textSecondary,
+            style: TextStyle(
+              color: cs.onSurfaceVariant,
               fontSize: 15,
               fontWeight: FontWeight.w500,
               height: 1.55,
