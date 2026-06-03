@@ -151,17 +151,27 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
                 ),
               ),
             ),
-          SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.only(left: 8, top: 8),
-              child: IconButton(
-                onPressed: () => Navigator.of(context).pop(),
-                tooltip: 'Kembali',
-                icon: const Icon(
-                  Icons.arrow_back_rounded,
-                  color: Colors.white,
-                  size: 30,
+          // CRITICAL: Positioned wrap supaya SafeArea TIDAK ke-stretch ke
+          // fullscreen oleh StackFit.expand. Tanpa Positioned, SafeArea +
+          // IconButton dapat tight constraint full-stack → icon ke-center
+          // di tengah layar, dan IconButton hit-test cover SELURUH viewport
+          // → semua pinch/swipe/tap ke-consume jadi click back, gesture
+          // ke InteractiveViewer/PageView GAK PERNAH SAMPAI.
+          Positioned(
+            top: 0,
+            left: 0,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 8, top: 8),
+                child: IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  tooltip: 'Kembali',
+                  icon: const Icon(
+                    Icons.arrow_back_rounded,
+                    color: Colors.white,
+                    size: 30,
+                  ),
                 ),
               ),
             ),
